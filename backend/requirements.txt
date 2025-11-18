@@ -5,3 +5,10 @@ django-cors-headers>=4.0.0
 django-filter>=23.0
 openpyxl>=3.1.0
 reportlab>=4.0.0
+
+# Para PostgreSQL en Render
+psycopg2-binary>=2.9.9
+dj-database-url>=2.1.0
+
+# Para producción con Render
+gunicorn>=21.2.0
