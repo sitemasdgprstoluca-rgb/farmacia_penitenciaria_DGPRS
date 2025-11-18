@@ -1,0 +1,40 @@
+.alerta-vencido {
+  background: linear-gradient(90deg, rgba(220, 38, 38, 0.08) 0%, rgba(153, 27, 27, 0.08) 100%) !important;
+  border-left: 4px solid #dc2626 !important;
+}
+
+.alerta-critico {
+  background: linear-gradient(90deg, rgba(220, 38, 38, 0.05) 0%, rgba(153, 27, 27, 0.05) 100%) !important;
+  border-left: 4px solid #ef4444 !important;
+}
+
+.alerta-proximo {
+  background: linear-gradient(90deg, rgba(217, 119, 6, 0.05) 0%, rgba(146, 64, 14, 0.05) 100%) !important;
+  border-left: 4px solid #d97706 !important;
+}
+
+.alerta-normal {
+  background: transparent;
+}
+
+.table tbody tr.alerta-vencido:hover,
+.table tbody tr.alerta-critico:hover,
+.table tbody tr.alerta-proximo:hover {
+  opacity: 0.95;
+  transform: translateX(4px);
+  transition: all 0.2s;
+}
+
+.btn-pdf {
+  color: #dc2626;
+}
+
+.btn-pdf:hover {
+  background: rgba(220, 38, 38, 0.1);
+  transform: scale(1.1);
+}
+
+.alerta-inactivo {
+  opacity: 0.6;
+  background: #f3f4f6;
+}

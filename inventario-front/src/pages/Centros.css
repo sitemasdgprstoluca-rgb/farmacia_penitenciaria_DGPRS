@@ -1,0 +1,125 @@
+.centros-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1.5rem;
+}
+
+.centro-card {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 1.5rem;
+  transition: all 0.3s;
+  border: 2px solid var(--border-color);
+  position: relative;
+  overflow: hidden;
+}
+
+.centro-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(180deg, var(--pantone-504c) 0%, var(--pantone-7420c) 100%);
+}
+
+.centro-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--pantone-467c);
+}
+
+.centro-numero {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  background: linear-gradient(135deg, var(--pantone-504c) 0%, var(--pantone-7420c) 100%);
+  color: white;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.875rem;
+  box-shadow: 0 2px 8px rgba(99, 40, 66, 0.3);
+}
+
+.centro-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.centro-icon {
+  width: 60px;
+  height: 60px;
+  background: linear-gradient(135deg, var(--pantone-504c) 0%, var(--pantone-7420c) 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1.75rem;
+  box-shadow: 0 4px 12px rgba(99, 40, 66, 0.3);
+}
+
+.centro-body h3 {
+  font-size: 1.25rem;
+  color: var(--pantone-504c);
+  margin: 0 0 0.5rem 0;
+  font-weight: 700;
+}
+
+.centro-clave {
+  color: var(--pantone-7504c);
+  font-size: 0.875rem;
+  margin: 0.25rem 0;
+  font-weight: 600;
+}
+
+.centro-direccion,
+.centro-telefono {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin: 0.5rem 0;
+}
+
+.centro-requisiciones {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.centro-requisiciones strong {
+  color: var(--pantone-504c);
+  font-size: 1.1rem;
+}
+
+.centro-footer {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.centro-footer .btn {
+  flex: 1;
+}
+
+@media (max-width: 768px) {
+  .centros-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .centro-footer {
+    flex-direction: column;
+  }
+}
