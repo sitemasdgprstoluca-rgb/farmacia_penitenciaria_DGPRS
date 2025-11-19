@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -21,7 +22,17 @@ SECRET_KEY = 'django-insecure-tu-clave-secreta-cambiar-en-produccion'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+# Hosts y orígenes permitidos para despliegue en Render
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    'farmacia-penitenciaria.onrender.com',
+]
+
+import os
+render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+if render_host and render_host not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(render_host)
 
 
 # Application definition
@@ -60,12 +71,14 @@ MIDDLEWARE = [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",  # Frontend React
     "http://127.0.0.1:5173",
+    "https://farmacia-penitenciaria.onrender.com",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
+    "https://farmacia-penitenciaria.onrender.com",
 ]
 
 REST_FRAMEWORK = {
