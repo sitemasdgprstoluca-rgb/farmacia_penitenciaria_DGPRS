@@ -35,8 +35,8 @@ INSTALLED_APPS = [
     'django_filters',
 
     # Local apps
-    'backend.core.apps.CoreConfig',
-    'backend.inventario.apps.InventarioConfig',
+    'core.apps.CoreConfig',
+    'inventario.apps.InventarioConfig',
     'apps.entradas',
 ]
 
