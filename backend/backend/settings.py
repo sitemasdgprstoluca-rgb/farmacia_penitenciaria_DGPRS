@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     'django_filters',
 
     # Local apps
+    'backend.core',
     'apps.inventario',
     'apps.entradas',
 ]
@@ -97,7 +98,7 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Custom User Model
-AUTH_USER_MODEL = 'core.User'
+AUTH_USER_MODEL = 'backend.core.User'
 
 # CORS Settings
 CORS_ALLOW_ALL_ORIGINS = True
