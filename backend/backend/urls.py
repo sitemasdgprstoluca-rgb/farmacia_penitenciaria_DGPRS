@@ -3,6 +3,14 @@ from django.urls import path, include
 from django.http import JsonResponse
 
 
+def root_status(request):
+    """Respuesta sencilla para la ruta raíz en producción."""
+    return JsonResponse({
+        'service': 'Farmacia Penitenciaria API',
+        'status': 'ok'
+    })
+
+
 def health_check(request):
     return JsonResponse({
         'status': 'ok',
@@ -12,6 +20,7 @@ def health_check(request):
 
 
 urlpatterns = [
+    path('', root_status, name='api-root'),
     path('admin/', admin.site.urls),
     path('api/v1/', include('config.api_urls')),
     path('api/', include('config.api_urls')),
