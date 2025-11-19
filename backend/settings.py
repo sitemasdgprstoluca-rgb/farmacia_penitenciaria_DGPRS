@@ -40,8 +40,8 @@ INSTALLED_APPS = [
     'django_filters',
 
     # Local apps
-    'core',
-    'inventario',
+    'core.apps.CoreConfig',
+    'inventario.apps.InventarioConfig',
 ]
 
 MIDDLEWARE = [
