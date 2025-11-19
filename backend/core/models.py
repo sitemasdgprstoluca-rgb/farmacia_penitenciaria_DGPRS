@@ -1,5 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.conf import settings
+from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator
 from django.core.exceptions import ValidationError
 from decimal import Decimal
@@ -119,8 +121,7 @@ class Producto(models.Model):
     # Campos de auditoría
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.ForeignKey(
-        User,
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -258,8 +259,7 @@ class Lote(models.Model):
     # Auditoría
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.ForeignKey(
-        User,
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -371,8 +371,7 @@ class Requisicion(models.Model):
         on_delete=models.PROTECT,
         related_name='requisiciones'
     )
-    usuario_solicita = models.ForeignKey(
-        User,
+    usuario_solicita = models.ForeignKey(settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         related_name='requisiciones_solicitadas'
     )
@@ -383,8 +382,7 @@ class Requisicion(models.Model):
         default='borrador'
     )
     observaciones = models.TextField(blank=True)
-    usuario_autoriza = models.ForeignKey(
-        User,
+    usuario_autoriza = models.ForeignKey(settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -464,8 +462,7 @@ class Movimiento(models.Model):
         blank=True
     )
     cantidad = models.IntegerField()
-    usuario = models.ForeignKey(
-        User,
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT
     )
     requisicion = models.ForeignKey(
@@ -534,7 +531,7 @@ class ImportacionLog(models.Model):
         ('fallida', 'Fallida'),
     ]
     
-    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     archivo_nombre = models.CharField(max_length=255)
     modelo = models.CharField(max_length=50)
     fecha_importacion = models.DateTimeField(auto_now_add=True)
@@ -556,8 +553,7 @@ class UserProfile(models.Model):
     """
     Perfil extendido de usuario para asociar con centros
     """
-    user = models.OneToOneField(
-        User,
+    user = models.OneToOneField(settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='profile'
     )
@@ -585,8 +581,7 @@ class AuditoriaLog(models.Model):
     """
     Modelo de auditoría para rastrear todas las acciones del sistema
     """
-    usuario = models.ForeignKey(
-        User,
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         related_name='acciones_auditoria'

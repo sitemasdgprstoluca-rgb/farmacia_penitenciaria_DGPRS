@@ -7,6 +7,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 ROOT_DIR = BASE_DIR.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
+if str(BASE_DIR) not in sys.path:
+    sys.path.append(str(BASE_DIR))
 
 
 # SECURITY WARNING: keep the secret key used in production secret!
@@ -33,7 +35,7 @@ INSTALLED_APPS = [
     'django_filters',
 
     # Local apps
-    'backend.core',
+    'core',
     'apps.inventario',
     'apps.entradas',
 ]
@@ -98,7 +100,7 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Custom User Model
-AUTH_USER_MODEL = 'backend.core.User'
+AUTH_USER_MODEL = 'core.User'
 
 # CORS Settings
 CORS_ALLOW_ALL_ORIGINS = True
