@@ -14,3 +14,20 @@ The React Compiler is not enabled on this template because of its impact on dev 
 ## Expanding the ESLint configuration
 
 If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+
+## Deploy en Render (SPA)
+
+Configura una regla de Rewrite para que las rutas del Router funcionen al recargar:
+- Source: /*
+- Destination: /index.html
+- Action: Rewrite
+
+## Variables de entorno para producción
+
+- SECRET_KEY
+- DATABASE_URL
+- DEBUG
+- ALLOWED_HOSTS
+- CORS_ALLOWED_ORIGINS
+- CSRF_TRUSTED_ORIGINS
+- VITE_API_BASE_URL (o VITE_API_URL)

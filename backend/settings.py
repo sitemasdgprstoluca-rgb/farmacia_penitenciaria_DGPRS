@@ -12,24 +12,29 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+def get_list_env(var_name, default):
+    value = os.getenv(var_name)
+    if value:
+        return [item.strip() for item in value.split(',') if item.strip()]
+    return default
+
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-tu-clave-secreta-cambiar-en-produccion'
+SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-tu-clave-secreta-cambiar-en-produccion')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+debug_default = 'False' if (os.getenv('DATABASE_URL') or os.getenv('RENDER_EXTERNAL_HOSTNAME')) else 'True'
+DEBUG = os.getenv('DEBUG', debug_default).lower() == 'true'
 
 # Hosts y orígenes permitidos para despliegue en Render
-ALLOWED_HOSTS = [
-    'localhost',
-    '127.0.0.1',
-    'farmacia-penitenciaria.onrender.com',
-]
+default_allowed_hosts = ['localhost', '127.0.0.1', 'farmacia-penitenciaria.onrender.com']
+env_allowed_hosts = os.getenv('ALLOWED_HOSTS')
+ALLOWED_HOSTS = [h.strip() for h in env_allowed_hosts.split(',')] if env_allowed_hosts else default_allowed_hosts.copy()
 
-import os
 render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
 if render_host and render_host not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(render_host)
@@ -56,9 +61,9 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',
-    'django.middleware.common.CommonMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -68,20 +73,23 @@ MIDDLEWARE = [
     "backend.middleware.RedirectNonSuperuserFromAdminMiddleware",
 ]
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # Frontend React
+default_cors_origins = [
+    "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://farmacia-penitenciaria.onrender.com",
     "https://farmacia-penitenciaria-front.onrender.com",
+    "https://farmacia-penitenciaria.onrender.com",
 ]
+CORS_ALLOWED_ORIGINS = get_list_env("CORS_ALLOWED_ORIGINS", default_cors_origins)
 
 CORS_ALLOW_CREDENTIALS = True
 
-CSRF_TRUSTED_ORIGINS = [
+default_csrf_trusted = [
     "http://localhost:5173",
-    "https://farmacia-penitenciaria.onrender.com",
+    "http://127.0.0.1:5173",
     "https://farmacia-penitenciaria-front.onrender.com",
+    "https://farmacia-penitenciaria.onrender.com",
 ]
+CSRF_TRUSTED_ORIGINS = get_list_env("CSRF_TRUSTED_ORIGINS", default_csrf_trusted)
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
@@ -118,19 +126,24 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": "postgres",
-        "USER": "postgres.uypehrszigimobjnhmke",
-        "PASSWORD": "1234",
-        "HOST": "aws-1-us-east-2.pooler.supabase.com",
-        "PORT": "5432",
-        "OPTIONS": {
-            "sslmode": "require",
-        },
-    }
+default_db = {
+    "ENGINE": "django.db.backends.sqlite3",
+    "NAME": BASE_DIR / "db.sqlite3",
 }
+
+database_url = os.getenv("DATABASE_URL")
+if database_url:
+    DATABASES = {
+        "default": dj_database_url.config(
+            default=database_url,
+            conn_max_age=600,
+            ssl_require=not DEBUG
+        )
+    }
+else:
+    DATABASES = {
+        "default": default_db
+    }
 
 
 # Password validation
@@ -168,6 +181,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

@@ -1,7 +1,13 @@
 import axios from 'axios';
 
+const apiBaseUrl = (
+  import.meta.env.VITE_API_URL ??
+  import.meta.env.VITE_API_BASE_URL ??
+  'http://127.0.0.1:8000/api/'
+).replace(/\/+$/, '');
+
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000/api/',
+  baseURL: `${apiBaseUrl}/`,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -12,6 +18,9 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
+    if (config.url?.startsWith('/')) {
+      config.url = config.url.slice(1);
+    }
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
