@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-hot-toast';
-import axios from 'axios';
 import {
   FaFileAlt,
   FaSearch,
@@ -13,6 +12,7 @@ import {
 } from 'react-icons/fa';
 import { DEV_CONFIG } from '../config/dev';
 import PageHeader from '../components/PageHeader';
+import apiClient from '../services/api';
 
 const MOCK_LOGS = Array.from({ length: 40 }).map((_, index) => {
   const acciones = ['CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT'];
@@ -113,7 +113,7 @@ const Auditoria = () => {
       if (filtroFechaInicio) params.fecha_inicio = filtroFechaInicio;
       if (filtroFechaFin) params.fecha_fin = filtroFechaFin;
 
-      const response = await axios.get('http://localhost:8000/api/auditoria/', { params });
+      const response = await apiClient.get('/auditoria/', { params });
 
       setLogs(response.data.results || response.data || []);
       setTotalLogs(response.data.count || 0);

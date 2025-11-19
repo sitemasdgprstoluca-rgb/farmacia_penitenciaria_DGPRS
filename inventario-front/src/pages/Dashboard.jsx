@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
 import {
   FaBox,
   FaWarehouse,
@@ -12,6 +11,7 @@ import {
 import { usePermissions } from '../hooks/usePermissions';
 import { DEV_CONFIG } from '../config/dev';
 import '../styles/Dashboard.css';
+import apiClient from '../services/api';
 
 const Dashboard = () => {
   const { getRolPrincipal, permisos } = usePermissions();
@@ -76,9 +76,7 @@ const Dashboard = () => {
         return;
       }
 
-      const response = await axios.get('/api/dashboard/', {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const response = await apiClient.get('/dashboard/');
 
       const nextKpis = response.data.kpi || {
         total_productos: 0,

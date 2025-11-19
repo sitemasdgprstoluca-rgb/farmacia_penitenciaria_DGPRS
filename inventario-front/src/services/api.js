@@ -1,12 +1,11 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8000/api';
-
 const apiClient = axios.create({
-  baseURL: API_URL,
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000/api/',
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
 });
 
 // Interceptor para aadir token

@@ -1,16 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import { FaShieldAlt, FaUser, FaLock, FaSignInAlt, FaCode } from 'react-icons/fa';
 import { DEV_CONFIG, devLog } from '../config/dev';
+import apiClient from '../services/api';
 
 function Login() {
   const [credentials, setCredentials] = useState({ username: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const navigate = useNavigate();
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
   const persistSession = (user, accessToken, refreshToken) => {
     localStorage.setItem('token', accessToken);
@@ -34,10 +33,10 @@ function Login() {
       return startDevSession(creds);
     }
 
-    const tokenResponse = await axios.post(`${API_BASE_URL}/api/token/`, creds);
+    const tokenResponse = await apiClient.post('/token/', creds);
     const { access, refresh } = tokenResponse.data;
 
-    const meResponse = await axios.get(`${API_BASE_URL}/api/me/`, {
+    const meResponse = await apiClient.get('/me/', {
       headers: { Authorization: `Bearer ${access}` },
     });
     persistSession(meResponse.data, access, refresh);

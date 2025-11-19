@@ -1,3 +1,15 @@
+const DEFAULT_API_BASE_URL = 'http://127.0.0.1:8000/api/';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL;
+
+const ADMIN_LOGIN_URL = (() => {
+  try {
+    const url = new URL(API_BASE_URL);
+    return `${url.origin}/admin/login/?next=/post-login/`;
+  } catch {
+    return 'http://127.0.0.1:8000/admin/login/?next=/post-login/';
+  }
+})();
+
 export default function AccesoRestringido() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#8A1538]">
@@ -9,7 +21,7 @@ export default function AccesoRestringido() {
 
         {/* Enlace directo al login del panel administrativo de Django */}
         <a
-          href="http://localhost:8000/admin/login/?next=/post-login/"
+          href={ADMIN_LOGIN_URL}
           className="inline-block px-5 py-2.5 rounded-full bg-[#FFEBD2] text-[#8A1538] text-sm font-semibold shadow hover:bg-[#F8D9AF] transition"
         >
           Ir a pantalla de acceso

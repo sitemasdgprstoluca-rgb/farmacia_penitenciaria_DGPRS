@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
-import axios from 'axios';
 import { DEV_CONFIG, devLog } from '../config/dev';
 import { PermissionContext } from './contexts';
+import apiClient from '../services/api';
 
 const calcularPermisos = (userData, userGroups) => {
   const isSuperuser = userData.is_superuser;
@@ -73,7 +73,7 @@ export function PermissionProvider({ children }) {
         return;
       }
 
-      const response = await axios.get('http://localhost:8000/api/me/', {
+      const response = await apiClient.get('/me/', {
         headers: { Authorization: `Bearer ${token}` }
       });
 
