@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { usePermissions } from '../hooks/usePermissions';
+import { DEV_CONFIG } from '../config/dev';
 import { 
   FaHome, FaBox, FaWarehouse, FaClipboardList, FaBuilding, 
   FaUsers, FaChartBar, FaHistory, FaFileAlt, FaUserCircle,
@@ -8,13 +9,15 @@ import {
 } from 'react-icons/fa';
 
 function Layout() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { user, permisos, getRolPrincipal } = usePermissions();
 
   const handleLogout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user');
     navigate('/login');
   };
 
@@ -32,11 +35,15 @@ function Layout() {
 
   const visibleMenuItems = menuItems.filter(item => !item.permission || permisos[item.permission]);
 
+  useEffect(() => {
+    setSidebarOpen(window.innerWidth >= 1024);
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <aside className={`fixed top-0 left-0 z-40 h-screen shadow-lg transition-transform ${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      } w-64`} style={{ background: 'linear-gradient(180deg, #9F2241 0%, #6B1839 100%)' }}>
+      } w-64 lg:translate-x-0`} style={{ background: 'linear-gradient(180deg, #9F2241 0%, #6B1839 100%)' }}>
         <div className="flex items-center justify-between p-4 border-b" style={{ borderBottomColor: 'rgba(255,255,255,0.2)' }}>
           <div className="flex items-center gap-2">
             <FaShieldAlt className="text-2xl text-white" />
@@ -111,26 +118,30 @@ function Layout() {
         </div>
       </aside>
 
-      <div className={`transition-all ${sidebarOpen ? 'lg:ml-64' : 'ml-0'}`}>
+      <div className={`transition-all min-h-screen flex flex-col ${sidebarOpen ? 'lg:ml-64' : 'ml-0'}`}>
         <header className="bg-white shadow-sm sticky top-0 z-30" style={{ borderBottom: '3px solid #9F2241' }}>
-          <div className="flex items-center justify-between px-6 py-4">
-            <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-4">
+            <div className="flex items-center gap-3 sm:gap-4">
               <button onClick={() => setSidebarOpen(!sidebarOpen)} className="transition-colors" style={{ color: '#9F2241' }}
                 onMouseEnter={(e) => e.currentTarget.style.color = '#6B1839'}
                 onMouseLeave={(e) => e.currentTarget.style.color = '#9F2241'}>
                 <FaBars size={24} />
               </button>
-              <h1 className="text-xl font-bold" style={{ color: '#6B1839' }}>SISTEMA DE FARMACIA PENITENCIARIA - GOBIERNO DEL ESTADO DE MXICO</h1>
+              <h1 className="text-sm sm:text-base md:text-lg font-bold leading-snug max-w-3xl" style={{ color: '#6B1839' }}>
+                SISTEMA DE FARMACIA PENITENCIARIA - GOBIERNO DEL ESTADO DE MXICO
+              </h1>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="px-4 py-2 rounded-full text-sm font-bold text-white" style={{ background: 'linear-gradient(135deg, #14B8A6 0%, #0D9488 100%)' }}>
-                 MODO DESARROLLO
-              </span>
-            </div>
+            {DEV_CONFIG?.ENABLED && (
+              <div className="flex items-center gap-3">
+                <span className="px-3 py-2 rounded-full text-xs sm:text-sm font-bold text-white whitespace-nowrap" style={{ background: 'linear-gradient(135deg, #14B8A6 0%, #0D9488 100%)' }}>
+                   MODO DESARROLLO
+                </span>
+              </div>
+            )}
           </div>
         </header>
 
-        <main className="p-6">
+        <main className="p-4 sm:p-6 lg:p-8 flex-1 w-full overflow-x-hidden">
           <Outlet />
         </main>
       </div>

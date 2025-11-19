@@ -56,7 +56,7 @@ function Usuarios() {
   );
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       <PageHeader
         icon={FaUsers}
         title="Gestión de Usuarios"
@@ -70,6 +70,7 @@ function Usuarios() {
         </div>
       ) : (
         <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -96,6 +97,7 @@ function Usuarios() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

@@ -144,6 +144,15 @@
   border: 2px solid var(--border-color);
 }
 
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.table-container table {
+  min-width: 700px;
+}
+
 .error-container {
   text-align: center;
   padding: 4rem;
@@ -174,5 +183,13 @@
 
   .info-grid {
     grid-template-columns: 1fr;
+  }
+
+  .requisicion-content {
+    padding: 0.5rem;
+  }
+
+  .table-container table {
+    min-width: 620px;
   }
 }

@@ -1,4 +1,9 @@
-const DEV_LOGIN_ENABLED = (import.meta.env?.VITE_ENABLE_DEV_LOGIN || '').toLowerCase() === 'true';
+const isDevEnv = Boolean(import.meta.env?.DEV);
+const envDevFlag = (import.meta.env?.VITE_ENABLE_DEV_LOGIN || '').toLowerCase();
+const DEV_LOGIN_ENABLED = isDevEnv && (envDevFlag === '' || envDevFlag === 'true');
+
+const DEV_DEFAULT_USERNAME = import.meta.env?.VITE_DEV_USERNAME || 'admin';
+const DEV_DEFAULT_PASSWORD = import.meta.env?.VITE_DEV_PASSWORD || 'admin123';
 
 const DEV_USER = {
   id: 1,
@@ -19,6 +24,10 @@ const DEV_USER = {
 export const DEV_CONFIG = {
   ENABLED: DEV_LOGIN_ENABLED,
   AUTO_USER: DEV_USER,
+  CREDENTIALS: {
+    username: DEV_DEFAULT_USERNAME,
+    password: DEV_DEFAULT_PASSWORD,
+  },
   DEBUG: DEV_LOGIN_ENABLED,
   SKIP_VALIDATION: DEV_LOGIN_ENABLED,
 };

@@ -405,3 +405,19 @@
     grid-column: 1;
   }
 }
+
+@media (max-width: 640px) {
+  .dashboard-container {
+    padding: 18px;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .movements-container {
+    overflow-x: auto;
+  }
+}

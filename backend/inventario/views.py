@@ -3,7 +3,8 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.http import HttpResponse
-from django.db.models import Q, Sum, Count
+from django.db.models import Q, Sum, Count, F
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.conf import settings
 from django.contrib.auth.models import Group  # ← AGREGAR ESTE IMPORT
@@ -321,6 +322,64 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 Q(clave__icontains=search) | 
                 Q(descripcion__icontains=search)
             )
+
+        stock_status = self.request.query_params.get('stock_status')
+        if stock_status:
+            queryset = queryset.annotate(
+                stock_total_calc=Coalesce(
+                    Sum(
+                        'lotes__cantidad_actual',
+                        filter=Q(
+                            lotes__deleted_at__isnull=True,
+                            lotes__cantidad_actual__gt=0
+                        )
+                    ),
+                    0.0
+                )
+            )
+            status_val = stock_status.lower()
+            if status_val == 'sin_stock':
+                queryset = queryset.filter(stock_total_calc__lte=0)
+            elif status_val == 'critico':
+                queryset = queryset.filter(
+                    stock_total_calc__gt=0,
+                    stock_minimo__gt=0,
+                    stock_total_calc__lt=F('stock_minimo') * 0.5
+                )
+            elif status_val == 'bajo':
+                queryset = queryset.filter(
+                    Q(
+                        stock_minimo__gt=0,
+                        stock_total_calc__gte=F('stock_minimo') * 0.5,
+                        stock_total_calc__lt=F('stock_minimo')
+                    ) | Q(
+                        stock_minimo__lte=0,
+                        stock_total_calc__gt=0,
+                        stock_total_calc__lt=25
+                    )
+                )
+            elif status_val == 'normal':
+                queryset = queryset.filter(
+                    Q(
+                        stock_minimo__gt=0,
+                        stock_total_calc__gte=F('stock_minimo'),
+                        stock_total_calc__lte=F('stock_minimo') * 2
+                    ) | Q(
+                        stock_minimo__lte=0,
+                        stock_total_calc__gte=25,
+                        stock_total_calc__lt=100
+                    )
+                )
+            elif status_val == 'alto':
+                queryset = queryset.filter(
+                    Q(
+                        stock_minimo__gt=0,
+                        stock_total_calc__gt=F('stock_minimo') * 2
+                    ) | Q(
+                        stock_minimo__lte=0,
+                        stock_total_calc__gte=100
+                    )
+                )
         
         return queryset.order_by('-created_at')
     

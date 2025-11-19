@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+﻿import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   FaPlus,
   FaEdit,
@@ -11,8 +11,7 @@ import {
   FaChevronRight,
   FaChevronDown,
   FaDownload,
-  FaBoxOpen,
-  FaHistory
+  FaBoxOpen
 } from 'react-icons/fa';
 import { toast } from 'react-hot-toast';
 import { productosAPI } from '../services/api';
@@ -48,7 +47,7 @@ const normalizeText = (text) =>
 const STOCK_LEVELS = [
   { value: '', label: 'Todos los niveles' },
   { value: 'sin_stock', label: 'Sin stock' },
-  { value: 'critico', label: 'Crítico' },
+  { value: 'critico', label: 'Cr├¡tico' },
   { value: 'bajo', label: 'Bajo' },
   { value: 'normal', label: 'Normal' },
   { value: 'alto', label: 'Alto' },
@@ -149,7 +148,7 @@ const renderStockBadge = (nivel) => {
   };
   const label = {
     sin_stock: 'Sin stock',
-    critico: 'Crítico',
+    critico: 'Cr├¡tico',
     bajo: 'Bajo',
     normal: 'Normal',
     alto: 'Alto',
@@ -178,14 +177,14 @@ const MOCK_PRODUCTS = Array.from({ length: 124 }).map((_, index) => {
   const id = index + 1;
   const baseNames = [
     'Paracetamol 500mg tabletas',
-    'Ibuprofeno 400mg cípsulas',
+    'Ibuprofeno 400mg c├¡psulas',
     'Amoxicilina 875mg',
-    'Alcohol etílico 70%',
+    'Alcohol et├¡lico 70%',
     'Clonazepam 2mg',
-    'Diclofenaco sídico 75mg',
+    'Diclofenaco s├¡dico 75mg',
     'Omeprazol 20mg',
     'Metformina 850mg',
-    'Metamizol sídico 500mg',
+    'Metamizol s├¡dico 500mg',
     'Ranitidina 150mg',
   ];
   const alertas = ['critico', 'bajo', 'normal', 'alto'];
@@ -350,7 +349,7 @@ const Productos = () => {
   }, [filters, currentPage, puede.verSoloActivos, applyMockProductos]);
 
   useEffect(() => {
-    console.log('📦 Cargando productos...');
+    console.log('­ƒôª Cargando productos...');
     const timeout = setTimeout(() => {
       fetchProductos();
     }, 500);
@@ -381,16 +380,16 @@ const Productos = () => {
       errors.clave = 'La clave debe tener entre 3 y 50 caracteres';
     }
     if (!data.descripcion || data.descripcion.length < 5 || data.descripcion.length > 300) {
-      errors.descripcion = 'La descripción debe tener entre 5 y 300 caracteres';
+      errors.descripcion = 'La descripci├│n debe tener entre 5 y 300 caracteres';
     }
     if (!data.precio_unitario || Number(data.precio_unitario) <= 0) {
       errors.precio_unitario = 'El precio debe ser mayor a 0';
     }
     if (data.stock_minimo === '' || Number(data.stock_minimo) < 0) {
-      errors.stock_minimo = 'El stock mínimo no puede ser negativo';
+      errors.stock_minimo = 'El stock m├¡nimo no puede ser negativo';
     }
     if (!UNIDADES.includes(data.unidad_medida)) {
-      errors.unidad_medida = 'Seleccione una unidad vílida';
+      errors.unidad_medida = 'Seleccione una unidad v├¡lida';
     }
     return errors;
   };
@@ -517,7 +516,7 @@ const Productos = () => {
 
   const handleDelete = async (producto) => {
     if (!puede.eliminar) return;
-    const confirm = window.confirm(`¿Confirma eliminar ${producto.clave}? El producto quedará inactivo.`);
+    const confirm = window.confirm(`┬┐Confirma eliminar ${producto.clave}? El producto quedar├í inactivo.`);
     if (!confirm) return;
 
     try {
@@ -547,11 +546,11 @@ const Productos = () => {
           columns: [
             { header: '#', value: (_, idx) => idx + 1, width: 6 },
             { header: 'Clave', key: 'clave', width: 14 },
-            { header: 'Descripción', key: 'descripcion', width: 40 },
+            { header: 'Descripci├│n', key: 'descripcion', width: 40 },
             { header: 'Unidad', key: 'unidad_medida', width: 12 },
             { header: 'Precio', value: (row) => Number(row.precio_unitario).toFixed(2), width: 12 },
             { header: 'Inventario', value: (row) => getInventarioDisponible(row), width: 16 },
-            { header: 'Stock mínimo', key: 'stock_minimo', width: 16 },
+            { header: 'Stock m├¡nimo', key: 'stock_minimo', width: 16 },
             { header: 'Estado', value: (row) => determinarEstadoProducto(row).label, width: 14 },
             { header: 'Nivel', value: (row) => resolveNivelStock(row), width: 12 }
           ],
@@ -622,13 +621,13 @@ const Productos = () => {
           return demo;
         });
         mockProductosRef.current = [...nuevos, ...mockProductosRef.current];
-        toast.success(`Importación demo completada: ${nuevos.length} productos simulados`, { duration: 5000 });
+        toast.success(`Importaci├│n demo completada: ${nuevos.length} productos simulados`, { duration: 5000 });
         applyMockProductos();
         return;
       }
       const response = await productosAPI.importar(form);
       toast.success(
-        `¿ Importación completada por ${user?.username || 'usuario'}
+        `┬┐ Importaci├│n completada por ${user?.username || 'usuario'}
 ` +
           `Creados: ${response.data?.creados || 0} | Actualizados: ${response.data?.actualizados || 0}`,
         { duration: 5000 }
@@ -637,7 +636,7 @@ const Productos = () => {
     } catch (err) {
       console.error('Error al importar', err);
       const errorMsg = err.response?.data?.error || 'No se pudo importar';
-      toast.error(`¿ Error (${user?.username || 'usuario'}): ${errorMsg}`, { duration: 5000 });
+      toast.error(`┬┐ Error (${user?.username || 'usuario'}): ${errorMsg}`, { duration: 5000 });
     } finally {
       e.target.value = null;
       setLoading(false);
@@ -652,7 +651,7 @@ const Productos = () => {
       const response = await productosAPI.auditoria(producto.id);
       setAuditoriaData(response.data);
     } catch (err) {
-      console.error('Error al cargar auditoría', err);
+      console.error('Error al cargar auditor├¡a', err);
       toast.error(err.response?.data?.error || 'No se pudo cargar el historial');
       setAuditoriaVisible(false);
     } finally {
@@ -707,7 +706,7 @@ const Productos = () => {
         <div className="py-12 text-center text-gray-500">
           {filters.search || filters.unidad || filters.stock || filters.estado
             ? 'No hay productos que coincidan con los filtros.'
-            : 'Aún no hay productos registrados.'}
+            : 'A├║n no hay productos registrados.'}
         </div>
       );
     }
@@ -724,16 +723,14 @@ const Productos = () => {
               {[
                 '#',
                 'Clave',
-                'Descripción',
+                'Descripci├│n',
                 'Unidad',
                 'Precio',
                 'Inventario',
-                'Stock mínimo',
+                'Stock m├¡nimo',
                 'Estado',
                 'Nivel stock',
                 'Creado por',
-                'Fecha creación',
-                'Auditoría',
                 'Acciones',
               ].map((col) => (
                 <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
@@ -762,21 +759,6 @@ const Productos = () => {
                 <td className="px-4 py-3 text-sm">{renderEstadoBadge(estadoInventario.label, estadoInventario.activo)}</td>
                 <td className="px-4 py-3 text-sm">{renderStockBadge(nivelStock)}</td>
                 <td className="px-4 py-3 text-sm">{producto.creado_por || '-'}</td>
-                <td className="px-4 py-3 text-sm">{formatFecha(producto.created_at)}</td>
-                <td className="px-4 py-3 text-sm">
-                  {puede.auditoria ? (
-                    <button
-                      type="button"
-                      title="Ver historial"
-                      onClick={() => verAuditoriaProducto(producto)}
-                      className="text-purple-600 hover:text-purple-800 flex items-center gap-2"
-                    >
-                      <FaHistory /> Historial
-                    </button>
-                  ) : (
-                    '-'
-                  )}
-                </td>
                 <td className="px-4 py-3 text-sm">
                   <div className="flex items-center gap-3">
                     {puede.editar && (
@@ -833,7 +815,7 @@ const Productos = () => {
               <FaBoxOpen size={24} />
             </div>
             <div>
-              <h1 className="text-2xl font-bold">Gestión de Productos</h1>
+              <h1 className="text-2xl font-bold">Gesti├│n de Productos</h1>
               <p className="text-white/80 text-sm">Total activos: {totalProductos}</p>
             </div>
           </div>
@@ -933,7 +915,7 @@ const Productos = () => {
           <div className="space-y-3 px-5 py-3">
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-6">
               <div className="lg:col-span-2">
-                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Búsqueda</label>
+                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>B├║squeda</label>
                 <div
                   className="mt-1 flex items-center rounded-lg border px-3 py-2 focus-within:ring-2"
                   style={{ borderColor: COLORS.vino }}
@@ -944,7 +926,7 @@ const Productos = () => {
                     value={filters.search}
                     onChange={(e) => handleFilterChange('search', e.target.value)}
                     className="w-full border-none bg-transparent text-sm focus:outline-none"
-                    placeholder="Buscar por clave o descripción"
+                    placeholder="Buscar por clave o descripci├│n"
                   />
                 </div>
               </div>
@@ -1025,7 +1007,7 @@ const Productos = () => {
             <FaChevronLeft />
           </button>
           <span className="text-sm font-semibold text-gray-700">
-            Página {currentPage} de {totalPages}
+            P├ígina {currentPage} de {totalPages}
           </span>
           <button
             type="button"
@@ -1084,7 +1066,7 @@ const Productos = () => {
                 </div>
               </div>
               <div>
-                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Descripción *</label>
+                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Descripci├│n *</label>
                 <textarea
                   value={formData.descripcion}
                   onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
@@ -1113,7 +1095,7 @@ const Productos = () => {
                   {formErrors.precio_unitario && <p className="text-xs text-red-600">{formErrors.precio_unitario}</p>}
                 </div>
                 <div>
-                  <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Stock mínimo *</label>
+                  <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Stock m├¡nimo *</label>
                   <input
                     type="number"
                     min="0"
@@ -1160,13 +1142,13 @@ const Productos = () => {
               style={{ background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})` }}
             >
               <div>
-                <h3 className="text-xl font-bold">Historial de auditoría</h3>
+                <h3 className="text-xl font-bold">Historial de auditor├¡a</h3>
                 <p className="text-sm text-white/80">
-                  {(auditoriaData?.producto?.clave) || 'Producto'} ¿ {auditoriaData?.producto?.descripcion || ''}
+                  {(auditoriaData?.producto?.clave) || 'Producto'} ┬┐ {auditoriaData?.producto?.descripcion || ''}
                 </p>
               </div>
               <button type="button" onClick={cerrarAuditoria} className="text-sm font-semibold text-white/90 hover:text-white">
-                Cerrar ✓
+                Cerrar Ô£ô
               </button>
             </div>
             <div className="max-h-[60vh] overflow-y-auto px-6 py-5 space-y-4">
@@ -1205,8 +1187,6 @@ const Productos = () => {
 };
 
 export default Productos;
-
-
 
 
 
