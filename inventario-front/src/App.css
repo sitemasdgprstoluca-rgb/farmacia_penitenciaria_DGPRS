@@ -1,4 +1,4 @@
-/* 🎨 Estilo principal - Sistema de Control de Abasto */
+/* Estilo principal - Sistema de Control de Abasto */
 /* Subsecretaría de Seguridad - Gobierno del Estado de México */
 
 /* Colores institucionales oficiales */
@@ -180,5 +180,4 @@ a:hover {
 .bg-guinda { background-color: var(--guinda-oscuro); }
 .bg-dorado { background-color: var(--dorado-principal); }
 .border-vino { border-color: var(--vino-principal); }
-
 

@@ -400,7 +400,7 @@ const Lotes = () => {
     <div className="p-6 space-y-6">
       <PageHeader
         icon={FaWarehouse}
-        title="Gesti-n de Lotes"
+        title="Gestión de Lotes"
         subtitle={`Total: ${totalLotes} lotes | Página ${currentPage} de ${totalPages}`}
         badge={filtrosActivos ? `${filtrosActivos} filtros activos` : null}
         actions={headerActions}

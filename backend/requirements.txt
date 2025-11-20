@@ -11,5 +11,5 @@ whitenoise>=6.7.0
 psycopg2-binary>=2.9.9
 dj-database-url>=2.1.0
 
-# Para producción con Render
+# Para producciÃ³n con Render
 gunicorn>=21.2.0

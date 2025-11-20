@@ -30,7 +30,7 @@ function Layout() {
     { path: '/usuarios', icon: FaUsers, label: 'Usuarios', permission: 'verUsuarios' },
     { path: '/reportes', icon: FaChartBar, label: 'Reportes', permission: 'verReportes' },
     { path: '/trazabilidad', icon: FaHistory, label: 'Trazabilidad', permission: 'verTrazabilidad' },
-    { path: '/auditoria', icon: FaFileAlt, label: 'Auditora', permission: 'verAuditoria' },
+    { path: '/auditoria', icon: FaFileAlt, label: 'Auditoría', permission: 'verAuditoria' },
   ];
 
   const visibleMenuItems = menuItems.filter(item => !item.permission || permisos[item.permission]);
@@ -113,7 +113,7 @@ function Layout() {
             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.15)'}
           >
             <FaSignOutAlt size={20} />
-            <span>Cerrar Sesin</span>
+            <span>Cerrar Sesión</span>
           </button>
         </div>
       </aside>
@@ -128,7 +128,7 @@ function Layout() {
                 <FaBars size={24} />
               </button>
               <h1 className="text-sm sm:text-base md:text-lg font-bold leading-snug max-w-3xl" style={{ color: '#6B1839' }}>
-                SISTEMA DE FARMACIA PENITENCIARIA - GOBIERNO DEL ESTADO DE MXICO
+                SISTEMA DE FARMACIA PENITENCIARIA - GOBIERNO DEL ESTADO DE MÉXICO
               </h1>
             </div>
             {DEV_CONFIG?.ENABLED && (

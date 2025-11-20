@@ -30,7 +30,7 @@ function Login() {
           ? DEV_CONFIG.AUTO_USER.groups
           : (DEV_CONFIG.AUTO_USER.grupos || []).map((name) => (typeof name === 'string' ? { name } : name)),
     };
-    devLog(`Inicio de sesion simulado (${reason})`, creds);
+    devLog(`Inicio de sesión simulado (${reason})`, creds);
     persistSession(simulatedUser, 'dev-token', 'dev-refresh');
     return simulatedUser;
   };
@@ -72,14 +72,14 @@ function Login() {
 
     try {
       await performLogin(credentials);
-      toast.success('Inicio de sesion exitoso');
+      toast.success('Inicio de sesión exitoso');
       navigate('/dashboard');
     } catch (error) {
       localStorage.removeItem('token');
       localStorage.removeItem('refresh_token');
       localStorage.removeItem('user');
       if (error.response?.status === 401 || error.response?.status === 400) {
-        setErrorMessage('Usuario o contrasena incorrectos');
+        setErrorMessage('Usuario o contraseña incorrectos');
       } else if (error.response?.status === 404) {
         setErrorMessage('Usuario no existe');
       } else if (error.response?.data?.non_field_errors) {
@@ -87,9 +87,9 @@ function Login() {
       } else if (error.message === 'DEV_USER_NOT_CONFIGURED') {
         setErrorMessage('No existe un usuario de prueba configurado');
       } else {
-        setErrorMessage('Error al iniciar sesion');
+        setErrorMessage('Error al iniciar sesión');
       }
-      toast.error('No fue posible iniciar sesion');
+      toast.error('No fue posible iniciar sesión');
     } finally {
       setLoading(false);
     }
@@ -111,9 +111,9 @@ function Login() {
       } else if (error.message === 'DEV_DISABLED') {
         setErrorMessage('El acceso de desarrollador no esta disponible en produccion');
       } else {
-        setErrorMessage('No fue posible iniciar sesion como desarrollador');
+        setErrorMessage('No fue posible iniciar sesión como desarrollador');
       }
-      toast.error('Error al iniciar sesion como desarrollador');
+      toast.error('Error al iniciar sesión como desarrollador');
     } finally {
       setLoading(false);
     }
@@ -133,7 +133,7 @@ function Login() {
           </div>
           <h1 className="text-4xl font-bold text-white mb-2">Sistema de Farmacia</h1>
           <p className="text-lg text-pink-100">Control de Abasto Penitenciario</p>
-          <p className="text-white text-base mt-2 font-medium">Subsecretaria de Seguridad</p>
+          <p className="text-white text-base mt-2 font-medium">Subsecretaría de Seguridad</p>
         </div>
 
         <div
@@ -167,7 +167,7 @@ function Login() {
 
             <div>
               <label className="block text-sm font-bold mb-2 capitalize" style={{ color: '#6B1839' }}>
-                Contrasena
+                Contraseña
               </label>
               <div className="relative">
                 <FaLock className="absolute left-4 top-4 text-gray-400" />
@@ -177,7 +177,7 @@ function Login() {
                   onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
                   className="w-full pl-12 pr-4 py-3.5 border-2 border-gray-200 rounded-xl transition-all focus:border-transparent focus:ring-4 focus:outline-none"
                   style={{ '--tw-ring-color': 'rgba(159, 34, 65, 0.2)' }}
-                  placeholder="Ingrese su contrasena"
+                  placeholder="Ingrese su contraseña"
                   required
                 />
               </div>
@@ -192,12 +192,12 @@ function Login() {
               {loading ? (
                 <>
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
-                  Iniciando sesion...
+                  Iniciando sesión...
                 </>
               ) : (
                 <>
                   <FaSignInAlt />
-                  Iniciar sesion
+                  Iniciar sesión
                 </>
               )}
             </button>
@@ -222,7 +222,7 @@ function Login() {
 
         <div className="text-center mt-6 text-white text-sm space-y-1">
           <p className="font-bold text-base">Sistema de Control de Abasto</p>
-          <p className="font-semibold">Subsecretaria de Seguridad</p>
+          <p className="font-semibold">Subsecretaría de Seguridad</p>
           <p className="text-xs text-pink-100">Gobierno del Estado de México • 2025</p>
         </div>
       </div>

@@ -40,7 +40,7 @@ const Requisiciones = () => {
   const [requisiciones, setRequisiciones] = useState([]);
   const [loading, setLoading] = useState(false);
   const { permisos, user, getRolPrincipal } = usePermissions();
-  
+
   const [filtroEstado, setFiltroEstado] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const PAGE_SIZE = 10;
@@ -118,25 +118,18 @@ const Requisiciones = () => {
   const puedeEditar = (requisicion) => {
     // Solo en BORRADOR y si es su requisición o es FARMACIA_ADMIN
     if (requisicion.estado !== 'borrador') return false;
-    
     if (permisos.isFarmaciaAdmin) return true;
-    
-    // CENTRO_USER: solo sus requisiciones
     if (permisos.isCentroUser) {
       const userCentro = user?.centro?.id || user?.profile?.centro?.id;
       return requisicion.centro === userCentro;
     }
-    
     return false;
   };
 
-  const puedeEnviar = (requisicion) => {
-    return puedeEditar(requisicion) && requisicion.estado === 'borrador';
-  };
+  const puedeEnviar = (requisicion) => puedeEditar(requisicion) && requisicion.estado === 'borrador';
 
   const handleEnviar = async (id) => {
-    if (!window.confirm('¿Enviar requisición? No podrá editarla después.')) return;
-    
+    if (!window.confirm('¿Enviar requisición? No podrás editarla después.')) return;
     try {
       await requisicionesAPI.enviar(id);
       toast.success('Requisición enviada correctamente');
@@ -148,7 +141,6 @@ const Requisiciones = () => {
 
   const handleAutorizar = async (id) => {
     if (!window.confirm('¿Autorizar requisición?')) return;
-    
     try {
       await requisicionesAPI.autorizar(id, {});
       toast.success('Requisición autorizada');
@@ -161,7 +153,6 @@ const Requisiciones = () => {
   const handleRechazar = async (id) => {
     const motivo = prompt('Motivo del rechazo:');
     if (!motivo) return;
-    
     try {
       await requisicionesAPI.rechazar(id, { motivo });
       toast.success('Requisición rechazada');
@@ -173,7 +164,6 @@ const Requisiciones = () => {
 
   const handleSurtir = async (id) => {
     if (!window.confirm('¿Marcar como surtida? Se descontará del inventario.')) return;
-    
     try {
       await requisicionesAPI.surtir(id);
       toast.success('Requisición surtida correctamente');
@@ -185,7 +175,6 @@ const Requisiciones = () => {
 
   const handleCancelar = async (id) => {
     if (!window.confirm('¿Cancelar requisición?')) return;
-    
     try {
       await requisicionesAPI.cancelar(id);
       toast.success('Requisición cancelada');
@@ -198,7 +187,6 @@ const Requisiciones = () => {
   const handleDescargarHoja = async (id, folio) => {
     try {
       const response = await requisicionesAPI.getHojaRecoleccion(id);
-      
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -206,7 +194,6 @@ const Requisiciones = () => {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      
       toast.success('Hoja de recolección descargada');
     } catch (error) {
       toast.error(error.response?.data?.error || 'Error al descargar hoja');
@@ -271,7 +258,7 @@ const Requisiciones = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
           />
-          
+
           <select
             value={filtroEstado}
             onChange={(e) => setFiltroEstado(e.target.value)}
@@ -301,133 +288,124 @@ const Requisiciones = () => {
             <p className="text-gray-500">No hay requisiciones</p>
           </div>
         ) : (
-          requisiciones.map((req) => {
-            const totalProductos = req.total_productos ?? req.total_items ?? req.items?.length ?? 0;
+          requisiciones.map((req, index) => {
+            const totalProductos = req.total_items ?? req.total_productos ?? req.items?.length ?? 0;
             return (
-            <div key={req.id} className="bg-white p-6 rounded-lg shadow">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-800">{req.folio}</h3>
-                  <p className="text-sm text-gray-600">
-                    Centro: {req.centro_nombre} | Solicitante: {req.usuario_solicita_nombre || 'N/D'}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    Fecha: {new Date(req.fecha_solicitud).toLocaleDateString()}
-                  </p>
+              <div key={req.id || index} className="bg-white p-6 rounded-lg shadow">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-800">{req.folio}</h3>
+                    <p className="text-sm text-gray-600">
+                      Centro: {req.centro_nombre} | Solicitante: {req.usuario_solicita_nombre || 'N/D'}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Fecha: {new Date(req.fecha_solicitud).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${getEstadoBadge(req.estado)}`}>
+                    {req.estado.toUpperCase()}
+                  </span>
                 </div>
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${getEstadoBadge(req.estado)}`}>
-                  {req.estado.toUpperCase()}
-                </span>
-              </div>
 
-              <div className="mb-4">
-                <p className="text-sm">
-                  <strong>Productos:</strong> {totalProductos}
-                </p>
-                {req.observaciones && (
-                  <p className="text-sm text-gray-600 mt-1">
-                    <strong>Observaciones:</strong> {req.observaciones}
+                <div className="mb-4">
+                  <p className="text-sm">
+                    <strong>Productos:</strong> {totalProductos}
                   </p>
-                )}
-                {req.motivo_rechazo && (
-                  <p className="text-sm text-red-600 mt-1">
-                    <strong>Motivo de rechazo:</strong> {req.motivo_rechazo}
-                  </p>
-                )}
+                  {req.observaciones && (
+                    <p className="text-sm text-gray-600 mt-1">
+                      <strong>Observaciones:</strong> {req.observaciones}
+                    </p>
+                  )}
+                  {req.motivo_rechazo && (
+                    <p className="text-sm text-red-600 mt-1">
+                      <strong>Motivo de rechazo:</strong> {req.motivo_rechazo}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => (window.location.href = `/requisiciones/${req.id}`)}
+                    className="bg-gray-100 text-gray-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-gray-200"
+                  >
+                    <FaEye /> Ver detalle
+                  </button>
+
+                  {puedeEditar(req) && (
+                    <button
+                      onClick={() => (window.location.href = `/requisiciones/${req.id}/editar`)}
+                      className="bg-blue-100 text-blue-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-blue-200"
+                    >
+                      <FaEdit /> Editar
+                    </button>
+                  )}
+
+                  {puedeEnviar(req) && (
+                    <button
+                      onClick={() => handleEnviar(req.id)}
+                      className="bg-green-100 text-green-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-green-200"
+                    >
+                      <FaPaperPlane /> Enviar
+                    </button>
+                  )}
+
+                  {req.estado === 'enviada' && permisos.autorizarRequisicion && (
+                    <button
+                      onClick={() => handleAutorizar(req.id)}
+                      className="bg-green-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-green-700"
+                    >
+                      <FaCheck /> Autorizar
+                    </button>
+                  )}
+
+                  {req.estado === 'enviada' && permisos.rechazarRequisicion && (
+                    <button
+                      onClick={() => handleRechazar(req.id)}
+                      className="bg-red-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-red-700"
+                    >
+                      <FaTimes /> Rechazar
+                    </button>
+                  )}
+
+                  {req.estado === 'autorizada' && permisos.surtirRequisicion && (
+                    <button
+                      onClick={() => handleSurtir(req.id)}
+                      className="bg-purple-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-purple-700"
+                    >
+                      <FaBoxOpen /> Marcar surtida
+                    </button>
+                  )}
+
+                  {(req.estado === 'autorizada' || req.estado === 'surtida') && permisos.descargarHojaRecoleccion && (
+                    <button
+                      onClick={() => handleDescargarHoja(req.id, req.folio)}
+                      className="bg-blue-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-blue-700"
+                    >
+                      <FaDownload /> Hoja de recolección
+                    </button>
+                  )}
+
+                  {!['surtida', 'cancelada'].includes(req.estado) && (
+                    <button
+                      onClick={() => handleCancelar(req.id)}
+                      className="bg-gray-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-gray-700"
+                    >
+                      <FaBan /> Cancelar
+                    </button>
+                  )}
+
+                  {puedeEditar(req) && permisos.eliminarRequisicion && (
+                    <button
+                      onClick={() => handleDelete(req.id)}
+                      className="bg-red-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-red-700"
+                    >
+                      <FaTrash /> Eliminar
+                    </button>
+                  )}
+                </div>
               </div>
-
-              {/* Acciones segín estado */}
-              <div className="flex flex-wrap gap-2">
-                {/* Ver detalle - Todos */}
-                <button
-                  onClick={() => window.location.href = `/requisiciones/${req.id}`}
-                  className="bg-gray-100 text-gray-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-gray-200"
-                >
-                  <FaEye /> Ver Detalle
-                </button>
-
-                {/* Editar - Solo BORRADOR y permisos */}
-                {puedeEditar(req) && (
-                  <button
-                    onClick={() => window.location.href = `/requisiciones/${req.id}/editar`}
-                    className="bg-blue-100 text-blue-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-blue-200"
-                  >
-                    <FaEdit /> Editar
-                  </button>
-                )}
-
-                {/* Enviar - Solo BORRADOR */}
-                {puedeEnviar(req) && (
-                  <button
-                    onClick={() => handleEnviar(req.id)}
-                    className="bg-green-100 text-green-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-green-200"
-                  >
-                    <FaPaperPlane /> Enviar
-                  </button>
-                )}
-
-                {/* Autorizar - Solo ENVIADA y FARMACIA_ADMIN */}
-                {req.estado === 'enviada' && permisos.autorizarRequisicion && (
-                  <button
-                    onClick={() => handleAutorizar(req.id)}
-                    className="bg-green-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-green-700"
-                  >
-                    <FaCheck /> Autorizar
-                  </button>
-                )}
-
-                {/* Rechazar - Solo ENVIADA y FARMACIA_ADMIN */}
-                {req.estado === 'enviada' && permisos.rechazarRequisicion && (
-                  <button
-                    onClick={() => handleRechazar(req.id)}
-                    className="bg-red-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-red-700"
-                  >
-                    <FaTimes /> Rechazar
-                  </button>
-                )}
-
-                {/* Surtir - Solo AUTORIZADA y FARMACIA_ADMIN */}
-                {req.estado === 'autorizada' && permisos.surtirRequisicion && (
-                  <button
-                    onClick={() => handleSurtir(req.id)}
-                    className="bg-purple-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-purple-700"
-                  >
-                    <FaBoxOpen /> Marcar Surtida
-                  </button>
-                )}
-
-                {/* Descargar Hoja - Solo AUTORIZADA/SURTIDA */}
-                {(req.estado === 'autorizada' || req.estado === 'surtida') && permisos.descargarHojaRecoleccion && (
-                  <button
-                    onClick={() => handleDescargarHoja(req.id, req.folio)}
-                    className="bg-blue-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-blue-700"
-                  >
-                    <FaDownload /> Hoja de Recolección
-                  </button>
-                )}
-
-                {/* Cancelar - Segín estado */}
-                {!['surtida', 'cancelada'].includes(req.estado) && (
-                  <button
-                    onClick={() => handleCancelar(req.id)}
-                    className="bg-gray-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-gray-700"
-                  >
-                    <FaBan /> Cancelar
-                  </button>
-                )}
-
-                {/* Eliminar - Solo BORRADOR y permisos */}
-                {puedeEditar(req) && permisos.eliminarRequisicion && (
-                  <button
-                    onClick={() => handleDelete(req.id)}
-                    className="bg-red-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-red-700"
-                  >
-                    <FaTrash /> Eliminar
-                  </button>
-                )}
-              </div>
-            </div>
-          )})
+            );
+          })
         )}
       </div>
 
@@ -446,7 +424,7 @@ const Requisiciones = () => {
               Anterior
             </button>
             <span className="text-sm text-gray-700">
-              Pígina {currentPage} de {totalPages}
+              Página {currentPage} de {totalPages}
             </span>
             <button
               onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
@@ -463,11 +441,3 @@ const Requisiciones = () => {
 };
 
 export default Requisiciones;
-
-
-
-
-
-
-
-

@@ -6,7 +6,7 @@ const BRAND_COLORS = {
   primary: '#9F2241',
   secondary: '#6B1839',
   accent: '#EED5DD',
-  text: '#1F2937'
+  text: '#1F2937',
 };
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -29,11 +29,11 @@ const addFooter = (sheet, columnCount) => {
   const lastRowNumber = sheet.lastRow.number;
   sheet.mergeCells(lastRowNumber, 1, lastRowNumber, columnCount);
   const footerCell = sheet.getCell(`A${lastRowNumber}`);
-  footerCell.value = 'Sistema de Farmacia Penitenciaria  Gobierno del Estado de Mxico';
+  footerCell.value = 'Sistema de Farmacia Penitenciaria - Gobierno del Estado de México';
   footerCell.font = {
     italic: true,
     size: 12,
-    color: { argb: hexToARGB(BRAND_COLORS.secondary) }
+    color: { argb: hexToARGB(BRAND_COLORS.secondary) },
   };
   footerCell.alignment = { horizontal: 'center' };
 };
@@ -52,8 +52,8 @@ export const createExcelReport = async ({ title, subtitle, columns, rows, fileNa
     degree: 45,
     stops: [
       { position: 0, color: { argb: hexToARGB(BRAND_COLORS.primary) } },
-      { position: 1, color: { argb: hexToARGB(BRAND_COLORS.secondary) } }
-    ]
+      { position: 1, color: { argb: hexToARGB(BRAND_COLORS.secondary) } },
+    ],
   };
   titleCell.font = { size: 18, bold: true, color: { argb: 'FFFFFFFF' } };
   titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -75,7 +75,7 @@ export const createExcelReport = async ({ title, subtitle, columns, rows, fileNa
     cell.fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: hexToARGB(BRAND_COLORS.primary) }
+      fgColor: { argb: hexToARGB(BRAND_COLORS.primary) },
     };
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     cell.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -83,7 +83,7 @@ export const createExcelReport = async ({ title, subtitle, columns, rows, fileNa
       top: { style: 'thin', color: { argb: 'FFFFFFFF' } },
       left: { style: 'thin', color: { argb: 'FFFFFFFF' } },
       bottom: { style: 'thin', color: { argb: 'FFFFFFFF' } },
-      right: { style: 'thin', color: { argb: 'FFFFFFFF' } }
+      right: { style: 'thin', color: { argb: 'FFFFFFFF' } },
     };
   });
 
@@ -97,7 +97,7 @@ export const createExcelReport = async ({ title, subtitle, columns, rows, fileNa
         top: { style: 'hair', color: { argb: 'FFDDDDDD' } },
         left: { style: 'hair', color: { argb: 'FFDDDDDD' } },
         bottom: { style: 'hair', color: { argb: 'FFDDDDDD' } },
-        right: { style: 'hair', color: { argb: 'FFDDDDDD' } }
+        right: { style: 'hair', color: { argb: 'FFDDDDDD' } },
       };
     });
   });
@@ -138,13 +138,13 @@ const createPdfReport = ({ title, subtitle, columns, rows, fileName, orientation
     styles: { fontSize: 9, cellPadding: 6, textColor: [33, 37, 41] },
     headStyles: { fillColor: [159, 34, 65], textColor: [255, 255, 255] },
     alternateRowStyles: { fillColor: [248, 236, 240] },
-    margin: { left: 40, right: 40 }
+    margin: { left: 40, right: 40 },
   });
 
   doc.setFontSize(10);
   doc.setTextColor(107, 24, 57);
   doc.text(
-    'Sistema de Farmacia Penitenciaria  Gobierno del Estado de Mxico',
+    'Sistema de Farmacia Penitenciaria - Gobierno del Estado de México',
     40,
     doc.internal.pageSize.getHeight() - 24
   );
@@ -155,33 +155,33 @@ const createPdfReport = ({ title, subtitle, columns, rows, fileName, orientation
 };
 
 const BASE_INVENTARIO = [
-  { clave: 'MED-001', descripcion: 'Ibuprofeno 400mg tabletas', unidad: 'CAJA', stock: 120, valor: 4500, centro: 'Almacn Central' },
-  { clave: 'MED-015', descripcion: 'Amoxicilina 875mg', unidad: 'FRASCO', stock: 85, valor: 6125, centro: 'Almacn Central' },
+  { clave: 'MED-001', descripcion: 'Ibuprofeno 400mg tabletas', unidad: 'CAJA', stock: 120, valor: 4500, centro: 'Almacén Central' },
+  { clave: 'MED-015', descripcion: 'Amoxicilina 875mg', unidad: 'FRASCO', stock: 85, valor: 6125, centro: 'Almacén Central' },
   { clave: 'MED-024', descripcion: 'Metformina 850mg', unidad: 'CAJA', stock: 200, valor: 7800, centro: 'Penal de Toluca' },
-  { clave: 'MED-041', descripcion: 'Alcohol etlico 70%', unidad: 'GALN', stock: 45, valor: 2250, centro: 'Penal Nezahualcyotl' },
-  { clave: 'MED-057', descripcion: 'Paracetamol 500mg', unidad: 'CAJA', stock: 310, valor: 9300, centro: 'Almacn Central' }
+  { clave: 'MED-041', descripcion: 'Alcohol etílico 70%', unidad: 'GALÓN', stock: 45, valor: 2250, centro: 'Penal Nezahualcóyotl' },
+  { clave: 'MED-057', descripcion: 'Paracetamol 500mg', unidad: 'CAJA', stock: 310, valor: 9300, centro: 'Almacén Central' },
 ];
 
 const BASE_MOVIMIENTOS = [
-  { fecha: '2025-11-15', folio: 'MOV-0251', tipo: 'Entrada', producto: 'MED-001 Ibuprofeno 400mg', cantidad: 250, centro: 'Almacn Central', usuario: 'Administrador' },
-  { fecha: '2025-11-16', folio: 'MOV-0252', tipo: 'Salida', producto: 'MED-041 Alcohol 70%', cantidad: 40, centro: 'Penal Nezahualcyotl', usuario: 'Administrador' },
+  { fecha: '2025-11-15', folio: 'MOV-0251', tipo: 'Entrada', producto: 'MED-001 Ibuprofeno 400mg', cantidad: 250, centro: 'Almacén Central', usuario: 'Administrador' },
+  { fecha: '2025-11-16', folio: 'MOV-0252', tipo: 'Salida', producto: 'MED-041 Alcohol 70%', cantidad: 40, centro: 'Penal Nezahualcóyotl', usuario: 'Administrador' },
   { fecha: '2025-11-18', folio: 'MOV-0253', tipo: 'Salida', producto: 'MED-024 Metformina 850mg', cantidad: 150, centro: 'Penal de Toluca', usuario: 'Administrador' },
-  { fecha: '2025-11-19', folio: 'MOV-0254', tipo: 'Entrada', producto: 'MED-057 Paracetamol 500mg', cantidad: 300, centro: 'Almacn Central', usuario: 'Administrador' },
-  { fecha: '2025-11-21', folio: 'MOV-0255', tipo: 'Ajuste', producto: 'MED-015 Amoxicilina 875mg', cantidad: -10, centro: 'Almacn Central', usuario: 'Administrador' }
+  { fecha: '2025-11-19', folio: 'MOV-0254', tipo: 'Entrada', producto: 'MED-057 Paracetamol 500mg', cantidad: 300, centro: 'Almacén Central', usuario: 'Administrador' },
+  { fecha: '2025-11-21', folio: 'MOV-0255', tipo: 'Ajuste', producto: 'MED-015 Amoxicilina 875mg', cantidad: -10, centro: 'Almacén Central', usuario: 'Administrador' },
 ];
 
 const BASE_CADUCIDADES = [
-  { lote: 'L-2024-010', producto: 'MED-057 Paracetamol 500mg', centro: 'Almacn Central', dias: 18, fecha_caducidad: '2025-12-10', estado: 'Crtico' },
-  { lote: 'L-2024-011', producto: 'MED-024 Metformina 850mg', centro: 'Penal de Toluca', dias: 45, fecha_caducidad: '2026-01-05', estado: 'Prximo' },
-  { lote: 'L-2024-012', producto: 'MED-001 Ibuprofeno 400mg', centro: 'Almacn Central', dias: 5, fecha_caducidad: '2025-11-26', estado: 'Crtico' },
-  { lote: 'L-2023-201', producto: 'MED-041 Alcohol 70%', centro: 'Penal Nezahualcyotl', dias: -12, fecha_caducidad: '2025-11-07', estado: 'Vencido' }
+  { lote: 'L-2024-010', producto: 'MED-057 Paracetamol 500mg', centro: 'Almacén Central', dias: 18, fecha_caducidad: '2025-12-10', estado: 'Crítico' },
+  { lote: 'L-2024-011', producto: 'MED-024 Metformina 850mg', centro: 'Penal de Toluca', dias: 45, fecha_caducidad: '2026-01-05', estado: 'Próximo' },
+  { lote: 'L-2024-012', producto: 'MED-001 Ibuprofeno 400mg', centro: 'Almacén Central', dias: 5, fecha_caducidad: '2025-11-26', estado: 'Crítico' },
+  { lote: 'L-2023-201', producto: 'MED-041 Alcohol 70%', centro: 'Penal Nezahualcóyotl', dias: -12, fecha_caducidad: '2025-11-07', estado: 'Vencido' },
 ];
 
 const formatSubtitle = (text) =>
   `${text}  Generado ${new Date().toLocaleDateString('es-MX', {
     day: '2-digit',
     month: 'short',
-    year: 'numeric'
+    year: 'numeric',
   })}`;
 
 export const generarReporteInventarioDev = async (formato = 'excel') => {
@@ -191,14 +191,14 @@ export const generarReporteInventarioDev = async (formato = 'excel') => {
     columns: [
       { header: '#', value: (_, index) => index + 1, width: 6 },
       { header: 'Clave', key: 'clave', width: 14 },
-      { header: 'Descripcin', key: 'descripcion', width: 40 },
+      { header: 'Descripción', key: 'descripcion', width: 40 },
       { header: 'Unidad', key: 'unidad', width: 12 },
       { header: 'Stock', key: 'stock', width: 10 },
       { header: 'Valor estimado', value: (row) => `$${row.valor.toFixed(2)}`, width: 18 },
-      { header: 'Centro', key: 'centro', width: 24 }
+      { header: 'Centro', key: 'centro', width: 24 },
     ],
     rows: BASE_INVENTARIO,
-    fileName: `inventario_${new Date().toISOString().split('T')[0]}`
+    fileName: `inventario_${new Date().toISOString().split('T')[0]}`,
   };
 
   if (formato === 'pdf') {
@@ -224,10 +224,10 @@ export const generarReporteMovimientosDev = async ({ formato = 'excel', fecha_in
       { header: 'Producto', key: 'producto', width: 36 },
       { header: 'Cantidad', key: 'cantidad', width: 14 },
       { header: 'Centro', key: 'centro', width: 24 },
-      { header: 'Usuario', key: 'usuario', width: 22 }
+      { header: 'Usuario', key: 'usuario', width: 22 },
     ],
     rows: BASE_MOVIMIENTOS,
-    fileName: `movimientos_${fecha_inicio || 'sin_fecha'}_${fecha_fin || 'sin_fecha'}`
+    fileName: `movimientos_${fecha_inicio || 'sin_fecha'}_${fecha_fin || 'sin_fecha'}`,
   };
 
   if (formato === 'pdf') {
@@ -240,18 +240,18 @@ export const generarReporteMovimientosDev = async ({ formato = 'excel', fecha_in
 export const generarReporteCaducidadesDev = async ({ formato = 'excel', dias }) => {
   const payload = {
     title: 'Reporte de Caducidades',
-    subtitle: formatSubtitle(`Lotes con vencimiento en ${dias || 30} das`),
+    subtitle: formatSubtitle(`Lotes con vencimiento en ${dias || 30} días`),
     columns: [
       { header: '#', value: (_, index) => index + 1, width: 6 },
       { header: 'Lote', key: 'lote', width: 16 },
       { header: 'Producto', key: 'producto', width: 36 },
       { header: 'Centro', key: 'centro', width: 26 },
-      { header: 'Das restantes', key: 'dias', width: 16 },
+      { header: 'Días restantes', key: 'dias', width: 16 },
       { header: 'Fecha caducidad', key: 'fecha_caducidad', width: 20 },
-      { header: 'Estado', key: 'estado', width: 14 }
+      { header: 'Estado', key: 'estado', width: 14 },
     ],
     rows: BASE_CADUCIDADES,
-    fileName: `caducidades_${dias || 30}dias_${new Date().toISOString().split('T')[0]}`
+    fileName: `caducidades_${dias || 30}dias_${new Date().toISOString().split('T')[0]}`,
   };
 
   if (formato === 'pdf') {
