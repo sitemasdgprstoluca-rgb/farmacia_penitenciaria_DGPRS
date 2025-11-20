@@ -6,7 +6,6 @@ import {
   FaSearch, FaFileExcel, FaFileUpload, FaDownload, FaFilter,
   FaBuilding
 } from 'react-icons/fa';
-import { DEV_CONFIG } from '../config/dev';
 import PageHeader from '../components/PageHeader';
 import { COLORS, PRIMARY_GRADIENT, SECONDARY_GRADIENT } from '../constants/theme';
 
@@ -67,9 +66,8 @@ const Centros = () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      if ((!token && DEV_CONFIG.ENABLED) || token === 'dev-token') {
-        aplicarCentrosMock();
-        return;
+      if (!token) {
+        throw new Error('Sesión no encontrada');
       }
 
       const params = {};
@@ -80,10 +78,6 @@ const Centros = () => {
       const response = await centrosAPI.getAll(params);
       setCentros(response.data.results || response.data);
     } catch (error) {
-      if (DEV_CONFIG.ENABLED || localStorage.getItem('token') === 'dev-token') {
-        aplicarCentrosMock();
-        return;
-      }
       toast.error('Error al cargar centros');
       console.error(error);
     } finally {

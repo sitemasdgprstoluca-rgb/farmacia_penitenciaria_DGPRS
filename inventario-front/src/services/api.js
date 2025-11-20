@@ -14,9 +14,17 @@ const apiClient = axios.create({
   withCredentials: true,
 });
 
-// Interceptor para aÃ±adir token
+let activityCallback = null;
+export const setApiActivityHandler = (callback) => {
+  activityCallback = callback;
+};
+
+// Interceptor para añadir token
 apiClient.interceptors.request.use(
   (config) => {
+    if (activityCallback) {
+      activityCallback();
+    }
     const token = localStorage.getItem('token');
     if (config.url?.startsWith('/')) {
       config.url = config.url.slice(1);
@@ -135,7 +143,8 @@ export const auditoriaAPI = {
 
 // Auth -  COMPLETO
 export const authAPI = {
-  login: (credentials) => apiClient.post('/token/', credentials),
+  login: (credentials) => apiClient.post('/auth/login/', credentials),
+  devLogin: () => apiClient.post('/dev-autologin/'),
   logout: () => apiClient.post('/auth/logout/'),
   me: () => apiClient.get('/me/'),
   register: (data) => apiClient.post('/auth/register/', data),

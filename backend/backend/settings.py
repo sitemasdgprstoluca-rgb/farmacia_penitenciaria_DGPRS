@@ -1,4 +1,6 @@
-﻿from pathlib import Path
+from pathlib import Path
+from pathlib import Path
+from datetime import timedelta
 import os
 import sys
 
@@ -15,7 +17,7 @@ if str(BASE_DIR) not in sys.path:
 SECRET_KEY = 'django-insecure-tu-clave-secreta-cambiar-en-produccion'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'farmacia-penitenciaria.onrender.com']
@@ -122,6 +124,20 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 25,
 }
+
+# SimpleJWT configuration: sesiones cortas por seguridad
+ACCESS_TOKEN_LIFETIME_MINUTES = int(os.getenv('ACCESS_TOKEN_LIFETIME_MINUTES', 20))
+REFRESH_TOKEN_LIFETIME_DAYS = int(os.getenv('REFRESH_TOKEN_LIFETIME_DAYS', 1))
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=ACCESS_TOKEN_LIFETIME_MINUTES),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=REFRESH_TOKEN_LIFETIME_DAYS),
+    'AUTH_HEADER_TYPES': ('Bearer',),
+}
+
+# Sesiones Django (para autenticación basada en sesión)
+SESSION_COOKIE_AGE = int(os.getenv('SESSION_COOKIE_AGE_SECONDS', 60 * 20))  # 20 minutos por defecto
+SESSION_SAVE_EVERY_REQUEST = True
 
 
 

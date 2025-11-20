@@ -3,6 +3,12 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Toaster } from 'react-hot-toast';
 import { PermissionProvider } from './context/PermissionContext';
 import { usePermissions } from './hooks/usePermissions';
+import { useInactivityLogout } from './hooks/useInactivityLogout';
+
+function SessionManager() {
+  useInactivityLogout();
+  return null;
+}
 
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -47,6 +53,7 @@ function App() {
   return (
     <Router>
       <PermissionProvider>
+        <SessionManager />
         <Toaster position="top-right" />
         
         <Routes>

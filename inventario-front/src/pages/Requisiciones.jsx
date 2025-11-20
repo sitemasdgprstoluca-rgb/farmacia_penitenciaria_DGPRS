@@ -8,7 +8,6 @@ import {
   FaBoxOpen, FaBan, FaDownload, FaEdit, FaTrash,
   FaClipboardList
 } from 'react-icons/fa';
-import { DEV_CONFIG } from '../config/dev';
 import PageHeader from '../components/PageHeader';
 import { COLORS } from '../constants/theme';
 
@@ -73,9 +72,8 @@ const Requisiciones = () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      if ((!token && DEV_CONFIG.ENABLED) || token === 'dev-token') {
-        applyMockRequisiciones();
-        return;
+      if (!token) {
+        throw new Error('Sesión no encontrada');
       }
 
       const params = {
@@ -96,10 +94,6 @@ const Requisiciones = () => {
       setTotalRequisiciones(total);
       setTotalPages(Math.max(1, Math.ceil(total / PAGE_SIZE)));
     } catch (error) {
-      if (DEV_CONFIG.ENABLED || localStorage.getItem('token') === 'dev-token') {
-        applyMockRequisiciones();
-        return;
-      }
       toast.error('Error al cargar requisiciones');
       console.error(error);
     } finally {

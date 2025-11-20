@@ -8,7 +8,6 @@ import {
   FaChartLine,
   FaDownload,
 } from 'react-icons/fa';
-import { DEV_CONFIG } from '../config/dev';
 import PageHeader from '../components/PageHeader';
 import {
   generarReporteInventarioDev,
@@ -24,10 +23,7 @@ const MOCK_PRECARGA = {
   lotes: Array.from({ length: 60 }).map((_, index) => ({ id: index + 1 })),
 };
 
-const isDevSession = () => {
-  const token = localStorage.getItem('token');
-  return (!token && DEV_CONFIG.ENABLED) || token === 'dev-token';
-};
+const isDevSession = () => false;
 
 const obtenerExtension = (formato) => (formato === 'pdf' ? 'pdf' : 'xlsx');
 

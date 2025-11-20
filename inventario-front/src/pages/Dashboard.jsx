@@ -9,7 +9,6 @@ import {
   FaExchangeAlt,
 } from 'react-icons/fa';
 import { usePermissions } from '../hooks/usePermissions';
-import { DEV_CONFIG } from '../config/dev';
 import '../styles/Dashboard.css';
 import apiClient from '../services/api';
 
@@ -65,15 +64,8 @@ const Dashboard = () => {
       setError(null);
 
       const token = localStorage.getItem('token');
-
-       if (!token && DEV_CONFIG.ENABLED) {
-        applyMockDashboard();
-        return;
-      }
-
-      if (token === 'dev-token') {
-        applyMockDashboard();
-        return;
+      if (!token) {
+        throw new Error('Sesión no encontrada');
       }
 
       const response = await apiClient.get('/dashboard/');

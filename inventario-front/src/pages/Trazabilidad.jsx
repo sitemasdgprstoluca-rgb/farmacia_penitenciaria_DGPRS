@@ -3,7 +3,6 @@ import { trazabilidadAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
 import { FaSearch, FaBox, FaWarehouse, FaHistory } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
-import { DEV_CONFIG } from '../config/dev';
 
 const MOCK_PRODUCTO = {
   codigo: 'MED-001',
@@ -55,7 +54,7 @@ const MOCK_LOTE = {
   })),
 };
 
-const isDevSession = () => DEV_CONFIG.ENABLED || localStorage.getItem('token') === 'dev-token';
+const isDevSession = () => false;
 
 const Trazabilidad = () => {
   const [tipoBusqueda, setTipoBusqueda] = useState('producto');
