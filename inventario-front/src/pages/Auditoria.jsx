@@ -10,7 +10,6 @@ import {
   FaClock,
   FaDatabase,
 } from 'react-icons/fa';
-import { DEV_CONFIG } from '../config/dev';
 import PageHeader from '../components/PageHeader';
 import apiClient from '../services/api';
 
@@ -28,7 +27,7 @@ const MOCK_LOGS = Array.from({ length: 40 }).map((_, index) => {
   };
 });
 
-const isDevSession = () => DEV_CONFIG.ENABLED || localStorage.getItem('token') === 'dev-token';
+const isDevSession = () => false;
 
 const Auditoria = () => {
   const [logs, setLogs] = useState([]);

@@ -1,9 +1,10 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import Group
 from django.db.models import Sum, Count, Q
@@ -13,6 +14,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
 from datetime import timedelta
 from decimal import Decimal
+import os
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 import traceback
@@ -32,66 +34,100 @@ from inventario.serializers import (
 
 
 class MeView(APIView):
-    permission_classes = [AllowAny]
-    
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
-        if request.user.is_authenticated:
-            return Response(UserSerializer(request.user).data)
-        return Response({
-            'id': 1,
-            'username': 'super_admin',
-            'email': 'admin@edomex.gob.mx',
-            'first_name': 'Super',
-            'last_name': 'Administrador',
-            'grupos': ['SUPERUSER'],
-            'rol': 'SUPERUSER',
-            'is_superuser': True
-        })
+        return Response(UserSerializer(request.user).data)
 
 
-class LoginView(APIView):
+class AuthLoginView(APIView):
     permission_classes = [AllowAny]
-    
+
     def post(self, request):
-        username = request.data.get('username')
+        identifier = request.data.get('username') or request.data.get('email')
         password = request.data.get('password')
-        
-        if not username or not password:
+
+        if not identifier or not password:
             return Response({
-                'detail': 'Usuario y contraseña son requeridos'
+                'detail': 'Usuario/correo y contraseña son requeridos'
             }, status=status.HTTP_400_BAD_REQUEST)
-        
-        user = authenticate(username=username, password=password)
-        
-        if user:
-            # Generar tokens JWT
-            refresh = RefreshToken.for_user(user)
-            
-            # Obtener grupos del usuario
-            grupos = list(user.groups.values_list('name', flat=True))
-            
-            return Response({
-                'access': str(refresh.access_token),
-                'refresh': str(refresh),
-                'usuario': {
-                    'id': user.id,
-                    'username': user.username,
-                    'email': user.email,
-                    'first_name': user.first_name,
-                    'last_name': user.last_name,
-                    'grupos': grupos,
-                    'is_superuser': user.is_superuser,
-                }
-            }, status=status.HTTP_200_OK)
-        
+
+        # Permitir autenticación por username o email
+        user = authenticate(username=identifier, password=password)
+        if not user:
+            try:
+                from core.models import User  # Import local para evitar ciclos
+                user_obj = User.objects.filter(Q(username__iexact=identifier) | Q(email__iexact=identifier)).first()
+                if user_obj:
+                    user = authenticate(username=user_obj.username, password=password)
+            except Exception:
+                user = None
+
+        if not user:
+            return Response({'detail': 'Credenciales inválidas'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        refresh = RefreshToken.for_user(user)
+        serialized_user = UserSerializer(user).data
+
         return Response({
-            'detail': 'Credenciales inválidas'
-        }, status=status.HTTP_401_UNAUTHORIZED)
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': serialized_user,
+            'expires_in': settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()
+        }, status=status.HTTP_200_OK)
 
 
 class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
         return Response({'message': 'Logout exitoso'}, status=status.HTTP_200_OK)
+
+
+class DevAutoLoginView(APIView):
+    """Acceso rápido para desarrollo controlado por entorno."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        dev_enabled = settings.DEBUG or os.getenv('DEV_LOGIN_ENABLED', '').lower() == 'true'
+        if not dev_enabled:
+            return Response(
+                {'detail': 'El auto-login de desarrollo está deshabilitado'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        username = os.getenv('DEV_LOGIN_USERNAME', 'devadmin')
+        password = os.getenv('DEV_LOGIN_PASSWORD', 'devpassword')
+        email = os.getenv('DEV_LOGIN_EMAIL', 'devadmin@example.com')
+
+        user, created = User.objects.get_or_create(
+            username=username,
+            defaults={
+                'email': email,
+                'first_name': 'Dev',
+                'last_name': 'Admin',
+                'is_staff': True,
+                'is_active': True,
+            }
+        )
+
+        if created or not user.check_password(password):
+            user.set_password(password)
+            user.save()
+
+        # Asignar grupo administrador de farmacia por defecto
+        grupo_admin, _ = Group.objects.get_or_create(name='FARMACIA_ADMIN')
+        if not user.groups.filter(id=grupo_admin.id).exists():
+            user.groups.add(grupo_admin)
+
+        refresh = RefreshToken.for_user(user)
+
+        return Response({
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': UserSerializer(user).data,
+            'expires_in': settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()
+        }, status=status.HTTP_200_OK)
 
 
 class DashboardView(APIView):

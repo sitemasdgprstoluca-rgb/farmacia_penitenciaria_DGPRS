@@ -21,8 +21,9 @@ def get_csrf_token(request):
 urlpatterns = [
     path('', include(router.urls)),
     path('me/', views.MeView.as_view(), name='me'),
-    path('auth/login/', views.LoginView.as_view(), name='login'),
+    path('auth/login/', views.AuthLoginView.as_view(), name='login'),
     path('auth/logout/', views.LogoutView.as_view(), name='logout'),
+    path('dev-autologin/', views.DevAutoLoginView.as_view(), name='dev-autologin'),
     path('dashboard/', views.DashboardView.as_view(), name='dashboard'),
     path('trazabilidad/producto/<str:clave>/', views.TrazabilidadProductoView.as_view(), name='trazabilidad-producto'),
     path('trazabilidad/lote/<str:codigo>/', views.TrazabilidadLoteView.as_view(), name='trazabilidad-lote'),

@@ -12,58 +12,33 @@ function Login() {
   const navigate = useNavigate();
 
   const persistSession = (user, accessToken, refreshToken) => {
-    localStorage.setItem('token', accessToken);
+    if (accessToken) {
+      localStorage.setItem('token', accessToken);
+    }
     if (refreshToken) {
       localStorage.setItem('refresh_token', refreshToken);
     }
-    localStorage.setItem('user', JSON.stringify(user));
-  };
-
-  const startDevSession = (creds, reason = 'modo desarrollador') => {
-    if (!DEV_CONFIG.AUTO_USER) {
-      throw new Error('DEV_USER_NOT_CONFIGURED');
+    if (user) {
+      localStorage.setItem('user', JSON.stringify(user));
     }
-    const simulatedUser = {
-      ...DEV_CONFIG.AUTO_USER,
-      groups:
-        (DEV_CONFIG.AUTO_USER.groups && DEV_CONFIG.AUTO_USER.groups.length > 0)
-          ? DEV_CONFIG.AUTO_USER.groups
-          : (DEV_CONFIG.AUTO_USER.grupos || []).map((name) => (typeof name === 'string' ? { name } : name)),
-    };
-    devLog(`Inicio de sesión simulado (${reason})`, creds);
-    persistSession(simulatedUser, 'dev-token', 'dev-refresh');
-    return simulatedUser;
   };
 
   const loginWithBackend = async (creds) => {
     const tokenResponse = await authAPI.login(creds);
-    const { access, refresh, token } = tokenResponse.data;
+    const { access, refresh, token, user } = tokenResponse.data;
     const accessToken = access || token;
-    if (accessToken) {
-      localStorage.setItem('token', accessToken);
+    let userPayload = user || tokenResponse.data.usuario || null;
+
+    if (!userPayload) {
+      const meResponse = await authAPI.me();
+      userPayload = meResponse.data;
     }
-    if (refresh) {
-      localStorage.setItem('refresh_token', refresh);
-    }
-    const meResponse = await authAPI.me();
-    persistSession(meResponse.data, accessToken, refresh);
-    return meResponse.data;
+
+    persistSession(userPayload, accessToken, refresh);
+    return userPayload;
   };
 
-  const performLogin = async (creds, { useDevCredentials = false, allowDevMock = false } = {}) => {
-    if (useDevCredentials && DEV_CONFIG.ENABLED) {
-      try {
-        const devCreds = DEV_CONFIG.CREDENTIALS || creds;
-        return await loginWithBackend(devCreds);
-      } catch (err) {
-        if (allowDevMock) {
-          return startDevSession(creds, 'fallback dev');
-        }
-        throw err;
-      }
-    }
-    return loginWithBackend(creds);
-  };
+  const performLogin = async (creds) => loginWithBackend(creds);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -84,8 +59,6 @@ function Login() {
         setErrorMessage('Usuario no existe');
       } else if (error.response?.data?.non_field_errors) {
         setErrorMessage(error.response.data.non_field_errors[0]);
-      } else if (error.message === 'DEV_USER_NOT_CONFIGURED') {
-        setErrorMessage('No existe un usuario de prueba configurado');
       } else {
         setErrorMessage('Error al iniciar sesión');
       }
@@ -99,17 +72,22 @@ function Login() {
     setLoading(true);
     setErrorMessage('');
     try {
-      if (!DEV_CONFIG.ENABLED) {
+      if (!DEV_CONFIG.SHOW_BUTTON) {
         throw new Error('DEV_DISABLED');
       }
-      await performLogin(DEV_CONFIG.CREDENTIALS, { useDevCredentials: true, allowDevMock: true });
+
+      const response = await authAPI.devLogin();
+      const { access, refresh, token, user } = response.data;
+      const accessToken = access || token;
+      persistSession(user, accessToken, refresh);
       toast.success('Acceso de desarrollador habilitado');
       navigate('/dashboard');
     } catch (error) {
-      if (error.message === 'DEV_USER_NOT_CONFIGURED') {
-        setErrorMessage('Configura un usuario de prueba en src/config/dev.js');
+      devLog('Error en login de desarrollo', error.message);
+      if (error.response?.status === 403) {
+        setErrorMessage('El backend tiene deshabilitado el auto-login de desarrollo');
       } else if (error.message === 'DEV_DISABLED') {
-        setErrorMessage('El acceso de desarrollador no esta disponible en produccion');
+        setErrorMessage('El acceso de desarrollador no está disponible en este entorno');
       } else {
         setErrorMessage('No fue posible iniciar sesión como desarrollador');
       }
@@ -149,7 +127,7 @@ function Login() {
 
             <div>
               <label className="block text-sm font-bold mb-2" style={{ color: '#6B1839' }}>
-                Usuario
+                Usuario o correo
               </label>
               <div className="relative">
                 <FaUser className="absolute left-4 top-4 text-gray-400" />
@@ -159,7 +137,7 @@ function Login() {
                   onChange={(e) => setCredentials({ ...credentials, username: e.target.value })}
                   className="w-full pl-12 pr-4 py-3.5 border-2 border-gray-200 rounded-xl transition-all focus:border-transparent focus:ring-4 focus:outline-none"
                   style={{ '--tw-ring-color': 'rgba(159, 34, 65, 0.2)' }}
-                  placeholder="Ingrese su usuario"
+                  placeholder="Ingrese su usuario o correo"
                   required
                 />
               </div>
@@ -203,7 +181,7 @@ function Login() {
             </button>
           </form>
 
-          {DEV_CONFIG.ENABLED && (
+          {DEV_CONFIG.SHOW_BUTTON && (
             <div className="mt-6 pt-6 border-t-2 border-gray-100">
               <button
                 onClick={handleDevLogin}

@@ -1,7 +1,6 @@
 // filepath: inventario-front/src/context/AuthContext.jsx
 import { useState, useEffect } from 'react';
 import { authAPI } from '../services/api';
-import { DEV_CONFIG, devLog } from '../config/dev';
 import { AuthContext } from './contexts';
 
 export function AuthProvider({ children }) {
@@ -9,13 +8,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (DEV_CONFIG.ENABLED) {
-      devLog('Modo desarrollo activado - Usuario automtico cargado');
-      setUser(DEV_CONFIG.AUTO_USER);
-      setLoading(false);
-    } else {
-      checkAuth();
-    }
+    checkAuth();
   }, []);
 
   const checkAuth = async () => {
@@ -30,12 +23,6 @@ export function AuthProvider({ children }) {
   };
 
   const login = async (credentials) => {
-    if (DEV_CONFIG.ENABLED) {
-      devLog('Login simulado en modo desarrollo', credentials);
-      setUser(DEV_CONFIG.AUTO_USER);
-      return { user: DEV_CONFIG.AUTO_USER };
-    }
-
     const response = await authAPI.login(credentials);
     const { access, refresh } = response.data;
     localStorage.setItem('token', access);
@@ -48,16 +35,6 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    if (DEV_CONFIG.ENABLED) {
-      devLog('Logout simulado en modo desarrollo');
-      // En modo desarrollo, redirigir al login pero no borrar sesin
-      setUser(null);
-      setTimeout(() => {
-        setUser(DEV_CONFIG.AUTO_USER);
-      }, 100);
-      return;
-    }
-
     await authAPI.logout();
     localStorage.removeItem('token');
     localStorage.removeItem('refresh_token');

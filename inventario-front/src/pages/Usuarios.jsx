@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { usuariosAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
 import { FaPlus, FaEdit, FaTrash, FaKey, FaUsers } from 'react-icons/fa';
-import { DEV_CONFIG } from '../config/dev';
 import PageHeader from '../components/PageHeader';
 import { COLORS } from '../constants/theme';
 
@@ -27,19 +26,14 @@ function Usuarios() {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      if ((!token && DEV_CONFIG.ENABLED) || token === 'dev-token') {
-        setUsuarios(MOCK_USUARIOS);
-        return;
+      if (!token) {
+        throw new Error('Sesión no encontrada');
       }
 
       const response = await usuariosAPI.getAll();
       setUsuarios(response.data.results || response.data);
     } catch (error) {
-      if (DEV_CONFIG.ENABLED || localStorage.getItem('token') === 'dev-token') {
-        setUsuarios(MOCK_USUARIOS);
-      } else {
-        toast.error('Error al cargar usuarios');
-      }
+      toast.error('Error al cargar usuarios');
     } finally {
       setLoading(false);
     }

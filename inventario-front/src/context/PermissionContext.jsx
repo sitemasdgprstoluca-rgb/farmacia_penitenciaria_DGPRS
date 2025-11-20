@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react';
-import { DEV_CONFIG, devLog } from '../config/dev';
 import { PermissionContext } from './contexts';
 import apiClient from '../services/api';
 
@@ -98,13 +97,6 @@ export function PermissionProvider({ children }) {
       }
     }
 
-    if (DEV_CONFIG.ENABLED) {
-      devLog('PermissionContext: modo desarrollo activo, usando usuario simulado');
-      const mockUser = DEV_CONFIG.AUTO_USER;
-      hydrateFromUser(mockUser);
-      setLoading(false);
-      return;
-    }
     cargarUsuario();
   }, [cargarUsuario, hydrateFromUser]);
 
