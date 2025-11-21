@@ -28,8 +28,12 @@ from .serializers import (
     CentroSerializer, RequisicionSerializer, DetalleRequisicionSerializer
 )
 
-# Importar User correctamente
 from django.contrib.auth import get_user_model
+from core.permissions import (
+    IsAdminRole, IsFarmaciaRole, IsCentroRole, IsVistaRole,
+    IsFarmaciaAdminOrReadOnly, CanAuthorizeRequisicion
+)
+
 User = get_user_model()
 
 class UserSerializer(serializers.ModelSerializer):
@@ -67,7 +71,7 @@ class UserViewSet(viewsets.ModelViewSet):
     """
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminRole]
 
     def get_queryset(self):
         """Filtra usuarios según parámetros"""
@@ -301,7 +305,7 @@ class UserViewSet(viewsets.ModelViewSet):
 class ProductoViewSet(viewsets.ModelViewSet):
     queryset = Producto.objects.all()
     serializer_class = ProductoSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [IsFarmaciaAdminOrReadOnly]
 
     def get_queryset(self):
         queryset = Producto.objects.all()
@@ -634,7 +638,7 @@ class CentroViewSet(viewsets.ModelViewSet):
     """
     queryset = Centro.objects.all()
     serializer_class = CentroSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [IsFarmaciaAdminOrReadOnly]
 
     def get_queryset(self):
         """Filtra centros según parámetros"""
@@ -1052,7 +1056,7 @@ class LoteViewSet(viewsets.ModelViewSet):
     """
     queryset = Lote.objects.select_related('producto').all()
     serializer_class = LoteSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [IsFarmaciaAdminOrReadOnly]
 
     def get_queryset(self):
         """
@@ -1285,7 +1289,7 @@ class LoteViewSet(viewsets.ModelViewSet):
 class MovimientoViewSet(viewsets.ModelViewSet):
     queryset = Movimiento.objects.select_related('producto', 'lote').all()
     serializer_class = MovimientoSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsFarmaciaRole]
 
     def get_queryset(self):
         queryset = Movimiento.objects.select_related('producto', 'lote').all()
@@ -1308,11 +1312,20 @@ class RequisicionViewSet(viewsets.ModelViewSet):
     """
     queryset = Requisicion.objects.select_related('centro', 'solicitante', 'autorizado_por').prefetch_related('items').all()
     serializer_class = RequisicionSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsCentroRole]
 
     def get_queryset(self):
         """Filtra requisiciones según parámetros"""
         queryset = Requisicion.objects.select_related('centro', 'solicitante', 'autorizado_por').prefetch_related('items').all()
+        
+        # Restricción por rol
+        if _has_role := getattr(self.request, 'user', None):
+            if not _has_role.is_superuser and getattr(_has_role, 'rol', '') not in ['admin_sistema', 'farmacia', 'admin_farmacia', 'superusuario']:
+                user_centro = getattr(_has_role, 'centro', None) or getattr(getattr(_has_role, 'profile', None), 'centro', None)
+                if user_centro:
+                    queryset = queryset.filter(centro=user_centro)
+                else:
+                    queryset = queryset.none()
         
         # Filtro por estado
         estado = self.request.query_params.get('estado')
@@ -1350,20 +1363,17 @@ class RequisicionViewSet(viewsets.ModelViewSet):
             # Preparar datos
             data = request.data.copy()
             data['folio'] = folio
-            data['estado'] = 'BORRADOR'
+            data['estado'] = 'enviada'
             
-            # Obtener usuario solicitante (en producción usar request.user)
-            if not data.get('solicitante'):
-                # Por ahora usar el primer usuario del sistema
-                from django.contrib.auth import get_user_model
-                User = get_user_model()
-                primer_usuario = User.objects.first()
-                if primer_usuario:
-                    data['solicitante'] = primer_usuario.id
-                else:
-                    return Response({
-                        'error': 'No hay usuarios en el sistema'
-                    }, status=status.HTTP_400_BAD_REQUEST)
+            # Ajustar usuario y centro solicitante por rol
+            solicitante = request.user if request.user.is_authenticated else None
+            if solicitante:
+                data['usuario_solicita'] = getattr(solicitante, 'id', None)
+                user_centro = getattr(solicitante, 'centro', None) or getattr(getattr(solicitante, 'profile', None), 'centro', None)
+                if user_centro:
+                    data['centro'] = user_centro.id
+            if not data.get('usuario_solicita'):
+                return Response({'error': 'Solicitante requerido'}, status=status.HTTP_400_BAD_REQUEST)
             
             # Crear requisición
             serializer = self.get_serializer(data=data)
@@ -1732,7 +1742,7 @@ def dashboard_resumen(request):
         return Response({
             'kpi': {'total_productos': 0, 'stock_total': 0, 'lotes_activos': 0, 'movimientos_mes': 0},
             'ultimos_movimientos': []
-        }, status=500)
+        }, status=status.HTTP_200_OK)
 
 @api_view(['GET'])
 def trazabilidad_producto(request, clave):

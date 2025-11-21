@@ -72,7 +72,7 @@ function Login() {
     setLoading(true);
     setErrorMessage('');
     try {
-      if (!DEV_CONFIG.SHOW_BUTTON) {
+      if (!DEV_CONFIG.ENABLED) {
         throw new Error('DEV_DISABLED');
       }
 

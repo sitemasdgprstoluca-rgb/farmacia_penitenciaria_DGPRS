@@ -3,15 +3,31 @@ import { PermissionContext } from './contexts';
 import apiClient from '../services/api';
 
 const calcularPermisos = (userData, userGroups) => {
-  const isSuperuser = userData.is_superuser;
-  const groupNames = userGroups.map((g) => g.name);
+  const isSuperuser = Boolean(userData.is_superuser);
+  const rol = (userData.rol || '').toLowerCase();
+  const groupNames = userGroups.map((g) => (g.name || g).toUpperCase());
 
-  const isFarmaciaAdmin = groupNames.includes('FARMACIA_ADMIN') || isSuperuser;
-  const isCentroUser = groupNames.includes('CENTRO_USER');
-  const isVistaUser = groupNames.includes('VISTA_USER');
+  const isAdmin =
+    isSuperuser ||
+    rol === 'admin_sistema' ||
+    rol === 'superusuario' ||
+    groupNames.includes('FARMACIA_ADMIN');
+  const isFarmaciaAdmin =
+    isAdmin ||
+    rol === 'farmacia' ||
+    rol === 'admin_farmacia' ||
+    groupNames.includes('FARMACIA_ADMIN');
+  const isCentroUser =
+    rol === 'centro' ||
+    rol === 'usuario_normal' ||
+    groupNames.includes('CENTRO_USER');
+  const isVistaUser =
+    rol === 'vista' ||
+    rol === 'usuario_vista' ||
+    groupNames.includes('VISTA_USER');
 
   return {
-    isSuperuser,
+    isSuperuser: isAdmin,
     isFarmaciaAdmin,
     isCentroUser,
     isVistaUser,
@@ -43,7 +59,7 @@ const calcularPermisos = (userData, userGroups) => {
     verUsuarios: isSuperuser,
     crearUsuario: isSuperuser,
 
-    verReportes: isFarmaciaAdmin || isVistaUser,
+    verReportes: isFarmaciaAdmin || isVistaUser || isCentroUser,
     verTrazabilidad: true,
     verAuditoria: isFarmaciaAdmin,
     verDashboard: true,
@@ -103,10 +119,11 @@ export function PermissionProvider({ children }) {
   const verificarPermiso = (permiso) => permisos[permiso] || false;
 
   const getRolPrincipal = () => {
-    if (user?.is_superuser) return 'SUPERUSUARIO';
-    if (grupos.some(g => g.name === 'FARMACIA_ADMIN')) return 'FARMACIA_ADMIN';
-    if (grupos.some(g => g.name === 'CENTRO_USER')) return 'CENTRO_USER';
-    if (grupos.some(g => g.name === 'VISTA_USER')) return 'VISTA_USER';
+    const rol = (user?.rol || '').toLowerCase();
+    if (user?.is_superuser || rol === 'admin_sistema' || rol === 'superusuario') return 'ADMIN';
+    if (rol === 'farmacia' || rol === 'admin_farmacia' || grupos.some((g) => g.name === 'FARMACIA_ADMIN')) return 'FARMACIA';
+    if (rol === 'centro' || rol === 'usuario_normal' || grupos.some((g) => g.name === 'CENTRO_USER')) return 'CENTRO';
+    if (rol === 'vista' || rol === 'usuario_vista' || grupos.some((g) => g.name === 'VISTA_USER')) return 'VISTA';
     return 'SIN_ROL';
   };
 

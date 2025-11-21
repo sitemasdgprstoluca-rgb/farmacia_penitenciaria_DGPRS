@@ -2,14 +2,17 @@ from rest_framework import viewsets, status, filters, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.tokens import RefreshToken
 from django_filters.rest_framework import DjangoFilterBackend
 from django.core.exceptions import ValidationError
 from django.db.models import Q, Sum, Count, F, Prefetch
 from django.db import transaction
 from django.utils import timezone
+from django.conf import settings
+from django.contrib.auth.models import Group
 from datetime import timedelta, date
 import openpyxl
 from openpyxl.utils import get_column_letter
@@ -17,6 +20,7 @@ from openpyxl.styles import Font, PatternFill, Alignment
 from django.http import HttpResponse
 import io
 import logging
+import os
 
 from .models import (
     User, Centro, Producto, Lote, Requisicion, 
@@ -28,8 +32,8 @@ from .serializers import (
     AuditoriaLogSerializer, ImportacionLogSerializer, DetalleRequisicionSerializer
 )
 from .permissions import (
-    IsFarmaciaAdmin, IsFarmaciaAdminOrReadOnly,
-    IsCentroUser, CanAuthorizeRequisicion, IsSuperuserOnly
+    IsFarmaciaRole, IsFarmaciaAdminOrReadOnly,
+    IsCentroUser, CanAuthorizeRequisicion, IsSuperuserOnly, IsAdminRole
 )
 from .constants import *
 from .utils.pdf_generator import generar_hoja_recoleccion
@@ -41,7 +45,7 @@ class ImportacionLogViewSet(viewsets.ReadOnlyModelViewSet):
     """Historial de importaciones masivas."""
     queryset = ImportacionLog.objects.select_related('usuario').all()
     serializer_class = ImportacionLogSerializer
-    permission_classes = [IsFarmaciaAdmin]
+    permission_classes = [IsFarmaciaRole]
     filter_backends = [filters.SearchFilter, DjangoFilterBackend, filters.OrderingFilter]
     search_fields = ['archivo_nombre', 'usuario__username', 'modelo']
     filterset_fields = ['modelo', 'estado']
@@ -53,7 +57,7 @@ class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):
     """Logs de auditoría del sistema."""
     queryset = AuditoriaLog.objects.select_related('usuario').all()
     serializer_class = AuditoriaLogSerializer
-    permission_classes = [IsFarmaciaAdmin]
+    permission_classes = [IsFarmaciaRole]
     filter_backends = [filters.SearchFilter, DjangoFilterBackend, filters.OrderingFilter]
     search_fields = ['usuario__username', 'modelo', 'accion', 'objeto_repr']
     filterset_fields = ['modelo', 'accion']
@@ -371,6 +375,60 @@ class LogoutView(APIView):
     
     def post(self, request):
         return Response({'message': 'Logout exitoso'})
+
+
+class DevAutoLoginView(APIView):
+    """
+    Acceso rápido para desarrollo controlado por entorno.
+    Solo se habilita cuando DEBUG es True o la variable DEV_LOGIN_ENABLED=true.
+    """
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        dev_enabled = settings.DEBUG or os.getenv('DEV_LOGIN_ENABLED', '').lower() == 'true'
+        if not dev_enabled:
+            return Response(
+                {'detail': 'El auto-login de desarrollo está deshabilitado'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        username = os.getenv('DEV_LOGIN_USERNAME', 'devadmin')
+        password = os.getenv('DEV_LOGIN_PASSWORD', 'devpassword')
+        email = os.getenv('DEV_LOGIN_EMAIL', 'admin@edomex.gob.mx')
+
+        user, created = User.objects.get_or_create(
+            username=username,
+            defaults={
+                'email': email,
+                'first_name': 'Dev',
+                'last_name': 'Admin',
+                'is_staff': True,
+                'is_superuser': True,
+                'is_active': True,
+            }
+        )
+
+        if created or not user.check_password(password):
+            user.set_password(password)
+            user.is_staff = True
+            user.is_superuser = True
+            user.save()
+
+        grupo_admin, _ = Group.objects.get_or_create(name='FARMACIA_ADMIN')
+        if not user.groups.filter(id=grupo_admin.id).exists():
+            user.groups.add(grupo_admin)
+
+        refresh = RefreshToken.for_user(user)
+        jwt_settings = getattr(settings, 'SIMPLE_JWT', {}) or {}
+        access_lifetime = jwt_settings.get('ACCESS_TOKEN_LIFETIME', timedelta(minutes=5))
+
+        return Response({
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': UserSerializer(user).data,
+            'expires_in': access_lifetime.total_seconds()
+        })
 
 
 class LoteViewSet(viewsets.ModelViewSet):
@@ -1035,7 +1093,7 @@ class UserViewSet(viewsets.ModelViewSet):
         """Permisos dinámicos según acción"""
         if self.action in ['create', 'destroy']:
             # Solo superusuario puede crear/eliminar
-            return [IsFarmaciaAdmin()]
+            return [IsFarmaciaRole()]
         elif self.action in ['update', 'partial_update']:
             # Usuarios pueden actualizar su perfil, admin puede todos
             return [IsAuthenticated()]
@@ -1498,11 +1556,11 @@ class RequisicionViewSet(viewsets.ModelViewSet):
 class AuditoriaViewSet(viewsets.ReadOnlyModelViewSet):
     """
     ViewSet de solo lectura para consultar logs de auditoría
-    Solo SUPERUSUARIO y FARMACIA_ADMIN
+    Solo SUPERUSUARIO y FARMACIA/FARMACIA_ADMIN
     """
     queryset = AuditoriaLog.objects.select_related('usuario').all()
     serializer_class = AuditoriaLogSerializer
-    permission_classes = [IsFarmaciaAdmin]
+    permission_classes = [IsFarmaciaRole]
     pagination_class = CustomPagination
     filter_backends = [filters.SearchFilter, DjangoFilterBackend, filters.OrderingFilter]
     search_fields = ['usuario__username', 'accion', 'modelo', 'objeto_repr']

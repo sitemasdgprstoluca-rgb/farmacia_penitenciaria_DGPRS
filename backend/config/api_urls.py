@@ -8,14 +8,16 @@ from rest_framework_simplejwt.views import TokenRefreshView
 # Core views
 from core.views import (
     CustomTokenObtainPairView, LogoutView, UserProfileView,
-    UserViewSet, ImportacionLogViewSet, AuditoriaLogViewSet,
+    UserViewSet, ImportacionLogViewSet, AuditoriaLogViewSet, DevAutoLoginView,
     DetalleRequisicionViewSet
 )
 
 # Inventario views
 from inventario.views import (
     ProductoViewSet, LoteViewSet, RequisicionViewSet,
-    MovimientoViewSet
+    MovimientoViewSet, dashboard_resumen, trazabilidad_producto,
+    trazabilidad_lote, reporte_inventario, reporte_movimientos,
+    reporte_caducidades, reportes_precarga
 )
 
 # Router
@@ -40,7 +42,17 @@ urlpatterns = [
     path('logout/', LogoutView.as_view(), name='logout'),
     path('profile/', UserProfileView.as_view(), name='profile'),
     path('me/', UserProfileView.as_view(), name='me'),
+    path('dev-autologin/', DevAutoLoginView.as_view(), name='dev-autologin'),
     
     # Router
     path('', include(router.urls)),
+
+    # Dashboard y reportes
+    path('dashboard/', dashboard_resumen, name='dashboard'),
+    path('trazabilidad/producto/<str:clave>/', trazabilidad_producto, name='trazabilidad-producto'),
+    path('trazabilidad/lote/<str:codigo>/', trazabilidad_lote, name='trazabilidad-lote'),
+    path('reportes/inventario/', reporte_inventario, name='reporte-inventario'),
+    path('reportes/movimientos/', reporte_movimientos, name='reporte-movimientos'),
+    path('reportes/caducidades/', reporte_caducidades, name='reporte-caducidades'),
+    path('reportes/precarga/', reportes_precarga, name='reportes-precarga'),
 ]

@@ -13,18 +13,23 @@ class UserSerializer(serializers.ModelSerializer):
     """
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True)
     password = serializers.CharField(write_only=True, required=False, style={'input_type': 'password'})
+    grupos = serializers.SerializerMethodField()
     
     class Meta:
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name', 
             'rol', 'centro', 'centro_nombre', 'activo', 'password', 
+            'grupos',
             'date_joined', 'last_login'
         ]
         read_only_fields = ['date_joined', 'last_login']
         extra_kwargs = {
             'password': {'write_only': True, 'required': False}
         }
+
+    def get_grupos(self, obj):
+        return [g.name for g in obj.groups.all()]
     
     def validate_username(self, value):
         """

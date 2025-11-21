@@ -45,10 +45,15 @@ TIPOS_MOVIMIENTO = [
 
 # Roles de usuario
 ROLES_USUARIO = [
-    ('superusuario', 'Superusuario'),
-    ('admin_farmacia', 'Admin Farmacia'),
-    ('usuario_normal', 'Usuario Normal'),
-    ('usuario_vista', 'Usuario Vista'),
+    ('admin_sistema', 'Administrador del sistema'),
+    ('farmacia', 'Usuario Farmacia'),
+    ('centro', 'Usuario Centro/Unidad'),
+    ('vista', 'Usuario Vista/Consultor'),
+    # Compatibilidad con valores previos
+    ('superusuario', 'Superusuario (legacy)'),
+    ('admin_farmacia', 'Admin Farmacia (legacy)'),
+    ('usuario_normal', 'Usuario Centro (legacy)'),
+    ('usuario_vista', 'Usuario Vista (legacy)'),
 ]
 
 # Niveles de stock
