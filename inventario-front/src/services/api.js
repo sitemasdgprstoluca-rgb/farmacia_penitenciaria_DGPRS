@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { toast } from 'react-hot-toast';
 
 const apiBaseUrl = (
   import.meta.env.VITE_API_URL ||
@@ -15,8 +16,21 @@ const apiClient = axios.create({
 });
 
 let activityCallback = null;
+let lastForbiddenToast = { path: '', ts: 0 };
+let redirectingToLogin = false;
 export const setApiActivityHandler = (callback) => {
   activityCallback = callback;
+};
+
+const redirectToLogin = () => {
+  if (redirectingToLogin) return;
+  redirectingToLogin = true;
+  localStorage.removeItem('token');
+  localStorage.removeItem('refresh_token');
+  localStorage.removeItem('user');
+  if (window.location.pathname !== '/login') {
+    window.location.href = '/login';
+  }
 };
 
 // Interceptor para añadir token
@@ -36,6 +50,57 @@ apiClient.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 );
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error.response?.status;
+    const detail = error.response?.data?.detail || error.response?.data?.error;
+    const currentPath = window.location?.pathname || '';
+    const now = Date.now();
+    if (status === 401) {
+      // Cancelar timers activos (polling de notificaciones)
+      if (window.notificationInterval) {
+        clearInterval(window.notificationInterval);
+        window.notificationInterval = null;
+      }
+      // Emitir evento global para componentes que necesiten limpiar recursos
+      window.dispatchEvent(new Event('session-expired'));
+      toast.error('Sesion expirada. Inicia sesion nuevamente.');
+      redirectToLogin();
+    } else if (status === 403) {
+      const shouldToast = currentPath !== lastForbiddenToast.path || (now - lastForbiddenToast.ts) > 4000;
+      if (shouldToast) {
+        toast.error('No tienes permisos para esta accion.');
+        lastForbiddenToast = { path: currentPath, ts: now };
+      }
+    } else if (status >= 400 && status < 500) {
+      if (detail) toast.error(detail);
+    } else if (!error.response) {
+      toast.error('Error al conectar con el servidor.');
+    } else if (status >= 500) {
+      toast.error('Error interno del servidor.');
+    }
+    return Promise.reject(error);
+  }
+);
+
+/**
+ * Descarga un blob como archivo local.
+ * @param {Blob} blob
+ * @param {string} nombreArchivo
+ */
+export const descargarArchivo = (blob, nombreArchivo) => {
+  const contenido = blob && blob.data ? blob.data : blob;
+  const url = window.URL.createObjectURL(contenido);
+  const enlace = document.createElement('a');
+  enlace.href = url;
+  enlace.download = nombreArchivo;
+  document.body.appendChild(enlace);
+  enlace.click();
+  document.body.removeChild(enlace);
+  window.URL.revokeObjectURL(url);
+};
 
 // Productos
 export const productosAPI = {
@@ -99,6 +164,7 @@ export const centrosAPI = {
   importar: (formData) => apiClient.post('/centros/importar/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
+  inventario: (id) => apiClient.get(`/centros/${id}/inventario/`),
 };
 
 // Usuarios -  COMPLETO
@@ -109,6 +175,9 @@ export const usuariosAPI = {
   update: (id, data) => apiClient.put(`/usuarios/${id}/`, data),
   delete: (id) => apiClient.delete(`/usuarios/${id}/`),
   cambiarPassword: (id, data) => apiClient.post(`/usuarios/${id}/cambiar_password/`, data),
+  me: () => apiClient.get('/usuarios/me/'),
+  actualizarPerfil: (data) => apiClient.patch('/usuarios/me/', data),
+  cambiarPasswordPropio: (data) => apiClient.post('/usuarios/me/change-password/', data),
 };
 
 // Requisiciones -  COMPLETO CON FLUJO
@@ -125,8 +194,17 @@ export const requisicionesAPI = {
   rechazar: (id, data) => apiClient.post(`/requisiciones/${id}/rechazar/`, data),
   surtir: (id) => apiClient.post(`/requisiciones/${id}/surtir/`),
   cancelar: (id) => apiClient.post(`/requisiciones/${id}/cancelar/`),
+  resumenEstados: () => apiClient.get('/requisiciones/resumen_estados/'),
   
-  // Hoja de recoleccin
+  // Descarga de PDFs
+  downloadPDFAceptacion: (id) => apiClient.get(`/requisiciones/${id}/hoja-recoleccion/`, {
+    responseType: 'blob'
+  }),
+  downloadPDFRechazo: (id) => apiClient.get(`/requisiciones/${id}/pdf_rechazo/`, {
+    responseType: 'blob'
+  }),
+
+  // Compatibilidad hacia atras
   getHojaRecoleccion: (id) => apiClient.get(`/requisiciones/${id}/hoja-recoleccion/`, {
     responseType: 'blob'
   }),
@@ -143,17 +221,17 @@ export const auditoriaAPI = {
 
 // Auth -  COMPLETO
 export const authAPI = {
-  login: (credentials) => apiClient.post('/auth/login/', credentials),
-  devLogin: () => apiClient.post('/dev-autologin/'),
-  logout: () => apiClient.post('/auth/logout/'),
-  me: () => apiClient.get('/me/'),
-  register: (data) => apiClient.post('/auth/register/', data),
+  login: (credentials) => apiClient.post('/token/', credentials),
+  devLogin: (data = {}) => apiClient.post('/dev-autologin/', data),
+  logout: (data = {}) => apiClient.post('/logout/', data),
+  me: () => apiClient.get('/usuarios/me/'),
 };
 
 // Movimientos
 export const movimientosAPI = {
   getAll: (params) => apiClient.get('/movimientos/', { params }),
   create: (data) => apiClient.post('/movimientos/', data),
+  registrarPorCodigo: (data) => apiClient.post('/movimientos/registrar_por_codigo_barras/', data),
 };
 
 // Trazabilidad -  NUEVO
@@ -173,23 +251,28 @@ export const reportesAPI = {
   medicamentosPorCaducar: (params) => apiClient.get('/reportes/medicamentos_por_caducar/', { params }),
   bajoStock: () => apiClient.get('/reportes/bajo_stock/'),
   consumo: (params) => apiClient.get('/reportes/consumo/', { params }),
-  
-  // Nuevos reportes implementados
-  inventario: (params) => apiClient.get('/reportes/inventario/', { 
-    params, 
-    responseType: 'blob' 
+
+  // Reportes JSON
+  inventario: (params) => apiClient.get('/reportes/inventario/', { params }),
+  caducidades: (params) => apiClient.get('/reportes/caducidades/', { params }),
+  requisiciones: (params) => apiClient.get('/reportes/requisiciones/', { params }),
+
+  // Descargas
+  exportarInventarioExcel: (params) => apiClient.get('/reportes/inventario/', {
+    params: { ...params, formato: 'excel' },
+    responseType: 'blob'
   }),
-  movimientos: (params) => apiClient.get('/reportes/movimientos/', { 
-    params, 
-    responseType: 'blob' 
-  }),
-  caducidades: (params) => apiClient.get('/reportes/caducidades/', { 
-    params, 
-    responseType: 'blob' 
-  }),
-  
+
   // Precarga de datos
   precarga: () => apiClient.get('/reportes/precarga/'),
+};
+
+// Notificaciones
+export const notificacionesAPI = {
+  getAll: (params) => apiClient.get('/notificaciones/', { params }),
+  marcarLeida: (id) => apiClient.post(`/notificaciones/${id}/marcar_leida/`),
+  delete: (id) => apiClient.delete(`/notificaciones/${id}/`),
+  noLeidasCount: () => apiClient.get('/notificaciones/no_leidas_count/'),
 };
 
 export default apiClient;

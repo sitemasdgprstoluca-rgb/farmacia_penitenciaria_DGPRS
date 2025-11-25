@@ -1,0 +1,61 @@
+# Alertmanager configuration
+# NOTA: Reemplazar placeholders antes de usar:
+#   - SLACK_WEBHOOK_URL: Obtener de https://api.slack.com/messaging/webhooks
+#   - PAGERDUTY_SERVICE_KEY: Obtener de PagerDuty Integration Keys
+
+global:
+  resolve_timeout: 5m
+
+# Plantillas
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# Rutas de alerta
+route:
+  receiver: 'default'
+  group_by: ['alertname', 'cluster']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 4h
+
+  routes:
+    # Críticas -> PagerDuty + Slack
+    - match:
+        severity: critical
+      receiver: 'pagerduty'
+      repeat_interval: 15m
+
+    # Warnings -> Slack
+    - match:
+        severity: warning
+      receiver: 'slack'
+      repeat_interval: 2h
+
+# Receptores
+receivers:
+  - name: 'default'
+    slack_configs:
+      - api_url: 'REPLACE_WITH_YOUR_SLACK_WEBHOOK_URL'  # https://hooks.slack.com/services/...
+        channel: '#alerts'
+        title: 'Farmacia Alert'
+        text: '{{ .GroupLabels.alertname }}: {{ .Annotations.description }}'
+
+  - name: 'pagerduty'
+    pagerduty_configs:
+      - service_key: 'REPLACE_WITH_YOUR_PAGERDUTY_SERVICE_KEY'
+        description: '{{ .GroupLabels.alertname }}: {{ .Annotations.summary }}'
+
+  - name: 'slack'
+    slack_configs:
+      - api_url: 'REPLACE_WITH_YOUR_SLACK_WEBHOOK_URL'  # Mismo u otro webhook
+        channel: '#warnings'
+        title: 'Farmacia Warning'
+        text: '{{ .GroupLabels.alertname }}: {{ .Annotations.description }}'
+
+# Inhibición de alertas
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname']

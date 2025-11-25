@@ -1,10 +1,119 @@
 from rest_framework import serializers
 from django.db.models import Sum
-from .models import User, Centro, Producto, Lote, Requisicion, DetalleRequisicion, Movimiento, AuditoriaLog, ImportacionLog
-from .constants import *
+from .models import User, Centro, Producto, Lote, Requisicion, DetalleRequisicion, Movimiento, AuditoriaLog, ImportacionLog, Notificacion, UserProfile
+from .constants import (
+    UNIDADES_MEDIDA,
+    ESTADOS_LOTE,
+    ESTADOS_REQUISICION,
+    TIPOS_MOVIMIENTO,
+    ROLES_USUARIO,
+    EXTRA_PERMISSIONS,
+    PRODUCTO_CLAVE_MIN_LENGTH,
+    PRODUCTO_CLAVE_MAX_LENGTH,
+    PRODUCTO_DESCRIPCION_MIN_LENGTH,
+    PRODUCTO_DESCRIPCION_MAX_LENGTH,
+    PRODUCTO_PRECIO_MAX_DIGITS,
+    PRODUCTO_PRECIO_DECIMAL_PLACES,
+    LOTE_NUMERO_MIN_LENGTH,
+    LOTE_NUMERO_MAX_LENGTH,
+)
 import logging
 
 logger = logging.getLogger(__name__)
+
+PERMISOS_POR_ROL = {
+    'ADMIN': {
+        'verDashboard': True,
+        'verProductos': True,
+        'verLotes': True,
+        'verRequisiciones': True,
+        'verCentros': True,
+        'verUsuarios': True,
+        'verReportes': True,
+        'verTrazabilidad': True,
+        'verAuditoria': True,
+        'verNotificaciones': True,
+        'verPerfil': True,
+    },
+    'FARMACIA': {
+        'verDashboard': True,
+        'verProductos': True,
+        'verLotes': True,
+        'verRequisiciones': True,
+        'verCentros': True,
+        'verUsuarios': False,
+        'verReportes': True,
+        'verTrazabilidad': True,
+        'verAuditoria': True,
+        'verNotificaciones': True,
+        'verPerfil': True,
+    },
+    'CENTRO': {
+        'verDashboard': True,
+        'verProductos': False,
+        'verLotes': False,
+        'verRequisiciones': True,
+        'verCentros': False,
+        'verUsuarios': False,
+        'verReportes': True,
+        'verTrazabilidad': False,
+        'verAuditoria': False,
+        'verNotificaciones': True,
+        'verPerfil': True,
+    },
+    'VISTA': {
+        'verDashboard': True,
+        'verProductos': False,
+        'verLotes': False,
+        'verRequisiciones': False,
+        'verCentros': False,
+        'verUsuarios': False,
+        'verReportes': True,
+        'verTrazabilidad': False,
+        'verAuditoria': False,
+        'verNotificaciones': True,
+        'verPerfil': True,
+    },
+    'SIN_ROL': {
+        'verDashboard': False,
+        'verProductos': False,
+        'verLotes': False,
+        'verRequisiciones': False,
+        'verCentros': False,
+        'verUsuarios': False,
+        'verReportes': False,
+        'verTrazabilidad': False,
+        'verAuditoria': False,
+        'verNotificaciones': False,
+        'verPerfil': False,
+    },
+}
+
+
+def _resolve_rol(user):
+    if not user:
+        return 'SIN_ROL'
+    if user.is_superuser:
+        return 'ADMIN'
+    normalized = (user.rol or '').lower()
+    if normalized in ['admin_sistema', 'superusuario']:
+        return 'ADMIN'
+    if normalized in ['farmacia', 'admin_farmacia']:
+        return 'FARMACIA'
+    if normalized in ['centro', 'usuario_normal', 'solicitante']:
+        return 'CENTRO'
+    if normalized in ['vista', 'usuario_vista']:
+        return 'VISTA'
+    return 'SIN_ROL'
+
+
+def build_perm_map(user):
+    rol = _resolve_rol(user)
+    base = PERMISOS_POR_ROL.get(rol, PERMISOS_POR_ROL['SIN_ROL']).copy()
+    if user and user.is_superuser:
+        for key in base.keys():
+            base[key] = True
+    return base
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -14,13 +123,14 @@ class UserSerializer(serializers.ModelSerializer):
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True)
     password = serializers.CharField(write_only=True, required=False, style={'input_type': 'password'})
     grupos = serializers.SerializerMethodField()
+    extra_permisos = serializers.SerializerMethodField()
     
     class Meta:
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name', 
             'rol', 'centro', 'centro_nombre', 'activo', 'password', 
-            'grupos',
+            'grupos', 'extra_permisos',
             'date_joined', 'last_login'
         ]
         read_only_fields = ['date_joined', 'last_login']
@@ -30,6 +140,11 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_grupos(self, obj):
         return [g.name for g in obj.groups.all()]
+    
+    def get_extra_permisos(self, obj):
+        from core.constants import EXTRA_PERMISSIONS
+        group_names = set(g.name for g in obj.groups.all())
+        return [perm for perm in EXTRA_PERMISSIONS if perm in group_names]
     
     def validate_username(self, value):
         """
@@ -219,29 +334,92 @@ class ProductoSerializer(serializers.ModelSerializer):
         stock = self.get_stock_actual(obj)
         return float(stock * obj.precio_unitario)
     
-    def validate_clave(self, value):
+    def validate_descripcion(self, value):
         """
-        Valida clave: normaliza a mayúsculas, verifica unicidad case-insensitive
+        Valida descripción: longitud mínima, no vacía
         """
-        value = value.upper().strip()
-        
-        # Validar longitud
-        if len(value) < PRODUCTO_CLAVE_MIN_LENGTH:
+        if not value or len(value.strip()) < 5:
             raise serializers.ValidationError(
-                f"La clave debe tener al menos {PRODUCTO_CLAVE_MIN_LENGTH} caracteres"
+                "La descripción debe tener al menos 5 caracteres"
+            )
+        return value.strip()
+    
+    def validate_precio_unitario(self, value):
+        """
+        Valida precio unitario: debe ser positivo
+        """
+        if value is None or value <= 0:
+            raise serializers.ValidationError(
+                "El precio unitario debe ser mayor a 0"
             )
         
-        # Validar unicidad case-insensitive (excluyendo instancia actual en updates)
-        queryset = Producto.objects.filter(clave__iexact=value)
-        if self.instance:
-            queryset = queryset.exclude(pk=self.instance.pk)
-        
-        if queryset.exists():
+        # Validar rango razonable (opcional)
+        if value > 1000000:  # 1 millón
             raise serializers.ValidationError(
-                f"Ya existe un producto con la clave '{value}'"
+                "El precio parece demasiado alto. Verifique."
             )
         
         return value
+    
+    def validate_stock_minimo(self, value):
+        """
+        Valida stock mínimo: debe ser no negativo
+        """
+        if value is None or value < 0:
+            raise serializers.ValidationError(
+                "El stock mínimo no puede ser negativo"
+            )
+        
+        return value
+    
+    def validate_unidad_medida(self, value):
+        """
+        Valida unidad de medida contra constantes permitidas
+        """
+        if not value:
+            raise serializers.ValidationError(
+                "La unidad de medida es obligatoria"
+            )
+        
+        value_upper = value.upper()
+        unidades_validas = ['PIEZA', 'CAJA', 'FRASCO', 'SOBRE', 'AMPOLLETA', 'TABLETA', 'CAPSULA', 'ML', 'GR']
+        
+        if value_upper not in unidades_validas:
+            raise serializers.ValidationError(
+                f"Unidad de medida inválida. Opciones: {', '.join(unidades_validas)}"
+            )
+        
+        return value_upper
+    
+    def validate(self, data):
+        """
+        Validaciones cross-field complejas
+        """
+        # Validar coherencia stock_minimo vs stock_actual
+        if 'stock_minimo' in data:
+            stock_min = data['stock_minimo']
+            # Si se está creando, no hay stock actual aún
+            if self.instance:
+                stock_actual = self.instance.get_stock_actual()
+                if stock_min > stock_actual and stock_actual > 0:
+                    logger.warning(
+                        f"Producto {self.instance.clave}: stock_minimo ({stock_min}) "
+                        f"mayor que stock_actual ({stock_actual})"
+                    )
+        
+        # Validar descripción no duplicada (warning, no error)
+        if 'descripcion' in data:
+            desc = data['descripcion']
+            queryset = Producto.objects.filter(descripcion__iexact=desc)
+            if self.instance:
+                queryset = queryset.exclude(pk=self.instance.pk)
+            
+            if queryset.exists():
+                logger.warning(
+                    f"Ya existe producto con descripción similar: {desc}"
+                )
+        
+        return data
     
     def validate_descripcion(self, value):
         """Valida descripción: longitud y contenido"""
@@ -603,8 +781,17 @@ class MovimientoSerializer(serializers.ModelSerializer):
         model = Movimiento
         fields = ['id', 'tipo', 'lote', 'lote_numero', 'producto_clave', 'producto_descripcion',
                   'centro', 'centro_nombre', 'cantidad', 'usuario', 'usuario_nombre',
-                  'requisicion', 'requisicion_folio', 'observaciones', 'fecha']
+                  'requisicion', 'requisicion_folio', 'documento_referencia', 'observaciones', 'fecha']
         read_only_fields = ['fecha']
+
+
+class NotificacionSerializer(serializers.ModelSerializer):
+    requisicion_folio = serializers.CharField(source='requisicion.folio', read_only=True)
+
+    class Meta:
+        model = Notificacion
+        fields = ['id', 'titulo', 'mensaje', 'tipo', 'leida', 'fecha_creacion', 'requisicion', 'requisicion_folio']
+        read_only_fields = ['fecha_creacion']
 
 class AuditoriaLogSerializer(serializers.ModelSerializer):
     """Serializer para logs de auditoría"""
@@ -648,3 +835,46 @@ class ImportacionLogSerializer(serializers.ModelSerializer):
             'resultado_procesamiento', 'fecha_importacion', 'usuario_nombre'
         ]
         read_only_fields = fields
+
+
+class UserMeSerializer(serializers.ModelSerializer):
+    """Serializer especializado para /usuarios/me/ (lectura/edición)."""
+    centro_nombre = serializers.CharField(source='centro.nombre', read_only=True)
+    grupos = serializers.SerializerMethodField()
+    extra_permisos = serializers.SerializerMethodField()
+    permisos = serializers.SerializerMethodField()
+    telefono = serializers.CharField(source='profile.telefono', allow_blank=True, required=False)
+    cargo = serializers.CharField(source='profile.cargo', allow_blank=True, required=False)
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name',
+            'rol', 'centro', 'centro_nombre', 'telefono', 'cargo',
+            'grupos', 'extra_permisos', 'permisos',
+        ]
+        read_only_fields = ['username', 'rol', 'centro']
+
+    def get_grupos(self, obj):
+        return [g.name for g in obj.groups.all()]
+
+    def get_extra_permisos(self, obj):
+        group_names = set(g.name for g in obj.groups.all())
+        return [perm for perm in EXTRA_PERMISSIONS if perm in group_names]
+
+    def get_permisos(self, obj):
+        return build_perm_map(obj)
+
+    def update(self, instance, validated_data):
+        profile_data = validated_data.pop('profile', {})
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if profile_data:
+            profile, _ = UserProfile.objects.get_or_create(user=instance)
+            for attr, value in profile_data.items():
+                setattr(profile, attr, value)
+            profile.save()
+
+        return instance

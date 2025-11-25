@@ -12,6 +12,7 @@ import {
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import apiClient from '../services/api';
+import Pagination from '../components/Pagination';
 
 const MOCK_LOGS = Array.from({ length: 40 }).map((_, index) => {
   const acciones = ['CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT'];
@@ -450,66 +451,17 @@ const Auditoria = () => {
 
             {/* Paginación */}
             {totalPages > 1 && (
-              <div className="bg-gray-50 px-6 py-4 flex items-center justify-between border-t">
-                <div className="text-sm font-semibold text-gray-700">
-                  Mostrando {(currentPage - 1) * pageSize + 1} a {Math.min(currentPage * pageSize, totalLogs)} de {totalLogs} registros
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="px-4 py-2 bg-white border-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-all hover:scale-105"
-                    style={{ 
-                      borderColor: currentPage === 1 ? '#E5E7EB' : '#9F2241',
-                      color: currentPage === 1 ? '#9CA3AF' : '#9F2241'
-                    }}
-                  >
-                    <FaChevronLeft className="inline mr-1" /> Anterior
-                  </button>
-
-                  {[...Array(Math.min(5, totalPages))].map((_, i) => {
-                    let pageNum;
-                    if (totalPages <= 5) {
-                      pageNum = i + 1;
-                    } else if (currentPage <= 3) {
-                      pageNum = i + 1;
-                    } else if (currentPage >= totalPages - 2) {
-                      pageNum = totalPages - 4 + i;
-                    } else {
-                      pageNum = currentPage - 2 + i;
-                    }
-
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => setCurrentPage(pageNum)}
-                        className="px-4 py-2 rounded-lg font-bold transition-all hover:scale-105"
-                        style={{
-                          background: currentPage === pageNum 
-                            ? 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)'
-                            : 'white',
-                          color: currentPage === pageNum ? 'white' : '#6B7280',
-                          border: currentPage === pageNum ? 'none' : '2px solid #E5E7EB'
-                        }}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
-
-                  <button
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                    className="px-4 py-2 bg-white border-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-all hover:scale-105"
-                    style={{ 
-                      borderColor: currentPage === totalPages ? '#E5E7EB' : '#9F2241',
-                      color: currentPage === totalPages ? '#9CA3AF' : '#9F2241'
-                    }}
-                  >
-                    Siguiente <FaChevronRight className="inline ml-1" />
-                  </button>
-                </div>
-              </div>
+              <Pagination
+                page={currentPage}
+                totalPages={totalPages}
+                totalItems={totalLogs}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size);
+                  setCurrentPage(1);
+                }}
+              />
             )}
           </>
         )}

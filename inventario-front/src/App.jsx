@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { PermissionProvider } from './context/PermissionContext';
 import { usePermissions } from './hooks/usePermissions';
 import { useInactivityLogout } from './hooks/useInactivityLogout';
+import PermissionsGuard from './components/PermissionsGuard';
 
 function SessionManager() {
   useInactivityLogout();
@@ -21,10 +22,13 @@ import Usuarios from './pages/Usuarios';
 import Reportes from './pages/Reportes';
 import Trazabilidad from './pages/Trazabilidad';
 import Auditoria from './pages/Auditoria';
+import Movimientos from './pages/Movimientos';
+import Notificaciones from './pages/Notificaciones';
+import Perfil from './pages/Perfil';
 
-function ProtectedRoute({ children, requiredPermission }) {
-  const { user, loading, verificarPermiso } = usePermissions();
-  
+function ProtectedRoute({ children }) {
+  const { user, loading } = usePermissions();
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -32,20 +36,9 @@ function ProtectedRoute({ children, requiredPermission }) {
       </div>
     );
   }
-  
+
   if (!user) return <Navigate to="/login" replace />;
-  
-  if (requiredPermission && !verificarPermiso(requiredPermission)) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-red-600 mb-4">Acceso Denegado</h1>
-          <p className="text-gray-600">No tiene permisos para acceder a esta pgina</p>
-        </div>
-      </div>
-    );
-  }
-  
+
   return children;
 }
 
@@ -61,26 +54,65 @@ function App() {
           
           <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="productos" element={<Productos />} />
-            <Route path="lotes" element={<Lotes />} />
-            <Route path="requisiciones" element={<Requisiciones />} />
-            <Route path="centros" element={<Centros />} />
+            <Route path="dashboard" element={
+              <PermissionsGuard requiredPermission="verDashboard">
+                <Dashboard />
+              </PermissionsGuard>
+            } />
+            <Route path="productos" element={
+              <PermissionsGuard requiredPermission="verProductos">
+                <Productos />
+              </PermissionsGuard>
+            } />
+            <Route path="lotes" element={
+              <PermissionsGuard requiredPermission="verLotes">
+                <Lotes />
+              </PermissionsGuard>
+            } />
+            <Route path="requisiciones" element={
+              <PermissionsGuard requiredPermission="verRequisiciones">
+                <Requisiciones />
+              </PermissionsGuard>
+            } />
+            <Route path="centros" element={
+              <PermissionsGuard requiredPermission="verCentros">
+                <Centros />
+              </PermissionsGuard>
+            } />
             <Route path="usuarios" element={
-              <ProtectedRoute requiredPermission="verUsuarios">
+              <PermissionsGuard requiredPermission="verUsuarios">
                 <Usuarios />
-              </ProtectedRoute>
+              </PermissionsGuard>
             } />
             <Route path="reportes" element={
-              <ProtectedRoute requiredPermission="verReportes">
+              <PermissionsGuard requiredPermission="verReportes">
                 <Reportes />
-              </ProtectedRoute>
+              </PermissionsGuard>
             } />
-            <Route path="trazabilidad" element={<Trazabilidad />} />
+            <Route path="movimientos" element={
+              <PermissionsGuard requiredPermission="verLotes">
+                <Movimientos />
+              </PermissionsGuard>
+            } />
+            <Route path="trazabilidad" element={
+              <PermissionsGuard requiredPermission="verTrazabilidad">
+                <Trazabilidad />
+              </PermissionsGuard>
+            } />
             <Route path="auditoria" element={
-              <ProtectedRoute requiredPermission="verAuditoria">
+              <PermissionsGuard requiredPermission="verAuditoria">
                 <Auditoria />
-              </ProtectedRoute>
+              </PermissionsGuard>
+            } />
+            <Route path="notificaciones" element={
+              <PermissionsGuard requiredPermission="verNotificaciones">
+                <Notificaciones />
+              </PermissionsGuard>
+            } />
+            <Route path="perfil" element={
+              <PermissionsGuard requiredPermission="verPerfil">
+                <Perfil />
+              </PermissionsGuard>
             } />
           </Route>
         </Routes>

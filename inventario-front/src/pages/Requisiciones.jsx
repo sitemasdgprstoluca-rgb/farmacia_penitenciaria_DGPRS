@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { requisicionesAPI } from '../services/api';
+import { requisicionesAPI, descargarArchivo } from '../services/api';
 import { usePermissions } from '../hooks/usePermissions';
 import { ProtectedButton } from '../components/ProtectedAction';
 import { toast } from 'react-hot-toast';
@@ -9,6 +9,7 @@ import {
   FaClipboardList
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
+import Pagination from '../components/Pagination';
 import { COLORS } from '../constants/theme';
 
 const MOCK_REQUISICIONES = Array.from({ length: 20 }).map((_, index) => {
@@ -41,11 +42,13 @@ const Requisiciones = () => {
   const { permisos, user, getRolPrincipal } = usePermissions();
 
   const [filtroEstado, setFiltroEstado] = useState('');
+  const [grupoEstado, setGrupoEstado] = useState('todas');
   const [searchTerm, setSearchTerm] = useState('');
   const PAGE_SIZE = 10;
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRequisiciones, setTotalRequisiciones] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [resumenEstados, setResumenEstados] = useState({ por_estado: {}, por_grupo: {} });
 
   const applyMockRequisiciones = useCallback(() => {
     let data = [...MOCK_REQUISICIONES].sort(
@@ -82,6 +85,7 @@ const Requisiciones = () => {
         ordering: '-fecha_solicitud',
       };
       if (filtroEstado) params.estado = filtroEstado;
+      if (grupoEstado && grupoEstado !== 'todas') params.grupo_estado = grupoEstado;
       if (searchTerm) params.search = searchTerm;
 
       const response = await requisicionesAPI.getAll(params);
@@ -99,14 +103,15 @@ const Requisiciones = () => {
     } finally {
       setLoading(false);
     }
-  }, [PAGE_SIZE, applyMockRequisiciones, currentPage, filtroEstado, searchTerm]);
+  }, [PAGE_SIZE, applyMockRequisiciones, currentPage, filtroEstado, grupoEstado, searchTerm]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filtroEstado, searchTerm]);
+  }, [filtroEstado, searchTerm, grupoEstado]);
 
   useEffect(() => {
     cargarRequisiciones();
+    cargarResumenEstados();
   }, [cargarRequisiciones]);
 
   const puedeEditar = (requisicion) => {
@@ -114,13 +119,34 @@ const Requisiciones = () => {
     if (requisicion.estado !== 'borrador') return false;
     if (permisos.isFarmaciaAdmin) return true;
     if (permisos.isCentroUser) {
-      const userCentro = user?.centro?.id || user?.profile?.centro?.id;
+      const userCentro = user?.centro?.id;
       return requisicion.centro === userCentro;
     }
     return false;
   };
 
   const puedeEnviar = (requisicion) => puedeEditar(requisicion) && requisicion.estado === 'borrador';
+
+  const stateTabs = [
+    { key: 'todas', label: 'Todas' },
+    { key: 'pendientes', label: 'Pendientes' },
+    { key: 'aceptadas_parciales', label: 'Aceptadas/Parciales' },
+    { key: 'surtidas', label: 'Surtidas' },
+    { key: 'rechazadas_canceladas', label: 'Rechazadas/Canceladas' },
+  ];
+
+  const cargarResumenEstados = useCallback(async () => {
+    try {
+      const resp = await requisicionesAPI.getAll({ page_size: 1 }); // fallback
+      // Reemplazada abajo por endpoint dedicado
+    } catch (_) { /**/ }
+    try {
+      const resumen = await requisicionesAPI.resumenEstados();
+      setResumenEstados(resumen.data || { por_estado: {}, por_grupo: {} });
+    } catch (error) {
+      console.warn('No fue posible cargar resumen de estados', error);
+    }
+  }, []);
 
   const handleEnviar = async (id) => {
     if (!window.confirm('¿Enviar requisición? No podrás editarla después.')) return;
@@ -148,7 +174,7 @@ const Requisiciones = () => {
     const motivo = prompt('Motivo del rechazo:');
     if (!motivo) return;
     try {
-      await requisicionesAPI.rechazar(id, { motivo });
+      await requisicionesAPI.rechazar(id, { observaciones: motivo });
       toast.success('Requisición rechazada');
       cargarRequisiciones();
     } catch (error) {
@@ -178,19 +204,30 @@ const Requisiciones = () => {
     }
   };
 
-  const handleDescargarHoja = async (id, folio) => {
+  const handleDescargarPDF = async (id, tipo, folio) => {
+    setLoading(true);
     try {
-      const response = await requisicionesAPI.getHojaRecoleccion(id);
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `Hoja_Recoleccion_${folio}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      toast.success('Hoja de recolección descargada');
+      let response;
+      let nombreArchivo;
+
+      if (tipo === 'aceptacion') {
+        response = await requisicionesAPI.downloadPDFAceptacion(id);
+        nombreArchivo = `Hoja_Recoleccion_${folio || id}.pdf`;
+      } else if (tipo === 'rechazo') {
+        response = await requisicionesAPI.downloadPDFRechazo(id);
+        nombreArchivo = `requisicion_rechazada_${folio || id}.pdf`;
+      } else {
+        throw new Error('Tipo de PDF invalido');
+      }
+
+      descargarArchivo(response.data, nombreArchivo);
+      toast.success(`PDF ${tipo} descargado correctamente`);
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Error al descargar hoja');
+      console.error('Error al descargar PDF:', error);
+      const message = error.response?.data?.error || error.message || 'Error al descargar PDF';
+      toast.error(message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -241,6 +278,28 @@ const Requisiciones = () => {
         badge={filtrosActivos ? `${filtrosActivos} filtros activos` : null}
         actions={headerActions}
       />
+
+      <div className="flex flex-wrap gap-3">
+        {stateTabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setGrupoEstado(tab.key)}
+            className={`px-4 py-2 rounded-full text-sm font-semibold transition ${
+              grupoEstado === tab.key
+                ? 'text-white'
+                : 'text-gray-700 border border-gray-200 bg-white'
+            }`}
+            style={
+              grupoEstado === tab.key
+                ? { background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})` }
+                : {}
+            }
+          >
+            {tab.label}
+            {resumenEstados.por_grupo?.[tab.key] ? ` (${resumenEstados.por_grupo[tab.key]})` : ''}
+          </button>
+        ))}
+      </div>
 
       {/* Filtros */}
       <div className="bg-white p-4 rounded-lg shadow mb-6">
@@ -372,10 +431,21 @@ const Requisiciones = () => {
 
                   {(req.estado === 'autorizada' || req.estado === 'surtida') && permisos.descargarHojaRecoleccion && (
                     <button
-                      onClick={() => handleDescargarHoja(req.id, req.folio)}
+                      onClick={() => handleDescargarPDF(req.id, 'aceptacion', req.folio)}
+                      disabled={loading}
                       className="bg-blue-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-blue-700"
                     >
-                      <FaDownload /> Hoja de recolección
+                      <FaDownload /> Hoja de recoleccion
+                    </button>
+                  )}
+
+                  {req.estado === 'rechazada' && permisos.descargarHojaRecoleccion && (
+                    <button
+                      onClick={() => handleDescargarPDF(req.id, 'rechazo', req.folio)}
+                      disabled={loading}
+                      className="bg-red-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-red-700"
+                    >
+                      <FaDownload /> PDF de rechazo
                     </button>
                   )}
 
@@ -404,30 +474,14 @@ const Requisiciones = () => {
       </div>
 
       {!loading && totalRequisiciones > 0 && (
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mt-6">
-          <p className="text-sm text-gray-600">
-            Mostrando {totalRequisiciones === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}-
-            {Math.min(currentPage * PAGE_SIZE, totalRequisiciones)} de {totalRequisiciones} requisiciones
-          </p>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-              className="px-3 py-1 border rounded disabled:opacity-50"
-            >
-              Anterior
-            </button>
-            <span className="text-sm text-gray-700">
-              Página {currentPage} de {totalPages}
-            </span>
-            <button
-              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-              className="px-3 py-1 border rounded disabled:opacity-50"
-            >
-              Siguiente
-            </button>
-          </div>
+        <div className="mt-6">
+          <Pagination
+            page={currentPage}
+            totalPages={totalPages}
+            totalItems={totalRequisiciones}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCurrentPage}
+          />
         </div>
       )}
     </div>

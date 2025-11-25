@@ -87,7 +87,6 @@ class Command(BaseCommand):
             # Crear perfil
             UserProfile.objects.create(
                 user=solicitante_norte,
-                centro=centro_norte,
                 cargo='Responsable de Centro'
             )
             
@@ -113,7 +112,6 @@ class Command(BaseCommand):
             
             UserProfile.objects.create(
                 user=solicitante_sur,
-                centro=centro_sur,
                 cargo='Responsable de Centro'
             )
             

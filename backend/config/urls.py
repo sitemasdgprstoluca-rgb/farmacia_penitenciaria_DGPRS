@@ -8,10 +8,9 @@ urlpatterns = [
     # Admin
     path('admin/', admin.site.urls),
     
-    # API v1
+    # API v1 - TODO CENTRALIZADO EN api_urls.py
+    path('api/', include('config.api_urls')),
     path('api/v1/', include('config.api_urls')),
-    path('api/', include('inventario.urls')),  # Productos, Lotes, etc.
-    path('api/', include('farmacia.urls')),    # ✅ Auth, Dashboard, Trazabilidad
     
     # Documentación API
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),

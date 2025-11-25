@@ -1,0 +1,74 @@
+"""Tests basicos de permisos por roles."""
+
+from decimal import Decimal
+from rest_framework.test import APITestCase, APIClient
+from rest_framework import status
+from django.contrib.auth import get_user_model
+
+from core.models import Centro, Requisicion, Producto, DetalleRequisicion
+
+User = get_user_model()
+
+
+class PermissionsMatrixTest(APITestCase):
+    def setUp(self):
+        self.centro_1 = Centro.objects.create(clave='CTR001', nombre='Centro 1')
+        self.centro_2 = Centro.objects.create(clave='CTR002', nombre='Centro 2')
+
+        self.superuser = User.objects.create_superuser(username='super', email='super@test.com', password='test123')
+        self.user_centro1 = User.objects.create_user(username='user1', password='test123', centro=self.centro_1)
+        self.user_centro2 = User.objects.create_user(username='user2', password='test123', centro=self.centro_2)
+
+        self.client = APIClient()
+
+    def test_user_no_ve_requisicion_de_otro_centro(self):
+        req = Requisicion.objects.create(usuario_solicita=self.user_centro2, centro=self.centro_2)
+        self.client.force_authenticate(user=self.user_centro1)
+        resp = self.client.get(f'/api/requisiciones/{req.id}/')
+        self.assertNotEqual(resp.status_code, status.HTTP_200_OK)
+
+    def test_superuser_si_ve_requisicion_ajena(self):
+        req = Requisicion.objects.create(usuario_solicita=self.user_centro2, centro=self.centro_2)
+        self.client.force_authenticate(user=self.superuser)
+        resp = self.client.get(f'/api/requisiciones/{req.id}/')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+    def test_autorizar_requiere_superuser(self):
+        # Crear producto para el detalle
+        producto = Producto.objects.create(
+            clave='PROD001',
+            descripcion='Producto Test',
+            unidad_medida='PIEZA',
+            precio_unitario=Decimal('100.00')
+        )
+        
+        req = Requisicion.objects.create(
+            usuario_solicita=self.user_centro1,
+            centro=self.centro_1,
+            estado='enviada'
+        )
+        
+        # Agregar detalle a la requisición
+        DetalleRequisicion.objects.create(
+            requisicion=req,
+            producto=producto,
+            cantidad_solicitada=10
+        )
+        
+        # IMPORTANTE: Limpiar autenticación y autenticar como user normal
+        self.client.force_authenticate(user=None)
+        self.client.force_authenticate(user=self.user_centro1)
+        
+        # user normal NO DEBE poder autorizar
+        resp = self.client.post(f'/api/requisiciones/{req.id}/autorizar/')
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN,
+                        f"Usuario normal recibió {resp.status_code} en lugar de 403. Data: {resp.data}")
+
+        # Limpiar y autenticar como superuser
+        self.client.force_authenticate(user=None)
+        self.client.force_authenticate(user=self.superuser)
+        
+        # superuser SÍ DEBE poder autorizar
+        resp = self.client.post(f'/api/requisiciones/{req.id}/autorizar/')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK,
+                        f"Superuser recibió {resp.status_code} en lugar de 200. Data: {resp.data}")

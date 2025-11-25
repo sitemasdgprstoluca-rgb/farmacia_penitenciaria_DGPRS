@@ -37,6 +37,7 @@ import { DEV_CONFIG } from '../config/dev';
 import { usePermissions } from '../hooks/usePermissions';
 
 import { ProtectedComponent } from '../components/ProtectedAction';
+import Pagination from '../components/Pagination';
 
 import { COLORS } from '../constants/theme';
 
@@ -109,11 +110,8 @@ const STOCK_LEVELS = [
 
 
 const isDevSession = () => {
-
   const token = localStorage.getItem('token');
-
-  return (!token && DEV_CONFIG.ENABLED) || token === 'dev-token';
-
+  return (DEV_CONFIG.MOCKS_ENABLED && !token) || token === 'dev-token';
 };
 
 
@@ -676,7 +674,7 @@ const Productos = () => {
 
       console.error('Error al cargar productos', err);
 
-      if (DEV_CONFIG.ENABLED || localStorage.getItem('token') === 'dev-token') {
+      if (DEV_CONFIG.MOCKS_ENABLED || localStorage.getItem('token') === 'dev-token') {
 
         applyMockProductos();
 
@@ -1177,114 +1175,69 @@ const Productos = () => {
   };
 
   const handleImportar = async (e) => {
-
     if (!puede.importar) {
-
       toast.error('No tiene permisos para importar productos');
-
       e.target.value = null;
-
       return;
-
     }
 
     const file = e.target.files?.[0];
-
     if (!file) return;
 
-
-
     const form = new FormData();
-
     form.append('file', file);
 
-
-
     try {
-
       setLoading(true);
-
       if (isDevSession()) {
-
         const nuevos = Array.from({ length: 3 }).map((_, idx) => {
-
           const stockMin = 20 + idx * 5;
-
           const stockActual = stockMin + 50 + idx * 10;
-
           const demo = {
-
             id: Date.now() + idx,
-
             clave: `IMP-${String(mockProductosRef.current.length + idx + 1).padStart(3, '0')}`,
-
             descripcion: `Producto importado ${idx + 1}`,
-
             unidad_medida: UNIDADES[(idx + mockProductosRef.current.length) % UNIDADES.length],
-
             precio_unitario: (12 + idx * 1.5).toFixed(2),
-
             stock_minimo: stockMin,
-
             stock_actual: stockActual,
-
             activo: true,
-
             creado_por: user?.email || 'demo@edomex.gob.mx',
-
             created_at: new Date().toISOString(),
-
           };
-
           demo.alerta_stock = resolveNivelStock(demo);
-
           return demo;
-
         });
-
         mockProductosRef.current = [...nuevos, ...mockProductosRef.current];
-
-        toast.success(`Importación demo completada: ${nuevos.length} productos simulados`, { duration: 5000 });
-
+        toast.success(`Importaci?n demo completada: ${nuevos.length} productos simulados`, { duration: 5000 });
         applyMockProductos();
-
         return;
-
       }
 
       const response = await productosAPI.importar(form);
+      const resumen = response.data?.resumen || {};
+      const errores = response.data?.errores || [];
 
       toast.success(
-
-        `¡Importación completada por ${user?.username || 'usuario'}
-
-` +
-
-          `Creados: ${response.data?.creados || 0} | Actualizados: ${response.data?.actualizados || 0}`,
-
+        `Importaci?n completada. Creados: ${resumen.creados || 0} | Actualizados: ${resumen.actualizados || 0} | Total: ${resumen.total_procesados || 0}`,
         { duration: 5000 }
-
       );
+      if (errores.length) {
+        console.warn('Errores de importaci?n de productos', errores);
+        toast.error(`${errores.length} fila(s) con error. Revisa detalles en consola.`);
+      }
 
       fetchProductos();
-
     } catch (err) {
-
       console.error('Error al importar', err);
-
       const errorMsg = err.response?.data?.error || 'No se pudo importar';
-
-      toast.error(`¡Error (${user?.username || 'usuario'}): ${errorMsg}`, { duration: 5000 });
-
+      toast.error(`Error: ${errorMsg}`, { duration: 5000 });
     } finally {
-
       e.target.value = null;
-
       setLoading(false);
-
     }
-
   };
+
 
 
 
@@ -1986,61 +1939,13 @@ const Productos = () => {
 
 
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-
-        <p className="text-sm text-gray-600">
-
-          Mostrando {(currentPage - 1) * PAGE_SIZE + 1}-{Math.min(currentPage * PAGE_SIZE, totalProductos)} de {totalProductos} registros
-
-        </p>
-
-        <div className="flex items-center gap-2">
-
-          <button
-
-            type="button"
-
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-
-            disabled={currentPage === 1}
-
-            className="rounded-full p-2 text-white disabled:opacity-50"
-
-            style={{ background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})` }}
-
-          >
-
-            <FaChevronLeft />
-
-          </button>
-
-          <span className="text-sm font-semibold text-gray-700">
-
-            Página {currentPage} de {totalPages}
-
-          </span>
-
-          <button
-
-            type="button"
-
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-
-            disabled={currentPage >= totalPages}
-
-            className="rounded-full p-2 text-white disabled:opacity-50"
-
-            style={{ background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})` }}
-
-          >
-
-            <FaChevronRight />
-
-          </button>
-
-        </div>
-
-      </div>
+      <Pagination
+        page={currentPage}
+        totalPages={totalPages}
+        totalItems={totalProductos}
+        pageSize={PAGE_SIZE}
+        onPageChange={setCurrentPage}
+      />
 
 
 

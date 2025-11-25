@@ -7,28 +7,30 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 # Core views
 from core.views import (
-    CustomTokenObtainPairView, LogoutView, UserProfileView,
+    CustomTokenObtainPairView, LogoutView,
     UserViewSet, ImportacionLogViewSet, AuditoriaLogViewSet, DevAutoLoginView,
-    DetalleRequisicionViewSet
+    DetalleRequisicionViewSet, NotificacionViewSet
 )
 
 # Inventario views
 from inventario.views import (
-    ProductoViewSet, LoteViewSet, RequisicionViewSet,
+    ProductoViewSet, LoteViewSet, RequisicionViewSet, CentroViewSet,
     MovimientoViewSet, dashboard_resumen, trazabilidad_producto,
     trazabilidad_lote, reporte_inventario, reporte_movimientos,
-    reporte_caducidades, reportes_precarga
+    reporte_caducidades, reportes_precarga,
+    reporte_medicamentos_por_caducar, reporte_bajo_stock, reporte_consumo
 )
 
-# Router
 router = DefaultRouter()
 
 # Core
 router.register(r'usuarios', UserViewSet, basename='usuario')
 router.register(r'importaciones', ImportacionLogViewSet, basename='importacion')
 router.register(r'auditoria', AuditoriaLogViewSet, basename='auditoria')
+router.register(r'notificaciones', NotificacionViewSet, basename='notificacion')
 
 # Inventario
+router.register(r'centros', CentroViewSet, basename='centro')
 router.register(r'productos', ProductoViewSet, basename='producto')
 router.register(r'lotes', LoteViewSet, basename='lote')
 router.register(r'requisiciones', RequisicionViewSet, basename='requisicion')
@@ -36,15 +38,13 @@ router.register(r'detalles-requisicion', DetalleRequisicionViewSet, basename='de
 router.register(r'movimientos', MovimientoViewSet, basename='movimiento')
 
 urlpatterns = [
-    # Autenticación
+    # Autenticacion
     path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('logout/', LogoutView.as_view(), name='logout'),
-    path('profile/', UserProfileView.as_view(), name='profile'),
-    path('me/', UserProfileView.as_view(), name='me'),
     path('dev-autologin/', DevAutoLoginView.as_view(), name='dev-autologin'),
     
-    # Router
+    # Router (incluye /usuarios/me/ como accion del UserViewSet)
     path('', include(router.urls)),
 
     # Dashboard y reportes
@@ -54,5 +54,8 @@ urlpatterns = [
     path('reportes/inventario/', reporte_inventario, name='reporte-inventario'),
     path('reportes/movimientos/', reporte_movimientos, name='reporte-movimientos'),
     path('reportes/caducidades/', reporte_caducidades, name='reporte-caducidades'),
+    path('reportes/medicamentos_por_caducar/', reporte_medicamentos_por_caducar, name='reporte-medicamentos-por-caducar'),
+    path('reportes/bajo_stock/', reporte_bajo_stock, name='reporte-bajo-stock'),
+    path('reportes/consumo/', reporte_consumo, name='reporte-consumo'),
     path('reportes/precarga/', reportes_precarga, name='reportes-precarga'),
 ]

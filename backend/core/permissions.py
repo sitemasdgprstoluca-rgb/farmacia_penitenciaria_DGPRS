@@ -4,8 +4,20 @@ Estructura: SUPER_ADMIN > FARMACIA_ADMIN > CENTRO_USER > VISTA_USER
 """
 from rest_framework import permissions
 import logging
+from core.constants import EXTRA_PERMISSIONS
 
 logger = logging.getLogger(__name__)
+
+
+def _has_extra_perm(user, extras):
+    """Valida si el usuario tiene algún permiso extra (vía grupos)."""
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
+    group_names = set(g.name.upper() for g in user.groups.all())
+    for extra in extras:
+        if extra.upper() in group_names:
+            return True
+    return False
 
 
 def _has_role(user, roles):
@@ -21,8 +33,8 @@ def _has_role(user, roles):
 
     role_aliases = {
         'admin': {'admin_sistema', 'superusuario'},
-        'farmacia': {'farmacia', 'admin_farmacia'},
-        'centro': {'centro', 'usuario_normal'},
+        'farmacia': {'farmacia', 'admin_farmacia', 'farmaceutico'},  # + FARMACEUTICO
+        'centro': {'centro', 'usuario_normal', 'solicitante'},  # + SOLICITANTE
         'vista': {'vista', 'usuario_vista'},
     }
 
@@ -30,45 +42,53 @@ def _has_role(user, roles):
         key = role.lower()
         if normalized in role_aliases.get(key, {key}):
             return True
+        # Revisar grupos con aliases expandidos
         if key == 'admin' and 'FARMACIA_ADMIN' in group_names:
             return True
-        if key == 'farmacia' and 'FARMACIA_ADMIN' in group_names:
+        if key == 'farmacia' and ('FARMACIA_ADMIN' in group_names or 'FARMACEUTICO' in group_names):
             return True
-        if key == 'centro' and 'CENTRO_USER' in group_names:
+        if key == 'centro' and ('CENTRO_USER' in group_names or 'SOLICITANTE' in group_names):
             return True
         if key == 'vista' and 'VISTA_USER' in group_names:
             return True
+
     return False
+
+
+def _has_permission(user, roles, extra_perms=None):
+    """Evalúa rol base o permisos extra permitidos."""
+    extra_perms = extra_perms or []
+    return _has_role(user, roles) or _has_extra_perm(user, extra_perms)
 
 
 class IsSuperuserOnly(permissions.BasePermission):
     """Permiso SOLO para superusuarios / admin_sistema."""
     def has_permission(self, request, view):
-        return _has_role(request.user, ['admin'])
+        return _has_permission(request.user, ['admin'], EXTRA_PERMISSIONS)
 
 
 class IsAdminRole(permissions.BasePermission):
     """Administrador del sistema."""
     def has_permission(self, request, view):
-        return _has_role(request.user, ['admin'])
+        return _has_permission(request.user, ['admin'], ['CAN_MANAGE_USERS', 'CAN_MANAGE_CENTROS'])
 
 
 class IsFarmaciaRole(permissions.BasePermission):
     """Usuarios de farmacia."""
     def has_permission(self, request, view):
-        return _has_role(request.user, ['admin', 'farmacia'])
+        return _has_permission(request.user, ['admin', 'farmacia'], ['CAN_VIEW_ALL_REQUISICIONES'])
 
 
 class IsCentroRole(permissions.BasePermission):
     """Usuarios de centro/unidad."""
     def has_permission(self, request, view):
-        return _has_role(request.user, ['admin', 'farmacia', 'centro'])
+        return _has_permission(request.user, ['admin', 'farmacia', 'centro'], ['CAN_VIEW_ALL_REQUISICIONES'])
 
 
 class IsVistaRole(permissions.BasePermission):
     """Usuarios de solo consulta."""
     def has_permission(self, request, view):
-        return _has_role(request.user, ['admin', 'farmacia', 'vista'])
+        return _has_permission(request.user, ['admin', 'farmacia', 'vista'], ['CAN_VIEW_GLOBAL_REPORTS'])
 
 
 class IsFarmaciaAdminOrReadOnly(permissions.BasePermission):
@@ -93,7 +113,7 @@ class IsCentroUser(permissions.BasePermission):
         if _has_role(request.user, ['admin', 'farmacia']):
             return True
         if hasattr(obj, 'centro'):
-            user_centro = getattr(request.user, 'centro', None) or getattr(getattr(request.user, 'profile', None), 'centro', None)
+            user_centro = getattr(request.user, 'centro', None)
             return obj.centro == user_centro
         return False
 
@@ -110,6 +130,18 @@ class IsVistaUserOrAdmin(permissions.BasePermission):
         if request.method not in permissions.SAFE_METHODS:
             return False
         return _has_role(request.user, ['admin', 'farmacia', 'vista'])
+
+
+class CanViewNotifications(permissions.BasePermission):
+    """Permiso para ver notificaciones."""
+    def has_permission(self, request, view):
+        return _has_permission(request.user, ['admin', 'farmacia', 'centro', 'vista'], ['VER_NOTIFICACIONES'])
+
+
+class CanViewProfile(permissions.BasePermission):
+    """Permiso para ver/editar perfil propio."""
+    def has_permission(self, request, view):
+        return _has_permission(request.user, ['admin', 'farmacia', 'centro', 'vista'], ['VER_PERFIL'])
 
 
 class CanManageOwnProfile(permissions.BasePermission):

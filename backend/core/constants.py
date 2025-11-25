@@ -35,6 +35,32 @@ ESTADOS_REQUISICION = [
     ('cancelada', 'Cancelada'),
 ]
 
+# Grupos lógicos de estados de requisición para filtros y resúmenes
+REQUISICION_GRUPOS_ESTADO = {
+    'pendientes': ['borrador', 'enviada'],
+    'aceptadas_parciales': ['autorizada', 'parcial'],
+    'surtidas': ['surtida'],
+    'rechazadas_canceladas': ['rechazada', 'cancelada'],
+}
+
+# Permisos extra (asignados vía grupos) que pueden complementar al rol base
+EXTRA_PERMISSIONS = [
+    'CAN_VIEW_GLOBAL_REPORTS',
+    'CAN_MANAGE_CENTROS',
+    'CAN_MANAGE_USERS',
+    'CAN_VIEW_ALL_REQUISICIONES',
+    'VER_NOTIFICACIONES',
+    'VER_PERFIL',
+]
+
+# Grupos lógicos de estados de requisición para filtros y resúmenes
+REQUISICION_GRUPOS_ESTADO = {
+    'pendientes': ['borrador', 'enviada'],
+    'aceptadas_parciales': ['autorizada', 'parcial'],
+    'surtidas': ['surtida'],
+    'rechazadas_canceladas': ['rechazada', 'cancelada'],
+}
+
 # Tipos de movimiento
 TIPOS_MOVIMIENTO = [
     ('entrada', 'Entrada'),

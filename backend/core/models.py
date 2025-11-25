@@ -1,12 +1,26 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.conf import settings
-from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator
 from django.core.exceptions import ValidationError
 from decimal import Decimal
 from datetime import date
-from .constants import *
+from .constants import (
+    UNIDADES_MEDIDA,
+    ESTADOS_LOTE,
+    ESTADOS_REQUISICION,
+    TIPOS_MOVIMIENTO,
+    ROLES_USUARIO,
+    PRODUCTO_CLAVE_MIN_LENGTH,
+    PRODUCTO_CLAVE_MAX_LENGTH,
+    PRODUCTO_DESCRIPCION_MIN_LENGTH,
+    PRODUCTO_DESCRIPCION_MAX_LENGTH,
+    PRODUCTO_PRECIO_MAX_DIGITS,
+    PRODUCTO_PRECIO_DECIMAL_PLACES,
+    LOTE_NUMERO_MIN_LENGTH,
+    LOTE_NUMERO_MAX_LENGTH,
+    NIVELES_STOCK,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -117,6 +131,13 @@ class Producto(models.Model):
         default=True,
         help_text="Indica si el producto está activo en el sistema"
     )
+    codigo_barras_producto = models.CharField(
+        max_length=50,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text="Código de barras del producto (opcional)"
+    )
     
     # Campos de auditoría
     created_at = models.DateTimeField(auto_now_add=True)
@@ -136,6 +157,9 @@ class Producto(models.Model):
             models.Index(fields=['clave']),
             models.Index(fields=['unidad_medida']),
             models.Index(fields=['-created_at']),
+            # Índices compuestos para queries frecuentes
+            models.Index(fields=['activo', 'stock_minimo'], name='idx_producto_activo_stock'),
+            models.Index(fields=['clave', 'activo'], name='idx_producto_clave_activo'),
         ]
 
     def clean(self):
@@ -213,6 +237,14 @@ class Lote(models.Model):
         related_name='lotes',
         help_text="Producto al que pertenece el lote"
     )
+    centro = models.ForeignKey(
+        'Centro',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='lotes_centro',
+        help_text="Centro asociado para inventario por sede"
+    )
     numero_lote = models.CharField(
         max_length=LOTE_NUMERO_MAX_LENGTH,
         blank=False,
@@ -252,6 +284,13 @@ class Lote(models.Model):
     factura = models.CharField(max_length=100, blank=True)
     fecha_entrada = models.DateField(auto_now_add=True)
     observaciones = models.TextField(blank=True)
+    codigo_barras = models.CharField(
+        max_length=100,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text="Código de barras del lote (RFC-45)"
+    )
     
     # Soft delete
     deleted_at = models.DateTimeField(null=True, blank=True)
@@ -280,6 +319,9 @@ class Lote(models.Model):
             models.Index(fields=['fecha_caducidad']),
             models.Index(fields=['producto', 'estado']),
             models.Index(fields=['deleted_at']),
+            # Índices compuestos para queries de stock y caducidades
+            models.Index(fields=['producto', 'estado', 'fecha_caducidad'], name='idx_lote_stock_lookup'),
+            models.Index(fields=['estado', 'fecha_caducidad', 'cantidad_actual'], name='idx_lote_disponible'),
         ]
 
     def clean(self):
@@ -322,6 +364,21 @@ class Lote(models.Model):
     def __str__(self):
         return f"Lote {self.numero_lote} - {self.producto.clave}"
     
+    def generar_codigo_barras(self):
+        """
+        Genera código de barras basado en producto_clave + lote_numero
+        Formato: PRODUCTO:LOTE
+        Ejemplo: MED001:LOT123
+        
+        Returns:
+            str: Código de barras generado
+        """
+        if not self.codigo_barras:
+            barcode = f"{self.producto.clave}:{self.numero_lote}"
+            self.codigo_barras = barcode
+            self.save(update_fields=['codigo_barras'])
+        return self.codigo_barras
+    
     def dias_para_caducar(self):
         """Calcula días restantes para caducidad"""
         delta = self.fecha_caducidad - date.today()
@@ -358,6 +415,24 @@ class Lote(models.Model):
     def active_only(cls):
         """Retorna solo lotes activos (no eliminados)"""
         return cls.objects.filter(deleted_at__isnull=True)
+    
+    @classmethod
+    def proximos_a_caducar(cls, dias=30):
+        """
+        Retorna lotes que caducarán en los próximos N días
+        Por defecto 30 días
+        """
+        from django.utils import timezone
+        hoy = timezone.now().date()
+        fecha_limite = hoy + timedelta(days=dias)
+        
+        return cls.objects.filter(
+            deleted_at__isnull=True,
+            estado='disponible',
+            fecha_caducidad__gte=hoy,
+            fecha_caducidad__lte=fecha_limite,
+            cantidad_actual__gt=0
+        ).select_related('producto').order_by('fecha_caducidad')
 
 
 class Requisicion(models.Model):
@@ -404,6 +479,35 @@ class Requisicion(models.Model):
 
     def __str__(self):
         return f"{self.folio} - {self.centro.nombre}"
+    
+    def save(self, *args, **kwargs):
+        """Auto-generar folio si no existe"""
+        if not self.folio:
+            # Generar folio: REQ-CENTRO-YYYYMMDD-NNNN
+            from django.utils import timezone
+            today = timezone.now()
+            fecha = today.strftime('%Y%m%d')
+            centro_codigo = self.centro.clave[:3] if self.centro else 'GEN'
+            
+            # Obtener último número del día
+            ultima = Requisicion.objects.filter(
+                folio__startswith=f'REQ-{centro_codigo}-{fecha}'
+            ).order_by('-folio').first()
+            
+            if ultima:
+                # Extraer número y sumar 1
+                try:
+                    ultimo_num = int(ultima.folio.split('-')[-1])
+                    nuevo_num = ultimo_num + 1
+                except (ValueError, IndexError):
+                    nuevo_num = 1
+            else:
+                nuevo_num = 1
+            
+            self.folio = f'REQ-{centro_codigo}-{fecha}-{nuevo_num:04d}'
+            logger.info(f"Folio generado automáticamente: {self.folio}")
+        
+        super().save(*args, **kwargs)
 
 
 class DetalleRequisicion(models.Model):
@@ -471,6 +575,11 @@ class Movimiento(models.Model):
         null=True,
         blank=True,
         related_name='movimientos'
+    )
+    documento_referencia = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Referencia del documento (factura, remito, etc.)"
     )
     observaciones = models.TextField(blank=True)
     fecha = models.DateTimeField(auto_now_add=True)
@@ -551,19 +660,12 @@ class ImportacionLog(models.Model):
 
 class UserProfile(models.Model):
     """
-    Perfil extendido de usuario para asociar con centros
+    Perfil extendido de usuario. El centro se toma directamente de User.centro.
     """
-    user = models.OneToOneField(settings.AUTH_USER_MODEL,
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='profile'
-    )
-    centro = models.ForeignKey(
-        Centro,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='usuarios_perfil',
-        help_text="Centro asignado al usuario"
     )
     telefono = models.CharField(max_length=15, blank=True)
     cargo = models.CharField(max_length=100, blank=True)
@@ -576,6 +678,40 @@ class UserProfile(models.Model):
     def __str__(self):
         return f"Perfil de {self.user.username}"
 
+
+class Notificacion(models.Model):
+    """Modelo para notificaciones del sistema."""
+    TIPOS = [
+        ('info', 'Información'),
+        ('success', 'Éxito'),
+        ('warning', 'Advertencia'),
+        ('error', 'Error'),
+    ]
+
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='notificaciones'
+    )
+    titulo = models.CharField(max_length=200)
+    mensaje = models.TextField()
+    tipo = models.CharField(max_length=20, choices=TIPOS, default='info')
+    requisicion = models.ForeignKey(
+        Requisicion,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='notificaciones'
+    )
+    leida = models.BooleanField(default=False)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'notificaciones'
+        ordering = ['-fecha_creacion']
+
+    def __str__(self):
+        return f"{self.titulo} - {self.usuario.username}"
 
 class AuditoriaLog(models.Model):
     """

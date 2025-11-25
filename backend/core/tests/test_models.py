@@ -20,7 +20,7 @@ class ProductoModelTest(TestCase):
         producto = Producto.objects.create(
             clave='MED-001',
             descripcion='Paracetamol 500mg',
-            unidad_medida='pieza',
+            unidad_medida='PIEZA',
             precio_unitario=Decimal('10.50'),
             stock_minimo=100,
             created_by=self.user
@@ -35,7 +35,7 @@ class ProductoModelTest(TestCase):
         producto = Producto.objects.create(
             clave='med-002',
             descripcion='Ibuprofeno 400mg',
-            unidad_medida='pieza',
+            unidad_medida='PIEZA',
             precio_unitario=Decimal('15.00')
         )
         
@@ -45,8 +45,8 @@ class ProductoModelTest(TestCase):
         """No se permite clave duplicada"""
         Producto.objects.create(
             clave='MED-003',
-            descripcion='Producto 1',
-            unidad_medida='pieza',
+            descripcion='Primer Producto',
+            unidad_medida='PIEZA',
             precio_unitario=Decimal('10.00')
         )
         
@@ -54,7 +54,7 @@ class ProductoModelTest(TestCase):
             Producto.objects.create(
                 clave='MED-003',
                 descripcion='Producto 2',
-                unidad_medida='caja',
+                unidad_medida='CAJA',
                 precio_unitario=Decimal('20.00')
             )
     
@@ -64,7 +64,7 @@ class ProductoModelTest(TestCase):
             producto = Producto(
                 clave='MED-004',
                 descripcion='Producto con precio negativo',
-                unidad_medida='pieza',
+                unidad_medida='PIEZA',
                 precio_unitario=Decimal('-10.00')
             )
             producto.full_clean()
@@ -77,7 +77,7 @@ class LoteModelTest(TestCase):
         self.producto = Producto.objects.create(
             clave='TEST-001',
             descripcion='Producto de prueba',
-            unidad_medida='pieza',
+            unidad_medida='PIEZA',
             precio_unitario=Decimal('10.00')
         )
     

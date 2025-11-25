@@ -16,6 +16,7 @@ import {
 import { DEV_CONFIG } from '../config/dev';
 import PageHeader from '../components/PageHeader';
 import { COLORS, PRIMARY_GRADIENT, SECONDARY_GRADIENT } from '../constants/theme';
+import Pagination from '../components/Pagination';
 
 const MOCK_PRODUCTOS = Array.from({ length: 40 }).map((_, index) => ({
   id: index + 1,
@@ -108,7 +109,7 @@ const Lotes = () => {
   const cargarProductos = async () => {
     try {
       const token = localStorage.getItem('token');
-      if ((!token && DEV_CONFIG.ENABLED) || token === 'dev-token') {
+      if ((DEV_CONFIG.MOCKS_ENABLED && !token) || token === 'dev-token') {
         setProductos(MOCK_PRODUCTOS);
         return;
       }
@@ -116,7 +117,7 @@ const Lotes = () => {
       const response = await productosAPI.getAll({ activo: true, page_size: 1000 });
       setProductos(response.data.results || response.data);
     } catch (error) {
-      if (DEV_CONFIG.ENABLED || localStorage.getItem('token') === 'dev-token') {
+      if (DEV_CONFIG.MOCKS_ENABLED || localStorage.getItem('token') === 'dev-token') {
         setProductos(MOCK_PRODUCTOS);
         return;
       }
@@ -306,33 +307,35 @@ const Lotes = () => {
     }
   };
 
-  const handleImportar = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+const handleImportar = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  try {
+    setLoading(true);
+    const response = await lotesAPI.importar(formData);
+    const resumen = response.data?.resumen || {};
+    const errores = response.data?.errores || [];
+
+    toast.success(
+      `Importación completada: ${resumen.exitos || 0} filas correctas de ${resumen.total || 0}`
+    );
     
-    const formData = new FormData();
-    formData.append('file', file);
+    if (errores.length) {
+      console.warn('Errores en importación de lotes:', errores);
+      toast.error(`${errores.length} errores. Revise la consola.`);
+    }
     
-    try {
-      setLoading(true);
-      const response = await lotesAPI.importar(formData);
-      
-      toast.success(
-        `Importación completada: ${response.data.creados} creados, ${response.data.actualizados} actualizados`
-      );
-      
-      if (response.data.errores.length > 0) {
-        console.warn('Errores en importación:', response.data.errores);
-        toast.error(`${response.data.errores.length} errores. Revise la consola.`);
-      }
-      
-      setShowImportModal(false);
-      cargarLotes();
-    } catch (error) {
-      toast.error(error.response?.data?.error || 'Error al importar lotes');
-    } finally {
-      setLoading(false);
-      e.target.value = '';
+    setShowImportModal(false);
+    cargarLotes();
+  } catch (error) {
+    toast.error(error.response?.data?.error || 'Error al importar lotes');
+  } finally {
+    setLoading(false);
+    e.target.value = '';
     }
   };
 
@@ -553,55 +556,17 @@ const Lotes = () => {
 
         {/* Paginación */}
         {totalPages > 1 && (
-          <div className="bg-gray-50 px-6 py-4 flex items-center justify-between border-t">
-            <div className="text-sm text-gray-700">
-              Mostrando {(currentPage - 1) * pageSize + 1} a {Math.min(currentPage * pageSize, totalLotes)} de {totalLotes} lotes
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="px-4 py-2 bg-white border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
-              >
-                <FaChevronLeft className="inline" /> Anterior
-              </button>
-              
-              {[...Array(Math.min(5, totalPages))].map((_, i) => {
-                let pageNum;
-                if (totalPages <= 5) {
-                  pageNum = i + 1;
-                } else if (currentPage <= 3) {
-                  pageNum = i + 1;
-                } else if (currentPage >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i;
-                } else {
-                  pageNum = currentPage - 2 + i;
-                }
-                
-                return (
-                  <button
-                    key={pageNum}
-                    onClick={() => setCurrentPage(pageNum)}
-                    className={`px-4 py-2 border rounded-lg ${
-                      currentPage === pageNum
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-white hover:bg-gray-100'
-                    }`}
-                  >
-                    {pageNum}
-                  </button>
-                );
-              })}
-              
-              <button
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="px-4 py-2 bg-white border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
-              >
-                Siguiente <FaChevronRight className="inline" />
-              </button>
-            </div>
-          </div>
+          <Pagination
+            page={currentPage}
+            totalPages={totalPages}
+            totalItems={totalLotes}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setCurrentPage(1);
+            }}
+          />
         )}
       </div>
 

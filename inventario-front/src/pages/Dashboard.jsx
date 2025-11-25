@@ -92,7 +92,11 @@ const Dashboard = () => {
       );
     } catch (err) {
       console.error('Error al cargar dashboard:', err);
-      setError(err.response?.data?.error || 'Error al cargar el dashboard');
+      if (err.response?.status === 401) {
+        setError('Sesion expirada. Inicia sesion nuevamente.');
+      } else {
+        setError(err.response?.data?.error || err.message || 'Error al cargar el dashboard');
+      }
       setKpis({
         total_productos: 0,
         stock_total: 0,

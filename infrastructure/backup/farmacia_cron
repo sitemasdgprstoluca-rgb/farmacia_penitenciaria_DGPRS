@@ -1,0 +1,102 @@
+# Cron Jobs Configuration for Farmacia Sistema
+# 
+# IMPORTANTE: Antes de activar estos cron jobs:
+# 1. Ejecutar: infrastructure/backup/preflight_check.sh
+# 2. Verificar que todos los checks pasen
+# 3. Ajustar rutas según tu instalación
+# 4. Cambiar 'root' por el usuario apropiado si es necesario
+#
+# Instalación:
+#   sudo cp farmacia_cron /etc/cron.d/farmacia
+#   sudo chmod 644 /etc/cron.d/farmacia
+#   sudo systemctl restart cron  # o 'service cron restart'
+#
+# Verificar:
+#   grep CRON /var/log/syslog | grep farmacia
+
+# Variables de entorno (ajustar según tu instalación)
+# NOTA: Cron no carga .bashrc, definir aquí o en script wrapper
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# Usuario que ejecutará los jobs (cambiar si es necesario)
+# Debe tener permisos de lectura/escritura en:
+#   - /backups/farmacia
+#   - /var/log/farmacia
+#   - Base de datos PostgreSQL
+FARMACIA_USER=root
+
+# Ruta al proyecto (AJUSTAR SEGÚN TU INSTALACIÓN)
+PROJECT_ROOT=/var/www/farmacia
+INFRA_DIR=${PROJECT_ROOT}/infrastructure
+
+# Directorio de logs
+LOG_DIR=/var/log/farmacia
+
+# ====================================
+# BACKUP JOBS
+# ====================================
+
+# Backup diario a las 2:00 AM
+# Crea backup completo de base de datos y archivos media
+0 2 * * * ${FARMACIA_USER} ${INFRA_DIR}/backup/backup_script.sh >> ${LOG_DIR}/backup.log 2>&1
+
+# Test de restore semanal - Domingo 3:00 AM
+# Valida que los backups son restaurables
+0 3 * * 0 ${FARMACIA_USER} ${INFRA_DIR}/backup/test_restore.sh >> ${LOG_DIR}/test_restore.log 2>&1
+
+# ====================================
+# MAINTENANCE JOBS
+# ====================================
+
+# Limpieza de logs viejos - Diario 1:00 AM
+# Rota logs para evitar que crezcan indefinidamente
+0 1 * * * ${FARMACIA_USER} /usr/sbin/logrotate -f /etc/logrotate.d/farmacia 2>&1
+
+# PostgreSQL VACUUM - Primer domingo del mes 4:00 AM
+# Optimiza la base de datos y recupera espacio
+0 4 1-7 * 0 ${FARMACIA_USER} psql -h localhost -U postgres -d farmacia -c "VACUUM ANALYZE;" >> ${LOG_DIR}/maintenance.log 2>&1
+
+# ====================================
+# MONITORING JOBS (Opcional)
+# ====================================
+
+# Health check cada 5 minutos
+# Verifica que el servicio Django esté respondiendo
+*/5 * * * * ${FARMACIA_USER} curl -f http://localhost:8000/health/ || echo "Django DOWN" | mail -s "ALERT: Django Down" admin@example.com
+
+# Verificar espacio en disco - Cada hora
+# Alerta si el disco está >85% lleno
+0 * * * * ${FARMACIA_USER} df -h / | awk 'NR==2 {if (substr($5,1,length($5)-1) > 85) print "Disk usage: "$5}' | grep . && echo "DISK SPACE WARNING" >> ${LOG_DIR}/disk_alerts.log
+
+# ====================================
+# BACKUP VERIFICATION (Recomendado)
+# ====================================
+
+# Verificar tamaño de backups - Diario 5:00 AM
+# Alerta si el último backup es muy pequeño (posible fallo)
+0 5 * * * ${FARMACIA_USER} ${INFRA_DIR}/backup/verify_backup_size.sh >> ${LOG_DIR}/backup_verify.log 2>&1
+
+# ====================================
+# NOTAS ADICIONALES
+# ====================================
+#
+# 1. Notificaciones por email:
+#    - Instalar mailutils: apt-get install mailutils
+#    - Configurar SMTP en /etc/postfix/main.cf
+#
+# 2. Logs de cron:
+#    - Ver: grep CRON /var/log/syslog
+#    - Específico de farmacia: grep farmacia /var/log/syslog
+#
+# 3. Debugging:
+#    - Ejecutar manualmente: sudo -u root /ruta/al/script.sh
+#    - Ver variables: crontab -l
+#
+# 4. Timezone:
+#    - Cron usa timezone del sistema
+#    - Verificar: timedatectl
+#
+# 5. Desactivar temporalmente:
+#    - Comentar líneas con #
+#    - O: sudo mv /etc/cron.d/farmacia /etc/cron.d/farmacia.disabled

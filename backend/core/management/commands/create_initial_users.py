@@ -118,7 +118,6 @@ class Command(BaseCommand):
                 # Crear perfil extendido
                 UserProfile.objects.create(
                     user=centro_user,
-                    centro=centro,
                     cargo='Responsable de Centro'
                 )
                 

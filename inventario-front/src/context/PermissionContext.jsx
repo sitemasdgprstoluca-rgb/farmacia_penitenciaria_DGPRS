@@ -2,67 +2,113 @@ import { useEffect, useState, useCallback } from 'react';
 import { PermissionContext } from './contexts';
 import apiClient from '../services/api';
 
-const calcularPermisos = (userData, userGroups) => {
+/**
+ * Roles soportados por el front:
+ * ADMIN (admin_sistema / superusuario)
+ * FARMACIA (farmacia / admin_farmacia / grupo FARMACIA_ADMIN)
+ * CENTRO (centro / usuario_normal / grupo CENTRO_USER)
+ * VISTA (vista / usuario_vista / grupo VISTA_USER)
+ */
+const PERMISOS_POR_ROL = {
+  ADMIN: {
+    verDashboard: true,
+    verProductos: true,
+    verLotes: true,
+    verRequisiciones: true,
+    verCentros: true,
+    verUsuarios: true,
+    verReportes: true,
+    verTrazabilidad: true,
+    verAuditoria: true,
+    verNotificaciones: true,
+    verPerfil: true,
+  },
+  FARMACIA: {
+    verDashboard: true,
+    verProductos: true,
+    verLotes: true,
+    verRequisiciones: true,
+    verCentros: true,
+    verUsuarios: false,
+    verReportes: true,
+    verTrazabilidad: true,
+    verAuditoria: true,
+    verNotificaciones: true,
+    verPerfil: true,
+  },
+  CENTRO: {
+    verDashboard: true,
+    verProductos: false,
+    verLotes: false,
+    verRequisiciones: true,
+    verCentros: false,
+    verUsuarios: false,
+    verReportes: true,
+    verTrazabilidad: false,
+    verAuditoria: false,
+    verNotificaciones: true,
+    verPerfil: true,
+  },
+  VISTA: {
+    verDashboard: true,
+    verProductos: false,
+    verLotes: false,
+    verRequisiciones: false,
+    verCentros: false,
+    verUsuarios: false,
+    verReportes: true,
+    verTrazabilidad: false,
+    verAuditoria: false,
+    verNotificaciones: true,
+    verPerfil: true,
+  },
+  SIN_ROL: {
+    verDashboard: false,
+    verProductos: false,
+    verLotes: false,
+    verRequisiciones: false,
+    verCentros: false,
+    verUsuarios: false,
+    verReportes: false,
+    verTrazabilidad: false,
+    verAuditoria: false,
+    verNotificaciones: false,
+    verPerfil: false,
+  },
+};
+
+const getRolFromUser = (userData, userGroups) => {
+  if (!userData) return 'SIN_ROL';
   const isSuperuser = Boolean(userData.is_superuser);
   const rol = (userData.rol || '').toLowerCase();
   const groupNames = userGroups.map((g) => (g.name || g).toUpperCase());
 
-  const isAdmin =
-    isSuperuser ||
-    rol === 'admin_sistema' ||
-    rol === 'superusuario' ||
-    groupNames.includes('FARMACIA_ADMIN');
-  const isFarmaciaAdmin =
-    isAdmin ||
-    rol === 'farmacia' ||
-    rol === 'admin_farmacia' ||
-    groupNames.includes('FARMACIA_ADMIN');
-  const isCentroUser =
-    rol === 'centro' ||
-    rol === 'usuario_normal' ||
-    groupNames.includes('CENTRO_USER');
-  const isVistaUser =
-    rol === 'vista' ||
-    rol === 'usuario_vista' ||
-    groupNames.includes('VISTA_USER');
+  if (isSuperuser || rol === 'admin_sistema' || rol === 'superusuario') return 'ADMIN';
+  if (rol === 'farmacia' || rol === 'admin_farmacia' || groupNames.includes('FARMACIA_ADMIN')) return 'FARMACIA';
+  if (rol === 'centro' || rol === 'usuario_normal' || groupNames.includes('CENTRO_USER')) return 'CENTRO';
+  if (rol === 'vista' || rol === 'usuario_vista' || groupNames.includes('VISTA_USER')) return 'VISTA';
+  return 'SIN_ROL';
+};
+
+const calcularPermisos = (userData, userGroups) => {
+  const role = getRolFromUser(userData, userGroups);
+  const isSuperuser = Boolean(userData?.is_superuser);
+  const groupNames = userGroups.map((g) => (g.name || g).toUpperCase());
+  const isAdmin = role === 'ADMIN';
+  const isFarmaciaAdmin = role === 'FARMACIA' || role === 'ADMIN';
+  const isCentroUser = role === 'CENTRO';
+  const isVistaUser = role === 'VISTA';
+
+  const basePerms = PERMISOS_POR_ROL[role] || PERMISOS_POR_ROL.SIN_ROL;
 
   return {
-    isSuperuser: isAdmin,
+    role,
+    isSuperuser,
     isFarmaciaAdmin,
     isCentroUser,
     isVistaUser,
-
-    verProductos: true,
-    crearProducto: isFarmaciaAdmin,
-    editarProducto: isFarmaciaAdmin,
-    eliminarProducto: isFarmaciaAdmin,
-    importarProductos: isFarmaciaAdmin,
-    exportarProductos: isFarmaciaAdmin || isVistaUser,
-
-    verLotes: true,
-    crearLote: isFarmaciaAdmin,
-    editarLote: isFarmaciaAdmin,
-    eliminarLote: isFarmaciaAdmin,
-
-    verRequisiciones: true,
-    crearRequisicion: isCentroUser || isFarmaciaAdmin,
-    editarRequisicion: isCentroUser || isFarmaciaAdmin,
-    autorizarRequisicion: isFarmaciaAdmin,
-    rechazarRequisicion: isFarmaciaAdmin,
-    surtirRequisicion: isFarmaciaAdmin,
-    descargarHojaRecoleccion: isCentroUser || isFarmaciaAdmin,
-
-    verCentros: true,
-    crearCentro: isFarmaciaAdmin,
-    editarCentro: isFarmaciaAdmin,
-
-    verUsuarios: isSuperuser,
-    crearUsuario: isSuperuser,
-
-    verReportes: isFarmaciaAdmin || isVistaUser || isCentroUser,
-    verTrazabilidad: true,
-    verAuditoria: isFarmaciaAdmin,
-    verDashboard: true,
+    groupNames,
+    ...basePerms,
   };
 };
 
@@ -75,9 +121,18 @@ export function PermissionProvider({ children }) {
   const hydrateFromUser = useCallback((userData) => {
     if (!userData) return;
     setUser(userData);
+    try {
+      localStorage.setItem('user', JSON.stringify(userData));
+    } catch (_) {
+      // Ignorar almacenamiento local fallido
+    }
     const baseGroups = userData.groups || (userData.grupos || []).map((name) => ({ name }));
     setGrupos(baseGroups);
-    setPermisos(calcularPermisos(userData, baseGroups));
+    if (userData.permisos && typeof userData.permisos === 'object') {
+      setPermisos(userData.permisos);
+    } else {
+      setPermisos(calcularPermisos(userData, baseGroups));
+    }
   }, []);
 
   const cargarUsuario = useCallback(async () => {
@@ -88,7 +143,7 @@ export function PermissionProvider({ children }) {
         return;
       }
 
-      const response = await apiClient.get('/me/', {
+      const response = await apiClient.get('/usuarios/me/', {
         headers: { Authorization: `Bearer ${token}` }
       });
 

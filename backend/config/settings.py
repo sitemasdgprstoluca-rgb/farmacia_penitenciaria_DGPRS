@@ -35,14 +35,15 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
-    'corsheaders.middleware.CorsMiddleware',  # ✅ CORS antes de CommonMiddleware
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # CORS antes de CommonMiddleware
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
 
 ROOT_URLCONF = 'config.urls'
 
@@ -61,6 +62,16 @@ TEMPLATES = [
         },
     },
 ]
+
+# Python 3.14 compatibility: Disable template debugging during tests
+import sys
+if 'test' in sys.argv:
+    TEMPLATES[0]['OPTIONS']['debug'] = False
+    # Disable template rendering capture to avoid Python 3.14 copy() bug
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+    }
 
 WSGI_APPLICATION = 'config.wsgi.application'
 

@@ -1,0 +1,50 @@
+# Prometheus configuration
+# NOTA: Configurar exporters antes de usar
+# Requiere: django-prometheus, postgres_exporter, redis_exporter, nginx_exporter
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'farmacia-prod'
+    environment: 'production'
+
+# Alertmanager (comentar si no está configurado)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - localhost:9093
+
+# Reglas de alerta (descomentar cuando alertmanager esté listo)
+# rule_files:
+#   - 'alert_rules.yml'
+
+# Targets a monitorear
+scrape_configs:
+  # Prometheus auto-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Django (requiere django-prometheus instalado)
+  # Descomentar cuando esté configurado
+  # - job_name: 'django'
+  #   static_configs:
+  #     - targets: ['localhost:8000']
+  #   metrics_path: '/metrics'
+
+  # PostgreSQL (requiere postgres_exporter)
+  # - job_name: 'postgres'
+  #   static_configs:
+  #     - targets: ['localhost:9187']
+
+  # Redis (requiere redis_exporter)
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['localhost:9121']
+
+  # Nginx (requiere nginx-prometheus-exporter)
+  # - job_name: 'nginx'
+  #   static_configs:
+  #     - targets: ['localhost:9113']
