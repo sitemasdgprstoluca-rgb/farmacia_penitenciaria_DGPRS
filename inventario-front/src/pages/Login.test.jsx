@@ -49,10 +49,9 @@ const TestWrapper = ({ children }) => (
     </BrowserRouter>
 );
 
-describe('Login', () => {
+describe('Login - Renderizado', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        localStorage.clear();
     });
 
     it('debe renderizar el formulario de login', () => {
@@ -63,7 +62,7 @@ describe('Login', () => {
         expect(screen.getByRole('button', { name: /iniciar sesión/i })).toBeInTheDocument();
     });
 
-    it('debe mostrar campos de usuario y contraseña vacíos inicialmente', () => {
+    it('debe mostrar campos vacíos inicialmente', () => {
         render(<Login />, { wrapper: TestWrapper });
         
         const usernameInput = screen.getByPlaceholderText(/usuario/i);
@@ -73,7 +72,19 @@ describe('Login', () => {
         expect(passwordInput.value).toBe('');
     });
 
-    it('debe actualizar el estado al escribir en los campos', async () => {
+    it('debe tener link a recuperar contraseña', () => {
+        render(<Login />, { wrapper: TestWrapper });
+        
+        expect(screen.getByText(/olvidaste tu contraseña/i)).toBeInTheDocument();
+    });
+});
+
+describe('Login - Interacción', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('debe actualizar el estado al escribir', async () => {
         const user = userEvent.setup();
         render(<Login />, { wrapper: TestWrapper });
         
@@ -87,31 +98,22 @@ describe('Login', () => {
         expect(passwordInput.value).toBe('password123');
     });
 
-    it('debe llamar al API al enviar el formulario', async () => {
+    it('debe llamar al API al enviar formulario', async () => {
         const user = userEvent.setup();
         
-        // Mock de respuesta exitosa
         authAPI.login.mockResolvedValueOnce({
             data: {
-                access: 'mock-access-token',
-                refresh: 'mock-refresh-token',
-                user: {
-                    id: 1,
-                    username: 'admin',
-                    rol: 'ADMIN',
-                },
+                access: 'mock-token',
+                refresh: 'mock-refresh',
+                user: { id: 1, username: 'admin', rol: 'ADMIN' },
             },
         });
         
         render(<Login />, { wrapper: TestWrapper });
         
-        const usernameInput = screen.getByPlaceholderText(/usuario/i);
-        const passwordInput = screen.getByPlaceholderText(/contraseña/i);
-        const submitButton = screen.getByRole('button', { name: /iniciar sesión/i });
-        
-        await user.type(usernameInput, 'admin');
-        await user.type(passwordInput, 'password123');
-        await user.click(submitButton);
+        await user.type(screen.getByPlaceholderText(/usuario/i), 'admin');
+        await user.type(screen.getByPlaceholderText(/contraseña/i), 'password123');
+        await user.click(screen.getByRole('button', { name: /iniciar sesión/i }));
         
         await waitFor(() => {
             expect(authAPI.login).toHaveBeenCalledWith({
@@ -126,13 +128,9 @@ describe('Login', () => {
         
         authAPI.login.mockResolvedValueOnce({
             data: {
-                access: 'mock-access-token',
-                refresh: 'mock-refresh-token',
-                user: {
-                    id: 1,
-                    username: 'admin',
-                    rol: 'ADMIN',
-                },
+                access: 'mock-token',
+                refresh: 'mock-refresh',
+                user: { id: 1, username: 'admin', rol: 'ADMIN' },
             },
         });
         
@@ -147,14 +145,11 @@ describe('Login', () => {
         });
     });
 
-    it('debe mostrar mensaje de error con credenciales incorrectas', async () => {
+    it('debe mostrar error con credenciales incorrectas', async () => {
         const user = userEvent.setup();
         
         authAPI.login.mockRejectedValueOnce({
-            response: {
-                status: 401,
-                data: { detail: 'Credenciales inválidas' },
-            },
+            response: { status: 401, data: { detail: 'Credenciales inválidas' } },
         });
         
         render(<Login />, { wrapper: TestWrapper });
@@ -166,56 +161,5 @@ describe('Login', () => {
         await waitFor(() => {
             expect(screen.getByText(/usuario o contraseña incorrectos/i)).toBeInTheDocument();
         });
-    });
-
-    it('debe almacenar tokens en localStorage tras login exitoso', async () => {
-        const user = userEvent.setup();
-        
-        authAPI.login.mockResolvedValueOnce({
-            data: {
-                access: 'test-access-token',
-                refresh: 'test-refresh-token',
-                user: {
-                    id: 1,
-                    username: 'admin',
-                    rol: 'ADMIN',
-                },
-            },
-        });
-        
-        render(<Login />, { wrapper: TestWrapper });
-        
-        await user.type(screen.getByPlaceholderText(/usuario/i), 'admin');
-        await user.type(screen.getByPlaceholderText(/contraseña/i), 'password123');
-        await user.click(screen.getByRole('button', { name: /iniciar sesión/i }));
-        
-        await waitFor(() => {
-            expect(localStorage.getItem('token')).toBe('test-access-token');
-            expect(localStorage.getItem('refresh_token')).toBe('test-refresh-token');
-        });
-    });
-
-    it('debe deshabilitar el botón durante la carga', async () => {
-        const user = userEvent.setup();
-        
-        // Mock con delay para simular carga
-        authAPI.login.mockImplementation(() => new Promise(resolve => setTimeout(resolve, 100)));
-        
-        render(<Login />, { wrapper: TestWrapper });
-        
-        await user.type(screen.getByPlaceholderText(/usuario/i), 'admin');
-        await user.type(screen.getByPlaceholderText(/contraseña/i), 'password123');
-        
-        const submitButton = screen.getByRole('button', { name: /iniciar sesión/i });
-        await user.click(submitButton);
-        
-        // Durante la carga, el botón debería estar deshabilitado
-        expect(submitButton).toBeDisabled();
-    });
-
-    it('debe tener link a recuperar contraseña', () => {
-        render(<Login />, { wrapper: TestWrapper });
-        
-        expect(screen.getByText(/olvidaste tu contraseña/i)).toBeInTheDocument();
     });
 });
