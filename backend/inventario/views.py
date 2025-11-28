@@ -1,22 +1,70 @@
-﻿from rest_framework import viewsets, status, serializers, permissions
+﻿from rest_framework import viewsets, status, serializers, permissions, mixins
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from django.core.paginator import InvalidPage
+from django.core.cache import cache
 from django.http import HttpResponse
 from django.db import transaction
 from django.db.models import Q, Sum, Count, F
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.conf import settings
-from django.contrib.auth.models import Group  #  AGREGAR ESTE IMPORT
+from django.contrib.auth.models import Group
 from datetime import datetime, timedelta, date
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 import traceback
 import random
+import os
 from io import BytesIO
+
+
+# ═══════════════════════════════════════════════════════════
+# VALIDADORES DE IMPORTACIÓN EXCEL
+# ═══════════════════════════════════════════════════════════
+def validar_archivo_excel(file):
+    """
+    Valida archivo Excel antes de procesarlo.
+    
+    Retorna: (es_valido, mensaje_error)
+    """
+    # Validar que hay archivo
+    if not file:
+        return False, 'No se recibió archivo'
+    
+    # Validar extensión
+    nombre = file.name.lower() if hasattr(file, 'name') else ''
+    # Si no hay nombre/extensión (p.ej. BytesIO), asumir .xlsx para no bloquear importaciones legítimas
+    ext = os.path.splitext(nombre)[1] or '.xlsx'
+    extensiones_permitidas = getattr(settings, 'IMPORT_ALLOWED_EXTENSIONS', ['.xlsx', '.xls'])
+    if ext not in extensiones_permitidas:
+        return False, f'Extensión no permitida: {ext}. Use: {", ".join(extensiones_permitidas)}'
+    
+    # Validar tamaño
+    max_size_mb = getattr(settings, 'IMPORT_MAX_FILE_SIZE_MB', 10)
+    max_size_bytes = max_size_mb * 1024 * 1024
+    if hasattr(file, 'size') and file.size > max_size_bytes:
+        return False, f'Archivo demasiado grande: {file.size / 1024 / 1024:.1f}MB. Máximo: {max_size_mb}MB'
+    
+    return True, None
+
+
+def validar_filas_excel(ws):
+    """
+    Valida número de filas en worksheet.
+    
+    Retorna: (es_valido, mensaje_error, num_filas)
+    """
+    max_rows = getattr(settings, 'IMPORT_MAX_ROWS', 5000)
+    # Contar filas con datos (excluyendo encabezado)
+    num_filas = sum(1 for _ in ws.iter_rows(min_row=2, values_only=True) if any(cell for cell in _))
+    
+    if num_filas > max_rows:
+        return False, f'Demasiadas filas: {num_filas}. Máximo permitido: {max_rows}', num_filas
+    
+    return True, None, num_filas
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -25,10 +73,11 @@ from reportlab.lib.units import inch
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
-from core.models import Producto, Lote, Movimiento, Centro, Requisicion, DetalleRequisicion
+from core.models import Producto, Lote, Movimiento, Centro, Requisicion, DetalleRequisicion, HojaRecoleccion
 from core.serializers import (
     ProductoSerializer, LoteSerializer, MovimientoSerializer, 
-    CentroSerializer, RequisicionSerializer, DetalleRequisicionSerializer
+    CentroSerializer, RequisicionSerializer, DetalleRequisicionSerializer,
+    HojaRecoleccionSerializer
 )
 
 from django.contrib.auth import get_user_model
@@ -45,6 +94,51 @@ from core.constants import (
 )
 
 User = get_user_model()
+
+
+# ============================================================================
+# HELPERS DE SEGURIDAD - Filtrado por centro para roles no-admin
+# ============================================================================
+
+def is_farmacia_or_admin(user):
+    """
+    Verifica si el usuario es farmacia, admin o vista (puede ver datos globales).
+    
+    Roles privilegiados con acceso global:
+    - admin: admin_sistema, superusuario, administrador
+    - farmacia: farmacia, admin_farmacia, farmaceutico, usuario_farmacia
+    - vista: vista, usuario_vista (solo lectura global)
+    """
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    
+    rol = (getattr(user, 'rol', '') or '').lower()
+    
+    # Roles con acceso global (pueden ver todo)
+    ROLES_GLOBALES = {
+        # Admin
+        'admin', 'admin_sistema', 'superusuario', 'administrador',
+        # Farmacia
+        'farmacia', 'admin_farmacia', 'farmaceutico', 'usuario_farmacia',
+        # Vista (solo lectura pero global)
+        'vista', 'usuario_vista',
+    }
+    
+    if rol in ROLES_GLOBALES:
+        return True
+    
+    # Verificar grupos (por si el rol no está en campo directo)
+    group_names = {g.name.upper() for g in user.groups.all()}
+    GRUPOS_GLOBALES = {'FARMACIA_ADMIN', 'FARMACEUTICO', 'VISTA_USER'}
+    
+    return bool(group_names & GRUPOS_GLOBALES)
+
+
+def get_user_centro(user):
+    """Obtiene el centro asignado al usuario."""
+    return getattr(user, 'centro', None) or getattr(getattr(user, 'profile', None), 'centro', None)
 
 
 def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=None, requisicion=None, observaciones=''):
@@ -70,24 +164,34 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
 
     with transaction.atomic():
         lote_ref = Lote.objects.select_for_update().get(pk=lote.pk)
-        if delta < 0 and abs(delta) > lote_ref.cantidad_actual:
+        stock_disponible = lote_ref.cantidad_actual
+
+        if delta < 0 and abs(delta) > stock_disponible:
             raise serializers.ValidationError({
-                'cantidad': f'Stock insuficiente en el lote (disponible {lote_ref.cantidad_actual}).'
+                'cantidad': f'Stock insuficiente en el lote (disponible {stock_disponible}).'
             })
 
-        nuevo_stock = lote_ref.cantidad_actual + delta
+        nuevo_stock = stock_disponible + delta
         if nuevo_stock < 0:
             raise serializers.ValidationError({'cantidad': 'La operacion dejaria el lote con stock negativo'})
 
         # Actualizar stock y estado de disponibilidad
         lote_ref.cantidad_actual = nuevo_stock
+        
+        # Para entradas, también actualizar cantidad_inicial si es necesario
+        # Esto permite recibir stock adicional en lotes existentes
+        update_fields = ['cantidad_actual', 'estado', 'updated_at']
+        if tipo_normalizado == 'entrada' and nuevo_stock > lote_ref.cantidad_inicial:
+            lote_ref.cantidad_inicial = nuevo_stock
+            update_fields.append('cantidad_inicial')
+        
         if nuevo_stock == 0:
             lote_ref.estado = 'agotado'
         elif lote_ref.estado == 'agotado':
             lote_ref.estado = 'disponible'
-        lote_ref.save(update_fields=['cantidad_actual', 'estado', 'updated_at'])
+        lote_ref.save(update_fields=update_fields)
 
-        movimiento = Movimiento.objects.create(
+        movimiento = Movimiento(
             tipo=tipo_normalizado,
             lote=lote_ref,
             centro=centro,
@@ -96,6 +200,9 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
             cantidad=delta,
             observaciones=observaciones or ''
         )
+        # Guardar stock previo para evitar fallos de validaci�n al crear el movimiento
+        movimiento._stock_pre_movimiento = stock_disponible
+        movimiento.save()
 
     return movimiento, lote_ref
 
@@ -393,18 +500,33 @@ class ProductoViewSet(viewsets.ModelViewSet):
         Formato esperado:
         Fila 1: Encabezados (se ignora)
         Columnas: Clave | Descripcion | Unidad | Precio | Stock Minimo | Estado
+        
+        Límites de seguridad:
+        - Tamaño máximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
+        - Filas máximas: configurado en IMPORT_MAX_ROWS (default 5000)
+        - Extensiones: .xlsx, .xls
         """
         file = request.FILES.get('file')
         
-        if not file:
+        # Validar archivo
+        es_valido, error_msg = validar_archivo_excel(file)
+        if not es_valido:
             return Response({
-                'error': 'No se recibio archivo',
-                'mensaje': 'Debe seleccionar un archivo Excel (.xlsx)'
+                'error': 'Archivo inválido',
+                'mensaje': error_msg
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
             wb = openpyxl.load_workbook(file)
             ws = wb.active
+            
+            # Validar número de filas
+            filas_validas, error_filas, num_filas = validar_filas_excel(ws)
+            if not filas_validas:
+                return Response({
+                    'error': 'Archivo demasiado grande',
+                    'mensaje': error_filas
+                }, status=status.HTTP_400_BAD_REQUEST)
             
             creados = 0
             actualizados = 0
@@ -847,7 +969,7 @@ class CentroViewSet(viewsets.ModelViewSet):
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], url_path='importar')
     def importar_excel(self, request):
         """
         Importa centros desde Excel.
@@ -858,18 +980,33 @@ class CentroViewSet(viewsets.ModelViewSet):
         - Direccion (opcional)
         - Telefono (opcional)
         - Estado (Activo/Inactivo)
+        
+        Límites de seguridad:
+        - Tamaño máximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
+        - Filas máximas: configurado en IMPORT_MAX_ROWS (default 5000)
+        - Extensiones: .xlsx, .xls
         """
         file = request.FILES.get('file')
         
-        if not file:
+        # Validar archivo
+        es_valido, error_msg = validar_archivo_excel(file)
+        if not es_valido:
             return Response({
-                'error': 'No se recibio archivo',
-                'mensaje': 'Debe enviar un archivo Excel (.xlsx)'
+                'error': 'Archivo inválido',
+                'mensaje': error_msg
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
             wb = openpyxl.load_workbook(file)
             ws = wb.active
+            
+            # Validar número de filas
+            filas_validas, error_filas, num_filas = validar_filas_excel(ws)
+            if not filas_validas:
+                return Response({
+                    'error': 'Archivo demasiado grande',
+                    'mensaje': error_filas
+                }, status=status.HTTP_400_BAD_REQUEST)
             
             creados = 0
             actualizados = 0
@@ -986,6 +1123,23 @@ class CentroViewSet(viewsets.ModelViewSet):
                 'error': 'Error al obtener requisiciones',
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['get'], url_path='plantilla')
+    def plantilla_centros(self, request):
+        """Descarga plantilla de Excel para importaci�n de centros."""
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Centros'
+        headers = ['Clave', 'Nombre', 'Direccion', 'Telefono', 'Estado']
+        ws.append(headers)
+        ws.append(['CENTRO-001', 'Centro Ejemplo', 'Direccion de ejemplo', '555-0000', 'Activo'])
+        
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename=Plantilla_Centros.xlsx'
+        wb.save(response)
+        return response
 
 @method_decorator(csrf_exempt, name='dispatch')
 class LoteViewSet(viewsets.ModelViewSet):
@@ -1013,8 +1167,31 @@ class LoteViewSet(viewsets.ModelViewSet):
         - activo: true/false
         - caducidad: vencido/critico/proximo/normal
         - search: busqueda por numero de lote
+        - centro: ID del centro o 'central' para farmacia (solo admin/farmacia/vista)
+        
+        Seguridad: Usuarios de centro solo ven lotes de su centro.
+        Admin/farmacia/vista ven todo por defecto, pueden filtrar con ?centro=.
         """
-        queryset = Lote.objects.select_related('producto').filter(deleted_at__isnull=True)
+        queryset = Lote.objects.select_related('producto', 'centro', 'lote_origen').filter(deleted_at__isnull=True).exclude(estado='retirado')
+        
+        # SEGURIDAD: Filtrar por centro segun rol
+        user = self.request.user
+        if not is_farmacia_or_admin(user):
+            # Usuario de centro: forzado a su centro
+            user_centro = get_user_centro(user)
+            if user_centro:
+                queryset = queryset.filter(centro=user_centro)
+            else:
+                return Lote.objects.none()
+        else:
+            # Admin/farmacia/vista: pueden filtrar por centro especifico
+            centro_param = self.request.query_params.get('centro')
+            if centro_param:
+                if centro_param == 'central':
+                    # Filtrar solo farmacia central (centro=NULL)
+                    queryset = queryset.filter(centro__isnull=True)
+                else:
+                    queryset = queryset.filter(centro_id=centro_param)
         
         # Filtrar por producto
         producto = self.request.query_params.get('producto')
@@ -1053,6 +1230,23 @@ class LoteViewSet(viewsets.ModelViewSet):
                 )
             elif caducidad == 'normal':
                 queryset = queryset.filter(fecha_caducidad__gt=hoy + timedelta(days=30))
+        
+        # Filtrar por stock mínimo (para catálogo de requisiciones)
+        stock_min = self.request.query_params.get('stock_min')
+        if stock_min:
+            try:
+                queryset = queryset.filter(cantidad_actual__gte=int(stock_min))
+            except (ValueError, TypeError):
+                pass
+        
+        # Filtrar solo lotes disponibles (no vencidos) para el catálogo
+        solo_disponibles = self.request.query_params.get('solo_disponibles')
+        if solo_disponibles == 'true':
+            from datetime import date
+            queryset = queryset.filter(
+                estado='disponible',
+                fecha_caducidad__gt=date.today()
+            )
         
         return queryset.order_by('-created_at')
     
@@ -1191,14 +1385,36 @@ class LoteViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='importar-excel')
     def importar_excel(self, request):
-        """Importa lotes desde Excel con validaciones basicas."""
+        """
+        Importa lotes desde Excel con validaciones.
+        
+        Límites de seguridad:
+        - Tamaño máximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
+        - Filas máximas: configurado en IMPORT_MAX_ROWS (default 5000)
+        - Extensiones: .xlsx, .xls
+        """
         file = request.FILES.get('file')
-        if not file:
-            return Response({'error': 'No se recibio archivo', 'mensaje': 'Debe seleccionar un archivo Excel (.xlsx)'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validar archivo
+        es_valido, error_msg = validar_archivo_excel(file)
+        if not es_valido:
+            return Response({
+                'error': 'Archivo inválido',
+                'mensaje': error_msg
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             wb = openpyxl.load_workbook(file)
             ws = wb.active
+            
+            # Validar número de filas
+            filas_validas, error_filas, num_filas = validar_filas_excel(ws)
+            if not filas_validas:
+                return Response({
+                    'error': 'Archivo demasiado grande',
+                    'mensaje': error_filas
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
             exitos = []
             errores = []
 
@@ -1436,32 +1652,361 @@ class LoteViewSet(viewsets.ModelViewSet):
             traceback.print_exc()
             return Response({'error': 'Error al ajustar stock', 'mensaje': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=True, methods=['get'], url_path='lotes-derivados')
+    def lotes_derivados(self, request, pk=None):
+        """
+        Obtiene los lotes derivados de un lote de farmacia (vinculados a centros).
+        
+        Solo aplica para lotes de farmacia central (centro=NULL).
+        Muestra todos los centros que tienen stock de este lote.
+        """
+        try:
+            lote = self.get_object()
+            
+            # Verificar que es un lote de farmacia
+            if lote.centro is not None:
+                return Response({
+                    'error': 'Solo los lotes de farmacia central tienen lotes derivados',
+                    'lote_id': lote.id,
+                    'centro': lote.centro.nombre if lote.centro else None
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Obtener lotes derivados
+            derivados = Lote.objects.filter(
+                lote_origen=lote,
+                deleted_at__isnull=True
+            ).select_related('centro', 'producto')
+            
+            # Calcular totales
+            from django.db.models import Sum
+            total_derivados = derivados.count()
+            stock_total_centros = derivados.aggregate(total=Sum('cantidad_actual'))['total'] or 0
+            
+            derivados_data = []
+            for d in derivados:
+                derivados_data.append({
+                    'id': d.id,
+                    'centro_id': d.centro.id if d.centro else None,
+                    'centro_nombre': d.centro.nombre if d.centro else None,
+                    'centro_clave': d.centro.clave if d.centro else None,
+                    'numero_lote': d.numero_lote,
+                    'cantidad_actual': d.cantidad_actual,
+                    'cantidad_inicial': d.cantidad_inicial,
+                    'fecha_caducidad': d.fecha_caducidad,
+                    'estado': d.estado,
+                    'created_at': d.created_at
+                })
+            
+            return Response({
+                'lote_farmacia': {
+                    'id': lote.id,
+                    'numero_lote': lote.numero_lote,
+                    'producto_clave': lote.producto.clave,
+                    'producto_descripcion': lote.producto.descripcion,
+                    'cantidad_actual': lote.cantidad_actual,
+                    'fecha_caducidad': lote.fecha_caducidad
+                },
+                'resumen': {
+                    'total_centros_con_stock': total_derivados,
+                    'stock_total_en_centros': stock_total_centros,
+                    'stock_farmacia': lote.cantidad_actual,
+                    'stock_total_sistema': lote.cantidad_actual + stock_total_centros
+                },
+                'lotes_derivados': derivados_data
+            })
+            
+        except Exception as e:
+            traceback.print_exc()
+            return Response({
+                'error': 'Error al obtener lotes derivados',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['get'], url_path='trazabilidad')
+    def trazabilidad_lote(self, request, pk=None):
+        """
+        Obtiene la trazabilidad completa de un lote:
+        - Si es lote de farmacia: muestra derivados en centros
+        - Si es lote de centro: muestra origen en farmacia
+        """
+        try:
+            lote = self.get_object()
+            
+            result = {
+                'lote': {
+                    'id': lote.id,
+                    'numero_lote': lote.numero_lote,
+                    'producto_clave': lote.producto.clave,
+                    'producto_descripcion': lote.producto.descripcion,
+                    'cantidad_actual': lote.cantidad_actual,
+                    'fecha_caducidad': lote.fecha_caducidad,
+                    'es_lote_farmacia': lote.centro is None,
+                    'ubicacion': lote.centro.nombre if lote.centro else 'Farmacia Central'
+                },
+                'origen': None,
+                'derivados': []
+            }
+            
+            # Si es lote de centro, mostrar origen
+            if lote.lote_origen:
+                result['origen'] = {
+                    'id': lote.lote_origen.id,
+                    'numero_lote': lote.lote_origen.numero_lote,
+                    'cantidad_actual': lote.lote_origen.cantidad_actual,
+                    'ubicacion': 'Farmacia Central'
+                }
+            
+            # Si es lote de farmacia, mostrar derivados
+            if lote.centro is None:
+                derivados = Lote.objects.filter(
+                    lote_origen=lote,
+                    deleted_at__isnull=True
+                ).select_related('centro')
+                
+                for d in derivados:
+                    result['derivados'].append({
+                        'id': d.id,
+                        'centro_nombre': d.centro.nombre if d.centro else None,
+                        'centro_clave': d.centro.clave if d.centro else None,
+                        'cantidad_actual': d.cantidad_actual
+                    })
+            
+            # Movimientos relacionados
+            movimientos = Movimiento.objects.filter(
+                lote=lote
+            ).select_related('requisicion', 'usuario', 'centro').order_by('-fecha')[:20]
+            
+            result['movimientos'] = [{
+                'id': m.id,
+                'tipo': m.tipo,
+                'cantidad': m.cantidad,
+                'fecha': m.fecha,
+                'requisicion_folio': m.requisicion.folio if m.requisicion else None,
+                'observaciones': m.observaciones
+            } for m in movimientos]
+            
+            return Response(result)
+            
+        except Exception as e:
+            traceback.print_exc()
+            return Response({
+                'error': 'Error al obtener trazabilidad',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 @method_decorator(csrf_exempt, name='dispatch')
-class MovimientoViewSet(viewsets.ModelViewSet):
+class MovimientoViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet
+):
+    """
+    ViewSet para gestionar movimientos de inventario.
+    
+    PERMISOS:
+    - Admin/Farmacia: acceso completo a todos los movimientos
+    - Centro: puede VER y CREAR movimientos en sus propios lotes (salidas/ajustes)
+    - Vista: solo lectura
+    
+    Esto permite auditoría completa de consumos en cada centro.
+    """
     queryset = Movimiento.objects.select_related('lote__producto', 'centro', 'usuario').all()
     serializer_class = MovimientoSerializer
-    permission_classes = [IsFarmaciaRole]
+    permission_classes = [IsCentroRole]  # Centro puede operar en sus lotes
     pagination_class = CustomPagination
+    http_method_names = ['get', 'head', 'options']
 
     def get_queryset(self):
+        """
+        Filtra movimientos segun parametros.
+        
+        Parametros:
+        - tipo: entrada/salida/ajuste
+        - centro: ID del centro (solo admin/farmacia/vista)
+        
+        Seguridad: Usuarios de centro solo ven movimientos de su centro.
+        Admin/farmacia/vista ven todo por defecto, pueden filtrar con ?centro=.
+        """
         queryset = Movimiento.objects.select_related('lote__producto', 'centro', 'usuario')
+        
+        # SEGURIDAD: Filtrar por centro segun rol
+        user = self.request.user
+        if not is_farmacia_or_admin(user):
+            # Usuario de centro: forzado a su centro
+            user_centro = get_user_centro(user)
+            if user_centro:
+                queryset = queryset.filter(lote__centro=user_centro)
+            else:
+                return Movimiento.objects.none()
+        else:
+            # Admin/farmacia/vista: pueden filtrar por centro especifico
+            centro_param = self.request.query_params.get('centro')
+            if centro_param:
+                queryset = queryset.filter(lote__centro_id=centro_param)
+        
         tipo = self.request.query_params.get('tipo')
         if tipo:
             queryset = queryset.filter(tipo=tipo.lower())
         return queryset.order_by('-fecha')
 
     def perform_create(self, serializer):
+        """
+        Crea un movimiento validando permisos por centro.
+        
+        SEGURIDAD:
+        - Admin/farmacia: pueden crear cualquier movimiento en cualquier lote
+        - Usuario de centro: solo pueden crear movimientos en lotes de su centro
+          y solo ciertos tipos: 'salida' (consumo), 'ajuste' (inventario físico)
+        - Usuario de centro NO puede crear 'entrada' (solo vía surtido de requisición)
+        """
+        user = self.request.user
+        lote = serializer.validated_data.get('lote')
+        tipo = serializer.validated_data.get('tipo', '').lower()
+        
+        # Validar que usuario de centro solo opere con sus lotes
+        if not is_farmacia_or_admin(user):
+            user_centro = get_user_centro(user)
+            
+            # Validar que el lote pertenece al centro del usuario
+            if lote and lote.centro != user_centro:
+                raise serializers.ValidationError({
+                    'lote': 'Solo puedes registrar movimientos en lotes de tu centro'
+                })
+            
+            # Validar tipos de movimiento permitidos para centros
+            # Centros pueden: salida (consumo), ajuste (inventario físico)
+            # Centros NO pueden: entrada (solo vía surtido automático)
+            tipos_permitidos_centro = ['salida', 'ajuste']
+            if tipo not in tipos_permitidos_centro:
+                raise serializers.ValidationError({
+                    'tipo': f'Los centros solo pueden registrar: {", ".join(tipos_permitidos_centro)}. Las entradas se generan automáticamente al surtir requisiciones.'
+                })
+        
         movimiento, _ = registrar_movimiento_stock(
-            lote=serializer.validated_data.get('lote'),
+            lote=lote,
             tipo=serializer.validated_data.get('tipo'),
             cantidad=serializer.validated_data.get('cantidad'),
-            usuario=self.request.user,
-            centro=serializer.validated_data.get('centro'),
+            usuario=user,
+            centro=serializer.validated_data.get('centro') or (lote.centro if lote else None),
             requisicion=serializer.validated_data.get('requisicion'),
             observaciones=serializer.validated_data.get('observaciones')
         )
         # Dejar instancia lista para serializer.data
         serializer.instance = movimiento
+
+    @action(detail=False, methods=['get'], url_path='trazabilidad-pdf')
+    def trazabilidad_pdf(self, request):
+        """
+        Genera PDF de trazabilidad de un producto.
+        Parámetros: ?producto_clave=XXX
+        """
+        from core.utils.pdf_reports import generar_reporte_trazabilidad
+        
+        clave = request.query_params.get('producto_clave')
+        if not clave:
+            return Response({'error': 'Se requiere producto_clave'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        producto = Producto.objects.filter(clave__iexact=clave).first()
+        if not producto:
+            return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        
+        try:
+            # Obtener movimientos del producto
+            movimientos = Movimiento.objects.filter(
+                lote__producto=producto
+            ).select_related('lote', 'centro', 'usuario').order_by('-fecha')[:100]
+            
+            trazabilidad_data = []
+            for mov in movimientos:
+                trazabilidad_data.append({
+                    'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
+                    'tipo': mov.tipo.upper(),
+                    'lote': mov.lote.numero_lote if mov.lote else 'N/A',
+                    'cantidad': mov.cantidad,
+                    'centro': mov.centro.nombre if mov.centro else 'Farmacia Central',
+                    'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
+                    'observaciones': mov.observaciones or ''
+                })
+            
+            producto_info = {
+                'clave': producto.clave,
+                'descripcion': producto.descripcion,
+                'unidad_medida': producto.unidad_medida,
+                'stock_actual': producto.get_stock_actual() if hasattr(producto, 'get_stock_actual') else 0,
+                'stock_minimo': producto.stock_minimo,
+                'precio_unitario': float(producto.precio_unitario) if producto.precio_unitario else 0,
+            }
+            
+            pdf_buffer = generar_reporte_trazabilidad(trazabilidad_data, producto_info=producto_info)
+            
+            response = HttpResponse(
+                pdf_buffer.getvalue(),
+                content_type='application/pdf'
+            )
+            response['Content-Disposition'] = f'attachment; filename="Trazabilidad_{clave}_{timezone.now().strftime("%Y%m%d")}.pdf"'
+            
+            return response
+            
+        except Exception as e:
+            traceback.print_exc()
+            return Response({
+                'error': 'Error al generar PDF de trazabilidad',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='exportar-pdf')
+    def exportar_pdf(self, request):
+        """
+        Genera PDF de movimientos con filtros opcionales.
+        """
+        from core.utils.pdf_reports import generar_reporte_movimientos
+        
+        try:
+            # Aplicar filtros
+            queryset = self.get_queryset()
+            
+            tipo = request.query_params.get('tipo')
+            if tipo:
+                queryset = queryset.filter(tipo=tipo.lower())
+            
+            fecha_inicio = request.query_params.get('fecha_inicio')
+            if fecha_inicio:
+                queryset = queryset.filter(fecha__gte=fecha_inicio)
+            
+            fecha_fin = request.query_params.get('fecha_fin')
+            if fecha_fin:
+                queryset = queryset.filter(fecha__lte=fecha_fin)
+            
+            movimientos = queryset[:200]  # Limitar para PDF
+            
+            movimientos_data = []
+            for mov in movimientos:
+                movimientos_data.append({
+                    'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
+                    'tipo': mov.tipo.upper(),
+                    'producto': mov.lote.producto.clave if mov.lote and mov.lote.producto else 'N/A',
+                    'lote': mov.lote.numero_lote if mov.lote else 'N/A',
+                    'cantidad': mov.cantidad,
+                    'centro': mov.centro.nombre if mov.centro else 'Farmacia Central',
+                    'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
+                })
+            
+            pdf_buffer = generar_reporte_movimientos(movimientos_data)
+            
+            response = HttpResponse(
+                pdf_buffer.getvalue(),
+                content_type='application/pdf'
+            )
+            response['Content-Disposition'] = f'attachment; filename="Movimientos_{timezone.now().strftime("%Y%m%d_%H%M%S")}.pdf"'
+            
+            return response
+            
+        except Exception as e:
+            traceback.print_exc()
+            return Response({
+                'error': 'Error al generar PDF de movimientos',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @method_decorator(csrf_exempt, name='dispatch')
 class RequisicionViewSet(viewsets.ModelViewSet):
@@ -1526,12 +2071,20 @@ class RequisicionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = Requisicion.objects.select_related('centro', 'usuario_solicita', 'usuario_autoriza').prefetch_related('detalles__producto')
         user = getattr(self.request, 'user', None)
-        if user and not user.is_superuser:
+        
+        # SEGURIDAD: Filtrar por centro segun rol
+        if user and not is_farmacia_or_admin(user):
+            # Usuario de centro: forzado a su centro
             user_centro = self._user_centro(user)
             if user_centro:
                 queryset = queryset.filter(centro=user_centro)
             else:
                 return Requisicion.objects.none()
+        else:
+            # Admin/farmacia/vista: pueden filtrar por centro especifico
+            centro_param = self.request.query_params.get('centro')
+            if centro_param:
+                queryset = queryset.filter(centro_id=centro_param)
 
         estado = self.request.query_params.get('estado')
         if estado:
@@ -1540,10 +2093,6 @@ class RequisicionViewSet(viewsets.ModelViewSet):
         grupo = self.request.query_params.get('grupo_estado')
         if grupo and grupo in REQUISICION_GRUPOS_ESTADO:
             queryset = queryset.filter(estado__in=REQUISICION_GRUPOS_ESTADO[grupo])
-
-        centro_param = self.request.query_params.get('centro')
-        if centro_param and getattr(self.request.user, 'is_superuser', False):
-            queryset = queryset.filter(centro_id=centro_param)
 
         search = self.request.query_params.get('search')
         if search and search.strip():
@@ -1565,15 +2114,19 @@ class RequisicionViewSet(viewsets.ModelViewSet):
             data['folio'] = folio
 
             solicitante = request.user if request.user.is_authenticated else None
+            es_privilegiado = False
             if solicitante:
                 data['usuario_solicita'] = getattr(solicitante, 'id', None)
                 centro_user = self._user_centro(solicitante)
-                if centro_user:
+                es_privilegiado = is_farmacia_or_admin(solicitante)
+                if centro_user and not es_privilegiado:
                     if data.get('centro') and int(data.get('centro')) != centro_user.id and not solicitante.is_superuser:
                         return Response({'error': 'No puedes crear requisiciones para otro centro'}, status=status.HTTP_403_FORBIDDEN)
                     data['centro'] = centro_user.id
-                elif not solicitante.is_superuser:
+                elif not centro_user and not es_privilegiado and not solicitante.is_superuser:
                     return Response({'error': 'El usuario no tiene centro asignado'}, status=status.HTTP_403_FORBIDDEN)
+                elif not data.get('centro') and centro_user:
+                    data['centro'] = centro_user.id
 
             items_data = request.data.get('items', []) or request.data.get('detalles', []) or []
             centro = Centro.objects.filter(id=data.get('centro')).first() if data.get('centro') else None
@@ -1581,9 +2134,17 @@ class RequisicionViewSet(viewsets.ModelViewSet):
                 return Response({'error': 'No se encontro el centro para validar stock'}, status=status.HTTP_400_BAD_REQUEST)
             # Para requisiciones, validar stock global (no del centro solicitante)
             # El centro solicitante pide stock, no lo provee
-            errores_stock = self._validar_stock_items(items_data, centro=None)
-            if errores_stock:
-                return Response({'error': 'Stock insuficiente', 'detalles': errores_stock}, status=status.HTTP_400_BAD_REQUEST)
+            errores_stock = []
+            if es_privilegiado:
+                errores_stock = self._validar_stock_items(items_data, centro=None)
+                if errores_stock:
+                    return Response({'error': 'Stock insuficiente', 'detalles': errores_stock}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                product_ids = [item.get('producto') for item in items_data if item.get('producto')]
+                if product_ids and Lote.objects.filter(producto_id__in=product_ids, deleted_at__isnull=True).exists():
+                    errores_stock = self._validar_stock_items(items_data, centro=centro)
+                    if errores_stock:
+                        return Response({'error': 'Stock insuficiente', 'detalles': errores_stock}, status=status.HTTP_400_BAD_REQUEST)
 
             # Agregar detalles a data para que el serializer los procese
             data['detalles'] = items_data
@@ -1656,7 +2217,8 @@ class RequisicionViewSet(viewsets.ModelViewSet):
         if (requisicion.estado or '').lower() != 'borrador':
             return Response({'error': 'Solo se pueden enviar requisiciones en estado BORRADOR', 'estado_actual': requisicion.estado}, status=status.HTTP_400_BAD_REQUEST)
         centro_user = self._user_centro(request.user)
-        if not request.user.is_superuser:
+        es_privilegiado = is_farmacia_or_admin(request.user)
+        if not request.user.is_superuser and not es_privilegiado:
             if not centro_user or requisicion.centro_id != centro_user.id:
                 return Response({'error': 'No puedes enviar requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
         if not requisicion.detalles.exists():
@@ -1672,14 +2234,15 @@ class RequisicionViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Solo se pueden autorizar requisiciones en estado ENVIADA', 'estado_actual': requisicion.estado}, status=status.HTTP_400_BAD_REQUEST)
 
         centro_user = self._user_centro(request.user)
-        if not request.user.is_superuser:
+        es_privilegiado = is_farmacia_or_admin(request.user)
+        if not request.user.is_superuser and not es_privilegiado:
             if not centro_user:
                 return Response({'error': 'El usuario no tiene centro asignado'}, status=status.HTTP_403_FORBIDDEN)
             if requisicion.centro_id != centro_user.id:
                 return Response({'error': 'No puedes autorizar requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
-            rol = (getattr(request.user, 'rol', '') or '').lower()
-            if rol not in ['admin_sistema', 'farmacia', 'admin_farmacia', 'superusuario'] and not request.user.is_staff:
-                return Response({'error': 'No tienes permiso para autorizar requisiciones'}, status=status.HTTP_403_FORBIDDEN)
+        rol = (getattr(request.user, 'rol', '') or '').lower()
+        if not request.user.is_superuser and rol not in ['admin_sistema', 'farmacia', 'admin_farmacia', 'superusuario'] and not request.user.is_staff:
+            return Response({'error': 'No tienes permiso para autorizar requisiciones'}, status=status.HTTP_403_FORBIDDEN)
 
         items_data = request.data.get('items') or request.data.get('detalles') or []
         for item_data in items_data:
@@ -1708,7 +2271,8 @@ class RequisicionViewSet(viewsets.ModelViewSet):
         if (requisicion.estado or '').lower() != 'enviada':
             return Response({'error': 'Solo se pueden rechazar requisiciones en estado ENVIADA', 'estado_actual': requisicion.estado}, status=status.HTTP_400_BAD_REQUEST)
         centro_user = self._user_centro(request.user)
-        if not request.user.is_superuser:
+        es_privilegiado = is_farmacia_or_admin(request.user)
+        if not request.user.is_superuser and not es_privilegiado:
             if not centro_user or requisicion.centro_id != centro_user.id:
                 return Response({'error': 'No puedes rechazar requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
         motivo = request.data.get('observaciones') or request.data.get('comentario') or ''
@@ -1739,21 +2303,43 @@ class RequisicionViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def surtir(self, request, pk=None):
+        """
+        Surte una requisición autorizada.
+        
+        PERMISOS:
+        - Superuser: puede surtir cualquier requisición
+        - Farmacia (admin_farmacia, farmacia): puede surtir cualquier requisición
+        - Centro: solo puede surtir requisiciones de su propio centro
+        
+        LÓGICA DE STOCK:
+        - Primero usa lotes de farmacia central (centro=NULL) → crea entrada en centro destino
+        - Si no hay en farmacia central, usa lotes del centro solicitante (salida interna)
+        """
         requisicion = self.get_object()
         estado_actual = (requisicion.estado or '').lower()
         if estado_actual not in ['autorizada', 'parcial']:
             return Response({'error': 'Solo se pueden surtir requisiciones autorizadas'}, status=status.HTTP_400_BAD_REQUEST)
-        centro_user = self._user_centro(request.user)
-        if not request.user.is_superuser:
+        
+        # PERMISOS: Farmacia/admin puede surtir cualquier requisición
+        user = request.user
+        if not user.is_superuser and not is_farmacia_or_admin(user):
+            # Usuario de centro: solo puede surtir su propio centro
+            centro_user = self._user_centro(user)
             if not centro_user or requisicion.centro_id != centro_user.id:
                 return Response({'error': 'No puedes surtir requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
 
+        # SEGURIDAD: Solo usar lotes de farmacia central (centro=None) o del centro solicitante
+        # Esto evita descuentos de stock entre centros
+        centro_requisicion = requisicion.centro
+        
         errores_stock = []
         for detalle in requisicion.detalles.select_related('producto'):
             requerido = (detalle.cantidad_autorizada or detalle.cantidad_solicitada) - (detalle.cantidad_surtida or 0)
             if requerido <= 0:
                 continue
+            # Lotes de farmacia central (centro=None) o del centro de destino
             disponible = Lote.objects.filter(
+                Q(centro__isnull=True) | Q(centro=centro_requisicion),
                 producto=detalle.producto,
                 estado='disponible',
                 deleted_at__isnull=True,
@@ -1773,7 +2359,9 @@ class RequisicionViewSet(viewsets.ModelViewSet):
                 pendiente = (detalle.cantidad_autorizada or detalle.cantidad_solicitada) - (detalle.cantidad_surtida or 0)
                 if pendiente <= 0:
                     continue
+                # FEFO: Lotes de farmacia central o del centro, ordenados por caducidad
                 lotes = Lote.objects.filter(
+                    Q(centro__isnull=True) | Q(centro=centro_requisicion),
                     producto=detalle.producto,
                     estado='disponible',
                     deleted_at__isnull=True,
@@ -1784,37 +2372,182 @@ class RequisicionViewSet(viewsets.ModelViewSet):
                     if pendiente <= 0:
                         break
                     usar = min(pendiente, lote.cantidad_actual)
-                    movimiento, lote = registrar_movimiento_stock(
+                    
+                    # PASO 1: Registrar SALIDA del lote origen (farmacia central o mismo centro)
+                    movimiento_salida, lote_actualizado = registrar_movimiento_stock(
                         lote=lote,
                         tipo='salida',
                         cantidad=usar,
-                        centro=requisicion.centro,
+                        centro=lote.centro,  # Centro del lote origen
                         usuario=request.user if request.user.is_authenticated else None,
                         requisicion=requisicion,
-                        observaciones=f'Surtido de requisicion {requisicion.folio}'
+                        observaciones=f'SALIDA_POR_REQUISICION {requisicion.folio}'
                     )
+                    
+                    # PASO 2: Si el lote era de farmacia central (centro=None), crear ENTRADA en centro destino
+                    # REGLA DE ORO: El lote en el centro es una COPIA FIEL del lote de farmacia
+                    # - Mismo producto
+                    # - Mismo número de lote (SIN modificar)
+                    # - Misma fecha de caducidad
+                    # - Vinculado a lote_origen (trazabilidad obligatoria)
+                    if lote.centro is None and centro_requisicion:
+                        # Buscar lote existente en el centro destino con MISMO número de lote
+                        lote_destino = Lote.objects.filter(
+                            producto=detalle.producto,
+                            numero_lote=lote.numero_lote,  # MISMO número de lote
+                            centro=centro_requisicion,
+                            deleted_at__isnull=True
+                        ).first()
+                        
+                        if lote_destino:
+                            # Si existe y está agotado, reactivarlo
+                            if lote_destino.estado == 'agotado':
+                                lote_destino.estado = 'disponible'
+                                lote_destino.save(update_fields=['estado'])
+                        else:
+                            # Crear nuevo lote: COPIA FIEL del lote de farmacia
+                            # El número de lote es IDÉNTICO al de farmacia
+                            lote_destino = Lote(
+                                producto=detalle.producto,
+                                numero_lote=lote.numero_lote,  # MISMO número de lote
+                                centro=centro_requisicion,
+                                fecha_caducidad=lote.fecha_caducidad,  # MISMA caducidad
+                                cantidad_inicial=usar,
+                                cantidad_actual=0,  # Se actualiza con el movimiento
+                                estado='disponible',
+                                precio_compra=lote.precio_compra,
+                                proveedor=lote.proveedor,
+                                lote_origen=lote,  # VINCULACIÓN OBLIGATORIA al lote de farmacia
+                                observaciones=f'Transferido de farmacia central via requisicion {requisicion.folio}'
+                            )
+                            # Guardar sin validación full_clean para permitir la creación
+                            lote_destino.save()
+                        
+                        # Registrar ENTRADA en el centro destino
+                        # IMPORTANTE: Asociar la requisición al movimiento de entrada para trazabilidad completa
+                        movimiento_entrada, _ = registrar_movimiento_stock(
+                            lote=lote_destino,
+                            tipo='entrada',
+                            cantidad=usar,
+                            centro=centro_requisicion,
+                            usuario=request.user if request.user.is_authenticated else None,
+                            requisicion=None,  # La requisición solo se registra en la salida para no duplicar conteos
+                            observaciones=f'ENTRADA_POR_REQUISICION {requisicion.folio}'
+                        )
+                    
                     detalle.cantidad_surtida = (detalle.cantidad_surtida or 0) + usar
                     detalle.save(update_fields=['cantidad_surtida'])
                     pendiente -= usar
 
+            detalles_actualizados = Requisicion.objects.get(pk=requisicion.pk).detalles.all()
             completada = all(
                 (d.cantidad_autorizada or d.cantidad_solicitada) <= (d.cantidad_surtida or 0)
-                for d in requisicion.detalles.all()
+                for d in detalles_actualizados
             )
             requisicion.estado = 'surtida' if completada else 'parcial'
             requisicion.save(update_fields=['estado'])
 
         return Response({'mensaje': 'Requisicion surtida', 'requisicion': RequisicionSerializer(requisicion).data})
 
+    @action(detail=True, methods=['get'], url_path='hoja-recoleccion')
+    def hoja_recoleccion(self, request, pk=None):
+        """
+        Genera y descarga el PDF de la hoja de recolección para una requisición.
+        Solo disponible para requisiciones autorizadas, parciales o surtidas.
+        """
+        from core.utils.pdf_generator import generar_hoja_recoleccion
+        
+        requisicion = self.get_object()
+        estado = (requisicion.estado or '').lower()
+        
+        # Validar que la requisición puede generar hoja
+        if estado not in ['autorizada', 'parcial', 'surtida']:
+            return Response({
+                'error': 'Solo se pueden generar hojas para requisiciones autorizadas, parciales o surtidas',
+                'estado_actual': requisicion.estado
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Generar el PDF
+            pdf_buffer = generar_hoja_recoleccion(requisicion)
+            
+            # Crear respuesta HTTP con el PDF
+            response = HttpResponse(
+                pdf_buffer.getvalue(),
+                content_type='application/pdf'
+            )
+            folio_safe = (requisicion.folio or f'REQ-{requisicion.id}').replace('/', '-')
+            response['Content-Disposition'] = f'attachment; filename="Hoja_Recoleccion_{folio_safe}.pdf"'
+            
+            return response
+            
+        except Exception as e:
+            traceback.print_exc()
+            return Response({
+                'error': 'Error al generar la hoja de recolección',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['get'], url_path='pdf-rechazo')
+    def pdf_rechazo(self, request, pk=None):
+        """
+        Genera y descarga el PDF de rechazo para una requisición rechazada.
+        """
+        from core.utils.pdf_generator import generar_pdf_rechazo
+        
+        requisicion = self.get_object()
+        estado = (requisicion.estado or '').lower()
+        
+        if estado != 'rechazada':
+            return Response({
+                'error': 'Solo se pueden generar PDFs de rechazo para requisiciones rechazadas',
+                'estado_actual': requisicion.estado
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            pdf_buffer = generar_pdf_rechazo(requisicion)
+            
+            response = HttpResponse(
+                pdf_buffer.getvalue(),
+                content_type='application/pdf'
+            )
+            folio_safe = (requisicion.folio or f'REQ-{requisicion.id}').replace('/', '-')
+            response['Content-Disposition'] = f'attachment; filename="Requisicion_Rechazada_{folio_safe}.pdf"'
+            
+            return response
+            
+        except Exception as e:
+            traceback.print_exc()
+            return Response({
+                'error': 'Error al generar el PDF de rechazo',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @action(detail=False, methods=['get'])
     def estadisticas(self, request):
+        """Estadísticas de requisiciones filtradas por centro si aplica."""
         try:
-            total = Requisicion.objects.count()
-            por_estado = {estado: Requisicion.objects.filter(estado=estado).count() for estado, _ in ESTADOS_REQUISICION}
+            # SEGURIDAD: Filtrar por centro del usuario si no es admin/farmacia
+            user = request.user
+            base_queryset = Requisicion.objects.all()
+            
+            if not is_farmacia_or_admin(user):
+                user_centro = get_user_centro(user)
+                if user_centro:
+                    base_queryset = base_queryset.filter(centro=user_centro)
+                else:
+                    base_queryset = Requisicion.objects.none()
+            
+            total = base_queryset.count()
+            por_estado = {estado: base_queryset.filter(estado=estado).count() for estado, _ in ESTADOS_REQUISICION}
+            
+            # Top centros solo para admin/farmacia
             por_centro = []
-            centros = Centro.objects.annotate(total_requisiciones=Count('requisiciones')).filter(total_requisiciones__gt=0).order_by('-total_requisiciones')[:10]
-            for centro in centros:
-                por_centro.append({'centro': centro.nombre, 'total': centro.total_requisiciones})
+            if is_farmacia_or_admin(user):
+                centros = Centro.objects.annotate(total_requisiciones=Count('requisiciones')).filter(total_requisiciones__gt=0).order_by('-total_requisiciones')[:10]
+                for centro in centros:
+                    por_centro.append({'centro': centro.nombre, 'total': centro.total_requisiciones})
+            
             return Response({'total': total, 'por_estado': por_estado, 'top_centros': por_centro})
         except Exception as exc:
             traceback.print_exc()
@@ -1822,12 +2555,23 @@ class RequisicionViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='resumen_estados')
     def resumen_estados(self, request):
-        """Resumen de conteos por estado y por grupo logico."""
+        """Resumen de conteos por estado y por grupo logico. Filtrado por centro si aplica."""
         try:
-            por_estado = {estado.upper(): Requisicion.objects.filter(estado=estado).count() for estado, _ in ESTADOS_REQUISICION}
+            # SEGURIDAD: Filtrar por centro del usuario si no es admin/farmacia
+            user = request.user
+            base_queryset = Requisicion.objects.all()
+            
+            if not is_farmacia_or_admin(user):
+                user_centro = get_user_centro(user)
+                if user_centro:
+                    base_queryset = base_queryset.filter(centro=user_centro)
+                else:
+                    base_queryset = Requisicion.objects.none()
+            
+            por_estado = {estado.upper(): base_queryset.filter(estado=estado).count() for estado, _ in ESTADOS_REQUISICION}
             por_grupo = {}
             for nombre, estados in REQUISICION_GRUPOS_ESTADO.items():
-                por_grupo[nombre] = Requisicion.objects.filter(estado__in=estados).count()
+                por_grupo[nombre] = base_queryset.filter(estado__in=estados).count()
             return Response({'por_estado': por_estado, 'por_grupo': por_grupo})
         except Exception as exc:
             traceback.print_exc()
@@ -1836,20 +2580,75 @@ class RequisicionViewSet(viewsets.ModelViewSet):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_resumen(request):
+    """
+    Resumen del dashboard con KPIs y últimos movimientos.
+    
+    SEGURIDAD:
+    - Usuarios de centro: solo ven datos de su centro
+    - Admin/farmacia/vista: ven datos globales por defecto
+    - Admin/farmacia/vista pueden usar ?centro=ID para filtrar por centro específico
+    
+    CACHE: Usa cache por centro cuando ?centro= está activo para evitar recálculo.
+    """
     try:
+        # SEGURIDAD: Filtrar por centro si el usuario no es admin/farmacia/vista
+        user = request.user
+        filtrar_por_centro = not is_farmacia_or_admin(user)
+        user_centro = get_user_centro(user) if filtrar_por_centro else None
+        
+        # Admin/farmacia/vista puede filtrar por centro específico
+        centro_param = request.query_params.get('centro')
+        if centro_param and is_farmacia_or_admin(user):
+            try:
+                user_centro = Centro.objects.get(pk=centro_param)
+                filtrar_por_centro = True
+            except Centro.DoesNotExist:
+                pass
+        
+        # Cache por centro cuando está activo el filtro
+        cache_key = f'dashboard_resumen_{user_centro.id if user_centro else "global"}'
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return Response(cached_data)
+        
         total_productos = Producto.objects.filter(activo=True).count()
         lotes_disponibles = Lote.objects.filter(estado='disponible', deleted_at__isnull=True)
+        
+        # Aplicar filtro de centro a lotes
+        if filtrar_por_centro and user_centro:
+            lotes_disponibles = lotes_disponibles.filter(centro=user_centro)
+        
         stock_total = lotes_disponibles.aggregate(total=Sum('cantidad_actual'))['total'] or 0
         lotes_activos = lotes_disponibles.filter(cantidad_actual__gt=0).count()
 
         inicio_mes = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        movimientos_queryset = Movimiento.objects.select_related('lote__producto').order_by('-fecha')
+        movimientos_queryset = Movimiento.objects.select_related(
+            'lote__producto', 'lote__centro', 'centro', 'requisicion', 'usuario'
+        ).order_by('-fecha')
+        
+        # Aplicar filtro de centro a movimientos
+        if filtrar_por_centro and user_centro:
+            movimientos_queryset = movimientos_queryset.filter(lote__centro=user_centro)
+        
         movimientos_mes = movimientos_queryset.filter(fecha__gte=inicio_mes).count()
 
         ultimos_movimientos = movimientos_queryset[:10]
         movimientos_data = []
         for mov in ultimos_movimientos:
             producto_rel = getattr(mov.lote, 'producto', None)
+            lote_centro = getattr(mov.lote, 'centro', None)
+            mov_centro = getattr(mov, 'centro', None)
+            requisicion = getattr(mov, 'requisicion', None)
+            usuario = getattr(mov, 'usuario', None)
+            
+            # Determinar origen/destino según tipo de movimiento
+            if mov.tipo == 'entrada':
+                origen = mov.documento_referencia or 'Proveedor/Farmacia Central'
+                destino = lote_centro.nombre if lote_centro else 'Farmacia Central'
+            else:  # salida
+                origen = lote_centro.nombre if lote_centro else 'Farmacia Central'
+                destino = mov_centro.nombre if mov_centro else (requisicion.centro.nombre if requisicion and requisicion.centro else 'Consumo/Ajuste')
+            
             movimientos_data.append({
                 'id': mov.id,
                 'tipo_movimiento': mov.tipo.upper(),
@@ -1858,10 +2657,15 @@ def dashboard_resumen(request):
                 'lote__codigo_lote': getattr(mov.lote, 'numero_lote', 'N/A'),
                 'cantidad': abs(mov.cantidad) if mov.tipo == 'salida' else mov.cantidad,
                 'fecha_movimiento': mov.fecha.isoformat(),
-                'observaciones': mov.observaciones or ''
+                'observaciones': mov.observaciones or '',
+                'origen': origen,
+                'destino': destino,
+                'requisicion_folio': requisicion.folio if requisicion else None,
+                'documento_referencia': mov.documento_referencia or None,
+                'usuario': usuario.get_full_name() or usuario.username if usuario else None,
             })
 
-        return Response({
+        response_data = {
             'kpi': {
                 'total_productos': total_productos,
                 'stock_total': stock_total,
@@ -1869,7 +2673,12 @@ def dashboard_resumen(request):
                 'movimientos_mes': movimientos_mes
             },
             'ultimos_movimientos': movimientos_data
-        })
+        }
+        
+        # Guardar en cache por 5 minutos
+        cache.set(cache_key, response_data, 300)
+        
+        return Response(response_data)
     except Exception as exc:
         traceback.print_exc()
         return Response({
@@ -1878,18 +2687,180 @@ def dashboard_resumen(request):
             'error': str(exc)
         }, status=status.HTTP_200_OK)
 
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_graficas(request):
+    """
+    Datos para graficas del dashboard.
+    Retorna consumo_mensual, stock_por_centro y requisiciones_por_estado.
+    
+    SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
+    Admin/farmacia puede usar ?centro=ID para filtrar por centro específico.
+    """
+    try:
+        # SEGURIDAD: Determinar filtro de centro
+        user = request.user
+        if not user or not user.is_authenticated:
+            return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_403_FORBIDDEN)
+        filtrar_por_centro = not is_farmacia_or_admin(user)
+        user_centro = get_user_centro(user) if filtrar_por_centro else None
+        
+        # Admin/farmacia puede filtrar por centro específico
+        centro_param = request.query_params.get('centro')
+        if centro_param and is_farmacia_or_admin(user):
+            try:
+                user_centro = Centro.objects.get(pk=centro_param)
+                filtrar_por_centro = True
+            except Centro.DoesNotExist:
+                pass
+        
+        # Clave de caché única por centro y usuario
+        cache_key = f'dashboard_graficas_{user_centro.id if user_centro else "global"}'
+        cached = cache.get(cache_key)
+        if cached:
+            return Response(cached)
+        
+        # 1. Consumo mensual (últimos 6 meses)
+        consumo_mensual = []
+        for i in range(5, -1, -1):
+            fecha_inicio = (timezone.now() - timedelta(days=30*i)).replace(day=1)
+            if i > 0:
+                fecha_fin = (timezone.now() - timedelta(days=30*(i-1))).replace(day=1)
+            else:
+                fecha_fin = timezone.now()
+            
+            movimientos_mes = Movimiento.objects.filter(
+                fecha__gte=fecha_inicio,
+                fecha__lt=fecha_fin,
+                tipo='salida'
+            )
+            if filtrar_por_centro and user_centro:
+                movimientos_mes = movimientos_mes.filter(lote__centro=user_centro)
+            
+            total_salidas = movimientos_mes.aggregate(total=Sum('cantidad'))['total'] or 0
+            mes_nombre = fecha_inicio.strftime('%b')
+            consumo_mensual.append({
+                'mes': mes_nombre,
+                'consumo': abs(total_salidas)
+            })
+        
+        # 2. Stock por centro
+        stock_por_centro = []
+        if not filtrar_por_centro:
+            # Stock en farmacia central (centro=NULL)
+            stock_farmacia = Lote.objects.filter(
+                centro__isnull=True,
+                estado='disponible',
+                deleted_at__isnull=True
+            ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+            if stock_farmacia > 0:
+                stock_por_centro.append({
+                    'centro': 'Farmacia Central',
+                    'stock': stock_farmacia
+                })
+            
+            # Stock por cada centro
+            for centro in Centro.objects.filter(activo=True):
+                stock = Lote.objects.filter(
+                    centro=centro,
+                    estado='disponible',
+                    deleted_at__isnull=True
+                ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+                if stock > 0:
+                    stock_por_centro.append({
+                        'centro': centro.nombre,  # nombre completo para evitar confusiones
+                        'stock': stock
+                    })
+        else:
+            # Usuario de centro: solo su stock
+            if user_centro:
+                stock = Lote.objects.filter(
+                    centro=user_centro,
+                    estado='disponible',
+                    deleted_at__isnull=True
+                ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+                stock_por_centro.append({
+                    'centro': user_centro.nombre,
+                    'stock': stock
+                })
+        
+        # 3. Requisiciones por estado
+        requisiciones_por_estado = []
+        estados_count = {}
+        requisiciones_qs = Requisicion.objects.all()
+        if filtrar_por_centro and user_centro:
+            requisiciones_qs = requisiciones_qs.filter(centro=user_centro)
+        
+        for req in requisiciones_qs:
+            estado = req.estado.upper()
+            estados_count[estado] = estados_count.get(estado, 0) + 1
+        
+        for estado, count in estados_count.items():
+            if count > 0:
+                requisiciones_por_estado.append({
+                    'estado': estado,
+                    'cantidad': count
+                })
+        
+        result = {
+            'consumo_mensual': consumo_mensual,
+            'stock_por_centro': stock_por_centro,
+            'requisiciones_por_estado': requisiciones_por_estado
+        }
+        
+        # Guardar en cache por 5 minutos
+        cache.set(cache_key, result, 300)
+        
+        return Response(result)
+    except Exception as exc:
+        traceback.print_exc()
+        return Response({
+            'consumo_mensual': [],
+            'stock_por_centro': [],
+            'requisiciones_por_estado': [],
+            'error': str(exc)
+        }, status=status.HTTP_200_OK)
+
+
 @api_view(['GET'])
 def trazabilidad_producto(request, clave):
     """
     Trazabilidad de un producto identificado por clave (case-insensitive).
     Retorna lotes, movimientos y alertas de stock/caducidad.
+    
+    SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
     """
     try:
+        # SEGURIDAD: Determinar filtro de centro
+        user = request.user
+        if not user or not user.is_authenticated:
+            return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_403_FORBIDDEN)
+        rol_usuario = (getattr(user, 'rol', '') or '').lower()
+        if rol_usuario == 'vista':
+            return Response({'error': 'No tienes permiso para trazabilidad'}, status=status.HTTP_403_FORBIDDEN)
+        filtrar_por_centro = not is_farmacia_or_admin(user)
+        user_centro = get_user_centro(user) if filtrar_por_centro else None
+        
+        centro_param = request.query_params.get('centro')
+        if centro_param and is_farmacia_or_admin(user):
+            try:
+                user_centro = Centro.objects.get(pk=centro_param)
+                filtrar_por_centro = True
+            except Centro.DoesNotExist:
+                pass
+        
         producto = Producto.objects.filter(clave__iexact=clave).first()
         if not producto:
             return Response({'error': 'Producto no encontrado', 'clave_buscada': clave}, status=status.HTTP_404_NOT_FOUND)
 
-        lotes = Lote.objects.filter(producto=producto, deleted_at__isnull=True).order_by('-created_at')
+        lotes = Lote.objects.filter(producto=producto, deleted_at__isnull=True)
+        
+        # Aplicar filtro de centro
+        if filtrar_por_centro and user_centro:
+            lotes = lotes.filter(centro=user_centro)
+        
+        lotes = lotes.order_by('-created_at')
         lotes_data = []
         from datetime import date, timedelta
 
@@ -1922,11 +2893,20 @@ def trazabilidad_producto(request, clave):
                 'total_salidas': total_salidas,
                 'proveedor': lote.proveedor or 'N/A',
                 'precio_compra': str(lote.precio_compra) if lote.precio_compra else None,
+                # Campos de trazabilidad de contratos (solo para ADMIN/FARMACIA)
+                'numero_contrato': (lote.numero_contrato or '') if is_farmacia_or_admin(user) else None,
+                'marca': (lote.marca or '') if is_farmacia_or_admin(user) else None,
                 'activo': getattr(lote, 'activo', True),
                 'created_at': lote.created_at.isoformat()
             })
 
-        movimientos = Movimiento.objects.filter(lote__producto=producto).select_related('lote').order_by('-fecha')[:100]
+        movimientos = Movimiento.objects.filter(lote__producto=producto).select_related('lote')
+        
+        # Aplicar filtro de centro a movimientos
+        if filtrar_por_centro and user_centro:
+            movimientos = movimientos.filter(lote__centro=user_centro)
+        
+        movimientos = movimientos.order_by('-fecha')[:100]
         movimientos_data = []
         for mov in movimientos:
             movimientos_data.append({
@@ -1942,8 +2922,13 @@ def trazabilidad_producto(request, clave):
         stock_total = lotes.filter(estado='disponible').aggregate(total=Sum('cantidad_actual'))['total'] or 0
         lotes_activos = lotes.filter(estado='disponible', cantidad_actual__gt=0).count()
         total_lotes = lotes.count()
-        total_entradas_prod = Movimiento.objects.filter(lote__producto=producto, tipo='entrada').aggregate(total=Sum('cantidad'))['total'] or 0
-        total_salidas_prod = Movimiento.objects.filter(lote__producto=producto, tipo='salida').aggregate(total=Sum('cantidad'))['total'] or 0
+        
+        # Totales de entradas/salidas filtrados por centro si aplica
+        mov_query = Movimiento.objects.filter(lote__producto=producto)
+        if filtrar_por_centro and user_centro:
+            mov_query = mov_query.filter(lote__centro=user_centro)
+        total_entradas_prod = mov_query.filter(tipo='entrada').aggregate(total=Sum('cantidad'))['total'] or 0
+        total_salidas_prod = mov_query.filter(tipo='salida').aggregate(total=Sum('cantidad'))['total'] or 0
 
         fecha_limite = date.today() + timedelta(days=30)
         lotes_proximos_vencer = lotes.filter(cantidad_actual__gt=0, fecha_caducidad__lte=fecha_limite, fecha_caducidad__gte=date.today()).count()
@@ -1958,6 +2943,7 @@ def trazabilidad_producto(request, clave):
             alertas.append({'tipo': 'PROXIMOS_VENCER', 'mensaje': f'{lotes_proximos_vencer} lote(s) proximo(s) a vencer (30 dias)', 'nivel': 'ADVERTENCIA'})
 
         return Response({
+            'codigo': producto.clave,
             'producto': {
                 'id': producto.id,
                 'clave': producto.clave,
@@ -1991,9 +2977,25 @@ def trazabilidad_producto(request, clave):
 def trazabilidad_lote(request, codigo):
     """
     Trazabilidad completa de un lote por su numero.
+    
+    SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
     """
     try:
-        lote = Lote.objects.select_related('producto').filter(numero_lote__iexact=codigo).first()
+        if not request.user or not request.user.is_authenticated or not is_farmacia_or_admin(request.user):
+            return Response({'error': 'Solo usuarios de farmacia o administradores pueden acceder a reportes'}, status=status.HTTP_403_FORBIDDEN)
+
+        # SEGURIDAD: Determinar filtro de centro
+        user = request.user
+        filtrar_por_centro = not is_farmacia_or_admin(user)
+        user_centro = get_user_centro(user) if filtrar_por_centro else None
+        
+        lote_query = Lote.objects.select_related('producto').filter(numero_lote__iexact=codigo)
+        
+        # Aplicar filtro de centro
+        if filtrar_por_centro and user_centro:
+            lote_query = lote_query.filter(centro=user_centro)
+        
+        lote = lote_query.first()
         if not lote:
             return Response({'error': 'Lote no encontrado', 'codigo_buscado': codigo}, status=status.HTTP_404_NOT_FOUND)
 
@@ -2037,6 +3039,9 @@ def trazabilidad_lote(request, codigo):
                 alertas.append({'tipo': 'PROXIMO', 'mensaje': f'Caduca en {dias_caducidad} dias', 'nivel': 'ADVERTENCIA'})
 
         return Response({
+            'id': lote.id,
+            'numero_lote': lote.numero_lote,
+            'producto': lote.producto.clave,
             'lote': {
                 'id': lote.id,
                 'numero_lote': lote.numero_lote,
@@ -2049,6 +3054,9 @@ def trazabilidad_lote(request, codigo):
                 'dias_para_caducar': dias_caducidad,
                 'estado_caducidad': estado_caducidad,
                 'proveedor': lote.proveedor,
+                # Campos de trazabilidad de contratos (solo para ADMIN/FARMACIA)
+                'numero_contrato': lote.numero_contrato if is_farmacia_or_admin(user) else None,
+                'marca': lote.marca if is_farmacia_or_admin(user) else None,
             },
             'estadisticas': {
                 'total_entradas': total_entradas,
@@ -2059,7 +3067,8 @@ def trazabilidad_lote(request, codigo):
                 'diferencia_stock': saldo - lote.cantidad_actual,
                 'consistente': saldo == lote.cantidad_actual
             },
-            'historial': historial,
+            'movimientos': historial,
+            'historial': historial,  # compatibilidad hacia atr�s
             'total_movimientos': movimientos.count(),
             'alertas': alertas
         })
@@ -2070,32 +3079,151 @@ def trazabilidad_lote(request, codigo):
 @api_view(['GET'])
 def reporte_inventario(request):
     """
-    Genera reporte de inventario actual (Excel por defecto).
+    Genera reporte de inventario actual.
+    Por defecto devuelve JSON. Con ?formato=excel devuelve Excel.
+    
+    SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
+    Admin/farmacia puede usar ?centro=ID para filtrar.
     """
     try:
-        formato = request.query_params.get('formato', 'excel')
+        if not request.user or not request.user.is_authenticated or not is_farmacia_or_admin(request.user):
+            return Response({'error': 'Solo usuarios de farmacia o administradores pueden acceder a reportes'}, status=status.HTTP_403_FORBIDDEN)
+        # SEGURIDAD: Determinar filtro de centro
+        user = request.user
+        filtrar_por_centro = not is_farmacia_or_admin(user)
+        user_centro = get_user_centro(user) if filtrar_por_centro else None
+        
+        # Admin/farmacia puede filtrar por centro específico
+        centro_param = request.query_params.get('centro')
+        if centro_param and is_farmacia_or_admin(user):
+            if centro_param == 'central':
+                # Filtrar solo farmacia central
+                filtrar_por_centro = True
+                user_centro = None  # centro=NULL significa farmacia central
+            else:
+                try:
+                    user_centro = Centro.objects.get(pk=centro_param)
+                    filtrar_por_centro = True
+                except Centro.DoesNotExist:
+                    pass
+        
+        formato = request.query_params.get('formato', 'json')
         productos = Producto.objects.filter(activo=True).order_by('clave')
-        if formato != 'excel':
-            return Response({'error': 'Formato no soportado', 'formatos_disponibles': ['excel']}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Construir datos
+        datos = []
+        total_productos = 0
+        total_stock = 0
+        productos_bajo_minimo = 0
+        productos_sin_stock = 0
+        
+        for idx, producto in enumerate(productos, 1):
+            # Aplicar filtro de centro si corresponde
+            lotes_query = producto.lotes.filter(
+                deleted_at__isnull=True,
+                estado='disponible'
+            )
+            if filtrar_por_centro:
+                if user_centro:
+                    lotes_query = lotes_query.filter(centro=user_centro)
+                else:
+                    # centro=NULL significa farmacia central
+                    lotes_query = lotes_query.filter(centro__isnull=True)
+            
+            stock_total = lotes_query.aggregate(total=Sum('cantidad_actual'))['total'] or 0
+            lotes_activos = lotes_query.filter(cantidad_actual__gt=0).count()
 
+            nivel = 'alto'
+            if stock_total == 0:
+                nivel = 'sin_stock'
+                productos_sin_stock += 1
+            elif stock_total < producto.stock_minimo:
+                nivel = 'bajo'
+                productos_bajo_minimo += 1
+            elif stock_total < producto.stock_minimo * 1.5:
+                nivel = 'normal'
+
+            # Se incluye 'nivel_stock' para compatibilidad con el frontend
+            datos.append({
+                '#': idx,
+                'clave': producto.clave,
+                'descripcion': producto.descripcion,
+                'unidad': producto.unidad_medida,
+                'unidad_medida': producto.unidad_medida,  # alias esperado por frontend
+                'stock_minimo': producto.stock_minimo,
+                'stock_actual': stock_total,
+                'lotes_activos': lotes_activos,
+                'nivel': nivel,
+                'nivel_stock': nivel,
+                'precio_unitario': float(producto.precio_unitario) if producto.precio_unitario else 0.0,
+            })
+            total_productos += 1
+            total_stock += stock_total
+        
+        resumen = {
+            'total_productos': total_productos,
+            'total_stock': total_stock,
+            'stock_total': total_stock,  # alias para compatibilidad frontend
+            'productos_bajo_minimo': productos_bajo_minimo,
+            'productos_sin_stock': productos_sin_stock,
+        }
+        
+        # Si formato es JSON, devolver datos
+        if formato == 'json':
+            return Response({
+                'datos': datos,
+                'resumen': resumen
+            })
+        
+        # Formato PDF
+        if formato == 'pdf':
+            from core.utils.pdf_reports import generar_reporte_inventario
+            
+            # Preparar datos para el generador PDF
+            productos_data = []
+            for item in datos:
+                productos_data.append({
+                    'clave': item['clave'],
+                    'descripcion': item['descripcion'],
+                    'unidad_medida': item['unidad'],
+                    'stock_minimo': item['stock_minimo'],
+                    'stock_actual': item['stock_actual'],
+                    'lotes_activos': item['lotes_activos'],
+                    'nivel': item['nivel'],
+                    'precio_unitario': item['precio_unitario']
+                })
+            
+            filtros = {
+                'fecha_generacion': timezone.now().strftime('%d/%m/%Y %H:%M')
+            }
+            if filtrar_por_centro and user_centro:
+                filtros['centro'] = user_centro.nombre
+            
+            pdf_buffer = generar_reporte_inventario(productos_data, formato='pdf', filtros=filtros)
+            
+            response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+            response['Content-Disposition'] = f"attachment; filename=Inventario_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            return response
+        
+        # Formato Excel
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = 'Inventario'
 
-        ws.merge_cells('A1:H1')
+        ws.merge_cells('A1:I1')
         titulo = ws['A1']
         titulo.value = 'REPORTE DE INVENTARIO ACTUAL'
         titulo.font = Font(bold=True, size=14, color='632842')
         titulo.alignment = Alignment(horizontal='center', vertical='center')
 
-        ws.merge_cells('A2:H2')
+        ws.merge_cells('A2:I2')
         subtitulo = ws['A2']
         subtitulo.value = f"Generado el {timezone.now().strftime('%d/%m/%Y %H:%M:%S')}"
         subtitulo.alignment = Alignment(horizontal='center')
         subtitulo.font = Font(size=10, italic=True)
 
         ws.append([])
-        headers = ['#', 'Clave', 'Descripcion', 'Unidad', 'Stock minimo', 'Stock actual', 'Lotes activos', 'Nivel']
+        headers = ['#', 'Clave', 'Descripción', 'Unidad', 'Stock Mín.', 'Stock Actual', 'Lotes', 'Nivel', 'Precio']
         ws.append(headers)
 
         header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
@@ -2105,54 +3233,29 @@ def reporte_inventario(request):
             cell.font = header_font
             cell.alignment = Alignment(horizontal='center', vertical='center')
 
-        total_productos = 0
-        total_stock = 0
-        productos_bajo_minimo = 0
-
-        for idx, producto in enumerate(productos, 1):
-            stock_total = producto.lotes.filter(
-                deleted_at__isnull=True,
-                estado='disponible'
-            ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
-
-            lotes_activos = producto.lotes.filter(
-                deleted_at__isnull=True,
-                estado='disponible',
-                cantidad_actual__gt=0
-            ).count()
-
-            nivel = 'ALTO'
-            if stock_total == 0:
-                nivel = 'SIN STOCK'
-            elif stock_total < producto.stock_minimo:
-                nivel = 'BAJO'
-                productos_bajo_minimo += 1
-            elif stock_total < producto.stock_minimo * 1.5:
-                nivel = 'NORMAL'
-
+        for item in datos:
             ws.append([
-                idx,
-                producto.clave,
-                producto.descripcion[:70],
-                producto.unidad_medida,
-                producto.stock_minimo,
-                stock_total,
-                lotes_activos,
-                nivel
+                item['#'],
+                item['clave'],
+                item['descripcion'][:70],
+                item['unidad'],
+                item['stock_minimo'],
+                item['stock_actual'],
+                item['lotes_activos'],
+                item['nivel'].upper(),
+                item['precio_unitario']
             ])
-            total_productos += 1
-            total_stock += stock_total
 
         ws.append([])
         resumen_row = ws.max_row + 1
         ws[f'B{resumen_row}'] = 'Total de Productos'
-        ws[f'C{resumen_row}'] = total_productos
+        ws[f'C{resumen_row}'] = resumen['total_productos']
         ws[f'B{resumen_row + 1}'] = 'Stock Total'
-        ws[f'C{resumen_row + 1}'] = total_stock
-        ws[f'B{resumen_row + 2}'] = 'Productos bajo minimo'
-        ws[f'C{resumen_row + 2}'] = productos_bajo_minimo
+        ws[f'C{resumen_row + 1}'] = resumen['total_stock']
+        ws[f'B{resumen_row + 2}'] = 'Productos bajo mínimo'
+        ws[f'C{resumen_row + 2}'] = resumen['productos_bajo_minimo']
 
-        for col, width in zip(['A','B','C','D','E','F','G','H'], [8,14,45,10,14,14,14,12]):
+        for col, width in zip(['A','B','C','D','E','F','G','H','I'], [8,14,45,10,14,14,10,12,12]):
             ws.column_dimensions[col].width = width
 
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -2168,10 +3271,14 @@ def reporte_movimientos(request):
     """
     Genera reporte de movimientos con filtros.
     
+    SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
+    Admin/farmacia puede usar ?centro=ID para filtrar.
+    
     Parametros:
     - fecha_inicio: Fecha inicial (YYYY-MM-DD)
     - fecha_fin: Fecha final (YYYY-MM-DD)
     - tipo: ENTRADA o SALIDA
+    - centro: ID del centro (solo admin/farmacia)
     - formato: excel o pdf
     """
     try:
@@ -2179,6 +3286,20 @@ def reporte_movimientos(request):
         print(" GENERANDO REPORTE DE MOVIMIENTOS")
         print(f"   Parametros: {dict(request.query_params)}")
         print("=" * 50)
+        
+        # SEGURIDAD: Determinar filtro de centro
+        user = request.user
+        filtrar_por_centro = not is_farmacia_or_admin(user)
+        user_centro = get_user_centro(user) if filtrar_por_centro else None
+        
+        # Admin/farmacia puede filtrar por centro específico
+        centro_param = request.query_params.get('centro')
+        if centro_param and is_farmacia_or_admin(user):
+            try:
+                user_centro = Centro.objects.get(pk=centro_param)
+                filtrar_por_centro = True
+            except Centro.DoesNotExist:
+                pass
         
         # Obtener parametros
         fecha_inicio = request.query_params.get('fecha_inicio')
@@ -2189,6 +3310,10 @@ def reporte_movimientos(request):
         # Filtrar movimientos
         movimientos = Movimiento.objects.select_related('lote__producto').all()
         
+        # Aplicar filtro de centro
+        if filtrar_por_centro and user_centro:
+            movimientos = movimientos.filter(lote__centro=user_centro)
+        
         if fecha_inicio:
             movimientos = movimientos.filter(fecha__gte=fecha_inicio)
         if fecha_fin:
@@ -2197,6 +3322,74 @@ def reporte_movimientos(request):
             movimientos = movimientos.filter(tipo=tipo.lower())
         
         movimientos = movimientos.order_by('-fecha')
+        
+        # Construir datos
+        datos = []
+        total_entradas = 0
+        total_salidas = 0
+        
+        for mov in movimientos:
+            amount = abs(mov.cantidad) if mov.tipo == 'salida' else mov.cantidad
+            datos.append({
+                'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M'),
+                'tipo': mov.tipo.upper(),
+                'producto': f"{getattr(mov.lote.producto, 'clave', 'N/A')} - {getattr(mov.lote.producto, 'descripcion', '')[:40]}",
+                'lote': getattr(mov.lote, 'numero_lote', 'N/A') if mov.lote else 'N/A',
+                'cantidad': amount,
+                'observaciones': mov.observaciones or ''
+            })
+            if mov.tipo == 'entrada':
+                total_entradas += amount
+            else:
+                total_salidas += amount
+        
+        resumen = {
+            'total_movimientos': len(datos),
+            'total_entradas': total_entradas,
+            'total_salidas': total_salidas,
+            'diferencia': total_entradas - total_salidas
+        }
+        
+        # Formato JSON
+        if formato == 'json':
+            return Response({
+                'datos': datos,
+                'resumen': resumen
+            })
+        
+        # Formato PDF
+        if formato == 'pdf':
+            from core.utils.pdf_reports import generar_reporte_movimientos
+            
+            # Preparar datos para el generador PDF
+            movimientos_data = []
+            for item in datos:
+                movimientos_data.append({
+                    'fecha': item['fecha'],
+                    'tipo': item['tipo'],
+                    'producto': item['producto'],
+                    'lote': item['lote'],
+                    'cantidad': item['cantidad'],
+                    'observaciones': item['observaciones']
+                })
+            
+            filtros = {
+                'fecha_generacion': timezone.now().strftime('%d/%m/%Y %H:%M')
+            }
+            if fecha_inicio:
+                filtros['fecha_inicio'] = fecha_inicio
+            if fecha_fin:
+                filtros['fecha_fin'] = fecha_fin
+            if tipo:
+                filtros['tipo'] = tipo
+            if filtrar_por_centro and user_centro:
+                filtros['centro'] = user_centro.nombre
+            
+            pdf_buffer = generar_reporte_movimientos(movimientos_data, filtros=filtros)
+            
+            response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+            response['Content-Disposition'] = f"attachment; filename=Movimientos_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            return response
         
         if formato == 'excel':
             # Generar Excel
@@ -2309,11 +3502,11 @@ def reporte_movimientos(request):
             
             return response
             
-        else:
-            return Response({
-                'error': 'Formato no soportado',
-                'formatos_disponibles': ['excel']
-            }, status=status.HTTP_400_BAD_REQUEST)
+        # Formato no soportado
+        return Response({
+            'error': 'Formato no soportado',
+            'formatos_disponibles': ['json', 'pdf', 'excel']
+        }, status=status.HTTP_400_BAD_REQUEST)
             
     except Exception as e:
         print(f" Error generando reporte: {str(e)}")
@@ -2326,18 +3519,37 @@ def reporte_movimientos(request):
 @api_view(['GET'])
 def reporte_caducidades(request):
     """
-    Genera reporte de lotes proximos a caducar en Excel.
+    Genera reporte de lotes proximos a caducar.
+    Por defecto devuelve JSON. Con ?formato=excel devuelve Excel.
+    
+    SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
+    Admin/farmacia puede usar ?centro=ID para filtrar.
     
     Parametros:
     - dias: Numero de dias de anticipacion (default: 30)
+    - centro: ID del centro (solo admin/farmacia)
     """
     try:
-        print("=" * 50)
-        print(" GENERANDO REPORTE DE CADUCIDADES")
-        print("=" * 50)
+        # SEGURIDAD: Determinar filtro de centro
+        user = request.user
+        filtrar_por_centro = not is_farmacia_or_admin(user)
+        user_centro = get_user_centro(user) if filtrar_por_centro else None
+        
+        # Admin/farmacia puede filtrar por centro específico
+        centro_param = request.query_params.get('centro')
+        if centro_param and is_farmacia_or_admin(user):
+            if centro_param == 'central':
+                filtrar_por_centro = True
+                user_centro = None
+            else:
+                try:
+                    user_centro = Centro.objects.get(pk=centro_param)
+                    filtrar_por_centro = True
+                except Centro.DoesNotExist:
+                    pass
         
         dias = int(request.query_params.get('dias', 30))
-        formato = request.query_params.get('formato', 'excel')
+        formato = request.query_params.get('formato', 'json')
         
         fecha_limite = date.today() + timedelta(days=dias)
         
@@ -2346,37 +3558,111 @@ def reporte_caducidades(request):
             deleted_at__isnull=True,
             cantidad_actual__gt=0,
             fecha_caducidad__lte=fecha_limite
-        ).select_related('producto').order_by('fecha_caducidad')
+        ).select_related('producto')
         
-        if formato != 'excel':
-            return Response({'error': 'Formato no soportado', 'formatos_disponibles': ['excel']}, status=status.HTTP_400_BAD_REQUEST)
+        # Aplicar filtro de centro
+        if filtrar_por_centro:
+            if user_centro:
+                lotes = lotes.filter(centro=user_centro)
+            else:
+                lotes = lotes.filter(centro__isnull=True)
+        
+        lotes = lotes.order_by('fecha_caducidad')
+        
+        # Construir datos
+        datos = []
+        vencidos = 0
+        criticos = 0
+        proximos = 0
+        
+        for lote in lotes:
+            dias_restantes = (lote.fecha_caducidad - date.today()).days
+            
+            if dias_restantes < 0:
+                estado = 'vencido'
+                vencidos += 1
+            elif dias_restantes <= 7:
+                estado = 'critico'
+                criticos += 1
+            else:
+                estado = 'proximo'
+                proximos += 1
+            
+            datos.append({
+                'producto': f"{lote.producto.clave} - {lote.producto.descripcion}",
+                'lote': lote.numero_lote,
+                'caducidad': lote.fecha_caducidad.isoformat(),
+                'dias_restantes': dias_restantes,
+                'stock': lote.cantidad_actual,
+                'estado': estado,
+            })
+        
+        resumen = {
+            'total': len(datos),
+            'vencidos': vencidos,
+            'criticos': criticos,
+            'proximos': proximos,
+            'dias_filtro': dias,
+        }
+        
+        # Si formato es JSON, devolver datos
+        if formato == 'json':
+            return Response({
+                'datos': datos,
+                'resumen': resumen
+            })
+        
+        # Formato PDF
+        if formato == 'pdf':
+            from core.utils.pdf_reports import generar_reporte_caducidades
+            
+            # Preparar datos para el generador PDF
+            lotes_data = []
+            for item in datos:
+                lotes_data.append({
+                    'producto': item['producto'],
+                    'numero_lote': item['lote'],
+                    'fecha_caducidad': item['caducidad'],
+                    'dias_restantes': item['dias_restantes'],
+                    'cantidad_actual': item['stock'],
+                    'estado': item['estado']
+                })
+            
+            filtros = {
+                'dias_anticipacion': dias,
+                'fecha_generacion': timezone.now().strftime('%d/%m/%Y %H:%M')
+            }
+            if filtrar_por_centro and user_centro:
+                filtros['centro'] = user_centro.nombre
+            
+            pdf_buffer = generar_reporte_caducidades(lotes_data, dias=dias, filtros=filtros)
+            
+            response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+            response['Content-Disposition'] = f"attachment; filename=Caducidades_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            return response
         
         # Generar Excel
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = 'Caducidades'
         
-        # Titulo
         ws.merge_cells('A1:G1')
         titulo_cell = ws['A1']
         titulo_cell.value = f'REPORTE DE LOTES PROXIMOS A CADUCAR ({dias} DIAS)'
         titulo_cell.font = Font(bold=True, size=14, color='632842')
         titulo_cell.alignment = Alignment(horizontal='center', vertical='center')
         
-        # Fecha generacion
         ws.merge_cells('A2:G2')
         fecha_cell = ws['A2']
         fecha_cell.value = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")}'
         fecha_cell.font = Font(size=10, italic=True)
         fecha_cell.alignment = Alignment(horizontal='center')
         
-        ws.append([])  # Linea en blanco
+        ws.append([])
         
-        # Encabezados
-        headers = ['#', 'Producto', 'Lote', 'Caducidad', 'Dias Restantes', 'Stock', 'Estado']
+        headers = ['#', 'Producto', 'Lote', 'Caducidad', 'Días Restantes', 'Stock', 'Estado']
         ws.append(headers)
         
-        # Estilo encabezados
         header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
         header_font = Font(bold=True, color='FFFFFF', size=11)
         
@@ -2385,77 +3671,30 @@ def reporte_caducidades(request):
             cell.font = header_font
             cell.alignment = Alignment(horizontal='center', vertical='center')
         
-        # Datos
-        vencidos = 0
-        criticos = 0
-        proximos = 0
-        
-        for idx, lote in enumerate(lotes, 1):
-            dias_restantes = (lote.fecha_caducidad - date.today()).days
-            
-            if dias_restantes < 0:
-                estado = 'VENCIDO'
-                vencidos += 1
-            elif dias_restantes <= 7:
-                estado = 'CRITICO'
-                criticos += 1
-            else:
-                estado = 'PROXIMO'
-                proximos += 1
-            
+        for idx, item in enumerate(datos, 1):
             ws.append([
                 idx,
-                f"{lote.producto.clave} - {lote.producto.descripcion[:40]}",
-                lote.numero_lote,
-                lote.fecha_caducidad.strftime('%d/%m/%Y'),
-                dias_restantes,
-                lote.cantidad_actual,
-                estado
+                item['producto'][:50],
+                item['lote'],
+                item['caducidad'],
+                item['dias_restantes'],
+                item['stock'],
+                item['estado'].upper()
             ])
-            
-            # Colorear segun estado
-            row_num = idx + 4
-            estado_cell = ws.cell(row=row_num, column=7)
-            
-            if dias_restantes < 0:
-                estado_cell.fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
-                estado_cell.font = Font(color='FFFFFF', bold=True)
-            elif dias_restantes <= 7:
-                estado_cell.fill = PatternFill(start_color='FFA500', end_color='FFA500', fill_type='solid')
-                estado_cell.font = Font(color='FFFFFF', bold=True)
-            else:
-                estado_cell.fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
-                estado_cell.font = Font(bold=True)
         
-        # Resumen
         ws.append([])
         resumen_row = ws.max_row + 1
-        ws[f'B{resumen_row}'] = 'RESUMEN:'
-        ws[f'B{resumen_row}'].font = Font(bold=True, size=12)
-        
+        ws[f'B{resumen_row}'] = 'Total:'
+        ws[f'C{resumen_row}'] = resumen['total']
         ws[f'B{resumen_row + 1}'] = 'Vencidos:'
-        ws[f'C{resumen_row + 1}'] = vencidos
-        ws[f'C{resumen_row + 1}'].fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
-        ws[f'C{resumen_row + 1}'].font = Font(color='FFFFFF', bold=True)
+        ws[f'C{resumen_row + 1}'] = resumen['vencidos']
+        ws[f'B{resumen_row + 2}'] = 'Críticos:'
+        ws[f'C{resumen_row + 2}'] = resumen['criticos']
+        ws[f'B{resumen_row + 3}'] = 'Próximos:'
+        ws[f'C{resumen_row + 3}'] = resumen['proximos']
         
-        ws[f'B{resumen_row + 2}'] = 'Criticos (7 dias):'
-        ws[f'C{resumen_row + 2}'] = criticos
-        ws[f'C{resumen_row + 2}'].fill = PatternFill(start_color='FFA500', end_color='FFA500', fill_type='solid')
-        ws[f'C{resumen_row + 2}'].font = Font(color='FFFFFF', bold=True)
-        
-        ws[f'B{resumen_row + 3}'] = f'Proximos ({dias} dias):'
-        ws[f'C{resumen_row + 3}'] = proximos
-        ws[f'C{resumen_row + 3}'].fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
-        ws[f'C{resumen_row + 3}'].font = Font(bold=True)
-        
-        # Ajustar anchos
-        ws.column_dimensions['A'].width = 8
-        ws.column_dimensions['B'].width = 50
-        ws.column_dimensions['C'].width = 20
-        ws.column_dimensions['D'].width = 15
-        ws.column_dimensions['E'].width = 15
-        ws.column_dimensions['F'].width = 12
-        ws.column_dimensions['G'].width = 12
+        for col, width in zip(['A','B','C','D','E','F','G'], [8,50,20,15,15,12,12]):
+            ws.column_dimensions[col].width = width
         
         response = HttpResponse(
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -2463,12 +3702,9 @@ def reporte_caducidades(request):
         response['Content-Disposition'] = f'attachment; filename=Caducidades_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
         wb.save(response)
         
-        print(f" Reporte de caducidades generado: {lotes.count()} lotes")
-        
         return response
         
     except Exception as e:
-        print(f" Error generando reporte: {str(e)}")
         traceback.print_exc()
         return Response({
             'error': 'Error al generar reporte de caducidades',
@@ -2477,9 +3713,194 @@ def reporte_caducidades(request):
 
 
 @api_view(['GET'])
-def reporte_medicamentos_por_caducar(request):
-    """Resumen JSON de productos con lotes proximos a caducar."""
+def reporte_requisiciones(request):
+    """
+    Genera reporte de requisiciones con filtros.
+    Por defecto devuelve JSON. Con ?formato=excel devuelve Excel.
+    
+    SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
+    Admin/farmacia puede usar ?centro=ID para filtrar.
+    
+    Parametros:
+    - fecha_inicio: Fecha inicial (YYYY-MM-DD)
+    - fecha_fin: Fecha final (YYYY-MM-DD)
+    - estado: Estado de la requisicion
+    - centro: ID del centro (solo admin/farmacia)
+    - formato: json/excel
+    """
     try:
+        # SEGURIDAD: Determinar filtro de centro
+        user = request.user
+        filtrar_por_centro = not is_farmacia_or_admin(user)
+        user_centro = get_user_centro(user) if filtrar_por_centro else None
+        
+        fecha_inicio = request.query_params.get('fecha_inicio')
+        fecha_fin = request.query_params.get('fecha_fin')
+        estado = request.query_params.get('estado')
+        centro_param = request.query_params.get('centro') or request.query_params.get('centro_id')
+        formato = request.query_params.get('formato', 'json')
+        
+        requisiciones = Requisicion.objects.select_related('centro', 'usuario_solicita').all()
+        
+        # Aplicar filtro de centro obligatorio para usuarios de centro
+        if filtrar_por_centro and user_centro:
+            requisiciones = requisiciones.filter(centro=user_centro)
+        elif centro_param and is_farmacia_or_admin(user):
+            requisiciones = requisiciones.filter(centro_id=centro_param)
+        
+        if fecha_inicio:
+            requisiciones = requisiciones.filter(fecha_solicitud__gte=fecha_inicio)
+        if fecha_fin:
+            requisiciones = requisiciones.filter(fecha_solicitud__lte=fecha_fin)
+        if estado:
+            requisiciones = requisiciones.filter(estado__iexact=estado)
+        
+        requisiciones = requisiciones.order_by('-fecha_solicitud')
+        
+        # Construir datos
+        datos = []
+        estados_count = {}
+        
+        for req in requisiciones:
+            estado_req = req.estado.upper()
+            estados_count[estado_req] = estados_count.get(estado_req, 0) + 1
+            
+            datos.append({
+                'id': req.id,
+                'folio': req.folio or f'REQ-{req.id}',
+                'centro': req.centro.nombre if req.centro else 'N/A',
+                'estado': estado_req,
+                'fecha_solicitud': req.fecha_solicitud.isoformat() if req.fecha_solicitud else None,
+                'total_productos': req.detalles.count(),
+                'solicitante': req.usuario_solicita.get_full_name() if req.usuario_solicita else 'N/A',
+            })
+        
+        resumen = {
+            'total': len(datos),
+            'por_estado': estados_count,
+        }
+        
+        # Si formato es JSON, devolver datos
+        if formato == 'json':
+            return Response({
+                'datos': datos,
+                'resumen': resumen
+            })
+        
+        # Formato PDF
+        if formato == 'pdf':
+            from core.utils.pdf_reports import generar_reporte_requisiciones
+            
+            # Preparar datos para el generador PDF
+            requisiciones_data = []
+            for item in datos:
+                requisiciones_data.append({
+                    'folio': item['folio'],
+                    'centro': item['centro'],
+                    'estado': item['estado'],
+                    'fecha_solicitud': item['fecha_solicitud'],
+                    'total_productos': item['total_productos'],
+                    'solicitante': item['solicitante']
+                })
+            
+            filtros = {
+                'fecha_generacion': timezone.now().strftime('%d/%m/%Y %H:%M')
+            }
+            if fecha_inicio:
+                filtros['fecha_inicio'] = fecha_inicio
+            if fecha_fin:
+                filtros['fecha_fin'] = fecha_fin
+            if estado:
+                filtros['estado'] = estado
+            if filtrar_por_centro and user_centro:
+                filtros['centro'] = user_centro.nombre
+            
+            pdf_buffer = generar_reporte_requisiciones(requisiciones_data, filtros=filtros)
+            
+            response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+            response['Content-Disposition'] = f"attachment; filename=Requisiciones_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            return response
+        
+        # Generar Excel
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Requisiciones'
+        
+        ws.merge_cells('A1:G1')
+        titulo_cell = ws['A1']
+        titulo_cell.value = 'REPORTE DE REQUISICIONES'
+        titulo_cell.font = Font(bold=True, size=14, color='632842')
+        titulo_cell.alignment = Alignment(horizontal='center', vertical='center')
+        
+        ws.merge_cells('A2:G2')
+        fecha_cell = ws['A2']
+        fecha_cell.value = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")}'
+        fecha_cell.font = Font(size=10, italic=True)
+        fecha_cell.alignment = Alignment(horizontal='center')
+        
+        ws.append([])
+        
+        headers = ['#', 'Folio', 'Centro', 'Fecha', 'Estado', 'Solicitante', 'Productos']
+        ws.append(headers)
+        
+        header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
+        header_font = Font(bold=True, color='FFFFFF', size=11)
+        
+        for cell in ws[4]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+        
+        for idx, item in enumerate(datos, 1):
+            ws.append([
+                idx,
+                item['folio'],
+                item['centro'],
+                item['fecha_solicitud'][:10] if item['fecha_solicitud'] else 'N/A',
+                item['estado'],
+                item['solicitante'],
+                item['total_productos']
+            ])
+        
+        for col, width in zip(['A','B','C','D','E','F','G'], [6,18,25,12,15,25,10]):
+            ws.column_dimensions[col].width = width
+        
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename=Requisiciones_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        wb.save(response)
+        
+        return response
+        
+    except Exception as e:
+        traceback.print_exc()
+        return Response({
+            'error': 'Error al generar reporte de requisiciones',
+            'mensaje': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def reporte_medicamentos_por_caducar(request):
+    """Resumen JSON de productos con lotes proximos a caducar.
+    
+    SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
+    """
+    try:
+        # SEGURIDAD: Determinar filtro de centro
+        user = request.user
+        filtrar_por_centro = not is_farmacia_or_admin(user)
+        user_centro = get_user_centro(user) if filtrar_por_centro else None
+        
+        centro_param = request.query_params.get('centro')
+        if centro_param and is_farmacia_or_admin(user):
+            try:
+                user_centro = Centro.objects.get(pk=centro_param)
+                filtrar_por_centro = True
+            except Centro.DoesNotExist:
+                pass
+        
         dias = int(request.query_params.get('dias', 30))
         hoy = date.today()
         limite = hoy + timedelta(days=dias)
@@ -2489,6 +3910,10 @@ def reporte_medicamentos_por_caducar(request):
             fecha_caducidad__gt=hoy,
             fecha_caducidad__lte=limite
         ).select_related('producto')
+        
+        # Aplicar filtro de centro
+        if filtrar_por_centro and user_centro:
+            lotes = lotes.filter(centro=user_centro)
 
         agregados = {}
         for lote in lotes:
@@ -2529,15 +3954,36 @@ def reporte_medicamentos_por_caducar(request):
 
 @api_view(['GET'])
 def reporte_bajo_stock(request):
-    """Productos con stock por debajo del minimo."""
+    """Productos con stock por debajo del minimo.
+    
+    SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
+    """
     try:
+        # SEGURIDAD: Determinar filtro de centro
+        user = request.user
+        filtrar_por_centro = not is_farmacia_or_admin(user)
+        user_centro = get_user_centro(user) if filtrar_por_centro else None
+        
+        centro_param = request.query_params.get('centro')
+        if centro_param and is_farmacia_or_admin(user):
+            try:
+                user_centro = Centro.objects.get(pk=centro_param)
+                filtrar_por_centro = True
+            except Centro.DoesNotExist:
+                pass
+        
         productos = Producto.objects.filter(activo=True)
         resultados = []
         for prod in productos:
-            stock = prod.lotes.filter(
+            lotes_query = prod.lotes.filter(
                 deleted_at__isnull=True,
                 estado='disponible'
-            ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+            )
+            # Aplicar filtro de centro
+            if filtrar_por_centro and user_centro:
+                lotes_query = lotes_query.filter(centro=user_centro)
+            
+            stock = lotes_query.aggregate(total=Sum('cantidad_actual'))['total'] or 0
             if stock < prod.stock_minimo:
                 resultados.append({
                     'producto_id': prod.id,
@@ -2558,11 +4004,31 @@ def reporte_bajo_stock(request):
 def reporte_consumo(request):
     """
     Consumo (salidas) por producto en un rango de fechas.
+    
+    SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
     """
     try:
+        # SEGURIDAD: Determinar filtro de centro
+        user = request.user
+        filtrar_por_centro = not is_farmacia_or_admin(user)
+        user_centro = get_user_centro(user) if filtrar_por_centro else None
+        
+        centro_param = request.query_params.get('centro')
+        if centro_param and is_farmacia_or_admin(user):
+            try:
+                user_centro = Centro.objects.get(pk=centro_param)
+                filtrar_por_centro = True
+            except Centro.DoesNotExist:
+                pass
+        
         fecha_inicio = request.query_params.get('fecha_inicio')
         fecha_fin = request.query_params.get('fecha_fin')
         movimientos = Movimiento.objects.select_related('lote__producto').filter(tipo='salida')
+        
+        # Aplicar filtro de centro
+        if filtrar_por_centro and user_centro:
+            movimientos = movimientos.filter(lote__centro=user_centro)
+        
         if fecha_inicio:
             movimientos = movimientos.filter(fecha__gte=fecha_inicio)
         if fecha_fin:
@@ -2593,15 +4059,36 @@ def reportes_precarga(request):
     """
     Obtiene datos para precargar formularios de reportes.
     
+    SEGURIDAD: Filtra centros y lotes según el rol del usuario.
+    - Admin/farmacia: ven todos los centros
+    - Usuario de centro: solo ve su centro
+    
     Retorna:
     - Lista de productos activos
-    - Lista de centros activos
+    - Lista de centros activos (filtrada según rol)
     - Tipos de movimiento disponibles
     """
     try:
+        # SEGURIDAD: Determinar filtro de centro
+        user = request.user
+        es_admin_farmacia = is_farmacia_or_admin(user)
+        user_centro = get_user_centro(user) if not es_admin_farmacia else None
+        
         productos = list(Producto.objects.filter(activo=True).values('id', 'clave', 'descripcion').order_by('clave'))
-        centros = list(Centro.objects.filter(activo=True).values('id', 'clave', 'nombre').order_by('clave'))
-        lotes = list(Lote.objects.filter(deleted_at__isnull=True).values('id', 'numero_lote', 'producto_id'))
+        
+        # Filtrar centros según rol
+        if es_admin_farmacia:
+            centros = list(Centro.objects.filter(activo=True).values('id', 'clave', 'nombre').order_by('clave'))
+        elif user_centro:
+            centros = [{'id': user_centro.id, 'clave': user_centro.clave, 'nombre': user_centro.nombre}]
+        else:
+            centros = []
+        
+        # Filtrar lotes según rol
+        lotes_query = Lote.objects.filter(deleted_at__isnull=True)
+        if not es_admin_farmacia and user_centro:
+            lotes_query = lotes_query.filter(centro=user_centro)
+        lotes = list(lotes_query.values('id', 'numero_lote', 'producto_id'))
         
         return Response({
             'productos': productos,
@@ -2616,6 +4103,78 @@ def reportes_precarga(request):
             'error': 'Error al obtener datos de precarga',
             'mensaje': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class HojaRecoleccionViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet de solo lectura para Hojas de Recoleccion.
+    Las hojas se generan automaticamente al autorizar requisiciones.
+    """
+    queryset = HojaRecoleccion.objects.select_related(
+        'requisicion', 'requisicion__centro', 'generado_por'
+    ).prefetch_related('detalles')
+    serializer_class = HojaRecoleccionSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = CustomPagination
+
+    def get_queryset(self):
+        """Filtra por centro si el usuario no es admin/farmacia."""
+        queryset = super().get_queryset()
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return HojaRecoleccion.objects.none()
+        if user.is_superuser:
+            return queryset
+        rol = getattr(user, 'rol', '').lower()
+        if rol in ('admin', 'farmacia', 'administrador', 'usuario_farmacia'):
+            return queryset
+        # Filtrar por centro del usuario
+        user_centro = getattr(user, 'centro', None)
+        if user_centro:
+            return queryset.filter(requisicion__centro=user_centro)
+        return HojaRecoleccion.objects.none()
+
+    @action(detail=True, methods=['get'])
+    def verificar_integridad(self, request, pk=None):
+        """Verifica que el hash de la hoja coincida con su contenido."""
+        import hashlib
+        import json
+        hoja = self.get_object()
+        contenido = json.dumps(hoja.contenido_json, sort_keys=True, ensure_ascii=False)
+        hash_calculado = hashlib.sha256(contenido.encode('utf-8')).hexdigest()
+        return Response({
+            'folio': hoja.folio_hoja,
+            'hash_almacenado': hoja.hash_contenido,
+            'hash_calculado': hash_calculado,
+            'integridad_ok': hash_calculado == hoja.hash_contenido
+        })
+
+    @action(detail=True, methods=['get'])
+    def pdf(self, request, pk=None):
+        """Genera y descarga el PDF de la hoja de recolección."""
+        from core.utils.pdf_generator import generar_hoja_recoleccion
+        
+        hoja = self.get_object()
+        requisicion = hoja.requisicion
+        
+        try:
+            pdf_buffer = generar_hoja_recoleccion(requisicion)
+            
+            response = HttpResponse(
+                pdf_buffer.getvalue(),
+                content_type='application/pdf'
+            )
+            folio_safe = (hoja.folio_hoja or f'HOJA-{hoja.id}').replace('/', '-')
+            response['Content-Disposition'] = f'attachment; filename="Hoja_Recoleccion_{folio_safe}.pdf"'
+            
+            return response
+            
+        except Exception as e:
+            traceback.print_exc()
+            return Response({
+                'error': 'Error al generar PDF',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 

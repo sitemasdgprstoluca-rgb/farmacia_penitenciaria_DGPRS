@@ -4,15 +4,19 @@ import {
   FaFileAlt,
   FaSearch,
   FaFilter,
-  FaChevronLeft,
-  FaChevronRight,
   FaUser,
   FaClock,
   FaDatabase,
+  FaDownload,
+  FaEye,
+  FaTimes,
+  FaInfoCircle,
+  FaFilePdf,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
-import apiClient from '../services/api';
+import apiClient, { auditoriaAPI, descargarArchivo } from '../services/api';
 import Pagination from '../components/Pagination';
+import ExcelJS from 'exceljs';
 
 const MOCK_LOGS = Array.from({ length: 40 }).map((_, index) => {
   const acciones = ['CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT'];
@@ -28,15 +32,22 @@ const MOCK_LOGS = Array.from({ length: 40 }).map((_, index) => {
   };
 });
 
+// Conectar a datos reales del backend
 const isDevSession = () => false;
 
 const Auditoria = () => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalLogs, setTotalLogs] = useState(0);
   const [pageSize, setPageSize] = useState(25);
+  
+  // Modal de detalle
+  const [showDetalleModal, setShowDetalleModal] = useState(false);
+  const [selectedLog, setSelectedLog] = useState(null);
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
@@ -49,8 +60,11 @@ const Auditoria = () => {
   const accionesDisponibles = [
     { value: '', label: 'Todas las acciones' },
     { value: 'CREATE', label: 'Crear' },
+    { value: 'crear', label: 'Crear' },
     { value: 'UPDATE', label: 'Actualizar' },
+    { value: 'actualizar', label: 'Actualizar' },
     { value: 'DELETE', label: 'Eliminar' },
+    { value: 'eliminar', label: 'Eliminar' },
     { value: 'LOGIN', label: 'Inicio de sesión' },
     { value: 'LOGOUT', label: 'Cierre de sesión' }
   ];
@@ -154,6 +168,130 @@ const Auditoria = () => {
     setCurrentPage(1);
   };
 
+  // Exportar a Excel
+  const handleExportar = async () => {
+    setExporting(true);
+    try {
+      // Obtener todos los datos con los filtros actuales (sin paginación)
+      const params = { page_size: 10000 };
+      if (searchTerm) params.search = searchTerm;
+      if (filtroAccion) params.accion = filtroAccion;
+      if (filtroModelo) params.modelo = filtroModelo;
+      if (filtroUsuario) params.usuario = filtroUsuario;
+      if (filtroFechaInicio) params.fecha_inicio = filtroFechaInicio;
+      if (filtroFechaFin) params.fecha_fin = filtroFechaFin;
+
+      const response = await apiClient.get('/auditoria/', { params });
+      const datos = response.data.results || response.data || [];
+
+      if (datos.length === 0) {
+        toast.error('No hay datos para exportar');
+        return;
+      }
+
+      // Crear workbook con ExcelJS
+      const workbook = new ExcelJS.Workbook();
+      workbook.created = new Date();
+      const sheet = workbook.addWorksheet('Auditoría');
+
+      // Definir columnas
+      sheet.columns = [
+        { header: 'ID', key: 'id', width: 8 },
+        { header: 'Fecha/Hora', key: 'fecha', width: 22 },
+        { header: 'Usuario', key: 'usuario', width: 20 },
+        { header: 'Acción', key: 'accion', width: 12 },
+        { header: 'Módulo', key: 'modelo', width: 15 },
+        { header: 'Objeto', key: 'objeto', width: 25 },
+        { header: 'Descripción', key: 'descripcion', width: 40 },
+        { header: 'IP', key: 'ip', width: 15 },
+        { header: 'Cambios', key: 'cambios', width: 50 },
+      ];
+
+      // Estilo del encabezado
+      sheet.getRow(1).eachCell((cell) => {
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FF9F2241' },
+        };
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      });
+
+      // Agregar datos
+      datos.forEach((log) => {
+        sheet.addRow({
+          id: log.id,
+          fecha: formatFecha(log.fecha),
+          usuario: log.usuario_nombre || 'Sistema',
+          accion: getAccionColor(log.accion).label,
+          modelo: log.modelo || '-',
+          objeto: log.objeto_repr || '-',
+          descripcion: log.descripcion || '-',
+          ip: log.ip_address || '-',
+          cambios: log.cambios ? JSON.stringify(log.cambios, null, 2) : '-',
+        });
+      });
+
+      // Generar y descargar archivo
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const fecha = new Date().toISOString().split('T')[0];
+      link.download = `auditoria_${fecha}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success(`Exportados ${datos.length} registros`);
+    } catch (error) {
+      console.error('Error al exportar:', error);
+      toast.error('Error al exportar los datos');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Exportar PDF con fondo institucional
+  const handleExportarPdf = async () => {
+    if (logs.length === 0) {
+      toast.error('No hay registros para exportar');
+      return;
+    }
+    
+    setExportingPdf(true);
+    try {
+      const params = {
+        search: searchTerm,
+        accion: filtroAccion,
+        modelo: filtroModelo,
+        usuario: filtroUsuario,
+        fecha_inicio: filtroFechaInicio,
+        fecha_fin: filtroFechaFin,
+        page_size: 500, // Exportar más registros en PDF
+      };
+      
+      const response = await auditoriaAPI.exportarPdf(params);
+      descargarArchivo(response, `auditoria_${new Date().toISOString().split('T')[0]}.pdf`);
+      toast.success('PDF generado exitosamente');
+    } catch (error) {
+      console.error('Error al exportar PDF:', error);
+      toast.error('Error al generar el PDF');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
+  // Ver detalle de un log
+  const handleVerDetalle = (log) => {
+    setSelectedLog(log);
+    setShowDetalleModal(true);
+  };
+
   const formatFecha = (fecha) => {
     return new Date(fecha).toLocaleString('es-MX', {
       day: '2-digit',
@@ -166,14 +304,21 @@ const Auditoria = () => {
   };
 
   const getAccionColor = (accion) => {
+    const accionUpper = (accion || '').toUpperCase();
     const colores = {
       'CREATE': { bg: '#DCFCE7', text: '#166534', label: 'Crear' },
+      'CREAR': { bg: '#DCFCE7', text: '#166534', label: 'Crear' },
       'UPDATE': { bg: '#DBEAFE', text: '#1E40AF', label: 'Actualizar' },
+      'ACTUALIZAR': { bg: '#DBEAFE', text: '#1E40AF', label: 'Actualizar' },
       'DELETE': { bg: '#FEE2E2', text: '#991B1B', label: 'Eliminar' },
+      'ELIMINAR': { bg: '#FEE2E2', text: '#991B1B', label: 'Eliminar' },
       'LOGIN': { bg: '#E0E7FF', text: '#3730A3', label: 'Login' },
-      'LOGOUT': { bg: '#F3F4F6', text: '#374151', label: 'Logout' }
+      'LOGOUT': { bg: '#F3F4F6', text: '#374151', label: 'Logout' },
+      'AUTORIZAR': { bg: '#FEF3C7', text: '#92400E', label: 'Autorizar' },
+      'RECHAZAR': { bg: '#FEE2E2', text: '#991B1B', label: 'Rechazar' },
+      'SURTIR': { bg: '#D1FAE5', text: '#065F46', label: 'Surtir' },
     };
-    return colores[accion] || { bg: '#F3F4F6', text: '#4B5563', label: accion };
+    return colores[accionUpper] || { bg: '#F3F4F6', text: '#4B5563', label: accion };
   };
 
   const totalBadge = totalLogs ? `${totalLogs.toLocaleString()} registros` : 'Sin registros';
@@ -187,12 +332,54 @@ const Auditoria = () => {
 
   return (
     <div className="p-6 space-y-6">
-      <PageHeader
-        icon={FaFileAlt}
-        title="Auditoría del Sistema"
-        subtitle="Registro de todas las acciones realizadas en el sistema"
-        badge={badgeContent}
-      />
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <PageHeader
+          icon={FaFileAlt}
+          title="Auditoría del Sistema"
+          subtitle="Registro de todas las acciones realizadas en el sistema"
+          badge={badgeContent}
+        />
+        
+        {/* Botones Exportar */}
+        <div className="flex gap-2">
+          <button
+            onClick={handleExportarPdf}
+            disabled={exportingPdf || loading || logs.length === 0}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' }}
+          >
+            {exportingPdf ? (
+              <>
+                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                Generando...
+              </>
+            ) : (
+              <>
+                <FaFilePdf />
+                Exportar PDF
+              </>
+            )}
+          </button>
+          <button
+            onClick={handleExportar}
+            disabled={exporting || loading || logs.length === 0}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)' }}
+          >
+            {exporting ? (
+              <>
+                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                Exportando...
+              </>
+            ) : (
+              <>
+                <FaDownload />
+                Exportar Excel
+              </>
+            )}
+          </button>
+        </div>
+      </div>
 
       {/* Filtros */}
       <div className="bg-white rounded-xl shadow-lg p-6 border-l-4" style={{ borderLeftColor: '#9F2241' }}>
@@ -395,6 +582,9 @@ const Auditoria = () => {
                     <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">
                       IP
                     </th>
+                    <th className="px-6 py-4 text-center text-xs font-bold text-white uppercase tracking-wider">
+                      Detalle
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -442,6 +632,15 @@ const Auditoria = () => {
                         <td className="px-6 py-4 text-sm text-gray-500">
                           {log.ip_address || '-'}
                         </td>
+                        <td className="px-6 py-4 text-center">
+                          <button
+                            onClick={() => handleVerDetalle(log)}
+                            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                            title="Ver detalle"
+                          >
+                            <FaEye className="text-gray-500 hover:text-blue-600" />
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -466,6 +665,122 @@ const Auditoria = () => {
           </>
         )}
       </div>
+
+      {/* Modal de Detalle */}
+      {showDetalleModal && selectedLog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
+            {/* Header del Modal */}
+            <div 
+              className="px-6 py-4 flex items-center justify-between"
+              style={{ background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)' }}
+            >
+              <div className="flex items-center gap-3 text-white">
+                <FaInfoCircle className="text-xl" />
+                <h3 className="text-lg font-bold">Detalle del Registro de Auditoría</h3>
+              </div>
+              <button
+                onClick={() => setShowDetalleModal(false)}
+                className="text-white/80 hover:text-white transition-colors"
+              >
+                <FaTimes className="text-xl" />
+              </button>
+            </div>
+
+            {/* Contenido del Modal */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
+              <div className="space-y-4">
+                {/* Info básica */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-xs text-gray-500 uppercase font-semibold mb-1">ID</p>
+                    <p className="font-bold text-gray-900">{selectedLog.id}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Fecha/Hora</p>
+                    <p className="font-bold text-gray-900">{formatFecha(selectedLog.fecha)}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Usuario</p>
+                    <p className="font-bold" style={{ color: '#6B1839' }}>
+                      {selectedLog.usuario_nombre || selectedLog.usuario || 'Sistema'}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Acción</p>
+                    <span 
+                      className="px-3 py-1.5 rounded-full text-xs font-bold inline-block"
+                      style={{ 
+                        backgroundColor: getAccionColor(selectedLog.accion).bg, 
+                        color: getAccionColor(selectedLog.accion).text 
+                      }}
+                    >
+                      {getAccionColor(selectedLog.accion).label}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Módulo</p>
+                    <p className="font-bold text-gray-900">{selectedLog.modelo || '-'}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-xs text-gray-500 uppercase font-semibold mb-1">IP</p>
+                    <p className="font-mono text-gray-900">{selectedLog.ip_address || '-'}</p>
+                  </div>
+                </div>
+
+                {selectedLog.objeto_repr && (
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Objeto Afectado</p>
+                    <p className="font-bold text-gray-900">{selectedLog.objeto_repr}</p>
+                    {selectedLog.objeto_id && (
+                      <p className="text-xs text-gray-500 mt-1">ID: {selectedLog.objeto_id}</p>
+                    )}
+                  </div>
+                )}
+
+                {selectedLog.descripcion && (
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Descripción</p>
+                    <p className="text-gray-900">{selectedLog.descripcion}</p>
+                  </div>
+                )}
+
+                {/* Cambios realizados */}
+                {selectedLog.cambios && Object.keys(selectedLog.cambios).length > 0 && (
+                  <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                    <p className="text-xs text-blue-700 uppercase font-semibold mb-3 flex items-center gap-2">
+                      <FaInfoCircle />
+                      Cambios Realizados
+                    </p>
+                    <div className="bg-white rounded-lg p-3 overflow-x-auto">
+                      <pre className="text-xs font-mono text-gray-700 whitespace-pre-wrap">
+                        {JSON.stringify(selectedLog.cambios, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Botón cerrar */}
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={() => setShowDetalleModal(false)}
+                  className="px-6 py-2.5 rounded-lg font-semibold text-white transition-all hover:scale-105"
+                  style={{ background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)' }}
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

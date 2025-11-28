@@ -91,11 +91,11 @@ const normalizeText = (text) =>
 
 
 
-const STOCK_LEVELS = [
+const NIVELES_INVENTARIO = [
 
   { value: '', label: 'Todos los niveles' },
 
-  { value: 'sin_stock', label: 'Sin stock' },
+  { value: 'sin_stock', label: 'Sin inventario' },
 
   { value: 'critico', label: 'Crítico' },
 
@@ -230,7 +230,7 @@ const determinarEstadoProducto = (producto) => {
 
   if (inventario <= 0) {
 
-    return { label: 'Sin stock', activo: false };
+    return { label: 'Sin inventario', activo: false };
 
   }
 
@@ -294,7 +294,7 @@ const renderStockBadge = (nivel) => {
 
   const label = {
 
-    sin_stock: 'Sin stock',
+    sin_stock: 'Sin inventario',
 
     critico: 'Crítico',
 
@@ -410,42 +410,24 @@ const Productos = () => {
 
   const { user, permisos, getRolPrincipal } = usePermissions();
 
-
-
-  const rolPrincipal = getRolPrincipal();
-
-  const esSuperuser = rolPrincipal === 'SUPERUSUARIO';
-
-  const esFarmaciaAdmin = rolPrincipal === 'FARMACIA_ADMIN' || esSuperuser;
-
-  const esCentroUser = rolPrincipal === 'CENTRO_USER';
-
-  const esVistaUser = rolPrincipal === 'VISTA_USER';
-
-
+  const rolPrincipal = getRolPrincipal(); // ADMIN | FARMACIA | CENTRO | VISTA | SIN_ROL
+  const esAdmin = rolPrincipal === 'ADMIN';
+  const esFarmacia = rolPrincipal === 'FARMACIA';
+  const esFarmaciaAdmin = esAdmin || esFarmacia; // Admin o Farmacia pueden gestionar productos
+  const esCentroUser = rolPrincipal === 'CENTRO';
+  const esVistaUser = rolPrincipal === 'VISTA';
 
   const puede = useMemo(() => ({
-
-    ver: permisos?.verProductos,
-
+    ver: permisos?.verProductos || esFarmaciaAdmin,
     crear: esFarmaciaAdmin,
-
     editar: esFarmaciaAdmin,
-
     eliminar: esFarmaciaAdmin,
-
     exportar: esFarmaciaAdmin || esVistaUser,
-
     importar: esFarmaciaAdmin,
-
     cambiarEstado: esFarmaciaAdmin,
-
     verSoloActivos: esCentroUser || esVistaUser,
-
     soloLectura: esCentroUser || esVistaUser,
-
     auditoria: esFarmaciaAdmin,
-
   }), [permisos, esFarmaciaAdmin, esCentroUser, esVistaUser]);
 
 
@@ -772,7 +754,7 @@ const Productos = () => {
 
     if (data.stock_minimo === '' || Number(data.stock_minimo) < 0) {
 
-      errors.stock_minimo = 'El stock mínimo no puede ser negativo';
+      errors.stock_minimo = 'El inventario mínimo no puede ser negativo';
 
     }
 
@@ -1100,7 +1082,7 @@ const Productos = () => {
 
             { header: 'Inventario', value: (row) => getInventarioDisponible(row), width: 16 },
 
-            { header: 'Stock mínimo', key: 'stock_minimo', width: 16 },
+            { header: 'Inv. Mínimo', key: 'stock_minimo', width: 16 },
 
             { header: 'Estado', value: (row) => determinarEstadoProducto(row).label, width: 14 },
 
@@ -1209,7 +1191,7 @@ const Productos = () => {
           return demo;
         });
         mockProductosRef.current = [...nuevos, ...mockProductosRef.current];
-        toast.success(`Importaci?n demo completada: ${nuevos.length} productos simulados`, { duration: 5000 });
+        toast.success(`Importación demo completada: ${nuevos.length} productos simulados`, { duration: 5000 });
         applyMockProductos();
         return;
       }
@@ -1219,11 +1201,11 @@ const Productos = () => {
       const errores = response.data?.errores || [];
 
       toast.success(
-        `Importaci?n completada. Creados: ${resumen.creados || 0} | Actualizados: ${resumen.actualizados || 0} | Total: ${resumen.total_procesados || 0}`,
+        `Importación completada. Creados: ${resumen.creados || 0} | Actualizados: ${resumen.actualizados || 0} | Total: ${resumen.total_procesados || 0}`,
         { duration: 5000 }
       );
       if (errores.length) {
-        console.warn('Errores de importaci?n de productos', errores);
+        console.warn('Errores de importación de productos', errores);
         toast.error(`${errores.length} fila(s) con error. Revisa detalles en consola.`);
       }
 
@@ -1409,11 +1391,11 @@ const Productos = () => {
 
                 'Inventario',
 
-                'Stock mínimo',
+                'Inv. Mínimo',
 
                 'Estado',
 
-                'Nivel stock',
+                'Nivel Inv.',
 
                 'Creado por',
 
@@ -1879,7 +1861,7 @@ const Productos = () => {
 
               <div>
 
-                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Nivel Stock</label>
+                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Nivel Inventario</label>
 
                 <select
 
@@ -1893,7 +1875,7 @@ const Productos = () => {
 
                 >
 
-                  {STOCK_LEVELS.map((nivel) => (
+                  {NIVELES_INVENTARIO.map((nivel) => (
 
                     <option key={nivel.value} value={nivel.value}>
 
@@ -2097,7 +2079,7 @@ const Productos = () => {
 
                 <div>
 
-                  <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Stock mínimo *</label>
+                  <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Inventario mínimo *</label>
 
                   <input
 

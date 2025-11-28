@@ -164,7 +164,7 @@ const NotificacionesBell = () => {
                       <button
                         onClick={() => marcarLeida(notif.id)}
                         className="text-gray-400 hover:text-blue-600"
-                        title="Marcar como leida"
+                        title="Marcar como leída"
                       >
                         ✓
                       </button>

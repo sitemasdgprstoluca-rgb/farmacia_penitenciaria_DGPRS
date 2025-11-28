@@ -22,6 +22,7 @@ import {
   FaExchangeAlt,
   FaBell,
   FaIdBadge,
+  FaPalette,
 } from "react-icons/fa";
 
 function Layout() {
@@ -56,7 +57,7 @@ function Layout() {
     { path: "/productos", icon: FaBox, label: "Productos", permission: "verProductos" },
     { path: "/lotes", icon: FaWarehouse, label: "Lotes", permission: "verLotes" },
     { path: "/requisiciones", icon: FaClipboardList, label: "Requisiciones", permission: "verRequisiciones" },
-    { path: "/movimientos", icon: FaExchangeAlt, label: "Movimientos", permission: "verLotes" },
+    { path: "/movimientos", icon: FaExchangeAlt, label: "Movimientos", permission: "verMovimientos" },
     { path: "/centros", icon: FaBuilding, label: "Centros", permission: "verCentros" },
     { path: "/usuarios", icon: FaUsers, label: "Usuarios", permission: "verUsuarios" },
     { path: "/reportes", icon: FaChartBar, label: "Reportes", permission: "verReportes" },
@@ -64,6 +65,7 @@ function Layout() {
     { path: "/auditoria", icon: FaFileAlt, label: "Auditoria", permission: "verAuditoria" },
     { path: "/notificaciones", icon: FaBell, label: "Notificaciones", permission: "verNotificaciones", badge: unreadCount },
     { path: "/perfil", icon: FaIdBadge, label: "Perfil", permission: "verPerfil" },
+    { path: "/configuracion-tema", icon: FaPalette, label: "Personalizar Tema", permission: "esSuperusuario" },
   ];
 
   const visibleMenuItems = menuItems.filter((item) => !item.permission || permisos[item.permission]);
@@ -145,6 +147,7 @@ function Layout() {
               <Link
                 key={item.path}
                 to={item.path}
+                onClick={() => setSidebarOpen(false)}
                 className="flex items-center gap-3 px-4 py-3 rounded-lg transition-all"
                 style={{
                   backgroundColor: isActive ? "rgba(255,255,255,0.15)" : "transparent",
@@ -183,12 +186,12 @@ function Layout() {
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.15)")}
           >
             <FaSignOutAlt size={20} />
-            <span>Cerrar Sesion</span>
+            <span>Cerrar Sesión</span>
           </button>
         </div>
       </aside>
 
-      <div className={`transition-all min-h-screen flex flex-col ${sidebarOpen ? "lg:ml-64" : "ml-0"}`}>
+      <div className="transition-all min-h-screen flex flex-col lg:ml-64">
         <header className="bg-white shadow-sm sticky top-0 z-30" style={{ borderBottom: "3px solid #9F2241" }}>
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-4">
             <div className="flex items-center gap-3 sm:gap-4">

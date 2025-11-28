@@ -2,26 +2,36 @@
 URLs API v1
 """
 from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from rest_framework_simplejwt.views import TokenRefreshView
+from django.conf import settings
+from rest_framework.routers import SimpleRouter
 
 # Core views
 from core.views import (
-    CustomTokenObtainPairView, LogoutView,
+    LogoutView,
     UserViewSet, ImportacionLogViewSet, AuditoriaLogViewSet, DevAutoLoginView,
-    DetalleRequisicionViewSet, NotificacionViewSet
+    DetalleRequisicionViewSet, NotificacionViewSet, ConfiguracionSistemaViewSet
+)
+# JWT Views seguros (cookies HttpOnly para refresh token)
+from core.serializers_jwt import (
+    SecureTokenObtainPairView,
+    SecureTokenRefreshView,
+    SecureLogoutView,
+)
+from core.password_reset import (
+    PasswordResetRequestView, PasswordResetConfirmView, PasswordResetValidateTokenView
 )
 
 # Inventario views
 from inventario.views import (
     ProductoViewSet, LoteViewSet, RequisicionViewSet, CentroViewSet,
-    MovimientoViewSet, dashboard_resumen, trazabilidad_producto,
+    MovimientoViewSet, HojaRecoleccionViewSet, dashboard_resumen, dashboard_graficas, trazabilidad_producto,
     trazabilidad_lote, reporte_inventario, reporte_movimientos,
-    reporte_caducidades, reportes_precarga,
+    reporte_caducidades, reporte_requisiciones, reportes_precarga,
     reporte_medicamentos_por_caducar, reporte_bajo_stock, reporte_consumo
 )
 
-router = DefaultRouter()
+# SimpleRouter no expone la vista raíz de la API (mayor seguridad)
+router = SimpleRouter()
 
 # Core
 router.register(r'usuarios', UserViewSet, basename='usuario')
@@ -36,26 +46,49 @@ router.register(r'lotes', LoteViewSet, basename='lote')
 router.register(r'requisiciones', RequisicionViewSet, basename='requisicion')
 router.register(r'detalles-requisicion', DetalleRequisicionViewSet, basename='detalle-requisicion')
 router.register(r'movimientos', MovimientoViewSet, basename='movimiento')
+router.register(r'hojas-recoleccion', HojaRecoleccionViewSet, basename='hoja-recoleccion')
 
 urlpatterns = [
-    # Autenticacion
-    path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    path('logout/', LogoutView.as_view(), name='logout'),
-    path('dev-autologin/', DevAutoLoginView.as_view(), name='dev-autologin'),
+    # Autenticación segura (refresh token en HttpOnly cookie)
+    path('token/', SecureTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('token/refresh/', SecureTokenRefreshView.as_view(), name='token_refresh'),
+    path('logout/', SecureLogoutView.as_view(), name='logout'),
+    
+    # Recuperación de contraseña (público)
+    path('password-reset/request/', PasswordResetRequestView.as_view(), name='password-reset-request'),
+    path('password-reset/confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
+    path('password-reset/validate/', PasswordResetValidateTokenView.as_view(), name='password-reset-validate'),
+    
+    # Configuración del Sistema (tema/colores) - accesible públicamente para GET
+    path('configuracion/tema/', ConfiguracionSistemaViewSet.as_view({
+        'get': 'retrieve',
+        'put': 'update',
+    }), name='configuracion-tema'),
+    path('configuracion/tema/aplicar-tema/', ConfiguracionSistemaViewSet.as_view({
+        'post': 'aplicar_tema'
+    }), name='configuracion-aplicar-tema'),
+    path('configuracion/tema/restablecer/', ConfiguracionSistemaViewSet.as_view({
+        'post': 'restablecer'
+    }), name='configuracion-restablecer'),
     
     # Router (incluye /usuarios/me/ como accion del UserViewSet)
     path('', include(router.urls)),
 
     # Dashboard y reportes
     path('dashboard/', dashboard_resumen, name='dashboard'),
+    path('dashboard/graficas/', dashboard_graficas, name='dashboard-graficas'),
     path('trazabilidad/producto/<str:clave>/', trazabilidad_producto, name='trazabilidad-producto'),
     path('trazabilidad/lote/<str:codigo>/', trazabilidad_lote, name='trazabilidad-lote'),
     path('reportes/inventario/', reporte_inventario, name='reporte-inventario'),
     path('reportes/movimientos/', reporte_movimientos, name='reporte-movimientos'),
     path('reportes/caducidades/', reporte_caducidades, name='reporte-caducidades'),
-    path('reportes/medicamentos_por_caducar/', reporte_medicamentos_por_caducar, name='reporte-medicamentos-por-caducar'),
-    path('reportes/bajo_stock/', reporte_bajo_stock, name='reporte-bajo-stock'),
+    path('reportes/requisiciones/', reporte_requisiciones, name='reporte-requisiciones'),
+    path('reportes/medicamentos-por-caducar/', reporte_medicamentos_por_caducar, name='reporte-medicamentos-por-caducar'),
+    path('reportes/bajo-stock/', reporte_bajo_stock, name='reporte-bajo-stock'),
     path('reportes/consumo/', reporte_consumo, name='reporte-consumo'),
     path('reportes/precarga/', reportes_precarga, name='reportes-precarga'),
 ]
+
+# SOLO EN DESARROLLO: Endpoint de autologin automatico
+if settings.DEBUG:
+    urlpatterns.append(path('dev-autologin/', DevAutoLoginView.as_view(), name='dev-autologin'))

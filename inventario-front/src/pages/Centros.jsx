@@ -279,16 +279,16 @@ const Centros = () => {
     const file = e.target.files[0];
     if (!file) return;
     
-    const formData = new FormData();
-    formData.append('file', file);
+    const formDataFile = new FormData();
+    formDataFile.append('file', file);
     
     try {
       setLoading(true);
-      // No. CORREGIDO: Usa centrosAPI en lugar de axios directo
       const response = await centrosAPI.importar(formDataFile);
       
+      const resumen = response.data.resumen || response.data;
       toast.success(
-        `Importación completada: ${response.data.creados} creados, ${response.data.actualizados} actualizados`
+        `Importación completada: ${resumen.creados || 0} creados, ${resumen.actualizados || 0} actualizados`
       );
       
       if (response.data.errores && response.data.errores.length > 0) {

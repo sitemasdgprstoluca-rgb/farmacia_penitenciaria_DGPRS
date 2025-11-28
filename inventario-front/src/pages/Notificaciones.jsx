@@ -5,8 +5,8 @@ import { notificacionesAPI } from "../services/api";
 
 const TIPOS = [
   { value: "", label: "Todos" },
-  { value: "info", label: "Informacion" },
-  { value: "success", label: "Exitos" },
+  { value: "info", label: "Información" },
+  { value: "success", label: "Éxitos" },
   { value: "warning", label: "Advertencias" },
   { value: "error", label: "Errores" },
 ];
@@ -81,22 +81,21 @@ function Notificaciones() {
       await notificacionesAPI.marcarLeida(id);
       setNotificaciones((prev) => prev.map((n) => (n.id === id ? { ...n, leida: true } : n)));
     } catch (error) {
-      toast.error(error.response?.data?.detail || "No se pudo marcar como leida");
+      toast.error(error.response?.data?.detail || "No se pudo marcar como leída");
     }
   };
 
   const marcarTodas = async () => {
-    const pendientes = filtered.filter((n) => !n.leida);
-    if (!pendientes.length) return;
+    if (sinLeer === 0) return;
     try {
-      for (const notif of pendientes) {
-        // eslint-disable-next-line no-await-in-loop
-        await notificacionesAPI.marcarLeida(notif.id);
-      }
+      // Usar endpoint batch en lugar de loop individual
+      const res = await notificacionesAPI.marcarTodasLeidas();
+      const marcadas = res.data?.marcadas || 0;
       setNotificaciones((prev) => prev.map((n) => ({ ...n, leida: true })));
-      toast.success("Todas las notificaciones fueron marcadas como leidas");
+      setSinLeer(0);
+      toast.success(`${marcadas} notificaciones marcadas como leídas`);
     } catch (error) {
-      toast.error(error.response?.data?.detail || "No se pudo completar la accion");
+      toast.error(error.response?.data?.detail || "No se pudo completar la acción");
     }
   };
 
@@ -105,7 +104,7 @@ function Notificaciones() {
       await notificacionesAPI.delete(id);
       setNotificaciones((prev) => prev.filter((n) => n.id !== id));
       setTotal((prev) => Math.max(prev - 1, 0));
-      toast.success("Notificacion eliminada");
+      toast.success("Notificación eliminada");
     } catch (error) {
       toast.error(error.response?.data?.detail || "No se pudo eliminar");
     } finally {
@@ -176,7 +175,7 @@ function Notificaciones() {
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-500">Por pagina</label>
+              <label className="block text-xs font-semibold text-gray-500">Por página</label>
               <select
                 value={pageSize}
                 onChange={(e) => setPageSize(Number(e.target.value))}
@@ -195,7 +194,7 @@ function Notificaciones() {
         <div className="bg-white rounded-xl shadow p-4">
           <p className="text-sm text-gray-500">Sin leer</p>
           <p className="text-3xl font-bold text-blue-700">{sinLeer}</p>
-          <p className="text-xs text-gray-500 mt-1">Le\u00eddas: {leidas} / Total: {total}</p>
+          <p className="text-xs text-gray-500 mt-1">Leídas: {leidas} / Total: {total}</p>
         </div>
       </div>
 
@@ -204,7 +203,7 @@ function Notificaciones() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Titulo</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Título</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Mensaje</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Tipo</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Fecha</th>
@@ -253,7 +252,7 @@ function Notificaciones() {
                         }`}
                       >
                         <span className={`w-2 h-2 rounded-full ${notif.leida ? "bg-green-500" : "bg-yellow-500"}`} />
-                        {notif.leida ? "Leida" : "Pendiente"}
+                          {notif.leida ? "Leída" : "Pendiente"}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-right space-x-2">
@@ -262,7 +261,7 @@ function Notificaciones() {
                           onClick={() => marcarLeida(notif.id)}
                           className="px-3 py-1 rounded-lg border border-blue-100 text-blue-600 hover:bg-blue-50 text-xs"
                         >
-                          Marcar leida
+                          Marcar leída
                         </button>
                       )}
                       <button
@@ -280,7 +279,7 @@ function Notificaciones() {
 
         <div className="flex flex-col sm:flex-row items-center justify-between px-4 py-3 bg-gray-50 border-t border-gray-200 gap-3">
           <div className="text-sm text-gray-600">
-            Pagina {page} de {totalPages} Â· {total} registros
+            Página {page} de {totalPages} · {total} registros
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -303,8 +302,8 @@ function Notificaciones() {
 
       <ConfirmModal
         open={Boolean(deleteId)}
-        title="Eliminar notificacion"
-        message="Esta accion eliminara la notificacion de manera permanente."
+        title="Eliminar notificación"
+        message="Esta acción eliminará la notificación de manera permanente."
         confirmText="Eliminar"
         onCancel={() => setDeleteId(null)}
         onConfirm={() => eliminar(deleteId)}

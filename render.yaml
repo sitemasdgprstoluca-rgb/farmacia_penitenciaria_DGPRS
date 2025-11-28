@@ -1,0 +1,127 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# RENDER BLUEPRINT - Infraestructura como Código
+# ══════════════════════════════════════════════════════════════════════════════
+# Este archivo define la configuración de despliegue para Render.
+# 
+# INSTRUCCIONES DE DESPLIEGUE:
+# 1. Ve a https://dashboard.render.com/
+# 2. Clic en "New" > "Blueprint"
+# 3. Conecta tu repositorio de GitHub
+# 4. Render detectará este archivo automáticamente
+# 5. Configura las variables de entorno en el dashboard
+# ══════════════════════════════════════════════════════════════════════════════
+
+services:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # BACKEND - Django API
+  # ═══════════════════════════════════════════════════════════════════════════
+  - type: web
+    name: farmacia-api
+    runtime: python
+    region: oregon  # Cambia según tu preferencia
+    plan: free      # Cambia a 'starter' o superior para producción real
+    
+    # Directorio raíz del backend
+    rootDir: backend
+    
+    # Comando de build
+    buildCommand: ./build.sh
+    
+    # Comando para iniciar el servidor
+    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2
+    
+    # Variables de entorno
+    envVars:
+      # ─────────────────────────────────────────────────────────────────────
+      # Variables que DEBES configurar en el Dashboard de Render
+      # ─────────────────────────────────────────────────────────────────────
+      - key: SECRET_KEY
+        generateValue: true  # Render genera una clave segura automáticamente
+      
+      - key: DATABASE_URL
+        sync: false  # Configura manualmente con tu URL de Supabase
+        # Ejemplo: postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-us-west-1.pooler.supabase.com:6543/postgres
+      
+      - key: ALLOWED_HOSTS
+        sync: false  # Ejemplo: farmacia-api.onrender.com
+      
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false  # Ejemplo: https://farmacia-front.onrender.com
+      
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false  # Ejemplo: https://farmacia-front.onrender.com,https://farmacia-api.onrender.com
+      
+      # ─────────────────────────────────────────────────────────────────────
+      # Variables predeterminadas (puedes sobrescribir si es necesario)
+      # ─────────────────────────────────────────────────────────────────────
+      - key: DEBUG
+        value: "False"
+      
+      - key: ENFORCE_HTTPS
+        value: "True"
+      
+      - key: SECURE_SSL_REDIRECT
+        value: "True"
+      
+      - key: SESSION_COOKIE_SECURE
+        value: "True"
+      
+      - key: CSRF_COOKIE_SECURE
+        value: "True"
+      
+      - key: PYTHON_VERSION
+        value: "3.12.0"  # Python 3.12 estable (3.14 es dev, 3.11 muy viejo)
+      
+      - key: LOG_LEVEL
+        value: "INFO"
+      
+      - key: LOG_TO_STDOUT
+        value: "True"  # Importante: Render tiene disco efímero
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # FRONTEND - Vite/React (Opcional)
+  # ═══════════════════════════════════════════════════════════════════════════
+  - type: web
+    name: farmacia-front
+    runtime: static
+    plan: free
+    
+    # Directorio raíz del frontend
+    rootDir: inventario-front
+    
+    # Comando de build
+    buildCommand: npm install && npm run build
+    
+    # Directorio de archivos estáticos generados
+    staticPublishPath: dist
+    
+    # Configuración para SPA (Single Page Application)
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    
+    # Headers de seguridad
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: X-XSS-Protection
+        value: "1; mode=block"
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Permissions-Policy
+        value: "camera=(), microphone=(), geolocation=()"
+      - path: /assets/*
+        name: Cache-Control
+        value: "public, max-age=31536000, immutable"
+    
+    envVars:
+      - key: VITE_API_URL
+        sync: false  # Ejemplo: https://farmacia-api.onrender.com/api

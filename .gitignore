@@ -3,35 +3,80 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 
 # Django
 *.log
 local_settings.py
 media/
 staticfiles/
+static/
 
-# SQLite
+# SQLite - NUNCA versionar bases de datos
 db.sqlite3
 db.sqlite3-journal
 *.sqlite3
+*.db
 
 # Virtualenv
 .venv/
 venv/
+env/
+ENV/
 
-# Environment variables
+# Environment variables - NUNCA versionar credenciales
 .env
 .env.local
+.env.production
+.env.*.local
 
 # IDEs
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Node / Frontend
 node_modules/
 dist/
 .vite/
+build/
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+.coverage
+coverage/
+*.cover
+.hypothesis/
+
+# Backups
+*.bak
+*.backup
+*.old
+
+# Temporary files
+tmp/
+temp/
+*.tmp

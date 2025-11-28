@@ -3,13 +3,21 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
+from core.health import health_check, readiness_check, liveness_check
 
 urlpatterns = [
+    # Health checks (sin autenticación para load balancers)
+    path('health/', health_check, name='health'),
+    path('ready/', readiness_check, name='readiness'),
+    path('alive/', liveness_check, name='liveness'),
+    
     # Admin
     path('admin/', admin.site.urls),
     
-    # API v1 - TODO CENTRALIZADO EN api_urls.py
+    # API - Versión principal (usar esta)
     path('api/', include('config.api_urls')),
+    # API v1 - DEPRECATED: Mantener por compatibilidad, migrar frontend a /api/
+    # En producción, considerar remover esta ruta después de migración
     path('api/v1/', include('config.api_urls')),
     
     # Documentación API

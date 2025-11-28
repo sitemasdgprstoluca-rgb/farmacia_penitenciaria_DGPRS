@@ -22,6 +22,7 @@ ESTADOS_LOTE = [
     ('agotado', 'Agotado'),
     ('vencido', 'Vencido'),
     ('bloqueado', 'Bloqueado'),
+    ('retirado', 'Retirado'),
 ]
 
 # Estados de requisición
@@ -107,7 +108,7 @@ EXPORT_MAX_ROWS = 50000
 DIAS_ALERTA_CADUCIDAD = 90
 
 # Validaciones de producto
-PRODUCTO_CLAVE_MIN_LENGTH = 3
+PRODUCTO_CLAVE_MIN_LENGTH = 2
 PRODUCTO_CLAVE_MAX_LENGTH = 50
 PRODUCTO_DESCRIPCION_MIN_LENGTH = 5
 PRODUCTO_DESCRIPCION_MAX_LENGTH = 300
@@ -115,5 +116,55 @@ PRODUCTO_PRECIO_MAX_DIGITS = 10
 PRODUCTO_PRECIO_DECIMAL_PLACES = 2
 
 # Validaciones de lote
-LOTE_NUMERO_MIN_LENGTH = 3
+LOTE_NUMERO_MIN_LENGTH = 2
 LOTE_NUMERO_MAX_LENGTH = 100
+
+# ============================================================================
+# CATÁLOGO DE ACCIONES DE AUDITORÍA (normalizadas)
+# ============================================================================
+ACCIONES_AUDITORIA = [
+    # Acciones CRUD genéricas
+    ('crear', 'Crear'),
+    ('actualizar', 'Actualizar'),
+    ('eliminar', 'Eliminar'),
+    
+    # Acciones de Requisiciones
+    ('cambiar_estado_enviada', 'Enviar requisición'),
+    ('cambiar_estado_autorizada', 'Autorizar requisición'),
+    ('cambiar_estado_parcial', 'Autorizar parcialmente'),
+    ('cambiar_estado_rechazada', 'Rechazar requisición'),
+    ('cambiar_estado_surtida', 'Surtir requisición'),
+    ('cambiar_estado_cancelada', 'Cancelar requisición'),
+    
+    # Acciones de Movimientos
+    ('movimiento_entrada', 'Entrada de inventario'),
+    ('movimiento_salida', 'Salida de inventario'),
+    ('movimiento_ajuste', 'Ajuste de inventario'),
+    ('movimiento_requisicion', 'Movimiento por requisición'),
+    
+    # Acciones de Usuarios y Perfil
+    ('cambiar_password', 'Cambiar contraseña'),
+    ('cambiar_password_fallido', 'Intento fallido de cambio de contraseña'),
+    ('actualizar_perfil', 'Actualizar perfil'),
+    ('importar_usuarios', 'Importar usuarios'),
+    
+    # Acciones de Lotes
+    ('ajustar_stock', 'Ajustar stock de lote'),
+    ('marcar_vencido', 'Marcar lote como vencido'),
+    
+    # Acciones de Sistema
+    ('login', 'Inicio de sesión'),
+    ('logout', 'Cierre de sesión'),
+    ('exportar', 'Exportar datos'),
+    ('importar', 'Importar datos'),
+]
+
+# Modelos auditados
+MODELOS_AUDITADOS = [
+    'Producto',
+    'Lote',
+    'Movimiento',
+    'Requisicion',
+    'Centro',
+    'Usuario',
+]

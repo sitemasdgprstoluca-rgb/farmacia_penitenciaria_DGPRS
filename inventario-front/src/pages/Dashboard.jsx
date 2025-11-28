@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   FaBox,
   FaWarehouse,
@@ -7,12 +8,27 @@ import {
   FaArrowDown,
   FaChartLine,
   FaExchangeAlt,
+  FaChevronDown,
+  FaChevronUp,
+  FaArrowRight,
+  FaFileAlt,
+  FaUser,
+  FaEye,
 } from 'react-icons/fa';
+import { 
+  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
+} from 'recharts';
 import { usePermissions } from '../hooks/usePermissions';
+import CentroSelector from '../components/CentroSelector';
 import '../styles/Dashboard.css';
 import apiClient from '../services/api';
+import { dashboardAPI } from '../services/api';
+
+const COLORS = ['#9F2241', '#10B981', '#F59E0B', '#06B6D4', '#8B5CF6'];
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const { getRolPrincipal, permisos } = usePermissions();
   const rolPrincipal = getRolPrincipal();
   const esVistaUser = rolPrincipal === 'VISTA_USER';
@@ -24,8 +40,17 @@ const Dashboard = () => {
     movimientos_mes: 0,
   });
   const [movimientos, setMovimientos] = useState([]);
+  const [mostrarTodos, setMostrarTodos] = useState(false);
+  const [graficas, setGraficas] = useState({
+    consumo_mensual: [],
+    stock_por_centro: [],
+    requisiciones_por_estado: []
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [movimientosCollapsed, setMovimientosCollapsed] = useState(true); // Colapsado por defecto
+  const [selectedCentro, setSelectedCentro] = useState(null);
+  const [centroNombre, setCentroNombre] = useState('');
 
   const applyMockDashboard = useCallback(() => {
     setKpis({
@@ -58,7 +83,7 @@ const Dashboard = () => {
     setLoading(false);
   }, []);
 
-  const loadDashboard = useCallback(async () => {
+  const loadDashboard = useCallback(async (centroId = null) => {
     try {
       setLoading(true);
       setError(null);
@@ -68,7 +93,11 @@ const Dashboard = () => {
         throw new Error('Sesión no encontrada');
       }
 
-      const response = await apiClient.get('/dashboard/');
+      // Parámetros con filtro de centro opcional
+      const params = centroId ? { centro: centroId } : {};
+
+      // Cargar resumen KPIs y movimientos
+      const response = await dashboardAPI.getResumen(params);
 
       const nextKpis = response.data.kpi || {
         total_productos: 0,
@@ -90,10 +119,22 @@ const Dashboard = () => {
       setMovimientos(
         esVistaUser ? movimientosData.filter((mov) => mov.producto__clave) : movimientosData,
       );
+
+      // Cargar datos de gráficas
+      try {
+        const graficasResponse = await dashboardAPI.getGraficas(params);
+        setGraficas({
+          consumo_mensual: graficasResponse.data.consumo_mensual || [],
+          stock_por_centro: graficasResponse.data.stock_por_centro || [],
+          requisiciones_por_estado: graficasResponse.data.requisiciones_por_estado || []
+        });
+      } catch (graficasError) {
+        console.warn('Error al cargar gráficas, usando datos vacíos:', graficasError);
+      }
     } catch (err) {
       console.error('Error al cargar dashboard:', err);
       if (err.response?.status === 401) {
-        setError('Sesion expirada. Inicia sesion nuevamente.');
+        setError('Sesión expirada. Inicia sesión nuevamente.');
       } else {
         setError(err.response?.data?.error || err.message || 'Error al cargar el dashboard');
       }
@@ -107,11 +148,18 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [applyMockDashboard, esVistaUser]);
+  }, [esVistaUser]);
 
   useEffect(() => {
-    loadDashboard();
-  }, [loadDashboard]);
+    loadDashboard(selectedCentro);
+  }, [loadDashboard, selectedCentro]);
+
+  const handleCentroChange = (centroId, nombreCentro = '') => {
+    setSelectedCentro(centroId);
+    setCentroNombre(nombreCentro);
+    // Cargar de inmediato al cambiar, sin esperar al efecto
+    loadDashboard(centroId);
+  };
 
   const formatFecha = (fecha) =>
     new Date(fecha).toLocaleString('es-MX', {
@@ -120,6 +168,19 @@ const Dashboard = () => {
       hour: '2-digit',
       minute: '2-digit',
     });
+
+  const CentroTick = ({ x, y, payload }) => {
+    const label = payload.value || '';
+    const display = label.length > 12 ? `${label.slice(0, 12)}…` : label;
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <title>{label}</title>
+        <text x={0} y={0} dy={16} textAnchor="middle" fill="#374151" fontSize="12px">
+          {display}
+        </text>
+      </g>
+    );
+  };
 
   if (!permisos?.verProductos) {
     return (
@@ -144,7 +205,7 @@ const Dashboard = () => {
     {
       title: 'TOTAL',
       subtitle: 'PRODUCTOS',
-      value: kpis.total_productos || 10,
+      value: kpis.total_productos || 0,
       subtext: 'Activos',
       icon: FaBox,
       gradient: 'linear-gradient(135deg, #9F2241 0%, #7D1B35 100%)',
@@ -154,7 +215,7 @@ const Dashboard = () => {
       show: permisos.verProductos,
     },
     {
-      title: 'STOCK TOTAL',
+      title: 'INVENTARIO TOTAL',
       subtitle: '',
       value: kpis.stock_total || 0,
       subtext: 'Unidades',
@@ -169,7 +230,7 @@ const Dashboard = () => {
       title: 'LOTES ACTIVOS',
       subtitle: '',
       value: kpis.lotes_activos || 0,
-      subtext: 'Con stock',
+      subtext: 'Con inventario',
       icon: FaWarehouse,
       gradient: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)',
       iconBg: '#06B6D4',
@@ -193,29 +254,49 @@ const Dashboard = () => {
 
   return (
     <div className="dashboard-container">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4">
         <div>
           <h1 className="text-4xl font-bold" style={{ color: '#6B1839' }}>
             Panel de Control
           </h1>
           <p className="text-base mt-2" style={{ color: '#6B7280' }}>
-            Resumen general del sistema de inventario
+            {selectedCentro 
+              ? `📍 Filtrando: ${centroNombre || 'Centro seleccionado'}`
+              : 'Resumen general del sistema de inventario'
+            }
           </p>
         </div>
-        <div
-          className="px-5 py-2.5 rounded-2xl font-semibold text-sm"
-          style={{ background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)', color: 'white' }}
-        >
-          <span>
-            {new Date().toLocaleDateString('es-MX', {
-              weekday: 'long',
-              day: 'numeric',
-              month: 'long',
-              year: 'numeric',
-            })}
-          </span>
+        <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+          {/* Selector de centro para admin/farmacia/vista */}
+          <CentroSelector onCentroChange={handleCentroChange} selectedValue={selectedCentro} />
+          <div
+            className="px-5 py-2.5 rounded-2xl font-semibold text-sm"
+            style={{ background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)', color: 'white' }}
+          >
+            <span>
+              {new Date().toLocaleDateString('es-MX', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+              })}
+            </span>
+          </div>
         </div>
       </div>
+
+      {/* Indicador de filtro activo */}
+      {selectedCentro && (
+        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2">
+          <span className="text-amber-600 font-medium">🔍 Mostrando datos filtrados por: <strong>{centroNombre}</strong></span>
+          <button 
+            onClick={() => handleCentroChange(null, '')}
+            className="ml-auto text-sm text-amber-700 hover:text-amber-900 underline"
+          >
+            Ver todos los centros
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="error-alert">
@@ -274,50 +355,225 @@ const Dashboard = () => {
           })}
       </div>
 
+      {/* Gráficas Analíticas */}
       {!esVistaUser && (
-        <div className="dashboard-section">
-          <div className="section-header">
-            <h3>
-              <FaExchangeAlt /> Últimos Movimientos
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+          {/* Gráfica 1: Consumo Mensual */}
+          <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: '#6B1839' }}>
+              <FaChartLine /> Consumo Mensual (Últimos 6 meses)
             </h3>
-            <span className="badge-count">{movimientos.length} registros</span>
-          </div>
-
-          <div className="movements-container">
-            {movimientos.length === 0 ? (
-              <div className="empty-state">
-                <FaExclamationTriangle />
-                <p>No hay movimientos registrados</p>
-              </div>
+            {graficas.consumo_mensual.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={graficas.consumo_mensual}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="mes" style={{ fontSize: '12px' }} />
+                  <YAxis style={{ fontSize: '12px' }} />
+                  <Tooltip />
+                  <Legend />
+                  <Line 
+                    type="monotone" 
+                    dataKey="entradas" 
+                    stroke="#10B981" 
+                    strokeWidth={2}
+                    name="Entradas"
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="salidas" 
+                    stroke="#9F2241" 
+                    strokeWidth={2}
+                    name="Salidas"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
             ) : (
-              <div className="movements-list">
-                {movimientos.map((mov, index) => (
-                  <div key={mov.id || index} className={`movement-item ${mov.tipo_movimiento.toLowerCase()}`}>
-                    <div className="movement-number">{index + 1}</div>
-                    <div className="movement-type">
-                      <span className={`type-badge ${mov.tipo_movimiento.toLowerCase()}`}>
-                        {mov.tipo_movimiento === 'ENTRADA' ? <FaArrowDown /> : <FaArrowUp />}
-                        {mov.tipo_movimiento}
-                      </span>
-                    </div>
-                    <div className="movement-product">
-                      <strong>{mov.producto__clave}</strong>
-                      <p>{mov.producto__descripcion}</p>
-                    </div>
-                    <div className="movement-lote">
-                      <span className="label">Lote:</span>
-                      <span className="value">{mov.lote__codigo_lote}</span>
-                    </div>
-                    <div className="movement-quantity">
-                      <span className="quantity-value">{mov.cantidad}</span>
-                      <span className="quantity-label">unidades</span>
-                    </div>
-                    <div className="movement-date">{formatFecha(mov.fecha_movimiento)}</div>
-                  </div>
-                ))}
+              <div className="flex items-center justify-center h-64 text-gray-400">
+                <p>No hay datos disponibles</p>
               </div>
             )}
           </div>
+
+          {/* Gráfica 2: Inventario por Centro */}
+          <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: '#6B1839' }}>
+              <FaWarehouse /> Inventario por Centro
+            </h3>
+            {graficas.stock_por_centro.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={graficas.stock_por_centro}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="centro" tick={<CentroTick />} />
+                  <YAxis style={{ fontSize: '12px' }} />
+                  <Tooltip
+                    formatter={(value) => [`${value} uds`, 'Inventario']}
+                    labelFormatter={(label) => label}
+                  />
+                  <Bar dataKey="stock" fill="#9F2241" name="Inventario" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-64 text-gray-400">
+                <p>No hay datos disponibles</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Gráfica 3: Requisiciones por Estado - Solo si hay datos */}
+      {!esVistaUser && graficas.requisiciones_por_estado.length > 0 && (
+        <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200 mt-6">
+          <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: '#6B1839' }}>
+            <FaBox /> Requisiciones por Estado
+          </h3>
+          <ResponsiveContainer width="100%" height={280}>
+            <PieChart>
+              <Pie
+                data={graficas.requisiciones_por_estado}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({ estado, cantidad }) => `${estado}: ${cantidad}`}
+                outerRadius={100}
+                fill="#8884d8"
+                dataKey="cantidad"
+              >
+                {graficas.requisiciones_por_estado.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Últimos Movimientos - Compacto y legible */}
+      {!esVistaUser && movimientos.length > 0 && (
+        <div className="dashboard-section mt-6">
+          <div className="section-header" style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => setMovimientosCollapsed(!movimientosCollapsed)}>
+            <h3>
+              <FaExchangeAlt /> Últimos Movimientos
+            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); setMostrarTodos(!mostrarTodos); }}
+                className="text-sm px-3 py-1 rounded-full transition-colors"
+                style={{ 
+                  background: mostrarTodos ? '#9F2241' : '#e5e7eb', 
+                  color: mostrarTodos ? 'white' : '#374151',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                {mostrarTodos ? 'Ver menos' : `Ver todos (${movimientos.length})`}
+              </button>
+              <button 
+                className="text-gray-600 hover:text-gray-800 transition-colors"
+                style={{ background: 'none', border: 'none', padding: '4px', fontSize: '20px' }}
+                aria-label={movimientosCollapsed ? "Expandir" : "Contraer"}
+              >
+                {movimientosCollapsed ? <FaChevronDown /> : <FaChevronUp />}
+              </button>
+            </div>
+          </div>
+
+          {!movimientosCollapsed && (
+            <div className="movements-container">
+              <div className="space-y-3">
+                {(mostrarTodos ? movimientos : movimientos.slice(0, 5)).map((mov, index) => (
+                  <div 
+                    key={mov.id || index} 
+                    onClick={() => navigate('/movimientos', { state: { highlightId: mov.id } })}
+                    className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md hover:border-gray-300 transition-all cursor-pointer"
+                    style={{ borderLeft: `4px solid ${mov.tipo_movimiento === 'ENTRADA' ? '#10B981' : '#EF4444'}` }}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      {/* Columna izquierda: Tipo + Producto */}
+                      <div className="flex items-start gap-3 flex-1 min-w-0">
+                        <div className="flex-shrink-0">
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-bold ${
+                            mov.tipo_movimiento === 'ENTRADA' 
+                              ? 'bg-green-100 text-green-700' 
+                              : 'bg-red-100 text-red-700'
+                          }`}>
+                            {mov.tipo_movimiento === 'ENTRADA' ? <FaArrowDown size={10} /> : <FaArrowUp size={10} />}
+                            {mov.tipo_movimiento}
+                          </span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-gray-900 text-sm">{mov.producto__clave}</p>
+                          <p className="text-gray-600 text-xs truncate" title={mov.producto__descripcion}>
+                            {mov.producto__descripcion}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Columna central: Flujo */}
+                      <div className="flex-shrink-0 text-center hidden md:block" style={{ minWidth: '200px' }}>
+                        <div className="flex items-center justify-center gap-2 text-xs">
+                          <span className="px-2 py-1 rounded bg-gray-100 text-gray-700 max-w-[90px] truncate" title={mov.origen}>
+                            {mov.origen || 'Origen'}
+                          </span>
+                          <FaArrowRight className="text-gray-400 flex-shrink-0" size={12} />
+                          <span className="px-2 py-1 rounded bg-gray-100 text-gray-700 max-w-[90px] truncate" title={mov.destino}>
+                            {mov.destino || 'Destino'}
+                          </span>
+                        </div>
+                        {mov.lote__codigo_lote && (
+                          <p className="text-xs text-gray-500 mt-1">Lote: {mov.lote__codigo_lote}</p>
+                        )}
+                      </div>
+
+                      {/* Columna derecha: Cantidad + Fecha */}
+                      <div className="flex-shrink-0 text-right">
+                        <p className="text-2xl font-bold text-gray-900">{mov.cantidad}</p>
+                        <p className="text-xs text-gray-500">unidades</p>
+                      </div>
+                    </div>
+
+                    {/* Fila inferior: Metadata */}
+                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500">
+                      <div className="flex items-center gap-4">
+                        <span>{formatFecha(mov.fecha_movimiento)}</span>
+                        {mov.usuario && (
+                          <span className="flex items-center gap-1">
+                            <FaUser size={10} /> {mov.usuario}
+                          </span>
+                        )}
+                        {mov.requisicion_folio && (
+                          <span className="flex items-center gap-1 text-blue-600">
+                            <FaFileAlt size={10} /> {mov.requisicion_folio}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-gray-400 flex items-center gap-1">
+                        <FaEye size={12} /> Ver detalle
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Botón para ir al módulo de movimientos */}
+              <div className="text-center mt-4">
+                <button
+                  onClick={() => navigate('/movimientos')}
+                  className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)', 
+                    color: 'white',
+                    border: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <FaExchangeAlt style={{ display: 'inline', marginRight: '8px' }} />
+                  Ver todos los movimientos en detalle
+                </button>
+              </div>
+          </div>
+          )}
         </div>
       )}
     </div>
@@ -325,9 +581,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-
-
-
-
-
 

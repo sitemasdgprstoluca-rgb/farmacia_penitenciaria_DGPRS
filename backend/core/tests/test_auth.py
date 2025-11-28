@@ -1,11 +1,19 @@
+"""
+Tests de autenticación JWT y permisos.
+
+Este módulo utiliza BaseAPITestCase que desactiva automáticamente
+el rate limiting para evitar errores HTTP 429 durante las pruebas.
+"""
+
 from django.test import TestCase
 from django.contrib.auth.models import Group
 from rest_framework.test import APIClient
 from rest_framework import status
 from core.models import User, Centro
+from core.tests.base import BaseAPITestCase, NoThrottleMixin
 
 
-class AuthenticationTest(TestCase):
+class AuthenticationTest(NoThrottleMixin, TestCase):
     """Tests de autenticación JWT"""
     
     def setUp(self):
@@ -61,7 +69,7 @@ class AuthenticationTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
 
-class PermissionTest(TestCase):
+class PermissionTest(NoThrottleMixin, TestCase):
     """Tests de permisos por grupo"""
     
     def setUp(self):

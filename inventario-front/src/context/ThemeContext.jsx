@@ -1,0 +1,172 @@
+import { useState, useEffect, useCallback } from 'react';
+import { ThemeContext } from './contexts';
+import { configuracionAPI } from '../services/api';
+
+/**
+ * Aplica las variables CSS al documento
+ */
+const aplicarCSSVariables = (cssVariables) => {
+  if (!cssVariables) return;
+  
+  const root = document.documentElement;
+  Object.entries(cssVariables).forEach(([variable, valor]) => {
+    root.style.setProperty(variable, valor);
+  });
+};
+
+/**
+ * Valores por defecto del tema (se usan si la API falla)
+ */
+const temaDefault = {
+  nombre_sistema: 'Sistema de Farmacia Penitenciaria',
+  tema_activo: 'default',
+  css_variables: {
+    '--color-primary': '#1976D2',
+    '--color-primary-hover': '#1565C0',
+    '--color-secondary': '#424242',
+    '--color-accent': '#FF5722',
+    '--color-background': '#F5F5F5',
+    '--color-sidebar-bg': '#263238',
+    '--color-header-bg': '#1976D2',
+    '--color-card-bg': '#FFFFFF',
+    '--color-text': '#212121',
+    '--color-text-secondary': '#757575',
+    '--color-sidebar-text': '#ECEFF1',
+    '--color-header-text': '#FFFFFF',
+    '--color-success': '#4CAF50',
+    '--color-warning': '#FF9800',
+    '--color-error': '#F44336',
+    '--color-info': '#2196F3',
+  },
+  temas_disponibles: [
+    { id: 'default', nombre: 'Por Defecto (Azul)' },
+    { id: 'dark', nombre: 'Oscuro' },
+    { id: 'green', nombre: 'Verde Institucional' },
+    { id: 'purple', nombre: 'Púrpura' },
+    { id: 'custom', nombre: 'Personalizado' },
+  ],
+};
+
+export const ThemeProvider = ({ children }) => {
+  const [configuracion, setConfiguracion] = useState(temaDefault);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+
+  /**
+   * Carga la configuración del tema desde el backend
+   */
+  const cargarTema = useCallback(async () => {
+    try {
+      setCargando(true);
+      setError(null);
+      const response = await configuracionAPI.getTema();
+      const config = response.data;
+      
+      if (config && config.css_variables) {
+        setConfiguracion(config);
+        aplicarCSSVariables(config.css_variables);
+        
+        // Actualizar el título del documento
+        if (config.nombre_sistema) {
+          document.title = config.nombre_sistema;
+        }
+      } else {
+        // Respuesta inválida, usar tema por defecto
+        aplicarCSSVariables(temaDefault.css_variables);
+      }
+    } catch (err) {
+      // Silenciar error - usar tema por defecto sin bloquear la app
+      console.warn('Tema: usando valores por defecto');
+      aplicarCSSVariables(temaDefault.css_variables);
+    } finally {
+      setCargando(false);
+    }
+  }, []);
+
+  /**
+   * Actualiza la configuración del tema
+   */
+  const actualizarTema = async (nuevaConfig) => {
+    try {
+      const response = await configuracionAPI.updateTema(nuevaConfig);
+      const config = response.data;
+      
+      setConfiguracion(config);
+      aplicarCSSVariables(config.css_variables);
+      
+      return { success: true, data: config };
+    } catch (err) {
+      console.error('Error al actualizar el tema:', err);
+      return { 
+        success: false, 
+        error: err.response?.data?.error || 'Error al actualizar el tema' 
+      };
+    }
+  };
+
+  /**
+   * Aplica un tema predefinido
+   */
+  const aplicarTemaPredefinido = async (tema) => {
+    try {
+      const response = await configuracionAPI.aplicarTema(tema);
+      const config = response.data.configuracion;
+      
+      setConfiguracion(config);
+      aplicarCSSVariables(config.css_variables);
+      
+      return { success: true, data: config };
+    } catch (err) {
+      console.error('Error al aplicar el tema:', err);
+      return { 
+        success: false, 
+        error: err.response?.data?.error || 'Error al aplicar el tema' 
+      };
+    }
+  };
+
+  /**
+   * Restablece la configuración a valores por defecto
+   */
+  const restablecerTema = async () => {
+    try {
+      const response = await configuracionAPI.restablecer();
+      const config = response.data.configuracion;
+      
+      setConfiguracion(config);
+      aplicarCSSVariables(config.css_variables);
+      
+      return { success: true, data: config };
+    } catch (err) {
+      console.error('Error al restablecer el tema:', err);
+      return { 
+        success: false, 
+        error: err.response?.data?.error || 'Error al restablecer el tema' 
+      };
+    }
+  };
+
+  // Cargar tema al montar el componente
+  useEffect(() => {
+    cargarTema();
+  }, [cargarTema]);
+
+  const value = {
+    configuracion,
+    cargando,
+    error,
+    cargarTema,
+    actualizarTema,
+    aplicarTemaPredefinido,
+    restablecerTema,
+    temaActivo: configuracion.tema_activo,
+    nombreSistema: configuracion.nombre_sistema,
+    temasDisponibles: configuracion.temas_disponibles || temaDefault.temas_disponibles,
+  };
+
+  return (
+    <ThemeContext.Provider value={value}>
+      {children}
+    </ThemeContext.Provider>
+  );
+};
