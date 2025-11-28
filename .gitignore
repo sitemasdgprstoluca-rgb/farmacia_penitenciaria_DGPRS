@@ -19,7 +19,9 @@ htmlcov/
 local_settings.py
 media/
 staticfiles/
-static/
+# Ignorar archivos generados de collectstatic pero permitir imágenes fuente
+/static/
+!/backend/static/img/
 
 # SQLite - NUNCA versionar bases de datos
 db.sqlite3
