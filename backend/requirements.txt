@@ -42,6 +42,9 @@ gunicorn==22.0.0
 # Seguridad y validación
 cryptography==44.0.1
 
+# HTTP requests (para reCAPTCHA y APIs externas)
+requests>=2.31.0
+
 # Utilidades Python
 pytz==2024.1
 python-dateutil==2.8.2
