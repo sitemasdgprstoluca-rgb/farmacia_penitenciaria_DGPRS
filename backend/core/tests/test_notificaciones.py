@@ -79,7 +79,7 @@ class NotificacionViewSetTest(APITestCase):
     def test_marcar_leida_endpoint(self):
         notif = Notificacion.objects.create(usuario=self.usuario, titulo='Test', mensaje='Test', leida=False)
 
-        response = self.client.post(f'/api/notificaciones/{notif.id}/marcar_leida/')
+        response = self.client.post(f'/api/notificaciones/{notif.id}/marcar-leida/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         notif.refresh_from_db()
         self.assertTrue(notif.leida)
@@ -89,7 +89,7 @@ class NotificacionViewSetTest(APITestCase):
         Notificacion.objects.create(usuario=self.usuario, titulo='Leida', mensaje='Test', leida=True)
         Notificacion.objects.create(usuario=self.usuario, titulo='No leida 2', mensaje='Test', leida=False)
 
-        response = self.client.get('/api/notificaciones/no_leidas_count/')
+        response = self.client.get('/api/notificaciones/no-leidas-count/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data.get('no_leidas'), 2)
 
@@ -98,3 +98,66 @@ class NotificacionViewSetTest(APITestCase):
         response = self.client.get('/api/notificaciones/')
         # Acepta tanto 401 (UNAUTHORIZED) como 403 (FORBIDDEN)
         self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+    def test_marcar_todas_leidas(self):
+        """Test del nuevo endpoint marcar-todas-leidas."""
+        Notificacion.objects.create(usuario=self.usuario, titulo='No leida 1', mensaje='Test', leida=False)
+        Notificacion.objects.create(usuario=self.usuario, titulo='No leida 2', mensaje='Test', leida=False)
+        Notificacion.objects.create(usuario=self.usuario, titulo='No leida 3', mensaje='Test', leida=False)
+
+        response = self.client.post('/api/notificaciones/marcar-todas-leidas/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data.get('marcadas'), 3)
+        
+        # Verificar que todas están leídas
+        no_leidas = Notificacion.objects.filter(usuario=self.usuario, leida=False).count()
+        self.assertEqual(no_leidas, 0)
+
+    def test_eliminar_notificacion_no_permitido(self):
+        """Test que las notificaciones son read-only y no se pueden eliminar."""
+        notif = Notificacion.objects.create(usuario=self.usuario, titulo='Para borrar', mensaje='Test')
+        
+        response = self.client.delete(f'/api/notificaciones/{notif.id}/')
+        # DELETE no está permitido (405 Method Not Allowed)
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        # La notificación debe seguir existiendo
+        self.assertTrue(Notificacion.objects.filter(id=notif.id).exists())
+
+    def test_delete_notificacion_ajena_no_permitido(self):
+        """Test que DELETE no está permitido en ningún caso (read-only)."""
+        notif = Notificacion.objects.create(usuario=self.otro_usuario, titulo='De otro', mensaje='Test')
+        
+        response = self.client.delete(f'/api/notificaciones/{notif.id}/')
+        # DELETE no está permitido (405 Method Not Allowed)
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def test_no_puede_crear_notificacion(self):
+        """Test que no se puede crear notificación vía API (read-only)."""
+        data = {
+            'titulo': 'Notificacion manual',
+            'mensaje': 'No debería crearse',
+            'tipo': 'info'
+        }
+        response = self.client.post('/api/notificaciones/', data)
+        # ReadOnlyModelViewSet no tiene create
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def test_filtrar_por_tipo(self):
+        """Test filtro por tipo de notificación."""
+        Notificacion.objects.create(usuario=self.usuario, titulo='Info', mensaje='Test', tipo='info')
+        Notificacion.objects.create(usuario=self.usuario, titulo='Warning', mensaje='Test', tipo='warning')
+        Notificacion.objects.create(usuario=self.usuario, titulo='Error', mensaje='Test', tipo='error')
+
+        response = self.client.get('/api/notificaciones/?tipo=warning')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data.get('results', [])), 1)
+
+    def test_filtrar_por_leida(self):
+        """Test filtro por estado leída."""
+        Notificacion.objects.create(usuario=self.usuario, titulo='Leida', mensaje='Test', leida=True)
+        Notificacion.objects.create(usuario=self.usuario, titulo='No leida', mensaje='Test', leida=False)
+
+        response = self.client.get('/api/notificaciones/?leida=false')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data.get('results', [])), 1)
+        self.assertEqual(response.data['results'][0]['titulo'], 'No leida')

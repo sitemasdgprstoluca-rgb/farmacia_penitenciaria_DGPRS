@@ -193,7 +193,7 @@ export const generarReporteInventarioDev = async (formato = 'excel') => {
       { header: 'Clave', key: 'clave', width: 14 },
       { header: 'Descripción', key: 'descripcion', width: 40 },
       { header: 'Unidad', key: 'unidad', width: 12 },
-      { header: 'Stock', key: 'stock', width: 10 },
+      { header: 'Inventario', key: 'stock', width: 10 },
       { header: 'Valor estimado', value: (row) => `$${row.valor.toFixed(2)}`, width: 18 },
       { header: 'Centro', key: 'centro', width: 24 },
     ],

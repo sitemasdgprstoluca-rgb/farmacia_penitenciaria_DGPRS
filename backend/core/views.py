@@ -2,15 +2,18 @@
 ViewSets para la API REST del sistema de farmacia penitenciaria
 """
 
-from rest_framework import viewsets, status, filters
+from rest_framework import viewsets, status, filters, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.utils import timezone
+from django.http import HttpResponse
+from django.db import transaction
 from django.db.models import Q, Sum
 from django.db.models.functions import Coalesce
 from django.views.decorators.cache import cache_page
@@ -19,20 +22,26 @@ from datetime import date, timedelta
 from io import BytesIO
 import openpyxl
 import logging
+import requests
 
 from core.models import (
     User, Centro, Producto, Lote, Requisicion, DetalleRequisicion,
-    Movimiento, AuditoriaLog, ImportacionLog, Notificacion, UserProfile
+    Movimiento, AuditoriaLog, ImportacionLog, Notificacion, UserProfile,
+    ConfiguracionSistema
 )
+from core.utils.pdf_reports import generar_reporte_auditoria, generar_reporte_trazabilidad
 from core.serializers import (
     UserSerializer, CentroSerializer, UserMeSerializer,
     ProductoSerializer, LoteSerializer, RequisicionSerializer,
     DetalleRequisicionSerializer, MovimientoSerializer,
-    AuditoriaLogSerializer, ImportacionLogSerializer, NotificacionSerializer
+    AuditoriaLogSerializer, ImportacionLogSerializer, NotificacionSerializer,
+    ConfiguracionSistemaSerializer
 )
 from core.permissions import (
-    IsFarmaciaRole, IsCentroUser, CanAuthorizeRequisicion, CanViewNotifications, CanViewProfile
+    IsFarmaciaRole, IsCentroUser, CanAuthorizeRequisicion, CanViewNotifications, 
+    CanViewProfile, IsVistaRole, IsSuperuserOnly
 )
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +50,20 @@ class StandardResultsSetPagination(PageNumberPagination):
     page_size = 50
     page_size_query_param = 'page_size'
     max_page_size = 1000
+
+
+# ============================================
+# THROTTLING - CLASES DE RATE LIMITING
+# ============================================
+
+class LoginThrottle(AnonRateThrottle):
+    """Rate limit específico para login: 5 intentos por minuto por IP."""
+    scope = 'login'
+
+
+class PasswordChangeThrottle(UserRateThrottle):
+    """Rate limit para cambio de contraseña: 3 intentos por minuto."""
+    scope = 'password_change'
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -60,14 +83,34 @@ class UserViewSet(viewsets.ModelViewSet):
         return super().get_serializer_class()
 
     def get_permissions(self):
-        perms = super().get_permissions()
+        """
+        Permisos por acción:
+        - me, me_change_password: Cualquier autenticado
+        - list, retrieve: Autenticado (queryset filtra según rol)
+        - create, update, destroy, cambiar_password: Solo FARMACIA/Admin
+        """
         if self.action in ['me', 'me_change_password']:
-            perms.append(CanViewProfile())
-        return perms
+            return [IsAuthenticated(), CanViewProfile()]
+        if self.action in ['create', 'update', 'partial_update', 'destroy', 'cambiar_password', 
+                           'exportar_excel', 'importar_excel']:
+            return [IsAuthenticated(), IsFarmaciaRole()]
+        return [IsAuthenticated()]
+
+    def _is_farmacia_or_admin(self, user):
+        """Verifica si el usuario es farmacia o admin"""
+        if not user or not user.is_authenticated:
+            return False
+        if user.is_superuser:
+            return True
+        rol = (getattr(user, 'rol', '') or '').lower()
+        if rol in ['admin_sistema', 'superusuario', 'farmacia', 'admin_farmacia']:
+            return True
+        group_names = set(g.name.upper() for g in user.groups.all())
+        return bool({'FARMACIA_ADMIN', 'FARMACIA', 'ADMIN'} & group_names)
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_superuser:
+        if user.is_superuser or self._is_farmacia_or_admin(user):
             return User.objects.all()
         return User.objects.filter(id=user.id)
 
@@ -77,17 +120,67 @@ class UserViewSet(viewsets.ModelViewSet):
         UserProfile.objects.get_or_create(user=request.user)
         
         if request.method == 'PATCH':
+            # Guardar datos anteriores para auditoría
+            old_data = {
+                'email': request.user.email,
+                'first_name': request.user.first_name,
+                'last_name': request.user.last_name,
+            }
+            profile = getattr(request.user, 'profile', None)
+            if profile:
+                old_data['telefono'] = profile.telefono
+                old_data['cargo'] = profile.cargo
+            
             serializer = UserMeSerializer(request.user, data=request.data, partial=True)
             serializer.is_valid(raise_exception=True)
             serializer.save()
-            return Response(serializer.data)
+            
+            # Detectar cambios para auditoría
+            new_data = {
+                'email': request.user.email,
+                'first_name': request.user.first_name,
+                'last_name': request.user.last_name,
+            }
+            profile = getattr(request.user, 'profile', None)
+            if profile:
+                new_data['telefono'] = profile.telefono
+                new_data['cargo'] = profile.cargo
+            
+            cambios = {k: (old_data.get(k), new_data.get(k)) 
+                      for k in new_data if old_data.get(k) != new_data.get(k)}
+            
+            if cambios:
+                AuditoriaLog.objects.create(
+                    usuario=request.user,
+                    accion='actualizar_perfil',
+                    modelo='Usuario',
+                    objeto_id=request.user.id,
+                    objeto_repr=str(request.user),
+                    cambios=cambios
+                )
+            
+            updated_user = User.objects.select_related('profile').get(pk=request.user.pk)
+            updated = UserMeSerializer(updated_user)
+            return Response(updated.data)
         else:
             serializer = UserMeSerializer(request.user)
             return Response(serializer.data)
 
-    @action(detail=False, methods=['post'], url_path='me/change-password')
+    @action(detail=False, methods=['post'], url_path='me/change-password', throttle_classes=[PasswordChangeThrottle])
     def me_change_password(self, request):
-        """POST /api/usuarios/me/change-password/"""
+        """
+        POST /api/usuarios/me/change-password/
+        
+        Cambio de contraseña del usuario autenticado.
+        Requiere: old_password, new_password, confirm_password
+        
+        Validaciones:
+        - Contraseña actual correcta
+        - Nueva contraseña ≥8 caracteres
+        - Al menos una mayúscula
+        - Al menos un número
+        - Diferente a la anterior
+        """
         user = request.user
         old_password = request.data.get('old_password')
         new_password = request.data.get('new_password')
@@ -101,18 +194,269 @@ class UserViewSet(viewsets.ModelViewSet):
 
         if not user.check_password(old_password):
             logger.warning("Intento de cambio de contraseña fallido para %s: contraseña actual incorrecta", user.username)
+            # Registrar intento fallido en auditoría
+            AuditoriaLog.objects.create(
+                usuario=user,
+                accion='cambiar_password_fallido',
+                modelo='Usuario',
+                objeto_id=user.id,
+                objeto_repr=str(user),
+                cambios={'razon': 'Contraseña actual incorrecta'}
+            )
             return Response({'error': 'Contraseña actual incorrecta'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Validaciones de complejidad (unificadas con cambiar_password)
         if len(new_password) < 8:
             return Response({'error': 'La nueva contraseña debe tener al menos 8 caracteres'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not any(c.isupper() for c in new_password):
+            return Response({'error': 'La nueva contraseña debe tener al menos una mayúscula'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not any(c.isdigit() for c in new_password):
+            return Response({'error': 'La nueva contraseña debe tener al menos un número'}, status=status.HTTP_400_BAD_REQUEST)
 
         if old_password == new_password:
             return Response({'error': 'La nueva contraseña debe ser diferente a la anterior'}, status=status.HTTP_400_BAD_REQUEST)
 
         user.set_password(new_password)
         user.save()
+        
+        # Registrar cambio exitoso en auditoría
+        AuditoriaLog.objects.create(
+            usuario=user,
+            accion='cambiar_password',
+            modelo='Usuario',
+            objeto_id=user.id,
+            objeto_repr=str(user),
+            cambios={'resultado': 'Contraseña actualizada exitosamente'}
+        )
+        
         logger.info("Contraseña actualizada para usuario %s", user.username)
         return Response({'message': 'Contraseña actualizada exitosamente'})
+
+    @action(detail=True, methods=['post'], url_path='cambiar-password')
+    def cambiar_password(self, request, pk=None):
+        """POST /api/usuarios/{id}/cambiar-password/ - Admin cambia password de otro usuario"""
+        # Solo superusuarios o farmacia pueden cambiar passwords de otros
+        if not request.user.is_superuser and request.user.rol not in ['admin_sistema', 'farmacia', 'admin_farmacia']:
+            return Response({'error': 'No tiene permisos para cambiar contraseñas de otros usuarios'}, status=status.HTTP_403_FORBIDDEN)
+        
+        try:
+            usuario = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            return Response({'error': 'Usuario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # No permitir cambiar password de superusuarios (solo otro superuser puede)
+        if usuario.is_superuser and not request.user.is_superuser:
+            return Response({'error': 'No puede cambiar la contraseña de un superusuario'}, status=status.HTTP_403_FORBIDDEN)
+        
+        new_password = request.data.get('new_password')
+        
+        if not new_password:
+            return Response({'error': 'Debe proporcionar new_password'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if len(new_password) < 8:
+            return Response({'error': 'La contraseña debe tener al menos 8 caracteres'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validar complejidad mínima
+        if not any(c.isupper() for c in new_password):
+            return Response({'error': 'La contraseña debe tener al menos una mayúscula'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not any(c.isdigit() for c in new_password):
+            return Response({'error': 'La contraseña debe tener al menos un número'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        usuario.set_password(new_password)
+        usuario.save()
+        
+        # Registrar en auditoría
+        AuditoriaLog.objects.create(
+            usuario=request.user,
+            accion='cambiar_password',
+            modelo='User',
+            objeto_id=usuario.id,
+            objeto_repr=usuario.username,
+            cambios={'cambiado_por': request.user.username},
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        logger.info("Contraseña de usuario %s actualizada por %s", usuario.username, request.user.username)
+        return Response({'message': f'Contraseña de {usuario.username} actualizada exitosamente'})
+
+    @action(detail=False, methods=['get'], url_path='exportar-excel')
+    def exportar_excel(self, request):
+        """GET /api/usuarios/exportar_excel/ - Exporta usuarios a Excel"""
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill
+        from django.http import HttpResponse
+        
+        # Admin y Farmacia pueden exportar usuarios
+        if not request.user.is_superuser and request.user.rol not in ['admin_sistema', 'farmacia', 'admin_farmacia']:
+            return Response({'error': 'No tiene permisos para exportar usuarios'}, status=status.HTTP_403_FORBIDDEN)
+        
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Usuarios'
+        
+        headers = ['#', 'Usuario', 'Email', 'Nombre', 'Apellidos', 'Rol', 'Centro', 'Activo', 'Fecha Registro']
+        ws.append(headers)
+        
+        header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
+        header_font = Font(bold=True, color='FFFFFF')
+        for cell in ws[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+        
+        usuarios = User.objects.select_related('centro').order_by('username')
+        for idx, u in enumerate(usuarios, start=1):
+            ws.append([
+                idx,
+                u.username,
+                u.email,
+                u.first_name,
+                u.last_name,
+                u.rol or 'Sin rol',
+                u.centro.nombre if u.centro else '-',
+                'Si' if u.is_active else 'No',
+                u.date_joined.strftime('%Y-%m-%d %H:%M') if u.date_joined else '-'
+            ])
+        
+        for col in ws.columns:
+            max_length = max(len(str(cell.value or '')) for cell in col)
+            ws.column_dimensions[col[0].column_letter].width = min(max_length + 2, 50)
+        
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = f'attachment; filename=usuarios_{timezone.now().strftime("%Y%m%d")}.xlsx'
+        wb.save(response)
+        return response
+
+    @action(detail=False, methods=['post'], url_path='importar-excel')
+    def importar_excel(self, request):
+        """POST /api/usuarios/importar-excel/ - Importa usuarios desde Excel
+        
+        Columnas esperadas:
+        - username (requerido, único)
+        - email (opcional, se genera si falta)
+        - first_name (opcional)
+        - last_name (opcional)
+        - rol (opcional: admin, farmacia, centro, vista; default: centro)
+        - password (opcional, mín 8 chars; default: temporal que requiere cambio)
+        - centro_clave (opcional: clave del centro a asignar)
+        """
+        import openpyxl
+        from .models import Centro
+        
+        # Admin y Farmacia pueden importar usuarios
+        if not request.user.is_superuser and request.user.rol not in ['admin_sistema', 'farmacia', 'admin_farmacia']:
+            return Response({'error': 'No tiene permisos para importar usuarios'}, status=status.HTTP_403_FORBIDDEN)
+        
+        archivo = request.FILES.get('file')
+        if not archivo:
+            return Response({'error': 'No se recibió archivo'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            with transaction.atomic():
+                wb = openpyxl.load_workbook(archivo)
+                ws = wb.active
+                
+                creados = 0
+                actualizados = 0
+                errores = []
+                usuarios_requieren_reset = []
+                
+                ROLES_VALIDOS = ['admin_sistema', 'admin_farmacia', 'farmacia', 'centro', 'vista', 'usuario_normal', 'usuario_vista']
+                
+                for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                    valores = list(row) + [None] * 10
+                    username = str(valores[0] or '').strip()
+                    email = str(valores[1] or '').strip()
+                    first_name = str(valores[2] or '').strip()
+                    last_name = str(valores[3] or '').strip()
+                    rol = str(valores[4] or 'centro').strip().lower()
+                    password = str(valores[5] or '').strip()
+                    centro_clave = str(valores[6] or '').strip().upper()
+                    
+                    if not username:
+                        continue
+                    
+                    # Validar username
+                    if len(username) < 3:
+                        errores.append({'fila': row_idx, 'error': f'Username "{username}" muy corto (mín 3 chars)'})
+                        continue
+                    
+                    # Validar rol
+                    if rol not in ROLES_VALIDOS:
+                        rol = 'centro'  # Default seguro
+                    
+                    # Buscar centro si se proporcionó
+                    centro = None
+                    if centro_clave:
+                        centro = Centro.objects.filter(clave__iexact=centro_clave, activo=True).first()
+                        if not centro:
+                            errores.append({'fila': row_idx, 'error': f'Centro "{centro_clave}" no encontrado o inactivo'})
+                            continue
+                    
+                    # Generar password seguro si no se proporciona o es débil
+                    requiere_reset = False
+                    if not password or len(password) < 8:
+                        import secrets
+                        import string
+                        # Generar password temporal seguro
+                        chars = string.ascii_letters + string.digits + '!@#$%'
+                        password = ''.join(secrets.choice(chars) for _ in range(12))
+                        requiere_reset = True
+                    
+                    try:
+                        user, created = User.objects.get_or_create(
+                            username=username,
+                            defaults={
+                                'email': email or f'{username}@sistema.local',
+                                'first_name': first_name,
+                                'last_name': last_name,
+                                'rol': rol,
+                                'centro': centro,
+                                'is_active': True,
+                                'activo': True,
+                            }
+                        )
+                        
+                        if created:
+                            user.set_password(password)
+                            user.save()
+                            creados += 1
+                            if requiere_reset:
+                                usuarios_requieren_reset.append({
+                                    'username': username,
+                                    'password_temporal': password
+                                })
+                        else:
+                            # Actualizar usuario existente (sin cambiar password)
+                            user.email = email or user.email
+                            user.first_name = first_name or user.first_name
+                            user.last_name = last_name or user.last_name
+                            if rol:
+                                user.rol = rol
+                            if centro:
+                                user.centro = centro
+                            user.save()
+                            actualizados += 1
+                            
+                    except Exception as e:
+                        errores.append({'fila': row_idx, 'error': str(e)})
+                
+                return Response({
+                    'mensaje': f'Importación completada',
+                    'resumen': {
+                        'creados': creados,
+                        'actualizados': actualizados,
+                        'errores': len(errores)
+                    },
+                    'usuarios_requieren_reset': usuarios_requieren_reset[:20] if usuarios_requieren_reset else [],
+                    'errores': errores[:10],
+                    'nota': 'Los usuarios con password temporal deben cambiar su contraseña en el primer inicio de sesión'
+                })
+        except Exception as e:
+            logger.error(f"Error al importar usuarios: {e}")
+            return Response({'error': f'Error al procesar archivo: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 # NOTA: ProductoViewSet, LoteViewSet, RequisicionViewSet y CentroViewSet
@@ -132,12 +476,204 @@ class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet para registros de auditoria (solo lectura)"""
     queryset = AuditoriaLog.objects.all()
     serializer_class = AuditoriaLogSerializer
-    permission_classes = [IsAuthenticated, IsFarmaciaRole]
+    # Solo Superuser/Admin puede leer el log de auditoría.
+    permission_classes = [IsSuperuserOnly]
     pagination_class = StandardResultsSetPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['modelo', 'usuario__username', 'accion']
-    ordering_fields = ['fecha_creacion']
-    ordering = ['-fecha_creacion']
+    search_fields = ['modelo', 'usuario__username', 'accion', 'objeto_repr']
+    ordering_fields = ['fecha']
+    ordering = ['-fecha']
+    
+    def get_queryset(self):
+        """Filtrado avanzado por parámetros de query"""
+        queryset = AuditoriaLog.objects.select_related('usuario').all()
+        
+        # Filtro por acción
+        accion = self.request.query_params.get('accion')
+        if accion:
+            queryset = queryset.filter(accion=accion)
+        
+        # Filtro por modelo
+        modelo = self.request.query_params.get('modelo')
+        if modelo:
+            queryset = queryset.filter(modelo__icontains=modelo)
+        
+        # Filtro por usuario
+        usuario = self.request.query_params.get('usuario')
+        if usuario:
+            queryset = queryset.filter(
+                Q(usuario__username__icontains=usuario) |
+                Q(usuario__first_name__icontains=usuario) |
+                Q(usuario__last_name__icontains=usuario)
+            )
+        
+        # Filtro por fecha inicio
+        fecha_inicio = self.request.query_params.get('fecha_inicio')
+        if fecha_inicio:
+            queryset = queryset.filter(fecha__date__gte=fecha_inicio)
+        
+        # Filtro por fecha fin
+        fecha_fin = self.request.query_params.get('fecha_fin')
+        if fecha_fin:
+            queryset = queryset.filter(fecha__date__lte=fecha_fin)
+        
+        return queryset
+
+    @action(detail=False, methods=['get'])
+    def exportar(self, request):
+        """
+        Exporta logs de auditoría a Excel.
+        GET /api/auditoria/exportar/
+        """
+        try:
+            logs = self.get_queryset()[:5000]  # Limitar a 5000 registros
+            
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = 'Auditoria'
+            
+            # Título
+            ws.merge_cells('A1:G1')
+            titulo = ws['A1']
+            titulo.value = 'REPORTE DE AUDITORÍA'
+            titulo.font = openpyxl.styles.Font(bold=True, size=14, color='632842')
+            titulo.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
+            
+            ws.merge_cells('A2:G2')
+            fecha = ws['A2']
+            fecha.value = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")}'
+            fecha.font = openpyxl.styles.Font(size=10, italic=True)
+            fecha.alignment = openpyxl.styles.Alignment(horizontal='center')
+            
+            ws.append([])
+            
+            # Encabezados
+            headers = ['#', 'Fecha', 'Usuario', 'Acción', 'Modelo', 'Objeto', 'IP']
+            ws.append(headers)
+            
+            header_fill = openpyxl.styles.PatternFill(start_color='632842', end_color='632842', fill_type='solid')
+            header_font = openpyxl.styles.Font(bold=True, color='FFFFFF', size=11)
+            for cell in ws[4]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
+            
+            # Datos
+            for idx, log in enumerate(logs, 1):
+                ws.append([
+                    idx,
+                    log.fecha.strftime('%d/%m/%Y %H:%M:%S') if log.fecha else '',
+                    log.usuario.username if log.usuario else 'Sistema',
+                    log.accion,
+                    log.modelo,
+                    str(log.objeto_repr)[:100] if log.objeto_repr else '',
+                    log.ip_address or ''
+                ])
+            
+            # Ajustar anchos
+            ws.column_dimensions['A'].width = 8
+            ws.column_dimensions['B'].width = 20
+            ws.column_dimensions['C'].width = 15
+            ws.column_dimensions['D'].width = 12
+            ws.column_dimensions['E'].width = 20
+            ws.column_dimensions['F'].width = 50
+            ws.column_dimensions['G'].width = 15
+            
+            from django.http import HttpResponse
+            response = HttpResponse(
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = f'attachment; filename=Auditoria_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+            wb.save(response)
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error al exportar auditoría: {e}")
+            return Response({
+                'error': 'Error al exportar auditoría',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='exportar-pdf')
+    def exportar_pdf(self, request):
+        """
+        Exporta logs de auditoría a PDF con fondo institucional.
+        GET /api/auditoria/exportar-pdf/
+        
+        Ideal para reportes oficiales de auditoría y cumplimiento normativo.
+        """
+        try:
+            logs = self.get_queryset()[:2000]  # Limitar para PDFs
+            
+            # Preparar datos para el generador
+            auditoria_data = []
+            for log in logs:
+                auditoria_data.append({
+                    'fecha': log.fecha,
+                    'usuario': log.usuario.username if log.usuario else 'Sistema',
+                    'accion': log.accion,
+                    'modelo': log.modelo,
+                    'objeto_repr': log.objeto_repr,
+                    'ip_address': log.ip_address or ''
+                })
+            
+            # Filtros aplicados
+            filtros = {
+                'fecha_inicio': request.query_params.get('fecha_inicio'),
+                'fecha_fin': request.query_params.get('fecha_fin'),
+                'usuario': request.query_params.get('usuario'),
+                'accion': request.query_params.get('accion'),
+                'modelo': request.query_params.get('modelo'),
+            }
+            filtros = {k: v for k, v in filtros.items() if v}
+            
+            # Generar PDF
+            pdf_buffer = generar_reporte_auditoria(auditoria_data, filtros)
+            
+            response = HttpResponse(pdf_buffer, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename=Auditoria_{timezone.now().strftime("%Y%m%d_%H%M%S")}.pdf'
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error al exportar auditoría PDF: {e}")
+            return Response({
+                'error': 'Error al exportar auditoría',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'])
+    def opciones_filtro(self, request):
+        """
+        Devuelve opciones para filtros de auditoría.
+        GET /api/auditoria/opciones_filtro/
+        
+        Retorna:
+        - acciones: Lista de acciones únicas registradas
+        - modelos: Lista de modelos auditados
+        """
+        from .constants import ACCIONES_AUDITORIA, MODELOS_AUDITADOS
+        
+        # Acciones que realmente existen en la base de datos
+        acciones_db = list(
+            AuditoriaLog.objects.values_list('accion', flat=True)
+            .distinct()
+            .order_by('accion')
+        )
+        
+        # Modelos que realmente existen en la base de datos
+        modelos_db = list(
+            AuditoriaLog.objects.values_list('modelo', flat=True)
+            .distinct()
+            .order_by('modelo')
+        )
+        
+        return Response({
+            'acciones': acciones_db,
+            'modelos': modelos_db,
+            'catalogo_acciones': dict(ACCIONES_AUDITORIA),
+            'catalogo_modelos': MODELOS_AUDITADOS
+        })
 
 
 class ImportacionLogViewSet(viewsets.ReadOnlyModelViewSet):
@@ -152,8 +688,29 @@ class ImportacionLogViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ['-fecha_creacion']
 
 
-class NotificacionViewSet(viewsets.ModelViewSet):
-    """ViewSet para notificaciones del usuario"""
+class NotificacionViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet
+):
+    """
+    ViewSet para notificaciones del usuario (solo lectura).
+    
+    Las notificaciones son generadas automáticamente por el sistema:
+    - Cambios de estado en requisiciones
+    - Alertas de stock crítico
+    - Alertas de lotes por caducar
+    
+    Endpoints:
+    - GET /api/notificaciones/ - Lista notificaciones del usuario
+    - GET /api/notificaciones/{id}/ - Detalle de notificación
+    - POST /api/notificaciones/{id}/marcar-leida/ - Marcar como leída
+    - POST /api/notificaciones/marcar-todas-leidas/ - Marcar todas como leídas
+    - GET /api/notificaciones/no-leidas-count/ - Contador de no leídas
+    
+    Notificaciones son read-only. No se permite crear, editar ni eliminar.
+    """
+    http_method_names = ['get', 'post', 'head', 'options']
     serializer_class = NotificacionSerializer
     permission_classes = [IsAuthenticated, CanViewNotifications]
     pagination_class = StandardResultsSetPagination
@@ -183,19 +740,42 @@ class NotificacionViewSet(viewsets.ModelViewSet):
 
         return queryset
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], url_path='marcar-leida')
     def marcar_leida(self, request, pk=None):
-        """POST /api/notificaciones/{id}/marcar_leida/"""
+        """POST /api/notificaciones/{id}/marcar-leida/"""
         notificacion = self.get_object()
         notificacion.leida = True
         notificacion.save()
         return Response({'leida': True})
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['post'], url_path='marcar-todas-leidas')
+    def marcar_todas_leidas(self, request):
+        """POST /api/notificaciones/marcar-todas-leidas/"""
+        updated = self.get_queryset().filter(leida=False).update(leida=True)
+        return Response({'marcadas': updated})
+
+    @action(detail=False, methods=['get'], url_path='no-leidas-count')
     def no_leidas_count(self, request):
-        """GET /api/notificaciones/no_leidas_count/"""
+        """GET /api/notificaciones/no-leidas-count/"""
         count = self.get_queryset().filter(leida=False).count()
         return Response({'no_leidas': count})
+    
+    def destroy(self, request, *args, **kwargs):
+        """
+        Eliminar notificación propia.
+        
+        POLÍTICA DE SEGURIDAD:
+        - Staff/Superuser: NO pueden borrar (405) - deben mantener historial para auditoría
+        - Usuarios normales: SÍ pueden borrar sus propias notificaciones
+        
+        El queryset ya filtra por usuario, así que solo pueden borrar las suyas.
+        """
+        if request.user and (request.user.is_staff or request.user.is_superuser):
+            return Response(
+                {'error': 'Administradores no pueden eliminar notificaciones (auditoría)'},
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+        return super().destroy(request, *args, **kwargs)
 
 
 class ReportesViewSet(viewsets.ViewSet):
@@ -216,21 +796,32 @@ class ReportesViewSet(viewsets.ViewSet):
         datos = []
         for producto in queryset:
             stock_actual = producto.get_stock_actual()
+            nivel = producto.get_nivel_stock()
             datos.append({
                 'id': producto.id,
                 'clave': producto.clave,
                 'descripcion': producto.descripcion,
+                'unidad_medida': producto.unidad_medida,
                 'stock_actual': stock_actual,
                 'stock_minimo': producto.stock_minimo,
-                'nivel_stock': producto.get_nivel_stock(),
+                'nivel_stock': nivel,
+                'nivel': nivel,  # Alias para compatibilidad frontend
                 'precio_unitario': float(producto.precio_unitario),
                 'valor_inventario': float(stock_actual * producto.precio_unitario),
                 'lotes_activos': producto.lotes.filter(estado='disponible').count()
             })
 
+        # Calcular productos bajo mínimo (stock_actual < stock_minimo)
+        productos_bajo_minimo = sum(
+            1 for d in datos 
+            if d['stock_actual'] < d['stock_minimo'] and d['stock_minimo'] > 0
+        )
+        
         resumen = {
             'total_productos': len(datos),
+            'stock_total': sum(d['stock_actual'] for d in datos),
             'productos_sin_stock': sum(1 for d in datos if d['stock_actual'] == 0),
+            'productos_bajo_minimo': productos_bajo_minimo,
             'productos_stock_critico': sum(1 for d in datos if d['nivel_stock'] == 'critico'),
             'valor_total_inventario': sum(d['valor_inventario'] for d in datos)
         }
@@ -405,9 +996,43 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     """
     View personalizado para login que retorna tokens + datos del usuario.
     Usa CustomTokenObtainPairSerializer de serializers_jwt.py
+    ✅ Incluye rate limiting para prevenir fuerza bruta.
     """
     from core.serializers_jwt import CustomTokenObtainPairSerializer
     serializer_class = CustomTokenObtainPairSerializer
+    throttle_classes = [LoginThrottle]
+
+    def _verify_captcha(self, token, remote_ip=None):
+        """
+        Valida el token de reCAPTCHA contra el servicio de Google.
+        Retorna True si es válido o si la validación está deshabilitada.
+        """
+        if not settings.RECAPTCHA_ENABLED:
+            return True
+        secret = settings.RECAPTCHA_SECRET_KEY
+        if not secret:
+            logger.warning("RECAPTCHA_ENABLED sin RECAPTCHA_SECRET_KEY configurado")
+            return False
+        try:
+            resp = requests.post(
+                'https://www.google.com/recaptcha/api/siteverify',
+                data={'secret': secret, 'response': token, 'remoteip': remote_ip},
+                timeout=5
+            )
+            data = resp.json()
+            return bool(data.get('success'))
+        except Exception as exc:
+            logger.error(f"Error verificando reCAPTCHA: {exc}")
+            return False
+
+    def post(self, request, *args, **kwargs):
+        if settings.RECAPTCHA_ENABLED:
+            captcha_token = request.data.get('captcha_token') or request.data.get('captcha')
+            if not captcha_token:
+                return Response({'error': 'Captcha requerido'}, status=status.HTTP_400_BAD_REQUEST)
+            if not self._verify_captcha(captcha_token, request.META.get('REMOTE_ADDR')):
+                return Response({'error': 'Captcha inválido'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().post(request, *args, **kwargs)
 
 
 class LogoutView(APIView):
@@ -433,11 +1058,18 @@ class LogoutView(APIView):
 class DevAutoLoginView(APIView):
     """
     SOLO DESARROLLO: Autologin sin credenciales.
-    DEBE deshabilitarse en produccion.
+    Automaticamente deshabilitado en produccion (DEBUG=False).
     """
     permission_classes = [AllowAny]
 
     def post(self, request):
+        from django.conf import settings
+        if not settings.DEBUG:
+            return Response(
+                {'error': 'Este endpoint solo esta disponible en modo desarrollo'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         username = request.data.get('username', 'admin')
         
         try:
@@ -457,6 +1089,126 @@ class DevAutoLoginView(APIView):
 
 # NOTA: UserProfileView eliminada - usar /api/usuarios/me/ del UserViewSet
 # class UserProfileView eliminada (código muerto, duplicaba funcionalidad)
+
+
+class ConfiguracionSistemaViewSet(viewsets.ViewSet):
+    """
+    ViewSet para la configuración global del sistema (colores del tema).
+    
+    GET  /api/configuracion/tema/  - Obtiene la configuración actual (público)
+    PUT  /api/configuracion/tema/  - Actualiza la configuración (solo superusuario)
+    POST /api/configuracion/tema/aplicar-tema/  - Aplica un tema predefinido (solo superusuario)
+    POST /api/configuracion/tema/restablecer/    - Restablece al tema por defecto (solo superusuario)
+    """
+    
+    def get_permissions(self):
+        """
+        GET es público (para cargar el tema al inicio).
+        PUT, POST requieren superusuario.
+        """
+        if self.action == 'retrieve':
+            return [AllowAny()]
+        return [IsAuthenticated()]
+    
+    def retrieve(self, request, pk=None):
+        """
+        GET /api/configuracion/tema/
+        Retorna la configuración actual del sistema.
+        Público para que el frontend pueda cargar los colores al iniciar.
+        """
+        config = ConfiguracionSistema.get_config()
+        serializer = ConfiguracionSistemaSerializer(config)
+        return Response(serializer.data)
+    
+    def update(self, request, pk=None):
+        """
+        PUT /api/configuracion/tema/
+        Actualiza la configuración del sistema.
+        Solo superusuarios pueden modificar.
+        """
+        if not request.user.is_superuser:
+            return Response(
+                {'error': 'Solo superusuarios pueden modificar la configuración del sistema'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        config = ConfiguracionSistema.get_config()
+        serializer = ConfiguracionSistemaSerializer(config, data=request.data, partial=True)
+        
+        if serializer.is_valid():
+            serializer.save(updated_by=request.user)
+            logger.info(f"Configuración del sistema actualizada por {request.user.username}")
+            return Response(serializer.data)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['post'], url_path='aplicar-tema')
+    def aplicar_tema(self, request):
+        """
+        POST /api/configuracion/tema/aplicar-tema/
+        Aplica un tema predefinido (default, dark, green, purple).
+        Body: { "tema": "dark" }
+        """
+        if not request.user.is_superuser:
+            return Response(
+                {'error': 'Solo superusuarios pueden cambiar el tema'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        tema = request.data.get('tema')
+        if not tema:
+            return Response(
+                {'error': 'Debe especificar el tema a aplicar'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        temas_validos = [t[0] for t in ConfiguracionSistema.TEMAS_PREDEFINIDOS if t[0] != 'custom']
+        if tema not in temas_validos:
+            return Response(
+                {'error': f'Tema inválido. Opciones: {", ".join(temas_validos)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if ConfiguracionSistema.aplicar_tema_predefinido(tema):
+            config = ConfiguracionSistema.get_config()
+            config.updated_by = request.user
+            config.save()
+            serializer = ConfiguracionSistemaSerializer(config)
+            logger.info(f"Tema '{tema}' aplicado por {request.user.username}")
+            return Response({
+                'mensaje': f'Tema "{tema}" aplicado correctamente',
+                'configuracion': serializer.data
+            })
+        
+        return Response(
+            {'error': 'No se pudo aplicar el tema'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+    @action(detail=False, methods=['post'], url_path='restablecer')
+    def restablecer(self, request):
+        """
+        POST /api/configuracion/tema/restablecer/
+        Restablece la configuración al tema por defecto.
+        """
+        if not request.user.is_superuser:
+            return Response(
+                {'error': 'Solo superusuarios pueden restablecer la configuración'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        ConfiguracionSistema.aplicar_tema_predefinido('default')
+        config = ConfiguracionSistema.get_config()
+        config.updated_by = request.user
+        config.save()
+        
+        serializer = ConfiguracionSistemaSerializer(config)
+        logger.info(f"Configuración restablecida a valores por defecto por {request.user.username}")
+        
+        return Response({
+            'mensaje': 'Configuración restablecida a valores por defecto',
+            'configuracion': serializer.data
+        })
 
 
 

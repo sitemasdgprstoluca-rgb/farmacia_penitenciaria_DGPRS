@@ -1,10 +1,10 @@
 import os
 import django
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
 
-from inventario.models import Producto, Centro, Lote, Movimiento
+from core.models import Producto, Centro, Lote, Movimiento
 from django.contrib.auth import get_user_model
 from datetime import date, timedelta
 from decimal import Decimal
@@ -79,17 +79,23 @@ estados_caducidad = [
 ]
 
 lote_counter = 1
+centros = Centro.objects.all()
 for i, producto in enumerate(productos):
     # Crear 2 lotes por producto con diferentes estados
     for j, (estado, dias) in enumerate(estados_caducidad[:2]):
+        cantidad = 150 + (j * 100)
+        centro = centros[i % len(centros)] if centros.exists() else None
+        precio = round(float(producto.precio_unitario) * 0.7, 2)
         lote, created = Lote.objects.get_or_create(
             numero_lote=f'LOTE-2025-{lote_counter:03d}',
+            producto=producto,
             defaults={
-                'producto': producto,
-                'cantidad_actual': 150 + (j * 100),
+                'cantidad_inicial': cantidad,
+                'cantidad_actual': cantidad,
                 'fecha_caducidad': date.today() + timedelta(days=dias + (i * 10)),
                 'proveedor': f'Proveedor Farmacéutico {(i % 3) + 1}',
-                'precio_compra': producto.precio_unitario * Decimal('0.7'),
+                'precio_compra': Decimal(str(precio)),
+                'centro': centro,
             }
         )
         if created:
@@ -99,44 +105,23 @@ for i, producto in enumerate(productos):
 # Crear algunos movimientos
 print("\n📊 Creando movimientos de ejemplo...")
 usuario = User.objects.first()
-lotes = Lote.objects.all()
+lotes = Lote.objects.filter(estado='disponible')  # Solo lotes disponibles
 
 movimiento_counter = 0
 for i, lote in enumerate(lotes):
-    # Crear ENTRADA inicial
-    Movimiento.objects.create(
-        producto=lote.producto,
-        lote=lote,
-        tipo_movimiento='ENTRADA',
-        cantidad=lote.cantidad_actual + 50,
-        observaciones=f'Entrada inicial - Compra a {lote.proveedor}'
-    )
-    movimiento_counter += 1
-    print(f"✅ Entrada creada para {lote.numero_lote}: +{lote.cantidad_actual + 50} unidades")
-    
-    # Crear algunas SALIDAS
-    if i % 2 == 0:
+    centro = lote.centro
+    # Crear SALIDA (cantidad negativa)
+    if lote.cantidad_actual > 50:
         Movimiento.objects.create(
-            producto=lote.producto,
             lote=lote,
-            tipo_movimiento='SALIDA',
-            cantidad=50,
-            observaciones=f'Salida a Centro Penitenciario Norte'
+            centro=centro,
+            tipo='salida',
+            cantidad=-50,  # Negativo para salidas
+            usuario=usuario,
+            observaciones=f'Salida a centro penitenciario'
         )
         movimiento_counter += 1
         print(f"✅ Salida creada para {lote.numero_lote}: -50 unidades")
-    
-    # Crear otra entrada pequeña
-    if i % 3 == 0:
-        Movimiento.objects.create(
-            producto=lote.producto,
-            lote=lote,
-            tipo_movimiento='ENTRADA',
-            cantidad=30,
-            observaciones=f'Reabastecimiento urgente'
-        )
-        movimiento_counter += 1
-        print(f"✅ Entrada adicional para {lote.numero_lote}: +30 unidades")
 
 print(f"\n✅ Total de movimientos creados: {movimiento_counter}")
 

@@ -9,7 +9,7 @@ const BarcodeScannerInput = ({ onCodigoDetectado, disabled = false }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!codigo.trim()) {
-      setError("Ingresa un codigo de barras");
+      setError("Ingresa un código de barras");
       return;
     }
     setError("");
@@ -53,7 +53,7 @@ const BarcodeScannerInput = ({ onCodigoDetectado, disabled = false }) => {
             return;
           }
         } catch (err) {
-          setError(err.message || "No se pudo leer el codigo");
+          setError(err.message || "No se pudo leer el código");
         }
         requestAnimationFrame(leer);
       };
@@ -61,7 +61,7 @@ const BarcodeScannerInput = ({ onCodigoDetectado, disabled = false }) => {
       videoRef.current?.addEventListener("pause", detenerStream, { once: true });
       leer();
     } catch (err) {
-      setError(err.message || "No se pudo acceder a la camara");
+      setError(err.message || "No se pudo acceder a la cámara");
       setScanning(false);
     }
   };
@@ -84,7 +84,7 @@ const BarcodeScannerInput = ({ onCodigoDetectado, disabled = false }) => {
             type="text"
             value={codigo}
             onChange={(e) => setCodigo(e.target.value)}
-            placeholder="Escanea o ingresa codigo..."
+            placeholder="Escanea o ingresa código..."
             disabled={disabled}
             className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
           />
@@ -94,14 +94,14 @@ const BarcodeScannerInput = ({ onCodigoDetectado, disabled = false }) => {
               disabled={disabled}
               className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition disabled:bg-gray-400"
             >
-              Usar codigo
+              Usar código
             </button>
             <button
               type="button"
               onClick={iniciarEscaneo}
               disabled={disabled}
               className="p-2 text-gray-600 hover:text-blue-600 transition disabled:text-gray-400"
-              title="Escanear con camara"
+              title="Escanear con cámara"
             >
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" />

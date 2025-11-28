@@ -102,19 +102,19 @@ function Perfil() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Mi Perfil</h1>
-          <p className="text-gray-600 text-sm">Gestiona tu informacion y credenciales</p>
+          <p className="text-gray-600 text-sm">Gestiona tu información y credenciales</p>
         </div>
         <button
           onClick={logout}
           className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700"
         >
-          Cerrar sesion
+          Cerrar sesión
         </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-xl shadow p-5 space-y-3">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Informacion basica</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Información básica</p>
           <div className="flex items-center gap-3">
             <div className="w-14 h-14 rounded-full bg-gradient-to-br from-rose-500 to-red-600 flex items-center justify-center text-white text-xl font-bold">
               {perfil?.first_name?.[0] || perfil?.username?.[0] || "U"}
@@ -173,7 +173,7 @@ function Perfil() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500">Telefono</label>
+                <label className="block text-xs font-semibold text-gray-500">Teléfono</label>
                 <input
                   type="text"
                   value={form.telefono}
@@ -225,6 +225,9 @@ function Perfil() {
                 onChange={(e) => setPassForm((f) => ({ ...f, new_password: e.target.value }))}
                 className="mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
               />
+              <p className="mt-1 text-xs text-gray-500">
+                Mínimo 8 caracteres, una mayúscula y un número
+              </p>
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500">Confirmar nueva contraseña</label>

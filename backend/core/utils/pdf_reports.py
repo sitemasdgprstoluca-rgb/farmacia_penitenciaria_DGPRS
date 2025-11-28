@@ -1,20 +1,199 @@
 """
 Generador de reportes PDF profesionales para el sistema de farmacia penitenciaria
+Con imagen de fondo oficial del Gobierno del Estado de México
 """
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
+from reportlab.lib.units import inch, cm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
 from reportlab.platypus import Image as RLImage
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+from reportlab.pdfgen import canvas
+from django.conf import settings
 from django.utils import timezone
 from io import BytesIO
 from datetime import date, timedelta
+from pathlib import Path
+import os
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Colores institucionales del Gobierno del Estado de México
+COLOR_GUINDA = colors.HexColor('#632842')  # Color oficial
+COLOR_GUINDA_CLARO = colors.HexColor('#8a3b5c')
+COLOR_DORADO = colors.HexColor('#B8860B')
+COLOR_TEXTO = colors.HexColor('#1f2937')
+COLOR_GRIS = colors.HexColor('#6b7280')
+
+# Ruta a la imagen de fondo institucional (usando settings.BASE_DIR)
+# Funciona tanto en desarrollo como en producción después de collectstatic
+# Usar la imagen original sin degradar para que se vea el colibrí y colores
+FONDO_INSTITUCIONAL_PATH = Path(settings.BASE_DIR) / 'static' / 'img' / 'pdf' / 'fondoOficial.png'
+
+# En producción, si collectstatic está configurado, la imagen estará en staticfiles
+# Intentar primero en static/, luego en staticfiles/
+def obtener_ruta_fondo():
+    """
+    Obtiene la ruta correcta al fondo institucional.
+    Funciona en desarrollo (static/) y producción (staticfiles/).
+    """
+    rutas_posibles = [
+        Path(settings.BASE_DIR) / 'static' / 'img' / 'pdf' / 'fondoOficial.png',
+        Path(settings.STATIC_ROOT) / 'img' / 'pdf' / 'fondoOficial.png' if hasattr(settings, 'STATIC_ROOT') and settings.STATIC_ROOT else None,
+    ]
+    
+    for ruta in rutas_posibles:
+        if ruta and ruta.exists():
+            return ruta
+    
+    logger.warning(f"Imagen de fondo no encontrada en: {rutas_posibles}")
+    return FONDO_INSTITUCIONAL_PATH  # Retornar default aunque no exista
+
+
+from reportlab.platypus import BaseDocTemplate, Frame, PageTemplate
+
+
+# Variable global para la ruta del fondo
+_FONDO_PATH_ACTUAL = None
+
+
+class CanvasConFondo(canvas.Canvas):
+    """
+    Canvas que dibuja el fondo institucional AL INICIO de cada página,
+    ANTES de que se dibuje cualquier contenido.
+    """
+    
+    def __init__(self, *args, **kwargs):
+        canvas.Canvas.__init__(self, *args, **kwargs)
+        # Dibujar fondo inmediatamente al crear el canvas (primera página)
+        self._dibujar_fondo()
+    
+    def showPage(self):
+        """
+        Se llama cuando se termina una página y se va a la siguiente.
+        Primero terminamos la página actual, luego dibujamos el fondo en la nueva.
+        """
+        canvas.Canvas.showPage(self)
+        # Dibujar fondo para la NUEVA página
+        self._dibujar_fondo()
+    
+    def _dibujar_fondo(self):
+        """Dibuja la imagen de fondo institucional"""
+        global _FONDO_PATH_ACTUAL
+        if _FONDO_PATH_ACTUAL and os.path.exists(_FONDO_PATH_ACTUAL):
+            try:
+                page_width, page_height = letter
+                self.drawImage(
+                    str(_FONDO_PATH_ACTUAL),
+                    0, 0,
+                    width=page_width,
+                    height=page_height,
+                    preserveAspectRatio=False,
+                    mask='auto'
+                )
+            except Exception as e:
+                logger.warning(f"No se pudo cargar imagen de fondo: {e}")
+
+
+def _crear_doc_con_fondo(buffer, fondo_path):
+    """
+    Crea un SimpleDocTemplate que usa CanvasConFondo para dibujar el fondo.
+    """
+    global _FONDO_PATH_ACTUAL
+    _FONDO_PATH_ACTUAL = fondo_path
+    
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        topMargin=1.8*inch,
+        bottomMargin=1.2*inch,
+        leftMargin=0.6*inch,
+        rightMargin=0.6*inch
+    )
+    
+    return doc
+
+
+def _build_con_fondo(doc, elements):
+    """
+    Construye el documento usando el canvas con fondo.
+    """
+    doc.build(elements, canvasmaker=CanvasConFondo)
+
+
+def _obtener_estilos_institucionales():
+    """Retorna estilos personalizados con colores institucionales"""
+    styles = getSampleStyleSheet()
+    
+    # Título principal del reporte
+    styles.add(ParagraphStyle(
+        'TituloReporte',
+        parent=styles['Heading1'],
+        fontSize=16,
+        textColor=COLOR_GUINDA,
+        alignment=TA_CENTER,
+        spaceAfter=20,
+        spaceBefore=10,
+        fontName='Helvetica-Bold'
+    ))
+    
+    # Subtítulo
+    styles.add(ParagraphStyle(
+        'SubtituloReporte',
+        parent=styles['Heading2'],
+        fontSize=11,
+        textColor=COLOR_TEXTO,
+        alignment=TA_CENTER,
+        spaceAfter=15,
+        fontName='Helvetica'
+    ))
+    
+    # Sección
+    styles.add(ParagraphStyle(
+        'SeccionTitulo',
+        parent=styles['Heading3'],
+        fontSize=11,
+        textColor=COLOR_GUINDA,
+        spaceAfter=8,
+        spaceBefore=12,
+        fontName='Helvetica-Bold'
+    ))
+    
+    return styles
+
+
+def _crear_tabla_institucional(data, col_widths=None, header=True):
+    """Crea una tabla con estilo institucional - fondo transparente para ver imagen de fondo"""
+    table = Table(data, colWidths=col_widths)
+    
+    estilos = [
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+    ]
+    
+    if header:
+        estilos.extend([
+            ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            # Sin ROWBACKGROUNDS para mantener transparencia
+        ])
+    
+    table.setStyle(TableStyle(estilos))
+    return table
 
 
 def crear_encabezado(styles):
@@ -23,7 +202,7 @@ def crear_encabezado(styles):
         'CustomTitle',
         parent=styles['Heading1'],
         fontSize=16,
-        textColor=colors.HexColor('#1a1a1a'),
+        textColor=COLOR_GUINDA,
         alignment=TA_CENTER,
         spaceAfter=30
     )
@@ -32,7 +211,7 @@ def crear_encabezado(styles):
 
 
 def crear_pie_pagina(canvas, doc):
-    """Agrega número de página al pie"""
+    """Agrega número de página al pie - LEGACY, usar FondoOficialCanvas"""
     canvas.saveState()
     canvas.setFont('Helvetica', 9)
     page_num = canvas.getPageNumber()
@@ -42,204 +221,208 @@ def crear_pie_pagina(canvas, doc):
     canvas.restoreState()
 
 
-def generar_reporte_inventario(productos_data, formato='pdf'):
+def generar_reporte_inventario(productos_data, formato='pdf', filtros=None):
     """
-    Genera reporte PDF de inventario completo
+    Genera reporte PDF de inventario completo con fondo oficial
     
     Args:
         productos_data: Lista de diccionarios con datos de productos
         formato: 'pdf' (default)
+        filtros: Diccionario opcional con filtros aplicados
     
     Returns:
         BytesIO con el PDF generado
     """
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.75*inch, bottomMargin=0.75*inch)
     
-    # Elementos del documento
+    # Usar documento con fondo institucional
+    fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
+    
+    doc = _crear_doc_con_fondo(buffer, fondo_path)
+    
     elements = []
-    styles = getSampleStyleSheet()
-    titulo_style = crear_encabezado(styles)
+    styles = _obtener_estilos_institucionales()
     
     # Título
-    titulo = Paragraph("REPORTE DE INVENTARIO GENERAL", titulo_style)
+    titulo = Paragraph("REPORTE DE INVENTARIO GENERAL", styles['TituloReporte'])
     elements.append(titulo)
-    elements.append(Spacer(1, 0.3*inch))
+    elements.append(Spacer(1, 0.2*inch))
     
-    # Fecha y filtros
-    fecha_info = Paragraph(
-        f"<b>Fecha de generación:</b> {timezone.now().strftime('%d/%m/%Y %H:%M')}<br/>"
-        f"<b>Total de productos:</b> {len(productos_data)}",
-        styles['Normal']
-    )
+    # Información del reporte
+    info_text = f"<b>Fecha de generación:</b> {timezone.now().strftime('%d/%m/%Y %H:%M')}<br/>"
+    info_text += f"<b>Total de productos:</b> {len(productos_data)}"
+    
+    if filtros:
+        if filtros.get('centro'):
+            info_text += f"<br/><b>Centro:</b> {filtros['centro']}"
+        if filtros.get('categoria'):
+            info_text += f"<br/><b>Categoría:</b> {filtros['categoria']}"
+        if filtros.get('nivel_stock'):
+            info_text += f"<br/><b>Nivel de stock:</b> {filtros['nivel_stock']}"
+    
+    fecha_info = Paragraph(info_text, styles['Normal'])
     elements.append(fecha_info)
     elements.append(Spacer(1, 0.2*inch))
     
     # Tabla de datos
-    data = [['Clave', 'Descripción', 'Stock Actual', 'Stock Mínimo', 'Nivel', 'Precio', 'Valor Total']]
+    data = [['Clave', 'Descripción', 'Stock Actual', 'Stock Mín.', 'Nivel', 'Unidad']]
     
     for producto in productos_data:
+        nivel = str(producto.get('nivel', producto.get('nivel_stock', 'N/A'))).upper()
         data.append([
-            str(producto['clave']),
-            str(producto['descripcion'])[:40],  # Truncar descripción
+            str(producto.get('clave', '')),
+            str(producto.get('descripcion', ''))[:45],
             str(producto.get('stock_actual', 0)),
             str(producto.get('stock_minimo', 0)),
-            str(producto.get('nivel_stock', 'N/A')),
-            f"${producto.get('precio_unitario', 0):.2f}",
-            f"${producto.get('valor_inventario', 0):.2f}"
+            nivel,
+            str(producto.get('unidad', producto.get('unidad_medida', '')))
         ])
     
-    # Crear tabla con estilo
-    table = Table(data, colWidths=[0.8*inch, 2.2*inch, 0.8*inch, 0.8*inch, 0.7*inch, 0.8*inch, 0.9*inch])
-    
-    table.setStyle(TableStyle([
-        # Encabezado
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9),
-        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        
-        # Contenido
-        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
-        ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),  # Números alineados a la derecha
-        ('ALIGN', (0, 1), (1, -1), 'LEFT'),     # Texto alineado a la izquierda
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
-    
+    col_widths = [0.8*inch, 2.8*inch, 0.8*inch, 0.7*inch, 0.8*inch, 0.6*inch]
+    table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
     elements.append(Spacer(1, 0.3*inch))
     
     # Resumen
-    total_valor = sum(p.get('valor_inventario', 0) for p in productos_data)
-    productos_criticos = sum(1 for p in productos_data if p.get('nivel_stock') == 'critico')
+    productos_criticos = sum(1 for p in productos_data if str(p.get('nivel', p.get('nivel_stock', ''))).lower() == 'critico')
     productos_sin_stock = sum(1 for p in productos_data if p.get('stock_actual', 0) == 0)
     
-    resumen_text = f"""
-    <b>RESUMEN EJECUTIVO</b><br/>
-    Total de productos: {len(productos_data)}<br/>
-    Productos sin stock: {productos_sin_stock}<br/>
-    Productos en nivel crítico: {productos_criticos}<br/>
-    <b>Valor total del inventario: ${total_valor:,.2f}</b>
-    """
+    resumen_titulo = Paragraph("RESUMEN EJECUTIVO", styles['SeccionTitulo'])
+    elements.append(resumen_titulo)
     
-    resumen = Paragraph(resumen_text, styles['Normal'])
-    elements.append(resumen)
+    resumen_data = [
+        ['Total de productos', str(len(productos_data))],
+        ['Productos sin stock', str(productos_sin_stock)],
+        ['Productos en nivel crítico', str(productos_criticos)],
+    ]
     
-    # Construir PDF
-    doc.build(elements, onFirstPage=crear_pie_pagina, onLaterPages=crear_pie_pagina)
+    resumen_table = Table(resumen_data, colWidths=[2.5*inch, 1.5*inch])
+    resumen_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(resumen_table)
+    
+    # Construir el documento con fondo
+    _build_con_fondo(doc, elements)
     
     buffer.seek(0)
     logger.info(f"Reporte de inventario PDF generado: {len(productos_data)} productos")
     return buffer
 
 
-def generar_reporte_caducidades(lotes_data, dias=30):
+def generar_reporte_caducidades(lotes_data, dias=30, filtros=None):
     """
-    Genera reporte PDF de lotes próximos a caducar
+    Genera reporte PDF de lotes próximos a caducar con fondo oficial
     
     Args:
         lotes_data: Lista de diccionarios con datos de lotes
         dias: Días de anticipación para el reporte
+        filtros: Diccionario opcional con filtros aplicados
     
     Returns:
         BytesIO con el PDF generado
     """
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.75*inch, bottomMargin=0.75*inch)
+    fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
+    
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=letter, 
+        topMargin=1.8*inch,
+        bottomMargin=1.2*inch,
+        leftMargin=0.6*inch,
+        rightMargin=0.6*inch
+    )
     
     elements = []
-    styles = getSampleStyleSheet()
-    titulo_style = crear_encabezado(styles)
+    styles = _obtener_estilos_institucionales()
     
     # Título con énfasis en urgencia
     titulo = Paragraph(
-        f"⚠️ REPORTE DE LOTES PRÓXIMOS A CADUCAR ({dias} DÍAS)",
-        titulo_style
+        f"⚠️ REPORTE DE CADUCIDADES",
+        styles['TituloReporte']
     )
     elements.append(titulo)
-    elements.append(Spacer(1, 0.3*inch))
+    elements.append(Spacer(1, 0.2*inch))
     
     # Información del reporte
-    fecha_info = Paragraph(
-        f"<b>Fecha de generación:</b> {timezone.now().strftime('%d/%m/%Y %H:%M')}<br/>"
-        f"<b>Lotes identificados:</b> {len(lotes_data)}<br/>"
-        f"<b>Período de análisis:</b> Próximos {dias} días",
-        styles['Normal']
-    )
+    info_text = f"<b>Fecha de generación:</b> {timezone.now().strftime('%d/%m/%Y %H:%M')}<br/>"
+    info_text += f"<b>Lotes identificados:</b> {len(lotes_data)}<br/>"
+    if filtros and filtros.get('dias'):
+        info_text += f"<b>Período de análisis:</b> Próximos {filtros['dias']} días"
+    else:
+        info_text += f"<b>Período de análisis:</b> Próximos {dias} días"
+    
+    fecha_info = Paragraph(info_text, styles['Normal'])
     elements.append(fecha_info)
     elements.append(Spacer(1, 0.2*inch))
     
+    # Resumen de alertas
+    vencidos = sum(1 for l in lotes_data if str(l.get('alerta', l.get('estado_caducidad', ''))).lower() == 'vencido')
+    criticos = sum(1 for l in lotes_data if str(l.get('alerta', l.get('estado_caducidad', ''))).lower() == 'critico')
+    proximos = sum(1 for l in lotes_data if str(l.get('alerta', l.get('estado_caducidad', ''))).lower() == 'proximo')
+    
+    alertas_titulo = Paragraph("RESUMEN DE ALERTAS", styles['SeccionTitulo'])
+    elements.append(alertas_titulo)
+    
+    alertas_data = [
+        ['Tipo de Alerta', 'Cantidad', 'Acción Requerida'],
+        ['VENCIDOS', str(vencidos), 'Retiro inmediato'],
+        ['CRÍTICOS (≤7 días)', str(criticos), 'Uso prioritario'],
+        ['PRÓXIMOS (≤30 días)', str(proximos), 'Monitoreo'],
+        ['TOTAL', str(len(lotes_data)), ''],
+    ]
+    
+    alertas_table = Table(alertas_data, colWidths=[2*inch, 1*inch, 2*inch])
+    alertas_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('FONTNAME', (0, 4), (-1, 4), 'Helvetica-Bold'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(alertas_table)
+    elements.append(Spacer(1, 0.2*inch))
+    
     # Tabla de lotes
-    data = [['Producto', 'Lote', 'Fecha Caducidad', 'Días Restantes', 'Cantidad', 'Alerta', 'Proveedor']]
+    lotes_titulo = Paragraph("DETALLE DE LOTES", styles['SeccionTitulo'])
+    elements.append(lotes_titulo)
+    
+    data = [['Producto', 'Lote', 'Caducidad', 'Días', 'Cantidad', 'Estado']]
     
     for lote in lotes_data:
-        # Color de alerta
-        alerta = lote.get('alerta', 'normal')
-        dias_restantes = lote.get('dias_restantes', 999)
+        alerta = str(lote.get('alerta', lote.get('estado_caducidad', 'N/A'))).upper()
+        dias_restantes = lote.get('dias_restantes', lote.get('dias_para_caducar', 'N/A'))
         
         data.append([
-            str(lote.get('producto_descripcion', ''))[:25],
+            str(lote.get('producto_descripcion', lote.get('producto', '')))[:30],
             str(lote.get('numero_lote', '')),
             lote.get('fecha_caducidad', ''),
             str(dias_restantes),
             str(lote.get('cantidad_actual', 0)),
-            alerta.upper(),
-            str(lote.get('proveedor', ''))[:15]
+            alerta
         ])
     
-    table = Table(data, colWidths=[1.8*inch, 0.9*inch, 1*inch, 0.8*inch, 0.6*inch, 0.7*inch, 1.2*inch])
-    
-    # Estilo base
-    style_commands = [
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#c0392b')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 7),
-        ('ALIGN', (3, 1), (4, -1), 'CENTER'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]
-    
-    # Colorear filas según alerta
-    for i, lote in enumerate(lotes_data, start=1):
-        alerta = lote.get('alerta', 'normal')
-        if alerta == 'vencido':
-            style_commands.append(('BACKGROUND', (0, i), (-1, i), colors.HexColor('#ffcccc')))
-        elif alerta == 'critico':
-            style_commands.append(('BACKGROUND', (0, i), (-1, i), colors.HexColor('#ffe6cc')))
-        elif alerta == 'proximo':
-            style_commands.append(('BACKGROUND', (0, i), (-1, i), colors.HexColor('#fff4cc')))
-    
-    table.setStyle(TableStyle(style_commands))
+    col_widths = [2.2*inch, 1*inch, 0.9*inch, 0.5*inch, 0.7*inch, 0.9*inch]
+    table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
-    elements.append(Spacer(1, 0.3*inch))
     
-    # Resumen de alertas
-    vencidos = sum(1 for l in lotes_data if l.get('alerta') == 'vencido')
-    criticos = sum(1 for l in lotes_data if l.get('alerta') == 'critico')
-    proximos = sum(1 for l in lotes_data if l.get('alerta') == 'proximo')
+    # Usar canvas con fondo institucional
+    def make_canvas(*args, **kwargs):
+        return FondoOficialCanvas(*args, fondo_path=fondo_path, titulo_reporte='CADUCIDADES', **kwargs)
     
-    resumen_text = f"""
-    <b>RESUMEN DE ALERTAS</b><br/>
-    <font color="red">● Vencidos: {vencidos}</font><br/>
-    <font color="orange">● Críticos (≤7 días): {criticos}</font><br/>
-    <font color="#cc9900">● Próximos (≤30 días): {proximos}</font><br/>
-    <br/>
-    <b>ACCIÓN REQUERIDA:</b> Revisar disposición de lotes vencidos y planificar uso prioritario de lotes críticos.
-    """
-    
-    resumen = Paragraph(resumen_text, styles['Normal'])
-    elements.append(resumen)
-    
-    doc.build(elements, onFirstPage=crear_pie_pagina, onLaterPages=crear_pie_pagina)
+    doc.build(elements, canvasmaker=make_canvas)
     
     buffer.seek(0)
     logger.info(f"Reporte de caducidades PDF generado: {len(lotes_data)} lotes")
@@ -248,7 +431,7 @@ def generar_reporte_caducidades(lotes_data, dias=30):
 
 def generar_reporte_requisiciones(requisiciones_data, filtros=None):
     """
-    Genera reporte PDF de requisiciones
+    Genera reporte PDF de requisiciones con fondo oficial
     
     Args:
         requisiciones_data: Lista de diccionarios con datos de requisiciones
@@ -258,75 +441,41 @@ def generar_reporte_requisiciones(requisiciones_data, filtros=None):
         BytesIO con el PDF generado
     """
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.75*inch, bottomMargin=0.75*inch)
+    fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
+    
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=letter, 
+        topMargin=1.8*inch,
+        bottomMargin=1.2*inch,
+        leftMargin=0.6*inch,
+        rightMargin=0.6*inch
+    )
     
     elements = []
-    styles = getSampleStyleSheet()
-    titulo_style = crear_encabezado(styles)
+    styles = _obtener_estilos_institucionales()
     
     # Título
-    titulo = Paragraph("REPORTE DE REQUISICIONES", titulo_style)
+    titulo = Paragraph("REPORTE DE REQUISICIONES", styles['TituloReporte'])
     elements.append(titulo)
-    elements.append(Spacer(1, 0.3*inch))
-    
-    # Información y filtros
-    filtros_text = "<b>Fecha de generación:</b> " + timezone.now().strftime('%d/%m/%Y %H:%M') + "<br/>"
-    if filtros:
-        if 'estado' in filtros:
-            filtros_text += f"<b>Estado:</b> {filtros['estado']}<br/>"
-        if 'fecha_inicio' in filtros:
-            filtros_text += f"<b>Desde:</b> {filtros['fecha_inicio']}<br/>"
-        if 'fecha_fin' in filtros:
-            filtros_text += f"<b>Hasta:</b> {filtros['fecha_fin']}<br/>"
-    filtros_text += f"<b>Total de requisiciones:</b> {len(requisiciones_data)}"
-    
-    info = Paragraph(filtros_text, styles['Normal'])
-    elements.append(info)
     elements.append(Spacer(1, 0.2*inch))
     
-    # Tabla
-    data = [['Folio', 'Centro', 'Estado', 'Fecha Solicitud', 'Items', 'Usuario']]
+    # Información y filtros
+    info_text = "<b>Fecha de generación:</b> " + timezone.now().strftime('%d/%m/%Y %H:%M') + "<br/>"
+    if filtros:
+        if filtros.get('estado'):
+            info_text += f"<b>Estado:</b> {filtros['estado']}<br/>"
+        if filtros.get('centro'):
+            info_text += f"<b>Centro:</b> {filtros['centro']}<br/>"
+        if filtros.get('fecha_inicio'):
+            info_text += f"<b>Desde:</b> {filtros['fecha_inicio']}<br/>"
+        if filtros.get('fecha_fin'):
+            info_text += f"<b>Hasta:</b> {filtros['fecha_fin']}<br/>"
+    info_text += f"<b>Total de requisiciones:</b> {len(requisiciones_data)}"
     
-    for req in requisiciones_data:
-        data.append([
-            str(req.get('folio', '')),
-            str(req.get('centro_nombre', ''))[:20],
-            str(req.get('estado', '')).upper(),
-            str(req.get('fecha_solicitud', ''))[:10],
-            str(req.get('total_items', 0)),
-            str(req.get('usuario_solicita', ''))
-        ])
-    
-    table = Table(data, colWidths=[1.2*inch, 1.8*inch, 1*inch, 1*inch, 0.6*inch, 1.4*inch])
-    
-    # Estilo
-    style_commands = [
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#34495e')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9),
-        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
-        ('ALIGN', (4, 1), (4, -1), 'CENTER'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#ecf0f1')]),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]
-    
-    # Colorear por estado
-    for i, req in enumerate(requisiciones_data, start=1):
-        estado = req.get('estado', '').lower()
-        if estado == 'autorizada':
-            style_commands.append(('TEXTCOLOR', (2, i), (2, i), colors.HexColor('#27ae60')))
-        elif estado == 'rechazada':
-            style_commands.append(('TEXTCOLOR', (2, i), (2, i), colors.HexColor('#c0392b')))
-        elif estado == 'surtida':
-            style_commands.append(('TEXTCOLOR', (2, i), (2, i), colors.HexColor('#2980b9')))
-    
-    table.setStyle(TableStyle(style_commands))
-    elements.append(table)
-    elements.append(Spacer(1, 0.3*inch))
+    info = Paragraph(info_text, styles['Normal'])
+    elements.append(info)
+    elements.append(Spacer(1, 0.2*inch))
     
     # Resumen por estados
     estados = {}
@@ -334,14 +483,55 @@ def generar_reporte_requisiciones(requisiciones_data, filtros=None):
         estado = req.get('estado', 'N/A')
         estados[estado] = estados.get(estado, 0) + 1
     
-    resumen_text = "<b>RESUMEN POR ESTADOS</b><br/>"
+    resumen_titulo = Paragraph("RESUMEN POR ESTADO", styles['SeccionTitulo'])
+    elements.append(resumen_titulo)
+    
+    resumen_data = [['Estado', 'Cantidad']]
     for estado, count in estados.items():
-        resumen_text += f"{estado.upper()}: {count}<br/>"
+        resumen_data.append([estado.upper(), str(count)])
+    resumen_data.append(['TOTAL', str(len(requisiciones_data))])
     
-    resumen = Paragraph(resumen_text, styles['Normal'])
-    elements.append(resumen)
+    resumen_table = Table(resumen_data, colWidths=[2*inch, 1*inch])
+    resumen_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(resumen_table)
+    elements.append(Spacer(1, 0.2*inch))
     
-    doc.build(elements, onFirstPage=crear_pie_pagina, onLaterPages=crear_pie_pagina)
+    # Tabla de requisiciones
+    req_titulo = Paragraph("DETALLE DE REQUISICIONES", styles['SeccionTitulo'])
+    elements.append(req_titulo)
+    
+    data = [['Folio', 'Centro', 'Estado', 'Fecha', 'Items', 'Solicitante']]
+    
+    for req in requisiciones_data:
+        data.append([
+            str(req.get('folio', '')),
+            str(req.get('centro_nombre', req.get('centro', '')))[:25],
+            str(req.get('estado', '')).upper(),
+            str(req.get('fecha_solicitud', ''))[:10],
+            str(req.get('total_items', req.get('total_productos', 0))),
+            str(req.get('usuario_solicita', req.get('solicitante', '')))[:15]
+        ])
+    
+    col_widths = [1*inch, 2*inch, 0.9*inch, 0.9*inch, 0.5*inch, 1.2*inch]
+    table = _crear_tabla_institucional(data, col_widths)
+    elements.append(table)
+    
+    # Usar canvas con fondo institucional
+    def make_canvas(*args, **kwargs):
+        return FondoOficialCanvas(*args, fondo_path=fondo_path, titulo_reporte='REQUISICIONES', **kwargs)
+    
+    doc.build(elements, canvasmaker=make_canvas)
     
     buffer.seek(0)
     logger.info(f"Reporte de requisiciones PDF generado: {len(requisiciones_data)} registros")
@@ -350,7 +540,7 @@ def generar_reporte_requisiciones(requisiciones_data, filtros=None):
 
 def generar_reporte_movimientos(movimientos_data, filtros=None):
     """
-    Genera reporte PDF de movimientos de inventario
+    Genera reporte PDF de movimientos de inventario con fondo oficial
     
     Args:
         movimientos_data: Lista de diccionarios con datos de movimientos
@@ -360,58 +550,378 @@ def generar_reporte_movimientos(movimientos_data, filtros=None):
         BytesIO con el PDF generado
     """
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.75*inch, bottomMargin=0.75*inch)
+    fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
+    
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=letter, 
+        topMargin=1.8*inch,
+        bottomMargin=1.2*inch,
+        leftMargin=0.6*inch,
+        rightMargin=0.6*inch
+    )
     
     elements = []
-    styles = getSampleStyleSheet()
-    titulo_style = crear_encabezado(styles)
+    styles = _obtener_estilos_institucionales()
     
-    titulo = Paragraph("REPORTE DE MOVIMIENTOS DE INVENTARIO", titulo_style)
+    titulo = Paragraph("REPORTE DE MOVIMIENTOS DE INVENTARIO", styles['TituloReporte'])
     elements.append(titulo)
-    elements.append(Spacer(1, 0.3*inch))
+    elements.append(Spacer(1, 0.2*inch))
     
     # Información
     info_text = f"<b>Fecha de generación:</b> {timezone.now().strftime('%d/%m/%Y %H:%M')}<br/>"
     info_text += f"<b>Total de movimientos:</b> {len(movimientos_data)}"
     
+    if filtros:
+        if filtros.get('fecha_inicio'):
+            info_text += f"<br/><b>Desde:</b> {filtros['fecha_inicio']}"
+        if filtros.get('fecha_fin'):
+            info_text += f"<br/><b>Hasta:</b> {filtros['fecha_fin']}"
+        if filtros.get('tipo'):
+            info_text += f"<br/><b>Tipo:</b> {filtros['tipo'].upper()}"
+    
     info = Paragraph(info_text, styles['Normal'])
     elements.append(info)
     elements.append(Spacer(1, 0.2*inch))
     
-    # Tabla
-    data = [['Fecha', 'Tipo', 'Producto', 'Lote', 'Cantidad', 'Usuario', 'Centro']]
+    # Resumen de movimientos
+    total_entradas = sum(1 for m in movimientos_data if str(m.get('tipo', '')).lower() == 'entrada')
+    total_salidas = sum(1 for m in movimientos_data if str(m.get('tipo', '')).lower() == 'salida')
+    total_ajustes = sum(1 for m in movimientos_data if str(m.get('tipo', '')).lower() == 'ajuste')
     
-    for mov in movimientos_data:
-        data.append([
-            str(mov.get('fecha_movimiento', ''))[:16],
-            str(mov.get('tipo', '')),
-            str(mov.get('producto_clave', ''))[:15],
-            str(mov.get('numero_lote', ''))[:12],
-            str(mov.get('cantidad', 0)),
-            str(mov.get('usuario', ''))[:12],
-            str(mov.get('centro', ''))[:15]
-        ])
+    resumen_titulo = Paragraph("RESUMEN", styles['SeccionTitulo'])
+    elements.append(resumen_titulo)
     
-    table = Table(data, colWidths=[1.2*inch, 0.8*inch, 1.2*inch, 1*inch, 0.7*inch, 1*inch, 1.1*inch])
+    resumen_data = [
+        ['Tipo', 'Cantidad'],
+        ['Entradas', str(total_entradas)],
+        ['Salidas', str(total_salidas)],
+        ['Ajustes', str(total_ajustes)],
+        ['TOTAL', str(len(movimientos_data))],
+    ]
     
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#16a085')),
+    resumen_table = Table(resumen_data, colWidths=[2*inch, 1*inch])
+    resumen_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 7),
-        ('ALIGN', (4, 1), (4, -1), 'CENTER'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#e8f8f5')]),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
     ]))
+    elements.append(resumen_table)
+    elements.append(Spacer(1, 0.2*inch))
     
+    # Tabla de movimientos
+    mov_titulo = Paragraph("DETALLE DE MOVIMIENTOS", styles['SeccionTitulo'])
+    elements.append(mov_titulo)
+    
+    data = [['Fecha', 'Tipo', 'Producto', 'Lote', 'Cantidad', 'Usuario']]
+    
+    for mov in movimientos_data:
+        tipo = str(mov.get('tipo', '')).upper()
+        cantidad = mov.get('cantidad', 0)
+        signo = '+' if cantidad >= 0 else ''
+        
+        data.append([
+            str(mov.get('fecha_movimiento', mov.get('fecha', '')))[:16],
+            tipo,
+            str(mov.get('producto_clave', mov.get('producto', '')))[:20],
+            str(mov.get('numero_lote', mov.get('lote', '')))[:12],
+            f"{signo}{cantidad}",
+            str(mov.get('usuario', ''))[:15]
+        ])
+    
+    col_widths = [1.1*inch, 0.7*inch, 1.8*inch, 1*inch, 0.7*inch, 1.2*inch]
+    table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
     
-    doc.build(elements, onFirstPage=crear_pie_pagina, onLaterPages=crear_pie_pagina)
+    # Usar canvas con fondo institucional
+    def make_canvas(*args, **kwargs):
+        return FondoOficialCanvas(*args, fondo_path=fondo_path, titulo_reporte='MOVIMIENTOS', **kwargs)
+    
+    doc.build(elements, canvasmaker=make_canvas)
     
     buffer.seek(0)
     logger.info(f"Reporte de movimientos PDF generado: {len(movimientos_data)} registros")
+    return buffer
+
+
+def generar_reporte_auditoria(auditoria_data, filtros=None):
+    """
+    Genera reporte PDF de auditoría del sistema con fondo oficial.
+    Esencial para revisiones de seguridad y cumplimiento normativo.
+    
+    Args:
+        auditoria_data: Lista de diccionarios con datos de auditoría
+        filtros: Diccionario opcional con filtros aplicados
+    
+    Returns:
+        BytesIO con el PDF generado
+    """
+    buffer = BytesIO()
+    fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
+    
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=letter, 
+        topMargin=1.8*inch,
+        bottomMargin=1.2*inch,
+        leftMargin=0.6*inch,
+        rightMargin=0.6*inch
+    )
+    
+    elements = []
+    styles = _obtener_estilos_institucionales()
+    
+    # Título
+    titulo = Paragraph("REPORTE DE AUDITORÍA DEL SISTEMA", styles['TituloReporte'])
+    elements.append(titulo)
+    elements.append(Spacer(1, 0.2*inch))
+    
+    # Información del reporte
+    info_text = f"<b>Fecha de generación:</b> {timezone.now().strftime('%d/%m/%Y %H:%M')}<br/>"
+    info_text += f"<b>Total de registros:</b> {len(auditoria_data)}<br/>"
+    info_text += "<b>Tipo de reporte:</b> Auditoría de acciones del sistema"
+    
+    if filtros:
+        if filtros.get('fecha_inicio'):
+            info_text += f"<br/><b>Desde:</b> {filtros['fecha_inicio']}"
+        if filtros.get('fecha_fin'):
+            info_text += f"<br/><b>Hasta:</b> {filtros['fecha_fin']}"
+        if filtros.get('usuario'):
+            info_text += f"<br/><b>Usuario:</b> {filtros['usuario']}"
+        if filtros.get('accion'):
+            info_text += f"<br/><b>Acción:</b> {filtros['accion']}"
+        if filtros.get('modelo'):
+            info_text += f"<br/><b>Módulo:</b> {filtros['modelo']}"
+    
+    info = Paragraph(info_text, styles['Normal'])
+    elements.append(info)
+    elements.append(Spacer(1, 0.2*inch))
+    
+    # Resumen de acciones
+    acciones_count = {}
+    for log in auditoria_data:
+        accion = str(log.get('accion', 'N/A')).upper()
+        acciones_count[accion] = acciones_count.get(accion, 0) + 1
+    
+    resumen_titulo = Paragraph("RESUMEN DE ACCIONES", styles['SeccionTitulo'])
+    elements.append(resumen_titulo)
+    
+    resumen_data = [['Acción', 'Cantidad']]
+    for accion, count in sorted(acciones_count.items(), key=lambda x: -x[1]):
+        resumen_data.append([accion, str(count)])
+    resumen_data.append(['TOTAL', str(len(auditoria_data))])
+    
+    resumen_table = Table(resumen_data, colWidths=[2*inch, 1*inch])
+    resumen_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(resumen_table)
+    elements.append(Spacer(1, 0.2*inch))
+    
+    # Tabla de detalle
+    detalle_titulo = Paragraph("DETALLE DE AUDITORÍA", styles['SeccionTitulo'])
+    elements.append(detalle_titulo)
+    
+    data = [['Fecha', 'Usuario', 'Acción', 'Módulo', 'Descripción', 'IP']]
+    
+    for log in auditoria_data:
+        fecha = log.get('fecha', '')
+        if hasattr(fecha, 'strftime'):
+            fecha = fecha.strftime('%d/%m/%Y %H:%M')
+        else:
+            fecha = str(fecha)[:16]
+        
+        data.append([
+            fecha,
+            str(log.get('usuario', log.get('usuario_username', 'Sistema')))[:12],
+            str(log.get('accion', ''))[:10],
+            str(log.get('modelo', ''))[:15],
+            str(log.get('objeto_repr', log.get('descripcion', '')))[:30],
+            str(log.get('ip_address', log.get('ip', '')))[:15]
+        ])
+    
+    col_widths = [1.1*inch, 0.9*inch, 0.7*inch, 1*inch, 2*inch, 0.8*inch]
+    table = _crear_tabla_institucional(data, col_widths)
+    elements.append(table)
+    
+    # Usar canvas con fondo institucional
+    def make_canvas(*args, **kwargs):
+        return FondoOficialCanvas(*args, fondo_path=fondo_path, titulo_reporte='AUDITORÍA', **kwargs)
+    
+    doc.build(elements, canvasmaker=make_canvas)
+    
+    buffer.seek(0)
+    logger.info(f"Reporte de auditoría PDF generado: {len(auditoria_data)} registros")
+    return buffer
+
+
+def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=None):
+    """
+    Genera reporte PDF de trazabilidad de productos/lotes con fondo oficial.
+    Esencial para rastrear el historial completo de un producto o lote.
+    
+    Args:
+        trazabilidad_data: Lista de diccionarios con datos de trazabilidad
+        producto_info: Diccionario con información del producto (opcional)
+        filtros: Diccionario opcional con filtros aplicados
+    
+    Returns:
+        BytesIO con el PDF generado
+    """
+    buffer = BytesIO()
+    fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
+    
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=letter, 
+        topMargin=1.8*inch,
+        bottomMargin=1.2*inch,
+        leftMargin=0.6*inch,
+        rightMargin=0.6*inch
+    )
+    
+    elements = []
+    styles = _obtener_estilos_institucionales()
+    
+    # Título
+    titulo = Paragraph("REPORTE DE TRAZABILIDAD", styles['TituloReporte'])
+    elements.append(titulo)
+    elements.append(Spacer(1, 0.2*inch))
+    
+    # Información del producto si está disponible
+    if producto_info:
+        prod_titulo = Paragraph("INFORMACIÓN DEL PRODUCTO", styles['SeccionTitulo'])
+        elements.append(prod_titulo)
+        
+        prod_data = [
+            ['Clave:', str(producto_info.get('clave', 'N/A')), 'Descripción:', str(producto_info.get('descripcion', 'N/A'))[:40]],
+            ['Unidad:', str(producto_info.get('unidad_medida', 'N/A')), 'Precio:', f"${producto_info.get('precio_unitario', 0):.2f}" if producto_info.get('precio_unitario') else 'N/A'],
+            ['Stock Actual:', str(producto_info.get('stock_actual', 0)), 'Stock Mínimo:', str(producto_info.get('stock_minimo', 0))],
+        ]
+        
+        prod_table = Table(prod_data, colWidths=[1.2*inch, 2.3*inch, 1.2*inch, 2.3*inch])
+        prod_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+            ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(prod_table)
+        elements.append(Spacer(1, 0.2*inch))
+    
+    # Información del reporte
+    info_text = f"<b>Fecha de generación:</b> {timezone.now().strftime('%d/%m/%Y %H:%M')}<br/>"
+    info_text += f"<b>Total de movimientos:</b> {len(trazabilidad_data)}"
+    
+    if filtros:
+        if filtros.get('fecha_inicio'):
+            info_text += f"<br/><b>Desde:</b> {filtros['fecha_inicio']}"
+        if filtros.get('fecha_fin'):
+            info_text += f"<br/><b>Hasta:</b> {filtros['fecha_fin']}"
+        if filtros.get('lote'):
+            info_text += f"<br/><b>Lote:</b> {filtros['lote']}"
+    
+    info = Paragraph(info_text, styles['Normal'])
+    elements.append(info)
+    elements.append(Spacer(1, 0.2*inch))
+    
+    # Resumen de movimientos
+    total_entradas = sum(1 for t in trazabilidad_data if str(t.get('tipo', '')).lower() == 'entrada')
+    total_salidas = sum(1 for t in trazabilidad_data if str(t.get('tipo', '')).lower() == 'salida')
+    total_ajustes = sum(1 for t in trazabilidad_data if str(t.get('tipo', '')).lower() == 'ajuste')
+    
+    resumen_titulo = Paragraph("RESUMEN DE TRAZABILIDAD", styles['SeccionTitulo'])
+    elements.append(resumen_titulo)
+    
+    resumen_data = [
+        ['Concepto', 'Cantidad'],
+        ['Entradas', str(total_entradas)],
+        ['Salidas', str(total_salidas)],
+        ['Ajustes', str(total_ajustes)],
+        ['TOTAL MOVIMIENTOS', str(len(trazabilidad_data))],
+    ]
+    
+    resumen_table = Table(resumen_data, colWidths=[2*inch, 1*inch])
+    resumen_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(resumen_table)
+    elements.append(Spacer(1, 0.2*inch))
+    
+    # Tabla de historial de trazabilidad
+    historial_titulo = Paragraph("HISTORIAL DE MOVIMIENTOS", styles['SeccionTitulo'])
+    elements.append(historial_titulo)
+    
+    data = [['Fecha', 'Tipo', 'Lote', 'Cantidad', 'Centro/Destino', 'Usuario', 'Referencia']]
+    
+    for mov in trazabilidad_data:
+        fecha = mov.get('fecha', mov.get('fecha_movimiento', ''))
+        if hasattr(fecha, 'strftime'):
+            fecha = fecha.strftime('%d/%m/%Y %H:%M')
+        else:
+            fecha = str(fecha)[:16]
+        
+        cantidad = mov.get('cantidad', 0)
+        tipo = str(mov.get('tipo', '')).upper()
+        signo = '+' if tipo == 'ENTRADA' else ('-' if tipo == 'SALIDA' else '')
+        
+        data.append([
+            fecha,
+            tipo[:8],
+            str(mov.get('numero_lote', mov.get('lote', '')))[:12],
+            f"{signo}{cantidad}",
+            str(mov.get('centro_nombre', mov.get('centro', mov.get('destino', ''))))[:15],
+            str(mov.get('usuario', mov.get('usuario_username', '')))[:12],
+            str(mov.get('documento_referencia', mov.get('referencia', '')))[:15]
+        ])
+    
+    col_widths = [1*inch, 0.6*inch, 0.9*inch, 0.6*inch, 1.2*inch, 0.9*inch, 1.1*inch]
+    table = _crear_tabla_institucional(data, col_widths)
+    elements.append(table)
+    
+    # Nota de trazabilidad
+    elements.append(Spacer(1, 0.3*inch))
+    nota_style = ParagraphStyle('Nota', parent=styles['Normal'], fontSize=8, textColor=COLOR_GRIS, alignment=TA_CENTER)
+    elements.append(Paragraph(
+        "Este reporte de trazabilidad cumple con los requisitos de la NOM-059-SSA1-2015 para el control de medicamentos.",
+        nota_style
+    ))
+    
+    # Usar canvas con fondo institucional
+    def make_canvas(*args, **kwargs):
+        return FondoOficialCanvas(*args, fondo_path=fondo_path, titulo_reporte='TRAZABILIDAD', **kwargs)
+    
+    doc.build(elements, canvasmaker=make_canvas)
+    
+    buffer.seek(0)
+    logger.info(f"Reporte de trazabilidad PDF generado: {len(trazabilidad_data)} registros")
     return buffer

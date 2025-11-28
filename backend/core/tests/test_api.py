@@ -1,12 +1,19 @@
+"""
+Tests de API para autenticación y permisos.
+
+Utiliza NoThrottleMixin para desactivar rate limiting durante tests.
+"""
+
 from django.test import TestCase
 from django.contrib.auth.models import Group
 from rest_framework.test import APIClient
 from rest_framework import status
 from core.models import User, Centro, Producto
+from core.tests.base import NoThrottleMixin
 from decimal import Decimal
 
 
-class AuthenticationAPITest(TestCase):
+class AuthenticationAPITest(NoThrottleMixin, TestCase):
     """Tests de autenticación JWT"""
     
     def setUp(self):
@@ -61,7 +68,7 @@ class AuthenticationAPITest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
 
-class PermissionsAPITest(TestCase):
+class PermissionsAPITest(NoThrottleMixin, TestCase):
     """Tests de permisos por grupo"""
     
     def setUp(self):

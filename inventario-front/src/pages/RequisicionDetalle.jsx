@@ -1,331 +1,797 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { requisicionesAPI } from '../services/api';
-import { useAuth } from '../hooks/useAuth';
-import { toast } from 'react-toastify';
-import { FaArrowLeft, FaPaperPlane, FaCheck, FaTimes, FaTruck, FaDownload } from 'react-icons/fa';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
-import './RequisicionDetalle.css';
+import { requisicionesAPI, hojasRecoleccionAPI, descargarArchivo } from '../services/api';
+import { usePermissions } from '../hooks/usePermissions';
+import { toast } from 'react-hot-toast';
+import {
+  FaArrowLeft,
+  FaPaperPlane,
+  FaCheck,
+  FaTimes,
+  FaBoxOpen,
+  FaBan,
+  FaDownload,
+  FaClipboardList,
+  FaUser,
+  FaBuilding,
+  FaCalendar,
+  FaInfoCircle,
+  FaShieldAlt,
+  FaPrint,
+  FaFileAlt,
+  FaFileSignature,
+  FaFileDownload,
+  FaCheckCircle,
+  FaExclamationTriangle,
+  FaEdit,
+} from 'react-icons/fa';
+import { COLORS } from '../constants/theme';
 
 const RequisicionDetalle = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { permisos, user } = usePermissions();
+  
   const [requisicion, setRequisicion] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [processing, setProcessing] = useState(false);
-  const [cantidadesAutorizadas, setCantidadesAutorizadas] = useState({});
-  const [comentario, setComentario] = useState('');
+  const [procesando, setProcesando] = useState(false);
+  
+  // Hoja de recolección
+  const [hojaRecoleccion, setHojaRecoleccion] = useState(null);
+  const [loadingHoja, setLoadingHoja] = useState(false);
+  
+  // Para autorización con cantidades editables
+  const [modoAutorizar, setModoAutorizar] = useState(false);
+  const [detallesEditables, setDetallesEditables] = useState([]);
 
-  const isFarmaciaAdmin = user?.rol === 'SUPERUSER' || user?.rol === 'FARMACIA_ADMIN';
-  const isCentroUser = user?.rol === 'CENTRO_USER';
-
-  useEffect(() => {
-    if (id !== 'nueva') {
-      loadRequisicion();
-    } else {
-      setLoading(false);
-      // Modo creación
-      setRequisicion({
-        estado: 'BORRADOR',
-        items: []
-      });
-    }
-  }, [id, loadRequisicion]);
-
-  const loadRequisicion = useCallback(async () => {
+  const cargarRequisicion = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await requisicionesAPI.get(id);
-      setRequisicion(response.data);
+      const response = await requisicionesAPI.getById(id);
+      const data = response.data?.requisicion || response.data;
+      setRequisicion(data);
       
-      // Inicializar cantidades autorizadas
-      const cantidades = {};
-      response.data.items.forEach(item => {
-        cantidades[item.id] = item.cantidad_autorizada || item.cantidad_solicitada;
-      });
-      setCantidadesAutorizadas(cantidades);
+      // Inicializar detalles editables para autorización
+      const detalles = data.detalles || [];
+      setDetallesEditables(detalles.map(d => ({
+        ...d,
+        cantidad_autorizada: d.cantidad_autorizada || d.cantidad_solicitada
+      })));
+      
+      // Cargar hoja de recolección si existe
+      if (['autorizada', 'parcial', 'surtida'].includes(data.estado)) {
+        cargarHojaRecoleccion();
+      }
     } catch (error) {
-      toast.error('Error al cargar requisición');
+      console.error('Error cargando requisición:', error);
+      toast.error('No se pudo cargar la requisición');
       navigate('/requisiciones');
     } finally {
       setLoading(false);
     }
   }, [id, navigate]);
 
-  const handleEnviar = async () => {
-    if (!window.confirm('¿Está seguro de enviar esta requisición?')) return;
-
+  const cargarHojaRecoleccion = async () => {
     try {
-      setProcessing(true);
-      await requisicionesAPI.enviar(id);
-      toast.success('Requisición enviada');
-      loadRequisicion();
+      setLoadingHoja(true);
+      const response = await hojasRecoleccionAPI.porRequisicion(id);
+      if (response.data?.existe) {
+        setHojaRecoleccion(response.data.hoja);
+      }
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Error al enviar requisición');
+      console.error('Error cargando hoja:', error);
     } finally {
-      setProcessing(false);
+      setLoadingHoja(false);
     }
   };
 
-  const handleAutorizar = async () => {
-    if (!window.confirm('¿Está seguro de autorizar esta requisición?')) return;
+  useEffect(() => {
+    if (id) cargarRequisicion();
+  }, [id, cargarRequisicion]);
 
+  const getEstadoBadge = (estado) => {
+    const badges = {
+      borrador: 'bg-gray-200 text-gray-700',
+      enviada: 'bg-amber-100 text-amber-700',  // Pendiente - más visible
+      autorizada: 'bg-green-100 text-green-700',
+      parcial: 'bg-yellow-100 text-yellow-700',
+      surtida: 'bg-purple-100 text-purple-700',
+      rechazada: 'bg-red-100 text-red-600',
+      cancelada: 'bg-gray-100 text-gray-600',
+    };
+    return badges[estado] || 'bg-gray-100 text-gray-800';
+  };
+
+  // Labels amigables para los estados
+  const getEstadoLabel = (estado) => {
+    const labels = {
+      borrador: 'BORRADOR',
+      enviada: 'PENDIENTE',
+      autorizada: 'ACEPTADA',
+      parcial: 'PARCIAL',
+      rechazada: 'RECHAZADA',
+      surtida: 'SURTIDA',
+      cancelada: 'CANCELADA',
+    };
+    return labels[estado] || estado?.toUpperCase();
+  };
+
+  const formatFecha = (fecha) => {
+    if (!fecha) return 'N/A';
+    return new Date(fecha).toLocaleDateString('es-MX', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const handleEnviar = async () => {
+    if (!window.confirm('¿Enviar esta requisición para autorización?')) return;
     try {
-      setProcessing(true);
-      const items = requisicion.items.map(item => ({
-        id: item.id,
-        cantidad_autorizada: cantidadesAutorizadas[item.id] || 0
-      }));
-
-      await requisicionesAPI.autorizar(id, { items, comentario });
-      toast.success('Requisición autorizada');
-      loadRequisicion();
+      setProcesando(true);
+      await requisicionesAPI.enviar(id);
+      toast.success('Requisición enviada');
+      cargarRequisicion();
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Error al autorizar requisición');
-      if (error.response?.data?.errores) {
-        console.error('Errores:', error.response.data.errores);
-      }
+      toast.error(error.response?.data?.error || 'Error al enviar');
     } finally {
-      setProcessing(false);
+      setProcesando(false);
+    }
+  };
+
+  const iniciarAutorizacion = () => {
+    setModoAutorizar(true);
+  };
+
+  const cancelarAutorizacion = () => {
+    setModoAutorizar(false);
+    // Resetear cantidades
+    const detalles = requisicion.detalles || [];
+    setDetallesEditables(detalles.map(d => ({
+      ...d,
+      cantidad_autorizada: d.cantidad_autorizada || d.cantidad_solicitada
+    })));
+  };
+
+  const actualizarCantidadAutorizada = (idx, valor) => {
+    // Limitar al máximo entre stock disponible y cantidad solicitada
+    const maxCantidad = Math.min(
+      detallesEditables[idx].stock_disponible || 9999,
+      detallesEditables[idx].cantidad_solicitada
+    );
+    const cantidad = Math.max(0, Math.min(Number(valor) || 0, maxCantidad));
+    setDetallesEditables(prev => {
+      const nuevo = [...prev];
+      nuevo[idx] = { ...nuevo[idx], cantidad_autorizada: cantidad };
+      return nuevo;
+    });
+  };
+
+  const confirmarAutorizacion = async () => {
+    try {
+      setProcesando(true);
+      const items = detallesEditables.map(d => ({
+        id: d.id,
+        cantidad_autorizada: d.cantidad_autorizada
+      }));
+      await requisicionesAPI.autorizar(id, { items });
+      toast.success('Requisición autorizada');
+      setModoAutorizar(false);
+      cargarRequisicion();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al autorizar');
+    } finally {
+      setProcesando(false);
     }
   };
 
   const handleRechazar = async () => {
-    const motivo = window.prompt('Ingrese el motivo del rechazo:');
-    if (!motivo) return;
-
+    const motivo = prompt('Motivo del rechazo:');
+    if (!motivo || !motivo.trim()) {
+      toast.error('Debe proporcionar un motivo de rechazo');
+      return;
+    }
     try {
-      setProcessing(true);
-      await requisicionesAPI.rechazar(id, { comentario: motivo });
+      setProcesando(true);
+      await requisicionesAPI.rechazar(id, { observaciones: motivo });
       toast.success('Requisición rechazada');
-      loadRequisicion();
+      cargarRequisicion();
     } catch (error) {
-      toast.error('Error al rechazar requisición');
+      toast.error(error.response?.data?.error || 'Error al rechazar');
     } finally {
-      setProcessing(false);
+      setProcesando(false);
     }
   };
 
   const handleSurtir = async () => {
-    if (!window.confirm('¿Está seguro de surtir esta requisición? Esta acción afectará el inventario.')) return;
-
+    if (!window.confirm('¿Marcar esta requisición como surtida? Se descontará el inventario automáticamente.')) return;
     try {
-      setProcessing(true);
-      const response = await requisicionesAPI.surtir(id);
-      toast.success(response.data.mensaje);
-      loadRequisicion();
+      setProcesando(true);
+      await requisicionesAPI.surtir(id);
+      toast.success('Requisición surtida - Inventario actualizado');
+      cargarRequisicion();
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Error al surtir requisición');
-      if (error.response?.data?.errores) {
-        console.error('Errores:', error.response.data.errores);
+      const errorMsg = error.response?.data?.error || 'Error al surtir';
+      const detalles = error.response?.data?.detalles;
+      if (detalles && Array.isArray(detalles)) {
+        const mensaje = detalles.map(d => `${d.producto}: Requiere ${d.requerido}, Disponible: ${d.disponible}`).join('\n');
+        toast.error(`${errorMsg}\n${mensaje}`, { duration: 6000 });
+      } else {
+        toast.error(errorMsg);
       }
     } finally {
-      setProcessing(false);
+      setProcesando(false);
     }
   };
 
-  const handleCantidadChange = (itemId, value) => {
-    setCantidadesAutorizadas({
-      ...cantidadesAutorizadas,
-      [itemId]: parseFloat(value) || 0
-    });
+  const handleCancelar = async () => {
+    const motivo = prompt('Motivo de cancelación (opcional):');
+    try {
+      setProcesando(true);
+      await requisicionesAPI.cancelar(id, { observaciones: motivo || '' });
+      toast.success('Requisición cancelada');
+      cargarRequisicion();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al cancelar');
+    } finally {
+      setProcesando(false);
+    }
   };
+
+  const handleDescargarPDF = async (tipo) => {
+    try {
+      setProcesando(true);
+      let response;
+      let nombreArchivo;
+
+      if (tipo === 'aceptacion' && hojaRecoleccion) {
+        // Usar la API de hojas de recolección con seguridad
+        response = await hojasRecoleccionAPI.descargarPDF(hojaRecoleccion.id);
+        nombreArchivo = `Hoja_Recoleccion_${hojaRecoleccion.folio_hoja}.pdf`;
+        // Registrar impresión
+        try {
+          await hojasRecoleccionAPI.registrarImpresion(hojaRecoleccion.id);
+        } catch (e) {
+          console.warn('No se pudo registrar impresión:', e);
+        }
+      } else if (tipo === 'aceptacion') {
+        // Fallback a la API antigua
+        response = await requisicionesAPI.downloadPDFAceptacion(id);
+        nombreArchivo = `Hoja_Recoleccion_${requisicion.folio}.pdf`;
+      } else {
+        response = await requisicionesAPI.downloadPDFRechazo(id);
+        nombreArchivo = `requisicion_rechazada_${requisicion.folio}.pdf`;
+      }
+
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      descargarArchivo(blob, nombreArchivo);
+      toast.success('PDF descargado');
+      
+      // Recargar hoja para actualizar contadores
+      if (tipo === 'aceptacion') {
+        cargarHojaRecoleccion();
+      }
+    } catch (error) {
+      toast.error('Error al descargar PDF');
+    } finally {
+      setProcesando(false);
+    }
+  };
+
+  // Verificar integridad de la hoja (farmacia)
+  const handleVerificarIntegridad = async () => {
+    if (!hojaRecoleccion) return;
+    try {
+      setProcesando(true);
+      const response = await hojasRecoleccionAPI.verificarIntegridad(hojaRecoleccion.id);
+      if (response.data.es_valido) {
+        toast.success('✓ Integridad verificada: El documento no ha sido alterado');
+      } else {
+        toast.error('⚠ ALERTA: El contenido puede haber sido alterado');
+      }
+    } catch (error) {
+      toast.error('Error al verificar integridad');
+    } finally {
+      setProcesando(false);
+    }
+  };
+
+  // Marcar hoja como verificada por farmacia
+  const handleMarcarVerificada = async () => {
+    if (!hojaRecoleccion) return;
+    if (!window.confirm('¿Confirmar que la hoja impresa por el centro coincide con lo autorizado?')) return;
+    try {
+      setProcesando(true);
+      await hojasRecoleccionAPI.verificar(hojaRecoleccion.id);
+      toast.success('Hoja marcada como verificada');
+      cargarHojaRecoleccion();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al verificar hoja');
+    } finally {
+      setProcesando(false);
+    }
+  };
+
+  // Detectar si es Farmacia/Admin
+  const rolUsuario = (user?.rol || '').toLowerCase();
+  const esFarmacia = 
+    user?.is_superuser || 
+    permisos?.isFarmaciaAdmin || 
+    permisos?.isAdmin ||
+    permisos?.isSuperuser ||
+    rolUsuario === 'admin_sistema' ||
+    rolUsuario === 'superusuario' ||
+    rolUsuario === 'farmacia' ||
+    rolUsuario === 'admin_farmacia';
+  
+  const puedeEnviar = requisicion?.estado === 'borrador';
+  const puedeAutorizar = requisicion?.estado === 'enviada' && esFarmacia;
+  const puedeRechazar = requisicion?.estado === 'enviada' && esFarmacia;
+  const puedeSurtir = (requisicion?.estado === 'autorizada' || requisicion?.estado === 'parcial') && esFarmacia;
+  const puedeCancelar = !['surtida', 'cancelada', 'rechazada'].includes(requisicion?.estado);
+  const puedeDescargarHoja = ['autorizada', 'parcial', 'surtida'].includes(requisicion?.estado);
+  const puedeDescargarRechazo = requisicion?.estado === 'rechazada';
+  const puedeVerificarHoja = esFarmacia && hojaRecoleccion && hojaRecoleccion.estado !== 'verificada';
 
   if (loading) {
     return (
-      <div className="loading-container">
-        <div className="spinner"></div>
-        <p>Cargando requisición...</p>
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-300" style={{ borderTopColor: COLORS.vino }}></div>
       </div>
     );
   }
 
   if (!requisicion) {
-    return <div className="error-container">Requisición no encontrada</div>;
+    return (
+      <div className="text-center py-12">
+        <p className="text-gray-500">No se encontró la requisición</p>
+        <button
+          onClick={() => navigate('/requisiciones')}
+          className="mt-4 px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+        >
+          Volver
+        </button>
+      </div>
+    );
   }
 
+  const detalles = modoAutorizar ? detallesEditables : (requisicion.detalles || []);
+
   return (
-    <div className="page-container">
-      <div className="page-header">
-        <button onClick={() => navigate('/requisiciones')} className="btn-back">
-          <FaArrowLeft /> Volver
+    <div className="max-w-5xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <button
+          onClick={() => navigate('/requisiciones')}
+          className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+        >
+          <FaArrowLeft /> Volver a requisiciones
         </button>
-        <div className="header-info">
-          <h1>Requisición {requisicion.folio || 'Nueva'}</h1>
-          {requisicion.folio && (
-            <span className={`badge badge-lg ${getEstadoBadge(requisicion.estado)}`}>
-              {requisicion.estado_display}
-            </span>
-          )}
-        </div>
-        <div className="header-actions">
-          {requisicion.estado === 'BORRADOR' && isCentroUser && (
-            <button onClick={handleEnviar} className="btn btn-primary" disabled={processing}>
-              <FaPaperPlane /> Enviar
-            </button>
-          )}
-          {requisicion.estado === 'ENVIADA' && isFarmaciaAdmin && (
-            <>
-              <button onClick={handleRechazar} className="btn btn-danger" disabled={processing}>
-                <FaTimes /> Rechazar
-              </button>
-              <button onClick={handleAutorizar} className="btn btn-success" disabled={processing}>
-                <FaCheck /> Autorizar
-              </button>
-            </>
-          )}
-          {requisicion.estado === 'AUTORIZADA' && isFarmaciaAdmin && (
-            <button onClick={handleSurtir} className="btn btn-primary" disabled={processing}>
-              <FaTruck /> Surtir
-            </button>
-          )}
-          {requisicion.estado === 'SURTIDA' && (
-            <button className="btn btn-secondary">
-              <FaDownload /> Descargar PDF
-            </button>
-          )}
-        </div>
       </div>
 
-      <div className="requisicion-content">
-        <div className="requisicion-info-card">
-          <h3>Información General</h3>
-          <div className="info-grid">
-            <div className="info-item">
-              <label>Centro:</label>
-              <span>{requisicion.centro_detalle?.nombre || '-'}</span>
+      {/* Información General */}
+      <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+        <div className="flex items-start justify-between mb-6">
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <FaClipboardList className="text-2xl" style={{ color: COLORS.vino }} />
+              <h1 className="text-2xl font-bold" style={{ color: COLORS.vino }}>
+                {requisicion.folio}
+              </h1>
             </div>
-            <div className="info-item">
-              <label>Solicitante:</label>
-              <span>{requisicion.solicitante_nombre || '-'}</span>
-            </div>
-            <div className="info-item">
-              <label>Fecha de solicitud:</label>
-              <span>
-                {requisicion.created_at 
-                  ? format(new Date(requisicion.created_at), 'dd/MMM/yyyy HH:mm', { locale: es })
-                  : '-'}
-              </span>
-            </div>
-            {requisicion.fecha_autorizacion && (
-              <>
-                <div className="info-item">
-                  <label>Autorizada por:</label>
-                  <span>{requisicion.autorizada_por_nombre}</span>
-                </div>
-                <div className="info-item">
-                  <label>Fecha autorización:</label>
-                  <span>
-                    {format(new Date(requisicion.fecha_autorizacion), 'dd/MMM/yyyy HH:mm', { locale: es })}
-                  </span>
-                </div>
-              </>
-            )}
-            {requisicion.comentario_autorizacion && (
-              <div className="info-item full-width">
-                <label>Comentario:</label>
-                <span>{requisicion.comentario_autorizacion}</span>
-              </div>
-            )}
+            <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getEstadoBadge(requisicion.estado)}`}>
+              {getEstadoLabel(requisicion.estado)}
+            </span>
           </div>
         </div>
 
-        <div className="requisicion-items-card">
-          <h3>Items Solicitados</h3>
-          <div className="table-container">
-            <table className="table">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="flex items-start gap-3">
+            <FaBuilding className="text-gray-400 mt-1" />
+            <div>
+              <p className="text-sm text-gray-500">Centro</p>
+              <p className="font-semibold">{requisicion.centro_nombre || requisicion.centro?.nombre || 'N/A'}</p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <FaUser className="text-gray-400 mt-1" />
+            <div>
+              <p className="text-sm text-gray-500">Solicitante</p>
+              <p className="font-semibold">{requisicion.usuario_solicita_nombre || requisicion.usuario_solicita?.username || 'N/A'}</p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <FaCalendar className="text-gray-400 mt-1" />
+            <div>
+              <p className="text-sm text-gray-500">Fecha Solicitud</p>
+              <p className="font-semibold">{formatFecha(requisicion.fecha_solicitud)}</p>
+            </div>
+          </div>
+
+          {requisicion.usuario_autoriza_nombre && (
+            <div className="flex items-start gap-3">
+              <FaCheck className="text-green-500 mt-1" />
+              <div>
+                <p className="text-sm text-gray-500">Autorizado por</p>
+                <p className="font-semibold">{requisicion.usuario_autoriza_nombre}</p>
+                <p className="text-xs text-gray-400">{formatFecha(requisicion.fecha_autorizacion)}</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {requisicion.observaciones && (
+          <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+            <div className="flex items-center gap-2 text-gray-600 mb-1">
+              <FaInfoCircle />
+              <span className="text-sm font-semibold">Observaciones</span>
+            </div>
+            <p className="text-gray-700">{requisicion.observaciones}</p>
+          </div>
+        )}
+
+        {requisicion.motivo_rechazo && (
+          <div className="mt-4 p-3 bg-red-50 rounded-lg border border-red-200">
+            <div className="flex items-center gap-2 text-red-600 mb-1">
+              <FaTimes />
+              <span className="text-sm font-semibold">Motivo de Rechazo</span>
+            </div>
+            <p className="text-red-700">{requisicion.motivo_rechazo}</p>
+          </div>
+        )}
+      </div>
+
+      {/* Banner de acción para requisiciones pendientes - SOLO FARMACIA/ADMIN */}
+      {puedeAutorizar && !modoAutorizar && (
+        <div className="bg-gray-50 border border-gray-300 rounded-xl p-4 mb-6 shadow">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg" style={{ backgroundColor: `${COLORS.vino}15` }}>
+                <FaClipboardList className="text-xl" style={{ color: COLORS.vino }} />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-800">Requisición Pendiente de Revisión</h3>
+                <p className="text-sm text-gray-600">
+                  Revisa las cantidades solicitadas, ajusta según el inventario y acepta o rechaza.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={iniciarAutorizacion}
+              disabled={procesando}
+              className="flex items-center gap-2 px-5 py-3 text-white rounded-lg disabled:opacity-50 font-semibold hover:opacity-90 transition-opacity"
+              style={{ backgroundColor: COLORS.vino }}
+            >
+              <FaEdit /> Revisar Cantidades
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Tabla de Productos */}
+      <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold" style={{ color: COLORS.vino }}>
+            Productos Solicitados ({detalles.length})
+          </h2>
+          {modoAutorizar && (
+            <span className="px-3 py-1 border rounded-full text-sm font-semibold" 
+              style={{ borderColor: COLORS.vino, color: COLORS.vino }}>
+              Modo Edición
+            </span>
+          )}
+        </div>
+
+        {detalles.length === 0 ? (
+          <p className="text-center text-gray-500 py-8">No hay productos en esta requisición</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
               <thead>
-                <tr>
-                  <th>Producto</th>
-                  <th>Cantidad Solicitada</th>
-                  {(requisicion.estado === 'ENVIADA' && isFarmaciaAdmin) && (
-                    <th>Cantidad a Autorizar</th>
-                  )}
-                  {requisicion.estado !== 'BORRADOR' && requisicion.estado !== 'ENVIADA' && (
-                    <th>Cantidad Autorizada</th>
-                  )}
-                  {requisicion.estado !== 'BORRADOR' && requisicion.estado !== 'ENVIADA' && (
-                    <th>Diferencia</th>
+                <tr className="border-b-2" style={{ borderColor: COLORS.vino }}>
+                  <th className="px-3 py-3 text-left text-sm font-semibold text-gray-700">Clave</th>
+                  <th className="px-3 py-3 text-left text-sm font-semibold text-gray-700">Producto</th>
+                  <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Lote</th>
+                  <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Unidad</th>
+                  <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Solicitado</th>
+                  <th className={`px-3 py-3 text-center text-sm font-semibold ${modoAutorizar ? 'bg-gray-100' : 'text-gray-700'}`}
+                    style={{ color: modoAutorizar ? COLORS.vino : undefined }}>
+                    Autorizado
+                  </th>
+                  <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Surtido</th>
+                  {esFarmacia && (
+                    <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Stock Lote</th>
                   )}
                 </tr>
               </thead>
               <tbody>
-                {requisicion.items?.map((item) => (
-                  <tr key={item.id}>
-                    <td>
-                      <strong>{item.producto_detalle.clave}</strong>
-                      <br />
-                      <small>{item.producto_detalle.descripcion}</small>
+                {detalles.map((detalle, idx) => (
+                  <tr key={detalle.id || idx} className="border-b border-gray-200 hover:bg-gray-50">
+                    <td className="px-3 py-3 text-sm font-mono text-gray-800">
+                      {detalle.producto_clave || detalle.producto?.clave || '-'}
                     </td>
-                    <td>{item.cantidad_solicitada} {item.producto_detalle.unidad_medida}</td>
-                    {(requisicion.estado === 'ENVIADA' && isFarmaciaAdmin) && (
-                      <td>
+                    <td className="px-3 py-3 text-sm text-gray-800">
+                      {detalle.producto_descripcion || detalle.producto?.descripcion || detalle.descripcion || '-'}
+                    </td>
+                    <td className="px-3 py-3 text-center">
+                      {detalle.lote_numero ? (
+                        <div className="text-sm">
+                          <span className="font-mono font-semibold text-gray-800">{detalle.lote_numero}</span>
+                          {detalle.lote_caducidad && (
+                            <div className="text-xs text-gray-500">Cad: {detalle.lote_caducidad}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-sm">-</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-sm text-center text-gray-600">
+                      {detalle.producto_unidad || detalle.producto?.unidad_medida || '-'}
+                    </td>
+                    <td className="px-3 py-3 text-center font-semibold text-gray-800">
+                      {detalle.cantidad_solicitada}
+                    </td>
+                    <td className={`px-3 py-3 text-center ${modoAutorizar ? 'bg-gray-50' : ''}`}>
+                      {modoAutorizar ? (
                         <input
                           type="number"
-                          value={cantidadesAutorizadas[item.id] || 0}
-                          onChange={(e) => handleCantidadChange(item.id, e.target.value)}
-                          className="form-input input-sm"
                           min="0"
-                          max={item.cantidad_solicitada}
-                          step="0.01"
+                          max={detalle.lote_stock || detalle.stock_disponible || detalle.cantidad_solicitada}
+                          value={detalle.cantidad_autorizada || 0}
+                          onChange={(e) => actualizarCantidadAutorizada(idx, e.target.value)}
+                          className="w-20 px-2 py-1 border border-gray-300 rounded text-center font-semibold focus:ring-2 focus:outline-none"
+                          style={{ '--tw-ring-color': COLORS.vino }}
                         />
+                      ) : (
+                        <span className={detalle.cantidad_autorizada > 0 ? 'font-semibold text-gray-800' : 'text-gray-400'}>
+                          {detalle.cantidad_autorizada ?? '-'}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-center">
+                      <span className={detalle.cantidad_surtida > 0 ? 'font-semibold text-gray-800' : 'text-gray-400'}>
+                        {detalle.cantidad_surtida ?? '-'}
+                      </span>
+                    </td>
+                    {esFarmacia && (
+                      <td className="px-3 py-3 text-center">
+                        <span className={`font-semibold ${
+                          (detalle.lote_stock || detalle.stock_disponible || 0) < detalle.cantidad_solicitada 
+                            ? 'text-red-600' 
+                            : 'text-gray-800'
+                        }`}>
+                          {detalle.lote_stock ?? detalle.stock_disponible ?? '-'}
+                        </span>
                       </td>
-                    )}
-                    {requisicion.estado !== 'BORRADOR' && requisicion.estado !== 'ENVIADA' && (
-                      <>
-                        <td>
-                          <strong>{item.cantidad_autorizada || 0}</strong> {item.producto_detalle.unidad_medida}
-                        </td>
-                        <td>
-                          <span className={getDiferenciaClass(item.diferencia)}>
-                            {item.diferencia > 0 ? '+' : ''}{item.diferencia || 0}
-                          </span>
-                        </td>
-                      </>
                     )}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        )}
+
+        {/* Resumen de totales */}
+        <div className="mt-4 pt-4 border-t grid grid-cols-3 gap-4 text-center">
+          <div>
+            <p className="text-sm text-gray-500">Total Solicitado</p>
+            <p className="text-xl font-bold text-gray-800">
+              {detalles.reduce((sum, d) => sum + (d.cantidad_solicitada || 0), 0)}
+            </p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Total Autorizado</p>
+            <p className="text-xl font-bold text-gray-800">
+              {detalles.reduce((sum, d) => sum + (d.cantidad_autorizada || 0), 0)}
+            </p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Total Surtido</p>
+            <p className="text-xl font-bold text-gray-800">
+              {detalles.reduce((sum, d) => sum + (d.cantidad_surtida || 0), 0)}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Hoja de Recolección - Solo visible para requisiciones autorizadas/surtidas/finalizadas */}
+      {hojaRecoleccion && (
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-6 border-l-4 border-blue-500">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: COLORS.vino }}>
+              <FaFileSignature className="text-blue-500" />
+              Hoja de Recolección
+            </h2>
+            <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+              hojaRecoleccion.estado === 'pendiente' ? 'bg-yellow-100 text-yellow-800' :
+              hojaRecoleccion.estado === 'impresa' ? 'bg-blue-100 text-blue-800' :
+              hojaRecoleccion.estado === 'verificada' ? 'bg-green-100 text-green-800' :
+              hojaRecoleccion.estado === 'usada' ? 'bg-gray-100 text-gray-800' :
+              'bg-gray-100 text-gray-600'
+            }`}>
+              {hojaRecoleccion.estado_display || hojaRecoleccion.estado?.toUpperCase()}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div>
+              <p className="text-sm text-gray-500">Folio</p>
+              <p className="font-mono font-bold">{hojaRecoleccion.folio_hoja}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Generada</p>
+              <p className="font-semibold">{formatFecha(hojaRecoleccion.fecha_generacion)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Descargas</p>
+              <p className="font-semibold flex items-center gap-1">
+                <FaPrint className="text-gray-400" />
+                {hojaRecoleccion.veces_descargada || 0}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Hash de Seguridad</p>
+              <p className="font-mono text-xs text-gray-600 truncate" title={hojaRecoleccion.hash_contenido}>
+                {hojaRecoleccion.hash_contenido?.substring(0, 16)}...
+              </p>
+            </div>
+          </div>
+
+          {/* Verificación de Integridad - Solo para Farmacia */}
+          {user?.rol === 'farmacia' && (
+            <div className="bg-gray-50 rounded-lg p-4 mt-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FaShieldAlt className="text-blue-500 text-xl" />
+                  <div>
+                    <p className="font-semibold text-gray-700">Verificación de Integridad</p>
+                    <p className="text-xs text-gray-500">
+                      Comprueba que la hoja no ha sido alterada después de su generación
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleVerificarIntegridad}
+                  disabled={procesando}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  <FaShieldAlt />
+                  {procesando ? 'Verificando...' : 'Verificar Integridad'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Botón de descarga */}
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={() => handleDescargarPDF('aceptacion')}
+              disabled={procesando}
+              className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
+              style={{ backgroundColor: COLORS.vino }}
+            >
+              <FaFileDownload />
+              Descargar PDF de Recolección
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Acciones */}
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <h2 className="text-lg font-bold mb-4" style={{ color: COLORS.vino }}>Acciones</h2>
+        
+        <div className="flex flex-wrap gap-3">
+          {modoAutorizar ? (
+            <>
+              <button
+                onClick={confirmarAutorizacion}
+                disabled={procesando}
+                className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
+                style={{ backgroundColor: '#16a34a' }}
+              >
+                <FaCheck /> Aceptar Requisición
+              </button>
+              <button
+                onClick={cancelarAutorizacion}
+                disabled={procesando}
+                className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                <FaTimes /> Cancelar Edición
+              </button>
+            </>
+          ) : (
+            <>
+              {puedeEnviar && (
+                <button
+                  onClick={handleEnviar}
+                  disabled={procesando}
+                  className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
+                  style={{ backgroundColor: COLORS.vino }}
+                >
+                  <FaPaperPlane /> Enviar para autorización
+                </button>
+              )}
+
+              {puedeAutorizar && (
+                <button
+                  onClick={iniciarAutorizacion}
+                  disabled={procesando}
+                  className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 font-semibold hover:opacity-90 transition-opacity"
+                  style={{ backgroundColor: COLORS.vino }}
+                >
+                  <FaEdit /> Revisar Cantidades
+                </button>
+              )}
+
+              {puedeRechazar && (
+                <button
+                  onClick={handleRechazar}
+                  disabled={procesando}
+                  className="flex items-center gap-2 px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
+                >
+                  <FaTimes /> Rechazar
+                </button>
+              )}
+
+              {puedeSurtir && (
+                <button
+                  onClick={handleSurtir}
+                  disabled={procesando}
+                  className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
+                  style={{ backgroundColor: COLORS.vino }}
+                >
+                  <FaBoxOpen /> Surtir y descontar inventario
+                </button>
+              )}
+
+              {puedeDescargarHoja && (
+                <button
+                  onClick={() => handleDescargarPDF('aceptacion')}
+                  disabled={procesando}
+                  className="flex items-center gap-2 px-4 py-2 border text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                  style={{ borderColor: COLORS.vino, color: COLORS.vino }}
+                >
+                  <FaDownload /> Hoja de recolección
+                </button>
+              )}
+
+              {puedeDescargarRechazo && (
+                <button
+                  onClick={() => handleDescargarPDF('rechazo')}
+                  disabled={procesando}
+                  className="flex items-center gap-2 px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
+                >
+                  <FaDownload /> PDF de rechazo
+                </button>
+              )}
+
+              {puedeCancelar && (
+                <button
+                  onClick={handleCancelar}
+                  disabled={procesando}
+                  className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                >
+                  <FaBan /> Cancelar requisición
+                </button>
+              )}
+            </>
+          )}
         </div>
 
-        {(requisicion.estado === 'ENVIADA' && isFarmaciaAdmin) && (
-          <div className="comentario-section">
-            <label className="form-label">Comentario de autorización:</label>
-            <textarea
-              value={comentario}
-              onChange={(e) => setComentario(e.target.value)}
-              className="form-textarea"
-              rows="3"
-              placeholder="Ingrese observaciones..."
-            />
+        {procesando && (
+          <div className="mt-4 flex items-center gap-2 text-gray-500">
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-gray-600"></div>
+            Procesando...
           </div>
         )}
       </div>
     </div>
   );
-};
-
-const getEstadoBadge = (estado) => {
-  const badges = {
-    BORRADOR: 'badge-secondary',
-    ENVIADA: 'badge-info',
-    AUTORIZADA: 'badge-success',
-    RECHAZADA: 'badge-danger',
-    SURTIDA: 'badge-success',
-    CANCELADA: 'badge-danger'
-  };
-  return badges[estado] || 'badge-secondary';
-};
-
-const getDiferenciaClass = (diferencia) => {
-  if (!diferencia) return '';
-  if (diferencia < 0) return 'diferencia-negativa';
-  if (diferencia > 0) return 'diferencia-positiva';
-  return '';
 };
 
 export default RequisicionDetalle;

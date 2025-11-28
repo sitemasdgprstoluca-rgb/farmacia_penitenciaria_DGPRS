@@ -1,15 +1,16 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { FaShieldAlt, FaUser, FaLock, FaSignInAlt, FaCode } from 'react-icons/fa';
-import { DEV_CONFIG, devLog } from '../config/dev';
+import { FaShieldAlt, FaUser, FaLock, FaSignInAlt } from 'react-icons/fa';
 import { authAPI } from '../services/api';
+import { usePermissions } from '../hooks/usePermissions';
 
 function Login() {
   const [credentials, setCredentials] = useState({ username: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const navigate = useNavigate();
+  const { recargarUsuario } = usePermissions();
 
   const persistSession = (user, accessToken, refreshToken) => {
     if (accessToken) {
@@ -47,6 +48,7 @@ function Login() {
 
     try {
       await performLogin(credentials);
+      await recargarUsuario(); // Actualizar el contexto de permisos
       toast.success('Inicio de sesión exitoso');
       navigate('/dashboard');
     } catch (error) {
@@ -63,35 +65,6 @@ function Login() {
         setErrorMessage('Error al iniciar sesión');
       }
       toast.error('No fue posible iniciar sesión');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDevLogin = async () => {
-    setLoading(true);
-    setErrorMessage('');
-    try {
-      if (!DEV_CONFIG.ENABLED) {
-        throw new Error('DEV_DISABLED');
-      }
-
-      const response = await authAPI.devLogin();
-      const { access, refresh, token, user } = response.data;
-      const accessToken = access || token;
-      persistSession(user, accessToken, refresh);
-      toast.success('Acceso de desarrollador habilitado');
-      navigate('/dashboard');
-    } catch (error) {
-      devLog('Error en login de desarrollo', error.message);
-      if (error.response?.status === 403) {
-        setErrorMessage('El backend tiene deshabilitado el auto-login de desarrollo');
-      } else if (error.message === 'DEV_DISABLED') {
-        setErrorMessage('El acceso de desarrollador no está disponible en este entorno');
-      } else {
-        setErrorMessage('No fue posible iniciar sesión como desarrollador');
-      }
-      toast.error('Error al iniciar sesión como desarrollador');
     } finally {
       setLoading(false);
     }
@@ -179,24 +152,17 @@ function Login() {
                 </>
               )}
             </button>
-          </form>
 
-          {DEV_CONFIG.SHOW_BUTTON && (
-            <div className="mt-6 pt-6 border-t-2 border-gray-100">
-              <button
-                onClick={handleDevLogin}
-                disabled={loading}
-                className="w-full bg-gradient-to-r from-gray-600 to-gray-700 text-white py-3.5 rounded-xl hover:from-gray-700 hover:to-gray-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-bold shadow-lg transition-all transform hover:scale-105 active:scale-95"
+            <div className="text-center mt-4">
+              <Link 
+                to="/recuperar-password" 
+                className="text-sm font-medium hover:underline transition-colors"
+                style={{ color: '#9F2241' }}
               >
-                <FaCode />
-                Acceso Desarrollador
-              </button>
-              <p className="text-xs text-gray-500 text-center mt-3 font-medium">
-                Solo para configuracion inicial del sistema
-              </p>
+                ¿Olvidaste tu contraseña?
+              </Link>
             </div>
-          )}
-
+          </form>
         </div>
 
         <div className="text-center mt-6 text-white text-sm space-y-1">
@@ -210,12 +176,3 @@ function Login() {
 }
 
 export default Login;
-
-
-
-
-
-
-
-
-

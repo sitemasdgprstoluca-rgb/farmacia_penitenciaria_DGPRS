@@ -1,6 +1,6 @@
 ﻿function ConfirmModal({
   open,
-  title = "Estas seguro?",
+  title = "¿Estás seguro?",
   message = "",
   confirmText = "Confirmar",
   cancelText = "Cancelar",

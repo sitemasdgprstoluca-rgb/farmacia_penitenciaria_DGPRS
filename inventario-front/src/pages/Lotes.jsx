@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { lotesAPI, productosAPI } from '../services/api';
+import { lotesAPI, productosAPI, centrosAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
 import {
   FaPlus,
@@ -17,6 +17,7 @@ import { DEV_CONFIG } from '../config/dev';
 import PageHeader from '../components/PageHeader';
 import { COLORS, PRIMARY_GRADIENT, SECONDARY_GRADIENT } from '../constants/theme';
 import Pagination from '../components/Pagination';
+import { usePermissions } from '../hooks/usePermissions';
 
 const MOCK_PRODUCTOS = Array.from({ length: 40 }).map((_, index) => ({
   id: index + 1,
@@ -63,8 +64,15 @@ const MOCK_LOTES = Array.from({ length: 60 }).map((_, index) =>
 );
 
 const Lotes = () => {
+  const { getRolPrincipal, permisos } = usePermissions();
+  const rolPrincipal = getRolPrincipal();
+  const puedeVerGlobal = ['ADMIN', 'FARMACIA', 'VISTA'].includes(rolPrincipal) || permisos?.isSuperuser;
+  // Solo ADMIN y FARMACIA pueden ver campos de contrato (para auditoría)
+  const puedeVerContrato = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
+  
   const [lotes, setLotes] = useState([]);
   const [productos, setProductos] = useState([]);
+  const [centros, setCentros] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -82,6 +90,7 @@ const Lotes = () => {
   const [filtroCaducidad, setFiltroCaducidad] = useState('');
   const [filtroConStock, setFiltroConStock] = useState('');
   const [filtroActivo, setFiltroActivo] = useState('');
+  const [filtroCentro, setFiltroCentro] = useState('');
   
   const [formData, setFormData] = useState({
     producto: '',
@@ -91,6 +100,8 @@ const Lotes = () => {
     precio_compra: '',
     proveedor: '',
     factura: '',
+    numero_contrato: '',
+    marca: '',
     observaciones: ''
   });
 
@@ -104,7 +115,19 @@ const Lotes = () => {
 
   useEffect(() => {
     cargarProductos();
-  }, []);
+    if (puedeVerGlobal) {
+      cargarCentros();
+    }
+  }, [puedeVerGlobal]);
+
+  const cargarCentros = async () => {
+    try {
+      const response = await centrosAPI.getAll({ page_size: 100, ordering: 'nombre', activo: true });
+      setCentros(response.data.results || response.data || []);
+    } catch (error) {
+      console.error('Error al cargar centros:', error);
+    }
+  };
 
   const cargarProductos = async () => {
     try {
@@ -174,6 +197,7 @@ const Lotes = () => {
       if (filtroCaducidad) params.caducidad = filtroCaducidad;
       if (filtroConStock) params.con_stock = filtroConStock;
       if (filtroActivo) params.activo = filtroActivo;
+      if (filtroCentro) params.centro = filtroCentro;
 
       const response = await lotesAPI.getAll(params);
       setLotes(response.data.results || response.data);
@@ -189,7 +213,7 @@ const Lotes = () => {
     } finally {
       setLoading(false);
     }
-  }, [applyMockLotes, currentPage, filtroActivo, filtroCaducidad, filtroConStock, filtroProducto, pageSize, searchTerm]);
+  }, [applyMockLotes, currentPage, filtroActivo, filtroCaducidad, filtroConStock, filtroProducto, filtroCentro, pageSize, searchTerm]);
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
@@ -239,9 +263,11 @@ const Lotes = () => {
       fecha_caducidad: lote.fecha_caducidad,
       cantidad_inicial: lote.cantidad_inicial,
       precio_compra: lote.precio_compra || '',
-      proveedor: lote.proveedor,
-      factura: lote.factura,
-      observaciones: lote.observaciones
+      proveedor: lote.proveedor || '',
+      factura: lote.factura || '',
+      numero_contrato: lote.numero_contrato || '',
+      marca: lote.marca || '',
+      observaciones: lote.observaciones || ''
     });
     setShowModal(true);
   };
@@ -268,6 +294,8 @@ const Lotes = () => {
       precio_compra: '',
       proveedor: '',
       factura: '',
+      numero_contrato: '',
+      marca: '',
       observaciones: ''
     });
     setEditingLote(null);
@@ -279,6 +307,7 @@ const Lotes = () => {
     setFiltroCaducidad('');
     setFiltroConStock('');
     setFiltroActivo('');
+    setFiltroCentro('');
     setCurrentPage(1);
   };
 
@@ -415,7 +444,7 @@ const handleImportar = async (e) => {
           <div className="md:col-span-2">
             <input
               type="text"
-              placeholder="Buscar por nímero de lote, producto..."
+              placeholder="Buscar por número de lote, producto..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -451,9 +480,26 @@ const handleImportar = async (e) => {
             className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
           >
             <option value="">Todos</option>
-            <option value="true">Con Stock</option>
-            <option value="false">Sin Stock</option>
+            <option value="true">Con Inventario</option>
+            <option value="false">Sin Inventario</option>
           </select>
+          
+          {/* Selector de Centro - solo para admin/farmacia/vista */}
+          {puedeVerGlobal && (
+            <select
+              value={filtroCentro}
+              onChange={(e) => setFiltroCentro(e.target.value)}
+              className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Todos los centros</option>
+              <option value="central">Farmacia Central</option>
+              {centros.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre}
+                </option>
+              ))}
+            </select>
+          )}
           
           <button
             onClick={limpiarFiltros}
@@ -476,15 +522,14 @@ const handleImportar = async (e) => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Caducidad</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Días</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Alerta</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stock</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Proveedor</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Inventario</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan="9" className="text-center py-8">
+                  <td colSpan="8" className="text-center py-8">
                     <div className="flex justify-center items-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                       <span className="ml-2">Cargando lotes...</span>
@@ -493,7 +538,7 @@ const handleImportar = async (e) => {
                 </tr>
               ) : lotes.length === 0 ? (
                 <tr>
-                  <td colSpan="9" className="text-center py-8 text-gray-500">
+                  <td colSpan="8" className="text-center py-8 text-gray-500">
                     No hay lotes registrados
                   </td>
                 </tr>
@@ -530,7 +575,6 @@ const handleImportar = async (e) => {
                         ({lote.porcentaje_consumido}% usado)
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm">{lote.proveedor || '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                       <button
                         onClick={() => handleEdit(lote)}
@@ -708,7 +752,7 @@ const handleImportar = async (e) => {
                       required
                       placeholder="0"
                     />
-                    <p className="text-xs text-gray-500 italic mt-1">Cantidad actual en stock</p>
+                    <p className="text-xs text-gray-500 italic mt-1">Cantidad actual en inventario</p>
                   </div>
                   
                   {/* Precio de Compra */}
@@ -761,6 +805,57 @@ const handleImportar = async (e) => {
                   />
                   <p className="text-xs text-gray-400 mt-1">0/200 caracteres</p>
                 </div>
+
+                {/* CAMPOS DE TRAZABILIDAD DE CONTRATOS - Solo visible para ADMIN y FARMACIA */}
+                {puedeVerContrato && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold mb-2" style={{ color: '#6B1839' }}>
+                      NÚMERO DE CONTRATO
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.numero_contrato}
+                      onChange={(e) => setFormData({...formData, numero_contrato: e.target.value})}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl transition-all focus:outline-none"
+                      onFocus={(e) => {
+                        e.target.style.borderColor = '#9F2241';
+                        e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = '#E5E7EB';
+                        e.target.style.boxShadow = 'none';
+                      }}
+                      placeholder="Ej: CONT-2025-001"
+                      maxLength={100}
+                    />
+                    <p className="text-xs text-gray-400 mt-1">Para trazabilidad de adquisiciones</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold mb-2" style={{ color: '#6B1839' }}>
+                      MARCA
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.marca}
+                      onChange={(e) => setFormData({...formData, marca: e.target.value})}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl transition-all focus:outline-none"
+                      onFocus={(e) => {
+                        e.target.style.borderColor = '#9F2241';
+                        e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = '#E5E7EB';
+                        e.target.style.boxShadow = 'none';
+                      }}
+                      placeholder="Ej: Bayer, Pfizer, Genérico"
+                      maxLength={150}
+                    />
+                    <p className="text-xs text-gray-400 mt-1">Marca del medicamento</p>
+                  </div>
+                </div>
+                )}
 
                 {/* Lote activo checkbox */}
                 <div className="flex items-center gap-3 p-4 rounded-xl" style={{ backgroundColor: '#FEF9F2', border: '2px solid #E5E7EB' }}>
@@ -835,12 +930,14 @@ const handleImportar = async (e) => {
               </p>
               <ul className="text-sm text-gray-600 list-disc list-inside">
                 <li>Producto (Clave o ID)</li>
-                <li>Nímero Lote</li>
+                <li>Número Lote</li>
                 <li>Fecha Caducidad (YYYY-MM-DD)</li>
                 <li>Cantidad</li>
                 <li>Precio Compra (opcional)</li>
                 <li>Proveedor (opcional)</li>
                 <li>Factura (opcional)</li>
+                <li>Número Contrato (opcional)</li>
+                <li>Marca (opcional)</li>
               </ul>
             </div>
             

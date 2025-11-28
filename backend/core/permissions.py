@@ -104,6 +104,21 @@ class IsFarmaciaAdminOrReadOnly(permissions.BasePermission):
         return _has_role(request.user, ['admin', 'farmacia'])
 
 
+class IsAuthenticatedReadOnly(permissions.BasePermission):
+    """Solo permite operaciones de lectura a usuarios autenticados."""
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and request.method in permissions.SAFE_METHODS)
+
+
+class IsReadOnly(permissions.BasePermission):
+    """
+    Permiso que solo permite métodos de lectura (GET, HEAD, OPTIONS).
+    Usado para garantizar que el rol VISTA nunca pueda modificar datos.
+    """
+    def has_permission(self, request, view):
+        return request.method in permissions.SAFE_METHODS
+
+
 class IsCentroUser(permissions.BasePermission):
     """Centro puede operar en su propio ámbito; admin/farmacia también."""
     def has_permission(self, request, view):

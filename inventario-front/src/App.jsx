@@ -1,30 +1,52 @@
 // filepath: inventario-front/src/App.jsx
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import { Suspense, lazy } from 'react';
 import { PermissionProvider } from './context/PermissionContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { usePermissions } from './hooks/usePermissions';
 import { useInactivityLogout } from './hooks/useInactivityLogout';
 import PermissionsGuard from './components/PermissionsGuard';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAZY LOADING - Mejora el tiempo de carga inicial dividiendo el bundle
+// ═══════════════════════════════════════════════════════════════════════════════
+// Componentes críticos (cargan inmediatamente)
+import Layout from './components/Layout';
+import Login from './pages/Login';
+
+// Componentes diferidos (cargan bajo demanda)
+const RecuperarPassword = lazy(() => import('./pages/RecuperarPassword'));
+const RestablecerPassword = lazy(() => import('./pages/RestablecerPassword'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Productos = lazy(() => import('./pages/Productos'));
+const Lotes = lazy(() => import('./pages/Lotes'));
+const Requisiciones = lazy(() => import('./pages/Requisiciones'));
+const RequisicionDetalle = lazy(() => import('./pages/RequisicionDetalle'));
+const Centros = lazy(() => import('./pages/Centros'));
+const Usuarios = lazy(() => import('./pages/Usuarios'));
+const Reportes = lazy(() => import('./pages/Reportes'));
+const Trazabilidad = lazy(() => import('./pages/Trazabilidad'));
+const Auditoria = lazy(() => import('./pages/Auditoria'));
+const Movimientos = lazy(() => import('./pages/Movimientos'));
+const Notificaciones = lazy(() => import('./pages/Notificaciones'));
+const Perfil = lazy(() => import('./pages/Perfil'));
+const ConfiguracionTema = lazy(() => import('./pages/ConfiguracionTema'));
+
+// Componente de carga para Suspense
+const PageLoader = () => (
+  <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="text-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+      <p className="mt-4 text-gray-600">Cargando...</p>
+    </div>
+  </div>
+);
 
 function SessionManager() {
   useInactivityLogout();
   return null;
 }
-
-import Layout from './components/Layout';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Productos from './pages/Productos';
-import Lotes from './pages/Lotes';
-import Requisiciones from './pages/Requisiciones';
-import Centros from './pages/Centros';
-import Usuarios from './pages/Usuarios';
-import Reportes from './pages/Reportes';
-import Trazabilidad from './pages/Trazabilidad';
-import Auditoria from './pages/Auditoria';
-import Movimientos from './pages/Movimientos';
-import Notificaciones from './pages/Notificaciones';
-import Perfil from './pages/Perfil';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = usePermissions();
@@ -46,11 +68,15 @@ function App() {
   return (
     <Router>
       <PermissionProvider>
-        <SessionManager />
-        <Toaster position="top-right" />
+        <ThemeProvider>
+          <SessionManager />
+          <Toaster position="top-right" />
         
-        <Routes>
+          <Suspense fallback={<PageLoader />}>
+          <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/recuperar-password" element={<RecuperarPassword />} />
+          <Route path="/restablecer-password" element={<RestablecerPassword />} />
           
           <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route index element={<Navigate to="/dashboard" replace />} />
@@ -74,6 +100,11 @@ function App() {
                 <Requisiciones />
               </PermissionsGuard>
             } />
+            <Route path="requisiciones/:id" element={
+              <PermissionsGuard requiredPermission="verRequisiciones">
+                <RequisicionDetalle />
+              </PermissionsGuard>
+            } />
             <Route path="centros" element={
               <PermissionsGuard requiredPermission="verCentros">
                 <Centros />
@@ -90,7 +121,7 @@ function App() {
               </PermissionsGuard>
             } />
             <Route path="movimientos" element={
-              <PermissionsGuard requiredPermission="verLotes">
+              <PermissionsGuard requiredPermission="verMovimientos">
                 <Movimientos />
               </PermissionsGuard>
             } />
@@ -114,8 +145,15 @@ function App() {
                 <Perfil />
               </PermissionsGuard>
             } />
+            <Route path="configuracion-tema" element={
+              <PermissionsGuard requiredPermission="esSuperusuario">
+                <ConfiguracionTema />
+              </PermissionsGuard>
+            } />
           </Route>
-        </Routes>
+          </Routes>
+          </Suspense>
+        </ThemeProvider>
       </PermissionProvider>
     </Router>
   );

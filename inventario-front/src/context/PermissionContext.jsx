@@ -8,6 +8,8 @@ import apiClient from '../services/api';
  * FARMACIA (farmacia / admin_farmacia / grupo FARMACIA_ADMIN)
  * CENTRO (centro / usuario_normal / grupo CENTRO_USER)
  * VISTA (vista / usuario_vista / grupo VISTA_USER)
+ * 
+ * Los permisos vienen del backend calculados (rol + personalizados)
  */
 const PERMISOS_POR_ROL = {
   ADMIN: {
@@ -22,6 +24,18 @@ const PERMISOS_POR_ROL = {
     verAuditoria: true,
     verNotificaciones: true,
     verPerfil: true,
+    verMovimientos: true,
+    esSuperusuario: true,
+    // Permisos granulares de requisiciones
+    crearRequisicion: true,
+    editarRequisicion: true,
+    eliminarRequisicion: true,
+    enviarRequisicion: true,
+    autorizarRequisicion: true,
+    rechazarRequisicion: true,
+    surtirRequisicion: true,
+    cancelarRequisicion: true,
+    descargarHojaRecoleccion: true,
   },
   FARMACIA: {
     verDashboard: true,
@@ -29,12 +43,24 @@ const PERMISOS_POR_ROL = {
     verLotes: true,
     verRequisiciones: true,
     verCentros: true,
-    verUsuarios: false,
+    verUsuarios: true,
     verReportes: true,
     verTrazabilidad: true,
-    verAuditoria: true,
+    verAuditoria: false,  // Solo admin/superuser
     verNotificaciones: true,
     verPerfil: true,
+    verMovimientos: true,
+    esSuperusuario: false,
+    // Permisos granulares de requisiciones
+    crearRequisicion: true,
+    editarRequisicion: true,
+    eliminarRequisicion: true,
+    enviarRequisicion: true,
+    autorizarRequisicion: true,
+    rechazarRequisicion: true,
+    surtirRequisicion: true,
+    cancelarRequisicion: true,
+    descargarHojaRecoleccion: true,
   },
   CENTRO: {
     verDashboard: true,
@@ -48,19 +74,43 @@ const PERMISOS_POR_ROL = {
     verAuditoria: false,
     verNotificaciones: true,
     verPerfil: true,
+    verMovimientos: false,
+    esSuperusuario: false,
+    // Permisos granulares de requisiciones - Centro solo crea y envía
+    crearRequisicion: true,
+    editarRequisicion: true,  // Solo sus propios borradores
+    eliminarRequisicion: true,  // Solo sus propios borradores
+    enviarRequisicion: true,
+    autorizarRequisicion: false,  // No puede autorizar
+    rechazarRequisicion: false,  // No puede rechazar
+    surtirRequisicion: false,  // No puede surtir
+    cancelarRequisicion: true,  // Puede cancelar las suyas
+    descargarHojaRecoleccion: true,  // Puede descargar para recoger
   },
   VISTA: {
     verDashboard: true,
-    verProductos: false,
-    verLotes: false,
-    verRequisiciones: false,
-    verCentros: false,
-    verUsuarios: false,
+    verProductos: true,
+    verLotes: true,
+    verRequisiciones: true,
+    verCentros: true,
+    verUsuarios: true,
     verReportes: true,
-    verTrazabilidad: false,
-    verAuditoria: false,
+    verTrazabilidad: false,  // Restringido: solo farmacia/admin pueden ver trazabilidad
+    verAuditoria: false,  // Restringido: solo farmacia/admin pueden ver auditoría
     verNotificaciones: true,
     verPerfil: true,
+    verMovimientos: true,
+    esSuperusuario: false,
+    // Vista no puede modificar requisiciones
+    crearRequisicion: false,
+    editarRequisicion: false,
+    eliminarRequisicion: false,
+    enviarRequisicion: false,
+    autorizarRequisicion: false,
+    rechazarRequisicion: false,
+    surtirRequisicion: false,
+    cancelarRequisicion: false,
+    descargarHojaRecoleccion: true,  // Puede descargar para consulta
   },
   SIN_ROL: {
     verDashboard: false,
@@ -74,6 +124,17 @@ const PERMISOS_POR_ROL = {
     verAuditoria: false,
     verNotificaciones: false,
     verPerfil: false,
+    verMovimientos: false,
+    esSuperusuario: false,
+    crearRequisicion: false,
+    editarRequisicion: false,
+    eliminarRequisicion: false,
+    enviarRequisicion: false,
+    autorizarRequisicion: false,
+    rechazarRequisicion: false,
+    surtirRequisicion: false,
+    cancelarRequisicion: false,
+    descargarHojaRecoleccion: false,
   },
 };
 
@@ -99,11 +160,30 @@ const calcularPermisos = (userData, userGroups) => {
   const isCentroUser = role === 'CENTRO';
   const isVistaUser = role === 'VISTA';
 
+  // Si el backend envía permisos calculados, usarlos directamente
+  // Esto incluye los permisos personalizados por el admin
+  if (userData?.permisos && typeof userData.permisos === 'object') {
+    return {
+      role,
+      isSuperuser,
+      isAdmin,
+      isFarmaciaAdmin,
+      isCentroUser,
+      isVistaUser,
+      groupNames,
+      ...userData.permisos,
+      verPerfil: true, // Siempre puede ver su perfil
+      esSuperusuario: isSuperuser, // Siempre calcular desde is_superuser
+    };
+  }
+
+  // Fallback: usar permisos por rol si el backend no envió permisos
   const basePerms = PERMISOS_POR_ROL[role] || PERMISOS_POR_ROL.SIN_ROL;
 
   return {
     role,
     isSuperuser,
+    isAdmin,
     isFarmaciaAdmin,
     isCentroUser,
     isVistaUser,
