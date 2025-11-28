@@ -32,8 +32,8 @@ drf-spectacular==0.27.1
 pyyaml==6.0.1
 uritemplate==4.1.1
 
-# PostgreSQL para Render/Supabase
-psycopg2-binary==2.9.9
+# PostgreSQL para Render/Supabase (psycopg3 compatible con Python 3.13)
+psycopg[binary]>=3.1.0
 dj-database-url==2.1.0
 
 # Servidor WSGI para producción
