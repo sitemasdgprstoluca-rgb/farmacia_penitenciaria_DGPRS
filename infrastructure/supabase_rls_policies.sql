@@ -252,20 +252,9 @@ CREATE POLICY "service_role_token_outstanding" ON token_blacklist_outstandingtok
 CREATE POLICY "service_role_token_blacklisted" ON token_blacklist_blacklistedtoken FOR ALL TO service_role USING (true);
 
 -- =====================================================
--- 7. CONFIGURACIÓN DE SEGURIDAD ADICIONAL
+-- 7. VERIFICACIÓN
 -- =====================================================
-
--- Deshabilitar funciones peligrosas para roles no privilegiados
-REVOKE EXECUTE ON FUNCTION pg_read_file(text) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION pg_read_file(text, bigint, bigint) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION pg_read_file(text, bigint, bigint, boolean) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION pg_read_binary_file(text) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION pg_read_binary_file(text, bigint, bigint) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION pg_read_binary_file(text, bigint, bigint, boolean) FROM PUBLIC;
-
--- =====================================================
--- 8. VERIFICACIÓN
--- =====================================================
+-- NOTA: Las funciones pg_read_file ya están protegidas por Supabase
 DO $$
 DECLARE
     r RECORD;
