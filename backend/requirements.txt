@@ -14,7 +14,7 @@ django-filter==23.5
 # Utilidades
 openpyxl==3.1.2
 reportlab==4.0.9
-Pillow==10.3.0
+Pillow>=10.4.0  # Compatible con Python 3.13
 
 # Configuración de entorno
 python-decouple==3.8
