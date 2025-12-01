@@ -416,15 +416,19 @@ class ProductoSerializer(serializers.ModelSerializer):
     valor_inventario = serializers.SerializerMethodField(
         help_text="Valor total del inventario (stock * precio)"
     )
+    creado_por = serializers.SerializerMethodField(
+        help_text="Usuario que creó el producto"
+    )
     
     class Meta:
         model = Producto
         fields = [
             'id', 'clave', 'descripcion', 'unidad_medida', 'precio_unitario',
             'stock_minimo', 'activo', 'stock_actual', 'nivel_stock',
-            'lotes_activos', 'valor_inventario', 'created_at', 'updated_at'
+            'lotes_activos', 'valor_inventario', 'created_at', 'updated_at',
+            'creado_por'
         ]
-        read_only_fields = ['created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at', 'creado_por']
     
     def get_stock_actual(self, obj):
         """Calcula stock actual de lotes disponibles"""
@@ -442,6 +446,12 @@ class ProductoSerializer(serializers.ModelSerializer):
         """Calcula valor total del inventario"""
         stock = self.get_stock_actual(obj)
         return float(stock * obj.precio_unitario)
+    
+    def get_creado_por(self, obj):
+        """Retorna el nombre/email del usuario que creó el producto"""
+        if obj.created_by:
+            return obj.created_by.get_full_name() or obj.created_by.username
+        return None
     
     def validate_descripcion(self, value):
         """

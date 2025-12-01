@@ -246,7 +246,7 @@ class UserSerializer(serializers.ModelSerializer):
 # Clase UserViewSet eliminada (duplicada, ya existe en core/views.py)
 
 class ProductoViewSet(viewsets.ModelViewSet):
-    queryset = Producto.objects.all()
+    queryset = Producto.objects.select_related('created_by').all()
     serializer_class = ProductoSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = CustomPagination
@@ -263,7 +263,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     def get_queryset(self):
-        queryset = Producto.objects.all()
+        queryset = Producto.objects.select_related('created_by').all()
         
         activo = self.request.query_params.get('activo')
         if activo == 'true':
