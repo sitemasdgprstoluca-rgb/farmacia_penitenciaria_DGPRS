@@ -280,11 +280,23 @@ export function PermissionProvider({ children }) {
   const verificarPermiso = (permiso) => permisos[permiso] || false;
 
   const getRolPrincipal = () => {
-    const rol = (user?.rol || '').toLowerCase();
-    if (user?.is_superuser || rol === 'admin_sistema' || rol === 'superusuario') return 'ADMIN';
+    if (!user) return 'SIN_ROL';
+    
+    const rol = (user.rol || '').toLowerCase();
+    const isSuperuser = user.is_superuser === true;
+    
+    // Primero verificar superusuario
+    if (isSuperuser) return 'ADMIN';
+    
+    // Luego verificar por rol específico
+    if (rol === 'admin_sistema' || rol === 'superusuario' || rol === 'admin') return 'ADMIN';
     if (rol === 'farmacia' || rol === 'admin_farmacia' || grupos.some((g) => g.name === 'FARMACIA_ADMIN')) return 'FARMACIA';
     if (rol === 'centro' || rol === 'usuario_normal' || grupos.some((g) => g.name === 'CENTRO_USER')) return 'CENTRO';
     if (rol === 'vista' || rol === 'usuario_vista' || grupos.some((g) => g.name === 'VISTA_USER')) return 'VISTA';
+    
+    // Si el usuario está autenticado pero sin rol específico, verificar permisos de staff
+    if (user.is_staff) return 'FARMACIA';
+    
     return 'SIN_ROL';
   };
 

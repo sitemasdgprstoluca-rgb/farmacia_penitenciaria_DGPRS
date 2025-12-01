@@ -1111,8 +1111,9 @@ class UserMeSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'first_name', 'last_name',
             'rol', 'centro', 'centro_nombre', 'telefono', 'cargo',
             'grupos', 'extra_permisos', 'permisos',
+            'is_superuser', 'is_staff',  # Importante para el frontend
         ]
-        read_only_fields = ['username', 'rol', 'centro']
+        read_only_fields = ['username', 'rol', 'centro', 'is_superuser', 'is_staff']
 
     def get_grupos(self, obj):
         return [g.name for g in obj.groups.all()]

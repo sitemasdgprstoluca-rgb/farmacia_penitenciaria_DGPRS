@@ -2721,7 +2721,7 @@ def dashboard_graficas(request):
         if cached:
             return Response(cached)
         
-        # 1. Consumo mensual (últimos 6 meses)
+        # 1. Consumo mensual (últimos 6 meses) - con entradas y salidas
         consumo_mensual = []
         for i in range(5, -1, -1):
             fecha_inicio = (timezone.now() - timedelta(days=30*i)).replace(day=1)
@@ -2730,19 +2730,25 @@ def dashboard_graficas(request):
             else:
                 fecha_fin = timezone.now()
             
-            movimientos_mes = Movimiento.objects.filter(
+            # Base queryset para el mes
+            movimientos_mes_base = Movimiento.objects.filter(
                 fecha__gte=fecha_inicio,
-                fecha__lt=fecha_fin,
-                tipo='salida'
+                fecha__lt=fecha_fin
             )
             if filtrar_por_centro and user_centro:
-                movimientos_mes = movimientos_mes.filter(lote__centro=user_centro)
+                movimientos_mes_base = movimientos_mes_base.filter(lote__centro=user_centro)
             
-            total_salidas = movimientos_mes.aggregate(total=Sum('cantidad'))['total'] or 0
+            # Calcular entradas
+            total_entradas = movimientos_mes_base.filter(tipo='entrada').aggregate(total=Sum('cantidad'))['total'] or 0
+            # Calcular salidas
+            total_salidas = movimientos_mes_base.filter(tipo='salida').aggregate(total=Sum('cantidad'))['total'] or 0
+            
             mes_nombre = fecha_inicio.strftime('%b')
             consumo_mensual.append({
                 'mes': mes_nombre,
-                'consumo': abs(total_salidas)
+                'entradas': abs(total_entradas),
+                'salidas': abs(total_salidas),
+                'consumo': abs(total_salidas)  # Mantener para compatibilidad
             })
         
         # 2. Stock por centro

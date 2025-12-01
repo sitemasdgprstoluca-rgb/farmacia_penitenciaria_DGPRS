@@ -691,10 +691,11 @@ class ImportacionLogViewSet(viewsets.ReadOnlyModelViewSet):
 class NotificacionViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
+    mixins.DestroyModelMixin,
     viewsets.GenericViewSet
 ):
     """
-    ViewSet para notificaciones del usuario (solo lectura).
+    ViewSet para notificaciones del usuario.
     
     Las notificaciones son generadas automáticamente por el sistema:
     - Cambios de estado en requisiciones
@@ -704,13 +705,12 @@ class NotificacionViewSet(
     Endpoints:
     - GET /api/notificaciones/ - Lista notificaciones del usuario
     - GET /api/notificaciones/{id}/ - Detalle de notificación
+    - DELETE /api/notificaciones/{id}/ - Eliminar notificación propia
     - POST /api/notificaciones/{id}/marcar-leida/ - Marcar como leída
     - POST /api/notificaciones/marcar-todas-leidas/ - Marcar todas como leídas
     - GET /api/notificaciones/no-leidas-count/ - Contador de no leídas
-    
-    Notificaciones son read-only. No se permite crear, editar ni eliminar.
     """
-    http_method_names = ['get', 'post', 'head', 'options']
+    http_method_names = ['get', 'post', 'delete', 'head', 'options']
     serializer_class = NotificacionSerializer
     permission_classes = [IsAuthenticated, CanViewNotifications]
     pagination_class = StandardResultsSetPagination
@@ -764,18 +764,18 @@ class NotificacionViewSet(
         """
         Eliminar notificación propia.
         
-        POLÍTICA DE SEGURIDAD:
-        - Staff/Superuser: NO pueden borrar (405) - deben mantener historial para auditoría
-        - Usuarios normales: SÍ pueden borrar sus propias notificaciones
-        
+        Cualquier usuario autenticado puede eliminar sus propias notificaciones.
         El queryset ya filtra por usuario, así que solo pueden borrar las suyas.
         """
-        if request.user and (request.user.is_staff or request.user.is_superuser):
+        try:
+            instance = self.get_object()
+            self.perform_destroy(instance)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
             return Response(
-                {'error': 'Administradores no pueden eliminar notificaciones (auditoría)'},
-                status=status.HTTP_405_METHOD_NOT_ALLOWED
+                {'error': f'No se pudo eliminar la notificación: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
             )
-        return super().destroy(request, *args, **kwargs)
 
 
 class ReportesViewSet(viewsets.ViewSet):
