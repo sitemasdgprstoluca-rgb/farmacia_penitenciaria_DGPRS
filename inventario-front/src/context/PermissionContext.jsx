@@ -268,17 +268,17 @@ export function PermissionProvider({ children }) {
   }, [hydrateFromUser]);
 
   useEffect(() => {
+    // Hidratación inmediata desde localStorage para evitar flash
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
       try {
         hydrateFromUser(JSON.parse(storedUser));
-        setLoading(false);
-        return;
       } catch (error) {
         localStorage.removeItem('user');
       }
     }
 
+    // SIEMPRE cargar usuario fresco del servidor para tener datos actualizados
     cargarUsuario();
   }, [cargarUsuario, hydrateFromUser]);
 
