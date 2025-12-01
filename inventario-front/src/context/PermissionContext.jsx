@@ -142,13 +142,18 @@ const PERMISOS_POR_ROL = {
 const getRolFromUser = (userData, userGroups) => {
   if (!userData) return 'SIN_ROL';
   const isSuperuser = Boolean(userData.is_superuser);
+  const isStaff = Boolean(userData.is_staff);
   const rol = (userData.rol || '').toLowerCase();
   const groupNames = userGroups.map((g) => (g.name || g).toUpperCase());
 
-  if (isSuperuser || rol === 'admin_sistema' || rol === 'superusuario') return 'ADMIN';
+  // Admin: superusuario o rol admin/admin_sistema/superusuario
+  if (isSuperuser || rol === 'admin' || rol === 'admin_sistema' || rol === 'superusuario') return 'ADMIN';
+  // Farmacia: rol farmacia o grupo FARMACIA_ADMIN, o staff sin rol específico
   if (rol === 'farmacia' || rol === 'admin_farmacia' || groupNames.includes('FARMACIA_ADMIN')) return 'FARMACIA';
   if (rol === 'centro' || rol === 'usuario_normal' || groupNames.includes('CENTRO_USER')) return 'CENTRO';
   if (rol === 'vista' || rol === 'usuario_vista' || groupNames.includes('VISTA_USER')) return 'VISTA';
+  // Staff sin rol específico = FARMACIA
+  if (isStaff) return 'FARMACIA';
   return 'SIN_ROL';
 };
 
