@@ -632,29 +632,27 @@ const handleImportar = async (e) => {
                         ({lote.porcentaje_consumido}% usado)
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
-                      {puedeSubirDocumento && (
-                        <button
-                          onClick={() => handleDocumentoModal(lote)}
-                          className={`${lote.documento_pdf ? 'text-green-600 hover:text-green-800' : 'text-gray-400 hover:text-gray-600'}`}
-                          title={lote.documento_pdf ? 'Ver/Cambiar documento' : 'Subir documento'}
-                        >
-                          <FaFilePdf className="inline" />
-                        </button>
-                      )}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2 flex items-center gap-1">
+                      <button
+                        onClick={() => handleDocumentoModal(lote)}
+                        className={`p-1 rounded ${lote.documento_url ? 'text-green-600 hover:text-green-800 hover:bg-green-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}
+                        title={lote.documento_url ? `Ver: ${lote.documento_nombre || 'documento.pdf'}` : 'Subir documento PDF'}
+                      >
+                        <FaFilePdf className="text-lg" />
+                      </button>
                       <button
                         onClick={() => handleEdit(lote)}
-                        className="text-blue-600 hover:text-blue-800"
+                        className="p-1 rounded text-blue-600 hover:text-blue-800 hover:bg-blue-50"
                         title="Editar"
                       >
-                        <FaEdit className="inline" />
+                        <FaEdit className="text-lg" />
                       </button>
                       <button
                         onClick={() => handleDelete(lote.id)}
-                        className="text-red-600 hover:text-red-800"
+                        className="p-1 rounded text-red-600 hover:text-red-800 hover:bg-red-50"
                         title="Eliminar"
                       >
-                        <FaTrash className="inline" />
+                        <FaTrash className="text-lg" />
                       </button>
                     </td>
                   </tr>
