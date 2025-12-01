@@ -24,6 +24,7 @@ import CentroSelector from '../components/CentroSelector';
 import '../styles/Dashboard.css';
 import apiClient from '../services/api';
 import { dashboardAPI } from '../services/api';
+import { hasAccessToken } from '../services/tokenManager';
 
 const COLORS = ['#9F2241', '#10B981', '#F59E0B', '#06B6D4', '#8B5CF6'];
 
@@ -88,8 +89,8 @@ const Dashboard = () => {
       setLoading(true);
       setError(null);
 
-      const token = localStorage.getItem('token');
-      if (!token) {
+      // Verificar que hay token en memoria (tokenManager)
+      if (!hasAccessToken()) {
         throw new Error('Sesión no encontrada');
       }
 

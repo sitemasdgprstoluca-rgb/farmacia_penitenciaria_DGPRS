@@ -43,6 +43,8 @@ import { COLORS } from '../constants/theme';
 
 import { createExcelReport } from '../utils/reportExport';
 
+import { hasAccessToken } from '../services/tokenManager';
+
 
 
 const UNIDADES = [
@@ -110,8 +112,7 @@ const NIVELES_INVENTARIO = [
 
 
 const isDevSession = () => {
-  const token = localStorage.getItem('token');
-  return (DEV_CONFIG.MOCKS_ENABLED && !token) || token === 'dev-token';
+  return DEV_CONFIG.MOCKS_ENABLED && !hasAccessToken();
 };
 
 
@@ -656,7 +657,7 @@ const Productos = () => {
 
       console.error('Error al cargar productos', err);
 
-      if (DEV_CONFIG.MOCKS_ENABLED || localStorage.getItem('token') === 'dev-token') {
+      if (DEV_CONFIG.MOCKS_ENABLED) {
 
         applyMockProductos();
 

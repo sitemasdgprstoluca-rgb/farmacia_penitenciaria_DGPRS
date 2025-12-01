@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { centrosAPI } from '../services/api'; // No. CORREGIDO: Usa API centralizada
+import { centrosAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
+import { hasAccessToken } from '../services/tokenManager';
 import { 
   FaPlus, FaEdit, FaTrash, FaToggleOn, FaToggleOff, 
   FaSearch, FaFileExcel, FaFileUpload, FaDownload, FaFilter,
@@ -65,8 +66,7 @@ const Centros = () => {
   const cargarCentros = useCallback(async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
+      if (!hasAccessToken()) {
         throw new Error('Sesión no encontrada');
       }
 

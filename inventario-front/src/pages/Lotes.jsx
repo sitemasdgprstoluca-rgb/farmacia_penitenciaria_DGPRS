@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { lotesAPI, productosAPI, centrosAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
+import { hasAccessToken } from '../services/tokenManager';
 import {
   FaPlus,
   FaEdit,
@@ -131,8 +132,7 @@ const Lotes = () => {
 
   const cargarProductos = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if ((DEV_CONFIG.MOCKS_ENABLED && !token) || token === 'dev-token') {
+      if (DEV_CONFIG.MOCKS_ENABLED && !hasAccessToken()) {
         setProductos(MOCK_PRODUCTOS);
         return;
       }
@@ -140,7 +140,7 @@ const Lotes = () => {
       const response = await productosAPI.getAll({ activo: true, page_size: 1000 });
       setProductos(response.data.results || response.data);
     } catch (error) {
-      if (DEV_CONFIG.MOCKS_ENABLED || localStorage.getItem('token') === 'dev-token') {
+      if (DEV_CONFIG.MOCKS_ENABLED) {
         setProductos(MOCK_PRODUCTOS);
         return;
       }
@@ -181,8 +181,7 @@ const Lotes = () => {
   const cargarLotes = useCallback(async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      if ((!token && DEV_CONFIG.ENABLED) || token === 'dev-token') {
+      if (DEV_CONFIG.ENABLED && !hasAccessToken()) {
         applyMockLotes();
         return;
       }
@@ -204,7 +203,7 @@ const Lotes = () => {
       setTotalLotes(response.data.count || 0);
       setTotalPages(Math.ceil((response.data.count || 0) / pageSize));
     } catch (error) {
-      if (DEV_CONFIG.ENABLED || localStorage.getItem('token') === 'dev-token') {
+      if (DEV_CONFIG.ENABLED) {
         applyMockLotes();
         return;
       }
