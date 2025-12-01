@@ -607,7 +607,18 @@ const handleImportar = async (e) => {
                     </td>
                     <td className="px-6 py-4 text-sm">
                       <div className="font-medium text-blue-600">{lote.producto_clave}</div>
-                      <div className="text-gray-500 text-xs">{lote.producto_descripcion?.substring(0, 40)}...</div>
+                      <div 
+                        className="text-gray-500 text-xs cursor-help relative group"
+                        title={lote.producto_descripcion}
+                      >
+                        {lote.producto_descripcion?.substring(0, 40)}{lote.producto_descripcion?.length > 40 ? '...' : ''}
+                        {/* Tooltip on hover */}
+                        <div className="absolute z-50 hidden group-hover:block bg-gray-900 text-white text-xs rounded-lg py-2 px-3 -top-2 left-0 transform -translate-y-full w-64 shadow-lg">
+                          <p className="font-semibold mb-1">Descripción completa:</p>
+                          <p>{lote.producto_descripcion}</p>
+                          <div className="absolute bottom-0 left-4 transform translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900"></div>
+                        </div>
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-mono font-bold">
                       {lote.numero_lote}

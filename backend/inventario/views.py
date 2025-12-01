@@ -2102,6 +2102,107 @@ class MovimientoViewSet(
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=False, methods=['get'], url_path='exportar-excel')
+    def exportar_excel(self, request):
+        """
+        Genera Excel de movimientos con filtros opcionales.
+        """
+        try:
+            # Aplicar filtros
+            queryset = self.get_queryset()
+            
+            tipo = request.query_params.get('tipo')
+            if tipo:
+                queryset = queryset.filter(tipo=tipo.lower())
+            
+            fecha_inicio = request.query_params.get('fecha_inicio')
+            if fecha_inicio:
+                queryset = queryset.filter(fecha__gte=fecha_inicio)
+            
+            fecha_fin = request.query_params.get('fecha_fin')
+            if fecha_fin:
+                queryset = queryset.filter(fecha__lte=fecha_fin)
+            
+            producto = request.query_params.get('producto')
+            if producto:
+                queryset = queryset.filter(lote__producto_id=producto)
+            
+            centro = request.query_params.get('centro')
+            if centro:
+                queryset = queryset.filter(Q(centro_id=centro) | Q(lote__centro_id=centro))
+            
+            search = request.query_params.get('search')
+            if search:
+                queryset = queryset.filter(
+                    Q(lote__numero_lote__icontains=search) |
+                    Q(lote__producto__descripcion__icontains=search) |
+                    Q(observaciones__icontains=search)
+                )
+            
+            movimientos = queryset[:1000]  # Limitar para Excel
+            
+            # Crear libro de Excel
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = 'Movimientos'
+            
+            # Título
+            ws.merge_cells('A1:H1')
+            ws['A1'] = 'REPORTE DE MOVIMIENTOS'
+            ws['A1'].font = Font(bold=True, size=14, color='632842')
+            ws['A1'].alignment = Alignment(horizontal='center')
+            
+            # Fecha
+            ws.merge_cells('A2:H2')
+            ws['A2'] = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")}'
+            ws['A2'].alignment = Alignment(horizontal='center')
+            
+            # Encabezados
+            headers = ['#', 'Fecha', 'Tipo', 'Producto', 'Lote', 'Cantidad', 'Centro', 'Usuario']
+            ws.append([])
+            ws.append(headers)
+            
+            header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
+            header_font = Font(bold=True, color='FFFFFF')
+            for cell in ws[4]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center')
+            
+            # Datos
+            for idx, mov in enumerate(movimientos, 1):
+                ws.append([
+                    idx,
+                    mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
+                    mov.tipo.upper(),
+                    mov.lote.producto.descripcion[:50] if mov.lote and mov.lote.producto else 'N/A',
+                    mov.lote.numero_lote if mov.lote else 'N/A',
+                    mov.cantidad,
+                    mov.centro.nombre if mov.centro else (mov.lote.centro.nombre if mov.lote and mov.lote.centro else 'Farmacia Central'),
+                    mov.usuario.get_full_name() or mov.usuario.username if mov.usuario else 'Sistema',
+                ])
+            
+            # Ajustar anchos
+            column_widths = [8, 18, 12, 50, 15, 12, 25, 20]
+            for i, width in enumerate(column_widths, 1):
+                ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
+            
+            # Respuesta
+            response = HttpResponse(
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = f'attachment; filename="Movimientos_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx"'
+            wb.save(response)
+            return response
+            
+        except Exception as e:
+            traceback.print_exc()
+            return Response({
+                'error': 'Error al generar Excel de movimientos',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @method_decorator(csrf_exempt, name='dispatch')
 class RequisicionViewSet(viewsets.ModelViewSet):
     """
