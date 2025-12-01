@@ -211,6 +211,11 @@ export const lotesAPI = {
   porCaducar: (dias = 90) => apiClient.get(`/lotes/por-caducar/?dias=${dias}`),
   vencidos: () => apiClient.get('/lotes/vencidos/'),
   ajustarStock: (id, data) => apiClient.post(`/lotes/${id}/ajustar-stock/`, data),
+  trazabilidad: (id) => apiClient.get(`/lotes/${id}/trazabilidad/`),
+  subirDocumento: (id, formData) => apiClient.post(`/lotes/${id}/subir-documento/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+  eliminarDocumento: (id) => apiClient.delete(`/lotes/${id}/eliminar-documento/`),
   exportar: (params) => apiClient.get('/lotes/exportar-excel/', { 
     params, 
     responseType: 'blob' 
@@ -265,6 +270,7 @@ export const requisicionesAPI = {
   autorizar: (id, data) => apiClient.post(`/requisiciones/${id}/autorizar/`, data),
   rechazar: (id, data) => apiClient.post(`/requisiciones/${id}/rechazar/`, data),
   surtir: (id) => apiClient.post(`/requisiciones/${id}/surtir/`),
+  marcarRecibida: (id, data) => apiClient.post(`/requisiciones/${id}/marcar-recibida/`, data),
   cancelar: (id) => apiClient.post(`/requisiciones/${id}/cancelar/`),
   resumenEstados: () => apiClient.get('/requisiciones/resumen_estados/'),
   

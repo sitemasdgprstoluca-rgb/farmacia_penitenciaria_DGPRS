@@ -48,6 +48,7 @@ function Usuarios() {
     email: '',
     first_name: '',
     last_name: '',
+    adscripcion: '',
     password: '',
     password_confirm: '',
     rol: 'centro',
@@ -135,6 +136,7 @@ function Usuarios() {
         email: usuario.email || '',
         first_name: usuario.first_name || '',
         last_name: usuario.last_name || '',
+        adscripcion: usuario.adscripcion || '',
         password: '',
         password_confirm: '',
         rol: usuario.rol || 'centro',
@@ -168,6 +170,7 @@ function Usuarios() {
         email: '',
         first_name: '',
         last_name: '',
+        adscripcion: '',
         password: '',
         password_confirm: '',
         rol: 'centro',
@@ -199,6 +202,7 @@ function Usuarios() {
       email: '',
       first_name: '',
       last_name: '',
+      adscripcion: '',
       password: '',
       password_confirm: '',
       rol: 'centro',
@@ -237,6 +241,7 @@ function Usuarios() {
         email: formData.email,
         first_name: formData.first_name,
         last_name: formData.last_name,
+        adscripcion: formData.adscripcion,
         rol: formData.rol,
         is_active: formData.is_active
       };
@@ -644,6 +649,19 @@ function Usuarios() {
                     onChange={(e) => setFormData({...formData, last_name: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     required
+                  />
+                </div>
+                
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Adscripción
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.adscripcion}
+                    onChange={(e) => setFormData({...formData, adscripcion: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Ej: Departamento de Sistemas, Área Médica, etc."
                   />
                 </div>
                 

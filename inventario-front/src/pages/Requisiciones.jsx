@@ -210,7 +210,8 @@ const Requisiciones = () => {
       autorizada: 'bg-green-50 text-green-700 border border-green-300',
       parcial: 'bg-green-50 text-green-700 border border-green-300', // Tratamos parcial como autorizada
       rechazada: 'bg-red-50 text-red-700 border border-red-300',
-      surtida: 'bg-blue-50 text-blue-700 border border-blue-300',
+      surtida: 'bg-purple-50 text-purple-700 border border-purple-300',
+      recibida: 'bg-blue-50 text-blue-700 border border-blue-300',
       cancelada: 'bg-gray-50 text-gray-500 border border-gray-200',
     };
     return badges[estado] || 'bg-gray-100 text-gray-700 border border-gray-300';
@@ -225,6 +226,7 @@ const Requisiciones = () => {
       parcial: 'AUTORIZADA',  // Simplificamos parcial como autorizada
       rechazada: 'RECHAZADA',
       surtida: 'SURTIDA',
+      recibida: 'RECIBIDA',
       cancelada: 'CANCELADA',
     };
     return labels[estado] || estado?.toUpperCase();

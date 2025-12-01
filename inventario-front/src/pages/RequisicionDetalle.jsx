@@ -96,6 +96,7 @@ const RequisicionDetalle = () => {
       autorizada: 'bg-green-100 text-green-700',
       parcial: 'bg-yellow-100 text-yellow-700',
       surtida: 'bg-purple-100 text-purple-700',
+      recibida: 'bg-blue-100 text-blue-700',
       rechazada: 'bg-red-100 text-red-600',
       cancelada: 'bg-gray-100 text-gray-600',
     };
@@ -240,6 +241,29 @@ const RequisicionDetalle = () => {
     }
   };
 
+  const handleMarcarRecibida = async () => {
+    const lugar = prompt('Lugar de entrega/recepción:');
+    if (!lugar) {
+      toast.error('El lugar de entrega es requerido');
+      return;
+    }
+    const observaciones = prompt('Observaciones de recepción (opcional):') || '';
+    
+    try {
+      setProcesando(true);
+      await requisicionesAPI.marcarRecibida(id, { 
+        lugar_entrega: lugar, 
+        observaciones_recepcion: observaciones 
+      });
+      toast.success('Requisición marcada como recibida');
+      cargarRequisicion();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al marcar como recibida');
+    } finally {
+      setProcesando(false);
+    }
+  };
+
   const handleDescargarPDF = async (tipo) => {
     try {
       setProcesando(true);
@@ -330,8 +354,10 @@ const RequisicionDetalle = () => {
   const puedeAutorizar = requisicion?.estado === 'enviada' && esFarmacia;
   const puedeRechazar = requisicion?.estado === 'enviada' && esFarmacia;
   const puedeSurtir = (requisicion?.estado === 'autorizada' || requisicion?.estado === 'parcial') && esFarmacia;
-  const puedeCancelar = !['surtida', 'cancelada', 'rechazada'].includes(requisicion?.estado);
-  const puedeDescargarHoja = ['autorizada', 'parcial', 'surtida'].includes(requisicion?.estado);
+  const puedeMarcarRecibida = requisicion?.estado === 'surtida' && 
+    (user?.is_superuser || (user?.centro && requisicion?.centro === user.centro));
+  const puedeCancelar = !['surtida', 'cancelada', 'rechazada', 'recibida'].includes(requisicion?.estado);
+  const puedeDescargarHoja = ['autorizada', 'parcial', 'surtida', 'recibida'].includes(requisicion?.estado);
   const puedeDescargarRechazo = requisicion?.estado === 'rechazada';
   const puedeVerificarHoja = esFarmacia && hojaRecoleccion && hojaRecoleccion.estado !== 'verificada';
 
@@ -746,6 +772,16 @@ const RequisicionDetalle = () => {
                   style={{ backgroundColor: COLORS.vino }}
                 >
                   <FaBoxOpen /> Surtir y descontar inventario
+                </button>
+              )}
+
+              {puedeMarcarRecibida && (
+                <button
+                  onClick={handleMarcarRecibida}
+                  disabled={procesando}
+                  className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity bg-blue-600 hover:bg-blue-700"
+                >
+                  <FaCheckCircle /> Confirmar recepción
                 </button>
               )}
 
