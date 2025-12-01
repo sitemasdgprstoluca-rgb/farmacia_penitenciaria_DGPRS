@@ -174,10 +174,10 @@ def _crear_tabla_institucional(data, col_widths=None, header=True):
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
         ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('LEFTPADDING', (0, 0), (-1, -1), 4),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
         ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
         ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
         ('WORDWRAP', (0, 0), (-1, -1), True),
@@ -188,7 +188,7 @@ def _crear_tabla_institucional(data, col_widths=None, header=True):
             ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
             ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ])
     
@@ -268,8 +268,8 @@ def generar_reporte_inventario(productos_data, formato='pdf', filtros=None):
     estilo_celda = ParagraphStyle(
         'CeldaTexto',
         parent=styles['Normal'],
-        fontSize=7,
-        leading=9,
+        fontSize=6.5,
+        leading=8,
         wordWrap='CJK',
     )
     
@@ -290,9 +290,15 @@ def generar_reporte_inventario(productos_data, formato='pdf', filtros=None):
             str(producto.get('unidad', producto.get('unidad_medida', '')))
         ])
     
-    # Ajustar anchos: más espacio para descripción, menos para números
-    col_widths = [0.85*inch, 3.2*inch, 0.55*inch, 0.45*inch, 0.55*inch, 0.55*inch]
+    # Ajustar anchos para que sumen exactamente el ancho disponible (7 pulgadas)
+    # Descripción más ancha, columnas numéricas más estrechas y compactas
+    col_widths = [0.9*inch, 3.6*inch, 0.7*inch, 0.5*inch, 0.6*inch, 0.7*inch]
     table = _crear_tabla_institucional(data, col_widths)
+    # Alinear números a la derecha
+    table.setStyle(TableStyle([
+        ('ALIGN', (2, 1), (3, -1), 'RIGHT'),  # Stock y Mín. alineados a la derecha
+        ('ALIGN', (4, 1), (4, -1), 'CENTER'), # Nivel centrado
+    ]))
     elements.append(table)
     elements.append(Spacer(1, 0.3*inch))
     
