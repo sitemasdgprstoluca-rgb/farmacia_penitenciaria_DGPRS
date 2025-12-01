@@ -4,6 +4,9 @@ import { toast } from "react-hot-toast";
 import { usuariosAPI } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
 
+// Tiempo de espera antes de redirigir al login tras cambio de contraseña (ms)
+const PASSWORD_CHANGE_LOGOUT_DELAY = 2000;
+
 function Perfil() {
   const { user, permisos, recargarUsuario } = usePermissions();
   const [perfil, setPerfil] = useState(null);
@@ -97,7 +100,7 @@ function Perfil() {
         localStorage.removeItem("refresh_token");
         localStorage.removeItem("user");
         navigate("/login");
-      }, 2000);
+      }, PASSWORD_CHANGE_LOGOUT_DELAY);
     } catch (error) {
       toast.error(error.response?.data?.error || "No se pudo cambiar la contraseña");
     } finally {
