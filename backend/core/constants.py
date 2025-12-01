@@ -33,6 +33,7 @@ ESTADOS_REQUISICION = [
     ('parcial', 'Parcialmente Autorizada'),
     ('rechazada', 'Rechazada'),
     ('surtida', 'Surtida'),
+    ('recibida', 'Recibida por Centro'),
     ('cancelada', 'Cancelada'),
 ]
 

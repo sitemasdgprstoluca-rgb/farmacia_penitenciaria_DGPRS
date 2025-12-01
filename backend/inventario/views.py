@@ -1794,6 +1794,95 @@ class LoteViewSet(viewsets.ModelViewSet):
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=True, methods=['post'], url_path='subir-documento')
+    def subir_documento(self, request, pk=None):
+        """
+        Sube un documento PDF asociado al lote.
+        
+        El documento puede ser factura, remisión, contrato, etc.
+        
+        PERMISOS:
+        - Solo usuarios de farmacia/admin pueden subir documentos
+        
+        DATOS REQUERIDOS (multipart/form-data):
+        - documento: Archivo PDF
+        - nombre (opcional): Nombre descriptivo del documento
+        """
+        from django.core.files.uploadhandler import MemoryFileUploadHandler
+        
+        lote = self.get_object()
+        
+        # PERMISOS: Solo farmacia/admin pueden subir documentos
+        user = request.user
+        if not user.is_superuser and not is_farmacia_or_admin(user):
+            return Response({
+                'error': 'Solo el personal de farmacia puede subir documentos'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Validar que se envió un archivo
+        documento = request.FILES.get('documento')
+        if not documento:
+            return Response({
+                'error': 'No se envió ningún documento'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validar tipo de archivo (solo PDF)
+        if not documento.name.lower().endswith('.pdf'):
+            return Response({
+                'error': 'Solo se permiten archivos PDF'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validar tamaño (máximo 10MB)
+        if documento.size > 10 * 1024 * 1024:
+            return Response({
+                'error': 'El archivo no puede superar los 10MB'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Obtener nombre descriptivo
+        nombre_documento = request.data.get('nombre', documento.name)
+        
+        # Guardar documento
+        lote.documento_pdf = documento
+        lote.documento_nombre = nombre_documento
+        lote.save(update_fields=['documento_pdf', 'documento_nombre'])
+        
+        return Response({
+            'mensaje': 'Documento subido correctamente',
+            'documento_nombre': lote.documento_nombre,
+            'documento_url': request.build_absolute_uri(lote.documento_pdf.url) if lote.documento_pdf else None
+        })
+
+    @action(detail=True, methods=['delete'], url_path='eliminar-documento')
+    def eliminar_documento(self, request, pk=None):
+        """
+        Elimina el documento PDF asociado al lote.
+        
+        PERMISOS:
+        - Solo usuarios de farmacia/admin pueden eliminar documentos
+        """
+        lote = self.get_object()
+        
+        # PERMISOS: Solo farmacia/admin pueden eliminar documentos
+        user = request.user
+        if not user.is_superuser and not is_farmacia_or_admin(user):
+            return Response({
+                'error': 'Solo el personal de farmacia puede eliminar documentos'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        if not lote.documento_pdf:
+            return Response({
+                'error': 'El lote no tiene documento asociado'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Eliminar archivo físico
+        lote.documento_pdf.delete(save=False)
+        lote.documento_nombre = ''
+        lote.save(update_fields=['documento_pdf', 'documento_nombre'])
+        
+        return Response({
+            'mensaje': 'Documento eliminado correctamente'
+        })
+
 @method_decorator(csrf_exempt, name='dispatch')
 class MovimientoViewSet(
     mixins.ListModelMixin,
@@ -2448,6 +2537,64 @@ class RequisicionViewSet(viewsets.ModelViewSet):
             requisicion.save(update_fields=['estado'])
 
         return Response({'mensaje': 'Requisicion surtida', 'requisicion': RequisicionSerializer(requisicion).data})
+
+    @action(detail=True, methods=['post'], url_path='marcar-recibida')
+    def marcar_recibida(self, request, pk=None):
+        """
+        Marca una requisición surtida como recibida por el centro.
+        
+        PERMISOS:
+        - Solo usuarios del centro receptor pueden marcar como recibida
+        - Solo requisiciones en estado 'surtida' pueden marcarse
+        
+        DATOS REQUERIDOS:
+        - lugar_entrega: Lugar donde se recibió
+        - observaciones_recepcion: Observaciones de la recepción (opcional)
+        """
+        from django.utils import timezone
+        
+        requisicion = self.get_object()
+        estado_actual = (requisicion.estado or '').lower()
+        
+        if estado_actual != 'surtida':
+            return Response({
+                'error': 'Solo se pueden marcar como recibidas las requisiciones surtidas',
+                'estado_actual': requisicion.estado
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # PERMISOS: Solo usuarios del centro receptor pueden confirmar recepción
+        user = request.user
+        if not user.is_superuser:
+            centro_user = self._user_centro(user)
+            if not centro_user or requisicion.centro_id != centro_user.id:
+                return Response({
+                    'error': 'Solo el centro receptor puede confirmar la recepción'
+                }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Obtener datos del request
+        lugar_entrega = request.data.get('lugar_entrega', '')
+        observaciones_recepcion = request.data.get('observaciones_recepcion', '')
+        
+        if not lugar_entrega:
+            return Response({
+                'error': 'El lugar de entrega es requerido'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Actualizar la requisición
+        requisicion.estado = 'recibida'
+        requisicion.fecha_recibido = timezone.now()
+        requisicion.usuario_recibe = user
+        requisicion.lugar_entrega = lugar_entrega
+        requisicion.observaciones_recepcion = observaciones_recepcion
+        requisicion.save(update_fields=[
+            'estado', 'fecha_recibido', 'usuario_recibe', 
+            'lugar_entrega', 'observaciones_recepcion'
+        ])
+        
+        return Response({
+            'mensaje': 'Requisición marcada como recibida',
+            'requisicion': RequisicionSerializer(requisicion).data
+        })
 
     @action(detail=True, methods=['get'], url_path='hoja-recoleccion')
     def hoja_recoleccion(self, request, pk=None):

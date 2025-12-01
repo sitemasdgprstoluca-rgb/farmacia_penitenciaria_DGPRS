@@ -44,6 +44,11 @@ class User(AbstractUser):
         related_name='usuarios',
         help_text="Centro asignado al usuario"
     )
+    adscripcion = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Adscripción del usuario (centro/área/unidad de dependencia)"
+    )
     activo = models.BooleanField(default=True)
     
     # Permisos personalizados por módulo (null = usar permisos del rol por defecto)
@@ -319,6 +324,19 @@ class Lote(models.Model):
         help_text="Código de barras del lote (RFC-45)"
     )
     
+    # Documento PDF adjunto (contrato, certificado, soporte documental)
+    documento_pdf = models.FileField(
+        upload_to='lotes/documentos/%Y/%m/',
+        null=True,
+        blank=True,
+        help_text="Documento PDF de soporte (contrato, certificado, etc.)"
+    )
+    documento_nombre = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Nombre original del documento"
+    )
+    
     # Soft delete
     deleted_at = models.DateTimeField(null=True, blank=True)
     
@@ -534,7 +552,7 @@ class Lote(models.Model):
 class Requisicion(models.Model):
     """
     Modelo de Requisición de medicamentos
-    Flujo: Borrador -> Enviada -> Autorizada/Rechazada -> Surtida
+    Flujo: Borrador -> Enviada -> Autorizada/Rechazada -> Surtida -> Recibida
     
     Máquina de Estados:
     - borrador: Estado inicial, puede ser editada
@@ -542,7 +560,8 @@ class Requisicion(models.Model):
     - autorizada: Aprobada, lista para surtir
     - parcial: Parcialmente autorizada
     - rechazada: Rechazada, no se surtirá
-    - surtida: Surtida, proceso completado
+    - surtida: Surtida por farmacia, pendiente de recepción
+    - recibida: Recibida por el centro destino
     - cancelada: Cancelada por el usuario
     """
     # Definición de transiciones válidas de estado
@@ -552,7 +571,8 @@ class Requisicion(models.Model):
         'autorizada': ['surtida', 'cancelada'],
         'parcial': ['surtida', 'cancelada'],
         'rechazada': [],  # Estado terminal
-        'surtida': [],    # Estado terminal
+        'surtida': ['recibida'],  # Puede pasar a recibida
+        'recibida': [],   # Estado terminal
         'cancelada': [],  # Estado terminal
     }
     
@@ -581,6 +601,33 @@ class Requisicion(models.Model):
     )
     fecha_autorizacion = models.DateTimeField(null=True, blank=True)
     motivo_rechazo = models.TextField(blank=True)
+    
+    # Lugar de entrega (detalle de dónde se entrega: centro, servicio, área)
+    lugar_entrega = models.CharField(
+        max_length=300,
+        blank=True,
+        help_text="Detalle del lugar de entrega (centro, servicio, área, etc.)"
+    )
+    
+    # Campos para marcar como recibida por el centro
+    fecha_recibido = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Fecha y hora en que el centro recibió la requisición"
+    )
+    usuario_recibe = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='requisiciones_recibidas',
+        help_text="Usuario del centro que recibió la requisición"
+    )
+    observaciones_recepcion = models.TextField(
+        blank=True,
+        help_text="Observaciones al momento de recibir la requisición"
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -800,6 +847,11 @@ class Movimiento(models.Model):
         blank=True,
         help_text="Referencia del documento (factura, remito, etc.)"
     )
+    lugar_entrega = models.CharField(
+        max_length=300,
+        blank=True,
+        help_text="Detalle del lugar de entrega (centro, servicio, área, etc.)"
+    )
     observaciones = models.TextField(blank=True)
     fecha = models.DateTimeField(auto_now_add=True)
 
@@ -983,11 +1035,40 @@ class ConfiguracionSistema(models.Model):
         help_text="Nombre que aparece en el header del sistema"
     )
     
-    # Logo (opcional)
+    # Logo URL (opcional - para URLs externas)
     logo_url = models.URLField(
         blank=True,
         null=True,
         help_text="URL del logo del sistema (opcional)"
+    )
+    
+    # Logo archivo para header de la interfaz
+    logo_header = models.ImageField(
+        upload_to='configuracion/logos/',
+        null=True,
+        blank=True,
+        help_text="Logo para el header de la interfaz (PNG/JPG, max 500KB)"
+    )
+    
+    # Logo/fondo para PDFs institucionales
+    logo_pdf = models.ImageField(
+        upload_to='configuracion/logos/',
+        null=True,
+        blank=True,
+        help_text="Logo o fondo institucional para PDFs (PNG, recomendado 800x1200px)"
+    )
+    
+    # Institución para reportes
+    nombre_institucion = models.CharField(
+        max_length=200,
+        default='Secretaría de Seguridad',
+        help_text="Nombre de la institución para reportes"
+    )
+    
+    subtitulo_institucion = models.CharField(
+        max_length=200,
+        default='Dirección General de Prevención y Reinserción Social',
+        help_text="Subtítulo de la institución para reportes"
     )
     
     # === Colores del Tema ===

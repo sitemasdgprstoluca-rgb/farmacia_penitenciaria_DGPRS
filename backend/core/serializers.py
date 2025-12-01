@@ -214,6 +214,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name', 
             'rol', 'centro', 'centro_nombre', 'activo', 'password', 
+            'adscripcion',  # Campo de adscripción
             'grupos', 'extra_permisos', 'permisos', 'permisos_personalizados',
             'is_active', 'is_superuser',
             'perm_dashboard', 'perm_productos', 'perm_lotes', 'perm_requisiciones',
@@ -643,6 +644,9 @@ class LoteSerializer(serializers.ModelSerializer):
     stock_actual = serializers.IntegerField(source='cantidad_actual', read_only=True)
     ubicacion = serializers.SerializerMethodField()
     
+    # Campo de documento PDF
+    documento_url = serializers.SerializerMethodField()
+    
     class Meta:
         model = Lote
         fields = [
@@ -657,6 +661,8 @@ class LoteSerializer(serializers.ModelSerializer):
             'centro', 'centro_id', 'centro_nombre', 'centro_clave', 'ubicacion',
             'lote_origen', 'lote_origen_id', 'lote_origen_numero',
             'es_lote_farmacia', 'tiene_derivados', 'cantidad_derivados',
+            # Campos de documento adjunto
+            'documento_pdf', 'documento_nombre', 'documento_url',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at', 'fecha_entrada']
@@ -721,6 +727,15 @@ class LoteSerializer(serializers.ModelSerializer):
         if obj.centro is None:
             return obj.lotes_derivados.filter(deleted_at__isnull=True).count()
         return 0
+    
+    def get_documento_url(self, obj):
+        """Retorna la URL del documento PDF si existe"""
+        if obj.documento_pdf:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.documento_pdf.url)
+            return obj.documento_pdf.url
+        return None
     
     def validate_numero_lote(self, value):
         """
@@ -931,6 +946,7 @@ class RequisicionSerializer(serializers.ModelSerializer):
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True)
     usuario_solicita_nombre = serializers.CharField(source='usuario_solicita.get_full_name', read_only=True)
     usuario_autoriza_nombre = serializers.CharField(source='usuario_autoriza.get_full_name', read_only=True)
+    usuario_recibe_nombre = serializers.CharField(source='usuario_recibe.get_full_name', read_only=True, allow_null=True)
     total_productos = serializers.SerializerMethodField()
     puede_editar = serializers.SerializerMethodField()
     
@@ -941,7 +957,8 @@ class RequisicionSerializer(serializers.ModelSerializer):
         'autorizada': ['surtida', 'cancelada'],
         'parcial': ['autorizada', 'surtida', 'cancelada'],
         'rechazada': ['cancelada'],
-        'surtida': [],
+        'surtida': ['recibida'],
+        'recibida': [],
         'cancelada': []
     }
     
@@ -952,6 +969,9 @@ class RequisicionSerializer(serializers.ModelSerializer):
             'usuario_solicita_nombre', 'fecha_solicitud', 'estado', 'observaciones',
             'usuario_autoriza', 'usuario_autoriza_nombre', 'fecha_autorizacion',
             'motivo_rechazo', 'detalles', 'total_productos', 'puede_editar',
+            # Campos de recepción
+            'lugar_entrega', 'fecha_recibido', 'usuario_recibe', 'usuario_recibe_nombre',
+            'observaciones_recepcion',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['folio', 'fecha_solicitud', 'created_at', 'updated_at']
@@ -1032,7 +1052,8 @@ class MovimientoSerializer(serializers.ModelSerializer):
         model = Movimiento
         fields = ['id', 'tipo', 'lote', 'lote_numero', 'producto_clave', 'producto_descripcion',
                   'centro', 'centro_nombre', 'cantidad', 'usuario', 'usuario_nombre',
-                  'requisicion', 'requisicion_folio', 'documento_referencia', 'observaciones', 'fecha']
+                  'requisicion', 'requisicion_folio', 'documento_referencia', 'observaciones', 
+                  'lugar_entrega', 'fecha']
         read_only_fields = ['fecha']
 
 
@@ -1110,6 +1131,7 @@ class UserMeSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
             'rol', 'centro', 'centro_nombre', 'telefono', 'cargo',
+            'adscripcion',  # Campo de adscripción
             'grupos', 'extra_permisos', 'permisos',
             'is_superuser', 'is_staff',  # Importante para el frontend
         ]
@@ -1153,11 +1175,16 @@ class ConfiguracionSistemaSerializer(serializers.ModelSerializer):
         read_only=True
     )
     temas_disponibles = serializers.SerializerMethodField()
+    logo_header_url = serializers.SerializerMethodField()
+    logo_pdf_url = serializers.SerializerMethodField()
     
     class Meta:
         model = ConfiguracionSistema
         fields = [
             'id', 'nombre_sistema', 'logo_url', 'tema_activo',
+            # Campos de identidad institucional
+            'nombre_institucion', 'subtitulo_institucion',
+            'logo_header', 'logo_header_url', 'logo_pdf', 'logo_pdf_url',
             # Colores principales
             'color_primario', 'color_primario_hover', 'color_secundario', 'color_acento',
             # Colores de fondo
@@ -1170,7 +1197,7 @@ class ConfiguracionSistemaSerializer(serializers.ModelSerializer):
             'css_variables', 'temas_disponibles',
             'updated_at', 'updated_by', 'updated_by_nombre',
         ]
-        read_only_fields = ['id', 'updated_at', 'css_variables', 'temas_disponibles']
+        read_only_fields = ['id', 'updated_at', 'css_variables', 'temas_disponibles', 'logo_header_url', 'logo_pdf_url']
     
     def get_css_variables(self, obj):
         """Retorna las variables CSS para inyectar en el frontend"""
@@ -1182,6 +1209,24 @@ class ConfiguracionSistemaSerializer(serializers.ModelSerializer):
             {'id': tema[0], 'nombre': tema[1]} 
             for tema in ConfiguracionSistema.TEMAS_PREDEFINIDOS
         ]
+    
+    def get_logo_header_url(self, obj):
+        """Retorna la URL del logo del header si existe"""
+        if obj.logo_header:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.logo_header.url)
+            return obj.logo_header.url
+        return None
+    
+    def get_logo_pdf_url(self, obj):
+        """Retorna la URL del logo para PDF si existe"""
+        if obj.logo_pdf:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.logo_pdf.url)
+            return obj.logo_pdf.url
+        return None
     
     def validate_tema_activo(self, value):
         """Valida que el tema sea válido"""
