@@ -167,19 +167,20 @@ def _obtener_estilos_institucionales():
 
 def _crear_tabla_institucional(data, col_widths=None, header=True):
     """Crea una tabla con estilo institucional - fondo transparente para ver imagen de fondo"""
-    table = Table(data, colWidths=col_widths)
+    table = Table(data, colWidths=col_widths, repeatRows=1 if header else 0)
     
     estilos = [
         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
         ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
         ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+        ('WORDWRAP', (0, 0), (-1, -1), True),
     ]
     
     if header:
@@ -189,7 +190,6 @@ def _crear_tabla_institucional(data, col_widths=None, header=True):
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 9),
             ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-            # Sin ROWBACKGROUNDS para mantener transparencia
         ])
     
     table.setStyle(TableStyle(estilos))
@@ -264,21 +264,34 @@ def generar_reporte_inventario(productos_data, formato='pdf', filtros=None):
     elements.append(fecha_info)
     elements.append(Spacer(1, 0.2*inch))
     
-    # Tabla de datos
-    data = [['Clave', 'Descripción', 'Stock Actual', 'Stock Mín.', 'Nivel', 'Unidad']]
+    # Estilo para celdas de texto largo
+    estilo_celda = ParagraphStyle(
+        'CeldaTexto',
+        parent=styles['Normal'],
+        fontSize=7,
+        leading=9,
+        wordWrap='CJK',
+    )
+    
+    # Tabla de datos con Paragraph para texto largo
+    data = [['Clave', 'Descripción', 'Stock', 'Mín.', 'Nivel', 'Unidad']]
     
     for producto in productos_data:
         nivel = str(producto.get('nivel', producto.get('nivel_stock', 'N/A'))).upper()
+        descripcion = str(producto.get('descripcion', ''))
+        # Usar Paragraph para la descripción para que se ajuste automáticamente
+        desc_paragraph = Paragraph(descripcion, estilo_celda)
         data.append([
             str(producto.get('clave', '')),
-            str(producto.get('descripcion', ''))[:45],
+            desc_paragraph,
             str(producto.get('stock_actual', 0)),
             str(producto.get('stock_minimo', 0)),
             nivel,
             str(producto.get('unidad', producto.get('unidad_medida', '')))
         ])
     
-    col_widths = [0.8*inch, 2.8*inch, 0.8*inch, 0.7*inch, 0.8*inch, 0.6*inch]
+    # Ajustar anchos: más espacio para descripción, menos para números
+    col_widths = [0.85*inch, 3.2*inch, 0.55*inch, 0.45*inch, 0.55*inch, 0.55*inch]
     table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
     elements.append(Spacer(1, 0.3*inch))
@@ -399,14 +412,25 @@ def generar_reporte_caducidades(lotes_data, dias=30, filtros=None):
     lotes_titulo = Paragraph("DETALLE DE LOTES", styles['SeccionTitulo'])
     elements.append(lotes_titulo)
     
-    data = [['Producto', 'Lote', 'Caducidad', 'Días', 'Cantidad', 'Estado']]
+    # Estilo para celdas de texto largo
+    estilo_celda = ParagraphStyle(
+        'CeldaTextoLotes',
+        parent=styles['Normal'],
+        fontSize=7,
+        leading=9,
+        wordWrap='CJK',
+    )
+    
+    data = [['Producto', 'Lote', 'Caducidad', 'Días', 'Cant.', 'Estado']]
     
     for lote in lotes_data:
         alerta = str(lote.get('alerta', lote.get('estado_caducidad', 'N/A'))).upper()
         dias_restantes = lote.get('dias_restantes', lote.get('dias_para_caducar', 'N/A'))
+        producto_desc = str(lote.get('producto_descripcion', lote.get('producto', '')))
+        producto_paragraph = Paragraph(producto_desc, estilo_celda)
         
         data.append([
-            str(lote.get('producto_descripcion', lote.get('producto', '')))[:30],
+            producto_paragraph,
             str(lote.get('numero_lote', '')),
             lote.get('fecha_caducidad', ''),
             str(dias_restantes),
@@ -414,7 +438,7 @@ def generar_reporte_caducidades(lotes_data, dias=30, filtros=None):
             alerta
         ])
     
-    col_widths = [2.2*inch, 1*inch, 0.9*inch, 0.5*inch, 0.7*inch, 0.9*inch]
+    col_widths = [2.5*inch, 1*inch, 0.85*inch, 0.45*inch, 0.55*inch, 0.8*inch]
     table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
     
@@ -511,19 +535,33 @@ def generar_reporte_requisiciones(requisiciones_data, filtros=None):
     req_titulo = Paragraph("DETALLE DE REQUISICIONES", styles['SeccionTitulo'])
     elements.append(req_titulo)
     
+    # Estilo para celdas de texto largo
+    estilo_celda = ParagraphStyle(
+        'CeldaTextoReq',
+        parent=styles['Normal'],
+        fontSize=7,
+        leading=9,
+        wordWrap='CJK',
+    )
+    
     data = [['Folio', 'Centro', 'Estado', 'Fecha', 'Items', 'Solicitante']]
     
     for req in requisiciones_data:
+        centro_nombre = str(req.get('centro_nombre', req.get('centro', '')))
+        centro_paragraph = Paragraph(centro_nombre, estilo_celda)
+        solicitante = str(req.get('usuario_solicita', req.get('solicitante', '')))
+        solicitante_paragraph = Paragraph(solicitante, estilo_celda)
+        
         data.append([
             str(req.get('folio', '')),
-            str(req.get('centro_nombre', req.get('centro', '')))[:25],
+            centro_paragraph,
             str(req.get('estado', '')).upper(),
             str(req.get('fecha_solicitud', ''))[:10],
             str(req.get('total_items', req.get('total_productos', 0))),
-            str(req.get('usuario_solicita', req.get('solicitante', '')))[:15]
+            solicitante_paragraph
         ])
     
-    col_widths = [1*inch, 2*inch, 0.9*inch, 0.9*inch, 0.5*inch, 1.2*inch]
+    col_widths = [1*inch, 1.9*inch, 0.75*inch, 0.8*inch, 0.45*inch, 1.25*inch]
     table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
     
@@ -620,23 +658,36 @@ def generar_reporte_movimientos(movimientos_data, filtros=None):
     mov_titulo = Paragraph("DETALLE DE MOVIMIENTOS", styles['SeccionTitulo'])
     elements.append(mov_titulo)
     
-    data = [['Fecha', 'Tipo', 'Producto', 'Lote', 'Cantidad', 'Usuario']]
+    # Estilo para celdas de texto largo
+    estilo_celda = ParagraphStyle(
+        'CeldaTextoMov',
+        parent=styles['Normal'],
+        fontSize=7,
+        leading=9,
+        wordWrap='CJK',
+    )
+    
+    data = [['Fecha', 'Tipo', 'Producto', 'Lote', 'Cant.', 'Usuario']]
     
     for mov in movimientos_data:
         tipo = str(mov.get('tipo', '')).upper()
         cantidad = mov.get('cantidad', 0)
         signo = '+' if cantidad >= 0 else ''
+        producto = str(mov.get('producto_clave', mov.get('producto', '')))
+        producto_paragraph = Paragraph(producto, estilo_celda)
+        usuario = str(mov.get('usuario', ''))
+        usuario_paragraph = Paragraph(usuario, estilo_celda)
         
         data.append([
             str(mov.get('fecha_movimiento', mov.get('fecha', '')))[:16],
             tipo,
-            str(mov.get('producto_clave', mov.get('producto', '')))[:20],
+            producto_paragraph,
             str(mov.get('numero_lote', mov.get('lote', '')))[:12],
             f"{signo}{cantidad}",
-            str(mov.get('usuario', ''))[:15]
+            usuario_paragraph
         ])
     
-    col_widths = [1.1*inch, 0.7*inch, 1.8*inch, 1*inch, 0.7*inch, 1.2*inch]
+    col_widths = [1*inch, 0.6*inch, 2*inch, 0.9*inch, 0.55*inch, 1.1*inch]
     table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
     
@@ -738,6 +789,15 @@ def generar_reporte_auditoria(auditoria_data, filtros=None):
     detalle_titulo = Paragraph("DETALLE DE AUDITORÍA", styles['SeccionTitulo'])
     elements.append(detalle_titulo)
     
+    # Estilo para celdas de texto largo
+    estilo_celda = ParagraphStyle(
+        'CeldaTextoAudit',
+        parent=styles['Normal'],
+        fontSize=7,
+        leading=9,
+        wordWrap='CJK',
+    )
+    
     data = [['Fecha', 'Usuario', 'Acción', 'Módulo', 'Descripción', 'IP']]
     
     for log in auditoria_data:
@@ -747,16 +807,19 @@ def generar_reporte_auditoria(auditoria_data, filtros=None):
         else:
             fecha = str(fecha)[:16]
         
+        descripcion = str(log.get('objeto_repr', log.get('descripcion', '')))
+        descripcion_paragraph = Paragraph(descripcion, estilo_celda)
+        
         data.append([
             fecha,
             str(log.get('usuario', log.get('usuario_username', 'Sistema')))[:12],
-            str(log.get('accion', ''))[:10],
+            str(log.get('accion', ''))[:12],
             str(log.get('modelo', ''))[:15],
-            str(log.get('objeto_repr', log.get('descripcion', '')))[:30],
+            descripcion_paragraph,
             str(log.get('ip_address', log.get('ip', '')))[:15]
         ])
     
-    col_widths = [1.1*inch, 0.9*inch, 0.7*inch, 1*inch, 2*inch, 0.8*inch]
+    col_widths = [1*inch, 0.85*inch, 0.7*inch, 0.9*inch, 2.1*inch, 0.7*inch]
     table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
     
@@ -809,22 +872,34 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
         prod_titulo = Paragraph("INFORMACIÓN DEL PRODUCTO", styles['SeccionTitulo'])
         elements.append(prod_titulo)
         
+        # Estilo para descripción larga
+        estilo_desc = ParagraphStyle(
+            'DescProd',
+            parent=styles['Normal'],
+            fontSize=8,
+            leading=10,
+            wordWrap='CJK',
+        )
+        descripcion = str(producto_info.get('descripcion', 'N/A'))
+        desc_paragraph = Paragraph(descripcion, estilo_desc)
+        
         prod_data = [
-            ['Clave:', str(producto_info.get('clave', 'N/A')), 'Descripción:', str(producto_info.get('descripcion', 'N/A'))[:40]],
+            ['Clave:', str(producto_info.get('clave', 'N/A')), 'Descripción:', desc_paragraph],
             ['Unidad:', str(producto_info.get('unidad_medida', 'N/A')), 'Precio:', f"${producto_info.get('precio_unitario', 0):.2f}" if producto_info.get('precio_unitario') else 'N/A'],
             ['Stock Actual:', str(producto_info.get('stock_actual', 0)), 'Stock Mínimo:', str(producto_info.get('stock_minimo', 0))],
         ]
         
-        prod_table = Table(prod_data, colWidths=[1.2*inch, 2.3*inch, 1.2*inch, 2.3*inch])
+        prod_table = Table(prod_data, colWidths=[1.1*inch, 2.4*inch, 1.1*inch, 2.4*inch])
         prod_table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
             ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
             ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
             ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
-            ('LEFTPADDING', (0, 0), (-1, -1), 6),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ]))
         elements.append(prod_table)
         elements.append(Spacer(1, 0.2*inch))
@@ -881,7 +956,16 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
     historial_titulo = Paragraph("HISTORIAL DE MOVIMIENTOS", styles['SeccionTitulo'])
     elements.append(historial_titulo)
     
-    data = [['Fecha', 'Tipo', 'Lote', 'Cantidad', 'Centro/Destino', 'Usuario', 'Referencia']]
+    # Estilo para celdas de texto largo
+    estilo_celda = ParagraphStyle(
+        'CeldaTextoTraz',
+        parent=styles['Normal'],
+        fontSize=7,
+        leading=9,
+        wordWrap='CJK',
+    )
+    
+    data = [['Fecha', 'Tipo', 'Lote', 'Cant.', 'Centro/Destino', 'Usuario', 'Referencia']]
     
     for mov in trazabilidad_data:
         fecha = mov.get('fecha', mov.get('fecha_movimiento', ''))
@@ -894,17 +978,22 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
         tipo = str(mov.get('tipo', '')).upper()
         signo = '+' if tipo == 'ENTRADA' else ('-' if tipo == 'SALIDA' else '')
         
+        centro = str(mov.get('centro_nombre', mov.get('centro', mov.get('destino', ''))))
+        centro_paragraph = Paragraph(centro, estilo_celda)
+        referencia = str(mov.get('documento_referencia', mov.get('referencia', '')))
+        ref_paragraph = Paragraph(referencia, estilo_celda)
+        
         data.append([
             fecha,
             tipo[:8],
             str(mov.get('numero_lote', mov.get('lote', '')))[:12],
             f"{signo}{cantidad}",
-            str(mov.get('centro_nombre', mov.get('centro', mov.get('destino', ''))))[:15],
+            centro_paragraph,
             str(mov.get('usuario', mov.get('usuario_username', '')))[:12],
-            str(mov.get('documento_referencia', mov.get('referencia', '')))[:15]
+            ref_paragraph
         ])
     
-    col_widths = [1*inch, 0.6*inch, 0.9*inch, 0.6*inch, 1.2*inch, 0.9*inch, 1.1*inch]
+    col_widths = [0.95*inch, 0.55*inch, 0.85*inch, 0.5*inch, 1.3*inch, 0.85*inch, 1.15*inch]
     table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
     
