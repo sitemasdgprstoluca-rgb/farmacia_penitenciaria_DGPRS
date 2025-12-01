@@ -30,6 +30,7 @@ class E2EFlujosCompletos(TestCase):
             username="farmacia",
             password="test123",
             is_staff=True,
+            rol="farmacia",  # Rol necesario para acceder a reportes
         )
         self.centro_user = User.objects.create_user(
             username="centro_user",
@@ -174,17 +175,17 @@ class E2EFlujosCompletos(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(resp.data["first_name"], "Juan")
         
-        # Cambiar contraseña
+        # Cambiar contraseña (debe tener 8+ chars, mayúscula y número)
         resp = self.client.post("/api/usuarios/me/change-password/", {
             "old_password": "test123",
-            "new_password": "newpass123",
-            "confirm_password": "newpass123"
+            "new_password": "NewPass123",
+            "confirm_password": "NewPass123"
         })
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         
         # Verificar nueva contraseña
         self.client.credentials()
-        self._auth("centro_user", "newpass123")
+        self._auth("centro_user", "NewPass123")
         resp = self.client.get("/api/usuarios/me/")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
 
