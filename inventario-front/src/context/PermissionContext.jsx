@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { PermissionContext } from './contexts';
 import apiClient, { authAPI } from '../services/api';
-import { getAccessToken, setAccessToken, hasAccessToken, migrateFromLocalStorage } from '../services/tokenManager';
+import { setAccessToken, hasAccessToken, migrateFromLocalStorage } from '../services/tokenManager';
 
 /**
  * Roles soportados por el front:

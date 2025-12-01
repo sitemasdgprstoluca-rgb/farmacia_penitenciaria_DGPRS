@@ -759,7 +759,7 @@ function Usuarios() {
                   {showPermisosAvanzados && (
                     <div className="bg-gray-50 rounded-lg p-5 space-y-4">
                       <p className="text-xs text-gray-600">
-                        Configure permisos especficos para este usuario. Dejar en "Por defecto" usa los permisos del rol asignado.
+                        Configure permisos especficos para este usuario. Dejar en &quot;Por defecto&quot; usa los permisos del rol asignado.
                       </p>
                       
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

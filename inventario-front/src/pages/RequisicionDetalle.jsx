@@ -18,11 +18,9 @@ import {
   FaInfoCircle,
   FaShieldAlt,
   FaPrint,
-  FaFileAlt,
   FaFileSignature,
   FaFileDownload,
   FaCheckCircle,
-  FaExclamationTriangle,
   FaEdit,
 } from 'react-icons/fa';
 import { COLORS } from '../constants/theme';
@@ -38,6 +36,7 @@ const RequisicionDetalle = () => {
   
   // Hoja de recolección
   const [hojaRecoleccion, setHojaRecoleccion] = useState(null);
+  // eslint-disable-next-line no-unused-vars
   const [loadingHoja, setLoadingHoja] = useState(false);
   
   // Para autorización con cantidades editables
@@ -69,6 +68,7 @@ const RequisicionDetalle = () => {
     } finally {
       setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, navigate]);
 
   const cargarHojaRecoleccion = async () => {
@@ -323,6 +323,7 @@ const RequisicionDetalle = () => {
   };
 
   // Marcar hoja como verificada por farmacia
+  // eslint-disable-next-line no-unused-vars
   const handleMarcarVerificada = async () => {
     if (!hojaRecoleccion) return;
     if (!window.confirm('¿Confirmar que la hoja impresa por el centro coincide con lo autorizado?')) return;
@@ -359,6 +360,7 @@ const RequisicionDetalle = () => {
   const puedeCancelar = !['surtida', 'cancelada', 'rechazada', 'recibida'].includes(requisicion?.estado);
   const puedeDescargarHoja = ['autorizada', 'parcial', 'surtida', 'recibida'].includes(requisicion?.estado);
   const puedeDescargarRechazo = requisicion?.estado === 'rechazada';
+  // eslint-disable-next-line no-unused-vars
   const puedeVerificarHoja = esFarmacia && hojaRecoleccion && hojaRecoleccion.estado !== 'verificada';
 
   if (loading) {

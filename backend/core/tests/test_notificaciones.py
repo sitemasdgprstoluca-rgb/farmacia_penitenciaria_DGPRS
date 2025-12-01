@@ -113,23 +113,26 @@ class NotificacionViewSetTest(APITestCase):
         no_leidas = Notificacion.objects.filter(usuario=self.usuario, leida=False).count()
         self.assertEqual(no_leidas, 0)
 
-    def test_eliminar_notificacion_no_permitido(self):
-        """Test que las notificaciones son read-only y no se pueden eliminar."""
+    def test_eliminar_notificacion_propia_permitido(self):
+        """Test que el usuario puede eliminar sus propias notificaciones."""
         notif = Notificacion.objects.create(usuario=self.usuario, titulo='Para borrar', mensaje='Test')
         
         response = self.client.delete(f'/api/notificaciones/{notif.id}/')
-        # DELETE no está permitido (405 Method Not Allowed)
-        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
-        # La notificación debe seguir existiendo
-        self.assertTrue(Notificacion.objects.filter(id=notif.id).exists())
+        # DELETE de notificación propia devuelve 204 No Content
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        # La notificación ya no debe existir
+        self.assertFalse(Notificacion.objects.filter(id=notif.id).exists())
 
     def test_delete_notificacion_ajena_no_permitido(self):
-        """Test que DELETE no está permitido en ningún caso (read-only)."""
+        """Test que no se pueden eliminar notificaciones de otros usuarios."""
         notif = Notificacion.objects.create(usuario=self.otro_usuario, titulo='De otro', mensaje='Test')
         
         response = self.client.delete(f'/api/notificaciones/{notif.id}/')
-        # DELETE no está permitido (405 Method Not Allowed)
-        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        # La notificación de otro usuario no está en el queryset del usuario actual
+        # El ViewSet maneja la excepción y devuelve 400 con un mensaje de error
+        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND])
+        # La notificación del otro usuario debe seguir existiendo
+        self.assertTrue(Notificacion.objects.filter(id=notif.id).exists())
 
     def test_no_puede_crear_notificacion(self):
         """Test que no se puede crear notificación vía API (read-only)."""

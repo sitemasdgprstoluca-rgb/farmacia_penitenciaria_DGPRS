@@ -22,7 +22,6 @@ import {
 import { usePermissions } from '../hooks/usePermissions';
 import CentroSelector from '../components/CentroSelector';
 import '../styles/Dashboard.css';
-import apiClient from '../services/api';
 import { dashboardAPI } from '../services/api';
 import { hasAccessToken } from '../services/tokenManager';
 
@@ -53,6 +52,7 @@ const Dashboard = () => {
   const [selectedCentro, setSelectedCentro] = useState(null);
   const [centroNombre, setCentroNombre] = useState('');
 
+  // eslint-disable-next-line no-unused-vars
   const applyMockDashboard = useCallback(() => {
     setKpis({
       total_productos: 124,

@@ -12,8 +12,7 @@ import { toast } from 'react-hot-toast';
 import { 
   getAccessToken, 
   setAccessToken, 
-  clearTokens,
-  migrateFromLocalStorage 
+  clearTokens
 } from './tokenManager';
 
 const apiBaseUrl = (

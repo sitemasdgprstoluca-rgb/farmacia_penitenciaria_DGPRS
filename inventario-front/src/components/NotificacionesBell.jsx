@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { toast } from "react-hot-toast";
 import { notificacionesAPI } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
@@ -11,7 +11,7 @@ const NotificacionesBell = () => {
   const dropdownRef = useRef(null);
   const botonRef = useRef(null);
 
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     if (!user) return;
     setCargando(true);
     try {
@@ -24,14 +24,14 @@ const NotificacionesBell = () => {
     } finally {
       setCargando(false);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
     cargar();
     const id = setInterval(cargar, 30000);
     return () => clearInterval(id);
-  }, [user]);
+  }, [user, cargar]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {

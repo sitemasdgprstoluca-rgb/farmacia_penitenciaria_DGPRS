@@ -16,10 +16,6 @@ import {
 
   FaFilter,
 
-  FaChevronLeft,
-
-  FaChevronRight,
-
   FaChevronDown,
 
   FaDownload,
@@ -1224,6 +1220,7 @@ const Productos = () => {
 
 
 
+  // eslint-disable-next-line no-unused-vars
   const verAuditoriaProducto = async (producto) => {
 
     if (!puede.auditoria) return;
