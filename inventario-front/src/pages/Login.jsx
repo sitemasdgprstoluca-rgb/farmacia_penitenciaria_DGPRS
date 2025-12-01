@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast';
 import { FaShieldAlt, FaUser, FaLock, FaSignInAlt } from 'react-icons/fa';
 import { authAPI } from '../services/api';
 import { usePermissions } from '../hooks/usePermissions';
+import { setAccessToken, clearTokens } from '../services/tokenManager';
 
 function Login() {
   const [credentials, setCredentials] = useState({ username: '', password: '' });
@@ -12,13 +13,13 @@ function Login() {
   const navigate = useNavigate();
   const { recargarUsuario } = usePermissions();
 
-  const persistSession = (user, accessToken, refreshToken) => {
+  const persistSession = (user, accessToken) => {
+    // Access token se guarda en memoria (tokenManager) para seguridad
     if (accessToken) {
-      localStorage.setItem('token', accessToken);
+      setAccessToken(accessToken);
     }
-    if (refreshToken) {
-      localStorage.setItem('refresh_token', refreshToken);
-    }
+    // Refresh token se maneja automáticamente via cookie HttpOnly
+    // Solo guardamos datos del usuario en localStorage (no sensible)
     if (user) {
       localStorage.setItem('user', JSON.stringify(user));
     }
@@ -35,7 +36,7 @@ function Login() {
       userPayload = meResponse.data;
     }
 
-    persistSession(userPayload, accessToken, refresh);
+    persistSession(userPayload, accessToken);
     return userPayload;
   };
 
@@ -52,8 +53,8 @@ function Login() {
       toast.success('Inicio de sesión exitoso');
       navigate('/dashboard');
     } catch (error) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('refresh_token');
+      // Limpiar tokens usando tokenManager (no localStorage directo)
+      clearTokens();
       localStorage.removeItem('user');
       if (error.response?.status === 401 || error.response?.status === 400) {
         setErrorMessage('Usuario o contraseña incorrectos');

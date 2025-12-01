@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { PermissionContext } from './contexts';
-import apiClient from '../services/api';
+import apiClient, { authAPI } from '../services/api';
+import { getAccessToken, setAccessToken, hasAccessToken, migrateFromLocalStorage } from '../services/tokenManager';
 
 /**
  * Roles soportados por el front:
@@ -217,20 +218,34 @@ export function PermissionProvider({ children }) {
 
   const cargarUsuario = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setLoading(false);
-        return;
+      // Primero intentar migrar tokens viejos de localStorage
+      migrateFromLocalStorage();
+      
+      // Si no hay token en memoria, intentar refresh con cookie
+      if (!hasAccessToken()) {
+        try {
+          // El refresh token está en cookie HttpOnly, el servidor lo lee automáticamente
+          const refreshResponse = await authAPI.refresh();
+          if (refreshResponse.data?.access) {
+            setAccessToken(refreshResponse.data.access);
+          } else {
+            setLoading(false);
+            return;
+          }
+        } catch (refreshError) {
+          // No hay sesión válida
+          setLoading(false);
+          return;
+        }
       }
 
-      const response = await apiClient.get('/usuarios/me/', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
+      // Cargar datos del usuario (el interceptor añade el token automáticamente)
+      const response = await apiClient.get('/usuarios/me/');
       hydrateFromUser(response.data);
     } catch (error) {
       console.error('Error al cargar usuario:', error);
-      localStorage.removeItem('token');
+      // Limpiar datos de sesión inválida
+      localStorage.removeItem('user');
     } finally {
       setLoading(false);
     }
