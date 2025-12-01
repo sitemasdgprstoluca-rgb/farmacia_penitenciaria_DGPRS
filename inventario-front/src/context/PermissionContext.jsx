@@ -216,24 +216,35 @@ export function PermissionProvider({ children }) {
     }
   }, []);
 
-  const cargarUsuario = useCallback(async () => {
+  const cargarUsuario = useCallback(async (forceRefresh = false) => {
     try {
       // Primero intentar migrar tokens viejos de localStorage
       migrateFromLocalStorage();
       
-      // Si no hay token en memoria, intentar refresh con cookie
+      // Si no hay token en memoria Y hay evidencia de sesión previa, intentar refresh
       if (!hasAccessToken()) {
+        // Solo intentar refresh si hay usuario guardado o se fuerza
+        const storedUser = localStorage.getItem('user');
+        if (!storedUser && !forceRefresh) {
+          // No hay sesión previa, no intentar refresh
+          setLoading(false);
+          return;
+        }
+        
         try {
           // El refresh token está en cookie HttpOnly, el servidor lo lee automáticamente
           const refreshResponse = await authAPI.refresh();
           if (refreshResponse.data?.access) {
             setAccessToken(refreshResponse.data.access);
           } else {
+            // Refresh falló, limpiar datos de usuario
+            localStorage.removeItem('user');
             setLoading(false);
             return;
           }
         } catch (refreshError) {
-          // No hay sesión válida
+          // No hay sesión válida, limpiar datos
+          localStorage.removeItem('user');
           setLoading(false);
           return;
         }
