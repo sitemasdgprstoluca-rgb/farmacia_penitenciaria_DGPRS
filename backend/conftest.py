@@ -11,7 +11,10 @@ def pytest_configure():
     settings.TESTING = True
 
 
-# NOTE: Do not override django_db_setup - let pytest-django handle it
+# NOTE: Do not override django_db_setup fixture. The previous implementation
+# was empty and prevented pytest-django from properly setting up the test
+# database. Letting pytest-django handle database setup ensures proper
+# table creation, test isolation, and transaction rollback between tests.
 
 
 @pytest.fixture
