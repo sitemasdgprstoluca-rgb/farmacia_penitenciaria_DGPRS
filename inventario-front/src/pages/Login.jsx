@@ -57,13 +57,13 @@ function Login() {
       clearTokens();
       localStorage.removeItem('user');
       if (error.response?.status === 401 || error.response?.status === 400) {
-        setErrorMessage('Usuario o contraseña incorrectos');
+        setErrorMessage('Credenciales inválidas');
       } else if (error.response?.status === 404) {
-        setErrorMessage('Usuario no existe');
+        setErrorMessage('Credenciales inválidas');
       } else if (error.response?.data?.non_field_errors) {
         setErrorMessage(error.response.data.non_field_errors[0]);
       } else {
-        setErrorMessage('Error al iniciar sesión');
+        setErrorMessage('Credenciales inválidas');
       }
       toast.error('No fue posible iniciar sesión');
     } finally {
@@ -80,12 +80,25 @@ function Login() {
     >
       <div className="max-w-md w-full mx-auto">
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-white rounded-full mb-4 shadow-lg">
-            <FaShieldAlt className="text-4xl" style={{ color: '#9F2241' }} />
+          {/* Logo Oficial del Gobierno del Estado de México */}
+          <div className="inline-flex items-center justify-center bg-white rounded-lg mb-4 shadow-lg p-3">
+            <img 
+              src="/logo-gobierno.png" 
+              alt="Gobierno del Estado de México - Seguridad" 
+              className="h-16 w-auto object-contain"
+              onError={(e) => {
+                // Fallback al icono si la imagen no carga
+                e.target.style.display = 'none';
+                e.target.nextSibling.style.display = 'flex';
+              }}
+            />
+            <div className="hidden items-center justify-center w-14 h-14 bg-white rounded-full">
+              <FaShieldAlt className="text-3xl" style={{ color: '#9F2241' }} />
+            </div>
           </div>
-          <h1 className="text-4xl font-bold text-white mb-2">Sistema de Farmacia</h1>
-          <p className="text-lg text-pink-100">Control de Abasto Penitenciario</p>
-          <p className="text-white text-base mt-2 font-medium">Subsecretaría de Seguridad</p>
+          <h1 className="text-3xl font-bold text-white mb-2">Sistema de Farmacia Penitenciaria</h1>
+          <p className="text-lg text-pink-100">Control de Abasto de Medicamentos</p>
+          <p className="text-white text-sm mt-2 font-medium">Subsecretaría de Seguridad - Estado de México</p>
         </div>
 
         <div
@@ -167,9 +180,9 @@ function Login() {
         </div>
 
         <div className="text-center mt-6 text-white text-sm space-y-1">
-          <p className="font-bold text-base">Sistema de Control de Abasto</p>
-          <p className="font-semibold">Subsecretaría de Seguridad</p>
-          <p className="text-xs text-pink-100">Gobierno del Estado de México • 2025</p>
+          <p className="font-bold text-base">Sistema Integral de Farmacia Penitenciaria</p>
+          <p className="font-semibold">Gobierno del Estado de México</p>
+          <p className="text-xs text-pink-100">Subsecretaría de Seguridad • 2025</p>
         </div>
       </div>
     </div>

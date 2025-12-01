@@ -111,10 +111,10 @@ const Lotes = () => {
 
   const nivelCaducidad = [
     { value: '', label: 'Todas las caducidades' },
-    { value: 'vencido', label: 'Vencidos' },
-    { value: 'critico', label: 'Crítico (≤7 días)' },
-    { value: 'proximo', label: 'Próximo (≤30 días)' },
-    { value: 'normal', label: 'Normal (>30 días)' }
+    { value: 'vencido', label: '🔴 Vencidos' },
+    { value: 'critico', label: '🔴 Crítico (< 3 meses)' },
+    { value: 'proximo', label: '🟡 Próximo (3-6 meses)' },
+    { value: 'normal', label: '🟢 Normal (> 6 meses)' }
   ];
 
   useEffect(() => {

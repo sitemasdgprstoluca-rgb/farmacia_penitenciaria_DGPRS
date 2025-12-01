@@ -500,18 +500,23 @@ class Lote(models.Model):
     
     def alerta_caducidad(self):
         """
-        Retorna nivel de alerta por caducidad
-        Returns: 'critico' | 'proximo' | 'normal' | 'vencido'
+        Retorna nivel de alerta por caducidad según especificación SIFP:
+        - 🟢 'normal': > 6 meses (más de 180 días)
+        - 🟡 'proximo': Entre 3 y 6 meses (90-180 días)
+        - 🔴 'critico': < 3 meses (menos de 90 días)
+        - 🔴 'vencido': Caducado (días < 0)
+        
+        Returns: 'vencido' | 'critico' | 'proximo' | 'normal'
         """
         dias = self.dias_para_caducar()
         
         if dias < 0:
             return 'vencido'
-        elif dias <= 7:
+        elif dias < 90:  # Menos de 3 meses - crítico (rojo)
             return 'critico'
-        elif dias <= 30:
+        elif dias < 180:  # Menos de 6 meses - próximo a vencer (amarillo)
             return 'proximo'
-        else:
+        else:  # Más de 6 meses - normal (verde)
             return 'normal'
     
     def soft_delete(self):

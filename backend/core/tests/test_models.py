@@ -110,28 +110,46 @@ class LoteModelTest(TestCase):
         self.assertTrue(lote.esta_caducado())
     
     def test_alerta_caducidad(self):
-        """Test de niveles de alerta de caducidad"""
-        # Lote próximo a caducar (15 días)
+        """Test de niveles de alerta de caducidad según especificación SIFP
+        
+        Umbrales:
+        - 🟢 'normal': > 6 meses (más de 180 días)
+        - 🟡 'proximo': Entre 3 y 6 meses (90-180 días)
+        - 🔴 'critico': < 3 meses (menos de 90 días)
+        - 🔴 'vencido': Caducado (días < 0)
+        """
+        # Lote próximo a caducar (120 días = entre 3 y 6 meses)
         lote_proximo = Lote.objects.create(
             producto=self.producto,
             numero_lote='LOT-PROXIMO',
-            fecha_caducidad=date.today() + timedelta(days=15),
+            fecha_caducidad=date.today() + timedelta(days=120),
             cantidad_inicial=50,
             cantidad_actual=50
         )
         
         self.assertEqual(lote_proximo.alerta_caducidad(), 'proximo')
         
-        # Lote crítico (5 días)
+        # Lote crítico (60 días = menos de 3 meses)
         lote_critico = Lote.objects.create(
             producto=self.producto,
             numero_lote='LOT-CRITICO',
-            fecha_caducidad=date.today() + timedelta(days=5),
+            fecha_caducidad=date.today() + timedelta(days=60),
             cantidad_inicial=50,
             cantidad_actual=50
         )
         
         self.assertEqual(lote_critico.alerta_caducidad(), 'critico')
+        
+        # Lote normal (200 días = más de 6 meses)
+        lote_normal = Lote.objects.create(
+            producto=self.producto,
+            numero_lote='LOT-NORMAL',
+            fecha_caducidad=date.today() + timedelta(days=200),
+            cantidad_inicial=50,
+            cantidad_actual=50
+        )
+        
+        self.assertEqual(lote_normal.alerta_caducidad(), 'normal')
     
     def test_cantidad_actual_mayor_inicial(self):
         """No se permite cantidad actual > cantidad inicial"""

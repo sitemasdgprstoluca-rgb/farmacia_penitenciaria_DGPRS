@@ -32,6 +32,8 @@ const Movimientos = lazy(() => import('./pages/Movimientos'));
 const Notificaciones = lazy(() => import('./pages/Notificaciones'));
 const Perfil = lazy(() => import('./pages/Perfil'));
 const ConfiguracionTema = lazy(() => import('./pages/ConfiguracionTema'));
+const NotFound = lazy(() => import('./pages/NotFound'));
+const ServerError = lazy(() => import('./pages/ServerError'));
 
 // Componente de carga para Suspense
 const PageLoader = () => (
@@ -151,6 +153,10 @@ function App() {
               </PermissionsGuard>
             } />
           </Route>
+          
+          {/* Páginas de error */}
+          <Route path="/error" element={<ServerError />} />
+          <Route path="*" element={<NotFound />} />
           </Routes>
           </Suspense>
         </ThemeProvider>

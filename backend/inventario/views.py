@@ -1213,7 +1213,11 @@ class LoteViewSet(viewsets.ModelViewSet):
         if search and search.strip():
             queryset = queryset.filter(numero_lote__icontains=search)
         
-        # Filtrar por estado de caducidad
+        # Filtrar por estado de caducidad según especificación SIFP:
+        # 🟢 Normal: > 6 meses (180 días)
+        # 🟡 Próximo: 3-6 meses (90-180 días)
+        # 🔴 Crítico: < 3 meses (90 días)
+        # 🔴 Vencido: < 0 días
         caducidad = self.request.query_params.get('caducidad')
         if caducidad:
             from datetime import date, timedelta
@@ -1222,17 +1226,20 @@ class LoteViewSet(viewsets.ModelViewSet):
             if caducidad == 'vencido':
                 queryset = queryset.filter(fecha_caducidad__lt=hoy)
             elif caducidad == 'critico':
+                # Menos de 3 meses (< 90 días) pero no vencido
                 queryset = queryset.filter(
                     fecha_caducidad__gte=hoy,
-                    fecha_caducidad__lte=hoy + timedelta(days=7)
+                    fecha_caducidad__lt=hoy + timedelta(days=90)
                 )
             elif caducidad == 'proximo':
+                # Entre 3 y 6 meses (90-180 días)
                 queryset = queryset.filter(
-                    fecha_caducidad__gt=hoy + timedelta(days=7),
-                    fecha_caducidad__lte=hoy + timedelta(days=30)
+                    fecha_caducidad__gte=hoy + timedelta(days=90),
+                    fecha_caducidad__lt=hoy + timedelta(days=180)
                 )
             elif caducidad == 'normal':
-                queryset = queryset.filter(fecha_caducidad__gt=hoy + timedelta(days=30))
+                # Más de 6 meses (> 180 días)
+                queryset = queryset.filter(fecha_caducidad__gte=hoy + timedelta(days=180))
         
         # Filtrar por stock mínimo (para catálogo de requisiciones)
         stock_min = self.request.query_params.get('stock_min')
