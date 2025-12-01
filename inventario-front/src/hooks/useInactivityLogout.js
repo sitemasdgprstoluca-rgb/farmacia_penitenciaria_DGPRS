@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { setApiActivityHandler } from '../services/api';
+import { hasAccessToken, clearTokens } from '../services/tokenManager';
 
 const parseMinutes = (value, fallback) => {
   const parsed = Number(value);
@@ -16,8 +17,8 @@ export const useInactivityLogout = () => {
   const timeoutMs = timeoutMinutes * 60 * 1000;
 
   const clearSession = useCallback(() => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('refresh_token');
+    // Usar tokenManager para limpiar tokens en memoria
+    clearTokens();
     localStorage.removeItem('user');
   }, []);
 
@@ -29,7 +30,8 @@ export const useInactivityLogout = () => {
   }, [clearSession, navigate]);
 
   const resetTimer = useCallback(() => {
-    const hasSession = Boolean(localStorage.getItem('token') || localStorage.getItem('user'));
+    // Verificar sesión usando tokenManager o datos de usuario
+    const hasSession = hasAccessToken() || Boolean(localStorage.getItem('user'));
 
     if (!hasSession) {
       clearTimeout(timerRef.current);

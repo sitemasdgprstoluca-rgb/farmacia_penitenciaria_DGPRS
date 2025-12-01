@@ -386,7 +386,7 @@ IMPORT_ALLOWED_EXTENSIONS = ['.xlsx', '.xls']
 # ═══════════════════════════════════════════════════════════
 # Lee los orígenes permitidos desde una única variable de entorno
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='', cast=Csv())
-CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_CREDENTIALS = True  # IMPORTANTE: Permite envío de cookies cross-origin
 CORS_ALLOW_METHODS = [
     'DELETE',
     'GET',
@@ -405,6 +405,11 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
+]
+# Exponer headers necesarios al frontend
+CORS_EXPOSE_HEADERS = [
+    'content-disposition',
+    'content-type',
 ]
 
 # ═══════════════════════════════════════════════════════════

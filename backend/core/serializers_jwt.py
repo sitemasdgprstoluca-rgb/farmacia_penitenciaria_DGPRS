@@ -24,10 +24,12 @@ logger = logging.getLogger(__name__)
 
 # Configuración de cookies seguras
 REFRESH_TOKEN_COOKIE_NAME = 'refresh_token'
-REFRESH_TOKEN_COOKIE_PATH = '/api/'
-REFRESH_TOKEN_COOKIE_SECURE = not settings.DEBUG  # True en producción
+REFRESH_TOKEN_COOKIE_PATH = '/'  # Cambiado a / para compatibilidad cross-origin
+REFRESH_TOKEN_COOKIE_SECURE = not settings.DEBUG  # True en producción (requerido para SameSite=None)
 REFRESH_TOKEN_COOKIE_HTTPONLY = True
-REFRESH_TOKEN_COOKIE_SAMESITE = 'Lax'
+# SameSite=None permite cookies cross-origin (frontend en diferente dominio)
+# En desarrollo usamos Lax para evitar problemas con localhost
+REFRESH_TOKEN_COOKIE_SAMESITE = 'None' if not settings.DEBUG else 'Lax'
 # Duración del refresh token (7 días por defecto, configurable)
 REFRESH_TOKEN_COOKIE_MAX_AGE = settings.SIMPLE_JWT.get('REFRESH_TOKEN_LIFETIME').total_seconds()
 
