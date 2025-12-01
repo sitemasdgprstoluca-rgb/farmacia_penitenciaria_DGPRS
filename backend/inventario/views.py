@@ -643,7 +643,10 @@ class CentroViewSet(viewsets.ModelViewSet):
         """Filtra centros segun parametros"""
         queryset = Centro.objects.all()
         user = getattr(self.request, 'user', None)
-        if user and not user.is_superuser:
+        
+        # Admin, Farmacia y Superusuarios pueden ver todos los centros
+        # Otros usuarios solo ven su propio centro
+        if user and not user.is_superuser and not is_farmacia_or_admin(user):
             user_centro = self._user_centro(user)
             if user_centro:
                 queryset = queryset.filter(id=user_centro.id)
