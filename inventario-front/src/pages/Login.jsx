@@ -27,7 +27,7 @@ function Login() {
 
   const loginWithBackend = async (creds) => {
     const tokenResponse = await authAPI.login(creds);
-    const { access, refresh, token, user } = tokenResponse.data;
+    const { access, token, user } = tokenResponse.data;
     const accessToken = access || token;
     let userPayload = user || tokenResponse.data.usuario || null;
 

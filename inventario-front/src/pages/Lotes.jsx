@@ -10,8 +10,6 @@ import {
   FaFileUpload,
   FaExclamationTriangle,
   FaFilter,
-  FaChevronLeft,
-  FaChevronRight,
   FaWarehouse,
   FaFilePdf,
   FaDownload,
@@ -73,7 +71,6 @@ const Lotes = () => {
   const puedeVerGlobal = ['ADMIN', 'FARMACIA', 'VISTA'].includes(rolPrincipal) || permisos?.isSuperuser;
   // Solo ADMIN y FARMACIA pueden ver campos de contrato (para auditoría)
   const puedeVerContrato = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
-  const puedeSubirDocumento = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
   
   const [lotes, setLotes] = useState([]);
   const [productos, setProductos] = useState([]);
@@ -681,10 +678,6 @@ const handleImportar = async (e) => {
             totalItems={totalLotes}
             pageSize={pageSize}
             onPageChange={setCurrentPage}
-            onPageSizeChange={(size) => {
-              setPageSize(size);
-              setCurrentPage(1);
-            }}
           />
         )}
       </div>

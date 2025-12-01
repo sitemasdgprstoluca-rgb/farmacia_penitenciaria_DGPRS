@@ -1,5 +1,3 @@
-import React from 'react';
-
 function Pagination({
   page = 1,
   totalPages = 1,

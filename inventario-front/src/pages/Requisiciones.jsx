@@ -26,7 +26,6 @@ import {
   FaClipboardList,
   FaSearch,
   FaShoppingCart,
-  FaCheck,
   FaMinus,
   FaExclamationTriangle,
 } from 'react-icons/fa';
@@ -65,6 +64,7 @@ const Requisiciones = () => {
   const [productoBusqueda, setProductoBusqueda] = useState('');
   const [productoSeleccionado, setProductoSeleccionado] = useState(null);
   const [lotesProducto, setLotesProducto] = useState([]);
+  // eslint-disable-next-line no-unused-vars
   const [loadingLotes, setLoadingLotes] = useState(false);
   
   const [form, setForm] = useState({
@@ -287,6 +287,7 @@ const Requisiciones = () => {
   };
 
   // Cuando se selecciona un producto, cargar sus lotes disponibles
+  // eslint-disable-next-line no-unused-vars
   const seleccionarProducto = async (productoId) => {
     const prod = productos.find((p) => p.id === Number(productoId));
     if (!prod) return;
@@ -307,6 +308,7 @@ const Requisiciones = () => {
   };
 
   // Agregar item con lote seleccionado (viejo método - mantener compatibilidad)
+  // eslint-disable-next-line no-unused-vars
   const agregarItemConLote = (loteId) => {
     if (!productoSeleccionado) return;
     const lote = lotesProducto.find((l) => l.id === Number(loteId));
@@ -465,6 +467,7 @@ const Requisiciones = () => {
   // Total de items en carrito
   const totalItemsCarrito = form.items.reduce((sum, item) => sum + item.cantidad_solicitada, 0);
 
+  // eslint-disable-next-line no-unused-vars
   const cancelarSeleccionProducto = () => {
     setProductoSeleccionado(null);
     setLotesProducto([]);
@@ -647,6 +650,7 @@ const Requisiciones = () => {
     </ProtectedButton>
   );
 
+  // eslint-disable-next-line no-unused-vars
   const productosFiltrados = productos.filter((p) =>
     p.descripcion?.toLowerCase().includes(productoBusqueda.toLowerCase()) ||
     p.clave?.toLowerCase().includes(productoBusqueda.toLowerCase())

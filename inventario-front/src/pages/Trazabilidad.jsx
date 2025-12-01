@@ -453,7 +453,7 @@ const Trazabilidad = () => {
       {!loading && !resultados && (
         <div className="text-center py-8 bg-white rounded-lg shadow">
           <p className="text-gray-500">
-            Ingresa la clave de un producto o numero de lote y presiona "Buscar"
+            Ingresa la clave de un producto o numero de lote y presiona &quot;Buscar&quot;
           </p>
         </div>
       )}

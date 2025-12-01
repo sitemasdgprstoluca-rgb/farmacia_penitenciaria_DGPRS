@@ -44,6 +44,7 @@ const Centros = () => {
     activo: true
   });
 
+  // eslint-disable-next-line no-unused-vars
   const aplicarCentrosMock = useCallback(() => {
     let data = [...MOCK_CENTROS];
     if (searchTerm) {
@@ -83,7 +84,7 @@ const Centros = () => {
     } finally {
       setLoading(false);
     }
-  }, [aplicarCentrosMock, filtroEstado, searchTerm]);
+  }, [filtroEstado, searchTerm]);
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
