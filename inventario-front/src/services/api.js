@@ -234,7 +234,7 @@ export const centrosAPI = {
   delete: (id) => apiClient.delete(`/centros/${id}/`),
   plantilla: () => apiClient.get('/centros/plantilla/', { responseType: 'blob' }),
   exportar: (params) => apiClient.get('/centros/exportar-excel/', { params, responseType: 'blob' }),
-  importar: (formData) => apiClient.post('/centros/importar_excel/', formData, {
+  importar: (formData) => apiClient.post('/centros/importar/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
   inventario: (id) => apiClient.get(`/centros/${id}/inventario/`),

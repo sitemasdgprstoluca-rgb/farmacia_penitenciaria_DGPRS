@@ -410,7 +410,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
             traceback.print_exc()
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], url_path='exportar-excel')
     def exportar_excel(self, request):
         """
         Exporta todos los productos a un archivo Excel.
@@ -492,7 +492,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], url_path='importar-excel')
     def importar_excel(self, request):
         """
         Importa productos desde un archivo Excel.
@@ -843,7 +843,7 @@ class CentroViewSet(viewsets.ModelViewSet):
             'inventario': inventario
         })
     
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], url_path='exportar-excel')
     def exportar_excel(self, request):
         """
         Exporta todos los centros a Excel con formato profesional.
@@ -1382,6 +1382,11 @@ class LoteViewSet(viewsets.ModelViewSet):
         except Exception as exc:
             traceback.print_exc()
             return Response({'error': 'Error al exportar lotes', 'mensaje': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='exportar-excel')
+    def exportar_excel_lotes(self, request):
+        """Alias para exportar_excel con url_path correcto."""
+        return self.exportar_excel(request)
 
     @action(detail=False, methods=['post'], url_path='importar-excel')
     def importar_excel(self, request):
@@ -2782,8 +2787,13 @@ def dashboard_resumen(request):
         ultimos_movimientos = movimientos_queryset[:10]
         movimientos_data = []
         for mov in ultimos_movimientos:
-            producto_rel = getattr(mov.lote, 'producto', None)
-            lote_centro = getattr(mov.lote, 'centro', None)
+            # Validar que el lote existe antes de acceder a sus propiedades
+            lote = getattr(mov, 'lote', None)
+            if not lote:
+                continue  # Saltar movimientos huérfanos sin lote
+            
+            producto_rel = getattr(lote, 'producto', None)
+            lote_centro = getattr(lote, 'centro', None)
             mov_centro = getattr(mov, 'centro', None)
             requisicion = getattr(mov, 'requisicion', None)
             usuario = getattr(mov, 'usuario', None)
@@ -2801,7 +2811,7 @@ def dashboard_resumen(request):
                 'tipo_movimiento': mov.tipo.upper(),
                 'producto__descripcion': getattr(producto_rel, 'descripcion', 'N/A'),
                 'producto__clave': getattr(producto_rel, 'clave', 'N/A'),
-                'lote__codigo_lote': getattr(mov.lote, 'numero_lote', 'N/A'),
+                'lote__codigo_lote': getattr(lote, 'numero_lote', 'N/A'),
                 'cantidad': abs(mov.cantidad) if mov.tipo == 'salida' else mov.cantidad,
                 'fecha_movimiento': mov.fecha.isoformat(),
                 'observaciones': mov.observaciones or '',
@@ -2898,7 +2908,7 @@ def dashboard_graficas(request):
                 'consumo': abs(total_salidas)  # Mantener para compatibilidad
             })
         
-        # 2. Stock por centro
+        # 2. Stock por centro - SIEMPRE mostrar todos los centros activos
         stock_por_centro = []
         if not filtrar_por_centro:
             # Stock en farmacia central (centro=NULL)
@@ -2907,24 +2917,24 @@ def dashboard_graficas(request):
                 estado='disponible',
                 deleted_at__isnull=True
             ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
-            if stock_farmacia > 0:
-                stock_por_centro.append({
-                    'centro': 'Farmacia Central',
-                    'stock': stock_farmacia
-                })
+            # Siempre agregar Farmacia Central
+            stock_por_centro.append({
+                'centro': 'Farmacia Central',
+                'stock': stock_farmacia
+            })
             
-            # Stock por cada centro
-            for centro in Centro.objects.filter(activo=True):
+            # Stock por cada centro - mostrar TODOS los centros activos
+            for centro in Centro.objects.filter(activo=True).order_by('nombre'):
                 stock = Lote.objects.filter(
                     centro=centro,
                     estado='disponible',
                     deleted_at__isnull=True
                 ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
-                if stock > 0:
-                    stock_por_centro.append({
-                        'centro': centro.nombre,  # nombre completo para evitar confusiones
-                        'stock': stock
-                    })
+                # Agregar todos los centros, incluso con stock 0
+                stock_por_centro.append({
+                    'centro': centro.nombre,
+                    'stock': stock
+                })
         else:
             # Usuario de centro: solo su stock
             if user_centro:

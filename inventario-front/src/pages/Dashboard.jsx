@@ -158,8 +158,7 @@ const Dashboard = () => {
   const handleCentroChange = (centroId, nombreCentro = '') => {
     setSelectedCentro(centroId);
     setCentroNombre(nombreCentro);
-    // Cargar de inmediato al cambiar, sin esperar al efecto
-    loadDashboard(centroId);
+    // El useEffect se encarga de cargar cuando selectedCentro cambia
   };
 
   const formatFecha = (fecha) =>
