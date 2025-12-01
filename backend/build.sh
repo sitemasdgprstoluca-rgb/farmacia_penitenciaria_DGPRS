@@ -29,7 +29,9 @@ admin, created = User.objects.update_or_create(
         'is_staff': True,
         'is_superuser': True,
         'is_active': True,
-        'rol': 'ADMIN',
+        'rol': 'admin_sistema',
+        'first_name': 'Administrador',
+        'last_name': 'Sistema',
     }
 )
 admin.set_password(admin_password)
