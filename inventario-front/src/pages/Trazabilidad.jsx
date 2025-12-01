@@ -181,15 +181,25 @@ const Trazabilidad = () => {
   const [resultados, setResultados] = useState(null);
 
   const handleExportarPdf = async () => {
-    if (!resultados || tipoBusqueda !== 'producto') {
-      toast.error('Primero busque un producto para exportar su trazabilidad');
+    if (!resultados) {
+      toast.error('Primero busque un producto o lote para exportar su trazabilidad');
       return;
     }
 
     setExportingPdf(true);
     try {
-      const response = await trazabilidadAPI.exportarPdf(codigoBusqueda);
-      descargarArchivo(response, `trazabilidad_${codigoBusqueda}_${new Date().toISOString().split('T')[0]}.pdf`);
+      let response;
+      let filename;
+      
+      if (tipoBusqueda === 'producto') {
+        response = await trazabilidadAPI.exportarPdf(codigoBusqueda);
+        filename = `trazabilidad_producto_${codigoBusqueda}_${new Date().toISOString().split('T')[0]}.pdf`;
+      } else {
+        response = await trazabilidadAPI.exportarLotePdf(codigoBusqueda);
+        filename = `trazabilidad_lote_${codigoBusqueda}_${new Date().toISOString().split('T')[0]}.pdf`;
+      }
+      
+      descargarArchivo(response, filename);
       toast.success('PDF de trazabilidad generado exitosamente');
     } catch (error) {
       console.error('Error al exportar PDF:', error);
@@ -479,26 +489,24 @@ const Trazabilidad = () => {
                   </p>
                 </div>
               </div>
-              {tipoBusqueda === 'producto' && (
-                <button
-                  onClick={handleExportarPdf}
-                  disabled={exportingPdf}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' }}
-                >
-                  {exportingPdf ? (
-                    <>
-                      <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                      Generando...
-                    </>
-                  ) : (
-                    <>
-                      <FaFilePdf />
-                      Exportar PDF
-                    </>
-                  )}
-                </button>
-              )}
+              <button
+                onClick={handleExportarPdf}
+                disabled={exportingPdf}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' }}
+              >
+                {exportingPdf ? (
+                  <>
+                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                    Generando...
+                  </>
+                ) : (
+                  <>
+                    <FaFilePdf />
+                    Exportar PDF
+                  </>
+                )}
+              </button>
             </div>
             {tipoBusqueda === 'producto' ? renderInfoProducto() : renderInfoLote()}
           </div>

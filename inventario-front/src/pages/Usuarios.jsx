@@ -254,8 +254,8 @@ function Usuarios() {
         payload.password = formData.password;
       }
       
-      // Solo admin puede configurar permisos personalizados
-      if (esAdmin || esSuperusuario) {
+      // Admin y Farmacia pueden configurar permisos personalizados
+      if (esAdmin || esFarmacia || esSuperusuario) {
         payload.perm_dashboard = formData.perm_dashboard;
         payload.perm_productos = formData.perm_productos;
         payload.perm_lotes = formData.perm_lotes;
@@ -320,7 +320,7 @@ function Usuarios() {
     }
     
     try {
-      await usuariosAPI.changePassword(editingUsuario.id, {
+      await usuariosAPI.cambiarPassword(editingUsuario.id, {
         new_password: passwordData.new_password
       });
       toast.success('Contrasea actualizada');
@@ -743,8 +743,8 @@ function Usuarios() {
                 </div>
               </div>
               
-              {/* Seccin de Permisos Avanzados - Solo visible para Admin */}
-              {(esAdmin || esSuperusuario) && (
+              {/* Seccin de Permisos Avanzados - Visible para Admin y Farmacia */}
+              {(esAdmin || esFarmacia || esSuperusuario) && (
                 <div className="border-t pt-4 mt-4">
                   <button
                     type="button"

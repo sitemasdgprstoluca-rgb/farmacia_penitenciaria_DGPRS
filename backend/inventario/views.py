@@ -2048,6 +2048,68 @@ class MovimientoViewSet(
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=False, methods=['get'], url_path='trazabilidad-lote-pdf')
+    def trazabilidad_lote_pdf(self, request):
+        """
+        Genera PDF de trazabilidad de un lote específico.
+        Parámetros: ?numero_lote=XXX
+        """
+        from core.utils.pdf_reports import generar_reporte_trazabilidad
+        
+        numero_lote = request.query_params.get('numero_lote')
+        if not numero_lote:
+            return Response({'error': 'Se requiere numero_lote'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        lote = Lote.objects.filter(numero_lote__iexact=numero_lote).select_related('producto', 'centro').first()
+        if not lote:
+            return Response({'error': 'Lote no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        
+        try:
+            # Obtener movimientos del lote
+            movimientos = Movimiento.objects.filter(
+                lote=lote
+            ).select_related('lote', 'centro', 'usuario').order_by('-fecha')[:100]
+            
+            trazabilidad_data = []
+            for mov in movimientos:
+                trazabilidad_data.append({
+                    'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
+                    'tipo': mov.tipo.upper(),
+                    'lote': mov.lote.numero_lote if mov.lote else 'N/A',
+                    'cantidad': mov.cantidad,
+                    'centro': mov.centro.nombre if mov.centro else 'Farmacia Central',
+                    'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
+                    'observaciones': mov.observaciones or ''
+                })
+            
+            producto_info = {
+                'clave': lote.producto.clave if lote.producto else 'N/A',
+                'descripcion': lote.producto.descripcion if lote.producto else 'N/A',
+                'unidad_medida': lote.producto.unidad_medida if lote.producto else 'N/A',
+                'stock_actual': lote.cantidad_actual,
+                'stock_minimo': lote.producto.stock_minimo if lote.producto else 0,
+                'numero_lote': lote.numero_lote,
+                'fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else 'N/A',
+                'proveedor': lote.proveedor or 'No especificado',
+            }
+            
+            pdf_buffer = generar_reporte_trazabilidad(trazabilidad_data, producto_info=producto_info)
+            
+            response = HttpResponse(
+                pdf_buffer.getvalue(),
+                content_type='application/pdf'
+            )
+            response['Content-Disposition'] = f'attachment; filename="Trazabilidad_Lote_{numero_lote}_{timezone.now().strftime("%Y%m%d")}.pdf"'
+            
+            return response
+            
+        except Exception as e:
+            traceback.print_exc()
+            return Response({
+                'error': 'Error al generar PDF de trazabilidad del lote',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @action(detail=False, methods=['get'], url_path='exportar-pdf')
     def exportar_pdf(self, request):
         """

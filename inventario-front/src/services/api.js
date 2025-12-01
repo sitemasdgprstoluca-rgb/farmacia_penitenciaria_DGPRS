@@ -340,6 +340,10 @@ export const trazabilidadAPI = {
     params: { producto_clave: clave }, 
     responseType: 'blob' 
   }),
+  exportarLotePdf: (numeroLote) => apiClient.get(`/movimientos/trazabilidad-lote-pdf/`, { 
+    params: { numero_lote: numeroLote }, 
+    responseType: 'blob' 
+  }),
 };
 
 // Dashboard
