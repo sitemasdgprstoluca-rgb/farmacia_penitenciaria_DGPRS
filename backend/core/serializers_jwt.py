@@ -85,6 +85,7 @@ class SecureTokenObtainPairView(TokenObtainPairView):
         response = Response(response_data, status=status.HTTP_200_OK)
         
         # Configurar refresh token como cookie HttpOnly
+        logger.info(f"[LOGIN] Configurando cookie: SameSite={REFRESH_TOKEN_COOKIE_SAMESITE}, Secure={REFRESH_TOKEN_COOKIE_SECURE}, Path={REFRESH_TOKEN_COOKIE_PATH}")
         response.set_cookie(
             key=REFRESH_TOKEN_COOKIE_NAME,
             value=refresh_token,
@@ -95,7 +96,7 @@ class SecureTokenObtainPairView(TokenObtainPairView):
             samesite=REFRESH_TOKEN_COOKIE_SAMESITE,
         )
         
-        logger.info(f"Login exitoso para usuario: {user_data.get('username', 'unknown')}")
+        logger.info(f"[LOGIN] Login exitoso para usuario: {user_data.get('username', 'unknown')}")
         return response
 
 
@@ -109,14 +110,24 @@ class SecureTokenRefreshView(APIView):
     permission_classes = [AllowAny]
     
     def post(self, request, *args, **kwargs):
+        # DEBUG: Log de cookies recibidas
+        logger.info(f"[REFRESH] Cookies recibidas: {list(request.COOKIES.keys())}")
+        logger.info(f"[REFRESH] Origin: {request.headers.get('Origin', 'N/A')}")
+        logger.info(f"[REFRESH] Cookie config: SameSite={REFRESH_TOKEN_COOKIE_SAMESITE}, Secure={REFRESH_TOKEN_COOKIE_SECURE}")
+        
         # Obtener refresh token de la cookie
         refresh_token = request.COOKIES.get(REFRESH_TOKEN_COOKIE_NAME)
         
         if not refresh_token:
             # Fallback: intentar leer del body (para compatibilidad hacia atrás)
             refresh_token = request.data.get('refresh')
+            if refresh_token:
+                logger.info("[REFRESH] Token obtenido del body (fallback)")
+        else:
+            logger.info("[REFRESH] Token obtenido de cookie HttpOnly")
         
         if not refresh_token:
+            logger.warning("[REFRESH] No se encontró refresh token en cookie ni body")
             return Response(
                 {'error': 'No se encontró token de refresh'},
                 status=status.HTTP_401_UNAUTHORIZED
