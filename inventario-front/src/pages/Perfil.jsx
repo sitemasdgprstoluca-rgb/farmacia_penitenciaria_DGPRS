@@ -4,6 +4,9 @@ import { toast } from "react-hot-toast";
 import { usuariosAPI } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
 
+// Tiempo de espera antes de redirigir al login tras cambio de contraseña (ms)
+const PASSWORD_CHANGE_LOGOUT_DELAY = 2000;
+
 function Perfil() {
   const { user, permisos, recargarUsuario } = usePermissions();
   const [perfil, setPerfil] = useState(null);
@@ -73,11 +76,31 @@ function Perfil() {
       toast.error("Las contraseñas nuevas no coinciden");
       return;
     }
+    // Validar reglas de contraseña según especificación SIFP
+    if (passForm.new_password.length < 8) {
+      toast.error("La contraseña debe tener mínimo 8 caracteres");
+      return;
+    }
+    if (!/[A-Z]/.test(passForm.new_password)) {
+      toast.error("La contraseña debe tener al menos una mayúscula");
+      return;
+    }
+    if (!/[0-9]/.test(passForm.new_password)) {
+      toast.error("La contraseña debe tener al menos un número");
+      return;
+    }
     setPasswordLoading(true);
     try {
       await usuariosAPI.cambiarPasswordPropio(passForm);
-      toast.success("Contraseña actualizada");
+      toast.success("Contraseña actualizada. Serás redirigido al login.");
       setPassForm({ old_password: "", new_password: "", confirm_password: "" });
+      // Según especificación: cerrar sesión forzosamente después de cambiar contraseña
+      setTimeout(() => {
+        localStorage.removeItem("token");
+        localStorage.removeItem("refresh_token");
+        localStorage.removeItem("user");
+        navigate("/login");
+      }, PASSWORD_CHANGE_LOGOUT_DELAY);
     } catch (error) {
       toast.error(error.response?.data?.error || "No se pudo cambiar la contraseña");
     } finally {
@@ -224,9 +247,18 @@ function Perfil() {
                 onChange={(e) => setPassForm((f) => ({ ...f, new_password: e.target.value }))}
                 className="mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
               />
-              <p className="mt-1 text-xs text-gray-500">
-                Mínimo 8 caracteres, una mayúscula y un número
-              </p>
+              {/* Indicadores de validación de contraseña */}
+              <div className="mt-2 space-y-1">
+                <p className={`text-xs flex items-center gap-1 ${passForm.new_password.length >= 8 ? 'text-green-600' : 'text-gray-400'}`}>
+                  {passForm.new_password.length >= 8 ? '✓' : '○'} Mínimo 8 caracteres
+                </p>
+                <p className={`text-xs flex items-center gap-1 ${/[A-Z]/.test(passForm.new_password) ? 'text-green-600' : 'text-gray-400'}`}>
+                  {/[A-Z]/.test(passForm.new_password) ? '✓' : '○'} Al menos una mayúscula
+                </p>
+                <p className={`text-xs flex items-center gap-1 ${/[0-9]/.test(passForm.new_password) ? 'text-green-600' : 'text-gray-400'}`}>
+                  {/[0-9]/.test(passForm.new_password) ? '✓' : '○'} Al menos un número
+                </p>
+              </div>
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500">Confirmar nueva contraseña</label>
@@ -236,6 +268,12 @@ function Perfil() {
                 onChange={(e) => setPassForm((f) => ({ ...f, confirm_password: e.target.value }))}
                 className="mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
               />
+              {passForm.confirm_password && passForm.new_password !== passForm.confirm_password && (
+                <p className="mt-1 text-xs text-red-500">Las contraseñas no coinciden</p>
+              )}
+              {passForm.confirm_password && passForm.new_password === passForm.confirm_password && (
+                <p className="mt-1 text-xs text-green-600">✓ Las contraseñas coinciden</p>
+              )}
             </div>
             <button
               type="submit"
