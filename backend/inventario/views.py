@@ -2905,8 +2905,6 @@ def dashboard_resumen(request):
     - Usuarios de centro: solo ven datos de su centro
     - Admin/farmacia/vista: ven datos globales por defecto
     - Admin/farmacia/vista pueden usar ?centro=ID para filtrar por centro específico
-    
-    CACHE: Usa cache por centro cuando ?centro= está activo para evitar recálculo.
     """
     try:
         # SEGURIDAD: Filtrar por centro si el usuario no es admin/farmacia/vista
@@ -2916,99 +2914,106 @@ def dashboard_resumen(request):
         
         # Admin/farmacia/vista puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
-        if centro_param and is_farmacia_or_admin(user):
-            try:
-                user_centro = Centro.objects.get(pk=centro_param)
-                filtrar_por_centro = True
-            except Centro.DoesNotExist:
-                pass
+        if centro_param and centro_param not in ['', 'null', 'undefined', 'todos']:
+            if is_farmacia_or_admin(user):
+                try:
+                    user_centro = Centro.objects.get(pk=int(centro_param))
+                    filtrar_por_centro = True
+                except (Centro.DoesNotExist, ValueError, TypeError):
+                    pass
         
-        # Cache por centro cuando está activo el filtro
-        cache_key = f'dashboard_resumen_{user_centro.id if user_centro else "global"}'
-        cached_data = cache.get(cache_key)
-        if cached_data:
-            return Response(cached_data)
-        
+        # === PRODUCTOS ===
         total_productos = Producto.objects.filter(activo=True).count()
-        lotes_disponibles = Lote.objects.filter(estado='disponible', deleted_at__isnull=True)
         
-        # Aplicar filtro de centro a lotes
+        # === LOTES ===
+        lotes_query = Lote.objects.filter(
+            estado='disponible', 
+            deleted_at__isnull=True,
+            cantidad_actual__gt=0
+        )
+        
         if filtrar_por_centro and user_centro:
-            lotes_disponibles = lotes_disponibles.filter(centro=user_centro)
+            lotes_query = lotes_query.filter(centro=user_centro)
         
-        stock_total = lotes_disponibles.aggregate(total=Sum('cantidad_actual'))['total'] or 0
-        lotes_activos = lotes_disponibles.filter(cantidad_actual__gt=0).count()
+        stock_total = lotes_query.aggregate(
+            total=Coalesce(Sum('cantidad_actual'), 0, output_field=models.IntegerField())
+        )['total']
+        lotes_activos = lotes_query.count()
 
+        # === MOVIMIENTOS DEL MES ===
         inicio_mes = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        movimientos_queryset = Movimiento.objects.select_related(
-            'lote__producto', 'lote__centro', 'centro', 'requisicion', 'usuario'
-        ).order_by('-fecha')
         
-        # Aplicar filtro de centro a movimientos
+        movimientos_base = Movimiento.objects.all()
         if filtrar_por_centro and user_centro:
-            movimientos_queryset = movimientos_queryset.filter(lote__centro=user_centro)
+            movimientos_base = movimientos_base.filter(
+                models.Q(centro=user_centro) | models.Q(lote__centro=user_centro)
+            )
         
-        movimientos_mes = movimientos_queryset.filter(fecha__gte=inicio_mes).count()
+        movimientos_mes = movimientos_base.filter(fecha__gte=inicio_mes).count()
 
-        ultimos_movimientos = movimientos_queryset[:10]
+        # === ÚLTIMOS MOVIMIENTOS ===
+        ultimos_movimientos = movimientos_base.select_related(
+            'lote__producto', 'lote__centro', 'centro', 'requisicion', 'usuario'
+        ).order_by('-fecha')[:10]
+        
         movimientos_data = []
         for mov in ultimos_movimientos:
-            # Validar que el lote existe antes de acceder a sus propiedades
-            lote = getattr(mov, 'lote', None)
-            if not lote:
-                continue  # Saltar movimientos huérfanos sin lote
+            lote = mov.lote
+            producto_desc = 'N/A'
+            producto_clave = 'N/A'
+            lote_numero = 'N/A'
             
-            producto_rel = getattr(lote, 'producto', None)
-            lote_centro = getattr(lote, 'centro', None)
-            mov_centro = getattr(mov, 'centro', None)
-            requisicion = getattr(mov, 'requisicion', None)
-            usuario = getattr(mov, 'usuario', None)
+            if lote:
+                lote_numero = lote.numero_lote or 'N/A'
+                if lote.producto:
+                    producto_desc = lote.producto.descripcion or 'N/A'
+                    producto_clave = lote.producto.clave or 'N/A'
             
-            # Determinar origen/destino según tipo de movimiento
+            # Determinar origen/destino
+            lote_centro = lote.centro if lote else None
+            mov_centro = mov.centro
+            
             if mov.tipo == 'entrada':
-                origen = mov.documento_referencia or 'Proveedor/Farmacia Central'
+                origen = mov.documento_referencia or 'Proveedor'
                 destino = lote_centro.nombre if lote_centro else 'Farmacia Central'
-            else:  # salida
+            else:
                 origen = lote_centro.nombre if lote_centro else 'Farmacia Central'
-                destino = mov_centro.nombre if mov_centro else (requisicion.centro.nombre if requisicion and requisicion.centro else 'Consumo/Ajuste')
+                destino = mov_centro.nombre if mov_centro else 'Consumo/Ajuste'
             
             movimientos_data.append({
                 'id': mov.id,
                 'tipo_movimiento': mov.tipo.upper(),
-                'producto__descripcion': getattr(producto_rel, 'descripcion', 'N/A'),
-                'producto__clave': getattr(producto_rel, 'clave', 'N/A'),
-                'lote__codigo_lote': getattr(lote, 'numero_lote', 'N/A'),
-                'cantidad': abs(mov.cantidad) if mov.tipo == 'salida' else mov.cantidad,
-                'fecha_movimiento': mov.fecha.isoformat(),
+                'producto__descripcion': producto_desc,
+                'producto__clave': producto_clave,
+                'lote__codigo_lote': lote_numero,
+                'cantidad': abs(mov.cantidad),
+                'fecha_movimiento': mov.fecha.isoformat() if mov.fecha else None,
                 'observaciones': mov.observaciones or '',
                 'origen': origen,
                 'destino': destino,
-                'requisicion_folio': requisicion.folio if requisicion else None,
+                'requisicion_folio': mov.requisicion.folio if mov.requisicion else None,
                 'documento_referencia': mov.documento_referencia or None,
-                'usuario': usuario.get_full_name() or usuario.username if usuario else None,
+                'usuario': (mov.usuario.get_full_name() or mov.usuario.username) if mov.usuario else 'Sistema',
             })
 
-        response_data = {
+        return Response({
             'kpi': {
                 'total_productos': total_productos,
-                'stock_total': stock_total,
+                'stock_total': max(0, stock_total),
                 'lotes_activos': lotes_activos,
                 'movimientos_mes': movimientos_mes
             },
             'ultimos_movimientos': movimientos_data
-        }
+        })
         
-        # Guardar en cache por 5 minutos
-        cache.set(cache_key, response_data, 300)
-        
-        return Response(response_data)
     except Exception as exc:
         traceback.print_exc()
         return Response({
             'kpi': {'total_productos': 0, 'stock_total': 0, 'lotes_activos': 0, 'movimientos_mes': 0},
             'ultimos_movimientos': [],
-            'error': str(exc)
-        }, status=status.HTTP_200_OK)
+            'error': str(exc),
+            'debug': traceback.format_exc()
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
@@ -3022,84 +3027,107 @@ def dashboard_graficas(request):
     Admin/farmacia puede usar ?centro=ID para filtrar por centro específico.
     """
     try:
+        from dateutil.relativedelta import relativedelta
+        
         # SEGURIDAD: Determinar filtro de centro
         user = request.user
-        if not user or not user.is_authenticated:
-            return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_403_FORBIDDEN)
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
         # Admin/farmacia puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
-        if centro_param and is_farmacia_or_admin(user):
-            try:
-                user_centro = Centro.objects.get(pk=centro_param)
-                filtrar_por_centro = True
-            except Centro.DoesNotExist:
-                pass
+        if centro_param and centro_param not in ['', 'null', 'undefined', 'todos']:
+            if is_farmacia_or_admin(user):
+                try:
+                    user_centro = Centro.objects.get(pk=int(centro_param))
+                    filtrar_por_centro = True
+                except (Centro.DoesNotExist, ValueError, TypeError):
+                    pass
         
-        # Clave de caché única por centro y usuario
-        cache_key = f'dashboard_graficas_{user_centro.id if user_centro else "global"}'
-        cached = cache.get(cache_key)
-        if cached:
-            return Response(cached)
+        hoy = timezone.now().date()
         
-        # 1. Consumo mensual (últimos 6 meses) - con entradas y salidas
+        # =========================================
+        # 1. CONSUMO MENSUAL (ÚLTIMOS 6 MESES)
+        # =========================================
         consumo_mensual = []
-        for i in range(5, -1, -1):
-            fecha_inicio = (timezone.now() - timedelta(days=30*i)).replace(day=1)
-            if i > 0:
-                fecha_fin = (timezone.now() - timedelta(days=30*(i-1))).replace(day=1)
+        
+        for i in range(6):
+            # Calcular el mes (hace 5, 4, 3, 2, 1, 0 meses)
+            fecha_mes = hoy - relativedelta(months=5-i)
+            mes_inicio = fecha_mes.replace(day=1)
+            
+            # Calcular fin del mes
+            if fecha_mes.month == 12:
+                mes_fin = fecha_mes.replace(year=fecha_mes.year + 1, month=1, day=1)
             else:
-                fecha_fin = timezone.now()
+                mes_fin = fecha_mes.replace(month=fecha_mes.month + 1, day=1)
             
-            # Base queryset para el mes
-            movimientos_mes_base = Movimiento.objects.filter(
-                fecha__gte=fecha_inicio,
-                fecha__lt=fecha_fin
+            # Base query
+            mov_mes = Movimiento.objects.filter(
+                fecha__date__gte=mes_inicio,
+                fecha__date__lt=mes_fin
             )
+            
             if filtrar_por_centro and user_centro:
-                movimientos_mes_base = movimientos_mes_base.filter(lote__centro=user_centro)
+                mov_mes = mov_mes.filter(
+                    models.Q(centro=user_centro) | models.Q(lote__centro=user_centro)
+                )
             
-            # Calcular entradas
-            total_entradas = movimientos_mes_base.filter(tipo='entrada').aggregate(total=Sum('cantidad'))['total'] or 0
-            # Calcular salidas
-            total_salidas = movimientos_mes_base.filter(tipo='salida').aggregate(total=Sum('cantidad'))['total'] or 0
+            # Calcular entradas y salidas
+            entradas = mov_mes.filter(tipo='entrada').aggregate(
+                total=Coalesce(Sum('cantidad'), 0, output_field=models.IntegerField())
+            )['total']
             
-            mes_nombre = fecha_inicio.strftime('%b')
+            salidas = mov_mes.filter(tipo='salida').aggregate(
+                total=Coalesce(Sum('cantidad'), 0, output_field=models.IntegerField())
+            )['total']
+            
             consumo_mensual.append({
-                'mes': mes_nombre,
-                'entradas': abs(total_entradas),
-                'salidas': abs(total_salidas),
-                'consumo': abs(total_salidas)  # Mantener para compatibilidad
+                'mes': mes_inicio.strftime('%b'),
+                'entradas': max(0, abs(entradas)),
+                'salidas': max(0, abs(salidas)),
             })
         
-        # 2. Stock por centro - SIEMPRE mostrar todos los centros activos
+        # =========================================
+        # 2. STOCK POR CENTRO (TODOS LOS CENTROS)
+        # =========================================
         stock_por_centro = []
+        
         if not filtrar_por_centro:
-            # Stock en farmacia central (centro=NULL)
+            # Farmacia Central (lotes sin centro asignado)
             stock_farmacia = Lote.objects.filter(
                 centro__isnull=True,
                 estado='disponible',
-                deleted_at__isnull=True
-            ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
-            # Siempre agregar Farmacia Central
+                deleted_at__isnull=True,
+                cantidad_actual__gt=0
+            ).aggregate(
+                total=Coalesce(Sum('cantidad_actual'), 0, output_field=models.IntegerField())
+            )['total']
+            
             stock_por_centro.append({
                 'centro': 'Farmacia Central',
-                'stock': stock_farmacia
+                'stock': max(0, stock_farmacia)
             })
             
-            # Stock por cada centro - mostrar TODOS los centros activos
+            # Todos los centros activos
             for centro in Centro.objects.filter(activo=True).order_by('nombre'):
                 stock = Lote.objects.filter(
                     centro=centro,
                     estado='disponible',
-                    deleted_at__isnull=True
-                ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
-                # Agregar todos los centros, incluso con stock 0
+                    deleted_at__isnull=True,
+                    cantidad_actual__gt=0
+                ).aggregate(
+                    total=Coalesce(Sum('cantidad_actual'), 0, output_field=models.IntegerField())
+                )['total']
+                
+                # Truncar nombre largo
+                nombre = centro.nombre
+                if len(nombre) > 20:
+                    nombre = nombre[:17] + '...'
+                
                 stock_por_centro.append({
-                    'centro': centro.nombre,
-                    'stock': stock
+                    'centro': nombre,
+                    'stock': max(0, stock)
                 })
         else:
             # Usuario de centro: solo su stock
@@ -3107,49 +3135,51 @@ def dashboard_graficas(request):
                 stock = Lote.objects.filter(
                     centro=user_centro,
                     estado='disponible',
-                    deleted_at__isnull=True
-                ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+                    deleted_at__isnull=True,
+                    cantidad_actual__gt=0
+                ).aggregate(
+                    total=Coalesce(Sum('cantidad_actual'), 0, output_field=models.IntegerField())
+                )['total']
+                
                 stock_por_centro.append({
                     'centro': user_centro.nombre,
-                    'stock': stock
+                    'stock': max(0, stock)
                 })
         
-        # 3. Requisiciones por estado
-        requisiciones_por_estado = []
-        estados_count = {}
+        # =========================================
+        # 3. REQUISICIONES POR ESTADO
+        # =========================================
         requisiciones_qs = Requisicion.objects.all()
         if filtrar_por_centro and user_centro:
             requisiciones_qs = requisiciones_qs.filter(centro=user_centro)
         
-        for req in requisiciones_qs:
-            estado = req.estado.upper()
-            estados_count[estado] = estados_count.get(estado, 0) + 1
+        estados_agg = requisiciones_qs.values('estado').annotate(
+            cantidad=Count('id')
+        ).order_by('estado')
         
-        for estado, count in estados_count.items():
-            if count > 0:
+        requisiciones_por_estado = []
+        for item in estados_agg:
+            if item['cantidad'] > 0:
                 requisiciones_por_estado.append({
-                    'estado': estado,
-                    'cantidad': count
+                    'estado': item['estado'].upper(),
+                    'cantidad': item['cantidad']
                 })
         
-        result = {
+        return Response({
             'consumo_mensual': consumo_mensual,
             'stock_por_centro': stock_por_centro,
             'requisiciones_por_estado': requisiciones_por_estado
-        }
+        })
         
-        # Guardar en cache por 5 minutos
-        cache.set(cache_key, result, 300)
-        
-        return Response(result)
     except Exception as exc:
         traceback.print_exc()
         return Response({
             'consumo_mensual': [],
             'stock_por_centro': [],
             'requisiciones_por_estado': [],
-            'error': str(exc)
-        }, status=status.HTTP_200_OK)
+            'error': str(exc),
+            'debug': traceback.format_exc()
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
