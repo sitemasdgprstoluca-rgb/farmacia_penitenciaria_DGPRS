@@ -3646,6 +3646,11 @@ def reporte_inventario(request):
     
     SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
     Admin/farmacia puede usar ?centro=ID para filtrar.
+    
+    Parámetros:
+    - centro: ID del centro o 'central' para farmacia central
+    - nivel_stock: alto, bajo, normal, sin_stock
+    - formato: json (default), excel, pdf
     """
     try:
         if not request.user or not request.user.is_authenticated or not is_farmacia_or_admin(request.user):
@@ -3670,6 +3675,7 @@ def reporte_inventario(request):
                     pass
         
         formato = request.query_params.get('formato', 'json')
+        nivel_stock_filtro = request.query_params.get('nivel_stock', '').lower().strip()
         productos = Producto.objects.filter(activo=True).order_by('clave')
         
         # Construir datos
@@ -3704,6 +3710,10 @@ def reporte_inventario(request):
                 productos_bajo_minimo += 1
             elif stock_total < producto.stock_minimo * 1.5:
                 nivel = 'normal'
+            
+            # Filtrar por nivel_stock si se especificó
+            if nivel_stock_filtro and nivel != nivel_stock_filtro:
+                continue
 
             # Se incluye 'nivel_stock' para compatibilidad con el frontend
             datos.append({
@@ -4087,9 +4097,11 @@ def reporte_caducidades(request):
     SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
     Admin/farmacia puede usar ?centro=ID para filtrar.
     
-    Parametros:
-    - dias: Numero de dias de anticipacion (default: 30)
-    - centro: ID del centro (solo admin/farmacia)
+    Parámetros:
+    - dias: Número de días de anticipación (default: 30)
+    - centro: ID del centro o 'central' para farmacia central
+    - estado: vencido, critico, proximo (filtra por estado específico)
+    - formato: json (default), excel, pdf
     """
     try:
         # SEGURIDAD: Determinar filtro de centro
@@ -4098,6 +4110,21 @@ def reporte_caducidades(request):
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
         # Admin/farmacia puede filtrar por centro específico
+        centro_param = request.query_params.get('centro')
+        if centro_param and is_farmacia_or_admin(user):
+            if centro_param == 'central':
+                filtrar_por_centro = True
+                user_centro = None
+            else:
+                try:
+                    user_centro = Centro.objects.get(pk=centro_param)
+                    filtrar_por_centro = True
+                except Centro.DoesNotExist:
+                    pass
+        
+        dias = int(request.query_params.get('dias', 30))
+        formato = request.query_params.get('formato', 'json')
+        estado_filtro = request.query_params.get('estado', '').lower().strip()
         centro_param = request.query_params.get('centro')
         if centro_param and is_farmacia_or_admin(user):
             if centro_param == 'central':
@@ -4149,6 +4176,10 @@ def reporte_caducidades(request):
             else:
                 estado = 'proximo'
                 proximos += 1
+            
+            # Filtrar por estado si se especificó
+            if estado_filtro and estado != estado_filtro:
+                continue
             
             datos.append({
                 'producto': f"{lote.producto.clave} - {lote.producto.descripcion}",

@@ -457,6 +457,19 @@ const Reportes = () => {
                   ))}
                 </select>
               </div>
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-gray-700">Estado caducidad</label>
+                <select
+                  value={filtros.estado}
+                  onChange={(e) => handleFiltro("estado", e.target.value)}
+                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                >
+                  <option value="">Todos los estados</option>
+                  <option value="vencido">🔴 Vencido</option>
+                  <option value="critico">🟠 Crítico (≤7 días)</option>
+                  <option value="proximo">🟡 Próximo a vencer</option>
+                </select>
+              </div>
             </>
           )}
 
