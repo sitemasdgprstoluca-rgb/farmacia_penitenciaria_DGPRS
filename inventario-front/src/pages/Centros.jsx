@@ -184,11 +184,9 @@ const Centros = () => {
     
     setActionLoading(centro.id);
     try {
-      // Enviar solo campos mutables, no métricas ni campos de solo lectura
-      await centrosAPI.update(centro.id, { 
-        activo: nuevoEstado
-      });
-      toast.success(`Centro ${nuevoEstado ? 'activado' : 'desactivado'}`);
+      // Usar endpoint específico que solo cambia el estado activo
+      const response = await centrosAPI.toggleActivo(centro.id);
+      toast.success(response.data?.mensaje || `Centro ${nuevoEstado ? 'activado' : 'desactivado'}`);
       cargarCentros();
     } catch (error) {
       const errorMsg = error.response?.data?.error || 
