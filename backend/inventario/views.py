@@ -290,10 +290,11 @@ class ProductoViewSet(viewsets.ModelViewSet):
                         'lotes__cantidad_actual',
                         filter=Q(
                             lotes__deleted_at__isnull=True,
+                            lotes__estado='disponible',
                             lotes__cantidad_actual__gt=0
                         )
                     ),
-                    0.0
+                    0
                 )
             )
             status_val = stock_status.lower()
