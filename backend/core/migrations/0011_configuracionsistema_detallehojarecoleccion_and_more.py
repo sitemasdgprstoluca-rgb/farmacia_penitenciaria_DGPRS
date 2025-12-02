@@ -151,6 +151,20 @@ class SafeAlterUniqueTogether(migrations.AlterUniqueTogether):
     AlterUniqueTogether that handles missing constraints gracefully.
     Skips removal when constraint doesn't exist to avoid errors.
     """
+    _MISSING_CONSTRAINT_ERROR = "Found wrong number (0) of constraints"
+    
+    def _is_missing_constraint_error(self, error):
+        """Check if the error is due to missing constraints."""
+        return self._MISSING_CONSTRAINT_ERROR in str(error)
+    
+    def _columns_match_unique_set(self, constraint_columns, unique_set):
+        """Check if constraint columns match a unique_together set."""
+        # Try matching with _id suffix (foreign keys)
+        expected_with_id = {col if col.endswith('_id') else f'{col}_id' for col in unique_set}
+        if set(constraint_columns) == expected_with_id:
+            return True
+        # Also check without _id suffix
+        return set(constraint_columns) == set(unique_set)
     
     def database_forwards(self, app_label, schema_editor, from_state, to_state):
         # Get old and new unique_together values
@@ -173,16 +187,13 @@ class SafeAlterUniqueTogether(migrations.AlterUniqueTogether):
             has_constraints = False
             for constraint_name, constraint_info in constraints.items():
                 if constraint_info.get('unique', False) and not constraint_info.get('primary_key', False):
-                    # Check if the columns match any of the old unique_together
                     constraint_columns = tuple(constraint_info.get('columns', []))
                     for unique_set in old_unique_together:
-                        if set(constraint_columns) == set(f + '_id' if not c.endswith('_id') else c for c in unique_set for f in [c]):
+                        if self._columns_match_unique_set(constraint_columns, unique_set):
                             has_constraints = True
                             break
-                        # Also check without _id suffix
-                        if set(constraint_columns) == set(unique_set):
-                            has_constraints = True
-                            break
+                    if has_constraints:
+                        break
             
             # If no constraints exist, skip the operation
             if not has_constraints:
@@ -191,20 +202,14 @@ class SafeAlterUniqueTogether(migrations.AlterUniqueTogether):
         try:
             super().database_forwards(app_label, schema_editor, from_state, to_state)
         except ValueError as e:
-            # If we get "Found wrong number (0) of constraints" error, skip silently
-            if "Found wrong number (0) of constraints" in str(e):
-                pass
-            else:
+            if not self._is_missing_constraint_error(e):
                 raise
     
     def database_backwards(self, app_label, schema_editor, from_state, to_state):
         try:
             super().database_backwards(app_label, schema_editor, from_state, to_state)
         except ValueError as e:
-            # If we get "Found wrong number (0) of constraints" error, skip silently
-            if "Found wrong number (0) of constraints" in str(e):
-                pass
-            else:
+            if not self._is_missing_constraint_error(e):
                 raise
 
 
