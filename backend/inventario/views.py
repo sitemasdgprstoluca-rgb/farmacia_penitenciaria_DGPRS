@@ -2956,7 +2956,11 @@ def dashboard_resumen(request):
                 Q(centro=user_centro) | Q(lote__centro=user_centro)
             )
         
+        # Contar movimientos del mes actual
         movimientos_mes = movimientos_base.filter(fecha__gte=inicio_mes).count()
+        
+        # Si no hay movimientos este mes, mostrar total general como referencia
+        total_movimientos = movimientos_base.count() if movimientos_mes == 0 else movimientos_mes
 
         # === ÚLTIMOS MOVIMIENTOS ===
         ultimos_movimientos = movimientos_base.select_related(
@@ -3008,7 +3012,7 @@ def dashboard_resumen(request):
                 'total_productos': total_productos,
                 'stock_total': max(0, stock_total),
                 'lotes_activos': lotes_activos,
-                'movimientos_mes': movimientos_mes
+                'movimientos_mes': total_movimientos  # Usa total si no hay del mes actual
             },
             'ultimos_movimientos': movimientos_data
         })
@@ -3096,7 +3100,7 @@ def dashboard_graficas(request):
             })
         
         # =========================================
-        # 2. STOCK POR CENTRO (TODOS LOS CENTROS)
+        # 2. STOCK POR CENTRO (TODOS LOS CENTROS CON STOCK > 0)
         # =========================================
         stock_por_centro = []
         
@@ -3111,12 +3115,14 @@ def dashboard_graficas(request):
                 total=Coalesce(Sum('cantidad_actual'), 0, output_field=IntegerField())
             )['total']
             
-            stock_por_centro.append({
-                'centro': 'Farmacia Central',
-                'stock': max(0, stock_farmacia)
-            })
+            # Solo agregar Farmacia Central si tiene stock
+            if stock_farmacia > 0:
+                stock_por_centro.append({
+                    'centro': 'Farmacia Central',
+                    'stock': stock_farmacia
+                })
             
-            # Todos los centros activos
+            # Todos los centros activos CON STOCK
             for centro in Centro.objects.filter(activo=True).order_by('nombre'):
                 stock = Lote.objects.filter(
                     centro=centro,
@@ -3127,15 +3133,17 @@ def dashboard_graficas(request):
                     total=Coalesce(Sum('cantidad_actual'), 0, output_field=IntegerField())
                 )['total']
                 
-                # Truncar nombre largo
-                nombre = centro.nombre
-                if len(nombre) > 20:
-                    nombre = nombre[:17] + '...'
-                
-                stock_por_centro.append({
-                    'centro': nombre,
-                    'stock': max(0, stock)
-                })
+                # Solo agregar centros con stock > 0
+                if stock > 0:
+                    # Truncar nombre largo
+                    nombre = centro.nombre
+                    if len(nombre) > 20:
+                        nombre = nombre[:17] + '...'
+                    
+                    stock_por_centro.append({
+                        'centro': nombre,
+                        'stock': stock
+                    })
         else:
             # Usuario de centro: solo su stock
             if user_centro:
