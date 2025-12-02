@@ -416,12 +416,14 @@ class ProductoViewSet(viewsets.ModelViewSet):
         """
         Activa o desactiva un producto.
         POST /api/productos/{id}/toggle-activo/
+        Usa update() directo para evitar validación de otros campos.
         """
         try:
             producto = self.get_object()
             nuevo_estado = not producto.activo
-            producto.activo = nuevo_estado
-            producto.save(update_fields=['activo'])
+            
+            # Usar update() directo para evitar validación de otros campos
+            Producto.objects.filter(pk=producto.pk).update(activo=nuevo_estado)
             
             estado = 'activado' if nuevo_estado else 'desactivado'
             return Response({
