@@ -15,8 +15,13 @@ const Movimientos = () => {
   
   // Detectar si puede ver todos los centros o solo el suyo
   const rolPrincipal = getRolPrincipal();
+  const esAdminOFarmacia = ['ADMIN', 'FARMACIA'].includes(rolPrincipal);
   const puedeVerTodosCentros = ['ADMIN', 'FARMACIA', 'VISTA'].includes(rolPrincipal);
-  const centroUsuario = user?.centro || user?.centro_id;
+  const centroUsuario = user?.centro?.id || user?.centro || user?.centro_id;
+  
+  // Permisos específicos para acciones
+  const puedeRegistrarMovimiento = esAdminOFarmacia && permisos?.verMovimientos;
+  const puedeExportar = esAdminOFarmacia && permisos?.verMovimientos;
   
   const [movimientos, setMovimientos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,13 +31,15 @@ const Movimientos = () => {
   const [expandedId, setExpandedId] = useState(highlightId || null);
 
   // Filtros aplicados (los que realmente se envían al backend)
-  // Si el usuario tiene centro asignado, pre-filtrar por su centro
+  // Si el usuario tiene centro asignado (no es admin/farmacia), pre-filtrar por su centro
+  const centroInicial = !puedeVerTodosCentros && centroUsuario ? centroUsuario.toString() : "";
+  
   const [filtrosAplicados, setFiltrosAplicados] = useState({
     fecha_inicio: "",
     fecha_fin: "",
     tipo: "",
     producto: "",
-    centro: "",
+    centro: centroInicial,
     lote: "",
     search: "",
   });
@@ -43,7 +50,7 @@ const Movimientos = () => {
     fecha_fin: "",
     tipo: "",
     producto: "",
-    centro: "",
+    centro: centroInicial,
     lote: "",
     search: "",
   });
@@ -147,6 +154,20 @@ const Movimientos = () => {
   useEffect(() => {
     cargarCatalogos();
   }, [cargarCatalogos]);
+
+  // Sincronizar filtro de centro cuando el usuario se hidrata tardíamente
+  // Esto evita que usuarios de centro vean movimientos de otros centros durante carga inicial
+  useEffect(() => {
+    if (!puedeVerTodosCentros && centroUsuario) {
+      const centroStr = centroUsuario.toString();
+      if (filtros.centro !== centroStr) {
+        setFiltros(prev => ({ ...prev, centro: centroStr }));
+      }
+      if (filtrosAplicados.centro !== centroStr) {
+        setFiltrosAplicados(prev => ({ ...prev, centro: centroStr }));
+      }
+    }
+  }, [centroUsuario, puedeVerTodosCentros]);
 
   // Solo recargar cuando cambia la página o los filtros APLICADOS
   useEffect(() => {
@@ -305,12 +326,14 @@ const Movimientos = () => {
   };
 
   const limpiarFiltros = () => {
+    // Mantener filtro de centro para usuarios que no pueden ver todos
+    const centroFijo = !puedeVerTodosCentros && centroUsuario ? centroUsuario.toString() : "";
     const filtrosVacios = {
       fecha_inicio: "",
       fecha_fin: "",
       tipo: "",
       producto: "",
-      centro: "",
+      centro: centroFijo,
       lote: "",
       search: "",
     };
@@ -328,6 +351,8 @@ const Movimientos = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+          {/* Formulario de registro - solo para admin/farmacia */}
+          {puedeRegistrarMovimiento ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <h2 className="text-xl font-semibold text-gray-800 mb-4">Nuevo movimiento</h2>
 
@@ -432,8 +457,14 @@ const Movimientos = () => {
               </button>
             </div>
           </div>
+          ) : (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h2 className="text-xl font-semibold text-gray-500 mb-2">Registro no disponible</h2>
+            <p className="text-gray-400 text-sm">No tienes permisos para registrar movimientos.</p>
+          </div>
+          )}
 
-          <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200">
+          <div className={`${puedeRegistrarMovimiento ? 'lg:col-span-2' : 'lg:col-span-3'} bg-white rounded-xl shadow-sm border border-gray-200`}
             <div className="px-6 py-4 border-b border-gray-200 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-gray-800">Movimientos</h3>
@@ -443,6 +474,8 @@ const Movimientos = () => {
                       ⚠ Filtros sin aplicar
                     </span>
                   )}
+                  {puedeExportar && (
+                  <>
                   <button
                     onClick={exportarPdf}
                     className="text-sm px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
@@ -459,6 +492,8 @@ const Movimientos = () => {
                   >
                     {exporting === 'excel' ? "Generando..." : "Exportar Excel"}
                   </button>
+                  </>
+                  )}
                   <button
                     onClick={cargarMovimientos}
                     className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"

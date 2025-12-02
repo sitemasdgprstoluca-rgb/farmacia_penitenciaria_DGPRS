@@ -214,11 +214,9 @@ export function PermissionProvider({ children }) {
     }
     const baseGroups = userData.groups || (userData.grupos || []).map((name) => ({ name }));
     setGrupos(baseGroups);
-    if (userData.permisos && typeof userData.permisos === 'object') {
-      setPermisos(userData.permisos);
-    } else {
-      setPermisos(calcularPermisos(userData, baseGroups));
-    }
+    // SIEMPRE usar calcularPermisos para incluir flags derivados (role, isAdmin, isFarmaciaAdmin, etc.)
+    // calcularPermisos ya mezcla userData.permisos del backend con los flags calculados
+    setPermisos(calcularPermisos(userData, baseGroups));
   }, []);
 
   const cargarUsuario = useCallback(async (forceRefresh = false) => {
