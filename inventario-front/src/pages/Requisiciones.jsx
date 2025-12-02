@@ -273,6 +273,11 @@ const Requisiciones = () => {
   };
 
   const abrirModalCrear = () => {
+    // Validar permisos antes de abrir
+    if (!permisos?.crearRequisicion) {
+      toast.error('No tienes permisos para crear requisiciones');
+      return;
+    }
     resetForm();
     setEditRequisicion(null);
     cargarCatalogoLotes(); // Cargar catálogo al abrir
@@ -280,6 +285,16 @@ const Requisiciones = () => {
   };
 
   const abrirModalEditar = (req) => {
+    // Validar permisos antes de abrir
+    if (!permisos?.editarRequisicion) {
+      toast.error('No tienes permisos para editar requisiciones');
+      return;
+    }
+    // Solo permitir editar borradores propios o cualquier borrador si es admin/farmacia
+    if (req.estado !== 'borrador' && req.estado !== 'BORRADOR') {
+      toast.error('Solo se pueden editar requisiciones en estado borrador');
+      return;
+    }
     const items = (req.detalles || req.items || []).map((d) => ({
       producto: d.producto || d.producto_id,
       producto_clave: d.producto_clave || d.producto?.clave,
@@ -533,6 +548,22 @@ const Requisiciones = () => {
 
   const guardarRequisicion = async (enviar = false) => {
     if (isSubmitting) return; // Prevenir doble envío
+    
+    // Validar permisos antes de continuar
+    const esEdicion = !!editRequisicion;
+    if (esEdicion && !permisos?.editarRequisicion) {
+      toast.error('No tienes permisos para editar requisiciones');
+      return;
+    }
+    if (!esEdicion && !permisos?.crearRequisicion) {
+      toast.error('No tienes permisos para crear requisiciones');
+      return;
+    }
+    if (enviar && !permisos?.enviarRequisicion) {
+      toast.error('No tienes permisos para enviar requisiciones');
+      return;
+    }
+    
     if (!form.items.length) {
       toast.error('Agrega al menos un producto');
       return;
@@ -1441,17 +1472,42 @@ const Requisiciones = () => {
               </button>
               
               <div className="flex gap-3">
+                {/* Botón guardar borrador - requiere permiso crear/editar */}
                 <button
+                  type="button"
                   onClick={() => guardarRequisicion(false)}
-                  disabled={isSubmitting || form.items.length === 0}
+                  disabled={
+                    isSubmitting || 
+                    form.items.length === 0 ||
+                    (editRequisicion ? !permisos?.editarRequisicion : !permisos?.crearRequisicion)
+                  }
+                  title={
+                    editRequisicion 
+                      ? (!permisos?.editarRequisicion ? 'No tienes permisos para editar' : '')
+                      : (!permisos?.crearRequisicion ? 'No tienes permisos para crear' : '')
+                  }
                   className="px-5 py-2 rounded-lg border-2 font-semibold hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   style={{ borderColor: COLORS.vino, color: COLORS.vino }}
                 >
                   {isSubmitting ? 'Guardando...' : 'Guardar borrador'}
                 </button>
+                {/* Botón guardar y enviar - requiere permiso crear/editar + enviar */}
                 <button
+                  type="button"
                   onClick={() => guardarRequisicion(true)}
-                  disabled={isSubmitting || form.items.length === 0}
+                  disabled={
+                    isSubmitting || 
+                    form.items.length === 0 ||
+                    !permisos?.enviarRequisicion ||
+                    (editRequisicion ? !permisos?.editarRequisicion : !permisos?.crearRequisicion)
+                  }
+                  title={
+                    !permisos?.enviarRequisicion 
+                      ? 'No tienes permisos para enviar requisiciones' 
+                      : (editRequisicion 
+                          ? (!permisos?.editarRequisicion ? 'No tienes permisos para editar' : '')
+                          : (!permisos?.crearRequisicion ? 'No tienes permisos para crear' : ''))
+                  }
                   className="px-5 py-2 rounded-lg text-white font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   style={{ backgroundColor: COLORS.vino }}
                 >

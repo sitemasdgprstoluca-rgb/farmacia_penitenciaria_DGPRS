@@ -413,19 +413,25 @@ const Productos = () => {
   const esFarmaciaAdmin = esAdmin || esFarmacia; // Admin o Farmacia pueden gestionar productos
   const esCentroUser = rolPrincipal === 'CENTRO';
   const esVistaUser = rolPrincipal === 'VISTA';
+  
+  // Verificar si el usuario tiene el permiso verProductos del backend
+  // (puede ser false si tiene restricción personalizada aunque sea admin/farmacia)
+  const tienePermisoProductos = permisos?.verProductos !== false;
 
   const puede = useMemo(() => ({
-    ver: permisos?.verProductos || esFarmaciaAdmin,
-    crear: esFarmaciaAdmin,
-    editar: esFarmaciaAdmin,
-    eliminar: esFarmaciaAdmin,
-    exportar: esFarmaciaAdmin || esVistaUser,
-    importar: esFarmaciaAdmin,
-    cambiarEstado: esFarmaciaAdmin,
+    // Para ver productos: debe tener permiso Y (ser farmacia/admin O ser vista)
+    ver: tienePermisoProductos && (esFarmaciaAdmin || esVistaUser),
+    // Para acciones de escritura: debe tener permiso de productos Y ser farmacia/admin
+    crear: tienePermisoProductos && esFarmaciaAdmin,
+    editar: tienePermisoProductos && esFarmaciaAdmin,
+    eliminar: tienePermisoProductos && esFarmaciaAdmin,
+    exportar: tienePermisoProductos && (esFarmaciaAdmin || esVistaUser),
+    importar: tienePermisoProductos && esFarmaciaAdmin,
+    cambiarEstado: tienePermisoProductos && esFarmaciaAdmin,
     verSoloActivos: esCentroUser || esVistaUser,
-    soloLectura: esCentroUser || esVistaUser,
-    auditoria: esFarmaciaAdmin,
-  }), [permisos, esFarmaciaAdmin, esCentroUser, esVistaUser]);
+    soloLectura: !esFarmaciaAdmin || !tienePermisoProductos,
+    auditoria: tienePermisoProductos && esFarmaciaAdmin,
+  }), [tienePermisoProductos, esFarmaciaAdmin, esCentroUser, esVistaUser]);
 
 
 
