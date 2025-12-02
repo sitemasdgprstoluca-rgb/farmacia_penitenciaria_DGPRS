@@ -27,7 +27,6 @@ const Centros = lazy(() => import('./pages/Centros'));
 const Usuarios = lazy(() => import('./pages/Usuarios'));
 const Reportes = lazy(() => import('./pages/Reportes'));
 const Trazabilidad = lazy(() => import('./pages/Trazabilidad'));
-const Auditoria = lazy(() => import('./pages/Auditoria'));
 const Movimientos = lazy(() => import('./pages/Movimientos'));
 const Notificaciones = lazy(() => import('./pages/Notificaciones'));
 const Perfil = lazy(() => import('./pages/Perfil'));
@@ -130,11 +129,6 @@ function App() {
             <Route path="trazabilidad" element={
               <PermissionsGuard requiredPermission="verTrazabilidad">
                 <Trazabilidad />
-              </PermissionsGuard>
-            } />
-            <Route path="auditoria" element={
-              <PermissionsGuard requiredPermission="verAuditoria">
-                <Auditoria />
               </PermissionsGuard>
             } />
             <Route path="notificaciones" element={
