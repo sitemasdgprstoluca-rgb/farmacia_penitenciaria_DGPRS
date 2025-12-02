@@ -14,15 +14,37 @@ const ROLES = [
   { value: 'vista', label: 'Consulta' }
 ];
 
+// Constantes de validación de contraseña
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+const PASSWORD_REQUIREMENTS = 'Mínimo 8 caracteres, 1 mayúscula, 1 minúscula y 1 número';
+
+// Jerarquía de roles (menor número = mayor jerarquía)
+const ROL_JERARQUIA = {
+  'admin_sistema': 1,
+  'admin': 2,
+  'farmacia': 3,
+  'centro': 4,
+  'vista': 5
+};
+
+// Extensiones y tamaño máximo para importación
+const IMPORT_ALLOWED_EXTENSIONS = ['.xlsx', '.xls'];
+const IMPORT_MAX_FILE_SIZE_MB = 10;
+
 function Usuarios() {
   const [usuarios, setUsuarios] = useState([]);
   const [filteredUsuarios, setFilteredUsuarios] = useState([]);
   const [centros, setCentros] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(null); // ID del usuario en acción
   const [showModal, setShowModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showPermisosAvanzados, setShowPermisosAvanzados] = useState(false);
   const [editingUsuario, setEditingUsuario] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null); // Usuario actual logueado
   const fileInputRef = useRef(null);
   const { permisos, getRolPrincipal } = usePermissions();
   
@@ -42,6 +64,7 @@ function Usuarios() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRol, setFilterRol] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
+  const [filterCentro, setFilterCentro] = useState('');
   
   const [formData, setFormData] = useState({
     username: '',
@@ -76,7 +99,17 @@ function Usuarios() {
   useEffect(() => {
     cargarUsuarios();
     cargarCentros();
+    obtenerUsuarioActual();
   }, []);
+
+  const obtenerUsuarioActual = async () => {
+    try {
+      const response = await usuariosAPI.me();
+      setCurrentUserId(response.data?.id);
+    } catch (error) {
+      console.error('Error al obtener usuario actual');
+    }
+  };
   
   // Aplicar filtros cuando cambian
   useEffect(() => {
@@ -88,7 +121,8 @@ function Usuarios() {
         u.username?.toLowerCase().includes(term) ||
         u.email?.toLowerCase().includes(term) ||
         u.first_name?.toLowerCase().includes(term) ||
-        u.last_name?.toLowerCase().includes(term)
+        u.last_name?.toLowerCase().includes(term) ||
+        u.adscripcion?.toLowerCase().includes(term)
       );
     }
     
@@ -101,9 +135,13 @@ function Usuarios() {
     } else if (filterEstado === 'inactivo') {
       filtered = filtered.filter(u => u.is_active === false);
     }
+
+    if (filterCentro) {
+      filtered = filtered.filter(u => u.centro?.id === parseInt(filterCentro));
+    }
     
     setFilteredUsuarios(filtered);
-  }, [usuarios, searchTerm, filterRol, filterEstado]);
+  }, [usuarios, searchTerm, filterRol, filterEstado, filterCentro]);
   
   const cargarCentros = async () => {
     try {
@@ -222,17 +260,63 @@ function Usuarios() {
     });
   };
   
+  // Validar si el rol actual puede asignar el rol objetivo
+  const puedeAsignarRol = (rolObjetivo) => {
+    const miJerarquia = ROL_JERARQUIA[rolPrincipal?.toLowerCase()] || 99;
+    const objetivoJerarquia = ROL_JERARQUIA[rolObjetivo] || 99;
+    // Solo puede asignar roles de igual o menor jerarquía
+    return miJerarquia <= objetivoJerarquia || esSuperusuario;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!editingUsuario && formData.password !== formData.password_confirm) {
-      toast.error('Las contraseas no coinciden');
-      return;
+    // Validar contraseña para nuevos usuarios
+    if (!editingUsuario) {
+      if (formData.password !== formData.password_confirm) {
+        toast.error('Las contraseñas no coinciden');
+        return;
+      }
+      
+      if (formData.password.length < PASSWORD_MIN_LENGTH) {
+        toast.error(`La contraseña debe tener al menos ${PASSWORD_MIN_LENGTH} caracteres`);
+        return;
+      }
+
+      if (!PASSWORD_REGEX.test(formData.password)) {
+        toast.error(PASSWORD_REQUIREMENTS);
+        return;
+      }
     }
-    
-    if (!editingUsuario && formData.password.length < 8) {
-      toast.error('La contrasea debe tener al menos 8 caracteres');
-      return;
+
+    // Validar escalamiento de privilegios
+    if (editingUsuario) {
+      const rolAnterior = editingUsuario.rol;
+      const rolNuevo = formData.rol;
+      const jerarquiaAnterior = ROL_JERARQUIA[rolAnterior] || 99;
+      const jerarquiaNueva = ROL_JERARQUIA[rolNuevo] || 99;
+      
+      // Si está elevando privilegios, confirmar
+      if (jerarquiaNueva < jerarquiaAnterior) {
+        if (!puedeAsignarRol(rolNuevo)) {
+          toast.error('No tiene permisos para asignar ese rol');
+          return;
+        }
+        const confirmElevacion = window.confirm(
+          `⚠️ ADVERTENCIA DE SEGURIDAD\n\n` +
+          `Está elevando los privilegios de "${editingUsuario.username}":\n` +
+          `• Rol anterior: ${ROLES.find(r => r.value === rolAnterior)?.label || rolAnterior}\n` +
+          `• Rol nuevo: ${ROLES.find(r => r.value === rolNuevo)?.label || rolNuevo}\n\n` +
+          `¿Confirma este cambio de privilegios?`
+        );
+        if (!confirmElevacion) return;
+      }
+    } else {
+      // Validar que puede crear usuario con ese rol
+      if (!puedeAsignarRol(formData.rol)) {
+        toast.error('No tiene permisos para crear usuarios con ese rol');
+        return;
+      }
     }
     
     try {
@@ -289,14 +373,40 @@ function Usuarios() {
   };
   
   const handleDelete = async (usuario) => {
-    if (!window.confirm(`Eliminar usuario ${usuario.username}?`)) return;
+    // Prevenir auto-eliminación
+    if (usuario.id === currentUserId) {
+      toast.error('No puede eliminarse a sí mismo. Contacte a otro administrador.');
+      return;
+    }
+
+    // Prevenir eliminar usuarios de mayor jerarquía
+    const miJerarquia = ROL_JERARQUIA[rolPrincipal?.toLowerCase()] || 99;
+    const usuarioJerarquia = ROL_JERARQUIA[usuario.rol] || 99;
+    if (usuarioJerarquia < miJerarquia && !esSuperusuario) {
+      toast.error('No puede eliminar usuarios con rol superior al suyo');
+      return;
+    }
+
+    const mensaje = `⚠️ ELIMINAR USUARIO\n\n` +
+      `Usuario: ${usuario.username}\n` +
+      `Nombre: ${usuario.first_name} ${usuario.last_name}\n` +
+      `Rol: ${ROLES.find(r => r.value === usuario.rol)?.label || usuario.rol}\n\n` +
+      `Esta acción no se puede deshacer. ¿Confirma la eliminación?`;
     
+    if (!window.confirm(mensaje)) return;
+    
+    setActionLoading(usuario.id);
     try {
       await usuariosAPI.delete(usuario.id);
-      toast.success('Usuario eliminado');
+      toast.success('Usuario eliminado correctamente');
       cargarUsuarios();
     } catch (error) {
-      toast.error('Error al eliminar usuario');
+      const errorMsg = error.response?.data?.error ||
+                       error.response?.data?.detail ||
+                       'Error al eliminar usuario';
+      toast.error(errorMsg);
+    } finally {
+      setActionLoading(null);
     }
   };
   
@@ -310,31 +420,44 @@ function Usuarios() {
     e.preventDefault();
     
     if (passwordData.new_password !== passwordData.confirm_password) {
-      toast.error('Las contraseas no coinciden');
+      toast.error('Las contraseñas no coinciden');
       return;
     }
     
-    if (passwordData.new_password.length < 8) {
-      toast.error('La contrasea debe tener al menos 8 caracteres');
+    if (passwordData.new_password.length < PASSWORD_MIN_LENGTH) {
+      toast.error(`La contraseña debe tener al menos ${PASSWORD_MIN_LENGTH} caracteres`);
+      return;
+    }
+
+    if (!PASSWORD_REGEX.test(passwordData.new_password)) {
+      toast.error(PASSWORD_REQUIREMENTS);
       return;
     }
     
+    setActionLoading(editingUsuario.id);
     try {
       await usuariosAPI.cambiarPassword(editingUsuario.id, {
         new_password: passwordData.new_password
       });
-      toast.success('Contrasea actualizada');
+      toast.success('Contraseña actualizada correctamente');
       setShowPasswordModal(false);
       setPasswordData({ new_password: '', confirm_password: '' });
     } catch (error) {
-      toast.error('Error al cambiar contrasea');
+      const errorMsg = error.response?.data?.error ||
+                       error.response?.data?.detail ||
+                       'Error al cambiar contraseña';
+      toast.error(errorMsg);
+    } finally {
+      setActionLoading(null);
     }
   };
 
   // Exportar usuarios a Excel
   const handleExportar = async () => {
+    if (exportLoading) return; // Prevenir doble clic
+    
     try {
-      setLoading(true);
+      setExportLoading(true);
       const response = await usuariosAPI.exportar();
       const blob = new Blob([response.data]);
       const url = window.URL.createObjectURL(blob);
@@ -344,11 +467,12 @@ function Usuarios() {
       document.body.appendChild(link);
       link.click();
       link.remove();
+      window.URL.revokeObjectURL(url);
       toast.success('Usuarios exportados correctamente');
     } catch (error) {
       toast.error('Error al exportar usuarios');
     } finally {
-      setLoading(false);
+      setExportLoading(false);
     }
   };
 
@@ -357,24 +481,52 @@ function Usuarios() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const formData = new FormData();
-    formData.append('file', file);
+    // Validar extensión localmente
+    const extension = '.' + file.name.split('.').pop().toLowerCase();
+    if (!IMPORT_ALLOWED_EXTENSIONS.includes(extension)) {
+      toast.error(`Extensión no permitida: ${extension}. Use: ${IMPORT_ALLOWED_EXTENSIONS.join(', ')}`);
+      e.target.value = null;
+      return;
+    }
+
+    // Validar tamaño localmente
+    const sizeMB = file.size / (1024 * 1024);
+    if (sizeMB > IMPORT_MAX_FILE_SIZE_MB) {
+      toast.error(`Archivo demasiado grande: ${sizeMB.toFixed(1)}MB. Máximo: ${IMPORT_MAX_FILE_SIZE_MB}MB`);
+      e.target.value = null;
+      return;
+    }
+
+    const formDataFile = new FormData();
+    formDataFile.append('file', file);
 
     try {
-      setLoading(true);
-      const response = await usuariosAPI.importar(formData);
-      const { creados, errores } = response.data;
-      toast.success(`Importacin completada. Usuarios creados: ${creados}`);
+      setImportLoading(true);
+      const response = await usuariosAPI.importar(formDataFile);
+      const { creados, actualizados, errores } = response.data;
+      toast.success(`Importación completada: ${creados || 0} creados, ${actualizados || 0} actualizados`);
+      
       if (errores?.length) {
-        console.warn('Errores de importacin:', errores);
-        toast.error(`${errores.length} fila(s) con errores`);
+        console.warn('Errores de importación:', errores);
+        // Mostrar hasta 5 errores en toasts
+        errores.slice(0, 5).forEach((err, idx) => {
+          const fila = err.fila || idx + 1;
+          const msg = err.error || err.mensaje || JSON.stringify(err);
+          toast.error(`Fila ${fila}: ${msg}`, { duration: 5000 });
+        });
+        if (errores.length > 5) {
+          toast.error(`... y ${errores.length - 5} errores más. Revise la consola.`, { duration: 5000 });
+        }
       }
       cargarUsuarios();
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Error al importar');
+      const errorMsg = error.response?.data?.error ||
+                       error.response?.data?.detail ||
+                       'Error al importar usuarios';
+      toast.error(errorMsg);
     } finally {
       e.target.value = null;
-      setLoading(false);
+      setImportLoading(false);
     }
   };
 
@@ -383,6 +535,7 @@ function Usuarios() {
     setSearchTerm('');
     setFilterRol('');
     setFilterEstado('');
+    setFilterCentro('');
   };
 
   const puede = {
@@ -401,10 +554,11 @@ function Usuarios() {
         <button
           type="button"
           onClick={handleExportar}
-          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+          disabled={exportLoading || importLoading}
+          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           style={{ background: PRIMARY_GRADIENT, border: '1px solid rgba(255,255,255,0.3)' }}
         >
-          <FaDownload /> Exportar
+          <FaDownload /> {exportLoading ? 'Exportando...' : 'Exportar'}
         </button>
       )}
       {puede.importar && (
@@ -412,10 +566,11 @@ function Usuarios() {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+            disabled={exportLoading || importLoading}
+            className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: PRIMARY_GRADIENT, border: '1px solid rgba(255,255,255,0.3)' }}
           >
-            <FaFileUpload /> Importar
+            <FaFileUpload /> {importLoading ? 'Importando...' : 'Importar'}
           </button>
           <input
             ref={fileInputRef}
@@ -430,7 +585,8 @@ function Usuarios() {
         <button
           type="button"
           onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white transition"
+          disabled={exportLoading || importLoading}
+          className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white transition disabled:opacity-50 disabled:cursor-not-allowed"
           style={{ color: COLORS.vino }}
         >
           <FaPlus /> Nuevo Usuario
@@ -450,7 +606,7 @@ function Usuarios() {
 
       {/* Filtros */}
       <div className="bg-white rounded-lg shadow p-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div className="relative">
             <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             <input
@@ -471,6 +627,18 @@ function Usuarios() {
               <option value="">Todos los roles</option>
               {ROLES.map(rol => (
                 <option key={rol.value} value={rol.value}>{rol.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <select
+              value={filterCentro}
+              onChange={(e) => setFilterCentro(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
+            >
+              <option value="">Todos los centros</option>
+              {centros.map(centro => (
+                <option key={centro.id} value={centro.id}>{centro.nombre}</option>
               ))}
             </select>
           </div>
@@ -552,7 +720,8 @@ function Usuarios() {
                     {puede.editar && (
                       <button 
                         onClick={() => handleOpenModal(usuario)}
-                        className="text-blue-600 hover:text-blue-800 transition"
+                        disabled={actionLoading === usuario.id}
+                        className="text-blue-600 hover:text-blue-800 transition disabled:opacity-50"
                         title="Editar"
                       >
                         <FaEdit />
@@ -561,20 +730,31 @@ function Usuarios() {
                     {puede.cambiarPassword && (
                       <button 
                         onClick={() => handleOpenPasswordModal(usuario)}
-                        className="text-green-600 hover:text-green-800 transition"
-                        title="Cambiar contrasea"
+                        disabled={actionLoading === usuario.id}
+                        className="text-green-600 hover:text-green-800 transition disabled:opacity-50"
+                        title="Cambiar contraseña"
                       >
                         <FaKey />
                       </button>
                     )}
-                    {puede.eliminar && (
+                    {puede.eliminar && usuario.id !== currentUserId && (
                       <button 
                         onClick={() => handleDelete(usuario)}
-                        className="text-red-600 hover:text-red-800 transition"
+                        disabled={actionLoading === usuario.id}
+                        className="text-red-600 hover:text-red-800 transition disabled:opacity-50"
                         title="Eliminar"
                       >
-                        <FaTrash />
+                        {actionLoading === usuario.id ? (
+                          <span className="animate-spin inline-block">⏳</span>
+                        ) : (
+                          <FaTrash />
+                        )}
                       </button>
+                    )}
+                    {usuario.id === currentUserId && (
+                      <span className="text-gray-400 text-xs italic" title="No puede eliminarse a sí mismo">
+                        (Tú)
+                      </span>
                     )}
                   </td>
                 </tr>
@@ -675,10 +855,24 @@ function Usuarios() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     required
                   >
-                    {ROLES.map(rol => (
-                      <option key={rol.value} value={rol.value}>{rol.label}</option>
-                    ))}
+                    {ROLES.map(rol => {
+                      const disabled = !puedeAsignarRol(rol.value);
+                      return (
+                        <option 
+                          key={rol.value} 
+                          value={rol.value}
+                          disabled={disabled}
+                        >
+                          {rol.label}{disabled ? ' (sin permiso)' : ''}
+                        </option>
+                      );
+                    })}
                   </select>
+                  {editingUsuario && formData.rol !== editingUsuario.rol && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      ⚠️ Cambiar el rol afectará los permisos del usuario
+                    </p>
+                  )}
                 </div>
                 
                 <div>
@@ -701,30 +895,63 @@ function Usuarios() {
                   <>
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-1">
-                        Contrasea <span className="text-red-500">*</span>
+                        Contraseña <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="password"
                         value={formData.password}
                         onChange={(e) => setFormData({...formData, password: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                          formData.password && !PASSWORD_REGEX.test(formData.password) 
+                            ? 'border-amber-400' 
+                            : 'border-gray-300'
+                        }`}
                         required
                         minLength={8}
                       />
+                      <p className="text-xs text-gray-500 mt-1">
+                        {PASSWORD_REQUIREMENTS}
+                      </p>
+                      {formData.password && (
+                        <div className="text-xs mt-1 space-y-0.5">
+                          <p className={formData.password.length >= 8 ? 'text-green-600' : 'text-red-500'}>
+                            {formData.password.length >= 8 ? '✓' : '✗'} Mínimo 8 caracteres
+                          </p>
+                          <p className={/[A-Z]/.test(formData.password) ? 'text-green-600' : 'text-red-500'}>
+                            {/[A-Z]/.test(formData.password) ? '✓' : '✗'} Al menos 1 mayúscula
+                          </p>
+                          <p className={/[a-z]/.test(formData.password) ? 'text-green-600' : 'text-red-500'}>
+                            {/[a-z]/.test(formData.password) ? '✓' : '✗'} Al menos 1 minúscula
+                          </p>
+                          <p className={/\d/.test(formData.password) ? 'text-green-600' : 'text-red-500'}>
+                            {/\d/.test(formData.password) ? '✓' : '✗'} Al menos 1 número
+                          </p>
+                        </div>
+                      )}
                     </div>
                     
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-1">
-                        Confirmar Contrasea <span className="text-red-500">*</span>
+                        Confirmar Contraseña <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="password"
                         value={formData.password_confirm}
                         onChange={(e) => setFormData({...formData, password_confirm: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                          formData.password_confirm && formData.password !== formData.password_confirm 
+                            ? 'border-red-400' 
+                            : 'border-gray-300'
+                        }`}
                         required
                         minLength={8}
                       />
+                      {formData.password_confirm && formData.password !== formData.password_confirm && (
+                        <p className="text-xs text-red-500 mt-1">Las contraseñas no coinciden</p>
+                      )}
+                      {formData.password_confirm && formData.password === formData.password_confirm && (
+                        <p className="text-xs text-green-600 mt-1">✓ Las contraseñas coinciden</p>
+                      )}
                     </div>
                   </>
                 )}
@@ -839,62 +1066,101 @@ function Usuarios() {
         </div>
       )}
       
-      {/* Modal Cambiar Contrasea */}
+      {/* Modal Cambiar Contraseña */}
       {showPasswordModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
             <div className="px-6 py-4 border-b flex justify-between items-center">
               <h3 className="text-xl font-bold" style={{ color: COLORS.vino }}>
-                Cambiar Contrasea
+                Cambiar Contraseña
               </h3>
               <button onClick={() => setShowPasswordModal(false)} className="text-gray-400 hover:text-gray-600">
                 <FaTimes size={24} />
               </button>
             </div>
             
+            <div className="px-6 py-2 bg-gray-50 border-b">
+              <p className="text-sm text-gray-600">
+                Usuario: <span className="font-semibold">{editingUsuario?.username}</span>
+              </p>
+            </div>
+            
             <form onSubmit={handleChangePassword} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Nueva Contrasea <span className="text-red-500">*</span>
+                  Nueva Contraseña <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="password"
                   value={passwordData.new_password}
                   onChange={(e) => setPasswordData({...passwordData, new_password: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    passwordData.new_password && !PASSWORD_REGEX.test(passwordData.new_password) 
+                      ? 'border-amber-400' 
+                      : 'border-gray-300'
+                  }`}
                   required
                   minLength={8}
                 />
+                <p className="text-xs text-gray-500 mt-1">{PASSWORD_REQUIREMENTS}</p>
+                {passwordData.new_password && (
+                  <div className="text-xs mt-1 space-y-0.5">
+                    <p className={passwordData.new_password.length >= 8 ? 'text-green-600' : 'text-red-500'}>
+                      {passwordData.new_password.length >= 8 ? '✓' : '✗'} Mínimo 8 caracteres
+                    </p>
+                    <p className={/[A-Z]/.test(passwordData.new_password) ? 'text-green-600' : 'text-red-500'}>
+                      {/[A-Z]/.test(passwordData.new_password) ? '✓' : '✗'} Al menos 1 mayúscula
+                    </p>
+                    <p className={/[a-z]/.test(passwordData.new_password) ? 'text-green-600' : 'text-red-500'}>
+                      {/[a-z]/.test(passwordData.new_password) ? '✓' : '✗'} Al menos 1 minúscula
+                    </p>
+                    <p className={/\d/.test(passwordData.new_password) ? 'text-green-600' : 'text-red-500'}>
+                      {/\d/.test(passwordData.new_password) ? '✓' : '✗'} Al menos 1 número
+                    </p>
+                  </div>
+                )}
               </div>
               
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Confirmar Contrasea <span className="text-red-500">*</span>
+                  Confirmar Contraseña <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="password"
                   value={passwordData.confirm_password}
                   onChange={(e) => setPasswordData({...passwordData, confirm_password: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    passwordData.confirm_password && passwordData.new_password !== passwordData.confirm_password 
+                      ? 'border-red-400' 
+                      : 'border-gray-300'
+                  }`}
                   required
                   minLength={8}
                 />
+                {passwordData.confirm_password && passwordData.new_password !== passwordData.confirm_password && (
+                  <p className="text-xs text-red-500 mt-1">Las contraseñas no coinciden</p>
+                )}
+                {passwordData.confirm_password && passwordData.new_password === passwordData.confirm_password && (
+                  <p className="text-xs text-green-600 mt-1">✓ Las contraseñas coinciden</p>
+                )}
               </div>
               
               <div className="flex gap-3 pt-4">
                 <button
                   type="button"
                   onClick={() => setShowPasswordModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-semibold transition"
+                  disabled={actionLoading}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-semibold transition disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 text-white rounded-lg font-semibold transition hover:opacity-90"
+                  disabled={actionLoading || !PASSWORD_REGEX.test(passwordData.new_password) || passwordData.new_password !== passwordData.confirm_password}
+                  className="flex-1 px-4 py-2 text-white rounded-lg font-semibold transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{ background: PRIMARY_GRADIENT }}
                 >
-                  Cambiar Contrasea
+                  {actionLoading ? 'Cambiando...' : 'Cambiar Contraseña'}
                 </button>
               </div>
             </form>
@@ -906,8 +1172,6 @@ function Usuarios() {
 }
 
 export default Usuarios;
-
-
 
 
 
