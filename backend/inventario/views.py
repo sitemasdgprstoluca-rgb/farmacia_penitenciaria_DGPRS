@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status, serializers, permissions, mixins
+﻿from rest_framework import viewsets, status, serializers, permissions, mixins
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -21,9 +21,9 @@ import os
 from io import BytesIO
 
 
-# -----------------------------------------------------------
-# VALIDADORES DE IMPORTACI�N EXCEL
-# -----------------------------------------------------------
+# ═══════════════════════════════════════════════════════════
+# VALIDADORES DE IMPORTACIÓN EXCEL
+# ═══════════════════════════════════════════════════════════
 def validar_archivo_excel(file):
     """
     Valida archivo Excel antes de procesarlo.
@@ -32,28 +32,28 @@ def validar_archivo_excel(file):
     """
     # Validar que hay archivo
     if not file:
-        return False, 'No se recibi� archivo'
+        return False, 'No se recibió archivo'
     
-    # Validar extensi�n
+    # Validar extensión
     nombre = file.name.lower() if hasattr(file, 'name') else ''
-    # Si no hay nombre/extensi�n (p.ej. BytesIO), asumir .xlsx para no bloquear importaciones leg�timas
+    # Si no hay nombre/extensión (p.ej. BytesIO), asumir .xlsx para no bloquear importaciones legítimas
     ext = os.path.splitext(nombre)[1] or '.xlsx'
     extensiones_permitidas = getattr(settings, 'IMPORT_ALLOWED_EXTENSIONS', ['.xlsx', '.xls'])
     if ext not in extensiones_permitidas:
-        return False, f'Extensi�n no permitida: {ext}. Use: {", ".join(extensiones_permitidas)}'
+        return False, f'Extensión no permitida: {ext}. Use: {", ".join(extensiones_permitidas)}'
     
-    # Validar tama�o
+    # Validar tamaño
     max_size_mb = getattr(settings, 'IMPORT_MAX_FILE_SIZE_MB', 10)
     max_size_bytes = max_size_mb * 1024 * 1024
     if hasattr(file, 'size') and file.size > max_size_bytes:
-        return False, f'Archivo demasiado grande: {file.size / 1024 / 1024:.1f}MB. M�ximo: {max_size_mb}MB'
+        return False, f'Archivo demasiado grande: {file.size / 1024 / 1024:.1f}MB. Máximo: {max_size_mb}MB'
     
     return True, None
 
 
 def validar_filas_excel(ws):
     """
-    Valida n�mero de filas en worksheet.
+    Valida número de filas en worksheet.
     
     Retorna: (es_valido, mensaje_error, num_filas)
     """
@@ -62,7 +62,7 @@ def validar_filas_excel(ws):
     num_filas = sum(1 for _ in ws.iter_rows(min_row=2, values_only=True) if any(cell for cell in _))
     
     if num_filas > max_rows:
-        return False, f'Demasiadas filas: {num_filas}. M�ximo permitido: {max_rows}', num_filas
+        return False, f'Demasiadas filas: {num_filas}. Máximo permitido: {max_rows}', num_filas
     
     return True, None, num_filas
 from reportlab.lib import colors
@@ -129,7 +129,7 @@ def is_farmacia_or_admin(user):
     if rol in ROLES_GLOBALES:
         return True
     
-    # Verificar grupos (por si el rol no est� en campo directo)
+    # Verificar grupos (por si el rol no está en campo directo)
     group_names = {g.name.upper() for g in user.groups.all()}
     GRUPOS_GLOBALES = {'FARMACIA_ADMIN', 'FARMACEUTICO', 'VISTA_USER'}
     
@@ -178,7 +178,7 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         # Actualizar stock y estado de disponibilidad
         lote_ref.cantidad_actual = nuevo_stock
         
-        # Para entradas, tambi�n actualizar cantidad_inicial si es necesario
+        # Para entradas, también actualizar cantidad_inicial si es necesario
         # Esto permite recibir stock adicional en lotes existentes
         update_fields = ['cantidad_actual', 'estado', 'updated_at']
         if tipo_normalizado == 'entrada' and nuevo_stock > lote_ref.cantidad_inicial:
@@ -200,7 +200,7 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
             cantidad=delta,
             observaciones=observaciones or ''
         )
-        # Guardar stock previo para evitar fallos de validaci?n al crear el movimiento
+        # Guardar stock previo para evitar fallos de validaci�n al crear el movimiento
         movimiento._stock_pre_movimiento = stock_disponible
         movimiento.save()
 
@@ -242,7 +242,7 @@ class UserSerializer(serializers.ModelSerializer):
             return grupos.first().name
         return 'USUARIO'
 
-# NOTA: UserViewSet est� en core/views.py - importar desde all�
+# NOTA: UserViewSet está en core/views.py - importar desde allí
 # Clase UserViewSet eliminada (duplicada, ya existe en core/views.py)
 
 class ProductoViewSet(viewsets.ModelViewSet):
@@ -501,9 +501,9 @@ class ProductoViewSet(viewsets.ModelViewSet):
         Fila 1: Encabezados (se ignora)
         Columnas: Clave | Descripcion | Unidad | Precio | Stock Minimo | Estado
         
-        L�mites de seguridad:
-        - Tama�o m�ximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
-        - Filas m�ximas: configurado en IMPORT_MAX_ROWS (default 5000)
+        Límites de seguridad:
+        - Tamaño máximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
+        - Filas máximas: configurado en IMPORT_MAX_ROWS (default 5000)
         - Extensiones: .xlsx, .xls
         """
         file = request.FILES.get('file')
@@ -512,7 +512,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
         es_valido, error_msg = validar_archivo_excel(file)
         if not es_valido:
             return Response({
-                'error': 'Archivo inv�lido',
+                'error': 'Archivo inválido',
                 'mensaje': error_msg
             }, status=status.HTTP_400_BAD_REQUEST)
         
@@ -520,7 +520,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
             wb = openpyxl.load_workbook(file)
             ws = wb.active
             
-            # Validar n�mero de filas
+            # Validar número de filas
             filas_validas, error_filas, num_filas = validar_filas_excel(ws)
             if not filas_validas:
                 return Response({
@@ -821,7 +821,7 @@ class CentroViewSet(viewsets.ModelViewSet):
                     item['lote_proximo_caducar'] = lote.numero_lote
                     item['fecha_caducidad'] = lote.fecha_caducidad
 
-        # Si no hay lotes asociados, caer al agregado por movimientos para no dejar vac�o
+        # Si no hay lotes asociados, caer al agregado por movimientos para no dejar vacío
         inventario = list(inventario_dict.values())
         if not inventario:
             movimientos = Movimiento.objects.filter(centro=centro)
@@ -984,9 +984,9 @@ class CentroViewSet(viewsets.ModelViewSet):
         - Telefono (opcional)
         - Estado (Activo/Inactivo)
         
-        L�mites de seguridad:
-        - Tama�o m�ximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
-        - Filas m�ximas: configurado en IMPORT_MAX_ROWS (default 5000)
+        Límites de seguridad:
+        - Tamaño máximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
+        - Filas máximas: configurado en IMPORT_MAX_ROWS (default 5000)
         - Extensiones: .xlsx, .xls
         """
         file = request.FILES.get('file')
@@ -995,7 +995,7 @@ class CentroViewSet(viewsets.ModelViewSet):
         es_valido, error_msg = validar_archivo_excel(file)
         if not es_valido:
             return Response({
-                'error': 'Archivo inv�lido',
+                'error': 'Archivo inválido',
                 'mensaje': error_msg
             }, status=status.HTTP_400_BAD_REQUEST)
         
@@ -1003,7 +1003,7 @@ class CentroViewSet(viewsets.ModelViewSet):
             wb = openpyxl.load_workbook(file)
             ws = wb.active
             
-            # Validar n�mero de filas
+            # Validar número de filas
             filas_validas, error_filas, num_filas = validar_filas_excel(ws)
             if not filas_validas:
                 return Response({
@@ -1129,7 +1129,7 @@ class CentroViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'], url_path='plantilla')
     def plantilla_centros(self, request):
-        """Descarga plantilla de Excel para importaci?n de centros."""
+        """Descarga plantilla de Excel para importaci�n de centros."""
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = 'Centros'
@@ -1213,11 +1213,11 @@ class LoteViewSet(viewsets.ModelViewSet):
         if search and search.strip():
             queryset = queryset.filter(numero_lote__icontains=search)
         
-        # Filtrar por estado de caducidad seg�n especificaci�n SIFP:
-        # ?? Normal: > 6 meses (180 d�as)
-        # ?? Pr�ximo: 3-6 meses (90-180 d�as)
-        # ?? Cr�tico: < 3 meses (90 d�as)
-        # ?? Vencido: < 0 d�as
+        # Filtrar por estado de caducidad según especificación SIFP:
+        # 🟢 Normal: > 6 meses (180 días)
+        # 🟡 Próximo: 3-6 meses (90-180 días)
+        # 🔴 Crítico: < 3 meses (90 días)
+        # 🔴 Vencido: < 0 días
         caducidad = self.request.query_params.get('caducidad')
         if caducidad:
             from datetime import date, timedelta
@@ -1226,22 +1226,22 @@ class LoteViewSet(viewsets.ModelViewSet):
             if caducidad == 'vencido':
                 queryset = queryset.filter(fecha_caducidad__lt=hoy)
             elif caducidad == 'critico':
-                # Menos de 3 meses (< 90 d�as) pero no vencido
+                # Menos de 3 meses (< 90 días) pero no vencido
                 queryset = queryset.filter(
                     fecha_caducidad__gte=hoy,
                     fecha_caducidad__lt=hoy + timedelta(days=90)
                 )
             elif caducidad == 'proximo':
-                # Entre 3 y 6 meses (90-180 d�as)
+                # Entre 3 y 6 meses (90-180 días)
                 queryset = queryset.filter(
                     fecha_caducidad__gte=hoy + timedelta(days=90),
                     fecha_caducidad__lt=hoy + timedelta(days=180)
                 )
             elif caducidad == 'normal':
-                # M�s de 6 meses (> 180 d�as)
+                # Más de 6 meses (> 180 días)
                 queryset = queryset.filter(fecha_caducidad__gte=hoy + timedelta(days=180))
         
-        # Filtrar por stock m�nimo (para cat�logo de requisiciones)
+        # Filtrar por stock mínimo (para catálogo de requisiciones)
         stock_min = self.request.query_params.get('stock_min')
         if stock_min:
             try:
@@ -1249,7 +1249,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             except (ValueError, TypeError):
                 pass
         
-        # Filtrar solo lotes disponibles (no vencidos) para el cat�logo
+        # Filtrar solo lotes disponibles (no vencidos) para el catálogo
         solo_disponibles = self.request.query_params.get('solo_disponibles')
         if solo_disponibles == 'true':
             from datetime import date
@@ -1403,9 +1403,9 @@ class LoteViewSet(viewsets.ModelViewSet):
         """
         Importa lotes desde Excel con validaciones.
         
-        L�mites de seguridad:
-        - Tama�o m�ximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
-        - Filas m�ximas: configurado en IMPORT_MAX_ROWS (default 5000)
+        Límites de seguridad:
+        - Tamaño máximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
+        - Filas máximas: configurado en IMPORT_MAX_ROWS (default 5000)
         - Extensiones: .xlsx, .xls
         """
         file = request.FILES.get('file')
@@ -1414,7 +1414,7 @@ class LoteViewSet(viewsets.ModelViewSet):
         es_valido, error_msg = validar_archivo_excel(file)
         if not es_valido:
             return Response({
-                'error': 'Archivo inv�lido',
+                'error': 'Archivo inválido',
                 'mensaje': error_msg
             }, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1422,7 +1422,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             wb = openpyxl.load_workbook(file)
             ws = wb.active
             
-            # Validar n�mero de filas
+            # Validar número de filas
             filas_validas, error_filas, num_filas = validar_filas_excel(ws)
             if not filas_validas:
                 return Response({
@@ -1814,7 +1814,7 @@ class LoteViewSet(viewsets.ModelViewSet):
         """
         Sube un documento PDF asociado al lote.
         
-        El documento puede ser factura, remisi�n, contrato, etc.
+        El documento puede ser factura, remisión, contrato, etc.
         
         PERMISOS:
         - Solo usuarios de farmacia/admin pueden subir documentos
@@ -1834,11 +1834,11 @@ class LoteViewSet(viewsets.ModelViewSet):
                 'error': 'Solo el personal de farmacia puede subir documentos'
             }, status=status.HTTP_403_FORBIDDEN)
         
-        # Validar que se envi� un archivo
+        # Validar que se envió un archivo
         documento = request.FILES.get('documento')
         if not documento:
             return Response({
-                'error': 'No se envi� ning�n documento'
+                'error': 'No se envió ningún documento'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Validar tipo de archivo (solo PDF)
@@ -1847,7 +1847,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                 'error': 'Solo se permiten archivos PDF'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Validar tama�o (m�ximo 10MB)
+        # Validar tamaño (máximo 10MB)
         if documento.size > 10 * 1024 * 1024:
             return Response({
                 'error': 'El archivo no puede superar los 10MB'
@@ -1889,7 +1889,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                 'error': 'El lote no tiene documento asociado'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Eliminar archivo f�sico
+        # Eliminar archivo físico
         lote.documento_pdf.delete(save=False)
         lote.documento_nombre = ''
         lote.save(update_fields=['documento_pdf', 'documento_nombre'])
@@ -1912,7 +1912,7 @@ class MovimientoViewSet(
     - Centro: puede VER y CREAR movimientos en sus propios lotes (salidas/ajustes)
     - Vista: solo lectura
     
-    Esto permite auditor�a completa de consumos en cada centro.
+    Esto permite auditoría completa de consumos en cada centro.
     """
     queryset = Movimiento.objects.select_related('lote__producto', 'centro', 'usuario').all()
     serializer_class = MovimientoSerializer
@@ -1960,8 +1960,8 @@ class MovimientoViewSet(
         SEGURIDAD:
         - Admin/farmacia: pueden crear cualquier movimiento en cualquier lote
         - Usuario de centro: solo pueden crear movimientos en lotes de su centro
-          y solo ciertos tipos: 'salida' (consumo), 'ajuste' (inventario f�sico)
-        - Usuario de centro NO puede crear 'entrada' (solo v�a surtido de requisici�n)
+          y solo ciertos tipos: 'salida' (consumo), 'ajuste' (inventario físico)
+        - Usuario de centro NO puede crear 'entrada' (solo vía surtido de requisición)
         """
         user = self.request.user
         lote = serializer.validated_data.get('lote')
@@ -1978,12 +1978,12 @@ class MovimientoViewSet(
                 })
             
             # Validar tipos de movimiento permitidos para centros
-            # Centros pueden: salida (consumo), ajuste (inventario f�sico)
-            # Centros NO pueden: entrada (solo v�a surtido autom�tico)
+            # Centros pueden: salida (consumo), ajuste (inventario físico)
+            # Centros NO pueden: entrada (solo vía surtido automático)
             tipos_permitidos_centro = ['salida', 'ajuste']
             if tipo not in tipos_permitidos_centro:
                 raise serializers.ValidationError({
-                    'tipo': f'Los centros solo pueden registrar: {", ".join(tipos_permitidos_centro)}. Las entradas se generan autom�ticamente al surtir requisiciones.'
+                    'tipo': f'Los centros solo pueden registrar: {", ".join(tipos_permitidos_centro)}. Las entradas se generan automáticamente al surtir requisiciones.'
                 })
         
         movimiento, _ = registrar_movimiento_stock(
@@ -2002,7 +2002,7 @@ class MovimientoViewSet(
     def trazabilidad_pdf(self, request):
         """
         Genera PDF de trazabilidad de un producto.
-        Par�metros: ?producto_clave=XXX
+        Parámetros: ?producto_clave=XXX
         """
         from core.utils.pdf_reports import generar_reporte_trazabilidad
         
@@ -2061,8 +2061,8 @@ class MovimientoViewSet(
     @action(detail=False, methods=['get'], url_path='trazabilidad-lote-pdf')
     def trazabilidad_lote_pdf(self, request):
         """
-        Genera PDF de trazabilidad de un lote espec�fico.
-        Par�metros: ?numero_lote=XXX
+        Genera PDF de trazabilidad de un lote específico.
+        Parámetros: ?numero_lote=XXX
         """
         from core.utils.pdf_reports import generar_reporte_trazabilidad
         
@@ -2218,7 +2218,7 @@ class MovimientoViewSet(
             ws = wb.active
             ws.title = 'Movimientos'
             
-            # T�tulo
+            # Título
             ws.merge_cells('A1:H1')
             ws['A1'] = 'REPORTE DE MOVIMIENTOS'
             ws['A1'].font = Font(bold=True, size=14, color='632842')
@@ -2571,15 +2571,15 @@ class RequisicionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def surtir(self, request, pk=None):
         """
-        Surte una requisici�n autorizada.
+        Surte una requisición autorizada.
         
         PERMISOS:
-        - Superuser: puede surtir cualquier requisici�n
-        - Farmacia (admin_farmacia, farmacia): puede surtir cualquier requisici�n
+        - Superuser: puede surtir cualquier requisición
+        - Farmacia (admin_farmacia, farmacia): puede surtir cualquier requisición
         - Centro: solo puede surtir requisiciones de su propio centro
         
-        L�GICA DE STOCK:
-        - Primero usa lotes de farmacia central (centro=NULL) ? crea entrada en centro destino
+        LÓGICA DE STOCK:
+        - Primero usa lotes de farmacia central (centro=NULL) → crea entrada en centro destino
         - Si no hay en farmacia central, usa lotes del centro solicitante (salida interna)
         """
         requisicion = self.get_object()
@@ -2587,7 +2587,7 @@ class RequisicionViewSet(viewsets.ModelViewSet):
         if estado_actual not in ['autorizada', 'parcial']:
             return Response({'error': 'Solo se pueden surtir requisiciones autorizadas'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # PERMISOS: Farmacia/admin puede surtir cualquier requisici�n
+        # PERMISOS: Farmacia/admin puede surtir cualquier requisición
         user = request.user
         if not user.is_superuser and not is_farmacia_or_admin(user):
             # Usuario de centro: solo puede surtir su propio centro
@@ -2654,29 +2654,29 @@ class RequisicionViewSet(viewsets.ModelViewSet):
                     # PASO 2: Si el lote era de farmacia central (centro=None), crear ENTRADA en centro destino
                     # REGLA DE ORO: El lote en el centro es una COPIA FIEL del lote de farmacia
                     # - Mismo producto
-                    # - Mismo n�mero de lote (SIN modificar)
+                    # - Mismo número de lote (SIN modificar)
                     # - Misma fecha de caducidad
                     # - Vinculado a lote_origen (trazabilidad obligatoria)
                     if lote.centro is None and centro_requisicion:
-                        # Buscar lote existente en el centro destino con MISMO n�mero de lote
+                        # Buscar lote existente en el centro destino con MISMO número de lote
                         lote_destino = Lote.objects.filter(
                             producto=detalle.producto,
-                            numero_lote=lote.numero_lote,  # MISMO n�mero de lote
+                            numero_lote=lote.numero_lote,  # MISMO número de lote
                             centro=centro_requisicion,
                             deleted_at__isnull=True
                         ).first()
                         
                         if lote_destino:
-                            # Si existe y est� agotado, reactivarlo
+                            # Si existe y está agotado, reactivarlo
                             if lote_destino.estado == 'agotado':
                                 lote_destino.estado = 'disponible'
                                 lote_destino.save(update_fields=['estado'])
                         else:
                             # Crear nuevo lote: COPIA FIEL del lote de farmacia
-                            # El n�mero de lote es ID�NTICO al de farmacia
+                            # El número de lote es IDÉNTICO al de farmacia
                             lote_destino = Lote(
                                 producto=detalle.producto,
-                                numero_lote=lote.numero_lote,  # MISMO n�mero de lote
+                                numero_lote=lote.numero_lote,  # MISMO número de lote
                                 centro=centro_requisicion,
                                 fecha_caducidad=lote.fecha_caducidad,  # MISMA caducidad
                                 cantidad_inicial=usar,
@@ -2684,21 +2684,21 @@ class RequisicionViewSet(viewsets.ModelViewSet):
                                 estado='disponible',
                                 precio_compra=lote.precio_compra,
                                 proveedor=lote.proveedor,
-                                lote_origen=lote,  # VINCULACI�N OBLIGATORIA al lote de farmacia
+                                lote_origen=lote,  # VINCULACIÓN OBLIGATORIA al lote de farmacia
                                 observaciones=f'Transferido de farmacia central via requisicion {requisicion.folio}'
                             )
-                            # Guardar sin validaci�n full_clean para permitir la creaci�n
+                            # Guardar sin validación full_clean para permitir la creación
                             lote_destino.save()
                         
                         # Registrar ENTRADA en el centro destino
-                        # IMPORTANTE: Asociar la requisici�n al movimiento de entrada para trazabilidad completa
+                        # IMPORTANTE: Asociar la requisición al movimiento de entrada para trazabilidad completa
                         movimiento_entrada, _ = registrar_movimiento_stock(
                             lote=lote_destino,
                             tipo='entrada',
                             cantidad=usar,
                             centro=centro_requisicion,
                             usuario=request.user if request.user.is_authenticated else None,
-                            requisicion=None,  # La requisici�n solo se registra en la salida para no duplicar conteos
+                            requisicion=None,  # La requisición solo se registra en la salida para no duplicar conteos
                             observaciones=f'ENTRADA_POR_REQUISICION {requisicion.folio}'
                         )
                     
@@ -2719,15 +2719,15 @@ class RequisicionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='marcar-recibida')
     def marcar_recibida(self, request, pk=None):
         """
-        Marca una requisici�n surtida como recibida por el centro.
+        Marca una requisición surtida como recibida por el centro.
         
         PERMISOS:
         - Solo usuarios del centro receptor pueden marcar como recibida
         - Solo requisiciones en estado 'surtida' pueden marcarse
         
         DATOS REQUERIDOS:
-        - lugar_entrega: Lugar donde se recibi�
-        - observaciones_recepcion: Observaciones de la recepci�n (opcional)
+        - lugar_entrega: Lugar donde se recibió
+        - observaciones_recepcion: Observaciones de la recepción (opcional)
         """
         from django.utils import timezone
         
@@ -2740,13 +2740,13 @@ class RequisicionViewSet(viewsets.ModelViewSet):
                 'estado_actual': requisicion.estado
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # PERMISOS: Solo usuarios del centro receptor pueden confirmar recepci�n
+        # PERMISOS: Solo usuarios del centro receptor pueden confirmar recepción
         user = request.user
         if not user.is_superuser:
             centro_user = self._user_centro(user)
             if not centro_user or requisicion.centro_id != centro_user.id:
                 return Response({
-                    'error': 'Solo el centro receptor puede confirmar la recepci�n'
+                    'error': 'Solo el centro receptor puede confirmar la recepción'
                 }, status=status.HTTP_403_FORBIDDEN)
         
         # Obtener datos del request
@@ -2758,7 +2758,7 @@ class RequisicionViewSet(viewsets.ModelViewSet):
                 'error': 'El lugar de entrega es requerido'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Actualizar la requisici�n
+        # Actualizar la requisición
         requisicion.estado = 'recibida'
         requisicion.fecha_recibido = timezone.now()
         requisicion.usuario_recibe = user
@@ -2770,14 +2770,14 @@ class RequisicionViewSet(viewsets.ModelViewSet):
         ])
         
         return Response({
-            'mensaje': 'Requisici�n marcada como recibida',
+            'mensaje': 'Requisición marcada como recibida',
             'requisicion': RequisicionSerializer(requisicion).data
         })
 
     @action(detail=True, methods=['get'], url_path='hoja-recoleccion')
     def hoja_recoleccion(self, request, pk=None):
         """
-        Genera y descarga el PDF de la hoja de recolecci�n para una requisici�n.
+        Genera y descarga el PDF de la hoja de recolección para una requisición.
         Solo disponible para requisiciones autorizadas, parciales o surtidas.
         """
         from core.utils.pdf_generator import generar_hoja_recoleccion
@@ -2785,7 +2785,7 @@ class RequisicionViewSet(viewsets.ModelViewSet):
         requisicion = self.get_object()
         estado = (requisicion.estado or '').lower()
         
-        # Validar que la requisici�n puede generar hoja
+        # Validar que la requisición puede generar hoja
         if estado not in ['autorizada', 'parcial', 'surtida']:
             return Response({
                 'error': 'Solo se pueden generar hojas para requisiciones autorizadas, parciales o surtidas',
@@ -2809,14 +2809,14 @@ class RequisicionViewSet(viewsets.ModelViewSet):
         except Exception as e:
             traceback.print_exc()
             return Response({
-                'error': 'Error al generar la hoja de recolecci�n',
+                'error': 'Error al generar la hoja de recolección',
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['get'], url_path='pdf-rechazo')
     def pdf_rechazo(self, request, pk=None):
         """
-        Genera y descarga el PDF de rechazo para una requisici�n rechazada.
+        Genera y descarga el PDF de rechazo para una requisición rechazada.
         """
         from core.utils.pdf_generator import generar_pdf_rechazo
         
@@ -2850,7 +2850,7 @@ class RequisicionViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def estadisticas(self, request):
-        """Estad�sticas de requisiciones filtradas por centro si aplica."""
+        """Estadísticas de requisiciones filtradas por centro si aplica."""
         try:
             # SEGURIDAD: Filtrar por centro del usuario si no es admin/farmacia
             user = request.user
@@ -2906,12 +2906,12 @@ class RequisicionViewSet(viewsets.ModelViewSet):
 @permission_classes([IsAuthenticated])
 def dashboard_resumen(request):
     """
-    Resumen del dashboard con KPIs y �ltimos movimientos.
+    Resumen del dashboard con KPIs y últimos movimientos.
     
     SEGURIDAD:
     - Usuarios de centro: solo ven datos de su centro
     - Admin/farmacia/vista: ven datos globales por defecto
-    - Admin/farmacia/vista pueden usar ?centro=ID para filtrar por centro espec�fico
+    - Admin/farmacia/vista pueden usar ?centro=ID para filtrar por centro específico
     """
     try:
         # SEGURIDAD: Filtrar por centro si el usuario no es admin/farmacia/vista
@@ -2919,7 +2919,7 @@ def dashboard_resumen(request):
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
-        # Admin/farmacia/vista puede filtrar por centro espec�fico
+        # Admin/farmacia/vista puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
         if centro_param and centro_param not in ['', 'null', 'undefined', 'todos']:
             if is_farmacia_or_admin(user):
@@ -2958,7 +2958,7 @@ def dashboard_resumen(request):
         
         movimientos_mes = movimientos_base.filter(fecha__gte=inicio_mes).count()
 
-        # === �LTIMOS MOVIMIENTOS ===
+        # === ÚLTIMOS MOVIMIENTOS ===
         ultimos_movimientos = movimientos_base.select_related(
             'lote__producto', 'lote__centro', 'centro', 'requisicion', 'usuario'
         ).order_by('-fecha')[:10]
@@ -3031,7 +3031,7 @@ def dashboard_graficas(request):
     Retorna consumo_mensual, stock_por_centro y requisiciones_por_estado.
     
     SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
-    Admin/farmacia puede usar ?centro=ID para filtrar por centro espec�fico.
+    Admin/farmacia puede usar ?centro=ID para filtrar por centro específico.
     """
     try:
         from dateutil.relativedelta import relativedelta
@@ -3041,7 +3041,7 @@ def dashboard_graficas(request):
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
-        # Admin/farmacia puede filtrar por centro espec�fico
+        # Admin/farmacia puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
         if centro_param and centro_param not in ['', 'null', 'undefined', 'todos']:
             if is_farmacia_or_admin(user):
@@ -3054,7 +3054,7 @@ def dashboard_graficas(request):
         hoy = timezone.now().date()
         
         # =========================================
-        # 1. CONSUMO MENSUAL (�LTIMOS 6 MESES)
+        # 1. CONSUMO MENSUAL (ÚLTIMOS 6 MESES)
         # =========================================
         consumo_mensual = []
         
@@ -3434,7 +3434,7 @@ def trazabilidad_lote(request, codigo):
                 'consistente': saldo == lote.cantidad_actual
             },
             'movimientos': historial,
-            'historial': historial,  # compatibilidad hacia atr?s
+            'historial': historial,  # compatibilidad hacia atr�s
             'total_movimientos': movimientos.count(),
             'alertas': alertas
         })
@@ -3459,7 +3459,7 @@ def reporte_inventario(request):
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
-        # Admin/farmacia puede filtrar por centro espec�fico
+        # Admin/farmacia puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
         if centro_param and is_farmacia_or_admin(user):
             if centro_param == 'central':
@@ -3589,7 +3589,7 @@ def reporte_inventario(request):
         subtitulo.font = Font(size=10, italic=True)
 
         ws.append([])
-        headers = ['#', 'Clave', 'Descripci�n', 'Unidad', 'Stock M�n.', 'Stock Actual', 'Lotes', 'Nivel', 'Precio']
+        headers = ['#', 'Clave', 'Descripción', 'Unidad', 'Stock Mín.', 'Stock Actual', 'Lotes', 'Nivel', 'Precio']
         ws.append(headers)
 
         header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
@@ -3618,7 +3618,7 @@ def reporte_inventario(request):
         ws[f'C{resumen_row}'] = resumen['total_productos']
         ws[f'B{resumen_row + 1}'] = 'Stock Total'
         ws[f'C{resumen_row + 1}'] = resumen['total_stock']
-        ws[f'B{resumen_row + 2}'] = 'Productos bajo m�nimo'
+        ws[f'B{resumen_row + 2}'] = 'Productos bajo mínimo'
         ws[f'C{resumen_row + 2}'] = resumen['productos_bajo_minimo']
 
         for col, width in zip(['A','B','C','D','E','F','G','H','I'], [8,14,45,10,14,14,10,12,12]):
@@ -3658,7 +3658,7 @@ def reporte_movimientos(request):
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
-        # Admin/farmacia puede filtrar por centro espec�fico
+        # Admin/farmacia puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
         if centro_param and is_farmacia_or_admin(user):
             try:
@@ -3901,7 +3901,7 @@ def reporte_caducidades(request):
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
-        # Admin/farmacia puede filtrar por centro espec�fico
+        # Admin/farmacia puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
         if centro_param and is_farmacia_or_admin(user):
             if centro_param == 'central':
@@ -4026,7 +4026,7 @@ def reporte_caducidades(request):
         
         ws.append([])
         
-        headers = ['#', 'Producto', 'Lote', 'Caducidad', 'D�as Restantes', 'Stock', 'Estado']
+        headers = ['#', 'Producto', 'Lote', 'Caducidad', 'Días Restantes', 'Stock', 'Estado']
         ws.append(headers)
         
         header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
@@ -4054,9 +4054,9 @@ def reporte_caducidades(request):
         ws[f'C{resumen_row}'] = resumen['total']
         ws[f'B{resumen_row + 1}'] = 'Vencidos:'
         ws[f'C{resumen_row + 1}'] = resumen['vencidos']
-        ws[f'B{resumen_row + 2}'] = 'Cr�ticos:'
+        ws[f'B{resumen_row + 2}'] = 'Críticos:'
         ws[f'C{resumen_row + 2}'] = resumen['criticos']
-        ws[f'B{resumen_row + 3}'] = 'Pr�ximos:'
+        ws[f'B{resumen_row + 3}'] = 'Próximos:'
         ws[f'C{resumen_row + 3}'] = resumen['proximos']
         
         for col, width in zip(['A','B','C','D','E','F','G'], [8,50,20,15,15,12,12]):
@@ -4425,13 +4425,13 @@ def reportes_precarga(request):
     """
     Obtiene datos para precargar formularios de reportes.
     
-    SEGURIDAD: Filtra centros y lotes seg�n el rol del usuario.
+    SEGURIDAD: Filtra centros y lotes según el rol del usuario.
     - Admin/farmacia: ven todos los centros
     - Usuario de centro: solo ve su centro
     
     Retorna:
     - Lista de productos activos
-    - Lista de centros activos (filtrada seg�n rol)
+    - Lista de centros activos (filtrada según rol)
     - Tipos de movimiento disponibles
     """
     try:
@@ -4442,7 +4442,7 @@ def reportes_precarga(request):
         
         productos = list(Producto.objects.filter(activo=True).values('id', 'clave', 'descripcion').order_by('clave'))
         
-        # Filtrar centros seg�n rol
+        # Filtrar centros según rol
         if es_admin_farmacia:
             centros = list(Centro.objects.filter(activo=True).values('id', 'clave', 'nombre').order_by('clave'))
         elif user_centro:
@@ -4450,7 +4450,7 @@ def reportes_precarga(request):
         else:
             centros = []
         
-        # Filtrar lotes seg�n rol
+        # Filtrar lotes según rol
         lotes_query = Lote.objects.filter(deleted_at__isnull=True)
         if not es_admin_farmacia and user_centro:
             lotes_query = lotes_query.filter(centro=user_centro)
@@ -4517,7 +4517,7 @@ class HojaRecoleccionViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=['get'])
     def pdf(self, request, pk=None):
-        """Genera y descarga el PDF de la hoja de recolecci�n."""
+        """Genera y descarga el PDF de la hoja de recolección."""
         from core.utils.pdf_generator import generar_hoja_recoleccion
         
         hoja = self.get_object()
