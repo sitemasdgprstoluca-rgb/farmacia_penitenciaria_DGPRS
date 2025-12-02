@@ -1,15 +1,54 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
-import { usuariosAPI } from "../services/api";
+import { usuariosAPI, authAPI } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
+import { clearTokens } from "../services/tokenManager";
 
 // Tiempo de espera antes de redirigir al login tras cambio de contraseña (ms)
 const PASSWORD_CHANGE_LOGOUT_DELAY = 2000;
 
+// Permisos internos que no se muestran al usuario final
+const PERMISOS_INTERNOS = [
+  "esSuperusuario",
+  "isAdmin",
+  "isFarmaciaAdmin",
+  "isCentroUser",
+  "isVistaUser",
+  "isSuperuser",
+  "role",
+  "groupNames",
+];
+
+// Etiquetas amigables para permisos
+const ETIQUETAS_PERMISOS = {
+  verDashboard: "Ver Dashboard",
+  verProductos: "Ver Productos",
+  verLotes: "Ver Lotes",
+  verRequisiciones: "Ver Requisiciones",
+  verCentros: "Ver Centros",
+  verUsuarios: "Ver Usuarios",
+  verReportes: "Ver Reportes",
+  verTrazabilidad: "Ver Trazabilidad",
+  verAuditoria: "Ver Auditoría",
+  verNotificaciones: "Ver Notificaciones",
+  verPerfil: "Ver Perfil",
+  verMovimientos: "Ver Movimientos",
+  crearRequisicion: "Crear Requisiciones",
+  editarRequisicion: "Editar Requisiciones",
+  eliminarRequisicion: "Eliminar Requisiciones",
+  enviarRequisicion: "Enviar Requisiciones",
+  autorizarRequisicion: "Autorizar Requisiciones",
+  rechazarRequisicion: "Rechazar Requisiciones",
+  surtirRequisicion: "Surtir Requisiciones",
+  cancelarRequisicion: "Cancelar Requisiciones",
+  descargarHojaRecoleccion: "Descargar Hoja de Recolección",
+};
+
 function Perfil() {
   const { user, permisos, recargarUsuario } = usePermissions();
   const [perfil, setPerfil] = useState(null);
+  const [perfilError, setPerfilError] = useState(null);
   const [form, setForm] = useState({
     first_name: "",
     last_name: "",
@@ -22,12 +61,15 @@ function Perfil() {
     new_password: "",
     confirm_password: "",
   });
-  const [loading, setLoading] = useState(false);
+  const [loadingPerfil, setLoadingPerfil] = useState(true);
+  const [savingPerfil, setSavingPerfil] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const navigate = useNavigate();
 
   const cargarPerfil = async () => {
-    setLoading(true);
+    setLoadingPerfil(true);
+    setPerfilError(null);
     try {
       const res = await usuariosAPI.me();
       setPerfil(res.data);
@@ -40,9 +82,23 @@ function Perfil() {
         cargo: res.data.cargo || "",
       }));
     } catch (error) {
-      toast.error(error.response?.data?.detail || "No se pudo cargar el perfil");
+      const status = error.response?.status;
+      const detail = error.response?.data?.detail || "No se pudo cargar el perfil";
+      
+      if (status === 403) {
+        setPerfilError("No tienes permisos para ver tu perfil. Contacta al administrador.");
+        toast.error("Acceso denegado al perfil");
+      } else if (status === 401) {
+        // Sesión expirada, redirigir al login
+        toast.error("Sesión expirada. Por favor inicia sesión nuevamente.");
+        limpiarSesionYRedirigir();
+        return;
+      } else {
+        setPerfilError(detail);
+        toast.error(detail);
+      }
     } finally {
-      setLoading(false);
+      setLoadingPerfil(false);
     }
   };
 
@@ -52,17 +108,33 @@ function Perfil() {
 
   const guardarDatos = async (e) => {
     e.preventDefault();
-    setLoading(true);
+    
+    // No permitir guardar si el perfil no se cargó correctamente
+    if (!perfil) {
+      toast.error("No se puede guardar: el perfil no se ha cargado correctamente");
+      return;
+    }
+    
+    setSavingPerfil(true);
     try {
       await usuariosAPI.actualizarPerfil(form);
       toast.success("Perfil actualizado");
-      recargarUsuario?.();
+      
+      // Recargar usuario con manejo de errores
+      try {
+        await recargarUsuario?.();
+      } catch (reloadError) {
+        console.error("Error al recargar usuario:", reloadError);
+        // Si falla la recarga, notificar pero no bloquear
+        toast.error("Perfil guardado, pero hubo un error al sincronizar. Recarga la página.");
+      }
+      
       cargarPerfil();
     } catch (error) {
       const detail = error.response?.data?.detail || error.response?.data?.error;
       toast.error(detail || "No se pudo actualizar el perfil");
     } finally {
-      setLoading(false);
+      setSavingPerfil(false);
     }
   };
 
@@ -89,6 +161,11 @@ function Perfil() {
       toast.error("La contraseña debe tener al menos un número");
       return;
     }
+    // Validar que la nueva contraseña sea diferente de la actual
+    if (passForm.new_password === passForm.old_password) {
+      toast.error("La nueva contraseña debe ser diferente a la actual");
+      return;
+    }
     setPasswordLoading(true);
     try {
       await usuariosAPI.cambiarPasswordPropio(passForm);
@@ -96,10 +173,7 @@ function Perfil() {
       setPassForm({ old_password: "", new_password: "", confirm_password: "" });
       // Según especificación: cerrar sesión forzosamente después de cambiar contraseña
       setTimeout(() => {
-        localStorage.removeItem("token");
-        localStorage.removeItem("refresh_token");
-        localStorage.removeItem("user");
-        navigate("/login");
+        limpiarSesionYRedirigir();
       }, PASSWORD_CHANGE_LOGOUT_DELAY);
     } catch (error) {
       toast.error(error.response?.data?.error || "No se pudo cambiar la contraseña");
@@ -108,16 +182,76 @@ function Perfil() {
     }
   };
 
-  const permisosActivos = useMemo(() => {
-    return Object.entries(permisos || {}).filter(([, value]) => Boolean(value));
+  // Filtrar permisos para mostrar solo los relevantes al usuario
+  const permisosVisibles = useMemo(() => {
+    return Object.entries(permisos || {})
+      .filter(([clave, value]) => {
+        // Excluir permisos internos/técnicos
+        if (PERMISOS_INTERNOS.includes(clave)) return false;
+        // Solo mostrar permisos activos
+        return Boolean(value);
+      })
+      .map(([clave, value]) => ({
+        clave,
+        etiqueta: ETIQUETAS_PERMISOS[clave] || clave,
+        value,
+      }));
   }, [permisos]);
 
-  const logout = () => {
+  // Limpiar sesión completamente y redirigir
+  const limpiarSesionYRedirigir = () => {
+    clearTokens();
     localStorage.removeItem("token");
     localStorage.removeItem("refresh_token");
     localStorage.removeItem("user");
     navigate("/login");
   };
+
+  const logout = async () => {
+    setLoggingOut(true);
+    try {
+      // Llamar al endpoint de logout para invalidar el refresh token en servidor
+      await authAPI.logout();
+    } catch (error) {
+      // Si falla el logout en servidor, continuar con limpieza local
+      console.error("Error al cerrar sesión en servidor:", error);
+    } finally {
+      // Siempre limpiar localmente y redirigir
+      limpiarSesionYRedirigir();
+      setLoggingOut(false);
+    }
+  };
+
+  // Mostrar error si no se pudo cargar el perfil
+  if (perfilError && !loadingPerfil) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Mi Perfil</h1>
+            <p className="text-gray-600 text-sm">Gestiona tu información y credenciales</p>
+          </div>
+          <button
+            onClick={logout}
+            disabled={loggingOut}
+            className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60"
+          >
+            {loggingOut ? "Cerrando..." : "Cerrar sesión"}
+          </button>
+        </div>
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+          <p className="text-red-700 font-semibold mb-2">Error al cargar el perfil</p>
+          <p className="text-red-600 text-sm mb-4">{perfilError}</p>
+          <button
+            onClick={cargarPerfil}
+            className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700"
+          >
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -128,9 +262,10 @@ function Perfil() {
         </div>
         <button
           onClick={logout}
-          className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700"
+          disabled={loggingOut}
+          className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60"
         >
-          Cerrar sesión
+          {loggingOut ? "Cerrando..." : "Cerrar sesión"}
         </button>
       </div>
 
@@ -217,9 +352,10 @@ function Perfil() {
               <button
                 type="submit"
                 className="px-5 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-60"
-                disabled={loading}
+                disabled={savingPerfil || loadingPerfil || !perfil}
+                title={!perfil ? "Carga el perfil primero" : ""}
               >
-                {loading ? "Guardando..." : "Guardar cambios"}
+                {savingPerfil ? "Guardando..." : loadingPerfil ? "Cargando..." : "Guardar cambios"}
               </button>
             </div>
           </form>
@@ -287,13 +423,16 @@ function Perfil() {
 
         <div className="lg:col-span-2 bg-white rounded-xl shadow p-5">
           <h3 className="text-base font-semibold text-gray-900 mb-3">Permisos asignados</h3>
+          <p className="text-xs text-gray-500 mb-3">
+            Estos son los permisos activos según tu rol ({permisos?.role || user?.rol || "—"})
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-            {permisosActivos.map(([clave]) => (
+            {permisosVisibles.map(({ clave, etiqueta }) => (
               <div key={clave} className="px-3 py-2 rounded-lg bg-gray-50 border border-gray-100 text-sm font-semibold text-gray-800">
-                {clave}
+                {etiqueta}
               </div>
             ))}
-            {!permisosActivos.length && <p className="text-sm text-gray-600">No hay permisos asignados.</p>}
+            {!permisosVisibles.length && <p className="text-sm text-gray-600">No hay permisos asignados.</p>}
           </div>
         </div>
       </div>
