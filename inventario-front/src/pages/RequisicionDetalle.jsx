@@ -171,14 +171,49 @@ const RequisicionDetalle = () => {
   };
 
   const confirmarAutorizacion = async () => {
+    // Validar que al menos un item tenga cantidad > 0
+    const totalAutorizado = detallesEditables.reduce((sum, d) => sum + (d.cantidad_autorizada || 0), 0);
+    if (totalAutorizado === 0) {
+      toast.error('Debe autorizar al menos un producto con cantidad mayor a 0');
+      return;
+    }
+    
+    // Verificar si es autorización parcial (algún item con cantidad_autorizada < cantidad_solicitada)
+    const esParcial = detallesEditables.some(d => 
+      (d.cantidad_autorizada || 0) < (d.cantidad_solicitada || 0)
+    );
+    
+    let observaciones = '';
+    if (esParcial) {
+      observaciones = prompt(
+        'Esta es una autorización PARCIAL.\n\n' +
+        'Por favor, indique el motivo de la reducción de cantidades:\n' +
+        '(Mínimo 10 caracteres)'
+      );
+      
+      if (observaciones === null) return; // Usuario canceló
+      
+      const obsTrimmed = (observaciones || '').trim();
+      if (obsTrimmed.length < 10) {
+        toast.error('Para autorizaciones parciales, debe indicar el motivo (mínimo 10 caracteres)');
+        return;
+      }
+      observaciones = obsTrimmed;
+    } else {
+      // Confirmación simple para autorización total
+      if (!window.confirm('¿Confirmar la autorización TOTAL de esta requisición?')) {
+        return;
+      }
+    }
+    
     try {
       setProcesando(true);
       const items = detallesEditables.map(d => ({
         id: d.id,
         cantidad_autorizada: d.cantidad_autorizada
       }));
-      await requisicionesAPI.autorizar(id, { items });
-      toast.success('Requisición autorizada');
+      await requisicionesAPI.autorizar(id, { items, observaciones });
+      toast.success(esParcial ? 'Requisición autorizada parcialmente' : 'Requisición autorizada');
       setModoAutorizar(false);
       cargarRequisicion();
     } catch (error) {
@@ -189,14 +224,23 @@ const RequisicionDetalle = () => {
   };
 
   const handleRechazar = async () => {
-    const motivo = prompt('Motivo del rechazo:');
-    if (!motivo || !motivo.trim()) {
-      toast.error('Debe proporcionar un motivo de rechazo');
+    const motivo = prompt(
+      `Motivo del rechazo para ${requisicion?.folio || 'esta requisición'}:\n` +
+      '(Mínimo 10 caracteres)'
+    );
+    
+    // Validar que se ingresó un motivo
+    if (motivo === null) return; // Usuario canceló
+    
+    const motivoTrimmed = (motivo || '').trim();
+    if (motivoTrimmed.length < 10) {
+      toast.error('El motivo de rechazo debe tener al menos 10 caracteres');
       return;
     }
+    
     try {
       setProcesando(true);
-      await requisicionesAPI.rechazar(id, { observaciones: motivo });
+      await requisicionesAPI.rechazar(id, { observaciones: motivoTrimmed });
       toast.success('Requisición rechazada');
       cargarRequisicion();
     } catch (error) {
@@ -228,10 +272,23 @@ const RequisicionDetalle = () => {
   };
 
   const handleCancelar = async () => {
-    const motivo = prompt('Motivo de cancelación (opcional):');
+    const motivo = prompt(
+      `Motivo de cancelación para ${requisicion?.folio || 'esta requisición'}:\n` +
+      '(Obligatorio para auditoría - mínimo 5 caracteres)'
+    );
+    
+    // Validar que se ingresó un motivo
+    if (motivo === null) return; // Usuario canceló
+    
+    const motivoTrimmed = (motivo || '').trim();
+    if (motivoTrimmed.length < 5) {
+      toast.error('Debe ingresar un motivo de cancelación (mínimo 5 caracteres)');
+      return;
+    }
+    
     try {
       setProcesando(true);
-      await requisicionesAPI.cancelar(id, { observaciones: motivo || '' });
+      await requisicionesAPI.cancelar(id, { observaciones: motivoTrimmed });
       toast.success('Requisición cancelada');
       cargarRequisicion();
     } catch (error) {
@@ -242,8 +299,26 @@ const RequisicionDetalle = () => {
   };
 
   const handleMarcarRecibida = async () => {
+    // Verificar que el usuario pertenece al centro de la requisición
+    const centroRequisicion = requisicion?.centro?.id || requisicion?.centro;
+    const centroUsuario = user?.centro?.id || user?.centro;
+    const esPrivilegiado = user?.is_superuser || permisos?.isFarmaciaAdmin || permisos?.isAdmin;
+    
+    if (!esPrivilegiado && centroUsuario && centroRequisicion && centroUsuario !== centroRequisicion) {
+      toast.error('Solo puede marcar como recibida las requisiciones de su centro');
+      return;
+    }
+    
+    // Confirmar antes de proceder
+    if (!window.confirm(
+      `¿Confirmar recepción de la requisición ${requisicion?.folio || id}?\n\n` +
+      'Esta acción indica que los medicamentos fueron entregados físicamente.'
+    )) {
+      return;
+    }
+    
     const lugar = prompt('Lugar de entrega/recepción:');
-    if (!lugar) {
+    if (!lugar || !lugar.trim()) {
       toast.error('El lugar de entrega es requerido');
       return;
     }
@@ -252,8 +327,8 @@ const RequisicionDetalle = () => {
     try {
       setProcesando(true);
       await requisicionesAPI.marcarRecibida(id, { 
-        lugar_entrega: lugar, 
-        observaciones_recepcion: observaciones 
+        lugar_entrega: lugar.trim(), 
+        observaciones_recepcion: observaciones.trim() 
       });
       toast.success('Requisición marcada como recibida');
       cargarRequisicion();
