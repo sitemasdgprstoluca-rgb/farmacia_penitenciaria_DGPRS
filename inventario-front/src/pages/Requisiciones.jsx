@@ -201,6 +201,14 @@ const Requisiciones = () => {
     setCurrentPage(1);
   }, [filtroEstado, searchTerm, grupoEstado, filtroCentro, filtroFechaDesde, filtroFechaHasta]);
 
+  // Sincronizar filtroCentro cuando el usuario se hidrata (carga tardía)
+  // Esto evita que usuarios de centro vean requisiciones de otros centros antes de cargar su perfil
+  useEffect(() => {
+    if (!esAdminOFarmacia && user?.centro?.id && !filtroCentro) {
+      setFiltroCentro(user.centro.id.toString());
+    }
+  }, [user?.centro?.id, esAdminOFarmacia, filtroCentro]);
+
   useEffect(() => {
     cargarRequisiciones();
     cargarResumenEstados();

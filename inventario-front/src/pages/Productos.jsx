@@ -486,11 +486,15 @@ const Productos = () => {
 
   const filtrosActivos = useMemo(() => {
 
-    const base = [filters.search, filters.estado, filters.unidad, filters.stock];
+    // Para roles con verSoloActivos, el filtro de estado está forzado y no cuenta como filtro "activo" del usuario
 
-    const activos = base.filter((v) => Boolean(v));
+    const base = puede.verSoloActivos 
 
-    return puede.verSoloActivos && !filters.estado ? activos.length + 1 : activos.length;
+      ? [filters.search, filters.unidad, filters.stock] // Excluir estado
+
+      : [filters.search, filters.estado, filters.unidad, filters.stock];
+
+    return base.filter((v) => Boolean(v)).length;
 
   }, [filters, puede.verSoloActivos]);
 
