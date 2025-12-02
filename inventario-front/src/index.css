@@ -14,29 +14,39 @@
   --pantone-465c: #B98C6B;
   --pantone-468c: #D2B595;
   
-  /* Colores Primarios del Sistema */
-  --color-primary: #632842;
-  --color-primary-dark: #932043;
-  --color-secondary: #9B7E4C;
-  --color-accent: #C9A876;
+  /* Colores Dinámicos del Sistema - Valores por defecto institucionales (guinda/rojo)
+     Estos valores serán actualizados dinámicamente por ThemeContext */
+  --color-primary: #9F2241;
+  --color-primary-hover: #6B1839;
+  --color-secondary: #424242;
+  --color-accent: #BC955C;
+  --color-background: #F5F5F5;
+  --color-sidebar-bg: #9F2241;
+  --color-header-bg: #9F2241;
+  --color-card-bg: #FFFFFF;
+  --color-text: #212121;
+  --color-text-secondary: #757575;
+  --color-sidebar-text: #FFFFFF;
+  --color-header-text: #FFFFFF;
+  --color-success: #4CAF50;
+  --color-warning: #FF9800;
+  --color-error: #F44336;
+  --color-info: #2196F3;
   
-  /* Estados */
-  --color-success: #059669;
-  --color-warning: #d97706;
-  --color-danger: #dc2626;
-  --color-info: #0284c7;
+  /* Estados (mantener compatibilidad con clases existentes) */
+  --color-danger: var(--color-error);
   
   /* Fondos */
-  --bg-primary: #ffffff;
-  --bg-secondary: #fafaf9;
+  --bg-primary: var(--color-card-bg);
+  --bg-secondary: var(--color-background);
   --bg-tertiary: #f5f5f4;
-  --bg-dark: #632842;
+  --bg-dark: var(--color-primary);
   
   /* Textos */
-  --text-primary: #292524;
-  --text-secondary: #57534e;
+  --text-primary: var(--color-text);
+  --text-secondary: var(--color-text-secondary);
   --text-tertiary: #78716c;
-  --text-on-primary: #ffffff;
+  --text-on-primary: var(--color-header-text);
   
   /* Bordes */
   --border-color: #e7e5e4;

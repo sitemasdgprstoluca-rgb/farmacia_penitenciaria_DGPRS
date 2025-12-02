@@ -98,7 +98,7 @@ function Layout() {
         className={`fixed top-0 left-0 z-40 h-screen shadow-lg transition-transform ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         } w-64 lg:translate-x-0`}
-        style={{ background: "linear-gradient(180deg, #9F2241 0%, #6B1839 100%)" }}
+        style={{ background: "var(--color-sidebar-bg, linear-gradient(180deg, #9F2241 0%, #6B1839 100%))" }}
       >
         <div
           className="flex items-center justify-between p-4 border-b"
@@ -122,7 +122,7 @@ function Layout() {
         >
           <div className="flex items-center gap-3">
             <div className="bg-white rounded-full p-2">
-              <FaUserCircle className="text-3xl" style={{ color: "#9F2241" }} />
+              <FaUserCircle className="text-3xl" style={{ color: "var(--color-primary, #9F2241)" }} />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-white truncate">
@@ -193,21 +193,21 @@ function Layout() {
       </aside>
 
       <div className="transition-all min-h-screen flex flex-col lg:ml-64">
-        <header className="bg-white shadow-sm sticky top-0 z-30" style={{ borderBottom: "3px solid #9F2241" }}>
+        <header className="bg-white shadow-sm sticky top-0 z-30" style={{ borderBottom: "3px solid var(--color-primary, #9F2241)" }}>
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-4">
             <div className="flex items-center gap-3 sm:gap-4">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
                 className="transition-colors"
-                style={{ color: "#9F2241" }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = "#6B1839")}
-                onMouseLeave={(e) => (e.currentTarget.style.color = "#9F2241")}
+                style={{ color: "var(--color-primary, #9F2241)" }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "var(--color-primary-hover, #6B1839)")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "var(--color-primary, #9F2241)")}
               >
                 <FaBars size={24} />
               </button>
               <h1
                 className="text-sm sm:text-base md:text-lg font-bold leading-snug max-w-3xl"
-                style={{ color: "#6B1839" }}
+                style={{ color: "var(--color-primary-hover, #6B1839)" }}
               >
                 SISTEMA DE FARMACIA PENITENCIARIA - GOBIERNO DEL ESTADO DE MEXICO
               </h1>
