@@ -1,66 +1,14 @@
-import { useState } from 'react';
-import { trazabilidadAPI, productosAPI, lotesAPI, descargarArchivo } from '../services/api';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { trazabilidadAPI, productosAPI, lotesAPI, centrosAPI, descargarArchivo } from '../services/api';
 import { toast } from 'react-hot-toast';
-import { FaSearch, FaBox, FaWarehouse, FaHistory, FaExclamationTriangle, FaFilePdf } from 'react-icons/fa';
+import { FaSearch, FaBox, FaWarehouse, FaHistory, FaExclamationTriangle, FaFilePdf, FaBuilding, FaLock } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import AutocompleteInput from '../components/AutocompleteInput';
 import { usePermissions } from '../hooks/usePermissions';
 
-const MOCK_PRODUCTO = {
-  codigo: 'MED-001',
-  descripcion: 'Paracetamol 500mg tabletas',
-  unidad_medida: 'TABLETA',
-  stock_actual: 320,
-  stock_minimo: 50,
-  alertas: [],
-  lotes: [
-    {
-      numero_lote: 'L-2024-001',
-      fecha_caducidad: new Date(Date.now() + 60 * 86400000).toISOString(),
-      cantidad_actual: 150,
-      cantidad_inicial: 150,
-      estado: 'DISPONIBLE',
-    },
-    {
-      numero_lote: 'L-2023-112',
-      fecha_caducidad: new Date(Date.now() - 15 * 86400000).toISOString(),
-      cantidad_actual: 0,
-      cantidad_inicial: 80,
-      estado: 'VENCIDO',
-    },
-  ],
-  movimientos: Array.from({ length: 8 }).map((_, index) => ({
-    id: index + 1,
-    fecha: new Date(Date.now() - index * 86400000).toISOString(),
-    tipo: index % 2 === 0 ? 'ENTRADA' : 'SALIDA',
-    cantidad: 20 + index * 5,
-    centro: 'Centro Penitenciario Simulado',
-    usuario: index % 2 === 0 ? 'Farmacia Central' : 'CP Norte',
-    lote: index % 2 === 0 ? 'L-2024-001' : 'L-2023-112',
-  })),
-};
-
-const MOCK_LOTE = {
-  numero_lote: 'L-2024-001',
-  producto: {
-    codigo: 'MED-001',
-    descripcion: 'Paracetamol 500mg tabletas',
-  },
-  fecha_caducidad: new Date(Date.now() + 45 * 86400000).toISOString(),
-  cantidad_actual: 150,
-  cantidad_inicial: 220,
-  proveedor: 'Laboratorio Simulado',
-  estado: 'DISPONIBLE',
-  movimientos: Array.from({ length: 5 }).map((_, index) => ({
-    id: index + 1,
-    fecha: new Date(Date.now() - index * 43200000).toISOString(),
-    tipo: index % 2 === 0 ? 'ENTRADA' : 'SALIDA',
-    cantidad: 12 + index * 3,
-    centro: 'Centro Penitenciario Simulado',
-    usuario: 'Operador',
-    saldo: 200 - index * 20,
-  })),
-};
+// ============================================
+// MAPEO Y NORMALIZACIÓN DE DATOS
+// ============================================
 
 const mapMovimiento = (mov = {}) => ({
   id: mov.id,
@@ -82,7 +30,6 @@ const mapLote = (lote = {}) => ({
   estado: (lote.estado || lote.estado_caducidad || '').toString().toUpperCase(),
   centro: lote.centro,
   proveedor: lote.proveedor,
-  // Campos de trazabilidad de contratos
   numero_contrato: lote.numero_contrato || '',
   marca: lote.marca || '',
 });
@@ -138,6 +85,8 @@ const normalizeLoteResponse = (data) => {
       proveedor: data.proveedor,
       estado: (data.estado || data.estado_caducidad || '').toString().toUpperCase(),
       centro: data.centro,
+      numero_contrato: data.numero_contrato || '',
+      marca: data.marca || '',
       movimientos: (data.movimientos || []).map(mapMovimiento),
       alertas: data.alertas || [],
       estadisticas: data.estadisticas || {},
@@ -157,6 +106,8 @@ const normalizeLoteResponse = (data) => {
       proveedor: data.lote.proveedor,
       estado: (data.lote.estado || data.lote.estado_caducidad || '').toString().toUpperCase(),
       centro: data.lote.centro,
+      numero_contrato: data.lote.numero_contrato || '',
+      marca: data.lote.marca || '',
       movimientos: (data.historial || []).map(mapMovimiento),
       alertas: data.alertas || [],
       estadisticas: data.estadisticas || {},
@@ -166,23 +117,97 @@ const normalizeLoteResponse = (data) => {
   return data;
 };
 
-const isDevSession = () => false;
+// ============================================
+// COMPONENTE PRINCIPAL
+// ============================================
 
 const Trazabilidad = () => {
   const { getRolPrincipal, permisos } = usePermissions();
   const rolPrincipal = getRolPrincipal();
-  // Solo ADMIN y FARMACIA pueden ver campos de contrato (para auditoría)
-  const puedeVerContrato = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
+  
+  // PERMISOS: Solo ADMIN y FARMACIA pueden buscar por lote y ver contratos
+  const esAdminOFarmacia = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
+  const puedeVerContrato = esAdminOFarmacia;
+  const puedeBuscarPorLote = esAdminOFarmacia;
 
+  // Estados principales
   const [tipoBusqueda, setTipoBusqueda] = useState('producto');
   const [codigoBusqueda, setCodigoBusqueda] = useState('');
+  const [codigoResultados, setCodigoResultados] = useState(''); // Código sincronizado con resultados
   const [loading, setLoading] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [resultados, setResultados] = useState(null);
+  
+  // Filtro de centro
+  const [centros, setCentros] = useState([]);
+  const [centroFiltro, setCentroFiltro] = useState('');
+  const [centroUsuario, setCentroUsuario] = useState(null);
+  
+  // Control de debounce para evitar múltiples llamadas
+  const debounceRef = useRef(null);
+  const lastSearchRef = useRef({ tipo: '', codigo: '' });
 
+  // Cargar centros al montar (solo para admin/farmacia)
+  useEffect(() => {
+    const cargarCentros = async () => {
+      if (!esAdminOFarmacia) {
+        // Usuario de centro: obtener su centro desde el perfil
+        try {
+          const userStr = localStorage.getItem('user');
+          if (userStr) {
+            const user = JSON.parse(userStr);
+            if (user.centro_nombre || user.centro) {
+              setCentroUsuario(user.centro_nombre || `Centro ${user.centro}`);
+            }
+          }
+        } catch (e) {
+          console.warn('No se pudo obtener centro del usuario:', e);
+        }
+        return;
+      }
+      
+      try {
+        const resp = await centrosAPI.getAll({ page_size: 100, ordering: 'nombre', activo: true });
+        setCentros(resp.data?.results || resp.data || []);
+      } catch (e) {
+        console.warn('No se pudieron cargar centros:', e);
+      }
+    };
+    cargarCentros();
+  }, [esAdminOFarmacia]);
+
+  // Cambiar tipo de búsqueda con validación de permisos
+  const handleTipoBusquedaChange = (nuevoTipo) => {
+    if (nuevoTipo === 'lote' && !puedeBuscarPorLote) {
+      toast.error('Solo administradores y farmacia pueden buscar por lote');
+      return;
+    }
+    setTipoBusqueda(nuevoTipo);
+    setCodigoBusqueda('');
+    setResultados(null);
+    setCodigoResultados('');
+  };
+
+  // Debounce para el campo de búsqueda
+  const handleCodigoBusquedaChange = useCallback((valor) => {
+    setCodigoBusqueda(valor);
+    
+    // Debounce: no limpiar resultados inmediatamente
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+  }, []);
+
+  // Exportar PDF con código sincronizado
   const handleExportarPdf = async () => {
-    if (!resultados) {
+    if (!resultados || !codigoResultados) {
       toast.error('Primero busque un producto o lote para exportar su trazabilidad');
+      return;
+    }
+
+    // Validar permisos para lotes
+    if (tipoBusqueda === 'lote' && !esAdminOFarmacia) {
+      toast.error('No tienes permiso para exportar trazabilidad de lotes');
       return;
     }
 
@@ -191,19 +216,30 @@ const Trazabilidad = () => {
       let response;
       let filename;
       
+      // Usar codigoResultados (sincronizado) en lugar de codigoBusqueda
+      const codigoParaExportar = codigoResultados;
+      
       if (tipoBusqueda === 'producto') {
-        response = await trazabilidadAPI.exportarPdf(codigoBusqueda);
-        filename = `trazabilidad_producto_${codigoBusqueda}_${new Date().toISOString().split('T')[0]}.pdf`;
+        response = await trazabilidadAPI.exportarPdf(codigoParaExportar);
+        filename = `trazabilidad_producto_${codigoParaExportar}_${new Date().toISOString().split('T')[0]}.pdf`;
       } else {
-        response = await trazabilidadAPI.exportarLotePdf(codigoBusqueda);
-        filename = `trazabilidad_lote_${codigoBusqueda}_${new Date().toISOString().split('T')[0]}.pdf`;
+        response = await trazabilidadAPI.exportarLotePdf(codigoParaExportar);
+        filename = `trazabilidad_lote_${codigoParaExportar}_${new Date().toISOString().split('T')[0]}.pdf`;
       }
       
       descargarArchivo(response, filename);
       toast.success('PDF de trazabilidad generado exitosamente');
     } catch (error) {
       console.error('Error al exportar PDF:', error);
-      toast.error('Error al generar el PDF de trazabilidad');
+      
+      // Manejo específico de errores
+      if (error.response?.status === 403) {
+        toast.error('No tienes permiso para exportar esta trazabilidad');
+      } else if (error.response?.status === 404) {
+        toast.error('El registro no fue encontrado para exportar');
+      } else {
+        toast.error(error.response?.data?.error || 'Error al generar el PDF de trazabilidad');
+      }
     } finally {
       setExportingPdf(false);
     }
@@ -212,8 +248,23 @@ const Trazabilidad = () => {
   const handleBuscar = async (e) => {
     e.preventDefault();
 
-    if (!codigoBusqueda.trim()) {
-      toast.error('Ingrese un codigo para buscar');
+    const codigoTrimmed = codigoBusqueda.trim();
+    if (!codigoTrimmed) {
+      toast.error('Ingrese un código para buscar');
+      return;
+    }
+
+    // Validar permisos para lotes
+    if (tipoBusqueda === 'lote' && !puedeBuscarPorLote) {
+      toast.error('No tienes permiso para buscar por lote. Solo administradores y farmacia pueden hacerlo.');
+      return;
+    }
+
+    // Evitar búsquedas duplicadas
+    if (lastSearchRef.current.tipo === tipoBusqueda && 
+        lastSearchRef.current.codigo === codigoTrimmed &&
+        resultados) {
+      toast('Ya tienes estos resultados cargados', { icon: 'ℹ️' });
       return;
     }
 
@@ -221,36 +272,58 @@ const Trazabilidad = () => {
     try {
       const normalizer = tipoBusqueda === 'producto' ? normalizeProductoResponse : normalizeLoteResponse;
 
-      if (isDevSession()) {
-        const mock = tipoBusqueda === 'producto' ? normalizeProductoResponse(MOCK_PRODUCTO) : normalizeLoteResponse(MOCK_LOTE);
-        setResultados(mock);
-        toast.success('Trazabilidad cargada correctamente');
-        return;
-      }
-
       const response = tipoBusqueda === 'producto'
-        ? await trazabilidadAPI.producto(codigoBusqueda)
-        : await trazabilidadAPI.lote(codigoBusqueda);
+        ? await trazabilidadAPI.producto(codigoTrimmed)
+        : await trazabilidadAPI.lote(codigoTrimmed);
 
-      setResultados(normalizer(response.data));
+      const datosNormalizados = normalizer(response.data);
+      setResultados(datosNormalizados);
+      setCodigoResultados(codigoTrimmed); // Sincronizar código con resultados
+      lastSearchRef.current = { tipo: tipoBusqueda, codigo: codigoTrimmed };
+      
       toast.success('Trazabilidad cargada correctamente');
     } catch (error) {
-      if (error.response?.status === 404) {
+      // Manejo específico de errores HTTP
+      if (error.response?.status === 403) {
+        toast.error('No tienes permiso para acceder a esta trazabilidad. Verifica tu rol.');
+      } else if (error.response?.status === 404) {
         toast.error(`${tipoBusqueda === 'producto' ? 'Producto' : 'Lote'} no encontrado`);
       } else {
         toast.error(error.response?.data?.error || 'Error al cargar trazabilidad');
       }
       console.error(error);
       setResultados(null);
+      setCodigoResultados('');
     } finally {
       setLoading(false);
     }
   };
 
+  // Limpiar búsqueda - restablece TODOS los estados
   const limpiarBusqueda = () => {
+    // No permitir limpiar mientras hay operaciones activas
+    if (loading || exportingPdf) {
+      toast('Espera a que termine la operación actual', { icon: '⏳' });
+      return;
+    }
+    
     setCodigoBusqueda('');
+    setCodigoResultados('');
     setResultados(null);
+    setTipoBusqueda('producto'); // Restablecer a producto (siempre permitido)
+    setCentroFiltro('');
+    lastSearchRef.current = { tipo: '', codigo: '' };
+    
+    // Limpiar debounce pendiente
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
   };
+
+  // ============================================
+  // RENDERIZADO DE SECCIONES
+  // ============================================
 
   const renderAlertas = () => {
     if (!resultados?.alertas?.length) return null;
@@ -288,7 +361,7 @@ const Trazabilidad = () => {
         <p className="font-semibold">{resultados.codigo}</p>
       </div>
       <div className="md:col-span-2">
-        <p className="text-xs text-gray-500">Descripcion</p>
+        <p className="text-xs text-gray-500">Descripción</p>
         <p className="font-semibold">{resultados.descripcion}</p>
       </div>
       <div>
@@ -308,7 +381,7 @@ const Trazabilidad = () => {
   const renderInfoLote = () => (
     <div className="grid gap-4 md:grid-cols-4">
       <div>
-        <p className="text-xs text-gray-500">Numero de Lote</p>
+        <p className="text-xs text-gray-500">Número de Lote</p>
         <p className="font-semibold">{resultados.numero_lote}</p>
       </div>
       <div className="md:col-span-2">
@@ -341,7 +414,7 @@ const Trazabilidad = () => {
       </div>
       <div>
         <p className="text-xs text-gray-500">Centro</p>
-        <p className="font-semibold">{resultados.centro || '-'}</p>
+        <p className="font-semibold">{resultados.centro || 'Farmacia Central'}</p>
       </div>
       {/* Campos de trazabilidad de contratos - Solo visible para ADMIN y FARMACIA */}
       {puedeVerContrato && (
@@ -363,7 +436,11 @@ const Trazabilidad = () => {
     && resultados.movimientos.some((mov) => mov.saldo !== undefined && mov.saldo !== null);
 
   const lotesParaMostrar = Array.isArray(resultados?.lotes) ? resultados.lotes : [];
-  const movimientosParaMostrar = Array.isArray(resultados?.movimientos) ? resultados.movimientos : [];
+  // Limitar movimientos mostrados para evitar tablas muy pesadas
+  const movimientosParaMostrar = Array.isArray(resultados?.movimientos) 
+    ? resultados.movimientos.slice(0, 100) 
+    : [];
+  const totalMovimientos = resultados?.movimientos?.length || 0;
 
   const estadoClass = (estado = '') => {
     const upper = estado.toUpperCase();
@@ -372,63 +449,105 @@ const Trazabilidad = () => {
     return 'bg-emerald-100 text-emerald-700';
   };
 
+  // Badge de contexto para el header
+  const badgeContent = centroUsuario ? (
+    <span className="flex items-center gap-2 rounded-full bg-white/20 px-4 py-1 text-sm font-semibold">
+      <FaBuilding />
+      {centroUsuario}
+    </span>
+  ) : null;
+
   return (
     <div className="p-6 space-y-6">
       <PageHeader
         icon={FaHistory}
         title="Trazabilidad"
         subtitle="Consulta el historial completo de productos y lotes"
+        badge={badgeContent}
       />
 
       <div className="bg-white p-6 rounded-lg shadow">
         <form onSubmit={handleBuscar} className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-5">
+            {/* Selector de tipo de búsqueda */}
             <div>
               <label className="block text-sm font-medium mb-2">Buscar por</label>
               <select
                 value={tipoBusqueda}
-                onChange={(e) => {
-                  setTipoBusqueda(e.target.value);
-                  setCodigoBusqueda('');
-                  setResultados(null);
-                }}
+                onChange={(e) => handleTipoBusquedaChange(e.target.value)}
                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                disabled={loading}
               >
-                <option value="producto">Producto</option>
-                <option value="lote">Lote</option>
+                <option value="producto">📦 Producto</option>
+                {puedeBuscarPorLote ? (
+                  <option value="lote">🏷️ Lote</option>
+                ) : (
+                  <option value="lote" disabled>🔒 Lote (requiere permisos)</option>
+                )}
               </select>
+              {!puedeBuscarPorLote && (
+                <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                  <FaLock className="text-gray-400" />
+                  Solo Admin/Farmacia
+                </p>
+              )}
             </div>
 
+            {/* Campo de búsqueda con autocomplete */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium mb-2">
-                {tipoBusqueda === 'producto' ? 'Clave del producto' : 'Numero de lote'}
+                {tipoBusqueda === 'producto' ? 'Clave del producto' : 'Número de lote'}
               </label>
               {tipoBusqueda === 'producto' ? (
                 <AutocompleteInput
                   apiCall={productosAPI.getAll}
                   value={codigoBusqueda}
-                  onChange={setCodigoBusqueda}
-                  placeholder="MED-001"
+                  onChange={handleCodigoBusquedaChange}
+                  placeholder="Ej: MED-001"
                   displayField="clave"
                   searchField="search"
+                  disabled={loading}
                 />
               ) : (
                 <AutocompleteInput
                   apiCall={lotesAPI.getAll}
                   value={codigoBusqueda}
-                  onChange={setCodigoBusqueda}
-                  placeholder="L-2024-001"
+                  onChange={handleCodigoBusquedaChange}
+                  placeholder="Ej: L-2024-001"
                   displayField="numero_lote"
                   searchField="search"
+                  disabled={loading}
                 />
               )}
             </div>
 
+            {/* Selector de centro (solo para admin/farmacia) */}
+            {esAdminOFarmacia && (
+              <div>
+                <label className="block text-sm font-medium mb-2">Centro</label>
+                <select
+                  value={centroFiltro}
+                  onChange={(e) => setCentroFiltro(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  disabled={loading}
+                >
+                  <option value="">Todos los centros</option>
+                  <option value="central">🏥 Farmacia Central</option>
+                  {centros.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Botones de acción */}
             <div className="flex items-end gap-2">
               <button
                 type="submit"
-                disabled={loading}
-                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                disabled={loading || !codigoBusqueda.trim()}
+                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all"
               >
                 {loading ? (
                   <>
@@ -444,32 +563,52 @@ const Trazabilidad = () => {
               <button
                 type="button"
                 onClick={limpiarBusqueda}
-                className="px-4 py-2 border rounded-lg hover:bg-gray-100"
+                disabled={loading || exportingPdf}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
                 Limpiar
               </button>
             </div>
           </div>
+
+          {/* Indicador de código sincronizado */}
+          {resultados && codigoResultados && codigoBusqueda !== codigoResultados && (
+            <div className="text-xs text-amber-600 flex items-center gap-1 mt-2">
+              <FaExclamationTriangle />
+              Los resultados corresponden a: <strong>{codigoResultados}</strong>. 
+              Presiona &quot;Buscar&quot; para actualizar con el nuevo código.
+            </div>
+          )}
         </form>
       </div>
 
+      {/* Estado de carga */}
       {loading && (
         <div className="text-center py-8 bg-white rounded-lg shadow">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
-          <p className="mt-3 text-gray-600">Buscando informacion...</p>
+          <p className="mt-3 text-gray-600">Buscando información...</p>
         </div>
       )}
 
+      {/* Estado vacío */}
       {!loading && !resultados && (
         <div className="text-center py-8 bg-white rounded-lg shadow">
+          <FaSearch className="text-4xl text-gray-300 mx-auto mb-3" />
           <p className="text-gray-500">
-            Ingresa la clave de un producto o numero de lote y presiona &quot;Buscar&quot;
+            Ingresa la clave de un producto o número de lote y presiona &quot;Buscar&quot;
           </p>
+          {!esAdminOFarmacia && (
+            <p className="text-xs text-gray-400 mt-2">
+              Nota: Los resultados se filtran automáticamente por tu centro asignado
+            </p>
+          )}
         </div>
       )}
 
+      {/* Resultados */}
       {!loading && resultados && (
         <div className="space-y-6">
+          {/* Información principal */}
           <div className="bg-white p-6 rounded-lg shadow">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -482,18 +621,24 @@ const Trazabilidad = () => {
                 </div>
                 <div>
                   <h2 className="text-lg font-bold">
-                    Informacion del {tipoBusqueda === 'producto' ? 'producto' : 'lote'}
+                    Información del {tipoBusqueda === 'producto' ? 'producto' : 'lote'}
                   </h2>
                   <p className="text-sm text-gray-600">
                     Datos generales y estado actual
+                    {codigoResultados && (
+                      <span className="ml-2 text-violet-600 font-medium">({codigoResultados})</span>
+                    )}
                   </p>
                 </div>
               </div>
+              
+              {/* Botón de exportar PDF */}
               <button
                 onClick={handleExportarPdf}
-                disabled={exportingPdf}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={exportingPdf || !resultados}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                 style={{ background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' }}
+                title={!esAdminOFarmacia && tipoBusqueda === 'lote' ? 'Requiere permisos de Admin/Farmacia' : 'Exportar trazabilidad a PDF'}
               >
                 {exportingPdf ? (
                   <>
@@ -508,31 +653,34 @@ const Trazabilidad = () => {
                 )}
               </button>
             </div>
+            
             {tipoBusqueda === 'producto' ? renderInfoProducto() : renderInfoLote()}
           </div>
 
+          {/* Alertas */}
           {renderAlertas()}
 
+          {/* Lotes asociados (solo para productos) */}
           {tipoBusqueda === 'producto' && lotesParaMostrar.length > 0 && (
             <div className="bg-white p-6 rounded-lg shadow">
               <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <FaWarehouse /> Lotes asociados
+                <FaWarehouse /> Lotes asociados ({lotesParaMostrar.length})
               </h3>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 text-sm">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-2 text-left">Lote</th>
-                      <th className="px-4 py-2 text-left">Caducidad</th>
-                      <th className="px-4 py-2 text-left">Inventario</th>
-                      {puedeVerContrato && <th className="px-4 py-2 text-left">Contrato</th>}
-                      {puedeVerContrato && <th className="px-4 py-2 text-left">Marca</th>}
-                      <th className="px-4 py-2 text-left">Estado</th>
+                      <th className="px-4 py-2 text-left font-semibold">Lote</th>
+                      <th className="px-4 py-2 text-left font-semibold">Caducidad</th>
+                      <th className="px-4 py-2 text-left font-semibold">Inventario</th>
+                      {puedeVerContrato && <th className="px-4 py-2 text-left font-semibold">Contrato</th>}
+                      {puedeVerContrato && <th className="px-4 py-2 text-left font-semibold">Marca</th>}
+                      <th className="px-4 py-2 text-left font-semibold">Estado</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {lotesParaMostrar.map((lote) => (
-                      <tr key={lote.numero_lote}>
+                      <tr key={lote.numero_lote} className="hover:bg-gray-50">
                         <td className="px-4 py-2 font-semibold">{lote.numero_lote}</td>
                         <td className="px-4 py-2">
                           {lote.fecha_caducidad ? new Date(lote.fecha_caducidad).toLocaleDateString() : '-'}
@@ -541,9 +689,7 @@ const Trazabilidad = () => {
                         {puedeVerContrato && <td className="px-4 py-2 text-gray-600">{lote.numero_contrato || '-'}</td>}
                         {puedeVerContrato && <td className="px-4 py-2 text-gray-600">{lote.marca || '-'}</td>}
                         <td className="px-4 py-2">
-                          <span
-                            className={`px-2 py-1 text-xs rounded-full ${estadoClass(lote.estado)}`}
-                          >
+                          <span className={`px-2 py-1 text-xs rounded-full ${estadoClass(lote.estado)}`}>
                             {lote.estado || '-'}
                           </span>
                         </td>
@@ -555,27 +701,33 @@ const Trazabilidad = () => {
             </div>
           )}
 
+          {/* Historial de movimientos */}
           {movimientosParaMostrar.length > 0 && (
             <div className="bg-white p-6 rounded-lg shadow">
               <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                 <FaHistory /> Historial de movimientos
+                {totalMovimientos > 100 && (
+                  <span className="text-sm font-normal text-gray-500">
+                    (mostrando 100 de {totalMovimientos})
+                  </span>
+                )}
               </h3>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 text-sm">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-2 text-left">Fecha</th>
-                      <th className="px-4 py-2 text-left">Tipo</th>
-                      <th className="px-4 py-2 text-left">Cantidad</th>
-                      {mostrarSaldo && <th className="px-4 py-2 text-left">Saldo</th>}
-                      <th className="px-4 py-2 text-left">Centro</th>
-                      <th className="px-4 py-2 text-left">Usuario</th>
-                      <th className="px-4 py-2 text-left">Lote</th>
+                      <th className="px-4 py-2 text-left font-semibold">Fecha</th>
+                      <th className="px-4 py-2 text-left font-semibold">Tipo</th>
+                      <th className="px-4 py-2 text-left font-semibold">Cantidad</th>
+                      {mostrarSaldo && <th className="px-4 py-2 text-left font-semibold">Saldo</th>}
+                      <th className="px-4 py-2 text-left font-semibold">Centro</th>
+                      <th className="px-4 py-2 text-left font-semibold">Usuario</th>
+                      <th className="px-4 py-2 text-left font-semibold">Lote</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {movimientosParaMostrar.map((mov) => (
-                      <tr key={mov.id}>
+                    {movimientosParaMostrar.map((mov, idx) => (
+                      <tr key={mov.id || idx} className="hover:bg-gray-50">
                         <td className="px-4 py-2">
                           {mov.fecha ? new Date(mov.fecha).toLocaleString() : '-'}
                         </td>
@@ -594,7 +746,7 @@ const Trazabilidad = () => {
                         </td>
                         <td className="px-4 py-2 font-semibold">{mov.cantidad}</td>
                         {mostrarSaldo && <td className="px-4 py-2">{mov.saldo ?? '-'}</td>}
-                        <td className="px-4 py-2">{mov.centro || '-'}</td>
+                        <td className="px-4 py-2">{mov.centro || 'Farmacia Central'}</td>
                         <td className="px-4 py-2">{mov.usuario || '-'}</td>
                         <td className="px-4 py-2">{mov.lote || '-'}</td>
                       </tr>
@@ -602,6 +754,12 @@ const Trazabilidad = () => {
                   </tbody>
                 </table>
               </div>
+              
+              {totalMovimientos > 100 && (
+                <p className="text-xs text-gray-500 mt-3 text-center">
+                  Para ver el historial completo, exporta el PDF de trazabilidad
+                </p>
+              )}
             </div>
           )}
         </div>
