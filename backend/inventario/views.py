@@ -879,6 +879,37 @@ class CentroViewSet(viewsets.ModelViewSet):
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=True, methods=['post'], url_path='toggle-activo')
+    def toggle_activo(self, request, pk=None):
+        """
+        Activa o desactiva un centro.
+        POST /api/centros/{id}/toggle-activo/
+        
+        Usa update() directo para evitar validación de otros campos.
+        """
+        try:
+            centro = self.get_object()
+            nuevo_estado = not centro.activo
+            
+            # Usar update() directo para evitar validación de otros campos
+            Centro.objects.filter(pk=centro.pk).update(activo=nuevo_estado)
+            
+            estado = 'activado' if nuevo_estado else 'desactivado'
+            return Response({
+                'mensaje': f'Centro {estado} exitosamente',
+                'activo': nuevo_estado,
+                'id': centro.id,
+                'clave': centro.clave,
+                'nombre': centro.nombre
+            }, status=status.HTTP_200_OK)
+        except Centro.DoesNotExist:
+            return Response({'error': 'Centro no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error en toggle_activo centro: {str(e)}", exc_info=True)
+            return Response({'error': f'Error interno: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @action(detail=True, methods=['get'])
     def inventario(self, request, pk=None):
         """Devuelve inventario resumido del centro a partir de lotes asociados a movimientos del centro."""

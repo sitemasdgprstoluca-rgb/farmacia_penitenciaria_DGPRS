@@ -233,6 +233,7 @@ export const centrosAPI = {
   create: (data) => apiClient.post('/centros/', data),
   update: (id, data) => apiClient.put(`/centros/${id}/`, data),
   delete: (id) => apiClient.delete(`/centros/${id}/`),
+  toggleActivo: (id) => apiClient.post(`/centros/${id}/toggle-activo/`),
   plantilla: () => apiClient.get('/centros/plantilla/', { responseType: 'blob' }),
   exportar: (params) => apiClient.get('/centros/exportar-excel/', { params, responseType: 'blob' }),
   importar: (formData) => apiClient.post('/centros/importar/', formData, {
