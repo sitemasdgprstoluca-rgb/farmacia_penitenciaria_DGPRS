@@ -253,6 +253,22 @@ const Requisiciones = () => {
   // Validar permiso fino de enviar además de las condiciones de edición
   const puedeEnviar = (req) => permisos.enviarRequisicion && puedeEditar(req) && req.estado === 'borrador';
 
+  // Validar si puede cancelar - similar a puedeEditar pero sin restricción de estado borrador
+  const puedeCancelar = (requisicion) => {
+    // Estados finales no se pueden cancelar
+    if (['surtida', 'cancelada', 'rechazada'].includes(requisicion.estado)) return false;
+    // Validar permiso fino
+    if (!permisos.cancelarRequisicion) return false;
+    // Admin/Farmacia pueden cancelar cualquiera
+    if (permisos.isFarmaciaAdmin) return true;
+    // Usuario de centro solo puede cancelar las de su centro
+    if (permisos.isCentroUser) {
+      const userCentro = user?.centro?.id;
+      return requisicion.centro === userCentro;
+    }
+    return false;
+  };
+
   const getEstadoBadge = (estado) => {
     const badges = {
       borrador: 'bg-gray-100 text-gray-700 border border-gray-300',
@@ -1070,7 +1086,7 @@ const Requisiciones = () => {
                     </button>
                   )}
 
-                  {!['surtida', 'cancelada', 'rechazada'].includes(req.estado) && permisos.cancelarRequisicion && (
+                  {puedeCancelar(req) && (
                     <button
                       onClick={() => handleCancelar(req.id, req.folio)}
                       disabled={isSubmitting || actionLoading === req.id}
@@ -1482,26 +1498,29 @@ const Requisiciones = () => {
               </button>
               
               <div className="flex gap-3">
-                {/* Botón guardar borrador - requiere permiso crear/editar */}
+                {/* Botón guardar borrador - requiere permiso crear/editar y centro seleccionado */}
                 <button
                   type="button"
                   onClick={() => guardarRequisicion(false)}
                   disabled={
                     isSubmitting || 
                     form.items.length === 0 ||
-                    (editRequisicion ? !permisos?.editarRequisicion : !permisos?.crearRequisicion)
+                    (editRequisicion ? !permisos?.editarRequisicion : !permisos?.crearRequisicion) ||
+                    ((permisos.isFarmaciaAdmin || permisos.isAdmin) && !form.centro)
                   }
                   title={
-                    editRequisicion 
-                      ? (!permisos?.editarRequisicion ? 'No tienes permisos para editar' : '')
-                      : (!permisos?.crearRequisicion ? 'No tienes permisos para crear' : '')
+                    (permisos.isFarmaciaAdmin || permisos.isAdmin) && !form.centro
+                      ? 'Debe seleccionar un centro solicitante'
+                      : (editRequisicion 
+                          ? (!permisos?.editarRequisicion ? 'No tienes permisos para editar' : '')
+                          : (!permisos?.crearRequisicion ? 'No tienes permisos para crear' : ''))
                   }
                   className="px-5 py-2 rounded-lg border-2 font-semibold hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   style={{ borderColor: COLORS.vino, color: COLORS.vino }}
                 >
                   {isSubmitting ? 'Guardando...' : 'Guardar borrador'}
                 </button>
-                {/* Botón guardar y enviar - requiere permiso crear/editar + enviar */}
+                {/* Botón guardar y enviar - requiere permiso crear/editar + enviar + centro */}
                 <button
                   type="button"
                   onClick={() => guardarRequisicion(true)}
@@ -1509,14 +1528,17 @@ const Requisiciones = () => {
                     isSubmitting || 
                     form.items.length === 0 ||
                     !permisos?.enviarRequisicion ||
-                    (editRequisicion ? !permisos?.editarRequisicion : !permisos?.crearRequisicion)
+                    (editRequisicion ? !permisos?.editarRequisicion : !permisos?.crearRequisicion) ||
+                    ((permisos.isFarmaciaAdmin || permisos.isAdmin) && !form.centro)
                   }
                   title={
-                    !permisos?.enviarRequisicion 
-                      ? 'No tienes permisos para enviar requisiciones' 
-                      : (editRequisicion 
-                          ? (!permisos?.editarRequisicion ? 'No tienes permisos para editar' : '')
-                          : (!permisos?.crearRequisicion ? 'No tienes permisos para crear' : ''))
+                    (permisos.isFarmaciaAdmin || permisos.isAdmin) && !form.centro
+                      ? 'Debe seleccionar un centro solicitante'
+                      : (!permisos?.enviarRequisicion 
+                          ? 'No tienes permisos para enviar requisiciones' 
+                          : (editRequisicion 
+                              ? (!permisos?.editarRequisicion ? 'No tienes permisos para editar' : '')
+                              : (!permisos?.crearRequisicion ? 'No tienes permisos para crear' : '')))
                   }
                   className="px-5 py-2 rounded-lg text-white font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   style={{ backgroundColor: COLORS.vino }}
