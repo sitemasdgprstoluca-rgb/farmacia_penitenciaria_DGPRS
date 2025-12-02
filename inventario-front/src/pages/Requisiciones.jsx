@@ -274,6 +274,22 @@ const Requisiciones = () => {
     return false;
   };
 
+  // Validar si puede descargar PDF - debe tener permiso Y pertenecer al centro (si es usuario de centro)
+  const puedeDescargarPDF = (requisicion) => {
+    // Primero validar permiso fino
+    if (!permisos.descargarHojaRecoleccion) return false;
+    // Admin/Farmacia pueden descargar cualquier PDF
+    if (permisos.isFarmaciaAdmin) return true;
+    // Vista puede descargar cualquier PDF (solo consulta)
+    if (permisos.isVistaUser) return true;
+    // Usuario de centro solo puede descargar PDFs de su centro
+    if (permisos.isCentroUser) {
+      const userCentro = user?.centro?.id;
+      return requisicion.centro === userCentro;
+    }
+    return false;
+  };
+
   const getEstadoBadge = (estado) => {
     const badges = {
       borrador: 'bg-gray-100 text-gray-700 border border-gray-300',
@@ -1064,7 +1080,7 @@ const Requisiciones = () => {
                   )}
 
                   {['autorizada', 'parcial', 'surtida'].includes(req.estado) &&
-                    permisos.descargarHojaRecoleccion && (
+                    puedeDescargarPDF(req) && (
                       <button
                         onClick={() => handleDescargarPDF(req.id, 'aceptacion', req.folio)}
                         disabled={actionLoading === `pdf-${req.id}`}
@@ -1078,7 +1094,7 @@ const Requisiciones = () => {
                       </button>
                     )}
 
-                  {req.estado === 'rechazada' && permisos.descargarHojaRecoleccion && (
+                  {req.estado === 'rechazada' && puedeDescargarPDF(req) && (
                     <button
                       onClick={() => handleDescargarPDF(req.id, 'rechazo', req.folio)}
                       disabled={actionLoading === `pdf-${req.id}`}

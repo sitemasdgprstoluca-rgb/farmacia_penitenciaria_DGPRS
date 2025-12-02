@@ -167,6 +167,16 @@ def generar_hoja_recoleccion(requisicion):
         fontName='Helvetica-Bold'
     )
     
+    # Estilo para celdas con texto largo (descripción)
+    celda_texto_style = ParagraphStyle(
+        'CeldaTexto',
+        parent=styles['Normal'],
+        fontSize=8,
+        leading=10,
+        wordWrap='CJK',
+        alignment=TA_LEFT,
+    )
+    
     # Título principal
     titulo = Paragraph("HOJA DE RECOLECCIÓN DE MEDICAMENTOS", titulo_style)
     story.append(titulo)
@@ -203,9 +213,9 @@ def generar_hoja_recoleccion(requisicion):
     story.append(productos_titulo)
     story.append(Spacer(1, 0.1*inch))
     
-    # Tabla de productos
+    # Tabla de productos con Paragraph para descripción
     productos_data = [
-        ['#', 'Clave', 'Descripción', 'Lote', 'Caducidad', 'Cantidad', 'Unidad']
+        ['#', 'Clave', 'Descripción', 'Lote', 'Caducidad', 'Cant.', 'Unidad']
     ]
     
     for idx, detalle in enumerate(requisicion.detalles.all(), start=1):
@@ -215,19 +225,23 @@ def generar_hoja_recoleccion(requisicion):
             cantidad_actual__gt=0
         ).order_by('fecha_caducidad').first()
         
+        # Usar Paragraph para que la descripción haga word-wrap automático
+        descripcion_paragraph = Paragraph(detalle.producto.descripcion, celda_texto_style)
+        
         productos_data.append([
             str(idx),
             detalle.producto.clave,
-            detalle.producto.descripcion[:40] + ('...' if len(detalle.producto.descripcion) > 40 else ''),
+            descripcion_paragraph,
             lote_asignado.numero_lote if lote_asignado else 'SIN LOTE',
             lote_asignado.fecha_caducidad.strftime('%d/%m/%Y') if lote_asignado else 'N/A',
             str(detalle.cantidad_autorizada if detalle.cantidad_autorizada > 0 else detalle.cantidad_solicitada),
             detalle.producto.get_unidad_medida_display()
         ])
     
+    # Ajustar anchos para mejor distribución (total ~7.5 pulgadas disponibles)
     productos_table = Table(
         productos_data, 
-        colWidths=[0.4*inch, 0.8*inch, 2.5*inch, 1*inch, 0.9*inch, 0.7*inch, 0.7*inch]
+        colWidths=[0.35*inch, 0.75*inch, 2.8*inch, 0.9*inch, 0.8*inch, 0.5*inch, 0.6*inch]
     )
     productos_table.setStyle(TableStyle([
         # Header con color guinda institucional
@@ -409,22 +423,34 @@ def generar_pdf_rechazo(requisicion):
     story.append(productos_titulo)
     story.append(Spacer(1, 0.1 * inch))
 
+    # Estilo para celdas con texto largo
+    celda_rechazo_style = ParagraphStyle(
+        'CeldaRechazo',
+        parent=styles['Normal'],
+        fontSize=8,
+        leading=10,
+        wordWrap='CJK',
+        alignment=TA_LEFT,
+    )
+
     productos_data = [
-        ['#', 'Clave', 'Descripcion', 'Cantidad Solicitada', 'Unidad']
+        ['#', 'Clave', 'Descripción', 'Cant. Solicitada', 'Unidad']
     ]
 
     for idx, detalle in enumerate(requisicion.detalles.all(), start=1):
+        # Usar Paragraph para word-wrap automático
+        descripcion_paragraph = Paragraph(detalle.producto.descripcion, celda_rechazo_style)
         productos_data.append([
             str(idx),
             detalle.producto.clave,
-            detalle.producto.descripcion[:40] + ('...' if len(detalle.producto.descripcion) > 40 else ''),
+            descripcion_paragraph,
             str(detalle.cantidad_solicitada),
             detalle.producto.get_unidad_medida_display() if hasattr(detalle.producto, 'get_unidad_medida_display') else getattr(detalle.producto, 'unidad_medida', 'UND')
         ])
 
     productos_table = Table(
         productos_data,
-        colWidths=[0.4 * inch, 0.8 * inch, 2.5 * inch, 1.2 * inch, 0.7 * inch]
+        colWidths=[0.35 * inch, 0.75 * inch, 3.0 * inch, 1.0 * inch, 0.6 * inch]
     )
     productos_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#dc2626')),

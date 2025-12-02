@@ -66,22 +66,23 @@ const MOCK_LOTES = Array.from({ length: 60 }).map((_, index) =>
 );
 
 const Lotes = () => {
-  const { getRolPrincipal, permisos } = usePermissions();
+  const { getRolPrincipal, permisos, user } = usePermissions();
   const rolPrincipal = getRolPrincipal();
   const puedeVerGlobal = ['ADMIN', 'FARMACIA', 'VISTA'].includes(rolPrincipal) || permisos?.isSuperuser;
   // Solo ADMIN y FARMACIA pueden ver campos de contrato (para auditoría)
   const puedeVerContrato = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
   
-  // Permisos específicos para acciones
+  // Permisos específicos para acciones - usar permisos finos del backend
   const esFarmaciaAdmin = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
   const puede = {
-    crear: esFarmaciaAdmin,
-    editar: esFarmaciaAdmin,
-    eliminar: esFarmaciaAdmin,
-    exportar: esFarmaciaAdmin,
-    importar: esFarmaciaAdmin,
+    // Usar permisos finos si existen, sino fallback al rol
+    crear: permisos?.crearLote === true || (esFarmaciaAdmin && permisos?.crearLote !== false),
+    editar: permisos?.editarLote === true || (esFarmaciaAdmin && permisos?.editarLote !== false),
+    eliminar: permisos?.eliminarLote === true || (esFarmaciaAdmin && permisos?.eliminarLote !== false),
+    exportar: permisos?.exportarLotes === true || (esFarmaciaAdmin && permisos?.exportarLotes !== false) || (rolPrincipal === 'VISTA' && permisos?.exportarLotes !== false),
+    importar: permisos?.importarLotes === true || (esFarmaciaAdmin && permisos?.importarLotes !== false),
     verDocumento: true, // Todos pueden ver
-    subirDocumento: esFarmaciaAdmin,
+    subirDocumento: permisos?.crearLote === true || (esFarmaciaAdmin && permisos?.crearLote !== false),
   };
   
   const [lotes, setLotes] = useState([]);

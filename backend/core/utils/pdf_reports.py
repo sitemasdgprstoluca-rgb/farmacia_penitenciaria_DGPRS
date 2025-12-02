@@ -206,13 +206,13 @@ def _crear_tabla_institucional(data, col_widths=None, header=True):
     
     estilos = [
         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),  # TOP para mejor visualización de texto largo
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('LEFTPADDING', (0, 0), (-1, -1), 3),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
-        ('TOPPADDING', (0, 0), (-1, -1), 3),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('FONTSIZE', (0, 0), (-1, -1), 7),  # Reducir a 7pt para mejor ajuste
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
         ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
         ('WORDWRAP', (0, 0), (-1, -1), True),
@@ -223,8 +223,9 @@ def _crear_tabla_institucional(data, col_widths=None, header=True):
             ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('FONTSIZE', (0, 0), (-1, 0), 7),  # Reducir también el header
             ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),  # Header centrado verticalmente
         ])
     
     table.setStyle(TableStyle(estilos))

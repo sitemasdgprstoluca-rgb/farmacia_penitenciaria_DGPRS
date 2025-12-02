@@ -40,6 +40,12 @@ const PERMISOS_POR_ROL = {
     descargarHojaRecoleccion: true,
     // Permisos de gestión de usuarios
     gestionUsuarios: true,
+    // Permisos granulares de lotes
+    crearLote: true,
+    editarLote: true,
+    eliminarLote: true,
+    exportarLotes: true,
+    importarLotes: true,
   },
   FARMACIA: {
     verDashboard: true,
@@ -68,6 +74,12 @@ const PERMISOS_POR_ROL = {
     descargarHojaRecoleccion: true,
     // Permisos de gestión de usuarios
     gestionUsuarios: true,
+    // Permisos granulares de lotes
+    crearLote: true,
+    editarLote: true,
+    eliminarLote: true,
+    exportarLotes: true,
+    importarLotes: true,
   },
   CENTRO: {
     verDashboard: true,
@@ -96,6 +108,12 @@ const PERMISOS_POR_ROL = {
     descargarHojaRecoleccion: true,  // Puede descargar para recoger
     // Permisos de gestión de usuarios
     gestionUsuarios: false,
+    // Permisos granulares de lotes - Centro no tiene acceso
+    crearLote: false,
+    editarLote: false,
+    eliminarLote: false,
+    exportarLotes: false,
+    importarLotes: false,
   },
   VISTA: {
     verDashboard: true,
@@ -124,6 +142,12 @@ const PERMISOS_POR_ROL = {
     descargarHojaRecoleccion: true,  // Puede descargar para consulta
     // Permisos de gestión de usuarios
     gestionUsuarios: false,
+    // Permisos granulares de lotes - Vista solo lectura
+    crearLote: false,
+    editarLote: false,
+    eliminarLote: false,
+    exportarLotes: true,  // Puede exportar para consulta
+    importarLotes: false,
   },
   SIN_ROL: {
     verDashboard: false,
@@ -150,6 +174,12 @@ const PERMISOS_POR_ROL = {
     confirmarRecepcion: false,
     descargarHojaRecoleccion: false,
     gestionUsuarios: false,
+    // Permisos granulares de lotes
+    crearLote: false,
+    editarLote: false,
+    eliminarLote: false,
+    exportarLotes: false,
+    importarLotes: false,
   },
 };
 
