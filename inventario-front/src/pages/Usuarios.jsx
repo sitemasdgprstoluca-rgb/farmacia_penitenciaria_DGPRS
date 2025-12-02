@@ -663,14 +663,26 @@ function Usuarios() {
           </div>
           <div>
             <select
-              value={filterCentro}
-              onChange={(e) => setFilterCentro(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
+              value={esAdminOFarmacia ? filterCentro : (user?.centro?.id?.toString() || '')}
+              onChange={(e) => esAdminOFarmacia && setFilterCentro(e.target.value)}
+              disabled={!esAdminOFarmacia}
+              className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${
+                !esAdminOFarmacia ? 'bg-gray-100 cursor-not-allowed' : ''
+              }`}
+              title={!esAdminOFarmacia ? 'Solo puedes ver usuarios de tu centro' : ''}
             >
-              <option value="">Todos los centros</option>
-              {centros.map(centro => (
-                <option key={centro.id} value={centro.id}>{centro.nombre}</option>
-              ))}
+              {esAdminOFarmacia ? (
+                <>
+                  <option value="">Todos los centros</option>
+                  {centros.map(centro => (
+                    <option key={centro.id} value={centro.id}>{centro.nombre}</option>
+                  ))}
+                </>
+              ) : (
+                <option value={user?.centro?.id || ''}>
+                  {centros.find(c => c.id === user?.centro?.id)?.nombre || 'Tu centro'}
+                </option>
+              )}
             </select>
           </div>
           <div>

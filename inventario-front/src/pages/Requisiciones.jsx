@@ -10,6 +10,7 @@ import {
 import { usePermissions } from '../hooks/usePermissions';
 import { ProtectedButton } from '../components/ProtectedAction';
 import ConfirmModal from '../components/ConfirmModal';
+import InputModal from '../components/InputModal';
 import PageHeader from '../components/PageHeader';
 import Pagination from '../components/Pagination';
 import { toast } from 'react-hot-toast';
@@ -54,6 +55,7 @@ const Requisiciones = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroFechaDesde, setFiltroFechaDesde] = useState(''); // Nuevo filtro fecha desde
   const [filtroFechaHasta, setFiltroFechaHasta] = useState(''); // Nuevo filtro fecha hasta
+  const [fechaError, setFechaError] = useState(''); // Error de validación de fechas
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRequisiciones, setTotalRequisiciones] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -63,6 +65,13 @@ const Requisiciones = () => {
   const [showModal, setShowModal] = useState(false);
   const [editRequisicion, setEditRequisicion] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  
+  // Modales de confirmación para acciones críticas
+  const [confirmEnviar, setConfirmEnviar] = useState(null); // {id, folio}
+  const [confirmSurtir, setConfirmSurtir] = useState(null); // {id, folio}
+  const [inputRechazo, setInputRechazo] = useState(null); // {id, folio}
+  const [inputCancelar, setInputCancelar] = useState(null); // {id, folio}
+  
   const [productos, setProductos] = useState([]);
   const [centros, setCentros] = useState([]);
   
@@ -586,18 +595,20 @@ const Requisiciones = () => {
     }
   };
 
-  const handleEnviar = async (id, folio) => {
+  // Handler para abrir modal de confirmación de envío
+  const handleEnviar = (id, folio) => {
     if (isSubmitting) return;
-    
-    // Confirmación antes de enviar
-    const confirmar = window.confirm(
-      `¿Confirma ENVIAR la requisición ${folio || id}?\n\n` +
-      `Una vez enviada, no podrá modificarla y quedará pendiente de autorización.`
-    );
-    if (!confirmar) return;
+    setConfirmEnviar({ id, folio });
+  };
+  
+  // Ejecutar envío después de confirmar
+  const ejecutarEnviar = async () => {
+    if (!confirmEnviar || isSubmitting) return;
+    const { id } = confirmEnviar;
     
     setIsSubmitting(true);
     setActionLoading(id);
+    setConfirmEnviar(null);
     try {
       await requisicionesAPI.enviar(id);
       toast.success('Requisición enviada correctamente');
@@ -612,24 +623,22 @@ const Requisiciones = () => {
     }
   };
 
-  const handleRechazar = async (id, folio) => {
+  // Handler para abrir modal de rechazo con input
+  const handleRechazar = (id, folio) => {
     if (isSubmitting) return;
-    
-    const motivo = prompt(`Motivo del rechazo para ${folio || 'requisición'}:\n(Mínimo 10 caracteres)`);
-    
-    // Validar que se ingresó un motivo
-    if (motivo === null) return; // Usuario canceló
-    
-    const motivoTrimmed = (motivo || '').trim();
-    if (motivoTrimmed.length < 10) {
-      toast.error('El motivo de rechazo debe tener al menos 10 caracteres');
-      return;
-    }
+    setInputRechazo({ id, folio });
+  };
+  
+  // Ejecutar rechazo con motivo
+  const ejecutarRechazo = async (motivo) => {
+    if (!inputRechazo || isSubmitting) return;
+    const { id } = inputRechazo;
     
     setIsSubmitting(true);
     setActionLoading(id);
+    setInputRechazo(null);
     try {
-      await requisicionesAPI.rechazar(id, { observaciones: motivoTrimmed });
+      await requisicionesAPI.rechazar(id, { observaciones: motivo });
       toast.success('Requisición rechazada');
       cargarRequisiciones();
       cargarResumenEstados();
@@ -641,19 +650,20 @@ const Requisiciones = () => {
     }
   };
 
-  const handleSurtir = async (id, folio) => {
+  // Handler para abrir modal de confirmación de surtido
+  const handleSurtir = (id, folio) => {
     if (isSubmitting) return;
-    
-    // Confirmación antes de surtir
-    const confirmar = window.confirm(
-      `¿Confirma SURTIR la requisición ${folio || id}?\n\n` +
-      `⚠️ Esta acción descontará el inventario de los lotes.\n` +
-      `Asegúrese de que el stock esté disponible.`
-    );
-    if (!confirmar) return;
+    setConfirmSurtir({ id, folio });
+  };
+  
+  // Ejecutar surtido después de confirmar
+  const ejecutarSurtir = async () => {
+    if (!confirmSurtir || isSubmitting) return;
+    const { id } = confirmSurtir;
     
     setIsSubmitting(true);
     setActionLoading(id);
+    setConfirmSurtir(null);
     try {
       await requisicionesAPI.surtir(id);
       toast.success('Requisición surtida correctamente');
@@ -674,27 +684,22 @@ const Requisiciones = () => {
     }
   };
 
-  const handleCancelar = async (id, folio) => {
+  // Handler para abrir modal de cancelación con input
+  const handleCancelar = (id, folio) => {
     if (isSubmitting) return;
-    
-    const motivo = prompt(
-      `Motivo de cancelación para ${folio || 'requisición'}:\n` +
-      `(Obligatorio para auditoría - mínimo 5 caracteres)`
-    );
-    
-    // Validar que se ingresó un motivo
-    if (motivo === null) return; // Usuario canceló
-    
-    const motivoTrimmed = (motivo || '').trim();
-    if (motivoTrimmed.length < 5) {
-      toast.error('Debe ingresar un motivo de cancelación (mínimo 5 caracteres)');
-      return;
-    }
+    setInputCancelar({ id, folio });
+  };
+  
+  // Ejecutar cancelación con motivo
+  const ejecutarCancelar = async (motivo) => {
+    if (!inputCancelar || isSubmitting) return;
+    const { id } = inputCancelar;
     
     setIsSubmitting(true);
     setActionLoading(id);
+    setInputCancelar(null);
     try {
-      await requisicionesAPI.cancelar(id, { observaciones: motivoTrimmed });
+      await requisicionesAPI.cancelar(id, { observaciones: motivo });
       toast.success('Requisición cancelada');
       cargarRequisiciones();
       cargarResumenEstados();
@@ -819,22 +824,51 @@ const Requisiciones = () => {
             </select>
           )}
 
-          <div className="flex gap-2 items-center">
-            <input
-              type="date"
-              value={filtroFechaDesde}
-              onChange={(e) => setFiltroFechaDesde(e.target.value)}
-              className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 flex-1"
-              title="Fecha desde"
-            />
-            <span className="text-gray-400">a</span>
-            <input
-              type="date"
-              value={filtroFechaHasta}
-              onChange={(e) => setFiltroFechaHasta(e.target.value)}
-              className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 flex-1"
-              title="Fecha hasta"
-            />
+          <div className="flex flex-col gap-1">
+            <div className="flex gap-2 items-center">
+              <input
+                type="date"
+                value={filtroFechaDesde}
+                onChange={(e) => {
+                  const desde = e.target.value;
+                  setFiltroFechaDesde(desde);
+                  // Validar orden cronológico
+                  if (desde && filtroFechaHasta && desde > filtroFechaHasta) {
+                    setFechaError('La fecha "desde" no puede ser posterior a "hasta"');
+                  } else {
+                    setFechaError('');
+                  }
+                }}
+                max={filtroFechaHasta || undefined}
+                className={`px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 flex-1 ${
+                  fechaError ? 'border-red-400' : ''
+                }`}
+                title="Fecha desde"
+              />
+              <span className="text-gray-400">a</span>
+              <input
+                type="date"
+                value={filtroFechaHasta}
+                onChange={(e) => {
+                  const hasta = e.target.value;
+                  setFiltroFechaHasta(hasta);
+                  // Validar orden cronológico
+                  if (filtroFechaDesde && hasta && filtroFechaDesde > hasta) {
+                    setFechaError('La fecha "hasta" no puede ser anterior a "desde"');
+                  } else {
+                    setFechaError('');
+                  }
+                }}
+                min={filtroFechaDesde || undefined}
+                className={`px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 flex-1 ${
+                  fechaError ? 'border-red-400' : ''
+                }`}
+                title="Fecha hasta"
+              />
+            </div>
+            {fechaError && (
+              <span className="text-xs text-red-500">{fechaError}</span>
+            )}
           </div>
         </div>
         
@@ -850,6 +884,7 @@ const Requisiciones = () => {
               }
               setFiltroFechaDesde('');
               setFiltroFechaHasta('');
+              setFechaError('');
               setGrupoEstado('todas');
             }}
             className="mt-3 text-sm text-blue-600 hover:text-blue-800 underline"
@@ -1432,13 +1467,66 @@ const Requisiciones = () => {
       {/* Confirmación eliminar */}
       {confirmDelete && (
         <ConfirmModal
-          isOpen={!!confirmDelete}
+          open={!!confirmDelete}
           title="Eliminar requisición"
           message={`¿Deseas eliminar la requisición ${confirmDelete.folio || confirmDelete.id}?`}
           onCancel={() => setConfirmDelete(null)}
           onConfirm={eliminarRequisicion}
+          loading={isSubmitting}
         />
       )}
+      
+      {/* Modal confirmación enviar */}
+      <ConfirmModal
+        open={!!confirmEnviar}
+        title="Enviar requisición"
+        message={`¿Confirma ENVIAR la requisición ${confirmEnviar?.folio || confirmEnviar?.id}? Una vez enviada, no podrá modificarla y quedará pendiente de autorización.`}
+        confirmText="Enviar"
+        onCancel={() => setConfirmEnviar(null)}
+        onConfirm={ejecutarEnviar}
+        loading={isSubmitting}
+        tone="info"
+      />
+      
+      {/* Modal confirmación surtir */}
+      <ConfirmModal
+        open={!!confirmSurtir}
+        title="Surtir requisición"
+        message={`¿Confirma SURTIR la requisición ${confirmSurtir?.folio || confirmSurtir?.id}? ⚠️ Esta acción descontará el inventario de los lotes. Asegúrese de que el stock esté disponible.`}
+        confirmText="Surtir"
+        onCancel={() => setConfirmSurtir(null)}
+        onConfirm={ejecutarSurtir}
+        loading={isSubmitting}
+        tone="danger"
+      />
+      
+      {/* Modal input rechazo */}
+      <InputModal
+        open={!!inputRechazo}
+        title="Rechazar requisición"
+        message={`Ingrese el motivo del rechazo para ${inputRechazo?.folio || 'la requisición'}:`}
+        placeholder="Escriba el motivo del rechazo..."
+        confirmText="Rechazar"
+        minLength={10}
+        onCancel={() => setInputRechazo(null)}
+        onConfirm={ejecutarRechazo}
+        loading={isSubmitting}
+        tone="danger"
+      />
+      
+      {/* Modal input cancelar */}
+      <InputModal
+        open={!!inputCancelar}
+        title="Cancelar requisición"
+        message={`Ingrese el motivo de cancelación para ${inputCancelar?.folio || 'la requisición'} (obligatorio para auditoría):`}
+        placeholder="Escriba el motivo de la cancelación..."
+        confirmText="Cancelar requisición"
+        minLength={5}
+        onCancel={() => setInputCancelar(null)}
+        onConfirm={ejecutarCancelar}
+        loading={isSubmitting}
+        tone="danger"
+      />
     </div>
   );
 };

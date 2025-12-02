@@ -20,8 +20,9 @@ export function ProtectedButton({
   if (!tienePermiso) {
     return (
       <button
+        type="button"
         disabled
-        title={tooltip ? 'No tiene permisos para esta accin' : ''}
+        title={tooltip ? 'No tiene permisos para esta acción' : ''}
         className={`${className} ${disabledClassName}`}
         {...props}
       >
@@ -32,7 +33,7 @@ export function ProtectedButton({
   }
 
   return (
-    <button onClick={onClick} className={className} {...props}>
+    <button type="button" onClick={onClick} className={className} {...props}>
       {children}
     </button>
   );
