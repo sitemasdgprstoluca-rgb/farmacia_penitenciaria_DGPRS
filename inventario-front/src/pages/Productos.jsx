@@ -2014,20 +2014,24 @@ const Productos = () => {
 
       )}
 
+      {/* Validación explícita de puede.ver para tabla y paginación */}
+      {puede.ver ? (
+        <>
+          {renderTabla()}
 
-
-      {renderTabla()}
-
-
-
-      <Pagination
-        page={currentPage}
-        totalPages={totalPages}
-        totalItems={totalProductos}
-        pageSize={PAGE_SIZE}
-        onPageChange={setCurrentPage}
-      />
-
+          <Pagination
+            page={currentPage}
+            totalPages={totalPages}
+            totalItems={totalProductos}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCurrentPage}
+          />
+        </>
+      ) : (
+        <div className="py-12 text-center bg-white rounded-lg shadow">
+          <p className="text-gray-500">No tienes permisos para ver productos.</p>
+        </div>
+      )}
 
 
       {showModal && (

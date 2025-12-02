@@ -171,6 +171,11 @@ const Requisiciones = () => {
   }, []);
 
   const cargarRequisiciones = useCallback(async () => {
+    // Validar rango de fechas antes de buscar
+    if (filtroFechaDesde && filtroFechaHasta && filtroFechaDesde > filtroFechaHasta) {
+      // No cargar si hay error de rango de fechas
+      return;
+    }
     setLoading(true);
     try {
       const params = {
@@ -955,7 +960,7 @@ const Requisiciones = () => {
       <div className="grid grid-cols-1 gap-4">
         {loading ? (
           <div className="text-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto" style={{ borderColor: '#9F2241' }} />
             <p className="mt-2">Cargando requisiciones...</p>
           </div>
         ) : requisiciones.length === 0 ? (
