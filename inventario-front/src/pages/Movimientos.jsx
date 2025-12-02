@@ -464,7 +464,7 @@ const Movimientos = () => {
           </div>
           )}
 
-          <div className={`${puedeRegistrarMovimiento ? 'lg:col-span-2' : 'lg:col-span-3'} bg-white rounded-xl shadow-sm border border-gray-200`}
+          <div className={`${puedeRegistrarMovimiento ? 'lg:col-span-2' : 'lg:col-span-3'} bg-white rounded-xl shadow-sm border border-gray-200`}>
             <div className="px-6 py-4 border-b border-gray-200 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-gray-800">Movimientos</h3>
