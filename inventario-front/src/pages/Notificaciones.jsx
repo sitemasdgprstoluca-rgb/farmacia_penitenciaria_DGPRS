@@ -11,6 +11,12 @@ const TIPOS = [
   { value: "error", label: "Errores" },
 ];
 
+const ESTADOS = [
+  { value: "", label: "Todas" },
+  { value: "false", label: "Pendientes" },
+  { value: "true", label: "Leídas" },
+];
+
 const badgeByTipo = {
   info: "bg-blue-100 text-blue-700",
   success: "bg-green-100 text-green-700",
@@ -30,6 +36,7 @@ function Notificaciones() {
     tipo: "",
     desde: "",
     hasta: "",
+    leida: "",
   });
 
   const fetchData = async (targetPage = 1) => {
@@ -43,6 +50,7 @@ function Notificaciones() {
       if (filters.tipo) params.tipo = filters.tipo;
       if (filters.desde) params.desde = filters.desde;
       if (filters.hasta) params.hasta = filters.hasta;
+      if (filters.leida) params.leida = filters.leida;
 
       const res = await notificacionesAPI.getAll(params);
       const data = res.data?.results || res.data || [];
@@ -68,7 +76,7 @@ function Notificaciones() {
   useEffect(() => {
     fetchData(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.tipo, filters.desde, filters.hasta, pageSize]);
+  }, [filters.tipo, filters.desde, filters.hasta, filters.leida, pageSize]);
 
   // Ya no necesitamos filtrado local - el backend ya filtrÃ³
   const filtered = notificaciones;
@@ -80,6 +88,8 @@ function Notificaciones() {
     try {
       await notificacionesAPI.marcarLeida(id);
       setNotificaciones((prev) => prev.map((n) => (n.id === id ? { ...n, leida: true } : n)));
+      // Actualizar contador global de no leídas
+      setSinLeer((prev) => Math.max(prev - 1, 0));
     } catch (error) {
       toast.error(error.response?.data?.detail || "No se pudo marcar como leída");
     }
@@ -100,11 +110,20 @@ function Notificaciones() {
   };
 
   const eliminar = async (id) => {
+    const notif = notificaciones.find((n) => n.id === id);
     try {
       await notificacionesAPI.delete(id);
       setNotificaciones((prev) => prev.filter((n) => n.id !== id));
       setTotal((prev) => Math.max(prev - 1, 0));
+      // Si era no leída, decrementar contador
+      if (notif && !notif.leida) {
+        setSinLeer((prev) => Math.max(prev - 1, 0));
+      }
       toast.success("Notificación eliminada");
+      // Si la página queda vacía y hay más páginas, retroceder
+      if (notificaciones.length === 1 && page > 1) {
+        fetchData(page - 1);
+      }
     } catch (error) {
       toast.error(error.response?.data?.detail || "No se pudo eliminar");
     } finally {
@@ -141,7 +160,7 @@ function Notificaciones() {
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="md:col-span-3 bg-white rounded-xl shadow p-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
               <label className="block text-xs font-semibold text-gray-500">Tipo</label>
               <select
@@ -152,6 +171,20 @@ function Notificaciones() {
                 {TIPOS.map((t) => (
                   <option key={t.value} value={t.value}>
                     {t.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500">Estado</label>
+              <select
+                value={filters.leida}
+                onChange={(e) => setFilters((f) => ({ ...f, leida: e.target.value }))}
+                className="mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
+              >
+                {ESTADOS.map((e) => (
+                  <option key={e.value} value={e.value}>
+                    {e.label}
                   </option>
                 ))}
               </select>

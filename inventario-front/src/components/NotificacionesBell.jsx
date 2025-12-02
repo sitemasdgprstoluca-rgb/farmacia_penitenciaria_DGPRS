@@ -3,21 +3,43 @@ import { toast } from "react-hot-toast";
 import { notificacionesAPI } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
 
+const BELL_PAGE_SIZE = 10; // Límite de notificaciones en el dropdown
+
 const NotificacionesBell = () => {
   const { user } = usePermissions();
   const [notificaciones, setNotificaciones] = useState([]);
+  const [sinLeer, setSinLeer] = useState(0);
   const [abierto, setAbierto] = useState(false);
   const [cargando, setCargando] = useState(false);
   const dropdownRef = useRef(null);
   const botonRef = useRef(null);
 
+  // Cargar contador de no leídas (endpoint dedicado)
+  const cargarContador = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await notificacionesAPI.noLeidasCount();
+      setSinLeer(res.data?.no_leidas ?? 0);
+    } catch {
+      // Silencioso - el contador se actualizará en la próxima carga
+    }
+  }, [user]);
+
+  // Cargar notificaciones para el dropdown (limitado)
   const cargar = useCallback(async () => {
     if (!user) return;
     setCargando(true);
     try {
-      const response = await notificacionesAPI.getAll({ ordering: "-fecha_creacion" });
-      const data = response.data?.results || response.data || [];
+      const [notifRes, countRes] = await Promise.all([
+        notificacionesAPI.getAll({ 
+          ordering: "-fecha_creacion", 
+          page_size: BELL_PAGE_SIZE 
+        }),
+        notificacionesAPI.noLeidasCount()
+      ]);
+      const data = notifRes.data?.results || notifRes.data || [];
       setNotificaciones(Array.isArray(data) ? data : []);
+      setSinLeer(countRes.data?.no_leidas ?? 0);
     } catch (err) {
       const msg = err.response?.data?.detail || err.message;
       if (msg) toast.error(msg);
@@ -29,9 +51,10 @@ const NotificacionesBell = () => {
   useEffect(() => {
     if (!user) return;
     cargar();
-    const id = setInterval(cargar, 30000);
+    // Refresco cada 30s solo del contador para minimizar tráfico
+    const id = setInterval(cargarContador, 30000);
     return () => clearInterval(id);
-  }, [user, cargar]);
+  }, [user, cargar, cargarContador]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -53,33 +76,41 @@ const NotificacionesBell = () => {
     try {
       await notificacionesAPI.marcarLeida(id);
       setNotificaciones((prev) => prev.map((n) => (n.id === id ? { ...n, leida: true } : n)));
+      setSinLeer((prev) => Math.max(prev - 1, 0));
     } catch (err) {
       toast.error(err.response?.data?.detail || "No se pudo marcar como leida");
     }
   };
 
   const eliminar = async (id) => {
+    const notif = notificaciones.find((n) => n.id === id);
     try {
       await notificacionesAPI.delete(id);
       setNotificaciones((prev) => prev.filter((n) => n.id !== id));
+      // Si era no leída, decrementar contador
+      if (notif && !notif.leida) {
+        setSinLeer((prev) => Math.max(prev - 1, 0));
+      }
     } catch (err) {
       toast.error(err.response?.data?.detail || "No se pudo eliminar");
     }
   };
 
   const marcarTodas = async () => {
-    const pendientes = notificaciones.filter((n) => !n.leida);
+    if (sinLeer === 0) return;
     try {
-      for (const notif of pendientes) {
-        await notificacionesAPI.marcarLeida(notif.id);
-      }
+      // Usar endpoint batch en lugar de loop individual
+      const res = await notificacionesAPI.marcarTodasLeidas();
+      const marcadas = res.data?.marcadas || 0;
       setNotificaciones((prev) => prev.map((n) => ({ ...n, leida: true })));
+      setSinLeer(0);
+      if (marcadas > 0) {
+        toast.success(`${marcadas} notificaciones marcadas`);
+      }
     } catch (err) {
       toast.error(err.response?.data?.detail || "No se pudieron marcar todas");
     }
   };
-
-  const sinLeer = notificaciones.filter((n) => !n.leida).length;
 
   if (!user) return null;
 
