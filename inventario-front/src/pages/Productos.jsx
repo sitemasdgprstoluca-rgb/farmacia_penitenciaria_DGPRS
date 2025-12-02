@@ -438,7 +438,8 @@ const Productos = () => {
 
   const [productos, setProductos] = useState([]);
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // Estado para carga de tabla
+  const [savingProduct, setSavingProduct] = useState(false); // Estado separado para guardar en modal
   const [exportLoading, setExportLoading] = useState(false); // Estado separado para exportar
   const [importLoading, setImportLoading] = useState(false); // Estado separado para importar
   const [actionLoading, setActionLoading] = useState(null); // ID del producto en acción (toggle/delete)
@@ -713,6 +714,8 @@ const Productos = () => {
       stock: '',
     });
     setCurrentPage(1);
+    // Cerrar panel de filtros para indicar visualmente el reset
+    setShowFiltersMenu(false);
     // El useEffect ya dispara fetchProductos cuando cambian los filtros
     // No llamar manualmente para evitar peticiones duplicadas
   }, []);
@@ -865,7 +868,7 @@ const Productos = () => {
 
     try {
 
-      setLoading(true);
+      setSavingProduct(true); // Estado separado para no bloquear la tabla
 
       if (isDevSession()) {
 
@@ -933,6 +936,8 @@ const Productos = () => {
 
         applyMockProductos();
 
+        setSavingProduct(false); // Limpiar antes de return
+
         return;
 
       }
@@ -974,7 +979,7 @@ const Productos = () => {
 
     } finally {
 
-      setLoading(false);
+      setSavingProduct(false);
 
     }
 
@@ -1001,6 +1006,8 @@ const Productos = () => {
         toast.success(`Producto ${producto.activo ? 'desactivado' : 'activado'} (modo demo)`);
 
         applyMockProductos();
+
+        setActionLoading(null); // Limpiar antes de return
 
         return;
 
@@ -1056,6 +1063,8 @@ const Productos = () => {
         toast.success('Producto eliminado (modo demo)');
 
         applyMockProductos();
+
+        setActionLoading(null); // Limpiar antes de return
 
         return;
 
@@ -1258,6 +1267,7 @@ const Productos = () => {
         mockProductosRef.current = [...nuevos, ...mockProductosRef.current];
         toast.success(`Importación demo completada: ${nuevos.length} productos simulados`, { duration: 5000 });
         applyMockProductos();
+        setImportLoading(false); // Limpiar antes de return
         return;
       }
 
@@ -2214,7 +2224,12 @@ const Productos = () => {
 
               <div className="flex justify-end gap-3 pt-2">
 
-                <button type="button" onClick={closeModal} className="rounded-lg border px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100">
+                <button 
+                  type="button" 
+                  onClick={closeModal} 
+                  disabled={savingProduct}
+                  className="rounded-lg border px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
 
                   Cancelar
 
@@ -2223,14 +2238,17 @@ const Productos = () => {
                 <button
 
                   type="submit"
+                  disabled={savingProduct}
 
-                  className="rounded-lg px-5 py-2 text-sm font-semibold text-white"
+                  className="rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
 
                   style={{ background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})` }}
 
                 >
-
-                  {editingProduct ? 'Actualizar' : 'Guardar'}
+                  {savingProduct && (
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                  )}
+                  {savingProduct ? 'Guardando...' : (editingProduct ? 'Actualizar' : 'Guardar')}
 
                 </button>
 
