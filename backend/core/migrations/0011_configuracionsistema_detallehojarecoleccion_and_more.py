@@ -3,7 +3,102 @@
 import django.core.validators
 import django.db.models.deletion
 from django.conf import settings
-from django.db import migrations, models
+from django.db import migrations, models, connection
+
+
+def table_exists(table_name):
+    """Check if a table exists in the database using Django's introspection."""
+    return table_name in connection.introspection.table_names()
+
+
+def constraint_exists(constraint_name):
+    """Check if a constraint exists in the database."""
+    # Try to find the constraint across all tables
+    for table_name in connection.introspection.table_names():
+        try:
+            constraints = connection.introspection.get_constraints(
+                connection.cursor(), table_name
+            )
+            if constraint_name in constraints:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def index_exists(index_name):
+    """Check if an index exists in the database."""
+    # Check if the index exists by looking at all table constraints/indexes
+    for table_name in connection.introspection.table_names():
+        try:
+            constraints = connection.introspection.get_constraints(
+                connection.cursor(), table_name
+            )
+            if index_name in constraints:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def column_exists(table_name, column_name):
+    """Check if a column exists in a table using Django's introspection."""
+    if table_name not in connection.introspection.table_names():
+        return False
+    try:
+        columns = [
+            col.name for col in connection.introspection.get_table_description(
+                connection.cursor(), table_name
+            )
+        ]
+        return column_name in columns
+    except Exception:
+        return False
+
+
+class SafeCreateModel(migrations.CreateModel):
+    """CreateModel that skips creation if table already exists."""
+    
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        model = to_state.apps.get_model(app_label, self.name)
+        db_table = model._meta.db_table
+        if not table_exists(db_table):
+            super().database_forwards(app_label, schema_editor, from_state, to_state)
+
+
+class SafeRemoveConstraint(migrations.RemoveConstraint):
+    """RemoveConstraint that skips removal if constraint doesn't exist."""
+    
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        if constraint_exists(self.name):
+            super().database_forwards(app_label, schema_editor, from_state, to_state)
+
+
+class SafeAddField(migrations.AddField):
+    """AddField that skips addition if column already exists."""
+    
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        model = to_state.apps.get_model(app_label, self.model_name)
+        db_table = model._meta.db_table
+        db_column = self.field.db_column or self.name
+        if not column_exists(db_table, db_column):
+            super().database_forwards(app_label, schema_editor, from_state, to_state)
+
+
+class SafeAddConstraint(migrations.AddConstraint):
+    """AddConstraint that skips addition if constraint already exists."""
+    
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        if not constraint_exists(self.constraint.name):
+            super().database_forwards(app_label, schema_editor, from_state, to_state)
+
+
+class SafeAddIndex(migrations.AddIndex):
+    """AddIndex that skips addition if index already exists."""
+    
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        if not index_exists(self.index.name):
+            super().database_forwards(app_label, schema_editor, from_state, to_state)
 
 
 class Migration(migrations.Migration):
@@ -13,7 +108,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.CreateModel(
+        SafeCreateModel(
             name='ConfiguracionSistema',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
@@ -48,7 +143,7 @@ class Migration(migrations.Migration):
                 'db_table': 'configuracion_sistema',
             },
         ),
-        migrations.CreateModel(
+        SafeCreateModel(
             name='DetalleHojaRecoleccion',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
@@ -60,7 +155,7 @@ class Migration(migrations.Migration):
                 'db_table': 'detalle_hojas_recoleccion',
             },
         ),
-        migrations.CreateModel(
+        SafeCreateModel(
             name='HojaRecoleccion',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
@@ -82,7 +177,7 @@ class Migration(migrations.Migration):
                 'ordering': ['-fecha_generacion'],
             },
         ),
-        migrations.RemoveConstraint(
+        SafeRemoveConstraint(
             model_name='lote',
             name='unique_numero_lote_por_producto',
         ),
@@ -90,117 +185,117 @@ class Migration(migrations.Migration):
             name='detallerequisicion',
             unique_together=set(),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='detallerequisicion',
             name='lote',
             field=models.ForeignKey(blank=True, help_text='Lote específico del que se solicita el producto', null=True, on_delete=django.db.models.deletion.PROTECT, related_name='detalles_requisicion', to='core.lote'),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='lote',
             name='documento_nombre',
             field=models.CharField(blank=True, help_text='Nombre original del documento', max_length=255),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='lote',
             name='documento_pdf',
             field=models.FileField(blank=True, help_text='Documento PDF de soporte (contrato, certificado, etc.)', null=True, upload_to='lotes/documentos/%Y/%m/'),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='lote',
             name='lote_origen',
             field=models.ForeignKey(blank=True, help_text='Lote origen en farmacia central (NULL solo para lotes de farmacia)', null=True, on_delete=django.db.models.deletion.PROTECT, related_name='lotes_derivados', to='core.lote'),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='lote',
             name='marca',
             field=models.CharField(blank=True, help_text='Marca del medicamento/producto', max_length=150),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='lote',
             name='numero_contrato',
             field=models.CharField(blank=True, db_index=True, help_text='Número de contrato de adquisición para trazabilidad', max_length=100),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='movimiento',
             name='lugar_entrega',
             field=models.CharField(blank=True, help_text='Detalle del lugar de entrega (centro, servicio, área, etc.)', max_length=300),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='requisicion',
             name='fecha_recibido',
             field=models.DateTimeField(blank=True, help_text='Fecha y hora en que el centro recibió la requisición', null=True),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='requisicion',
             name='lugar_entrega',
             field=models.CharField(blank=True, help_text='Detalle del lugar de entrega (centro, servicio, área, etc.)', max_length=300),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='requisicion',
             name='observaciones_recepcion',
             field=models.TextField(blank=True, help_text='Observaciones al momento de recibir la requisición'),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='requisicion',
             name='usuario_recibe',
             field=models.ForeignKey(blank=True, help_text='Usuario del centro que recibió la requisición', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='requisiciones_recibidas', to=settings.AUTH_USER_MODEL),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='user',
             name='adscripcion',
             field=models.CharField(blank=True, help_text='Adscripción del usuario (centro/área/unidad de dependencia)', max_length=200),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='user',
             name='perm_auditoria',
             field=models.BooleanField(blank=True, help_text='Permiso para ver Auditoría', null=True),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='user',
             name='perm_centros',
             field=models.BooleanField(blank=True, help_text='Permiso para ver Centros', null=True),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='user',
             name='perm_dashboard',
             field=models.BooleanField(blank=True, help_text='Permiso para ver Dashboard', null=True),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='user',
             name='perm_lotes',
             field=models.BooleanField(blank=True, help_text='Permiso para ver Lotes', null=True),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='user',
             name='perm_movimientos',
             field=models.BooleanField(blank=True, help_text='Permiso para ver Movimientos', null=True),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='user',
             name='perm_notificaciones',
             field=models.BooleanField(blank=True, help_text='Permiso para ver Notificaciones', null=True),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='user',
             name='perm_productos',
             field=models.BooleanField(blank=True, help_text='Permiso para ver Productos', null=True),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='user',
             name='perm_reportes',
             field=models.BooleanField(blank=True, help_text='Permiso para ver Reportes', null=True),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='user',
             name='perm_requisiciones',
             field=models.BooleanField(blank=True, help_text='Permiso para ver Requisiciones', null=True),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='user',
             name='perm_trazabilidad',
             field=models.BooleanField(blank=True, help_text='Permiso para ver Trazabilidad', null=True),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='user',
             name='perm_usuarios',
             field=models.BooleanField(blank=True, help_text='Permiso para ver Usuarios', null=True),
@@ -264,74 +359,74 @@ class Migration(migrations.Migration):
             name='detallerequisicion',
             unique_together={('requisicion', 'producto', 'lote')},
         ),
-        migrations.AddIndex(
+        SafeAddIndex(
             model_name='detallerequisicion',
             index=models.Index(fields=['lote'], name='detalles_re_lote_id_9f1527_idx'),
         ),
-        migrations.AddIndex(
+        SafeAddIndex(
             model_name='lote',
             index=models.Index(fields=['centro'], name='lotes_centro__34e30e_idx'),
         ),
-        migrations.AddIndex(
+        SafeAddIndex(
             model_name='lote',
             index=models.Index(fields=['lote_origen'], name='lotes_lote_or_2e490d_idx'),
         ),
-        migrations.AddIndex(
+        SafeAddIndex(
             model_name='lote',
             index=models.Index(fields=['numero_contrato'], name='idx_lote_contrato'),
         ),
-        migrations.AddConstraint(
+        SafeAddConstraint(
             model_name='lote',
             constraint=models.UniqueConstraint(fields=('producto', 'numero_lote', 'centro'), name='unique_lote_por_producto_centro'),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='configuracionsistema',
             name='updated_by',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='configuraciones_actualizadas', to=settings.AUTH_USER_MODEL),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='detallehojarecoleccion',
             name='lote_asignado',
             field=models.ForeignKey(blank=True, help_text='Lote del cual se surtió', null=True, on_delete=django.db.models.deletion.SET_NULL, to='core.lote'),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='detallehojarecoleccion',
             name='producto',
             field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, to='core.producto'),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='hojarecoleccion',
             name='generado_por',
             field=models.ForeignKey(blank=True, help_text='Usuario de farmacia que generó la hoja', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='hojas_generadas', to=settings.AUTH_USER_MODEL),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='hojarecoleccion',
             name='requisicion',
             field=models.OneToOneField(help_text='Requisición asociada a esta hoja', on_delete=django.db.models.deletion.PROTECT, related_name='hoja_recoleccion', to='core.requisicion'),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='hojarecoleccion',
             name='verificado_por',
             field=models.ForeignKey(blank=True, help_text='Usuario de farmacia que verificó la hoja', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='hojas_verificadas', to=settings.AUTH_USER_MODEL),
         ),
-        migrations.AddField(
+        SafeAddField(
             model_name='detallehojarecoleccion',
             name='hoja',
             field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='detalles', to='core.hojarecoleccion'),
         ),
-        migrations.AddIndex(
+        SafeAddIndex(
             model_name='hojarecoleccion',
             index=models.Index(fields=['requisicion'], name='hojas_recol_requisi_68a3ad_idx'),
         ),
-        migrations.AddIndex(
+        SafeAddIndex(
             model_name='hojarecoleccion',
             index=models.Index(fields=['folio_hoja'], name='hojas_recol_folio_h_0e48b7_idx'),
         ),
-        migrations.AddIndex(
+        SafeAddIndex(
             model_name='hojarecoleccion',
             index=models.Index(fields=['estado'], name='hojas_recol_estado_07c5ed_idx'),
         ),
-        migrations.AddIndex(
+        SafeAddIndex(
             model_name='hojarecoleccion',
             index=models.Index(fields=['-fecha_generacion'], name='hojas_recol_fecha_g_ad32ec_idx'),
         ),
