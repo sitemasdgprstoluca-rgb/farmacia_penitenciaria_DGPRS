@@ -715,7 +715,8 @@ function Usuarios() {
 
       {loading ? (
         <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 mx-auto" style={{ borderColor: COLORS.vino }}></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-t-transparent mx-auto" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }}></div>
+          <p className="mt-3 text-gray-600">Cargando usuarios...</p>
         </div>
       ) : (
         <div className="bg-white rounded-lg shadow overflow-hidden">

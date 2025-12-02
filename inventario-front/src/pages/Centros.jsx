@@ -495,7 +495,7 @@ const Centros = () => {
                 <tr>
                   <td colSpan="9" className="text-center py-8">
                     <div className="flex justify-center items-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: '#9F2241' }}></div>
+                      <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }}></div>
                       <span className="ml-2">Cargando centros...</span>
                     </div>
                   </td>
@@ -750,7 +750,7 @@ const Centros = () => {
             
             {loading && (
               <div className="mb-4 text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto" style={{ borderColor: '#9F2241' }}></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent mx-auto" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }}></div>
                 <p className="text-sm text-gray-600 mt-2">Procesando archivo...</p>
               </div>
             )}

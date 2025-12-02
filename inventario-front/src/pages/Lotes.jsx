@@ -666,7 +666,7 @@ const handleImportar = async (e) => {
                 <tr>
                   <td colSpan="8" className="text-center py-8">
                     <div className="flex justify-center items-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }}></div>
                       <span className="ml-2">Cargando lotes...</span>
                     </div>
                   </td>
@@ -1115,7 +1115,7 @@ const handleImportar = async (e) => {
             
             {loading && (
               <div className="mb-4 text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent mx-auto" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }}></div>
                 <p className="text-sm text-gray-600 mt-2">Procesando archivo...</p>
               </div>
             )}

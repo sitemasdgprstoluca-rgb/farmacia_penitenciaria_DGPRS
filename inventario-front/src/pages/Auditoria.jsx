@@ -548,7 +548,7 @@ const Auditoria = () => {
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-16 w-16 border-b-4 mx-auto mb-4" style={{ borderColor: '#9F2241' }}></div>
+              <div className="animate-spin rounded-full h-16 w-16 border-4 border-t-transparent mx-auto mb-4" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }}></div>
               <p className="text-gray-600 font-semibold">Cargando registros de auditoría...</p>
             </div>
           </div>

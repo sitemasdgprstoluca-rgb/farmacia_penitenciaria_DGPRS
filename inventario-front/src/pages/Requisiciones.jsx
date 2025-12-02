@@ -960,8 +960,8 @@ const Requisiciones = () => {
       <div className="grid grid-cols-1 gap-4">
         {loading ? (
           <div className="text-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto" style={{ borderColor: '#9F2241' }} />
-            <p className="mt-2">Cargando requisiciones...</p>
+            <div className="animate-spin rounded-full h-10 w-10 border-4 border-t-transparent mx-auto" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }} />
+            <p className="mt-3 text-gray-600">Cargando requisiciones...</p>
           </div>
         ) : requisiciones.length === 0 ? (
           <div className="text-center py-8 bg-white rounded-lg shadow">
@@ -1243,7 +1243,7 @@ const Requisiciones = () => {
                   <div className="flex-1 overflow-y-auto border rounded-lg">
                     {loadingCatalogo ? (
                       <div className="flex items-center justify-center py-12">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600 mr-3" />
+                        <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent mr-3" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }} />
                         <span className="text-gray-500">Cargando catálogo...</span>
                       </div>
                     ) : catalogoAgrupado.length === 0 ? (
