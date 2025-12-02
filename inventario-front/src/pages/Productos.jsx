@@ -415,8 +415,9 @@ const Productos = () => {
   const esVistaUser = rolPrincipal === 'VISTA';
   
   // Verificar si el usuario tiene el permiso verProductos del backend
-  // (puede ser false si tiene restricción personalizada aunque sea admin/farmacia)
-  const tienePermisoProductos = permisos?.verProductos !== false;
+  // DEBE ser explícitamente true (no undefined ni null) para habilitar acciones
+  // Solo admin/farmacia o vista tienen permisos base, el resto requiere permiso explícito
+  const tienePermisoProductos = permisos?.verProductos === true;
 
   const puede = useMemo(() => ({
     // Para ver productos: debe tener permiso Y (ser farmacia/admin O ser vista)
@@ -704,23 +705,18 @@ const Productos = () => {
 
 
 
-  const limpiarFiltros = () => {
-
+  const limpiarFiltros = useCallback(() => {
     setFilters({
-
       search: '',
-
       estado: '',
-
       unidad: '',
-
       stock: '',
-
     });
-
     setCurrentPage(1);
-
-  };
+    // Recargar productos inmediatamente con filtros limpios
+    // Usamos setTimeout para asegurar que el estado se actualizó
+    setTimeout(() => fetchProductos(), 0);
+  }, [fetchProductos]);
 
 
 
@@ -1199,6 +1195,10 @@ const Productos = () => {
 
   };
 
+  // Constantes para validación de importación
+  const IMPORT_MAX_SIZE_MB = 10;
+  const IMPORT_ALLOWED_EXTENSIONS = ['.xlsx', '.xls'];
+
   const handleImportar = async (e) => {
     if (!puede.importar) {
       toast.error('No tiene permisos para importar productos');
@@ -1212,6 +1212,22 @@ const Productos = () => {
 
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Validar extensión del archivo
+    const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+    if (!IMPORT_ALLOWED_EXTENSIONS.includes(extension)) {
+      toast.error(`Extensión no permitida: ${extension}. Use: ${IMPORT_ALLOWED_EXTENSIONS.join(', ')}`);
+      e.target.value = null;
+      return;
+    }
+
+    // Validar tamaño del archivo
+    const sizeMB = file.size / (1024 * 1024);
+    if (sizeMB > IMPORT_MAX_SIZE_MB) {
+      toast.error(`Archivo demasiado grande: ${sizeMB.toFixed(1)}MB. Máximo: ${IMPORT_MAX_SIZE_MB}MB`);
+      e.target.value = null;
+      return;
+    }
 
     const form = new FormData();
     form.append('file', file);
