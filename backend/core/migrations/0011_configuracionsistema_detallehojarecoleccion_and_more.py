@@ -157,14 +157,20 @@ class SafeAddIndex(migrations.AddIndex):
 
 class SafeAlterUniqueTogether(migrations.AlterUniqueTogether):
     """
-    AlterUniqueTogether that handles missing constraints gracefully.
-    Skips removal when constraint doesn't exist to avoid errors.
+    AlterUniqueTogether that handles existing/missing constraints gracefully.
+    Skips creation when constraint already exists, skips removal when it doesn't exist.
     """
     _MISSING_CONSTRAINT_ERROR = "Found wrong number (0) of constraints"
+    _DUPLICATE_CONSTRAINT_ERRORS = ("already exists", "duplicate key")
     
     def _is_missing_constraint_error(self, error):
         """Check if the error is due to missing constraints."""
         return self._MISSING_CONSTRAINT_ERROR in str(error)
+    
+    def _is_duplicate_constraint_error(self, error):
+        """Check if the error is due to duplicate constraint."""
+        error_str = str(error).lower()
+        return any(msg in error_str for msg in self._DUPLICATE_CONSTRAINT_ERRORS)
     
     def _columns_match_unique_set(self, constraint_columns, unique_set):
         """Check if constraint columns match a unique_together set."""
@@ -174,6 +180,16 @@ class SafeAlterUniqueTogether(migrations.AlterUniqueTogether):
             return True
         # Also check without _id suffix
         return set(constraint_columns) == set(unique_set)
+    
+    def _constraint_already_exists(self, db_table, unique_set):
+        """Check if a unique constraint for the given columns already exists."""
+        constraints = get_table_constraints(db_table)
+        for constraint_name, constraint_info in constraints.items():
+            if constraint_info.get('unique', False) and not constraint_info.get('primary_key', False):
+                constraint_columns = tuple(constraint_info.get('columns', []))
+                if self._columns_match_unique_set(constraint_columns, unique_set):
+                    return True
+        return False
     
     def database_forwards(self, app_label, schema_editor, from_state, to_state):
         # Get old and new unique_together values
@@ -186,10 +202,21 @@ class SafeAlterUniqueTogether(migrations.AlterUniqueTogether):
         old_unique_together = from_model_state.options.get('unique_together') or set()
         new_unique_together = to_model_state.options.get('unique_together') or set()
         
+        model = to_state.apps.get_model(app_label, self.name)
+        db_table = model._meta.db_table
+        
+        # If we're adding constraints (going from empty to something)
+        if new_unique_together and not old_unique_together:
+            # Check if all new constraints already exist
+            all_exist = all(
+                self._constraint_already_exists(db_table, unique_set)
+                for unique_set in new_unique_together
+            )
+            if all_exist:
+                return  # Skip, constraints already exist
+        
         # If we're removing constraints (going from something to empty set)
         if old_unique_together and not new_unique_together:
-            model = to_state.apps.get_model(app_label, self.name)
-            db_table = model._meta.db_table
             constraints = get_table_constraints(db_table)
             
             # Check if any unique_together constraints exist
@@ -210,8 +237,8 @@ class SafeAlterUniqueTogether(migrations.AlterUniqueTogether):
         
         try:
             super().database_forwards(app_label, schema_editor, from_state, to_state)
-        except ValueError as e:
-            if not self._is_missing_constraint_error(e):
+        except (ValueError, ProgrammingError, DatabaseError) as e:
+            if not (self._is_missing_constraint_error(e) or self._is_duplicate_constraint_error(e)):
                 raise
     
     def database_backwards(self, app_label, schema_editor, from_state, to_state):
