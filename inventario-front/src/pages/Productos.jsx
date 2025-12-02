@@ -432,6 +432,9 @@ const Productos = () => {
   const [productos, setProductos] = useState([]);
 
   const [loading, setLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false); // Estado separado para exportar
+  const [importLoading, setImportLoading] = useState(false); // Estado separado para importar
+  const [actionLoading, setActionLoading] = useState(null); // ID del producto en acción (toggle/delete)
 
   const [error, setError] = useState(null);
 
@@ -977,6 +980,8 @@ const Productos = () => {
   const handleToggleActivo = async (producto) => {
 
     if (!puede.cambiarEstado) return;
+    if (actionLoading === producto.id) return; // Evitar clics repetidos
+    setActionLoading(producto.id);
 
     try {
 
@@ -1014,6 +1019,8 @@ const Productos = () => {
                        'No se pudo cambiar el estado';
       toast.error(errorMsg);
 
+    } finally {
+      setActionLoading(null);
     }
 
   };
@@ -1023,6 +1030,7 @@ const Productos = () => {
   const handleDelete = async (producto) => {
 
     if (!puede.eliminar) return;
+    if (actionLoading === producto.id) return; // Evitar clics repetidos
 
     const confirm = window.confirm(
       `¿Confirma ELIMINAR DEFINITIVAMENTE el producto ${producto.clave}?\n\n` +
@@ -1032,7 +1040,7 @@ const Productos = () => {
 
     if (!confirm) return;
 
-
+    setActionLoading(producto.id);
 
     try {
 
@@ -1068,6 +1076,8 @@ const Productos = () => {
       }
       toast.error(errorMsg);
 
+    } finally {
+      setActionLoading(null);
     }
 
   };
@@ -1077,10 +1087,11 @@ const Productos = () => {
   const handleExportar = async () => {
 
     if (!puede.exportar) return;
+    if (exportLoading) return; // Evitar clics repetidos
 
     try {
 
-      setLoading(true);
+      setExportLoading(true);
 
       if (isDevSession()) {
 
@@ -1172,7 +1183,7 @@ const Productos = () => {
 
     } finally {
 
-      setLoading(false);
+      setExportLoading(false);
 
     }
 
@@ -1184,6 +1195,10 @@ const Productos = () => {
       e.target.value = null;
       return;
     }
+    if (importLoading) {
+      e.target.value = null;
+      return; // Evitar clics repetidos
+    }
 
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1191,8 +1206,11 @@ const Productos = () => {
     const form = new FormData();
     form.append('file', file);
 
+    // Limpiar input inmediatamente para permitir reimportar el mismo archivo
+    e.target.value = null;
+
     try {
-      setLoading(true);
+      setImportLoading(true);
       if (isDevSession()) {
         const nuevos = Array.from({ length: 3 }).map((_, idx) => {
           const stockMin = 20 + idx * 5;
@@ -1237,8 +1255,7 @@ const Productos = () => {
       const errorMsg = err.response?.data?.error || 'No se pudo importar';
       toast.error(`Error: ${errorMsg}`, { duration: 5000 });
     } finally {
-      e.target.value = null;
-      setLoading(false);
+      setImportLoading(false);
     }
   };
 
@@ -1512,11 +1529,17 @@ const Productos = () => {
 
                         onClick={() => handleToggleActivo(producto)}
 
-                        className={producto.activo ? 'text-green-600 hover:text-green-800' : 'text-gray-500 hover:text-gray-700'}
+                        disabled={actionLoading === producto.id}
+
+                        className={`${producto.activo ? 'text-green-600 hover:text-green-800' : 'text-gray-500 hover:text-gray-700'} disabled:opacity-50 disabled:cursor-not-allowed`}
 
                       >
 
-                        {producto.activo ? <FaToggleOn size={18} /> : <FaToggleOff size={18} />}
+                        {actionLoading === producto.id ? (
+                          <span className="animate-spin inline-block">⏳</span>
+                        ) : (
+                          producto.activo ? <FaToggleOn size={18} /> : <FaToggleOff size={18} />
+                        )}
 
                       </button>
 
@@ -1532,11 +1555,17 @@ const Productos = () => {
 
                         onClick={() => handleDelete(producto)}
 
-                        className="text-red-600 hover:text-red-800"
+                        disabled={actionLoading === producto.id}
+
+                        className="text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
 
                       >
 
-                        <FaTrash />
+                        {actionLoading === producto.id ? (
+                          <span className="animate-spin inline-block">⏳</span>
+                        ) : (
+                          <FaTrash />
+                        )}
 
                       </button>
 
@@ -1620,7 +1649,9 @@ const Productos = () => {
 
                   onClick={handleExportar}
 
-                  className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition"
+                  disabled={exportLoading}
+
+                  className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
 
                   style={{
 
@@ -1632,9 +1663,13 @@ const Productos = () => {
 
                 >
 
-                  <FaDownload />
+                  {exportLoading ? (
+                    <span className="animate-spin">⏳</span>
+                  ) : (
+                    <FaDownload />
+                  )}
 
-                  Exportar
+                  {exportLoading ? 'Exportando...' : 'Exportar'}
 
                 </button>
 
@@ -1650,7 +1685,9 @@ const Productos = () => {
 
                     onClick={() => fileInputRef.current?.click()}
 
-                    className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition"
+                    disabled={importLoading}
+
+                    className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
 
                     style={{
 
@@ -1662,9 +1699,13 @@ const Productos = () => {
 
                   >
 
-                    <FaFileUpload />
+                    {importLoading ? (
+                      <span className="animate-spin">⏳</span>
+                    ) : (
+                      <FaFileUpload />
+                    )}
 
-                    Importar
+                    {importLoading ? 'Importando...' : 'Importar'}
 
                   </button>
 

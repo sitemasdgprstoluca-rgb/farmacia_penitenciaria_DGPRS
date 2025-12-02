@@ -961,7 +961,7 @@ const Requisiciones = () => {
                     permisos.descargarHojaRecoleccion && (
                       <button
                         onClick={() => handleDescargarPDF(req.id, 'aceptacion', req.folio)}
-                        disabled={loading || actionLoading === `pdf-${req.id}`}
+                        disabled={actionLoading === `pdf-${req.id}`}
                         className="bg-green-100 text-green-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-green-200 border border-green-300 font-semibold disabled:opacity-50"
                       >
                         {actionLoading === `pdf-${req.id}` ? (
@@ -975,7 +975,7 @@ const Requisiciones = () => {
                   {req.estado === 'rechazada' && permisos.descargarHojaRecoleccion && (
                     <button
                       onClick={() => handleDescargarPDF(req.id, 'rechazo', req.folio)}
-                      disabled={loading || actionLoading === `pdf-${req.id}`}
+                      disabled={actionLoading === `pdf-${req.id}`}
                       className="bg-red-100 text-red-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-red-200 border border-red-300 font-semibold disabled:opacity-50"
                     >
                       {actionLoading === `pdf-${req.id}` ? (
