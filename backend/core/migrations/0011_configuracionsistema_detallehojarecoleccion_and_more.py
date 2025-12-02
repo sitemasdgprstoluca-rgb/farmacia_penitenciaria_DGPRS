@@ -99,17 +99,26 @@ class SafeRemoveConstraint(migrations.RemoveConstraint):
 class SafeAddField(migrations.AddField):
     """AddField that skips addition if column already exists."""
     
+    def _get_db_column(self):
+        """Get the actual database column name, handling ForeignKey suffix."""
+        if self.field.db_column:
+            return self.field.db_column
+        # ForeignKey and OneToOneField add '_id' suffix to column name
+        if isinstance(self.field, (models.ForeignKey, models.OneToOneField)):
+            return f"{self.name}_id"
+        return self.name
+    
     def database_forwards(self, app_label, schema_editor, from_state, to_state):
         model = to_state.apps.get_model(app_label, self.model_name)
         db_table = model._meta.db_table
-        db_column = self.field.db_column or self.name
+        db_column = self._get_db_column()
         if not column_exists(db_table, db_column):
             super().database_forwards(app_label, schema_editor, from_state, to_state)
     
     def database_backwards(self, app_label, schema_editor, from_state, to_state):
         model = from_state.apps.get_model(app_label, self.model_name)
         db_table = model._meta.db_table
-        db_column = self.field.db_column or self.name
+        db_column = self._get_db_column()
         if column_exists(db_table, db_column):
             super().database_backwards(app_label, schema_editor, from_state, to_state)
 
