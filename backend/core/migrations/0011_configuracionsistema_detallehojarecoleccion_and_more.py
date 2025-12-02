@@ -104,7 +104,10 @@ class SafeAddField(migrations.AddField):
         if self.field.db_column:
             return self.field.db_column
         # ForeignKey and OneToOneField add '_id' suffix to column name
-        if isinstance(self.field, (models.ForeignKey, models.OneToOneField)):
+        # Use field attributes instead of isinstance for reliability
+        if getattr(self.field, 'is_relation', False) and getattr(self.field, 'many_to_one', False):
+            return f"{self.name}_id"
+        if getattr(self.field, 'one_to_one', False):
             return f"{self.name}_id"
         return self.name
     
