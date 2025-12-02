@@ -80,20 +80,10 @@ function Login() {
     >
       <div className="max-w-md w-full mx-auto">
         <div className="text-center mb-6">
-          {/* Logo Oficial del Gobierno del Estado de México */}
+          {/* Escudo del Sistema */}
           <div className="inline-flex items-center justify-center bg-white rounded-lg mb-4 shadow-lg p-3">
-            <img 
-              src="/logo-gobierno.png" 
-              alt="Gobierno del Estado de México - Seguridad" 
-              className="h-16 w-auto object-contain"
-              onError={(e) => {
-                // Fallback al icono si la imagen no carga
-                e.target.style.display = 'none';
-                e.target.nextSibling.style.display = 'flex';
-              }}
-            />
-            <div className="hidden items-center justify-center w-14 h-14 bg-white rounded-full">
-              <FaShieldAlt className="text-3xl" style={{ color: '#9F2241' }} />
+            <div className="flex items-center justify-center w-14 h-14 bg-white rounded-full">
+              <FaShieldAlt className="text-4xl" style={{ color: '#9F2241' }} />
             </div>
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Sistema de Farmacia Penitenciaria</h1>
