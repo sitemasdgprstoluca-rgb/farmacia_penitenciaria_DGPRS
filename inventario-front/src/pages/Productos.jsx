@@ -1003,8 +1003,14 @@ const Productos = () => {
     } catch (err) {
 
       console.error('Error al cambiar estado', err);
+      console.error('Response data:', err.response?.data);
+      console.error('Response status:', err.response?.status);
 
-      toast.error(err.response?.data?.error || 'No se pudo cambiar el estado');
+      const errorMsg = err.response?.data?.error || 
+                       err.response?.data?.detail ||
+                       JSON.stringify(err.response?.data) ||
+                       'No se pudo cambiar el estado';
+      toast.error(errorMsg);
 
     }
 

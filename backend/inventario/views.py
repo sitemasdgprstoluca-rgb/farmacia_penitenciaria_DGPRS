@@ -419,18 +419,23 @@ class ProductoViewSet(viewsets.ModelViewSet):
         """
         try:
             producto = self.get_object()
-            producto.activo = not producto.activo
+            nuevo_estado = not producto.activo
+            producto.activo = nuevo_estado
             producto.save(update_fields=['activo'])
             
-            estado = 'activado' if producto.activo else 'desactivado'
+            estado = 'activado' if nuevo_estado else 'desactivado'
             return Response({
                 'mensaje': f'Producto {estado} exitosamente',
-                'activo': producto.activo,
+                'activo': nuevo_estado,
                 'id': producto.id
-            })
+            }, status=status.HTTP_200_OK)
+        except Producto.DoesNotExist:
+            return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            traceback.print_exc()
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error en toggle_activo: {str(e)}", exc_info=True)
+            return Response({'error': f'Error interno: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=False, methods=['get'], url_path='exportar-excel')
     def exportar_excel(self, request):
