@@ -1080,7 +1080,7 @@ class ConfiguracionSistema(models.Model):
     # Colores principales
     color_primario = models.CharField(
         max_length=7,
-        default='#1976D2',
+        default='#9F2241',
         validators=[
             RegexValidator(
                 regex=r'^#[0-9A-Fa-f]{6}$',
@@ -1091,7 +1091,7 @@ class ConfiguracionSistema(models.Model):
     )
     color_primario_hover = models.CharField(
         max_length=7,
-        default='#1565C0',
+        default='#6B1839',
         validators=[
             RegexValidator(
                 regex=r'^#[0-9A-Fa-f]{6}$',
@@ -1115,7 +1115,7 @@ class ConfiguracionSistema(models.Model):
     
     color_acento = models.CharField(
         max_length=7,
-        default='#FF5722',
+        default='#BC955C',
         validators=[
             RegexValidator(
                 regex=r'^#[0-9A-Fa-f]{6}$',
@@ -1140,7 +1140,7 @@ class ConfiguracionSistema(models.Model):
     
     color_fondo_sidebar = models.CharField(
         max_length=7,
-        default='#263238',
+        default='#9F2241',
         validators=[
             RegexValidator(
                 regex=r'^#[0-9A-Fa-f]{6}$',
@@ -1152,7 +1152,7 @@ class ConfiguracionSistema(models.Model):
     
     color_fondo_header = models.CharField(
         max_length=7,
-        default='#1976D2',
+        default='#9F2241',
         validators=[
             RegexValidator(
                 regex=r'^#[0-9A-Fa-f]{6}$',
@@ -1201,7 +1201,7 @@ class ConfiguracionSistema(models.Model):
     
     color_texto_sidebar = models.CharField(
         max_length=7,
-        default='#ECEFF1',
+        default='#FFFFFF',
         validators=[
             RegexValidator(
                 regex=r'^#[0-9A-Fa-f]{6}$',
@@ -1274,7 +1274,7 @@ class ConfiguracionSistema(models.Model):
     
     # Temas predefinidos (para facilitar la selección)
     TEMAS_PREDEFINIDOS = [
-        ('default', 'Por Defecto (Azul)'),
+        ('default', 'Por Defecto (Institucional)'),
         ('dark', 'Oscuro'),
         ('green', 'Verde Institucional'),
         ('purple', 'Púrpura'),
@@ -1334,17 +1334,17 @@ class ConfiguracionSistema(models.Model):
         
         temas = {
             'default': {
-                'color_primario': '#1976D2',
-                'color_primario_hover': '#1565C0',
+                'color_primario': '#9F2241',
+                'color_primario_hover': '#6B1839',
                 'color_secundario': '#424242',
-                'color_acento': '#FF5722',
+                'color_acento': '#BC955C',
                 'color_fondo': '#F5F5F5',
-                'color_fondo_sidebar': '#263238',
-                'color_fondo_header': '#1976D2',
+                'color_fondo_sidebar': '#9F2241',
+                'color_fondo_header': '#9F2241',
                 'color_fondo_card': '#FFFFFF',
                 'color_texto': '#212121',
                 'color_texto_secundario': '#757575',
-                'color_texto_sidebar': '#ECEFF1',
+                'color_texto_sidebar': '#FFFFFF',
                 'color_texto_header': '#FFFFFF',
                 'color_exito': '#4CAF50',
                 'color_advertencia': '#FF9800',

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTheme } from '../hooks/useTheme';
 import { usePermissions } from '../hooks/usePermissions';
 import { toast } from 'react-hot-toast';
@@ -106,17 +106,17 @@ const ConfiguracionTema = () => {
         nombre_institucion: configuracion.nombre_institucion || '',
         subtitulo_institucion: configuracion.subtitulo_institucion || '',
         logo_url: configuracion.logo_url || '',
-        color_primario: normalizarColor(configuracion.color_primario, '#1976D2'),
-        color_primario_hover: normalizarColor(configuracion.color_primario_hover, '#1565C0'),
+        color_primario: normalizarColor(configuracion.color_primario, '#9F2241'),
+        color_primario_hover: normalizarColor(configuracion.color_primario_hover, '#6B1839'),
         color_secundario: normalizarColor(configuracion.color_secundario, '#424242'),
-        color_acento: normalizarColor(configuracion.color_acento, '#FF5722'),
+        color_acento: normalizarColor(configuracion.color_acento, '#BC955C'),
         color_fondo: normalizarColor(configuracion.color_fondo, '#F5F5F5'),
-        color_fondo_sidebar: normalizarColor(configuracion.color_fondo_sidebar, '#263238'),
-        color_fondo_header: normalizarColor(configuracion.color_fondo_header, '#1976D2'),
+        color_fondo_sidebar: normalizarColor(configuracion.color_fondo_sidebar, '#9F2241'),
+        color_fondo_header: normalizarColor(configuracion.color_fondo_header, '#9F2241'),
         color_fondo_card: normalizarColor(configuracion.color_fondo_card, '#FFFFFF'),
         color_texto: normalizarColor(configuracion.color_texto, '#212121'),
         color_texto_secundario: normalizarColor(configuracion.color_texto_secundario, '#757575'),
-        color_texto_sidebar: normalizarColor(configuracion.color_texto_sidebar, '#ECEFF1'),
+        color_texto_sidebar: normalizarColor(configuracion.color_texto_sidebar, '#FFFFFF'),
         color_texto_header: normalizarColor(configuracion.color_texto_header, '#FFFFFF'),
         color_exito: normalizarColor(configuracion.color_exito, '#4CAF50'),
         color_advertencia: normalizarColor(configuracion.color_advertencia, '#FF9800'),

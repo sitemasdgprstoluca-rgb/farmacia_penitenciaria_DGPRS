@@ -15,23 +15,23 @@ const aplicarCSSVariables = (cssVariables) => {
 };
 
 /**
- * Valores por defecto del tema (se usan si la API falla)
+ * Valores por defecto del tema (colores institucionales - guinda/rojo)
  */
 const temaDefault = {
   nombre_sistema: 'Sistema de Farmacia Penitenciaria',
   tema_activo: 'default',
   css_variables: {
-    '--color-primary': '#1976D2',
-    '--color-primary-hover': '#1565C0',
+    '--color-primary': '#9F2241',
+    '--color-primary-hover': '#6B1839',
     '--color-secondary': '#424242',
-    '--color-accent': '#FF5722',
+    '--color-accent': '#BC955C',
     '--color-background': '#F5F5F5',
-    '--color-sidebar-bg': '#263238',
-    '--color-header-bg': '#1976D2',
+    '--color-sidebar-bg': '#9F2241',
+    '--color-header-bg': '#9F2241',
     '--color-card-bg': '#FFFFFF',
     '--color-text': '#212121',
     '--color-text-secondary': '#757575',
-    '--color-sidebar-text': '#ECEFF1',
+    '--color-sidebar-text': '#FFFFFF',
     '--color-header-text': '#FFFFFF',
     '--color-success': '#4CAF50',
     '--color-warning': '#FF9800',
@@ -39,7 +39,7 @@ const temaDefault = {
     '--color-info': '#2196F3',
   },
   temas_disponibles: [
-    { id: 'default', nombre: 'Por Defecto (Azul)' },
+    { id: 'default', nombre: 'Por Defecto (Institucional)' },
     { id: 'dark', nombre: 'Oscuro' },
     { id: 'green', nombre: 'Verde Institucional' },
     { id: 'purple', nombre: 'Púrpura' },
