@@ -31,6 +31,7 @@ function Notificaciones() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(false);
+  const [marcandoTodas, setMarcandoTodas] = useState(false); // Estado para evitar doble clic
   const [deleteId, setDeleteId] = useState(null);
   const [filters, setFilters] = useState({
     tipo: "",
@@ -96,7 +97,8 @@ function Notificaciones() {
   };
 
   const marcarTodas = async () => {
-    if (sinLeer === 0) return;
+    if (sinLeer === 0 || marcandoTodas) return;
+    setMarcandoTodas(true);
     try {
       // Usar endpoint batch en lugar de loop individual
       const res = await notificacionesAPI.marcarTodasLeidas();
@@ -106,6 +108,8 @@ function Notificaciones() {
       toast.success(`${marcadas} notificaciones marcadas como leídas`);
     } catch (error) {
       toast.error(error.response?.data?.detail || "No se pudo completar la acción");
+    } finally {
+      setMarcandoTodas(false);
     }
   };
 
@@ -143,10 +147,10 @@ function Notificaciones() {
         <div className="flex items-center gap-3">
           <button
             onClick={marcarTodas}
-            className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-60"
-            disabled={loading || sinLeer === 0}
+            className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+            disabled={loading || marcandoTodas || sinLeer === 0}
           >
-            Marcar todas como leidas
+            {marcandoTodas ? 'Marcando...' : 'Marcar todas como leidas'}
           </button>
           <button
             onClick={() => fetchData(page)}

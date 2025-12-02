@@ -11,6 +11,7 @@ const NotificacionesBell = () => {
   const [sinLeer, setSinLeer] = useState(0);
   const [abierto, setAbierto] = useState(false);
   const [cargando, setCargando] = useState(false);
+  const [marcandoTodas, setMarcandoTodas] = useState(false); // Estado para evitar doble clic
   const [actionLoading, setActionLoading] = useState(null); // ID de notificación en acción
   const dropdownRef = useRef(null);
   const botonRef = useRef(null);
@@ -106,7 +107,8 @@ const NotificacionesBell = () => {
   };
 
   const marcarTodas = async () => {
-    if (sinLeer === 0) return;
+    if (sinLeer === 0 || marcandoTodas) return;
+    setMarcandoTodas(true);
     try {
       // Usar endpoint batch en lugar de loop individual
       const res = await notificacionesAPI.marcarTodasLeidas();
@@ -118,6 +120,8 @@ const NotificacionesBell = () => {
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || "No se pudieron marcar todas");
+    } finally {
+      setMarcandoTodas(false);
     }
   };
 
@@ -159,10 +163,10 @@ const NotificacionesBell = () => {
             {sinLeer > 0 && (
               <button
                 onClick={marcarTodas}
-                className="text-xs text-blue-600 hover:text-blue-800"
-                disabled={cargando}
+                className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={cargando || marcandoTodas}
               >
-                Marcar todas
+                {marcandoTodas ? 'Marcando...' : 'Marcar todas'}
               </button>
             )}
           </div>
