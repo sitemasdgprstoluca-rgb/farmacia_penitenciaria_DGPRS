@@ -426,6 +426,18 @@ export const configuracionAPI = {
   aplicarTema: (tema) => apiClient.post('/configuracion/tema/aplicar-tema/', { tema }),
   // Restablecer a valores por defecto (solo superusuario)
   restablecer: () => apiClient.post('/configuracion/tema/restablecer/'),
+  // Subir logo del header
+  subirLogoHeader: (formData) => apiClient.post('/configuracion/tema/subir-logo-header/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  // Subir logo para PDFs
+  subirLogoPdf: (formData) => apiClient.post('/configuracion/tema/subir-logo-pdf/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  // Eliminar logo del header
+  eliminarLogoHeader: () => apiClient.delete('/configuracion/tema/eliminar-logo-header/'),
+  // Eliminar logo para PDFs
+  eliminarLogoPdf: () => apiClient.delete('/configuracion/tema/eliminar-logo-pdf/'),
 };
 
 // Hojas de Recolección - Sistema de seguridad para entregas

@@ -146,6 +146,92 @@ export const ThemeProvider = ({ children }) => {
     }
   };
 
+  /**
+   * Sube un logo para el header
+   */
+  const subirLogoHeader = async (file) => {
+    try {
+      const formData = new FormData();
+      formData.append('logo', file);
+      
+      const response = await configuracionAPI.subirLogoHeader(formData);
+      const config = response.data.configuracion;
+      
+      setConfiguracion(config);
+      
+      return { success: true, data: config };
+    } catch (err) {
+      console.error('Error al subir logo header:', err);
+      return { 
+        success: false, 
+        error: err.response?.data?.error || 'Error al subir el logo' 
+      };
+    }
+  };
+
+  /**
+   * Sube un logo para PDFs
+   */
+  const subirLogoPdf = async (file) => {
+    try {
+      const formData = new FormData();
+      formData.append('logo', file);
+      
+      const response = await configuracionAPI.subirLogoPdf(formData);
+      const config = response.data.configuracion;
+      
+      setConfiguracion(config);
+      
+      return { success: true, data: config };
+    } catch (err) {
+      console.error('Error al subir logo PDF:', err);
+      return { 
+        success: false, 
+        error: err.response?.data?.error || 'Error al subir el logo' 
+      };
+    }
+  };
+
+  /**
+   * Elimina el logo del header
+   */
+  const eliminarLogoHeader = async () => {
+    try {
+      const response = await configuracionAPI.eliminarLogoHeader();
+      const config = response.data.configuracion;
+      
+      setConfiguracion(config);
+      
+      return { success: true, data: config };
+    } catch (err) {
+      console.error('Error al eliminar logo header:', err);
+      return { 
+        success: false, 
+        error: err.response?.data?.error || 'Error al eliminar el logo' 
+      };
+    }
+  };
+
+  /**
+   * Elimina el logo para PDFs
+   */
+  const eliminarLogoPdf = async () => {
+    try {
+      const response = await configuracionAPI.eliminarLogoPdf();
+      const config = response.data.configuracion;
+      
+      setConfiguracion(config);
+      
+      return { success: true, data: config };
+    } catch (err) {
+      console.error('Error al eliminar logo PDF:', err);
+      return { 
+        success: false, 
+        error: err.response?.data?.error || 'Error al eliminar el logo' 
+      };
+    }
+  };
+
   // Cargar tema al montar el componente
   useEffect(() => {
     cargarTema();
@@ -159,6 +245,10 @@ export const ThemeProvider = ({ children }) => {
     actualizarTema,
     aplicarTemaPredefinido,
     restablecerTema,
+    subirLogoHeader,
+    subirLogoPdf,
+    eliminarLogoHeader,
+    eliminarLogoPdf,
     temaActivo: configuracion.tema_activo,
     nombreSistema: configuracion.nombre_sistema,
     temasDisponibles: configuracion.temas_disponibles || temaDefault.temas_disponibles,

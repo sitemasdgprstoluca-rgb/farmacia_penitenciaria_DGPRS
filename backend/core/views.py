@@ -1274,6 +1274,162 @@ class ConfiguracionSistemaViewSet(viewsets.ViewSet):
             'mensaje': 'Configuración restablecida a valores por defecto',
             'configuracion': serializer.data
         })
+    
+    @action(detail=False, methods=['post'], url_path='subir-logo-header')
+    def subir_logo_header(self, request):
+        """
+        POST /api/configuracion/tema/subir-logo-header/
+        Sube el logo para el header de la interfaz.
+        Acepta multipart/form-data con campo 'logo'.
+        """
+        if not request.user.is_superuser:
+            return Response(
+                {'error': 'Solo superusuarios pueden subir logos'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        logo = request.FILES.get('logo')
+        if not logo:
+            return Response(
+                {'error': 'Debe enviar un archivo en el campo "logo"'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar tipo de archivo
+        allowed_types = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
+        if logo.content_type not in allowed_types:
+            return Response(
+                {'error': 'Formato no válido. Use PNG, JPG o WebP'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar tamaño (max 500KB)
+        if logo.size > 500 * 1024:
+            return Response(
+                {'error': 'El archivo no puede superar 500KB'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        config = ConfiguracionSistema.get_config()
+        # Eliminar logo anterior si existe
+        if config.logo_header:
+            config.logo_header.delete(save=False)
+        
+        config.logo_header = logo
+        config.updated_by = request.user
+        config.save()
+        
+        serializer = ConfiguracionSistemaSerializer(config, context={'request': request})
+        logger.info(f"Logo header actualizado por {request.user.username}")
+        
+        return Response({
+            'mensaje': 'Logo del header actualizado correctamente',
+            'configuracion': serializer.data
+        })
+    
+    @action(detail=False, methods=['post'], url_path='subir-logo-pdf')
+    def subir_logo_pdf(self, request):
+        """
+        POST /api/configuracion/tema/subir-logo-pdf/
+        Sube el logo/fondo institucional para reportes PDF.
+        Acepta multipart/form-data con campo 'logo'.
+        """
+        if not request.user.is_superuser:
+            return Response(
+                {'error': 'Solo superusuarios pueden subir logos'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        logo = request.FILES.get('logo')
+        if not logo:
+            return Response(
+                {'error': 'Debe enviar un archivo en el campo "logo"'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar tipo de archivo
+        allowed_types = ['image/png', 'image/jpeg', 'image/jpg']
+        if logo.content_type not in allowed_types:
+            return Response(
+                {'error': 'Formato no válido. Use PNG o JPG'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar tamaño (max 2MB para PDFs)
+        if logo.size > 2 * 1024 * 1024:
+            return Response(
+                {'error': 'El archivo no puede superar 2MB'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        config = ConfiguracionSistema.get_config()
+        # Eliminar logo anterior si existe
+        if config.logo_pdf:
+            config.logo_pdf.delete(save=False)
+        
+        config.logo_pdf = logo
+        config.updated_by = request.user
+        config.save()
+        
+        serializer = ConfiguracionSistemaSerializer(config, context={'request': request})
+        logger.info(f"Logo PDF actualizado por {request.user.username}")
+        
+        return Response({
+            'mensaje': 'Logo para PDFs actualizado correctamente',
+            'configuracion': serializer.data
+        })
+    
+    @action(detail=False, methods=['delete'], url_path='eliminar-logo-header')
+    def eliminar_logo_header(self, request):
+        """
+        DELETE /api/configuracion/tema/eliminar-logo-header/
+        Elimina el logo del header.
+        """
+        if not request.user.is_superuser:
+            return Response(
+                {'error': 'Solo superusuarios pueden eliminar logos'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        config = ConfiguracionSistema.get_config()
+        if config.logo_header:
+            config.logo_header.delete(save=False)
+            config.logo_header = None
+            config.updated_by = request.user
+            config.save()
+            logger.info(f"Logo header eliminado por {request.user.username}")
+        
+        serializer = ConfiguracionSistemaSerializer(config)
+        return Response({
+            'mensaje': 'Logo del header eliminado',
+            'configuracion': serializer.data
+        })
+    
+    @action(detail=False, methods=['delete'], url_path='eliminar-logo-pdf')
+    def eliminar_logo_pdf(self, request):
+        """
+        DELETE /api/configuracion/tema/eliminar-logo-pdf/
+        Elimina el logo para PDFs.
+        """
+        if not request.user.is_superuser:
+            return Response(
+                {'error': 'Solo superusuarios pueden eliminar logos'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        config = ConfiguracionSistema.get_config()
+        if config.logo_pdf:
+            config.logo_pdf.delete(save=False)
+            config.logo_pdf = None
+            config.updated_by = request.user
+            config.save()
+            logger.info(f"Logo PDF eliminado por {request.user.username}")
+        
+        serializer = ConfiguracionSistemaSerializer(config)
+        return Response({
+            'mensaje': 'Logo para PDFs eliminado',
+            'configuracion': serializer.data
+        })
 
 
 
