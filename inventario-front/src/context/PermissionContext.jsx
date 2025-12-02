@@ -36,7 +36,10 @@ const PERMISOS_POR_ROL = {
     rechazarRequisicion: true,
     surtirRequisicion: true,
     cancelarRequisicion: true,
+    confirmarRecepcion: true,  // Admin puede confirmar recepción de cualquier centro
     descargarHojaRecoleccion: true,
+    // Permisos de gestión de usuarios
+    gestionUsuarios: true,
   },
   FARMACIA: {
     verDashboard: true,
@@ -61,7 +64,10 @@ const PERMISOS_POR_ROL = {
     rechazarRequisicion: true,
     surtirRequisicion: true,
     cancelarRequisicion: true,
+    confirmarRecepcion: true,  // Farmacia puede confirmar recepción
     descargarHojaRecoleccion: true,
+    // Permisos de gestión de usuarios
+    gestionUsuarios: true,
   },
   CENTRO: {
     verDashboard: true,
@@ -86,7 +92,10 @@ const PERMISOS_POR_ROL = {
     rechazarRequisicion: false,  // No puede rechazar
     surtirRequisicion: false,  // No puede surtir
     cancelarRequisicion: true,  // Puede cancelar las suyas
+    confirmarRecepcion: true,  // Centro puede confirmar recepción de sus requisiciones
     descargarHojaRecoleccion: true,  // Puede descargar para recoger
+    // Permisos de gestión de usuarios
+    gestionUsuarios: false,
   },
   VISTA: {
     verDashboard: true,
@@ -111,7 +120,10 @@ const PERMISOS_POR_ROL = {
     rechazarRequisicion: false,
     surtirRequisicion: false,
     cancelarRequisicion: false,
+    confirmarRecepcion: false,  // Vista no puede confirmar recepción
     descargarHojaRecoleccion: true,  // Puede descargar para consulta
+    // Permisos de gestión de usuarios
+    gestionUsuarios: false,
   },
   SIN_ROL: {
     verDashboard: false,
@@ -135,7 +147,9 @@ const PERMISOS_POR_ROL = {
     rechazarRequisicion: false,
     surtirRequisicion: false,
     cancelarRequisicion: false,
+    confirmarRecepcion: false,
     descargarHojaRecoleccion: false,
+    gestionUsuarios: false,
   },
 };
 

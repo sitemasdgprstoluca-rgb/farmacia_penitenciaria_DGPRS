@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { requisicionesAPI, hojasRecoleccionAPI, descargarArchivo } from '../services/api';
 import { usePermissions } from '../hooks/usePermissions';
 import { toast } from 'react-hot-toast';
+import InputModal from '../components/InputModal';
+import ConfirmModal from '../components/ConfirmModal';
 import {
   FaArrowLeft,
   FaPaperPlane,
@@ -33,6 +35,11 @@ const RequisicionDetalle = () => {
   const [requisicion, setRequisicion] = useState(null);
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState(false);
+  
+  // Modal para confirmar recepción
+  const [showRecepcionModal, setShowRecepcionModal] = useState(false);
+  const [recepcionData, setRecepcionData] = useState({ lugar: '', observaciones: '' });
+  const [showConfirmRecepcion, setShowConfirmRecepcion] = useState(false);
   
   // Hoja de recolección
   const [hojaRecoleccion, setHojaRecoleccion] = useState(null);
@@ -143,6 +150,11 @@ const RequisicionDetalle = () => {
   };
 
   const iniciarAutorizacion = () => {
+    // Validación interna de permisos (no depender solo del renderizado condicional)
+    if (!permisos?.autorizarRequisicion) {
+      toast.error('No tienes permisos para autorizar requisiciones');
+      return;
+    }
     setModoAutorizar(true);
   };
 
@@ -224,6 +236,12 @@ const RequisicionDetalle = () => {
   };
 
   const handleRechazar = async () => {
+    // Validación interna de permisos
+    if (!permisos?.rechazarRequisicion) {
+      toast.error('No tienes permisos para rechazar requisiciones');
+      return;
+    }
+    
     const motivo = prompt(
       `Motivo del rechazo para ${requisicion?.folio || 'esta requisición'}:\n` +
       '(Mínimo 10 caracteres)'
@@ -251,6 +269,11 @@ const RequisicionDetalle = () => {
   };
 
   const handleSurtir = async () => {
+    // Validación interna de permisos
+    if (!permisos?.surtirRequisicion) {
+      toast.error('No tienes permisos para surtir requisiciones');
+      return;
+    }
     if (!window.confirm('¿Marcar esta requisición como surtida? Se descontará el inventario automáticamente.')) return;
     try {
       setProcesando(true);
@@ -298,37 +321,40 @@ const RequisicionDetalle = () => {
     }
   };
 
-  const handleMarcarRecibida = async () => {
-    // Verificar que el usuario pertenece al centro de la requisición
+  // Iniciar flujo de confirmación de recepción con modal
+  const iniciarConfirmarRecepcion = () => {
+    // Validación interna de permisos (no depender solo del renderizado)
+    if (!permisos?.confirmarRecepcion) {
+      toast.error('No tienes permisos para confirmar recepción');
+      return;
+    }
+    
     const centroRequisicion = requisicion?.centro?.id || requisicion?.centro;
     const centroUsuario = user?.centro?.id || user?.centro;
     const esPrivilegiado = user?.is_superuser || permisos?.isFarmaciaAdmin || permisos?.isAdmin;
     
-    if (!esPrivilegiado && centroUsuario && centroRequisicion && centroUsuario !== centroRequisicion) {
+    if (!esPrivilegiado && centroUsuario && centroRequisicion && String(centroUsuario) !== String(centroRequisicion)) {
       toast.error('Solo puede marcar como recibida las requisiciones de su centro');
       return;
     }
     
-    // Confirmar antes de proceder
-    if (!window.confirm(
-      `¿Confirmar recepción de la requisición ${requisicion?.folio || id}?\n\n` +
-      'Esta acción indica que los medicamentos fueron entregados físicamente.'
-    )) {
-      return;
-    }
-    
-    const lugar = prompt('Lugar de entrega/recepción:');
-    if (!lugar || !lugar.trim()) {
+    setRecepcionData({ lugar: '', observaciones: '' });
+    setShowConfirmRecepcion(true);
+  };
+
+  // Ejecutar confirmación de recepción
+  const ejecutarConfirmarRecepcion = async () => {
+    if (!recepcionData.lugar.trim()) {
       toast.error('El lugar de entrega es requerido');
       return;
     }
-    const observaciones = prompt('Observaciones de recepción (opcional):') || '';
     
     try {
       setProcesando(true);
+      setShowConfirmRecepcion(false);
       await requisicionesAPI.marcarRecibida(id, { 
-        lugar_entrega: lugar.trim(), 
-        observaciones_recepcion: observaciones.trim() 
+        lugar_entrega: recepcionData.lugar.trim(), 
+        observaciones_recepcion: recepcionData.observaciones.trim() 
       });
       toast.success('Requisición marcada como recibida');
       cargarRequisicion();
@@ -432,14 +458,14 @@ const RequisicionDetalle = () => {
   const puedeRechazar = requisicion?.estado === 'enviada' && esFarmacia && permisos?.rechazarRequisicion;
   const puedeSurtir = (requisicion?.estado === 'autorizada' || requisicion?.estado === 'parcial') && esFarmacia && permisos?.surtirRequisicion;
   
-  // puedeMarcarRecibida: estado surtida + (superuser O del mismo centro) + tener permiso de confirmar recepción
+  // puedeMarcarRecibida: estado surtida + (superuser O del mismo centro) + tener permiso específico confirmarRecepcion
   // Se valida tanto el centro como el permiso fino para evitar acciones no autorizadas
   const centroRequisicion = requisicion?.centro?.id || requisicion?.centro;
   const centroUsuario = user?.centro?.id || user?.centro;
   const esMismoCentro = centroUsuario && centroRequisicion && String(centroUsuario) === String(centroRequisicion);
   const puedeMarcarRecibida = requisicion?.estado === 'surtida' && 
-    (user?.is_superuser || esMismoCentro) &&
-    permisos?.verRequisiciones === true; // Debe tener permiso explícito de ver requisiciones
+    (user?.is_superuser || esFarmacia || esMismoCentro) &&
+    permisos?.confirmarRecepcion === true; // Debe tener permiso específico de confirmar recepción
     
   const puedeCancelar = !['surtida', 'cancelada', 'rechazada', 'recibida'].includes(requisicion?.estado) && permisos?.cancelarRequisicion;
   const puedeDescargarHoja = ['autorizada', 'parcial', 'surtida', 'recibida'].includes(requisicion?.estado) && permisos?.descargarHojaRecoleccion;
@@ -863,7 +889,7 @@ const RequisicionDetalle = () => {
 
               {puedeMarcarRecibida && (
                 <button
-                  onClick={handleMarcarRecibida}
+                  onClick={iniciarConfirmarRecepcion}
                   disabled={procesando}
                   className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity bg-blue-600 hover:bg-blue-700"
                 >
@@ -912,6 +938,79 @@ const RequisicionDetalle = () => {
           </div>
         )}
       </div>
+
+      {/* Modal de confirmación de recepción */}
+      {showConfirmRecepcion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => !procesando && setShowConfirmRecepcion(false)} />
+          <div className="relative w-full max-w-md bg-white rounded-lg shadow-xl p-6">
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <FaCheckCircle className="text-blue-600" />
+              Confirmar recepción - {requisicion?.folio}
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Esta acción indica que los medicamentos fueron entregados físicamente.
+            </p>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Lugar de entrega/recepción <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={recepcionData.lugar}
+                  onChange={(e) => setRecepcionData(prev => ({ ...prev, lugar: e.target.value }))}
+                  placeholder="Ej: Almacén central, Farmacia del centro..."
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  disabled={procesando}
+                  autoFocus
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Observaciones (opcional)
+                </label>
+                <textarea
+                  value={recepcionData.observaciones}
+                  onChange={(e) => setRecepcionData(prev => ({ ...prev, observaciones: e.target.value }))}
+                  placeholder="Observaciones adicionales..."
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  rows={3}
+                  disabled={procesando}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setShowConfirmRecepcion(false)}
+                disabled={procesando}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={ejecutarConfirmarRecepcion}
+                disabled={procesando || !recepcionData.lugar.trim()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {procesando ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                    Procesando...
+                  </>
+                ) : (
+                  <>
+                    <FaCheckCircle /> Confirmar recepción
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

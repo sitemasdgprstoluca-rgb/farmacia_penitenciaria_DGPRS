@@ -1009,7 +1009,8 @@ const Requisiciones = () => {
                   {puedeEditar(req) && (
                     <button
                       onClick={() => abrirModalEditar(req)}
-                      className="bg-gray-100 text-gray-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-gray-200 border border-gray-300"
+                      disabled={isSubmitting || actionLoading === req.id}
+                      className="bg-gray-100 text-gray-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-gray-200 border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <FaEdit /> Editar
                     </button>

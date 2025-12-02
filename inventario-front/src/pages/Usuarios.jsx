@@ -569,14 +569,19 @@ function Usuarios() {
     setFilterCentro('');
   };
 
+  // Cruzar tienePermisoGestion con permisos del backend para respetar permisos personalizados
+  // Un usuario puede tener rol farmacia pero permisos limitados por el admin
+  const tieneGestionBackend = permisos?.gestionUsuarios !== false;
+  const puedeGestionar = tienePermisoGestion && tieneGestionBackend;
+
   const puede = {
-    ver: tienePermisoGestion || soloLectura,
-    crear: tienePermisoGestion,
-    editar: tienePermisoGestion,
-    eliminar: tienePermisoGestion,
-    cambiarPassword: tienePermisoGestion,
-    exportar: tienePermisoGestion,
-    importar: tienePermisoGestion
+    ver: puedeGestionar || soloLectura,
+    crear: puedeGestionar,
+    editar: puedeGestionar,
+    eliminar: puedeGestionar,
+    cambiarPassword: puedeGestionar,
+    exportar: puedeGestionar,
+    importar: puedeGestionar
   };
 
   const headerActions = (
