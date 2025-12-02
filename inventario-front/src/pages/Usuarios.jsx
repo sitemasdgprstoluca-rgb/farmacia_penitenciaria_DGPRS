@@ -44,9 +44,11 @@ function Usuarios() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showPermisosAvanzados, setShowPermisosAvanzados] = useState(false);
   const [editingUsuario, setEditingUsuario] = useState(null);
-  const [currentUserId, setCurrentUserId] = useState(null); // Usuario actual logueado
   const fileInputRef = useRef(null);
-  const { permisos, getRolPrincipal } = usePermissions();
+  const { user, permisos, getRolPrincipal } = usePermissions();
+  
+  // ID del usuario actual (desde el contexto, ya cargado)
+  const currentUserId = user?.id;
   
   // Sistema de permisos completo
   const rolPrincipal = getRolPrincipal(); // ADMIN | FARMACIA | CENTRO | VISTA | SIN_ROL
@@ -99,17 +101,7 @@ function Usuarios() {
   useEffect(() => {
     cargarUsuarios();
     cargarCentros();
-    obtenerUsuarioActual();
   }, []);
-
-  const obtenerUsuarioActual = async () => {
-    try {
-      const response = await usuariosAPI.me();
-      setCurrentUserId(response.data?.id);
-    } catch (error) {
-      console.error('Error al obtener usuario actual');
-    }
-  };
   
   // Aplicar filtros cuando cambian
   useEffect(() => {
@@ -373,7 +365,11 @@ function Usuarios() {
   };
   
   const handleDelete = async (usuario) => {
-    // Prevenir auto-eliminación
+    // Prevenir auto-eliminación (validación robusta)
+    if (!currentUserId) {
+      toast.error('Espere a que se cargue la sesión antes de eliminar usuarios');
+      return;
+    }
     if (usuario.id === currentUserId) {
       toast.error('No puede eliminarse a sí mismo. Contacte a otro administrador.');
       return;
@@ -740,9 +736,9 @@ function Usuarios() {
                     {puede.eliminar && usuario.id !== currentUserId && (
                       <button 
                         onClick={() => handleDelete(usuario)}
-                        disabled={actionLoading === usuario.id}
+                        disabled={actionLoading === usuario.id || !currentUserId}
                         className="text-red-600 hover:text-red-800 transition disabled:opacity-50"
-                        title="Eliminar"
+                        title={!currentUserId ? "Cargando sesión..." : "Eliminar"}
                       >
                         {actionLoading === usuario.id ? (
                           <span className="animate-spin inline-block">⏳</span>

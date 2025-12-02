@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import Pagination from "../components/Pagination";
 import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, descargarArchivo } from "../services/api";
+import { usePermissions } from "../hooks/usePermissions";
 
 const PAGE_SIZE = 25;
 
@@ -10,6 +11,12 @@ const Movimientos = () => {
   const location = useLocation();
   const highlightId = location.state?.highlightId;
   const highlightRef = useRef(null);
+  const { user, permisos, getRolPrincipal } = usePermissions();
+  
+  // Detectar si puede ver todos los centros o solo el suyo
+  const rolPrincipal = getRolPrincipal();
+  const puedeVerTodosCentros = ['ADMIN', 'FARMACIA', 'VISTA'].includes(rolPrincipal);
+  const centroUsuario = user?.centro || user?.centro_id;
   
   const [movimientos, setMovimientos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -19,6 +26,7 @@ const Movimientos = () => {
   const [expandedId, setExpandedId] = useState(highlightId || null);
 
   // Filtros aplicados (los que realmente se envían al backend)
+  // Si el usuario tiene centro asignado, pre-filtrar por su centro
   const [filtrosAplicados, setFiltrosAplicados] = useState({
     fecha_inicio: "",
     fecha_fin: "",
@@ -62,22 +70,38 @@ const Movimientos = () => {
     []
   );
 
-  const cargarCatalogos = async () => {
+  const cargarCatalogos = useCallback(async () => {
     try {
-      const [prodResp, centroResp, lotesResp] = await Promise.all([
-        productosAPI.getAll({ page_size: 500, ordering: "descripcion", activo: true }),
-        centrosAPI.getAll({ page_size: 100, ordering: "nombre", activo: true }),
-        lotesAPI.getAll({ page_size: 500, ordering: "-fecha_caducidad", estado: "disponible" }),
-      ]);
+      // Cargar productos (todos pueden ver el catálogo de productos)
+      const prodResp = await productosAPI.getAll({ page_size: 500, ordering: "descripcion", activo: true });
       setProductos(prodResp.data.results || prodResp.data || []);
-      setCentros(centroResp.data.results || centroResp.data || []);
+      
+      // Cargar centros según permisos
+      if (puedeVerTodosCentros) {
+        // Admin/Farmacia/Vista: ver todos los centros
+        const centroResp = await centrosAPI.getAll({ page_size: 100, ordering: "nombre", activo: true });
+        setCentros(centroResp.data.results || centroResp.data || []);
+      } else if (centroUsuario) {
+        // Usuario de centro: solo su centro
+        try {
+          const centroResp = await centrosAPI.getById(centroUsuario);
+          setCentros([centroResp.data]);
+        } catch {
+          setCentros([]);
+        }
+      } else {
+        setCentros([]);
+      }
+      
+      // Cargar lotes según permisos (el backend ya filtra por centro del usuario)
+      const lotesResp = await lotesAPI.getAll({ page_size: 500, ordering: "-fecha_caducidad", estado: "disponible" });
       const lotesData = lotesResp.data.results || lotesResp.data || [];
       setLotes(lotesData);
       setLotesDisponibles(lotesData.filter(l => l.cantidad_actual > 0));
     } catch (err) {
       console.warn("No se pudieron cargar catálogos", err.message);
     }
-  };
+  }, [puedeVerTodosCentros, centroUsuario]);
 
   const calcularStats = (data) => {
     let entradas = 0;
@@ -122,7 +146,7 @@ const Movimientos = () => {
 
   useEffect(() => {
     cargarCatalogos();
-  }, []);
+  }, [cargarCatalogos]);
 
   // Solo recargar cuando cambia la página o los filtros APLICADOS
   useEffect(() => {
@@ -497,9 +521,11 @@ const Movimientos = () => {
                   <select
                     value={filtros.centro}
                     onChange={(e) => handleFiltro("centro", e.target.value)}
-                    className="border rounded-lg px-3 py-2"
+                    className="border rounded-lg px-3 py-2 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    disabled={!puedeVerTodosCentros}
+                    title={!puedeVerTodosCentros ? "Solo puedes ver movimientos de tu centro" : ""}
                   >
-                    <option value="">Todos</option>
+                    {puedeVerTodosCentros && <option value="">Todos</option>}
                     {centros.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.nombre}
