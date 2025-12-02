@@ -207,6 +207,8 @@ const Requisiciones = () => {
   }, [cargarCatalogos, resetForm]);
 
   const puedeEditar = (requisicion) => {
+    // Primero validar permiso fino
+    if (!permisos.editarRequisicion) return false;
     if (requisicion.estado !== 'borrador') return false;
     if (permisos.isFarmaciaAdmin) return true;
     if (permisos.isCentroUser) {
@@ -216,7 +218,8 @@ const Requisiciones = () => {
     return false;
   };
 
-  const puedeEnviar = (req) => puedeEditar(req) && req.estado === 'borrador';
+  // Validar permiso fino de enviar además de las condiciones de edición
+  const puedeEnviar = (req) => permisos.enviarRequisicion && puedeEditar(req) && req.estado === 'borrador';
 
   const getEstadoBadge = (estado) => {
     const badges = {
@@ -822,13 +825,16 @@ const Requisiciones = () => {
           </div>
         </div>
         
-        {/* Botón limpiar filtros */}
-        {(searchTerm || filtroEstado || filtroCentro || filtroFechaDesde || filtroFechaHasta || (grupoEstado && grupoEstado !== 'todas')) && (
+        {/* Botón limpiar filtros - NO borra filtroCentro para usuarios de centro */}
+        {(searchTerm || filtroEstado || (esAdminOFarmacia && filtroCentro) || filtroFechaDesde || filtroFechaHasta || (grupoEstado && grupoEstado !== 'todas')) && (
           <button
             onClick={() => {
               setSearchTerm('');
               setFiltroEstado('');
-              setFiltroCentro('');
+              // Solo limpiar centro si el usuario puede ver todos los centros
+              if (esAdminOFarmacia) {
+                setFiltroCentro('');
+              }
               setFiltroFechaDesde('');
               setFiltroFechaHasta('');
               setGrupoEstado('todas');
