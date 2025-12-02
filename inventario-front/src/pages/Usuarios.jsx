@@ -99,60 +99,43 @@ function Usuarios() {
     confirm_password: ''
   });
 
-  useEffect(() => {
-    cargarUsuarios();
-    cargarCentros();
-  }, []);
-  
-  // Aplicar filtros cuando cambian
-  useEffect(() => {
-    let filtered = [...usuarios];
+  // Construir los parámetros de filtro para enviar al backend
+  const buildFilterParams = () => {
+    const params = {};
     
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(u => 
-        u.username?.toLowerCase().includes(term) ||
-        u.email?.toLowerCase().includes(term) ||
-        u.first_name?.toLowerCase().includes(term) ||
-        u.last_name?.toLowerCase().includes(term) ||
-        u.adscripcion?.toLowerCase().includes(term)
-      );
+    // Si no es admin/farmacia, siempre filtrar por centro del usuario
+    if (!esAdminOFarmacia && user?.centro?.id) {
+      params.centro = user.centro.id;
+    } else if (filterCentro) {
+      // Admin/farmacia pueden filtrar por cualquier centro
+      params.centro = filterCentro;
+    }
+    
+    if (searchTerm.trim()) {
+      params.search = searchTerm.trim();
     }
     
     if (filterRol) {
-      filtered = filtered.filter(u => u.rol === filterRol);
+      params.rol = filterRol;
     }
     
     if (filterEstado === 'activo') {
-      filtered = filtered.filter(u => u.is_active !== false);
+      params.is_active = 'true';
     } else if (filterEstado === 'inactivo') {
-      filtered = filtered.filter(u => u.is_active === false);
-    }
-
-    if (filterCentro) {
-      filtered = filtered.filter(u => u.centro?.id === parseInt(filterCentro));
+      params.is_active = 'false';
     }
     
-    setFilteredUsuarios(filtered);
-  }, [usuarios, searchTerm, filterRol, filterEstado, filterCentro]);
-  
-  const cargarCentros = async () => {
-    try {
-      const response = await centrosAPI.getAll({ activo: true });
-      setCentros(response.data.results || response.data);
-    } catch (error) {
-      console.error('Error al cargar centros');
-    }
+    return params;
   };
 
-  const cargarUsuarios = async () => {
-    setLoading(true);
+  // Ref para debounce
+  const debounceRef = useRef(null);
+  
+  // Cargar usuarios con filtros server-side
+  const cargarUsuarios = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
-      // Si no es admin/farmacia, filtrar por centro del usuario
-      const params = {};
-      if (!esAdminOFarmacia && user?.centro?.id) {
-        params.centro = user.centro.id;
-      }
+      const params = buildFilterParams();
       const response = await usuariosAPI.getAll(params);
       const data = response.data.results || response.data;
       setUsuarios(data);
@@ -160,7 +143,41 @@ function Usuarios() {
     } catch (error) {
       toast.error('Error al cargar usuarios');
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    cargarCentros();
+  }, []);
+
+  // Cargar usuarios cuando los filtros cambian (con debounce para búsqueda)
+  useEffect(() => {
+    // Si es la primera carga o cambió algo que no sea searchTerm, cargar inmediatamente
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    
+    // Debounce solo para searchTerm (300ms), el resto es inmediato
+    const delay = searchTerm ? 300 : 0;
+    
+    debounceRef.current = setTimeout(() => {
+      cargarUsuarios();
+    }, delay);
+    
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, [searchTerm, filterRol, filterEstado, filterCentro, esAdminOFarmacia, user?.centro?.id]);
+  
+  const cargarCentros = async () => {
+    try {
+      const response = await centrosAPI.getAll({ activo: true });
+      setCentros(response.data.results || response.data);
+    } catch (error) {
+      console.error('Error al cargar centros');
     }
   };
   
@@ -464,13 +481,15 @@ function Usuarios() {
     }
   };
 
-  // Exportar usuarios a Excel
+  // Exportar usuarios a Excel (con los mismos filtros que la vista)
   const handleExportar = async () => {
     if (exportLoading) return; // Prevenir doble clic
     
     try {
       setExportLoading(true);
-      const response = await usuariosAPI.exportar();
+      // Usar los mismos filtros que el listado para coherencia
+      const params = buildFilterParams();
+      const response = await usuariosAPI.exportar(params);
       const blob = new Blob([response.data]);
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');

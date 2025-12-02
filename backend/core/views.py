@@ -73,9 +73,31 @@ class UserViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     pagination_class = StandardResultsSetPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['username', 'email', 'first_name', 'last_name']
+    search_fields = ['username', 'email', 'first_name', 'last_name', 'adscripcion']
     ordering_fields = ['username', 'date_joined']
     ordering = ['-date_joined']
+    
+    def _apply_filters(self, queryset, params):
+        """Aplica filtros comunes a queryset de usuarios"""
+        # Filtro por rol
+        rol = params.get('rol')
+        if rol:
+            queryset = queryset.filter(rol=rol)
+        
+        # Filtro por estado activo/inactivo
+        is_active = params.get('is_active')
+        if is_active is not None:
+            if is_active in ['true', 'True', '1', True]:
+                queryset = queryset.filter(is_active=True)
+            elif is_active in ['false', 'False', '0', False]:
+                queryset = queryset.filter(is_active=False)
+        
+        # Filtro por centro
+        centro = params.get('centro')
+        if centro:
+            queryset = queryset.filter(centro_id=centro)
+        
+        return queryset
 
     def get_serializer_class(self):
         if self.action in ['me', 'me_change_password']:
@@ -111,8 +133,18 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if user.is_superuser or self._is_farmacia_or_admin(user):
-            return User.objects.all()
-        return User.objects.filter(id=user.id)
+            qs = User.objects.all()
+        else:
+            # Usuario no admin solo ve usuarios de su centro (o solo a sí mismo si no tiene centro)
+            if hasattr(user, 'centro') and user.centro:
+                qs = User.objects.filter(centro=user.centro)
+            else:
+                qs = User.objects.filter(id=user.id)
+        
+        # Aplicar filtros server-side
+        qs = self._apply_filters(qs, self.request.query_params)
+        
+        return qs.select_related('centro')
 
     @action(detail=False, methods=['get', 'patch'], url_path='me')
     def me(self, request):
@@ -284,14 +316,49 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='exportar-excel')
     def exportar_excel(self, request):
-        """GET /api/usuarios/exportar_excel/ - Exporta usuarios a Excel"""
+        """GET /api/usuarios/exportar_excel/ - Exporta usuarios a Excel
+        
+        Acepta los mismos filtros que el listado:
+        - search: búsqueda en username, email, first_name, last_name, adscripcion
+        - rol: filtrar por rol específico
+        - is_active: true/false para filtrar por estado
+        - centro: ID del centro para filtrar
+        """
         import openpyxl
         from openpyxl.styles import Font, PatternFill
         from django.http import HttpResponse
+        from django.db.models import Q
         
         # Admin y Farmacia pueden exportar usuarios
         if not request.user.is_superuser and request.user.rol not in ['admin_sistema', 'farmacia', 'admin_farmacia']:
             return Response({'error': 'No tiene permisos para exportar usuarios'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Obtener queryset base según permisos del usuario
+        user = request.user
+        if user.is_superuser or self._is_farmacia_or_admin(user):
+            usuarios = User.objects.all()
+        else:
+            # Usuario no admin solo puede exportar usuarios de su centro
+            if hasattr(user, 'centro') and user.centro:
+                usuarios = User.objects.filter(centro=user.centro)
+            else:
+                usuarios = User.objects.filter(id=user.id)
+        
+        # Aplicar filtros server-side (mismos que el listado)
+        usuarios = self._apply_filters(usuarios, request.query_params)
+        
+        # Aplicar búsqueda de texto (igual que search_fields)
+        search = request.query_params.get('search', '').strip()
+        if search:
+            usuarios = usuarios.filter(
+                Q(username__icontains=search) |
+                Q(email__icontains=search) |
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(adscripcion__icontains=search)
+            )
+        
+        usuarios = usuarios.select_related('centro').order_by('username')
         
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -305,8 +372,6 @@ class UserViewSet(viewsets.ModelViewSet):
         for cell in ws[1]:
             cell.fill = header_fill
             cell.font = header_font
-        
-        usuarios = User.objects.select_related('centro').order_by('username')
         for idx, u in enumerate(usuarios, start=1):
             ws.append([
                 idx,

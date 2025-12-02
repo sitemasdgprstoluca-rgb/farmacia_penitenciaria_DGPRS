@@ -253,7 +253,7 @@ export const usuariosAPI = {
   me: () => apiClient.get('/usuarios/me/'),
   actualizarPerfil: (data) => apiClient.patch('/usuarios/me/', data),
   cambiarPasswordPropio: (data) => apiClient.post('/usuarios/me/change-password/', data),
-  exportar: () => apiClient.get('/usuarios/exportar-excel/', { responseType: 'blob' }),
+  exportar: (params = {}) => apiClient.get('/usuarios/exportar-excel/', { params, responseType: 'blob' }),
   importar: (formData) => apiClient.post('/usuarios/importar-excel/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
