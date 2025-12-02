@@ -743,9 +743,9 @@ const Productos = () => {
 
     }
 
-    if (!data.precio_unitario || Number(data.precio_unitario) <= 0) {
+    if (!data.precio_unitario || Number(data.precio_unitario) < 0.01) {
 
-      errors.precio_unitario = 'El precio debe ser mayor a 0';
+      errors.precio_unitario = 'El precio debe ser mayor o igual a 0.01';
 
     }
 
@@ -928,11 +928,12 @@ const Productos = () => {
       }
 
       // Preparar datos para enviar al backend
+      const precioVal = parseFloat(formData.precio_unitario);
       const dataToSend = {
         clave: formData.clave,
         descripcion: formData.descripcion,
         unidad_medida: formData.unidad_medida,
-        precio_unitario: parseFloat(formData.precio_unitario) || 0,
+        precio_unitario: isNaN(precioVal) || precioVal < 0.01 ? 0.01 : precioVal,
         stock_minimo: parseInt(formData.stock_minimo, 10) || 0,
         activo: formData.activo,
       };
@@ -2061,7 +2062,7 @@ const Productos = () => {
 
                     type="number"
 
-                    min="0"
+                    min="0.01"
 
                     step="0.01"
 

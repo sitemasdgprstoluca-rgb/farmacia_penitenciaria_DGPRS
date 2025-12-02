@@ -255,9 +255,9 @@ class ProductoViewSet(viewsets.ModelViewSet):
         """
         Permisos personalizados por accion:
         - list, retrieve: IsAuthenticated
-        - create, update, destroy: IsFarmaciaRole
+        - create, update, destroy, toggle_activo: IsFarmaciaRole
         """
-        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+        if self.action in ['create', 'update', 'partial_update', 'destroy', 'toggle_activo']:
             from core.permissions import IsFarmaciaRole
             return [IsAuthenticated(), IsFarmaciaRole()]
         return [IsAuthenticated()]
