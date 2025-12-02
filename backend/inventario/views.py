@@ -411,6 +411,27 @@ class ProductoViewSet(viewsets.ModelViewSet):
             traceback.print_exc()
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
+    @action(detail=True, methods=['post'], url_path='toggle-activo')
+    def toggle_activo(self, request, pk=None):
+        """
+        Activa o desactiva un producto.
+        POST /api/productos/{id}/toggle-activo/
+        """
+        try:
+            producto = self.get_object()
+            producto.activo = not producto.activo
+            producto.save(update_fields=['activo'])
+            
+            estado = 'activado' if producto.activo else 'desactivado'
+            return Response({
+                'mensaje': f'Producto {estado} exitosamente',
+                'activo': producto.activo,
+                'id': producto.id
+            })
+        except Exception as e:
+            traceback.print_exc()
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
     @action(detail=False, methods=['get'], url_path='exportar-excel')
     def exportar_excel(self, request):
         """

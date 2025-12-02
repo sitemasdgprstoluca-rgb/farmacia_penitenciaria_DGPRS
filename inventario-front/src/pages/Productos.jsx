@@ -927,15 +927,25 @@ const Productos = () => {
 
       }
 
+      // Preparar datos para enviar al backend
+      const dataToSend = {
+        clave: formData.clave,
+        descripcion: formData.descripcion,
+        unidad_medida: formData.unidad_medida,
+        precio_unitario: parseFloat(formData.precio_unitario) || 0,
+        stock_minimo: parseInt(formData.stock_minimo, 10) || 0,
+        activo: formData.activo,
+      };
+
       if (editingProduct) {
 
-        await productosAPI.update(editingProduct.id, formData);
+        await productosAPI.update(editingProduct.id, dataToSend);
 
         toast.success('Producto actualizado correctamente');
 
       } else {
 
-        await productosAPI.create(formData);
+        await productosAPI.create(dataToSend);
 
         toast.success('Producto creado correctamente');
 
@@ -983,13 +993,7 @@ const Productos = () => {
 
       }
 
-      await productosAPI.update(producto.id, {
-
-        ...producto,
-
-        activo: !producto.activo,
-
-      });
+      await productosAPI.toggleActivo(producto.id);
 
       toast.success(`Producto ${producto.activo ? 'desactivado' : 'activado'}`);
 
