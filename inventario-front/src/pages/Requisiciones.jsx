@@ -104,6 +104,9 @@ const Requisiciones = () => {
     { key: 'rechazadas_canceladas', label: 'Rechazadas' },
   ];
 
+  // Caché para evitar recargas innecesarias del catálogo
+  const [catalogoCargado, setCatalogoCargado] = useState(false);
+
   const resetForm = useCallback(() => {
     setForm({
       centro: user?.centro?.id || '',
@@ -115,20 +118,26 @@ const Requisiciones = () => {
     setLotesProducto([]);
     setCatalogoBusqueda('');
     setVistaCarrito(false);
+    // Limpiar caché para forzar recarga al reabrir
+    setCatalogoCargado(false);
   }, [user?.centro?.id]);
-
-  // Cargar catálogo completo de lotes con stock para el modal
-  const cargarCatalogoLotes = useCallback(async () => {
+  
+  // Cargar catálogo de lotes con stock - con caché y paginación optimizada
+  const cargarCatalogoLotes = useCallback(async (forzarRecarga = false) => {
+    // Si ya está cargado y no se fuerza, no recargar
+    if (catalogoCargado && !forzarRecarga && catalogoLotes.length > 0) {
+      return;
+    }
+    
     setLoadingCatalogo(true);
     try {
-      // Cargar todos los lotes disponibles con stock > 0, no vencidos
-      // Para centros: filtra automáticamente por su centro en el backend
-      // Para farmacia: muestra lotes de farmacia central (centro=null)
+      // Cargar lotes disponibles con stock > 0, no vencidos
+      // Paginación limitada para evitar cargas masivas
       const params = {
         stock_min: 1,
         solo_disponibles: 'true',  // Solo lotes disponibles y no vencidos
         ordering: 'producto__descripcion,fecha_caducidad',
-        page_size: 1000, // Cargar suficientes para mostrar catálogo completo
+        page_size: 200, // Límite razonable por página
       };
       
       // Si es farmacia/admin, mostrar lotes de farmacia central por defecto
@@ -139,13 +148,14 @@ const Requisiciones = () => {
       const resp = await lotesAPI.getAll(params);
       const lotes = resp.data.results || resp.data || [];
       setCatalogoLotes(lotes);
+      setCatalogoCargado(true);
     } catch (error) {
       console.error('Error cargando catálogo de lotes:', error);
       setCatalogoLotes([]);
     } finally {
       setLoadingCatalogo(false);
     }
-  }, [permisos.isFarmaciaAdmin, permisos.isAdmin]);
+  }, [permisos.isFarmaciaAdmin, permisos.isAdmin, catalogoCargado, catalogoLotes.length]);
 
   const cargarCatalogos = useCallback(async () => {
     try {
@@ -999,8 +1009,8 @@ const Requisiciones = () => {
                     </button>
                   )}
 
-                  {/* Botón para Revisar y Ajustar - SOLO para requisiciones pendientes (enviadas) */}
-                  {req.estado === 'enviada' && permisos.autorizarRequisicion && (
+                  {/* Botón para Revisar y Ajustar - SOLO farmacia/admin con permiso */}
+                  {req.estado === 'enviada' && esAdminOFarmacia && permisos.autorizarRequisicion && (
                     <button
                       onClick={() => navigate(`/requisiciones/${req.id}`)}
                       className="text-white px-3 py-1 rounded text-sm font-semibold flex items-center gap-1 hover:opacity-90"
@@ -1010,7 +1020,7 @@ const Requisiciones = () => {
                     </button>
                   )}
 
-                  {req.estado === 'enviada' && permisos.rechazarRequisicion && (
+                  {req.estado === 'enviada' && esAdminOFarmacia && permisos.rechazarRequisicion && (
                     <button
                       onClick={() => handleRechazar(req.id, req.folio)}
                       disabled={isSubmitting || actionLoading === req.id}
@@ -1020,7 +1030,7 @@ const Requisiciones = () => {
                     </button>
                   )}
 
-                  {req.estado === 'autorizada' && permisos.surtirRequisicion && (
+                  {req.estado === 'autorizada' && esAdminOFarmacia && permisos.surtirRequisicion && (
                     <button
                       onClick={() => handleSurtir(req.id, req.folio)}
                       disabled={isSubmitting || actionLoading === req.id}

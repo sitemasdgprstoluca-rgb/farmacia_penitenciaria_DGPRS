@@ -431,8 +431,16 @@ const RequisicionDetalle = () => {
   const puedeAutorizar = requisicion?.estado === 'enviada' && esFarmacia && permisos?.autorizarRequisicion;
   const puedeRechazar = requisicion?.estado === 'enviada' && esFarmacia && permisos?.rechazarRequisicion;
   const puedeSurtir = (requisicion?.estado === 'autorizada' || requisicion?.estado === 'parcial') && esFarmacia && permisos?.surtirRequisicion;
+  
+  // puedeMarcarRecibida: estado surtida + (superuser O del mismo centro) + tener permiso de confirmar recepción
+  // Se valida tanto el centro como el permiso fino para evitar acciones no autorizadas
+  const centroRequisicion = requisicion?.centro?.id || requisicion?.centro;
+  const centroUsuario = user?.centro?.id || user?.centro;
+  const esMismoCentro = centroUsuario && centroRequisicion && String(centroUsuario) === String(centroRequisicion);
   const puedeMarcarRecibida = requisicion?.estado === 'surtida' && 
-    (user?.is_superuser || (user?.centro && requisicion?.centro === user.centro));
+    (user?.is_superuser || esMismoCentro) &&
+    permisos?.verRequisiciones === true; // Debe tener permiso explícito de ver requisiciones
+    
   const puedeCancelar = !['surtida', 'cancelada', 'rechazada', 'recibida'].includes(requisicion?.estado) && permisos?.cancelarRequisicion;
   const puedeDescargarHoja = ['autorizada', 'parcial', 'surtida', 'recibida'].includes(requisicion?.estado) && permisos?.descargarHojaRecoleccion;
   const puedeDescargarRechazo = requisicion?.estado === 'rechazada' && permisos?.descargarHojaRecoleccion;
