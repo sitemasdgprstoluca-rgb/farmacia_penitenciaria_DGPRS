@@ -146,6 +146,68 @@ class SafeAddIndex(migrations.AddIndex):
             super().database_backwards(app_label, schema_editor, from_state, to_state)
 
 
+class SafeAlterUniqueTogether(migrations.AlterUniqueTogether):
+    """
+    AlterUniqueTogether that handles missing constraints gracefully.
+    Skips removal when constraint doesn't exist to avoid errors.
+    """
+    
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        # Get old and new unique_together values
+        from_model_state = from_state.models.get((app_label, self.name.lower()))
+        to_model_state = to_state.models.get((app_label, self.name.lower()))
+        
+        if from_model_state is None or to_model_state is None:
+            return
+        
+        old_unique_together = from_model_state.options.get('unique_together') or set()
+        new_unique_together = to_model_state.options.get('unique_together') or set()
+        
+        # If we're removing constraints (going from something to empty set)
+        if old_unique_together and not new_unique_together:
+            model = to_state.apps.get_model(app_label, self.name)
+            db_table = model._meta.db_table
+            constraints = get_table_constraints(db_table)
+            
+            # Check if any unique_together constraints exist
+            has_constraints = False
+            for constraint_name, constraint_info in constraints.items():
+                if constraint_info.get('unique', False) and not constraint_info.get('primary_key', False):
+                    # Check if the columns match any of the old unique_together
+                    constraint_columns = tuple(constraint_info.get('columns', []))
+                    for unique_set in old_unique_together:
+                        if set(constraint_columns) == set(f + '_id' if not c.endswith('_id') else c for c in unique_set for f in [c]):
+                            has_constraints = True
+                            break
+                        # Also check without _id suffix
+                        if set(constraint_columns) == set(unique_set):
+                            has_constraints = True
+                            break
+            
+            # If no constraints exist, skip the operation
+            if not has_constraints:
+                return
+        
+        try:
+            super().database_forwards(app_label, schema_editor, from_state, to_state)
+        except ValueError as e:
+            # If we get "Found wrong number (0) of constraints" error, skip silently
+            if "Found wrong number (0) of constraints" in str(e):
+                pass
+            else:
+                raise
+    
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+        try:
+            super().database_backwards(app_label, schema_editor, from_state, to_state)
+        except ValueError as e:
+            # If we get "Found wrong number (0) of constraints" error, skip silently
+            if "Found wrong number (0) of constraints" in str(e):
+                pass
+            else:
+                raise
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -226,7 +288,7 @@ class Migration(migrations.Migration):
             model_name='lote',
             name='unique_numero_lote_por_producto',
         ),
-        migrations.AlterUniqueTogether(
+        SafeAlterUniqueTogether(
             name='detallerequisicion',
             unique_together=set(),
         ),
@@ -400,7 +462,7 @@ class Migration(migrations.Migration):
             name='user',
             field=models.OneToOneField(on_delete=django.db.models.deletion.PROTECT, related_name='profile', to=settings.AUTH_USER_MODEL),
         ),
-        migrations.AlterUniqueTogether(
+        SafeAlterUniqueTogether(
             name='detallerequisicion',
             unique_together={('requisicion', 'producto', 'lote')},
         ),
@@ -475,7 +537,7 @@ class Migration(migrations.Migration):
             model_name='hojarecoleccion',
             index=models.Index(fields=['-fecha_generacion'], name='hojas_recol_fecha_g_ad32ec_idx'),
         ),
-        migrations.AlterUniqueTogether(
+        SafeAlterUniqueTogether(
             name='detallehojarecoleccion',
             unique_together={('hoja', 'producto')},
         ),
