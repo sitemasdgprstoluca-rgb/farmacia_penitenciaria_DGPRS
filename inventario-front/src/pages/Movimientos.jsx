@@ -55,6 +55,7 @@ const Movimientos = () => {
   });
   const [productoFiltro, setProductoFiltro] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [exporting, setExporting] = useState(null); // 'pdf' | 'excel' | null
 
   const columnas = useMemo(
     () => ["producto", "tipo", "cantidad", "centro", "fecha"],
@@ -206,23 +207,55 @@ const Movimientos = () => {
     }
   };
 
+  // Detectar si hay filtros pendientes de aplicar (mover antes de exportar)
+  const hayFiltrosPendientes = useMemo(() => {
+    return JSON.stringify(filtros) !== JSON.stringify(filtrosAplicados);
+  }, [filtros, filtrosAplicados]);
+  
+  // Detectar si hay filtros activos
+  const hayFiltrosActivos = useMemo(() => {
+    return Object.values(filtrosAplicados).some(v => v !== "");
+  }, [filtrosAplicados]);
+
   const exportarExcel = async () => {
+    if (exporting) return; // Evitar exportaciones simultáneas
+    
+    // Advertir si hay filtros pendientes
+    if (hayFiltrosPendientes) {
+      toast.error("Aplica los filtros antes de exportar para obtener datos consistentes");
+      return;
+    }
+    
+    setExporting('excel');
     try {
       const response = await movimientosAPI.exportarExcel({ ...filtrosAplicados });
       descargarArchivo(response, `movimientos_${new Date().toISOString().split("T")[0]}.xlsx`);
       toast.success("Excel generado");
     } catch (err) {
       toast.error(err.response?.data?.detail || "No se pudo exportar");
+    } finally {
+      setExporting(null);
     }
   };
 
   const exportarPdf = async () => {
+    if (exporting) return; // Evitar exportaciones simultáneas
+    
+    // Advertir si hay filtros pendientes
+    if (hayFiltrosPendientes) {
+      toast.error("Aplica los filtros antes de exportar para obtener datos consistentes");
+      return;
+    }
+    
+    setExporting('pdf');
     try {
       const response = await movimientosAPI.exportarPdf({ ...filtrosAplicados });
       descargarArchivo(response, `movimientos_${new Date().toISOString().split("T")[0]}.pdf`);
       toast.success("PDF generado");
     } catch (err) {
       toast.error(err.response?.data?.detail || "No se pudo generar el PDF");
+    } finally {
+      setExporting(null);
     }
   };
 
@@ -261,16 +294,6 @@ const Movimientos = () => {
     setFiltrosAplicados(filtrosVacios);
     setPage(1);
   };
-  
-  // Detectar si hay filtros pendientes de aplicar
-  const hayFiltrosPendientes = useMemo(() => {
-    return JSON.stringify(filtros) !== JSON.stringify(filtrosAplicados);
-  }, [filtros, filtrosAplicados]);
-  
-  // Detectar si hay filtros activos
-  const hayFiltrosActivos = useMemo(() => {
-    return Object.values(filtrosAplicados).some(v => v !== "");
-  }, [filtrosAplicados]);
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -390,27 +413,34 @@ const Movimientos = () => {
             <div className="px-6 py-4 border-b border-gray-200 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-gray-800">Movimientos</h3>
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
+                  {hayFiltrosPendientes && (
+                    <span className="text-xs text-orange-600 mr-2" title="Aplica los filtros antes de exportar">
+                      ⚠ Filtros sin aplicar
+                    </span>
+                  )}
                   <button
                     onClick={exportarPdf}
-                    className="text-sm px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700"
-                    disabled={loading}
+                    className="text-sm px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                    disabled={loading || exporting !== null}
+                    title={hayFiltrosPendientes ? "Aplica los filtros primero" : "Exportar a PDF"}
                   >
-                    Exportar PDF
+                    {exporting === 'pdf' ? "Generando..." : "Exportar PDF"}
                   </button>
                   <button
                     onClick={exportarExcel}
-                    className="text-sm px-3 py-1 rounded bg-green-600 text-white hover:bg-green-700"
-                    disabled={loading}
+                    className="text-sm px-3 py-1 rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                    disabled={loading || exporting !== null}
+                    title={hayFiltrosPendientes ? "Aplica los filtros primero" : "Exportar a Excel"}
                   >
-                    Exportar Excel
+                    {exporting === 'excel' ? "Generando..." : "Exportar Excel"}
                   </button>
                   <button
                     onClick={cargarMovimientos}
-                    className="text-sm text-blue-600 hover:text-blue-800"
-                    disabled={loading}
+                    className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                    disabled={loading || exporting !== null}
                   >
-                    Recargar
+                    {loading ? "Cargando..." : "Recargar"}
                   </button>
                 </div>
               </div>
