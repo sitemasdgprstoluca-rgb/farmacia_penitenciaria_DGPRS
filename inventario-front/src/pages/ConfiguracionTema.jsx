@@ -88,15 +88,25 @@ const ConfiguracionTema = () => {
     eliminandoLogoPdf: false,
   });
   
-  // Verificar si hay alguna operación en curso
-  const hayOperacionEnCurso = Object.values(operacionEnCurso).some(v => v);
-  
   const logoHeaderRef = useRef(null);
   const logoPdfRef = useRef(null);
 
-  // Verificar permisos - esperar a que carguen
-  const esSuperusuario = user?.is_superuser || permisos?.isSuperuser;
+  // Verificar permisos usando el sistema de permisos coherente
+  // Soporta tanto superusuario directo como el permiso 'esSuperusuario'
+  const tienePermisoTema = user?.is_superuser || permisos?.isSuperuser || permisos?.esSuperusuario;
   const permisosResueltos = !cargandoPermisos && user !== undefined;
+  
+  // Agrupar operaciones por tipo para permitir concurrencia entre grupos diferentes
+  const operacionesBloqueantes = ['aplicandoTema', 'guardandoColores', 'restableciendo'];
+  const operacionesLogos = ['subiendoLogoHeader', 'subiendoLogoPdf', 'eliminandoLogoHeader', 'eliminandoLogoPdf'];
+  
+  // Estado de operaciones por grupo (para bloqueo interno del grupo)
+  const hayOperacionTemaEnCurso = operacionesBloqueantes.some(op => operacionEnCurso[op]);
+  const hayOperacionLogoEnCurso = operacionesLogos.some(op => operacionEnCurso[op]);
+  const hayOperacionIdentidadEnCurso = operacionEnCurso.guardandoIdentidad;
+  
+  // Para deshabilitar UI global (indicador visual)
+  const hayOperacionEnCurso = Object.values(operacionEnCurso).some(v => v);
 
   // Inicializar formulario con datos actuales
   useEffect(() => {
@@ -133,19 +143,26 @@ const ConfiguracionTema = () => {
    * Valida permisos antes de ejecutar una acción
    */
   const validarPermisos = useCallback(() => {
-    if (!esSuperusuario) {
+    if (!tienePermisoTema) {
       toast.error('No tienes permisos para realizar esta acción');
       return false;
     }
     return true;
-  }, [esSuperusuario]);
+  }, [tienePermisoTema]);
 
   /**
    * Handler genérico para operaciones asíncronas con manejo de errores
+   * Permite concurrencia entre grupos de operaciones diferentes
    */
-  const ejecutarOperacion = useCallback(async (nombreOperacion, operacion, mensajeExito) => {
+  const ejecutarOperacion = useCallback(async (nombreOperacion, operacion, mensajeExito, grupoBloqueo = 'tema') => {
     if (!validarPermisos()) return { success: false };
-    if (hayOperacionEnCurso) {
+    
+    // Verificar bloqueo solo dentro del mismo grupo
+    const estaBloquado = grupoBloqueo === 'tema' ? hayOperacionTemaEnCurso :
+                         grupoBloqueo === 'logo' ? hayOperacionLogoEnCurso :
+                         grupoBloqueo === 'identidad' ? hayOperacionIdentidadEnCurso : false;
+    
+    if (estaBloquado) {
       toast.error('Espera a que termine la operación actual');
       return { success: false };
     }
@@ -172,7 +189,7 @@ const ConfiguracionTema = () => {
     } finally {
       setOperacionEnCurso(prev => ({ ...prev, [nombreOperacion]: false }));
     }
-  }, [validarPermisos, hayOperacionEnCurso]);
+  }, [validarPermisos, hayOperacionTemaEnCurso, hayOperacionLogoEnCurso, hayOperacionIdentidadEnCurso]);
 
   /**
    * Maneja cambios en inputs de texto
@@ -239,11 +256,18 @@ const ConfiguracionTema = () => {
       setModoEdicion(true);
       return;
     }
+    
+    // Evitar llamadas redundantes si el tema ya está activo
+    if (tema === temaSeleccionado && tema === configuracion?.tema_activo) {
+      toast.info('Este tema ya está activo');
+      return;
+    }
 
     const resultado = await ejecutarOperacion(
       'aplicandoTema',
       () => aplicarTemaPredefinido(tema),
-      `Tema "${tema}" aplicado correctamente`
+      `Tema "${tema}" aplicado correctamente`,
+      'tema'
     );
 
     if (resultado.success) {
@@ -264,7 +288,8 @@ const ConfiguracionTema = () => {
     const resultado = await ejecutarOperacion(
       'guardandoColores',
       () => actualizarTema({ ...formData, tema_activo: 'custom' }),
-      'Configuración guardada correctamente'
+      'Configuración guardada correctamente',
+      'tema'
     );
 
     if (resultado.success) {
@@ -274,16 +299,16 @@ const ConfiguracionTema = () => {
 
   /**
    * Guarda la identidad institucional
+   * Envía la configuración completa para no perder colores ni tema activo
    */
   const handleGuardarIdentidad = async () => {
     const resultado = await ejecutarOperacion(
       'guardandoIdentidad',
       () => actualizarTema({
-        nombre_sistema: formData.nombre_sistema,
-        nombre_institucion: formData.nombre_institucion,
-        subtitulo_institucion: formData.subtitulo_institucion,
+        ...formData, // Incluir todos los datos del formulario (colores + identidad)
       }),
-      'Identidad institucional actualizada'
+      'Identidad institucional actualizada',
+      'identidad'
     );
 
     if (resultado.success) {
@@ -302,7 +327,8 @@ const ConfiguracionTema = () => {
     const resultado = await ejecutarOperacion(
       'restableciendo',
       restablecerTema,
-      'Colores restablecidos a valores por defecto'
+      'Colores restablecidos a valores por defecto',
+      'tema'
     );
 
     if (resultado.success) {
@@ -332,7 +358,8 @@ const ConfiguracionTema = () => {
     await ejecutarOperacion(
       'subiendoLogoHeader',
       () => subirLogoHeader(file),
-      'Logo del header actualizado'
+      'Logo del header actualizado',
+      'logo'
     );
     
     // Limpiar input
@@ -360,7 +387,8 @@ const ConfiguracionTema = () => {
     await ejecutarOperacion(
       'subiendoLogoPdf',
       () => subirLogoPdf(file),
-      'Logo para PDFs actualizado'
+      'Logo para PDFs actualizado',
+      'logo'
     );
     
     // Limpiar input
@@ -376,7 +404,8 @@ const ConfiguracionTema = () => {
     await ejecutarOperacion(
       'eliminandoLogoHeader',
       eliminarLogoHeader,
-      'Logo del header eliminado'
+      'Logo del header eliminado',
+      'logo'
     );
   };
 
@@ -389,7 +418,8 @@ const ConfiguracionTema = () => {
     await ejecutarOperacion(
       'eliminandoLogoPdf',
       eliminarLogoPdf,
-      'Logo para PDFs eliminado'
+      'Logo para PDFs eliminado',
+      'logo'
     );
   };
 
@@ -408,7 +438,8 @@ const ConfiguracionTema = () => {
   }
 
   // Acceso restringido (solo después de resolver permisos)
-  if (!esSuperusuario) {
+  // Usa tienePermisoTema para ser coherente con el guard de rutas
+  if (!tienePermisoTema) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="bg-white p-8 rounded-xl shadow-lg text-center max-w-md">
@@ -498,7 +529,7 @@ const ConfiguracionTema = () => {
                         : 'border-gray-200 hover:border-gray-300'
                     }`}
                     onClick={() => handleTemaChange(tema.id)}
-                    disabled={hayOperacionEnCurso}
+                    disabled={hayOperacionTemaEnCurso}
                   >
                     <div className={`tema-preview tema-${tema.id} rounded-lg overflow-hidden mb-3`}>
                       <div className="h-6 preview-header"></div>
@@ -535,7 +566,7 @@ const ConfiguracionTema = () => {
                     setTemaSeleccionado('custom');
                     setActiveTab('colores');
                   }}
-                  disabled={hayOperacionEnCurso}
+                  disabled={hayOperacionTemaEnCurso}
                 >
                   <div className="h-[88px] rounded-lg bg-gradient-to-br from-pink-500 via-purple-500 to-indigo-500 flex items-center justify-center mb-3">
                     <FaPalette className="text-3xl text-white" />
@@ -559,7 +590,7 @@ const ConfiguracionTema = () => {
                 <div className="flex gap-2">
                   <button
                     onClick={handleRestablecer}
-                    disabled={hayOperacionEnCurso}
+                    disabled={hayOperacionTemaEnCurso}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                   >
                     {operacionEnCurso.restableciendo ? (
@@ -571,7 +602,7 @@ const ConfiguracionTema = () => {
                   </button>
                   <button
                     onClick={handleGuardar}
-                    disabled={hayOperacionEnCurso || !modoEdicion || hayErroresColor}
+                    disabled={hayOperacionTemaEnCurso || !modoEdicion || hayErroresColor}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg text-white disabled:opacity-50"
                     style={{ background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)' }}
                     title={hayErroresColor ? 'Corrige los errores de color primero' : ''}
@@ -606,10 +637,10 @@ const ConfiguracionTema = () => {
                     Colores Principales
                   </h3>
                   <div className="grid grid-cols-2 gap-4">
-                    <ColorInput label="Primario" name="color_primario" value={formData.color_primario} onChange={handleColorChange} error={erroresColor.color_primario} disabled={hayOperacionEnCurso} />
-                    <ColorInput label="Primario Hover" name="color_primario_hover" value={formData.color_primario_hover} onChange={handleColorChange} error={erroresColor.color_primario_hover} disabled={hayOperacionEnCurso} />
-                    <ColorInput label="Secundario" name="color_secundario" value={formData.color_secundario} onChange={handleColorChange} error={erroresColor.color_secundario} disabled={hayOperacionEnCurso} />
-                    <ColorInput label="Acento" name="color_acento" value={formData.color_acento} onChange={handleColorChange} error={erroresColor.color_acento} disabled={hayOperacionEnCurso} />
+                    <ColorInput label="Primario" name="color_primario" value={formData.color_primario} onChange={handleColorChange} error={erroresColor.color_primario} disabled={hayOperacionTemaEnCurso} />
+                    <ColorInput label="Primario Hover" name="color_primario_hover" value={formData.color_primario_hover} onChange={handleColorChange} error={erroresColor.color_primario_hover} disabled={hayOperacionTemaEnCurso} />
+                    <ColorInput label="Secundario" name="color_secundario" value={formData.color_secundario} onChange={handleColorChange} error={erroresColor.color_secundario} disabled={hayOperacionTemaEnCurso} />
+                    <ColorInput label="Acento" name="color_acento" value={formData.color_acento} onChange={handleColorChange} error={erroresColor.color_acento} disabled={hayOperacionTemaEnCurso} />
                   </div>
                 </div>
 
@@ -620,10 +651,10 @@ const ConfiguracionTema = () => {
                     Colores de Fondo
                   </h3>
                   <div className="grid grid-cols-2 gap-4">
-                    <ColorInput label="Fondo General" name="color_fondo" value={formData.color_fondo} onChange={handleColorChange} error={erroresColor.color_fondo} disabled={hayOperacionEnCurso} />
-                    <ColorInput label="Sidebar" name="color_fondo_sidebar" value={formData.color_fondo_sidebar} onChange={handleColorChange} error={erroresColor.color_fondo_sidebar} disabled={hayOperacionEnCurso} />
-                    <ColorInput label="Header" name="color_fondo_header" value={formData.color_fondo_header} onChange={handleColorChange} error={erroresColor.color_fondo_header} disabled={hayOperacionEnCurso} />
-                    <ColorInput label="Tarjetas" name="color_fondo_card" value={formData.color_fondo_card} onChange={handleColorChange} error={erroresColor.color_fondo_card} disabled={hayOperacionEnCurso} />
+                    <ColorInput label="Fondo General" name="color_fondo" value={formData.color_fondo} onChange={handleColorChange} error={erroresColor.color_fondo} disabled={hayOperacionTemaEnCurso} />
+                    <ColorInput label="Sidebar" name="color_fondo_sidebar" value={formData.color_fondo_sidebar} onChange={handleColorChange} error={erroresColor.color_fondo_sidebar} disabled={hayOperacionTemaEnCurso} />
+                    <ColorInput label="Header" name="color_fondo_header" value={formData.color_fondo_header} onChange={handleColorChange} error={erroresColor.color_fondo_header} disabled={hayOperacionTemaEnCurso} />
+                    <ColorInput label="Tarjetas" name="color_fondo_card" value={formData.color_fondo_card} onChange={handleColorChange} error={erroresColor.color_fondo_card} disabled={hayOperacionTemaEnCurso} />
                   </div>
                 </div>
 
@@ -634,10 +665,10 @@ const ConfiguracionTema = () => {
                     Colores de Texto
                   </h3>
                   <div className="grid grid-cols-2 gap-4">
-                    <ColorInput label="Texto Principal" name="color_texto" value={formData.color_texto} onChange={handleColorChange} error={erroresColor.color_texto} disabled={hayOperacionEnCurso} />
-                    <ColorInput label="Texto Secundario" name="color_texto_secundario" value={formData.color_texto_secundario} onChange={handleColorChange} error={erroresColor.color_texto_secundario} disabled={hayOperacionEnCurso} />
-                    <ColorInput label="Texto Sidebar" name="color_texto_sidebar" value={formData.color_texto_sidebar} onChange={handleColorChange} error={erroresColor.color_texto_sidebar} disabled={hayOperacionEnCurso} />
-                    <ColorInput label="Texto Header" name="color_texto_header" value={formData.color_texto_header} onChange={handleColorChange} error={erroresColor.color_texto_header} disabled={hayOperacionEnCurso} />
+                    <ColorInput label="Texto Principal" name="color_texto" value={formData.color_texto} onChange={handleColorChange} error={erroresColor.color_texto} disabled={hayOperacionTemaEnCurso} />
+                    <ColorInput label="Texto Secundario" name="color_texto_secundario" value={formData.color_texto_secundario} onChange={handleColorChange} error={erroresColor.color_texto_secundario} disabled={hayOperacionTemaEnCurso} />
+                    <ColorInput label="Texto Sidebar" name="color_texto_sidebar" value={formData.color_texto_sidebar} onChange={handleColorChange} error={erroresColor.color_texto_sidebar} disabled={hayOperacionTemaEnCurso} />
+                    <ColorInput label="Texto Header" name="color_texto_header" value={formData.color_texto_header} onChange={handleColorChange} error={erroresColor.color_texto_header} disabled={hayOperacionTemaEnCurso} />
                   </div>
                 </div>
 
@@ -645,10 +676,10 @@ const ConfiguracionTema = () => {
                 <div className="bg-gray-50 p-5 rounded-xl">
                   <h3 className="font-semibold text-gray-700 mb-4">Colores de Estado</h3>
                   <div className="grid grid-cols-2 gap-4">
-                    <ColorInput label="Éxito" name="color_exito" value={formData.color_exito} onChange={handleColorChange} error={erroresColor.color_exito} disabled={hayOperacionEnCurso} />
-                    <ColorInput label="Advertencia" name="color_advertencia" value={formData.color_advertencia} onChange={handleColorChange} error={erroresColor.color_advertencia} disabled={hayOperacionEnCurso} />
-                    <ColorInput label="Error" name="color_error" value={formData.color_error} onChange={handleColorChange} error={erroresColor.color_error} disabled={hayOperacionEnCurso} />
-                    <ColorInput label="Info" name="color_info" value={formData.color_info} onChange={handleColorChange} error={erroresColor.color_info} disabled={hayOperacionEnCurso} />
+                    <ColorInput label="Éxito" name="color_exito" value={formData.color_exito} onChange={handleColorChange} error={erroresColor.color_exito} disabled={hayOperacionTemaEnCurso} />
+                    <ColorInput label="Advertencia" name="color_advertencia" value={formData.color_advertencia} onChange={handleColorChange} error={erroresColor.color_advertencia} disabled={hayOperacionTemaEnCurso} />
+                    <ColorInput label="Error" name="color_error" value={formData.color_error} onChange={handleColorChange} error={erroresColor.color_error} disabled={hayOperacionTemaEnCurso} />
+                    <ColorInput label="Info" name="color_info" value={formData.color_info} onChange={handleColorChange} error={erroresColor.color_info} disabled={hayOperacionTemaEnCurso} />
                   </div>
                 </div>
               </div>
@@ -751,11 +782,11 @@ const ConfiguracionTema = () => {
                       onChange={handleSubirLogoHeader}
                       accept="image/png,image/jpeg,image/jpg,image/webp"
                       className="hidden"
-                      disabled={hayOperacionEnCurso}
+                      disabled={hayOperacionLogoEnCurso}
                     />
                     <button
                       onClick={() => logoHeaderRef.current?.click()}
-                      disabled={hayOperacionEnCurso}
+                      disabled={hayOperacionLogoEnCurso}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white disabled:opacity-50"
                       style={{ background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)' }}
                     >
@@ -769,7 +800,7 @@ const ConfiguracionTema = () => {
                     {configuracion?.logo_header_url && (
                       <button
                         onClick={handleEliminarLogoHeader}
-                        disabled={hayOperacionEnCurso}
+                        disabled={hayOperacionLogoEnCurso}
                         className="px-4 py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
                       >
                         {operacionEnCurso.eliminandoLogoHeader ? (
@@ -816,11 +847,11 @@ const ConfiguracionTema = () => {
                       onChange={handleSubirLogoPdf}
                       accept="image/png,image/jpeg,image/jpg"
                       className="hidden"
-                      disabled={hayOperacionEnCurso}
+                      disabled={hayOperacionLogoEnCurso}
                     />
                     <button
                       onClick={() => logoPdfRef.current?.click()}
-                      disabled={hayOperacionEnCurso}
+                      disabled={hayOperacionLogoEnCurso}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white disabled:opacity-50"
                       style={{ background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' }}
                     >
@@ -834,7 +865,7 @@ const ConfiguracionTema = () => {
                     {configuracion?.logo_pdf_url && (
                       <button
                         onClick={handleEliminarLogoPdf}
-                        disabled={hayOperacionEnCurso}
+                        disabled={hayOperacionLogoEnCurso}
                         className="px-4 py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
                       >
                         {operacionEnCurso.eliminandoLogoPdf ? (
@@ -858,7 +889,7 @@ const ConfiguracionTema = () => {
                 <h2 className="text-lg font-bold text-gray-800">Identidad Institucional</h2>
                 <button
                   onClick={handleGuardarIdentidad}
-                  disabled={hayOperacionEnCurso}
+                  disabled={hayOperacionIdentidadEnCurso}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg text-white disabled:opacity-50"
                   style={{ background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)' }}
                 >
@@ -887,7 +918,7 @@ const ConfiguracionTema = () => {
                       value={formData.nombre_sistema || ''}
                       onChange={handleInputChange}
                       placeholder="Sistema de Farmacia Penitenciaria"
-                      disabled={hayOperacionEnCurso}
+                      disabled={hayOperacionIdentidadEnCurso}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 disabled:opacity-50 disabled:bg-gray-100"
                     />
                     <p className="text-xs text-gray-500 mt-1">Aparece en el título del navegador y header</p>
@@ -903,7 +934,7 @@ const ConfiguracionTema = () => {
                       value={formData.nombre_institucion || ''}
                       onChange={handleInputChange}
                       placeholder="Secretaría de Seguridad"
-                      disabled={hayOperacionEnCurso}
+                      disabled={hayOperacionIdentidadEnCurso}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 disabled:opacity-50 disabled:bg-gray-100"
                     />
                     <p className="text-xs text-gray-500 mt-1">Título principal en reportes PDF</p>
@@ -919,7 +950,7 @@ const ConfiguracionTema = () => {
                       value={formData.subtitulo_institucion || ''}
                       onChange={handleInputChange}
                       placeholder="Dirección General de Prevención y Reinserción Social"
-                      disabled={hayOperacionEnCurso}
+                      disabled={hayOperacionIdentidadEnCurso}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 disabled:opacity-50 disabled:bg-gray-100"
                     />
                     <p className="text-xs text-gray-500 mt-1">Subtítulo en reportes PDF</p>
