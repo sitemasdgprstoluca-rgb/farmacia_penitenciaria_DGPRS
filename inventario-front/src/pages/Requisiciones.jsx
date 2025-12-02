@@ -36,14 +36,22 @@ const PAGE_SIZE = 10;
 const Requisiciones = () => {
   const navigate = useNavigate();
   const { permisos, user, getRolPrincipal } = usePermissions();
+  
+  // Calcular rol y si puede ver todos los centros
+  const rolPrincipal = getRolPrincipal();
+  const esAdminOFarmacia = rolPrincipal === 'ADMIN' || rolPrincipal === 'FARMACIA';
+  
   const [requisiciones, setRequisiciones] = useState([]);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(null); // Loading específico por acción (evita bloquear todo)
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Para usuarios de centro, pre-llenar con su centro; para admin/farmacia iniciar vacío
+  const [filtroCentro, setFiltroCentro] = useState(() => 
+    esAdminOFarmacia ? '' : (user?.centro?.id?.toString() || '')
+  );
   const [filtroEstado, setFiltroEstado] = useState('');
   const [grupoEstado, setGrupoEstado] = useState('todas');
   const [searchTerm, setSearchTerm] = useState('');
-  const [filtroCentro, setFiltroCentro] = useState(''); // Nuevo filtro por centro
   const [filtroFechaDesde, setFiltroFechaDesde] = useState(''); // Nuevo filtro fecha desde
   const [filtroFechaHasta, setFiltroFechaHasta] = useState(''); // Nuevo filtro fecha hasta
   const [currentPage, setCurrentPage] = useState(1);
@@ -942,20 +950,28 @@ const Requisiciones = () => {
                     permisos.descargarHojaRecoleccion && (
                       <button
                         onClick={() => handleDescargarPDF(req.id, 'aceptacion', req.folio)}
-                        disabled={loading || actionLoading === req.id}
+                        disabled={loading || actionLoading === `pdf-${req.id}`}
                         className="bg-green-100 text-green-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-green-200 border border-green-300 font-semibold disabled:opacity-50"
                       >
-                        <FaDownload /> 📄 Hoja Oficial
+                        {actionLoading === `pdf-${req.id}` ? (
+                          <span className="animate-spin">⏳</span>
+                        ) : (
+                          <><FaDownload /> 📄 Hoja Oficial</>
+                        )}
                       </button>
                     )}
 
                   {req.estado === 'rechazada' && permisos.descargarHojaRecoleccion && (
                     <button
                       onClick={() => handleDescargarPDF(req.id, 'rechazo', req.folio)}
-                      disabled={loading || actionLoading === req.id}
+                      disabled={loading || actionLoading === `pdf-${req.id}`}
                       className="bg-red-100 text-red-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-red-200 border border-red-300 font-semibold disabled:opacity-50"
                     >
-                      <FaDownload /> 📄 Notificación
+                      {actionLoading === `pdf-${req.id}` ? (
+                        <span className="animate-spin">⏳</span>
+                      ) : (
+                        <><FaDownload /> 📄 Notificación</>
+                      )}
                     </button>
                   )}
 

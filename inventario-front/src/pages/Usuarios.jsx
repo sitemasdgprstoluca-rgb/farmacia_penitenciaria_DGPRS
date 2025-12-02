@@ -260,6 +260,16 @@ function Usuarios() {
     return miJerarquia <= objetivoJerarquia || esSuperusuario;
   };
 
+  // Validar si el usuario actual puede modificar/eliminar a otro usuario
+  // Retorna true si el usuario objetivo tiene igual o menor jerarquía
+  const puedeModificarUsuario = (usuario) => {
+    if (esSuperusuario) return true;
+    if (!tienePermisoGestion) return false;
+    const miJerarquia = ROL_JERARQUIA[rolPrincipal?.toLowerCase()] || 99;
+    const usuarioJerarquia = ROL_JERARQUIA[usuario.rol] || 99;
+    return miJerarquia <= usuarioJerarquia;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -713,43 +723,52 @@ function Usuarios() {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right space-x-2">
-                    {puede.editar && (
-                      <button 
-                        onClick={() => handleOpenModal(usuario)}
-                        disabled={actionLoading === usuario.id}
-                        className="text-blue-600 hover:text-blue-800 transition disabled:opacity-50"
-                        title="Editar"
-                      >
-                        <FaEdit />
-                      </button>
-                    )}
-                    {puede.cambiarPassword && (
-                      <button 
-                        onClick={() => handleOpenPasswordModal(usuario)}
-                        disabled={actionLoading === usuario.id}
-                        className="text-green-600 hover:text-green-800 transition disabled:opacity-50"
-                        title="Cambiar contraseña"
-                      >
-                        <FaKey />
-                      </button>
-                    )}
-                    {puede.eliminar && usuario.id !== currentUserId && (
-                      <button 
-                        onClick={() => handleDelete(usuario)}
-                        disabled={actionLoading === usuario.id || !currentUserId}
-                        className="text-red-600 hover:text-red-800 transition disabled:opacity-50"
-                        title={!currentUserId ? "Cargando sesión..." : "Eliminar"}
-                      >
-                        {actionLoading === usuario.id ? (
-                          <span className="animate-spin inline-block">⏳</span>
-                        ) : (
-                          <FaTrash />
+                    {/* Solo mostrar botones si el usuario actual puede modificar a este usuario */}
+                    {puedeModificarUsuario(usuario) ? (
+                      <>
+                        {puede.editar && (
+                          <button 
+                            onClick={() => handleOpenModal(usuario)}
+                            disabled={actionLoading === usuario.id}
+                            className="text-blue-600 hover:text-blue-800 transition disabled:opacity-50"
+                            title="Editar"
+                          >
+                            <FaEdit />
+                          </button>
                         )}
-                      </button>
-                    )}
-                    {usuario.id === currentUserId && (
-                      <span className="text-gray-400 text-xs italic" title="No puede eliminarse a sí mismo">
-                        (Tú)
+                        {puede.cambiarPassword && (
+                          <button 
+                            onClick={() => handleOpenPasswordModal(usuario)}
+                            disabled={actionLoading === usuario.id}
+                            className="text-green-600 hover:text-green-800 transition disabled:opacity-50"
+                            title="Cambiar contraseña"
+                          >
+                            <FaKey />
+                          </button>
+                        )}
+                        {puede.eliminar && usuario.id !== currentUserId && (
+                          <button 
+                            onClick={() => handleDelete(usuario)}
+                            disabled={actionLoading === usuario.id || !currentUserId}
+                            className="text-red-600 hover:text-red-800 transition disabled:opacity-50"
+                            title={!currentUserId ? "Cargando sesión..." : "Eliminar"}
+                          >
+                            {actionLoading === usuario.id ? (
+                              <span className="animate-spin inline-block">⏳</span>
+                            ) : (
+                              <FaTrash />
+                            )}
+                          </button>
+                        )}
+                        {usuario.id === currentUserId && (
+                          <span className="text-gray-400 text-xs italic" title="No puede eliminarse a sí mismo">
+                            (Tú)
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-gray-400 text-xs italic" title="Usuario con mayor privilegio">
+                        🔒 Protegido
                       </span>
                     )}
                   </td>
