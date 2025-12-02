@@ -56,6 +56,7 @@ function Usuarios() {
   const esFarmacia = rolPrincipal === 'FARMACIA';
   const esVista = rolPrincipal === 'VISTA';
   const esSuperusuario = permisos?.isSuperuser;
+  const esAdminOFarmacia = esAdmin || esFarmacia || esSuperusuario;
   
   // Admin, Farmacia y superusuario pueden gestionar usuarios
   const tienePermisoGestion = esAdmin || esFarmacia || esSuperusuario;
@@ -147,7 +148,12 @@ function Usuarios() {
   const cargarUsuarios = async () => {
     setLoading(true);
     try {
-      const response = await usuariosAPI.getAll();
+      // Si no es admin/farmacia, filtrar por centro del usuario
+      const params = {};
+      if (!esAdminOFarmacia && user?.centro?.id) {
+        params.centro = user.centro.id;
+      }
+      const response = await usuariosAPI.getAll(params);
       const data = response.data.results || response.data;
       setUsuarios(data);
       setFilteredUsuarios(data);

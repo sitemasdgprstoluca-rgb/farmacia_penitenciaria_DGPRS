@@ -11,6 +11,7 @@ const NotificacionesBell = () => {
   const [sinLeer, setSinLeer] = useState(0);
   const [abierto, setAbierto] = useState(false);
   const [cargando, setCargando] = useState(false);
+  const [actionLoading, setActionLoading] = useState(null); // ID de notificación en acción
   const dropdownRef = useRef(null);
   const botonRef = useRef(null);
 
@@ -73,16 +74,22 @@ const NotificacionesBell = () => {
   }, []);
 
   const marcarLeida = async (id) => {
+    if (actionLoading) return; // Evitar acción si hay otra en curso
+    setActionLoading(id);
     try {
       await notificacionesAPI.marcarLeida(id);
       setNotificaciones((prev) => prev.map((n) => (n.id === id ? { ...n, leida: true } : n)));
       setSinLeer((prev) => Math.max(prev - 1, 0));
     } catch (err) {
       toast.error(err.response?.data?.detail || "No se pudo marcar como leida");
+    } finally {
+      setActionLoading(null);
     }
   };
 
   const eliminar = async (id) => {
+    if (actionLoading) return; // Evitar acción si hay otra en curso
+    setActionLoading(id);
     const notif = notificaciones.find((n) => n.id === id);
     try {
       await notificacionesAPI.delete(id);
@@ -93,6 +100,8 @@ const NotificacionesBell = () => {
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || "No se pudo eliminar");
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -194,18 +203,20 @@ const NotificacionesBell = () => {
                     {!notif.leida && (
                       <button
                         onClick={() => marcarLeida(notif.id)}
-                        className="text-gray-400 hover:text-blue-600"
+                        disabled={actionLoading === notif.id}
+                        className="text-gray-400 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Marcar como leída"
                       >
-                        ✓
+                        {actionLoading === notif.id ? '⏳' : '✓'}
                       </button>
                     )}
                     <button
                       onClick={() => eliminar(notif.id)}
-                      className="text-gray-400 hover:text-red-600"
+                      disabled={actionLoading === notif.id}
+                      className="text-gray-400 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Eliminar"
                     >
-                      x
+                      {actionLoading === notif.id ? '⏳' : 'x'}
                     </button>
                   </div>
                 </div>

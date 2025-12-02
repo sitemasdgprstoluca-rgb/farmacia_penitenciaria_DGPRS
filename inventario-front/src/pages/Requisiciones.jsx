@@ -185,12 +185,17 @@ const Requisiciones = () => {
 
   const cargarResumenEstados = useCallback(async () => {
     try {
-      const resumen = await requisicionesAPI.resumenEstados();
+      // Enviar filtro de centro para que el resumen sea consistente
+      const params = {};
+      if (filtroCentro) {
+        params.centro = filtroCentro;
+      }
+      const resumen = await requisicionesAPI.resumenEstados(params);
       setResumenEstados(resumen.data || { por_estado: {}, por_grupo: {} });
     } catch (error) {
       console.warn('No fue posible cargar resumen de estados', error);
     }
-  }, []);
+  }, [filtroCentro]);
 
   useEffect(() => {
     setCurrentPage(1);

@@ -274,7 +274,7 @@ export const requisicionesAPI = {
   surtir: (id) => apiClient.post(`/requisiciones/${id}/surtir/`),
   marcarRecibida: (id, data) => apiClient.post(`/requisiciones/${id}/marcar-recibida/`, data),
   cancelar: (id) => apiClient.post(`/requisiciones/${id}/cancelar/`),
-  resumenEstados: () => apiClient.get('/requisiciones/resumen_estados/'),
+  resumenEstados: (params = {}) => apiClient.get('/requisiciones/resumen_estados/', { params }),
   
   // Descarga de PDFs
   downloadPDFAceptacion: (id) => apiClient.get(`/requisiciones/${id}/hoja-recoleccion/`, {

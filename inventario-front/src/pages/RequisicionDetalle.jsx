@@ -426,15 +426,16 @@ const RequisicionDetalle = () => {
     rolUsuario === 'farmacia' ||
     rolUsuario === 'admin_farmacia';
   
-  const puedeEnviar = requisicion?.estado === 'borrador';
-  const puedeAutorizar = requisicion?.estado === 'enviada' && esFarmacia;
-  const puedeRechazar = requisicion?.estado === 'enviada' && esFarmacia;
-  const puedeSurtir = (requisicion?.estado === 'autorizada' || requisicion?.estado === 'parcial') && esFarmacia;
+  const puedeEnviar = requisicion?.estado === 'borrador' && permisos?.enviarRequisicion;
+  // Validar AMBOS: rol de farmacia Y permiso fino correspondiente
+  const puedeAutorizar = requisicion?.estado === 'enviada' && esFarmacia && permisos?.autorizarRequisicion;
+  const puedeRechazar = requisicion?.estado === 'enviada' && esFarmacia && permisos?.rechazarRequisicion;
+  const puedeSurtir = (requisicion?.estado === 'autorizada' || requisicion?.estado === 'parcial') && esFarmacia && permisos?.surtirRequisicion;
   const puedeMarcarRecibida = requisicion?.estado === 'surtida' && 
     (user?.is_superuser || (user?.centro && requisicion?.centro === user.centro));
-  const puedeCancelar = !['surtida', 'cancelada', 'rechazada', 'recibida'].includes(requisicion?.estado);
-  const puedeDescargarHoja = ['autorizada', 'parcial', 'surtida', 'recibida'].includes(requisicion?.estado);
-  const puedeDescargarRechazo = requisicion?.estado === 'rechazada';
+  const puedeCancelar = !['surtida', 'cancelada', 'rechazada', 'recibida'].includes(requisicion?.estado) && permisos?.cancelarRequisicion;
+  const puedeDescargarHoja = ['autorizada', 'parcial', 'surtida', 'recibida'].includes(requisicion?.estado) && permisos?.descargarHojaRecoleccion;
+  const puedeDescargarRechazo = requisicion?.estado === 'rechazada' && permisos?.descargarHojaRecoleccion;
   // eslint-disable-next-line no-unused-vars
   const puedeVerificarHoja = esFarmacia && hojaRecoleccion && hojaRecoleccion.estado !== 'verificada';
 
