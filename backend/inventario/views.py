@@ -2466,6 +2466,15 @@ class RequisicionViewSet(viewsets.ModelViewSet):
         if search and search.strip():
             queryset = queryset.filter(folio__icontains=search.strip())
 
+        # Filtros de fecha
+        fecha_desde = self.request.query_params.get('fecha_desde')
+        if fecha_desde:
+            queryset = queryset.filter(fecha_solicitud__date__gte=fecha_desde)
+        
+        fecha_hasta = self.request.query_params.get('fecha_hasta')
+        if fecha_hasta:
+            queryset = queryset.filter(fecha_solicitud__date__lte=fecha_hasta)
+
         return queryset.order_by('-fecha_solicitud')
     
     def create(self, request, *args, **kwargs):

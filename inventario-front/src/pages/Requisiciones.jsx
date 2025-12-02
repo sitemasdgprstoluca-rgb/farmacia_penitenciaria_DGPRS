@@ -38,10 +38,14 @@ const Requisiciones = () => {
   const { permisos, user, getRolPrincipal } = usePermissions();
   const [requisiciones, setRequisiciones] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(null); // Loading específico por acción (evita bloquear todo)
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [filtroEstado, setFiltroEstado] = useState('');
   const [grupoEstado, setGrupoEstado] = useState('todas');
   const [searchTerm, setSearchTerm] = useState('');
+  const [filtroCentro, setFiltroCentro] = useState(''); // Nuevo filtro por centro
+  const [filtroFechaDesde, setFiltroFechaDesde] = useState(''); // Nuevo filtro fecha desde
+  const [filtroFechaHasta, setFiltroFechaHasta] = useState(''); // Nuevo filtro fecha hasta
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRequisiciones, setTotalRequisiciones] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -73,7 +77,7 @@ const Requisiciones = () => {
     comentario: '',
   });
 
-  const filtrosActivos = [searchTerm, filtroEstado].filter(Boolean).length;
+  const filtrosActivos = [searchTerm, filtroEstado, filtroCentro, filtroFechaDesde, filtroFechaHasta].filter(Boolean).length;
 
   const stateTabs = [
     { key: 'todas', label: 'Todas' },
@@ -150,6 +154,9 @@ const Requisiciones = () => {
       if (filtroEstado) params.estado = filtroEstado;
       if (grupoEstado && grupoEstado !== 'todas') params.grupo_estado = grupoEstado;
       if (searchTerm) params.search = searchTerm;
+      if (filtroCentro) params.centro = filtroCentro;
+      if (filtroFechaDesde) params.fecha_desde = filtroFechaDesde;
+      if (filtroFechaHasta) params.fecha_hasta = filtroFechaHasta;
 
       const response = await requisicionesAPI.getAll(params);
       const results = response.data.results || response.data;
@@ -166,7 +173,7 @@ const Requisiciones = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, filtroEstado, grupoEstado, searchTerm]);
+  }, [currentPage, filtroEstado, grupoEstado, searchTerm, filtroCentro, filtroFechaDesde, filtroFechaHasta]);
 
   const cargarResumenEstados = useCallback(async () => {
     try {
@@ -179,7 +186,7 @@ const Requisiciones = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filtroEstado, searchTerm, grupoEstado]);
+  }, [filtroEstado, searchTerm, grupoEstado, filtroCentro, filtroFechaDesde, filtroFechaHasta]);
 
   useEffect(() => {
     cargarRequisiciones();
@@ -555,66 +562,130 @@ const Requisiciones = () => {
     }
   };
 
-  const handleEnviar = async (id) => {
+  const handleEnviar = async (id, folio) => {
     if (isSubmitting) return;
+    
+    // Confirmación antes de enviar
+    const confirmar = window.confirm(
+      `¿Confirma ENVIAR la requisición ${folio || id}?\n\n` +
+      `Una vez enviada, no podrá modificarla y quedará pendiente de autorización.`
+    );
+    if (!confirmar) return;
+    
     setIsSubmitting(true);
+    setActionLoading(id);
     try {
       await requisicionesAPI.enviar(id);
-      toast.success('Requisición enviada');
+      toast.success('Requisición enviada correctamente');
       cargarRequisiciones();
+      cargarResumenEstados();
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Error al enviar requisición');
+      const errorMsg = error.response?.data?.error || error.response?.data?.mensaje || 'Error al enviar requisición';
+      toast.error(errorMsg);
     } finally {
       setIsSubmitting(false);
+      setActionLoading(null);
     }
   };
 
-  const handleRechazar = async (id) => {
-    const motivo = prompt('Motivo del rechazo:');
-    if (!motivo) return;
+  const handleRechazar = async (id, folio) => {
     if (isSubmitting) return;
+    
+    const motivo = prompt(`Motivo del rechazo para ${folio || 'requisición'}:\n(Mínimo 10 caracteres)`);
+    
+    // Validar que se ingresó un motivo
+    if (motivo === null) return; // Usuario canceló
+    
+    const motivoTrimmed = (motivo || '').trim();
+    if (motivoTrimmed.length < 10) {
+      toast.error('El motivo de rechazo debe tener al menos 10 caracteres');
+      return;
+    }
+    
     setIsSubmitting(true);
+    setActionLoading(id);
     try {
-      await requisicionesAPI.rechazar(id, { observaciones: motivo });
+      await requisicionesAPI.rechazar(id, { observaciones: motivoTrimmed });
       toast.success('Requisición rechazada');
       cargarRequisiciones();
+      cargarResumenEstados();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Error al rechazar');
     } finally {
       setIsSubmitting(false);
+      setActionLoading(null);
     }
   };
 
-  const handleSurtir = async (id) => {
+  const handleSurtir = async (id, folio) => {
     if (isSubmitting) return;
+    
+    // Confirmación antes de surtir
+    const confirmar = window.confirm(
+      `¿Confirma SURTIR la requisición ${folio || id}?\n\n` +
+      `⚠️ Esta acción descontará el inventario de los lotes.\n` +
+      `Asegúrese de que el stock esté disponible.`
+    );
+    if (!confirmar) return;
+    
     setIsSubmitting(true);
+    setActionLoading(id);
     try {
       await requisicionesAPI.surtir(id);
-      toast.success('Requisición surtida');
+      toast.success('Requisición surtida correctamente');
       cargarRequisiciones();
+      cargarResumenEstados();
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Error al surtir');
+      const errorData = error.response?.data;
+      let errorMsg = 'Error al surtir requisición';
+      if (errorData?.faltantes) {
+        errorMsg = `Stock insuficiente en ${errorData.faltantes.length} producto(s)`;
+      } else if (errorData?.error) {
+        errorMsg = errorData.error;
+      }
+      toast.error(errorMsg);
     } finally {
       setIsSubmitting(false);
+      setActionLoading(null);
     }
   };
 
-  const handleCancelar = async (id) => {
+  const handleCancelar = async (id, folio) => {
     if (isSubmitting) return;
+    
+    const motivo = prompt(
+      `Motivo de cancelación para ${folio || 'requisición'}:\n` +
+      `(Obligatorio para auditoría - mínimo 5 caracteres)`
+    );
+    
+    // Validar que se ingresó un motivo
+    if (motivo === null) return; // Usuario canceló
+    
+    const motivoTrimmed = (motivo || '').trim();
+    if (motivoTrimmed.length < 5) {
+      toast.error('Debe ingresar un motivo de cancelación (mínimo 5 caracteres)');
+      return;
+    }
+    
     setIsSubmitting(true);
+    setActionLoading(id);
     try {
-      await requisicionesAPI.cancelar(id);
+      await requisicionesAPI.cancelar(id, { observaciones: motivoTrimmed });
       toast.success('Requisición cancelada');
       cargarRequisiciones();
+      cargarResumenEstados();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Error al cancelar');
     } finally {
       setIsSubmitting(false);
+      setActionLoading(null);
     }
   };
 
   const handleDescargarPDF = async (id, tipo, folio) => {
-    setLoading(true);
+    if (actionLoading === `pdf-${id}`) return; // Evitar doble clic
+    
+    setActionLoading(`pdf-${id}`);
     try {
       let response;
       let nombreArchivo;
@@ -634,7 +705,7 @@ const Requisiciones = () => {
       const message = error.response?.data?.error || error.message || 'Error al descargar PDF';
       toast.error(message);
     } finally {
-      setLoading(false);
+      setActionLoading(null);
     }
   };
 
@@ -688,7 +759,7 @@ const Requisiciones = () => {
 
       {/* Filtros */}
       <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <input
             type="text"
             placeholder="Buscar por folio..."
@@ -709,7 +780,56 @@ const Requisiciones = () => {
             <option value="rechazada">Rechazada</option>
             <option value="surtida">Surtida</option>
           </select>
+
+          {/* Solo mostrar filtro de centro para farmacia/admin */}
+          {(permisos.isFarmaciaAdmin || permisos.isAdmin) && (
+            <select
+              value={filtroCentro}
+              onChange={(e) => setFiltroCentro(e.target.value)}
+              className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Todos los centros</option>
+              {centros.map((c) => (
+                <option key={c.id} value={c.id}>{c.nombre}</option>
+              ))}
+            </select>
+          )}
+
+          <div className="flex gap-2 items-center">
+            <input
+              type="date"
+              value={filtroFechaDesde}
+              onChange={(e) => setFiltroFechaDesde(e.target.value)}
+              className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 flex-1"
+              title="Fecha desde"
+            />
+            <span className="text-gray-400">a</span>
+            <input
+              type="date"
+              value={filtroFechaHasta}
+              onChange={(e) => setFiltroFechaHasta(e.target.value)}
+              className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 flex-1"
+              title="Fecha hasta"
+            />
+          </div>
         </div>
+        
+        {/* Botón limpiar filtros */}
+        {(searchTerm || filtroEstado || filtroCentro || filtroFechaDesde || filtroFechaHasta || (grupoEstado && grupoEstado !== 'todas')) && (
+          <button
+            onClick={() => {
+              setSearchTerm('');
+              setFiltroEstado('');
+              setFiltroCentro('');
+              setFiltroFechaDesde('');
+              setFiltroFechaHasta('');
+              setGrupoEstado('todas');
+            }}
+            className="mt-3 text-sm text-blue-600 hover:text-blue-800 underline"
+          >
+            Limpiar todos los filtros
+          </button>
+        )}
       </div>
 
       {/* Lista de Requisiciones */}
@@ -778,8 +898,9 @@ const Requisiciones = () => {
 
                   {puedeEnviar(req) && (
                     <button
-                      onClick={() => handleEnviar(req.id)}
-                      className="bg-gray-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-gray-800"
+                      onClick={() => handleEnviar(req.id, req.folio)}
+                      disabled={isSubmitting || actionLoading === req.id}
+                      className="bg-gray-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-gray-800 disabled:opacity-50"
                     >
                       <FaPaperPlane /> Enviar
                     </button>
@@ -798,8 +919,9 @@ const Requisiciones = () => {
 
                   {req.estado === 'enviada' && permisos.rechazarRequisicion && (
                     <button
-                      onClick={() => handleRechazar(req.id)}
-                      className="bg-red-100 text-red-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-red-200 border border-red-300"
+                      onClick={() => handleRechazar(req.id, req.folio)}
+                      disabled={isSubmitting || actionLoading === req.id}
+                      className="bg-red-100 text-red-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-red-200 border border-red-300 disabled:opacity-50"
                     >
                       <FaTimes /> Rechazar
                     </button>
@@ -807,8 +929,9 @@ const Requisiciones = () => {
 
                   {req.estado === 'autorizada' && permisos.surtirRequisicion && (
                     <button
-                      onClick={() => handleSurtir(req.id)}
-                      className="text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:opacity-90"
+                      onClick={() => handleSurtir(req.id, req.folio)}
+                      disabled={isSubmitting || actionLoading === req.id}
+                      className="text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:opacity-90 disabled:opacity-50"
                       style={{ backgroundColor: COLORS.vino }}
                     >
                       <FaBoxOpen /> Surtir
@@ -819,8 +942,8 @@ const Requisiciones = () => {
                     permisos.descargarHojaRecoleccion && (
                       <button
                         onClick={() => handleDescargarPDF(req.id, 'aceptacion', req.folio)}
-                        disabled={loading}
-                        className="bg-green-100 text-green-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-green-200 border border-green-300 font-semibold"
+                        disabled={loading || actionLoading === req.id}
+                        className="bg-green-100 text-green-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-green-200 border border-green-300 font-semibold disabled:opacity-50"
                       >
                         <FaDownload /> 📄 Hoja Oficial
                       </button>
@@ -829,8 +952,8 @@ const Requisiciones = () => {
                   {req.estado === 'rechazada' && permisos.descargarHojaRecoleccion && (
                     <button
                       onClick={() => handleDescargarPDF(req.id, 'rechazo', req.folio)}
-                      disabled={loading}
-                      className="bg-red-100 text-red-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-red-200 border border-red-300 font-semibold"
+                      disabled={loading || actionLoading === req.id}
+                      className="bg-red-100 text-red-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-red-200 border border-red-300 font-semibold disabled:opacity-50"
                     >
                       <FaDownload /> 📄 Notificación
                     </button>
@@ -838,8 +961,9 @@ const Requisiciones = () => {
 
                   {!['surtida', 'cancelada', 'rechazada'].includes(req.estado) && permisos.cancelarRequisicion && (
                     <button
-                      onClick={() => handleCancelar(req.id)}
-                      className="bg-gray-100 text-gray-600 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-gray-200 border border-gray-300"
+                      onClick={() => handleCancelar(req.id, req.folio)}
+                      disabled={isSubmitting || actionLoading === req.id}
+                      className="bg-gray-100 text-gray-600 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-gray-200 border border-gray-300 disabled:opacity-50"
                     >
                       <FaBan /> Cancelar
                     </button>
@@ -848,7 +972,8 @@ const Requisiciones = () => {
                   {puedeEditar(req) && permisos.eliminarRequisicion && (
                     <button
                       onClick={() => confirmarEliminar(req)}
-                      className="border border-red-300 text-red-600 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-red-50 transition-colors"
+                      disabled={isSubmitting || actionLoading === req.id}
+                      className="border border-red-300 text-red-600 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-red-50 transition-colors disabled:opacity-50"
                     >
                       <FaTrash /> Eliminar
                     </button>
