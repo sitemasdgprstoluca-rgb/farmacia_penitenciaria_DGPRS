@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTheme } from '../hooks/useTheme';
-import { useAuth } from '../hooks/useAuth';
+import { usePermissions } from '../hooks/usePermissions';
 import { toast } from 'react-hot-toast';
 import './ConfiguracionTema.css';
 
@@ -9,7 +9,7 @@ import './ConfiguracionTema.css';
  * Solo accesible por superusuarios
  */
 const ConfiguracionTema = () => {
-  const { user } = useAuth();
+  const { user, permisos } = usePermissions();
   const { 
     configuracion, 
     cargando, 
@@ -25,7 +25,7 @@ const ConfiguracionTema = () => {
   const [modoEdicion, setModoEdicion] = useState(false);
 
   // Verificar permisos
-  const esSuperusuario = user?.is_superuser;
+  const esSuperusuario = user?.is_superuser || permisos?.isSuperuser;
 
   // Inicializar formulario con datos actuales
   useEffect(() => {
