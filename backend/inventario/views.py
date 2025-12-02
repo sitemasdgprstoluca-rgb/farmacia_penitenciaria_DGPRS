@@ -2003,6 +2003,7 @@ class LoteViewSet(viewsets.ModelViewSet):
 class MovimientoViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
     viewsets.GenericViewSet
 ):
     """
@@ -2013,21 +2014,35 @@ class MovimientoViewSet(
     - Centro: puede VER y CREAR movimientos en sus propios lotes (salidas/ajustes)
     - Vista: solo lectura
     
+    FILTROS (alineados con exportación):
+    - tipo: entrada/salida/ajuste
+    - centro: ID del centro
+    - producto: ID del producto
+    - lote: ID del lote
+    - fecha_inicio: YYYY-MM-DD
+    - fecha_fin: YYYY-MM-DD
+    - search: búsqueda en observaciones, número de lote, producto
+    
     Esto permite auditoría completa de consumos en cada centro.
     """
     queryset = Movimiento.objects.select_related('lote__producto', 'centro', 'usuario').all()
     serializer_class = MovimientoSerializer
     permission_classes = [IsCentroRole]  # Centro puede operar en sus lotes
     pagination_class = CustomPagination
-    http_method_names = ['get', 'head', 'options']
+    http_method_names = ['get', 'post', 'head', 'options']
 
     def get_queryset(self):
         """
         Filtra movimientos segun parametros.
         
-        Parametros:
+        Parametros (alineados con exportación):
         - tipo: entrada/salida/ajuste
         - centro: ID del centro (solo admin/farmacia/vista)
+        - producto: ID del producto
+        - lote: ID del lote
+        - fecha_inicio: fecha mínima (YYYY-MM-DD)
+        - fecha_fin: fecha máxima (YYYY-MM-DD)
+        - search: búsqueda en observaciones, lote, producto
         
         Seguridad: Usuarios de centro solo ven movimientos de su centro.
         Admin/farmacia/vista ven todo por defecto, pueden filtrar con ?centro=.
@@ -2049,9 +2064,41 @@ class MovimientoViewSet(
             if centro_param:
                 queryset = queryset.filter(lote__centro_id=centro_param)
         
+        # Filtro por tipo
         tipo = self.request.query_params.get('tipo')
         if tipo:
             queryset = queryset.filter(tipo=tipo.lower())
+        
+        # Filtro por producto
+        producto = self.request.query_params.get('producto')
+        if producto:
+            queryset = queryset.filter(lote__producto_id=producto)
+        
+        # Filtro por lote
+        lote = self.request.query_params.get('lote')
+        if lote:
+            queryset = queryset.filter(lote_id=lote)
+        
+        # Filtro por rango de fechas
+        fecha_inicio = self.request.query_params.get('fecha_inicio')
+        if fecha_inicio:
+            queryset = queryset.filter(fecha__date__gte=fecha_inicio)
+        
+        fecha_fin = self.request.query_params.get('fecha_fin')
+        if fecha_fin:
+            queryset = queryset.filter(fecha__date__lte=fecha_fin)
+        
+        # Búsqueda en observaciones, lote y producto
+        search = self.request.query_params.get('search')
+        if search and search.strip():
+            search_term = search.strip()
+            queryset = queryset.filter(
+                Q(observaciones__icontains=search_term) |
+                Q(lote__numero_lote__icontains=search_term) |
+                Q(lote__producto__clave__icontains=search_term) |
+                Q(lote__producto__descripcion__icontains=search_term)
+            )
+        
         return queryset.order_by('-fecha')
 
     def perform_create(self, serializer):

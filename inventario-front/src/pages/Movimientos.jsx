@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import Pagination from "../components/Pagination";
@@ -18,7 +18,18 @@ const Movimientos = () => {
   const [stats, setStats] = useState({ entradas: 0, salidas: 0, balance: 0 });
   const [expandedId, setExpandedId] = useState(highlightId || null);
 
-  // filtros
+  // Filtros aplicados (los que realmente se envían al backend)
+  const [filtrosAplicados, setFiltrosAplicados] = useState({
+    fecha_inicio: "",
+    fecha_fin: "",
+    tipo: "",
+    producto: "",
+    centro: "",
+    lote: "",
+    search: "",
+  });
+  
+  // Filtros en edición (estado local de los inputs)
   const [filtros, setFiltros] = useState({
     fecha_inicio: "",
     fecha_fin: "",
@@ -81,15 +92,21 @@ const Movimientos = () => {
     setStats({ entradas, salidas, balance: entradas - salidas });
   };
 
-  const cargarMovimientos = async () => {
+  const cargarMovimientos = useCallback(async () => {
     setLoading(true);
     try {
       const params = {
         page,
         page_size: PAGE_SIZE,
         ordering: "-fecha",
-        ...filtros,
+        ...filtrosAplicados,
       };
+      // Limpiar parámetros vacíos
+      Object.keys(params).forEach(key => {
+        if (params[key] === "" || params[key] === null || params[key] === undefined) {
+          delete params[key];
+        }
+      });
       const response = await movimientosAPI.getAll(params);
       const data = response.data?.results || response.data || [];
       setMovimientos(Array.isArray(data) ? data : []);
@@ -100,16 +117,16 @@ const Movimientos = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, filtrosAplicados]);
 
   useEffect(() => {
     cargarCatalogos();
   }, []);
 
+  // Solo recargar cuando cambia la página o los filtros APLICADOS
   useEffect(() => {
     cargarMovimientos();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, filtros]);
+  }, [cargarMovimientos]);
 
   // Scroll al movimiento resaltado cuando viene del dashboard
   useEffect(() => {
@@ -191,7 +208,7 @@ const Movimientos = () => {
 
   const exportarExcel = async () => {
     try {
-      const response = await movimientosAPI.exportarExcel({ ...filtros });
+      const response = await movimientosAPI.exportarExcel({ ...filtrosAplicados });
       descargarArchivo(response, `movimientos_${new Date().toISOString().split("T")[0]}.xlsx`);
       toast.success("Excel generado");
     } catch (err) {
@@ -201,7 +218,7 @@ const Movimientos = () => {
 
   const exportarPdf = async () => {
     try {
-      const response = await movimientosAPI.exportarPdf({ ...filtros });
+      const response = await movimientosAPI.exportarPdf({ ...filtrosAplicados });
       descargarArchivo(response, `movimientos_${new Date().toISOString().split("T")[0]}.pdf`);
       toast.success("PDF generado");
     } catch (err) {
@@ -209,13 +226,29 @@ const Movimientos = () => {
     }
   };
 
+  // Actualiza solo el estado local de filtros (sin disparar recarga)
   const handleFiltro = (field, value) => {
-    setPage(1);
     setFiltros((prev) => ({ ...prev, [field]: value }));
   };
 
+  // Validar y aplicar filtros (dispara recarga)
+  const aplicarFiltros = () => {
+    // Validar rango de fechas
+    if (filtros.fecha_inicio && filtros.fecha_fin) {
+      const inicio = new Date(filtros.fecha_inicio);
+      const fin = new Date(filtros.fecha_fin);
+      if (inicio > fin) {
+        toast.error("La fecha de inicio debe ser menor o igual a la fecha de fin");
+        return;
+      }
+    }
+    
+    setPage(1);
+    setFiltrosAplicados({ ...filtros });
+  };
+
   const limpiarFiltros = () => {
-    setFiltros({
+    const filtrosVacios = {
       fecha_inicio: "",
       fecha_fin: "",
       tipo: "",
@@ -223,8 +256,21 @@ const Movimientos = () => {
       centro: "",
       lote: "",
       search: "",
-    });
+    };
+    setFiltros(filtrosVacios);
+    setFiltrosAplicados(filtrosVacios);
+    setPage(1);
   };
+  
+  // Detectar si hay filtros pendientes de aplicar
+  const hayFiltrosPendientes = useMemo(() => {
+    return JSON.stringify(filtros) !== JSON.stringify(filtrosAplicados);
+  }, [filtros, filtrosAplicados]);
+  
+  // Detectar si hay filtros activos
+  const hayFiltrosActivos = useMemo(() => {
+    return Object.values(filtrosAplicados).some(v => v !== "");
+  }, [filtrosAplicados]);
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -453,21 +499,30 @@ const Movimientos = () => {
                 </div>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
                 <button
-                  onClick={() => cargarMovimientos()}
-                  className="px-3 py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700"
+                  onClick={aplicarFiltros}
+                  className={`px-4 py-2 rounded text-white text-sm font-semibold transition ${
+                    hayFiltrosPendientes 
+                      ? 'bg-blue-600 hover:bg-blue-700 animate-pulse' 
+                      : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
                   disabled={loading}
                 >
-                  Aplicar filtros
+                  {hayFiltrosPendientes ? '⚡ Aplicar filtros' : 'Aplicar filtros'}
                 </button>
                 <button
                   onClick={limpiarFiltros}
                   className="px-3 py-2 rounded bg-gray-200 text-sm hover:bg-gray-300"
-                  disabled={loading}
+                  disabled={loading || !hayFiltrosActivos}
                 >
                   Limpiar
                 </button>
+                {hayFiltrosActivos && (
+                  <span className="text-xs text-gray-500 ml-2">
+                    {Object.values(filtrosAplicados).filter(v => v !== "").length} filtro(s) activo(s)
+                  </span>
+                )}
               </div>
             </div>
             <div className="overflow-x-auto">
