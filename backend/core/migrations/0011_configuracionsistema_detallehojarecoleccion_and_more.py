@@ -3,7 +3,7 @@
 import django.core.validators
 import django.db.models.deletion
 from django.conf import settings
-from django.db import migrations, models, connection
+from django.db import migrations, models, connection, DatabaseError, ProgrammingError
 
 
 def table_exists(table_name):
@@ -11,33 +11,41 @@ def table_exists(table_name):
     return table_name in connection.introspection.table_names()
 
 
-def constraint_exists(constraint_name):
+def get_table_constraints(table_name):
+    """Get constraints for a specific table, handling database errors gracefully."""
+    try:
+        return connection.introspection.get_constraints(
+            connection.cursor(), table_name
+        )
+    except (DatabaseError, ProgrammingError):
+        return {}
+
+
+def constraint_exists(constraint_name, table_name=None):
     """Check if a constraint exists in the database."""
-    # Try to find the constraint across all tables
-    for table_name in connection.introspection.table_names():
-        try:
-            constraints = connection.introspection.get_constraints(
-                connection.cursor(), table_name
-            )
-            if constraint_name in constraints:
-                return True
-        except Exception:
-            continue
+    if table_name:
+        # Check specific table
+        constraints = get_table_constraints(table_name)
+        return constraint_name in constraints
+    # Search across all tables
+    for tbl in connection.introspection.table_names():
+        constraints = get_table_constraints(tbl)
+        if constraint_name in constraints:
+            return True
     return False
 
 
-def index_exists(index_name):
+def index_exists(index_name, table_name=None):
     """Check if an index exists in the database."""
-    # Check if the index exists by looking at all table constraints/indexes
-    for table_name in connection.introspection.table_names():
-        try:
-            constraints = connection.introspection.get_constraints(
-                connection.cursor(), table_name
-            )
-            if index_name in constraints:
-                return True
-        except Exception:
-            continue
+    if table_name:
+        # Check specific table
+        constraints = get_table_constraints(table_name)
+        return index_name in constraints
+    # Search across all tables
+    for tbl in connection.introspection.table_names():
+        constraints = get_table_constraints(tbl)
+        if index_name in constraints:
+            return True
     return False
 
 
@@ -52,7 +60,7 @@ def column_exists(table_name, column_name):
             )
         ]
         return column_name in columns
-    except Exception:
+    except (DatabaseError, ProgrammingError):
         return False
 
 
@@ -64,14 +72,28 @@ class SafeCreateModel(migrations.CreateModel):
         db_table = model._meta.db_table
         if not table_exists(db_table):
             super().database_forwards(app_label, schema_editor, from_state, to_state)
+    
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+        model = from_state.apps.get_model(app_label, self.name)
+        db_table = model._meta.db_table
+        if table_exists(db_table):
+            super().database_backwards(app_label, schema_editor, from_state, to_state)
 
 
 class SafeRemoveConstraint(migrations.RemoveConstraint):
     """RemoveConstraint that skips removal if constraint doesn't exist."""
     
     def database_forwards(self, app_label, schema_editor, from_state, to_state):
-        if constraint_exists(self.name):
+        model = to_state.apps.get_model(app_label, self.model_name)
+        db_table = model._meta.db_table
+        if constraint_exists(self.name, db_table):
             super().database_forwards(app_label, schema_editor, from_state, to_state)
+    
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+        model = from_state.apps.get_model(app_label, self.model_name)
+        db_table = model._meta.db_table
+        if not constraint_exists(self.name, db_table):
+            super().database_backwards(app_label, schema_editor, from_state, to_state)
 
 
 class SafeAddField(migrations.AddField):
@@ -83,22 +105,45 @@ class SafeAddField(migrations.AddField):
         db_column = self.field.db_column or self.name
         if not column_exists(db_table, db_column):
             super().database_forwards(app_label, schema_editor, from_state, to_state)
+    
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+        model = from_state.apps.get_model(app_label, self.model_name)
+        db_table = model._meta.db_table
+        db_column = self.field.db_column or self.name
+        if column_exists(db_table, db_column):
+            super().database_backwards(app_label, schema_editor, from_state, to_state)
 
 
 class SafeAddConstraint(migrations.AddConstraint):
     """AddConstraint that skips addition if constraint already exists."""
     
     def database_forwards(self, app_label, schema_editor, from_state, to_state):
-        if not constraint_exists(self.constraint.name):
+        model = to_state.apps.get_model(app_label, self.model_name)
+        db_table = model._meta.db_table
+        if not constraint_exists(self.constraint.name, db_table):
             super().database_forwards(app_label, schema_editor, from_state, to_state)
+    
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+        model = from_state.apps.get_model(app_label, self.model_name)
+        db_table = model._meta.db_table
+        if constraint_exists(self.constraint.name, db_table):
+            super().database_backwards(app_label, schema_editor, from_state, to_state)
 
 
 class SafeAddIndex(migrations.AddIndex):
     """AddIndex that skips addition if index already exists."""
     
     def database_forwards(self, app_label, schema_editor, from_state, to_state):
-        if not index_exists(self.index.name):
+        model = to_state.apps.get_model(app_label, self.model_name)
+        db_table = model._meta.db_table
+        if not index_exists(self.index.name, db_table):
             super().database_forwards(app_label, schema_editor, from_state, to_state)
+    
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+        model = from_state.apps.get_model(app_label, self.model_name)
+        db_table = model._meta.db_table
+        if index_exists(self.index.name, db_table):
+            super().database_backwards(app_label, schema_editor, from_state, to_state)
 
 
 class Migration(migrations.Migration):
