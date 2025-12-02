@@ -797,7 +797,7 @@ function Usuarios() {
                             title={!currentUserId ? "Cargando sesión..." : "Eliminar"}
                           >
                             {actionLoading === usuario.id ? (
-                              <span className="animate-spin inline-block">⏳</span>
+                              <div className="animate-spin rounded-full h-4 w-4 border-2 border-red-600 border-t-transparent inline-block" />
                             ) : (
                               <FaTrash />
                             )}

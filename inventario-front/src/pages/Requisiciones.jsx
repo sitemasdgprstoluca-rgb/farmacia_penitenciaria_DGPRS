@@ -1087,7 +1087,7 @@ const Requisiciones = () => {
                         className="bg-green-100 text-green-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-green-200 border border-green-300 font-semibold disabled:opacity-50"
                       >
                         {actionLoading === `pdf-${req.id}` ? (
-                          <span className="animate-spin">⏳</span>
+                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-green-700 border-t-transparent" />
                         ) : (
                           <><FaDownload /> 📄 Hoja Oficial</>
                         )}
@@ -1101,7 +1101,7 @@ const Requisiciones = () => {
                       className="bg-red-100 text-red-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-red-200 border border-red-300 font-semibold disabled:opacity-50"
                     >
                       {actionLoading === `pdf-${req.id}` ? (
-                        <span className="animate-spin">⏳</span>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-red-700 border-t-transparent" />
                       ) : (
                         <><FaDownload /> 📄 Notificación</>
                       )}

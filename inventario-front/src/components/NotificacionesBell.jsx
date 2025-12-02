@@ -207,7 +207,7 @@ const NotificacionesBell = () => {
                         className="text-gray-400 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Marcar como leída"
                       >
-                        {actionLoading === notif.id ? '⏳' : '✓'}
+                        {actionLoading === notif.id ? <div className="animate-spin rounded-full h-3 w-3 border-2 border-gray-400 border-t-transparent inline-block" /> : '✓'}
                       </button>
                     )}
                     <button
@@ -216,7 +216,7 @@ const NotificacionesBell = () => {
                       className="text-gray-400 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Eliminar"
                     >
-                      {actionLoading === notif.id ? '⏳' : 'x'}
+                      {actionLoading === notif.id ? <div className="animate-spin rounded-full h-3 w-3 border-2 border-gray-400 border-t-transparent inline-block" /> : 'x'}
                     </button>
                   </div>
                 </div>

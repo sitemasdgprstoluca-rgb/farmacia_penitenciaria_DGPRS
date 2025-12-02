@@ -86,7 +86,7 @@ function RestablecerPassword() {
       <div className="min-h-screen flex items-center justify-center" 
            style={{ background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 50%, #4a0f26 100%)' }}>
         <div className="text-center text-white">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4" />
+          <div className="animate-spin rounded-full h-10 w-10 border-4 border-white/30 border-t-white mx-auto mb-4" />
           <p>Verificando enlace...</p>
         </div>
       </div>
@@ -193,7 +193,7 @@ function RestablecerPassword() {
               >
                 {submitting ? (
                   <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
                     Guardando...
                   </>
                 ) : (

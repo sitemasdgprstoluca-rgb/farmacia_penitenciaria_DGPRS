@@ -551,7 +551,7 @@ const Centros = () => {
                             disabled={actionLoading === centro.id}
                           >
                             {actionLoading === centro.id ? (
-                              <span className="animate-spin inline-block">⏳</span>
+                              <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent inline-block" />
                             ) : centro.activo ? (
                               <FaToggleOn className="inline" />
                             ) : (

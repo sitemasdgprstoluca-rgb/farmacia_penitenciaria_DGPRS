@@ -1571,7 +1571,7 @@ const Productos = () => {
                       >
 
                         {actionLoading === producto.id ? (
-                          <span className="animate-spin inline-block">⏳</span>
+                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent inline-block" />
                         ) : (
                           producto.activo ? <FaToggleOn size={18} /> : <FaToggleOff size={18} />
                         )}
@@ -1597,7 +1597,7 @@ const Productos = () => {
                       >
 
                         {actionLoading === producto.id ? (
-                          <span className="animate-spin inline-block">⏳</span>
+                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent inline-block" />
                         ) : (
                           <FaTrash />
                         )}
@@ -1699,7 +1699,7 @@ const Productos = () => {
                 >
 
                   {exportLoading ? (
-                    <span className="animate-spin">⏳</span>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent inline-block" />
                   ) : (
                     <FaDownload />
                   )}
@@ -1735,7 +1735,7 @@ const Productos = () => {
                   >
 
                     {importLoading ? (
-                      <span className="animate-spin">⏳</span>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent inline-block" />
                     ) : (
                       <FaFileUpload />
                     )}
