@@ -98,6 +98,41 @@ class CanvasConFondo(canvas.Canvas):
                 logger.warning(f"No se pudo cargar imagen de fondo: {e}")
 
 
+class FondoOficialCanvas(canvas.Canvas):
+    """
+    Canvas con fondo institucional oficial del Gobierno del Estado de México.
+    Acepta parámetros adicionales para personalizar el reporte.
+    """
+    
+    def __init__(self, *args, fondo_path=None, titulo_reporte='', **kwargs):
+        self.fondo_path = fondo_path
+        self.titulo_reporte = titulo_reporte
+        canvas.Canvas.__init__(self, *args, **kwargs)
+        # Dibujar fondo en primera página
+        self._dibujar_fondo()
+    
+    def showPage(self):
+        """Al cambiar de página, dibujar fondo en la nueva."""
+        canvas.Canvas.showPage(self)
+        self._dibujar_fondo()
+    
+    def _dibujar_fondo(self):
+        """Dibuja la imagen de fondo institucional si existe."""
+        if self.fondo_path and os.path.exists(self.fondo_path):
+            try:
+                page_width, page_height = letter
+                self.drawImage(
+                    str(self.fondo_path),
+                    0, 0,
+                    width=page_width,
+                    height=page_height,
+                    preserveAspectRatio=False,
+                    mask='auto'
+                )
+            except Exception as e:
+                logger.warning(f"No se pudo cargar imagen de fondo: {e}")
+
+
 def _crear_doc_con_fondo(buffer, fondo_path):
     """
     Crea un SimpleDocTemplate que usa CanvasConFondo para dibujar el fondo.
