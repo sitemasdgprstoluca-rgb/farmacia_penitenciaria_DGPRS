@@ -255,9 +255,13 @@ class ProductoViewSet(viewsets.ModelViewSet):
         """
         Permisos personalizados por accion:
         - list, retrieve: IsAuthenticated
-        - create, update, destroy, toggle_activo: IsFarmaciaRole
+        - create, update, destroy, toggle_activo, importar_excel, exportar_excel, auditoria: IsFarmaciaRole
         """
-        if self.action in ['create', 'update', 'partial_update', 'destroy', 'toggle_activo']:
+        acciones_farmacia = [
+            'create', 'update', 'partial_update', 'destroy', 
+            'toggle_activo', 'importar_excel', 'exportar_excel', 'auditoria'
+        ]
+        if self.action in acciones_farmacia:
             from core.permissions import IsFarmaciaRole
             return [IsAuthenticated(), IsFarmaciaRole()]
         return [IsAuthenticated()]
@@ -416,11 +420,28 @@ class ProductoViewSet(viewsets.ModelViewSet):
         """
         Activa o desactiva un producto.
         POST /api/productos/{id}/toggle-activo/
-        Usa update() directo para evitar validación de otros campos.
+        
+        Reglas:
+        - No se puede desactivar un producto con stock disponible > 0
+        - Usa update() directo para evitar validación de otros campos
         """
         try:
             producto = self.get_object()
             nuevo_estado = not producto.activo
+            
+            # Si se va a desactivar, verificar que no tenga stock disponible
+            if not nuevo_estado:  # Desactivando
+                stock_disponible = producto.lotes.filter(
+                    estado='disponible',
+                    cantidad_actual__gt=0
+                ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+                
+                if stock_disponible > 0:
+                    return Response({
+                        'error': 'No se puede desactivar el producto',
+                        'razon': f'Tiene {stock_disponible} unidades en stock disponible',
+                        'sugerencia': 'Transfiera o agote el inventario antes de desactivar'
+                    }, status=status.HTTP_400_BAD_REQUEST)
             
             # Usar update() directo para evitar validación de otros campos
             Producto.objects.filter(pk=producto.pk).update(activo=nuevo_estado)
@@ -438,6 +459,50 @@ class ProductoViewSet(viewsets.ModelViewSet):
             logger = logging.getLogger(__name__)
             logger.error(f"Error en toggle_activo: {str(e)}", exc_info=True)
             return Response({'error': f'Error interno: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['get'], url_path='auditoria')
+    def auditoria(self, request, pk=None):
+        """
+        Obtiene el historial de cambios de un producto.
+        GET /api/productos/{id}/auditoria/
+        """
+        try:
+            from core.models import AuditoriaLog
+            producto = self.get_object()
+            
+            # Buscar logs de auditoría relacionados con este producto
+            logs = AuditoriaLog.objects.filter(
+                Q(tabla='producto') | Q(tabla='core_producto'),
+                registro_id=str(producto.id)
+            ).order_by('-fecha')[:50]
+            
+            historial = []
+            for log in logs:
+                historial.append({
+                    'id': log.id,
+                    'fecha': log.fecha.isoformat() if log.fecha else None,
+                    'usuario': log.usuario.get_full_name() or log.usuario.username if log.usuario else 'Sistema',
+                    'accion': log.accion,
+                    'cambios': log.cambios if hasattr(log, 'cambios') else None,
+                    'ip': log.ip if hasattr(log, 'ip') else None,
+                })
+            
+            return Response({
+                'producto': {
+                    'id': producto.id,
+                    'clave': producto.clave,
+                    'descripcion': producto.descripcion,
+                },
+                'historial': historial,
+                'total': len(historial)
+            })
+        except Producto.DoesNotExist:
+            return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error en auditoria: {str(e)}", exc_info=True)
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=False, methods=['get'], url_path='exportar-excel')
     def exportar_excel(self, request):

@@ -731,10 +731,12 @@ const Productos = () => {
 
     const errors = {};
 
+    // Validar clave: 3-50 caracteres, solo alfanumérico con guiones y guiones bajos
+    const claveRegex = /^[A-Za-z0-9\-_]+$/;
     if (!data.clave || data.clave.length < 3 || data.clave.length > 50) {
-
       errors.clave = 'La clave debe tener entre 3 y 50 caracteres';
-
+    } else if (!claveRegex.test(data.clave)) {
+      errors.clave = 'La clave solo puede contener letras, números, guiones y guiones bajos';
     }
 
     if (!data.descripcion || data.descripcion.length < 5 || data.descripcion.length > 300) {
@@ -1022,7 +1024,11 @@ const Productos = () => {
 
     if (!puede.eliminar) return;
 
-    const confirm = window.confirm(`¿Confirma eliminar ${producto.clave}? El producto quedará inactivo.`);
+    const confirm = window.confirm(
+      `¿Confirma ELIMINAR DEFINITIVAMENTE el producto ${producto.clave}?\n\n` +
+      `⚠️ Esta acción no se puede deshacer.\n` +
+      `Nota: Si el producto tiene lotes asociados, no podrá eliminarse.`
+    );
 
     if (!confirm) return;
 
@@ -1052,7 +1058,15 @@ const Productos = () => {
 
       console.error('Error al eliminar producto', err);
 
-      toast.error(err.response?.data?.error || 'No se pudo eliminar');
+      // Mostrar razón específica del error
+      const errorData = err.response?.data;
+      let errorMsg = 'No se pudo eliminar el producto';
+      if (errorData?.razon) {
+        errorMsg = `${errorData.error}: ${errorData.razon}. ${errorData.sugerencia || ''}`;
+      } else if (errorData?.error) {
+        errorMsg = errorData.error;
+      }
+      toast.error(errorMsg);
 
     }
 
