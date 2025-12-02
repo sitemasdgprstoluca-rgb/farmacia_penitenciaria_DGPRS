@@ -1343,6 +1343,13 @@ class LoteViewSet(viewsets.ModelViewSet):
             except (ValueError, TypeError):
                 pass
         
+        # Filtrar por existencia de stock (con_stock/sin_stock)
+        con_stock = self.request.query_params.get('con_stock')
+        if con_stock == 'con_stock':
+            queryset = queryset.filter(cantidad_actual__gt=0)
+        elif con_stock == 'sin_stock':
+            queryset = queryset.filter(cantidad_actual=0)
+        
         # Filtrar solo lotes disponibles (no vencidos) para el catálogo
         solo_disponibles = self.request.query_params.get('solo_disponibles')
         if solo_disponibles == 'true':

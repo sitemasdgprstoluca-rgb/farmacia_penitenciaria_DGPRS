@@ -72,6 +72,18 @@ const Lotes = () => {
   // Solo ADMIN y FARMACIA pueden ver campos de contrato (para auditoría)
   const puedeVerContrato = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
   
+  // Permisos específicos para acciones
+  const esFarmaciaAdmin = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
+  const puede = {
+    crear: esFarmaciaAdmin,
+    editar: esFarmaciaAdmin,
+    eliminar: esFarmaciaAdmin,
+    exportar: esFarmaciaAdmin,
+    importar: esFarmaciaAdmin,
+    verDocumento: true, // Todos pueden ver
+    subirDocumento: esFarmaciaAdmin,
+  };
+  
   const [lotes, setLotes] = useState([]);
   const [productos, setProductos] = useState([]);
   const [centros, setCentros] = useState([]);
@@ -274,16 +286,36 @@ const Lotes = () => {
     setShowModal(true);
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('¿Está seguro de eliminar este lote? (Soft delete)')) return;
+  const handleDelete = async (id, lote) => {
+    if (!puede.eliminar) {
+      toast.error('No tiene permisos para eliminar lotes');
+      return;
+    }
+    
+    if (loading) return; // Evitar múltiples clics
+    
+    const confirmMsg = `¿Está seguro de DESACTIVAR el lote ${lote?.numero_lote || id}?\n\n` +
+      `⚠️ El lote quedará marcado como eliminado (soft delete).\n` +
+      `Nota: Esta acción es reversible por un administrador.`;
+    
+    if (!window.confirm(confirmMsg)) return;
     
     try {
+      setLoading(true);
       await lotesAPI.delete(id);
-      toast.success('Lote eliminado correctamente');
+      toast.success('Lote desactivado correctamente');
       cargarLotes();
     } catch (error) {
-      const errorMsg = error.response?.data?.error || 'Error al eliminar lote';
+      const errorData = error.response?.data;
+      let errorMsg = 'Error al eliminar lote';
+      if (errorData?.razon) {
+        errorMsg = `${errorData.error}: ${errorData.razon}`;
+      } else if (errorData?.error) {
+        errorMsg = errorData.error;
+      }
       toast.error(errorMsg);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -366,11 +398,21 @@ const Lotes = () => {
   };
 
   const handleExportar = async () => {
+    if (!puede.exportar) {
+      toast.error('No tiene permisos para exportar');
+      return;
+    }
+    
     try {
       setLoading(true);
+      // Enviar TODOS los filtros activos para que el Excel coincida con la vista
       const params = {};
+      if (searchTerm) params.search = searchTerm;
       if (filtroProducto) params.producto = filtroProducto;
       if (filtroCaducidad) params.caducidad = filtroCaducidad;
+      if (filtroConStock) params.con_stock = filtroConStock;
+      if (filtroActivo) params.activo = filtroActivo;
+      if (filtroCentro) params.centro = filtroCentro;
       
       const response = await lotesAPI.exportar(params);
       
@@ -394,6 +436,28 @@ const handleImportar = async (e) => {
   const file = e.target.files[0];
   if (!file) return;
   
+  // Validar extensión
+  const extension = file.name.split('.').pop()?.toLowerCase();
+  if (!['xlsx', 'xls'].includes(extension)) {
+    toast.error('Solo se permiten archivos Excel (.xlsx, .xls)');
+    e.target.value = '';
+    return;
+  }
+  
+  // Validar tamaño (máx 10MB)
+  const maxSize = 10 * 1024 * 1024;
+  if (file.size > maxSize) {
+    toast.error(`El archivo excede el tamaño máximo de 10MB (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+    e.target.value = '';
+    return;
+  }
+  
+  if (!puede.importar) {
+    toast.error('No tiene permisos para importar');
+    e.target.value = '';
+    return;
+  }
+  
   const formData = new FormData();
   formData.append('file', file);
   
@@ -409,7 +473,15 @@ const handleImportar = async (e) => {
     
     if (errores.length) {
       console.warn('Errores en importación de lotes:', errores);
-      toast.error(`${errores.length} errores. Revise la consola.`);
+      // Mostrar primeros 3 errores al usuario
+      const primeros = errores.slice(0, 3);
+      primeros.forEach((err, idx) => {
+        const msg = typeof err === 'string' ? err : `Fila ${err.fila || idx + 1}: ${err.error || err.mensaje || JSON.stringify(err)}`;
+        toast.error(msg, { duration: 5000 });
+      });
+      if (errores.length > 3) {
+        toast.error(`... y ${errores.length - 3} errores más. Revise la consola.`, { duration: 5000 });
+      }
     }
     
     setShowImportModal(false);
@@ -449,36 +521,45 @@ const handleImportar = async (e) => {
 
   const headerActions = (
     <>
-      <button
-        type="button"
-        onClick={handleExportar}
-        className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition"
-        style={{
-          background: PRIMARY_GRADIENT,
-          border: '1px solid rgba(255,255,255,0.4)'
-        }}
-      >
-        <FaFileExcel /> Exportar
-      </button>
-      <button
-        type="button"
-        onClick={() => setShowImportModal(true)}
-        className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition"
-        style={{
-          background: SECONDARY_GRADIENT,
-          border: '1px solid rgba(255,255,255,0.4)'
-        }}
-      >
-        <FaFileUpload /> Importar
-      </button>
-      <button
-        type="button"
-        onClick={() => setShowModal(true)}
-        className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white"
-        style={{ color: COLORS.vino }}
-      >
-        <FaPlus /> Nuevo Lote
-      </button>
+      {puede.exportar && (
+        <button
+          type="button"
+          onClick={handleExportar}
+          disabled={loading}
+          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50"
+          style={{
+            background: PRIMARY_GRADIENT,
+            border: '1px solid rgba(255,255,255,0.4)'
+          }}
+        >
+          <FaFileExcel /> Exportar
+        </button>
+      )}
+      {puede.importar && (
+        <button
+          type="button"
+          onClick={() => setShowImportModal(true)}
+          disabled={loading}
+          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50"
+          style={{
+            background: SECONDARY_GRADIENT,
+            border: '1px solid rgba(255,255,255,0.4)'
+          }}
+        >
+          <FaFileUpload /> Importar
+        </button>
+      )}
+      {puede.crear && (
+        <button
+          type="button"
+          onClick={() => setShowModal(true)}
+          disabled={loading}
+          className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white disabled:opacity-50"
+          style={{ color: COLORS.vino }}
+        >
+          <FaPlus /> Nuevo Lote
+        </button>
+      )}
     </>
   );
 
@@ -534,8 +615,8 @@ const handleImportar = async (e) => {
             className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
           >
             <option value="">Todos</option>
-            <option value="true">Con Inventario</option>
-            <option value="false">Sin Inventario</option>
+            <option value="con_stock">Con Inventario</option>
+            <option value="sin_stock">Sin Inventario</option>
           </select>
           
           {/* Selector de Centro - solo para admin/farmacia/vista */}
@@ -641,27 +722,37 @@ const handleImportar = async (e) => {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2 flex items-center gap-1">
+                      {/* Botón PDF - visible para todos, subir solo farmacia */}
                       <button
                         onClick={() => handleDocumentoModal(lote)}
-                        className={`p-1 rounded ${lote.documento_url ? 'text-green-600 hover:text-green-800 hover:bg-green-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}
-                        title={lote.documento_url ? `Ver: ${lote.documento_nombre || 'documento.pdf'}` : 'Subir documento PDF'}
+                        disabled={loading}
+                        className={`p-1 rounded disabled:opacity-50 ${lote.documento_url ? 'text-green-600 hover:text-green-800 hover:bg-green-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}
+                        title={lote.documento_url ? `Ver: ${lote.documento_nombre || 'documento.pdf'}` : (puede.subirDocumento ? 'Subir documento PDF' : 'Sin documento')}
                       >
                         <FaFilePdf className="text-lg" />
                       </button>
-                      <button
-                        onClick={() => handleEdit(lote)}
-                        className="p-1 rounded text-blue-600 hover:text-blue-800 hover:bg-blue-50"
-                        title="Editar"
-                      >
-                        <FaEdit className="text-lg" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(lote.id)}
-                        className="p-1 rounded text-red-600 hover:text-red-800 hover:bg-red-50"
-                        title="Eliminar"
-                      >
-                        <FaTrash className="text-lg" />
-                      </button>
+                      {/* Botón Editar - solo farmacia/admin */}
+                      {puede.editar && (
+                        <button
+                          onClick={() => handleEdit(lote)}
+                          disabled={loading}
+                          className="p-1 rounded text-blue-600 hover:text-blue-800 hover:bg-blue-50 disabled:opacity-50"
+                          title="Editar"
+                        >
+                          <FaEdit className="text-lg" />
+                        </button>
+                      )}
+                      {/* Botón Eliminar - solo farmacia/admin */}
+                      {puede.eliminar && (
+                        <button
+                          onClick={() => handleDelete(lote.id, lote)}
+                          disabled={loading}
+                          className="p-1 rounded text-red-600 hover:text-red-800 hover:bg-red-50 disabled:opacity-50"
+                          title="Desactivar lote"
+                        >
+                          <FaTrash className="text-lg" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))
