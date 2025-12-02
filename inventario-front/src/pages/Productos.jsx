@@ -713,10 +713,9 @@ const Productos = () => {
       stock: '',
     });
     setCurrentPage(1);
-    // Recargar productos inmediatamente con filtros limpios
-    // Usamos setTimeout para asegurar que el estado se actualizó
-    setTimeout(() => fetchProductos(), 0);
-  }, [fetchProductos]);
+    // El useEffect ya dispara fetchProductos cuando cambian los filtros
+    // No llamar manualmente para evitar peticiones duplicadas
+  }, []);
 
 
 

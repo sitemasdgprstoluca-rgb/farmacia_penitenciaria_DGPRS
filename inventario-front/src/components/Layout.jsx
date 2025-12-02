@@ -4,6 +4,7 @@ import { usePermissions } from "../hooks/usePermissions";
 import { DEV_CONFIG } from "../config/dev";
 import NotificacionesBell from "./NotificacionesBell";
 import { notificacionesAPI, authAPI } from "../services/api";
+import { clearTokens } from "../services/tokenManager";
 import {
   FaHome,
   FaBox,
@@ -45,6 +46,8 @@ function Layout() {
         clearInterval(window.notificationInterval);
         window.notificationInterval = null;
       }
+      // Limpiar token en memoria del tokenManager
+      clearTokens();
       localStorage.removeItem("token");
       localStorage.removeItem("refresh_token");
       localStorage.removeItem("user");

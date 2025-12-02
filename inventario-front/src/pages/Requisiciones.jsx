@@ -888,13 +888,13 @@ const Requisiciones = () => {
                 value={filtroFechaDesde}
                 onChange={(e) => {
                   const desde = e.target.value;
-                  setFiltroFechaDesde(desde);
-                  // Validar orden cronológico
+                  // Validar orden cronológico antes de actualizar
                   if (desde && filtroFechaHasta && desde > filtroFechaHasta) {
                     setFechaError('La fecha "desde" no puede ser posterior a "hasta"');
-                  } else {
-                    setFechaError('');
+                    return; // No actualizar estado con rango inválido
                   }
+                  setFechaError('');
+                  setFiltroFechaDesde(desde);
                 }}
                 max={filtroFechaHasta || undefined}
                 className={`px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 flex-1 ${
@@ -908,13 +908,13 @@ const Requisiciones = () => {
                 value={filtroFechaHasta}
                 onChange={(e) => {
                   const hasta = e.target.value;
-                  setFiltroFechaHasta(hasta);
-                  // Validar orden cronológico
+                  // Validar orden cronológico antes de actualizar
                   if (filtroFechaDesde && hasta && filtroFechaDesde > hasta) {
                     setFechaError('La fecha "hasta" no puede ser anterior a "desde"');
-                  } else {
-                    setFechaError('');
+                    return; // No actualizar estado con rango inválido
                   }
+                  setFechaError('');
+                  setFiltroFechaHasta(hasta);
                 }}
                 min={filtroFechaDesde || undefined}
                 className={`px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 flex-1 ${
