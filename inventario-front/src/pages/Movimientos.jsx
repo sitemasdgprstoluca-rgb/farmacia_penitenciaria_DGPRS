@@ -317,6 +317,10 @@ const Movimientos = () => {
 
   // Actualiza solo el estado local de filtros (sin disparar recarga)
   const handleFiltro = (field, value) => {
+    // Protección: usuarios de centro no pueden cambiar el filtro de centro
+    if (field === 'centro' && !puedeVerTodosCentros && centroUsuario) {
+      return; // Ignorar cambios al filtro de centro para usuarios restringidos
+    }
     setFiltros((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -332,8 +336,14 @@ const Movimientos = () => {
       }
     }
     
+    // Protección: forzar centro del usuario si no tiene permisos globales
+    const filtrosFinales = { ...filtros };
+    if (!puedeVerTodosCentros && centroUsuario) {
+      filtrosFinales.centro = centroUsuario.toString();
+    }
+    
     setPage(1);
-    setFiltrosAplicados({ ...filtros });
+    setFiltrosAplicados(filtrosFinales);
   };
 
   const limpiarFiltros = () => {

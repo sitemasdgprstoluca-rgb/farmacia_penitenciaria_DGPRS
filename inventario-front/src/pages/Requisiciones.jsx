@@ -404,7 +404,7 @@ const Requisiciones = () => {
     // Cargar stock actualizado para los items existentes
     const fetchStockPromises = items.map(item => {
       if (item.lote) {
-        return lotesAPI.get(item.lote).then(resp => ({
+        return lotesAPI.getById(item.lote).then(resp => ({
           loteId: item.lote,
           stock_actual: resp.data.stock_actual ?? resp.data.cantidad_actual ?? 0,
         })).catch(() => null);
