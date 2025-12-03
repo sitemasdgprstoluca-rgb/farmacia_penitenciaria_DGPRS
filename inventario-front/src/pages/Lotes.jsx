@@ -578,8 +578,7 @@ const handleImportar = async (e) => {
           type="button"
           onClick={() => setShowModal(true)}
           disabled={loading}
-          className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white disabled:opacity-50"
-          style={{ color: COLORS.vino }}
+          className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white disabled:opacity-50 text-theme-primary"
         >
           <FaPlus /> Nuevo Lote
         </button>
@@ -606,7 +605,7 @@ const handleImportar = async (e) => {
           aria-haspopup="true"
           className="flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-white"
         >
-          <FaFilter color={COLORS.vino} />
+          <FaFilter className="text-theme-primary" />
           {showFiltersMenu ? 'Ocultar filtros' : 'Mostrar filtros'}
           <FaChevronDown className={`transition ${showFiltersMenu ? 'rotate-180' : ''}`} />
         </button>
@@ -616,17 +615,13 @@ const handleImportar = async (e) => {
       {showFiltersMenu && (
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div
-            className="flex items-center gap-3 px-5 py-3"
-            style={{
-              borderBottom: `3px solid ${COLORS.vino}`,
-              background: COLORS.grisSuave,
-            }}
+            className="flex items-center gap-3 px-5 py-3 border-b-[3px] border-theme-primary bg-gray-50"
           >
             <div className="bg-white p-2 rounded-lg">
-              <FaFilter color={COLORS.vino} />
+              <FaFilter className="text-theme-primary" />
             </div>
             <div>
-              <p className="text-sm font-semibold" style={{ color: COLORS.guinda }}>Filtros avanzados</p>
+              <p className="text-sm font-semibold text-theme-primary-hover">Filtros avanzados</p>
               <p className="text-xs text-gray-500">Aplique criterios sin ocupar espacio en pantalla</p>
             </div>
           </div>
@@ -634,10 +629,9 @@ const handleImportar = async (e) => {
           <div className="space-y-3 px-5 py-3">
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-6">
               <div className="lg:col-span-2">
-                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Búsqueda</label>
+                <label className="text-xs font-semibold text-theme-primary-hover">Búsqueda</label>
                 <div
-                  className="mt-1 flex items-center rounded-lg border px-3 py-2 focus-within:ring-2"
-                  style={{ borderColor: COLORS.vino }}
+                  className="mt-1 flex items-center rounded-lg border px-3 py-2 focus-within:ring-2 border-theme-primary"
                 >
                   <FaFilter className="mr-2 text-gray-400" />
                   <input
@@ -650,12 +644,11 @@ const handleImportar = async (e) => {
                 </div>
               </div>
               <div>
-                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Producto</label>
+                <label className="text-xs font-semibold text-theme-primary-hover">Producto</label>
                 <select
                   value={filtroProducto}
                   onChange={(e) => setFiltroProducto(e.target.value)}
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
-                  style={{ borderColor: COLORS.vino }}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                 >
                   <option value="">Todos los productos</option>
                   {productos.map(p => (
@@ -666,12 +659,11 @@ const handleImportar = async (e) => {
                 </select>
               </div>
               <div>
-                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Caducidad</label>
+                <label className="text-xs font-semibold text-theme-primary-hover">Caducidad</label>
                 <select
                   value={filtroCaducidad}
                   onChange={(e) => setFiltroCaducidad(e.target.value)}
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
-                  style={{ borderColor: COLORS.vino }}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                 >
                   {nivelCaducidad.map(n => (
                     <option key={n.value} value={n.value}>{n.label}</option>
@@ -679,12 +671,11 @@ const handleImportar = async (e) => {
                 </select>
               </div>
               <div>
-                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Inventario</label>
+                <label className="text-xs font-semibold text-theme-primary-hover">Inventario</label>
                 <select
                   value={filtroConStock}
                   onChange={(e) => setFiltroConStock(e.target.value)}
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
-                  style={{ borderColor: COLORS.vino }}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                 >
                   <option value="">Todos</option>
                   <option value="con_stock">Con Inventario</option>
@@ -694,12 +685,11 @@ const handleImportar = async (e) => {
               {/* Selector de Centro - solo para admin/farmacia/vista */}
               {puedeVerGlobal ? (
                 <div>
-                  <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Centro</label>
+                  <label className="text-xs font-semibold text-theme-primary-hover">Centro</label>
                   <select
                     value={filtroCentro}
                     onChange={(e) => setFiltroCentro(e.target.value)}
-                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
-                    style={{ borderColor: COLORS.vino }}
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                   >
                     <option value="">Todos los centros</option>
                     <option value="central">Farmacia Central</option>
@@ -741,11 +731,7 @@ const handleImportar = async (e) => {
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto rounded-lg border border-gray-200">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead
-              style={{
-                background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})`,
-              }}
-            >
+            <thead className="thead-theme">
               <tr>
                 {['#', 'Producto', 'Número Lote', 'Caducidad', 'Días', 'Alerta', 'Inventario', 'Acciones'].map((col) => (
                   <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">

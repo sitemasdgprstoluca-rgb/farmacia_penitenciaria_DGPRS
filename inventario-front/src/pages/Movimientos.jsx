@@ -370,10 +370,7 @@ const Movimientos = () => {
     <div className="space-y-6 p-4 sm:p-6">
       {/* Header con gradiente institucional */}
       <div
-        className="rounded-2xl p-6 text-white shadow-lg"
-        style={{
-          background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})`,
-        }}
+        className="rounded-2xl p-6 text-white shadow-lg bg-theme-gradient"
       >
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
@@ -555,7 +552,7 @@ const Movimientos = () => {
                     onClick={() => setShowFiltersMenu(!showFiltersMenu)}
                     className="flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-white"
                   >
-                    <FaFilter style={{ color: COLORS.vino }} />
+                    <FaFilter className="text-theme-primary" />
                     {showFiltersMenu ? 'Ocultar filtros' : 'Mostrar filtros'}
                     <FaChevronDown className={`transition ${showFiltersMenu ? 'rotate-180' : ''}`} />
                   </button>
@@ -661,8 +658,7 @@ const Movimientos = () => {
                   <div className="flex gap-2 items-center col-span-full">
                     <button
                       onClick={aplicarFiltros}
-                      className="px-4 py-2 rounded-lg text-white text-sm font-semibold transition"
-                      style={{ background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})` }}
+                      className="px-4 py-2 rounded-lg text-white text-sm font-semibold transition bg-theme-gradient"
                       disabled={loading}
                     >
                       {hayFiltrosPendientes ? '⚡ Aplicar' : 'Aplicar'}
@@ -685,11 +681,7 @@ const Movimientos = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
-                <thead
-                  style={{
-                    background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})`,
-                  }}
-                >
+                <thead className="thead-theme">
                   <tr>
                     {columnas.map((col) => (
                       <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
@@ -706,7 +698,7 @@ const Movimientos = () => {
                     <tr>
                       <td colSpan={columnas.length + 1} className="text-center py-8">
                         <div className="flex justify-center items-center">
-                          <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent" style={{ borderColor: `${COLORS.vino}33`, borderTopColor: COLORS.vino }}></div>
+                          <div className="spinner-institucional"></div>
                           <span className="ml-2 text-gray-600">Cargando movimientos...</span>
                         </div>
                       </td>

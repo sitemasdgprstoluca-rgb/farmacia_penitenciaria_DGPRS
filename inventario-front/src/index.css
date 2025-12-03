@@ -459,6 +459,7 @@ code {
 .bg-theme-primary { background-color: var(--color-primary, #9F2241); }
 .bg-theme-primary-hover { background-color: var(--color-primary-hover, #6B1839); }
 .bg-theme-sidebar { background: var(--color-sidebar-bg, #9F2241); }
+.bg-theme-light { background-color: color-mix(in srgb, var(--color-primary, #9F2241) 15%, transparent); }
 
 
 /* Gradientes del tema */
@@ -505,5 +506,31 @@ code {
 .modal-header-theme {
   background: var(--color-sidebar-bg, linear-gradient(135deg, #9F2241 0%, #6B1839 100%));
   border-bottom-color: var(--color-primary, #9F2241);
+}
+
+/* Header de tabla con tema */
+.thead-theme {
+  background: var(--color-sidebar-bg, linear-gradient(135deg, #9F2241 0%, #6B1839 100%));
+}
+.thead-theme th {
+  color: white;
+  font-weight: 600;
+}
+
+/* Botones del tema */
+.btn-theme-primary {
+  background: linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%);
+  color: white;
+}
+.btn-theme-primary:hover {
+  opacity: 0.9;
+}
+.btn-theme-outline {
+  border: 2px solid var(--color-primary, #9F2241);
+  color: var(--color-primary, #9F2241);
+  background: transparent;
+}
+.btn-theme-outline:hover {
+  background: color-mix(in srgb, var(--color-primary, #9F2241) 10%, transparent);
 }
 

@@ -620,8 +620,8 @@ const RequisicionDetalle = () => {
         <div className="flex items-start justify-between mb-6">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <FaClipboardList className="text-2xl" style={{ color: COLORS.vino }} />
-              <h1 className="text-2xl font-bold" style={{ color: COLORS.vino }}>
+              <FaClipboardList className="text-2xl text-theme-primary" />
+              <h1 className="text-2xl font-bold text-theme-primary">
                 {requisicion.folio}
               </h1>
             </div>
@@ -694,8 +694,8 @@ const RequisicionDetalle = () => {
         <div className="bg-gray-50 border border-gray-300 rounded-xl p-4 mb-6 shadow">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: `${COLORS.vino}15` }}>
-                <FaClipboardList className="text-xl" style={{ color: COLORS.vino }} />
+              <div className="p-2 rounded-lg bg-theme-primary/10">
+                <FaClipboardList className="text-xl text-theme-primary" />
               </div>
               <div>
                 <h3 className="font-bold text-gray-800">Requisición Pendiente de Revisión</h3>
@@ -707,8 +707,7 @@ const RequisicionDetalle = () => {
             <button
               onClick={iniciarAutorizacion}
               disabled={procesando}
-              className="flex items-center gap-2 px-5 py-3 text-white rounded-lg disabled:opacity-50 font-semibold hover:opacity-90 transition-opacity"
-              style={{ backgroundColor: COLORS.vino }}
+              className="flex items-center gap-2 px-5 py-3 text-white rounded-lg disabled:opacity-50 font-semibold hover:opacity-90 transition-opacity bg-theme-primary"
             >
               <FaEdit /> Revisar Cantidades
             </button>
@@ -719,12 +718,11 @@ const RequisicionDetalle = () => {
       {/* Tabla de Productos */}
       <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold" style={{ color: COLORS.vino }}>
+          <h2 className="text-lg font-bold text-theme-primary">
             Productos Solicitados ({detalles.length})
           </h2>
           {modoAutorizar && (
-            <span className="px-3 py-1 border rounded-full text-sm font-semibold" 
-              style={{ borderColor: COLORS.vino, color: COLORS.vino }}>
+            <span className="px-3 py-1 border rounded-full text-sm font-semibold border-theme-primary text-theme-primary">
               Modo Edición
             </span>
           )}
@@ -736,14 +734,13 @@ const RequisicionDetalle = () => {
           <div className="overflow-x-auto">
             <table className="w-full border-collapse">
               <thead>
-                <tr className="border-b-2" style={{ borderColor: COLORS.vino }}>
+                <tr className="border-b-2 border-theme-primary">
                   <th className="px-3 py-3 text-left text-sm font-semibold text-gray-700">Clave</th>
                   <th className="px-3 py-3 text-left text-sm font-semibold text-gray-700">Producto</th>
                   <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Lote</th>
                   <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Unidad</th>
                   <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Solicitado</th>
-                  <th className={`px-3 py-3 text-center text-sm font-semibold ${modoAutorizar ? 'bg-gray-100' : 'text-gray-700'}`}
-                    style={{ color: modoAutorizar ? COLORS.vino : undefined }}>
+                  <th className={`px-3 py-3 text-center text-sm font-semibold ${modoAutorizar ? 'bg-gray-100 text-theme-primary' : 'text-gray-700'}`}>
                     Autorizado
                   </th>
                   <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Surtido</th>
@@ -787,8 +784,7 @@ const RequisicionDetalle = () => {
                           max={detalle.lote_stock || detalle.stock_disponible || detalle.cantidad_solicitada}
                           value={detalle.cantidad_autorizada || 0}
                           onChange={(e) => actualizarCantidadAutorizada(idx, e.target.value)}
-                          className="w-20 px-2 py-1 border border-gray-300 rounded text-center font-semibold focus:ring-2 focus:outline-none"
-                          style={{ '--tw-ring-color': COLORS.vino }}
+                          className="w-20 px-2 py-1 border border-gray-300 rounded text-center font-semibold focus:ring-2 focus:outline-none ring-theme-primary focus:ring-theme-primary"
                         />
                       ) : (
                         <span className={detalle.cantidad_autorizada > 0 ? 'font-semibold text-gray-800' : 'text-gray-400'}>
@@ -846,7 +842,7 @@ const RequisicionDetalle = () => {
       {hojaRecoleccion && (
         <div className="bg-white rounded-xl shadow-lg p-6 mb-6 border-l-4 border-blue-500">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: COLORS.vino }}>
+            <h2 className="text-lg font-bold flex items-center gap-2 text-theme-primary">
               <FaFileSignature className="text-blue-500" />
               Hoja de Recolección
             </h2>
@@ -916,8 +912,7 @@ const RequisicionDetalle = () => {
               <button
                 onClick={() => handleDescargarPDF('aceptacion')}
                 disabled={procesando}
-                className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
-                style={{ backgroundColor: COLORS.vino }}
+                className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity bg-theme-primary"
               >
                 <FaFileDownload />
                 Descargar PDF de Recolección
@@ -929,7 +924,7 @@ const RequisicionDetalle = () => {
 
       {/* Acciones */}
       <div className="bg-white rounded-xl shadow-lg p-6">
-        <h2 className="text-lg font-bold mb-4" style={{ color: COLORS.vino }}>Acciones</h2>
+        <h2 className="text-lg font-bold mb-4 text-theme-primary">Acciones</h2>
         
         <div className="flex flex-wrap gap-3">
           {modoAutorizar ? (
@@ -956,8 +951,7 @@ const RequisicionDetalle = () => {
                 <button
                   onClick={iniciarEnviar}
                   disabled={procesando}
-                  className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
-                  style={{ backgroundColor: COLORS.vino }}
+                  className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity bg-theme-primary"
                 >
                   <FaPaperPlane /> Enviar para autorización
                 </button>
@@ -967,8 +961,7 @@ const RequisicionDetalle = () => {
                 <button
                   onClick={iniciarAutorizacion}
                   disabled={procesando}
-                  className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 font-semibold hover:opacity-90 transition-opacity"
-                  style={{ backgroundColor: COLORS.vino }}
+                  className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 font-semibold hover:opacity-90 transition-opacity bg-theme-primary"
                 >
                   <FaEdit /> Revisar Cantidades
                 </button>
@@ -988,8 +981,7 @@ const RequisicionDetalle = () => {
                 <button
                   onClick={iniciarSurtir}
                   disabled={procesando}
-                  className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
-                  style={{ backgroundColor: COLORS.vino }}
+                  className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity bg-theme-primary"
                 >
                   <FaBoxOpen /> Surtir y descontar inventario
                 </button>
@@ -1009,8 +1001,7 @@ const RequisicionDetalle = () => {
                 <button
                   onClick={() => handleDescargarPDF('aceptacion')}
                   disabled={procesando}
-                  className="flex items-center gap-2 px-4 py-2 border text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
-                  style={{ borderColor: COLORS.vino, color: COLORS.vino }}
+                  className="flex items-center gap-2 px-4 py-2 border text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors border-theme-primary text-theme-primary"
                 >
                   <FaDownload /> Hoja de recolección
                 </button>

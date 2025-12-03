@@ -356,8 +356,7 @@ const Centros = () => {
         <button
           type="button"
           onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white"
-          style={{ color: COLORS.vino }}
+          className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white text-theme-primary"
         >
           <FaPlus /> Nuevo Centro
         </button>
@@ -446,7 +445,7 @@ const Centros = () => {
           aria-haspopup="true"
           className="flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-white"
         >
-          <FaFilter color={COLORS.vino} />
+          <FaFilter className="text-theme-primary" />
           {showFiltersMenu ? 'Ocultar filtros' : 'Mostrar filtros'}
           <FaChevronDown className={`transition ${showFiltersMenu ? 'rotate-180' : ''}`} />
         </button>
@@ -456,17 +455,13 @@ const Centros = () => {
       {showFiltersMenu && (
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div
-            className="flex items-center gap-3 px-5 py-3"
-            style={{
-              borderBottom: `3px solid ${COLORS.vino}`,
-              background: COLORS.grisSuave,
-            }}
+            className="flex items-center gap-3 px-5 py-3 border-b-[3px] border-theme-primary bg-gray-50"
           >
             <div className="bg-white p-2 rounded-lg">
-              <FaFilter color={COLORS.vino} />
+              <FaFilter className="text-theme-primary" />
             </div>
             <div>
-              <p className="text-sm font-semibold" style={{ color: COLORS.guinda }}>Filtros avanzados</p>
+              <p className="text-sm font-semibold text-theme-primary-hover">Filtros avanzados</p>
               <p className="text-xs text-gray-500">Aplique criterios sin ocupar espacio en pantalla</p>
             </div>
           </div>
@@ -474,10 +469,9 @@ const Centros = () => {
           <div className="space-y-3 px-5 py-3">
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
               <div className="lg:col-span-2">
-                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Búsqueda</label>
+                <label className="text-xs font-semibold text-theme-primary-hover">Búsqueda</label>
                 <div
-                  className="mt-1 flex items-center rounded-lg border px-3 py-2 focus-within:ring-2"
-                  style={{ borderColor: COLORS.vino }}
+                  className="mt-1 flex items-center rounded-lg border px-3 py-2 focus-within:ring-2 border-theme-primary"
                 >
                   <FaSearch className="mr-2 text-gray-400" />
                   <input
@@ -490,12 +484,11 @@ const Centros = () => {
                 </div>
               </div>
               <div>
-                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Estado</label>
+                <label className="text-xs font-semibold text-theme-primary-hover">Estado</label>
                 <select
                   value={filtroEstado}
                   onChange={(e) => setFiltroEstado(e.target.value)}
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
-                  style={{ borderColor: COLORS.vino }}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                 >
                   <option value="">Todos los estados</option>
                   <option value="activo">Activo</option>
@@ -520,11 +513,7 @@ const Centros = () => {
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto rounded-lg border border-gray-200">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead
-              style={{
-                background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})`,
-              }}
-            >
+            <thead className="thead-theme">
               <tr>
                 {['#', 'Clave', 'Nombre', 'Tipo', 'Responsable', 'Requisiciones', 'Usuarios', 'Estado', 'Acciones'].map((col) => (
                   <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
@@ -538,7 +527,7 @@ const Centros = () => {
                 <tr>
                   <td colSpan="9" className="text-center py-8">
                     <div className="flex justify-center items-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent" style={{ borderColor: `${COLORS.vino}33`, borderTopColor: COLORS.vino }}></div>
+                      <div className="spinner-institucional"></div>
                       <span className="ml-2">Cargando centros...</span>
                     </div>
                   </td>

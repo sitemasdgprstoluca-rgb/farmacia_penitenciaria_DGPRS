@@ -23,7 +23,8 @@ function Pagination({
           type="button"
           key={p}
           onClick={() => goTo(p)}
-          className={`px-3 py-1 rounded-lg border text-sm ${p === page ? 'bg-[#9F2241] text-white border-[#9F2241]' : 'bg-white text-gray-700 border-gray-200'}`}
+          className={`px-3 py-1 rounded-lg border text-sm ${p === page ? 'bg-theme-primary text-white border-theme-primary' : 'bg-white text-gray-700 border-gray-200'}`}
+          style={p === page ? { backgroundColor: 'var(--color-primary)', borderColor: 'var(--color-primary)' } : {}}
           disabled={p === page}
         >
           {p}

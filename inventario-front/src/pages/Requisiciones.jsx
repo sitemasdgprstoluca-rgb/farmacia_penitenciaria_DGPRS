@@ -995,8 +995,7 @@ const Requisiciones = () => {
       onClick={abrirModalCrear}
       type="button"
       disabled={errorCentroNoAsignado || !centroResuelto}
-      className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
-      style={{ color: COLORS.vino }}
+      className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed text-theme-primary"
       title={errorCentroNoAsignado ? 'No tienes un centro asignado' : undefined}
     >
       <FaPlus /> Nueva Requisición
@@ -1028,13 +1027,8 @@ const Requisiciones = () => {
               onClick={() => setGrupoEstado(tab.key)}
               disabled={loading}
               className={`px-4 py-2 rounded-full text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${
-                grupoEstado === tab.key ? 'text-white' : 'text-gray-700 border border-gray-200 bg-white'
+                grupoEstado === tab.key ? 'text-white bg-theme-gradient' : 'text-gray-700 border border-gray-200 bg-white'
               }`}
-              style={
-                grupoEstado === tab.key
-                  ? { background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})` }
-                  : {}
-              }
             >
               {tab.label}
               {resumenEstados.por_grupo?.[tab.key] ? ` (${resumenEstados.por_grupo[tab.key]})` : ''}
@@ -1047,7 +1041,7 @@ const Requisiciones = () => {
           aria-expanded={showFiltersMenu}
           className="flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-white"
         >
-          <FaFilter color={COLORS.vino} />
+          <FaFilter className="text-theme-primary" />
           {showFiltersMenu ? 'Ocultar filtros' : 'Mostrar filtros'}
           <FaChevronDown className={`transition ${showFiltersMenu ? 'rotate-180' : ''}`} />
         </button>
@@ -1057,17 +1051,13 @@ const Requisiciones = () => {
       {showFiltersMenu && (
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div
-            className="flex items-center gap-3 px-5 py-3"
-            style={{
-              borderBottom: `3px solid ${COLORS.vino}`,
-              background: COLORS.grisSuave,
-            }}
+            className="flex items-center gap-3 px-5 py-3 border-b-[3px] border-theme-primary bg-gray-50"
           >
             <div className="bg-white p-2 rounded-lg">
-              <FaFilter color={COLORS.vino} />
+              <FaFilter className="text-theme-primary" />
             </div>
             <div>
-              <p className="text-sm font-semibold" style={{ color: COLORS.guinda }}>Filtros avanzados</p>
+              <p className="text-sm font-semibold text-theme-primary-hover">Filtros avanzados</p>
               <p className="text-xs text-gray-500">Aplique criterios sin ocupar espacio en pantalla</p>
             </div>
           </div>
@@ -1075,10 +1065,9 @@ const Requisiciones = () => {
           <div className="space-y-3 px-5 py-3">
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
               <div>
-                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Búsqueda</label>
+                <label className="text-xs font-semibold text-theme-primary-hover">Búsqueda</label>
                 <div
-                  className="mt-1 flex items-center rounded-lg border px-3 py-2 focus-within:ring-2"
-                  style={{ borderColor: COLORS.vino }}
+                  className="mt-1 flex items-center rounded-lg border px-3 py-2 focus-within:ring-2 border-theme-primary"
                 >
                   <FaSearch className="mr-2 text-gray-400" />
                   <input
@@ -1091,12 +1080,11 @@ const Requisiciones = () => {
                 </div>
               </div>
               <div>
-                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Estado</label>
+                <label className="text-xs font-semibold text-theme-primary-hover">Estado</label>
                 <select
                   value={filtroEstado}
                   onChange={(e) => setFiltroEstado(e.target.value)}
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
-                  style={{ borderColor: COLORS.vino }}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                 >
                   <option value="">Todos los estados</option>
                   <option value="borrador">Borrador</option>
@@ -1109,12 +1097,11 @@ const Requisiciones = () => {
               {/* Solo mostrar filtro de centro para farmacia/admin */}
               {(permisos.isFarmaciaAdmin || permisos.isAdmin) && (
                 <div>
-                  <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Centro</label>
+                  <label className="text-xs font-semibold text-theme-primary-hover">Centro</label>
                   <select
                     value={filtroCentro}
                     onChange={(e) => setFiltroCentro(e.target.value)}
-                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
-                    style={{ borderColor: COLORS.vino }}
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                   >
                     <option value="">Todos los centros</option>
                     {centros.map((c) => (
@@ -1124,7 +1111,7 @@ const Requisiciones = () => {
                 </div>
               )}
               <div>
-                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Fecha desde</label>
+                <label className="text-xs font-semibold text-theme-primary-hover">Fecha desde</label>
                 <input
                   type="date"
                   value={filtroFechaDesde}
@@ -1138,12 +1125,11 @@ const Requisiciones = () => {
                     setFiltroFechaDesde(desde);
                   }}
                   max={filtroFechaHasta || undefined}
-                  className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${fechaError ? 'border-red-400' : ''}`}
-                  style={{ borderColor: fechaError ? undefined : COLORS.vino }}
+                  className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${fechaError ? 'border-red-400' : 'border-theme-primary'}`}
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Fecha hasta</label>
+                <label className="text-xs font-semibold text-theme-primary-hover">Fecha hasta</label>
                 <input
                   type="date"
                   value={filtroFechaHasta}
@@ -1157,8 +1143,7 @@ const Requisiciones = () => {
                     setFiltroFechaHasta(hasta);
                   }}
                   min={filtroFechaDesde || undefined}
-                  className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${fechaError ? 'border-red-400' : ''}`}
-                  style={{ borderColor: fechaError ? undefined : COLORS.vino }}
+                  className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${fechaError ? 'border-red-400' : 'border-theme-primary'}`}
                 />
               </div>
             </div>
@@ -1310,8 +1295,7 @@ const Requisiciones = () => {
                   {req.estado === 'enviada' && esAdminOFarmacia && permisos.autorizarRequisicion && (
                     <button
                       onClick={() => navigate(`/requisiciones/${req.id}`)}
-                      className="text-white px-3 py-1 rounded text-sm font-semibold flex items-center gap-1 hover:opacity-90"
-                      style={{ backgroundColor: COLORS.vino }}
+                      className="text-white px-3 py-1 rounded text-sm font-semibold flex items-center gap-1 hover:opacity-90 bg-theme-primary"
                     >
                       <FaEdit /> Revisar
                     </button>
@@ -1331,8 +1315,7 @@ const Requisiciones = () => {
                     <button
                       onClick={() => handleSurtir(req.id, req.folio)}
                       disabled={isSubmitting || actionLoading === req.id}
-                      className="text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:opacity-90 disabled:opacity-50"
-                      style={{ backgroundColor: COLORS.vino }}
+                      className="text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:opacity-90 disabled:opacity-50 bg-theme-primary"
                     >
                       <FaBoxOpen /> Surtir
                     </button>
@@ -1413,7 +1396,7 @@ const Requisiciones = () => {
             {/* Header del modal */}
             <div className="p-4 border-b flex items-center justify-between flex-shrink-0">
               <div>
-                <h2 className="text-xl font-bold" style={{ color: COLORS.vino }}>
+                <h2 className="text-xl font-bold text-theme-primary">
                   {editRequisicion ? 'Editar requisición' : 'Nueva requisición'}
                 </h2>
                 <p className="text-sm text-gray-500 mt-1">
@@ -1427,10 +1410,9 @@ const Requisiciones = () => {
                   onClick={() => setVistaCarrito(false)}
                   className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all ${
                     !vistaCarrito 
-                      ? 'text-white' 
+                      ? 'text-white bg-theme-primary' 
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
-                  style={!vistaCarrito ? { backgroundColor: COLORS.vino } : {}}
                 >
                   <FaSearch /> Catálogo
                 </button>
@@ -1438,10 +1420,9 @@ const Requisiciones = () => {
                   onClick={() => setVistaCarrito(true)}
                   className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all relative ${
                     vistaCarrito 
-                      ? 'text-white' 
+                      ? 'text-white bg-theme-primary' 
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
-                  style={vistaCarrito ? { backgroundColor: COLORS.vino } : {}}
                 >
                   <FaShoppingCart /> 
                   Mi Pedido
@@ -1565,8 +1546,7 @@ const Requisiciones = () => {
                                   {loteIdx === 0 ? (
                                     <>
                                       <td 
-                                        className="px-4 py-3 font-bold align-top"
-                                        style={{ color: COLORS.vino }}
+                                        className="px-4 py-3 font-bold align-top text-theme-primary"
                                         rowSpan={grupo.lotes.length}
                                       >
                                         {grupo.producto_clave}
@@ -1622,8 +1602,7 @@ const Requisiciones = () => {
                                       <button
                                         onClick={() => agregarDesdeCatalogo(lote)}
                                         disabled={isSubmitting || stockDisponible <= 0}
-                                        className="px-4 py-1.5 rounded-lg text-white text-xs font-semibold hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 mx-auto"
-                                        style={{ backgroundColor: COLORS.vino }}
+                                        className="px-4 py-1.5 rounded-lg text-white text-xs font-semibold hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 mx-auto bg-theme-primary"
                                       >
                                         <FaPlus /> Agregar
                                       </button>
@@ -1663,8 +1642,7 @@ const Requisiciones = () => {
                       <p className="text-sm mb-4">Agrega productos desde el catálogo</p>
                       <button
                         onClick={() => setVistaCarrito(false)}
-                        className="px-4 py-2 rounded-lg text-white font-semibold"
-                        style={{ backgroundColor: COLORS.vino }}
+                        className="px-4 py-2 rounded-lg text-white font-semibold bg-theme-primary"
                       >
                         <FaSearch className="inline mr-2" /> Ir al catálogo
                       </button>
@@ -1689,7 +1667,7 @@ const Requisiciones = () => {
                               <tr key={`${item.lote}-${idx}`} className="border-t hover:bg-gray-50">
                                 <td className="px-4 py-3">
                                   <div>
-                                    <span className="font-bold text-sm" style={{ color: COLORS.vino }}>
+                                    <span className="font-bold text-sm text-theme-primary">
                                       {item.producto_clave}
                                     </span>
                                     <p className="text-sm text-gray-600 line-clamp-1">{item.descripcion}</p>
@@ -1807,8 +1785,7 @@ const Requisiciones = () => {
                           ? (!permisos?.editarRequisicion ? 'No tienes permisos para editar' : '')
                           : (!permisos?.crearRequisicion ? 'No tienes permisos para crear' : ''))
                   }
-                  className="px-5 py-2 rounded-lg border-2 font-semibold hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  style={{ borderColor: COLORS.vino, color: COLORS.vino }}
+                  className="px-5 py-2 rounded-lg border-2 font-semibold hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 border-theme-primary text-theme-primary"
                 >
                   {isSubmitting ? 'Guardando...' : 'Guardar borrador'}
                 </button>
@@ -1832,8 +1809,7 @@ const Requisiciones = () => {
                               ? (!permisos?.editarRequisicion ? 'No tienes permisos para editar' : '')
                               : (!permisos?.crearRequisicion ? 'No tienes permisos para crear' : '')))
                   }
-                  className="px-5 py-2 rounded-lg text-white font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  style={{ backgroundColor: COLORS.vino }}
+                  className="px-5 py-2 rounded-lg text-white font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 bg-theme-primary"
                 >
                   <FaPaperPlane />
                   {isSubmitting ? 'Enviando...' : 'Guardar y enviar'}

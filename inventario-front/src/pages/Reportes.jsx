@@ -403,9 +403,9 @@ const Reportes = () => {
       />
 
       {/* Panel de Filtros */}
-      <div className="bg-white rounded-xl shadow-lg p-6 border-l-4" style={{ borderLeftColor: COLORS.vino }}>
+      <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 card-theme-border">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold flex items-center gap-2" style={{ color: COLORS.vinoOscuro }}>
+          <h3 className="text-lg font-bold flex items-center gap-2 text-theme-primary-hover">
             <FaFilter />
             Filtros de Reporte
           </h3>
@@ -570,8 +570,7 @@ const Reportes = () => {
           <button
             onClick={cargarReporte}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white font-semibold transition-all hover:scale-105 disabled:opacity-60"
-            style={{ background: `linear-gradient(135deg, ${COLORS.vino} 0%, ${COLORS.vinoOscuro} 100%)` }}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white font-semibold transition-all hover:scale-105 disabled:opacity-60 bg-theme-gradient"
           >
             {loading ? (
               <>
@@ -638,7 +637,7 @@ const Reportes = () => {
       </div>
 
       {/* Tabla de Datos */}
-      <div className="bg-white rounded-xl shadow-lg overflow-hidden border-l-4" style={{ borderLeftColor: COLORS.vino }}>
+      <div className="bg-white rounded-xl shadow-lg overflow-hidden border-l-4 card-theme-border">
         <div className="p-4 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
           <div>
             <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
@@ -659,7 +658,7 @@ const Reportes = () => {
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="text-center">
-                <div className="animate-spin rounded-full h-16 w-16 border-4 border-t-transparent mx-auto mb-4" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }}></div>
+                <div className="spinner-institucional mx-auto mb-4"></div>
                 <p className="text-gray-600 font-semibold">Cargando reporte...</p>
               </div>
             </div>
@@ -671,7 +670,7 @@ const Reportes = () => {
             </div>
           ) : (
             <table className="w-full text-sm">
-              <thead style={{ background: `linear-gradient(135deg, ${COLORS.vino} 0%, ${COLORS.vinoOscuro} 100%)` }}>
+              <thead className="thead-theme">
                 <tr>
                   {columnas.map((col) => (
                     <th 

@@ -621,8 +621,7 @@ function Usuarios() {
           type="button"
           onClick={() => handleOpenModal()}
           disabled={exportLoading || importLoading}
-          className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white transition disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ color: COLORS.vino }}
+          className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white transition disabled:opacity-50 disabled:cursor-not-allowed text-theme-primary"
         >
           <FaPlus /> Nuevo Usuario
         </button>
@@ -649,8 +648,7 @@ function Usuarios() {
               placeholder="Buscar usuario, email, nombre..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
-              style={{ focusRing: COLORS.vino }}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent focus:ring-theme-primary"
             />
           </div>
           <div>
@@ -827,7 +825,7 @@ function Usuarios() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white px-6 py-4 border-b flex justify-between items-center rounded-t-2xl">
-              <h3 className="text-xl font-bold" style={{ color: COLORS.vino }}>
+              <h3 className="text-xl font-bold text-theme-primary">
                 {editingUsuario ? 'Editar Usuario' : 'Nuevo Usuario'}
               </h3>
               <button onClick={handleCloseModal} className="text-gray-400 hover:text-gray-600">
@@ -1033,8 +1031,7 @@ function Usuarios() {
                   <button
                     type="button"
                     onClick={() => setShowPermisosAvanzados(!showPermisosAvanzados)}
-                    className="flex items-center gap-2 text-sm font-semibold mb-3"
-                    style={{ color: COLORS.vino }}
+                    className="flex items-center gap-2 text-sm font-semibold mb-3 text-theme-primary"
                   >
                     <FaShieldAlt />
                     {showPermisosAvanzados ? '' : ''} Configurar Permisos Personalizados
@@ -1127,7 +1124,7 @@ function Usuarios() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
             <div className="px-6 py-4 border-b flex justify-between items-center">
-              <h3 className="text-xl font-bold" style={{ color: COLORS.vino }}>
+              <h3 className="text-xl font-bold text-theme-primary">
                 Cambiar Contraseña
               </h3>
               <button onClick={() => setShowPasswordModal(false)} className="text-gray-400 hover:text-gray-600">

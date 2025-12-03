@@ -1370,7 +1370,7 @@ const Productos = () => {
 
         <div className="py-12 text-center">
 
-          <div className="animate-spin mx-auto mb-3 h-10 w-10 border-4 border-white border-t-transparent rounded-full" style={{ borderColor: `${COLORS.vino}33`, borderTopColor: COLORS.vino }} />
+          <div className="animate-spin mx-auto mb-3 h-10 w-10 border-4 spinner-institucional rounded-full" />
 
           <p className="text-sm text-gray-600">Cargando productos...</p>
 
@@ -1396,9 +1396,7 @@ const Productos = () => {
 
             onClick={fetchProductos}
 
-            className="mt-4 px-4 py-2 rounded-lg text-white"
-
-            style={{ background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})` }}
+            className="mt-4 px-4 py-2 rounded-lg text-white bg-theme-gradient"
 
           >
 
@@ -1440,15 +1438,7 @@ const Productos = () => {
 
         <table className="min-w-full divide-y divide-gray-200">
 
-          <thead
-
-            style={{
-
-              background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})`,
-
-            }}
-
-          >
+          <thead className="bg-theme-gradient">
 
             <tr>
 
@@ -1632,13 +1622,7 @@ const Productos = () => {
 
       <div
 
-        className="rounded-2xl p-6 text-white shadow-lg"
-
-        style={{
-
-          background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})`,
-
-        }}
+        className="rounded-2xl p-6 text-white shadow-lg bg-theme-gradient"
 
       >
 
@@ -1678,11 +1662,7 @@ const Productos = () => {
                 type="button"
                 onClick={handleExportar}
                 disabled={exportLoading}
-                className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{
-                  background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})`,
-                  border: '1px solid rgba(255,255,255,0.4)'
-                }}
+                className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
               >
                 {exportLoading ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent inline-block" />
@@ -1697,11 +1677,7 @@ const Productos = () => {
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={importLoading}
-                className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{
-                  background: `linear-gradient(135deg, ${COLORS.guinda}, ${COLORS.vino})`,
-                  border: '1px solid rgba(255,255,255,0.4)'
-                }}
+                className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
               >
                 {importLoading ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent inline-block" />
@@ -1723,8 +1699,7 @@ const Productos = () => {
                 permission="crearProducto"
                 type="button"
                 onClick={() => openModal()}
-                className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white"
-                style={{ color: COLORS.vino }}
+                className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white text-theme-primary"
               >
                 <FaPlus />
                 Nuevo Producto
@@ -1753,7 +1728,7 @@ const Productos = () => {
 
         >
 
-          <FaFilter color={COLORS.vino} />
+          <FaFilter className="text-theme-primary" />
 
           {showFiltersMenu ? 'Ocultar filtros' : 'Mostrar filtros'}
 
@@ -1771,27 +1746,19 @@ const Productos = () => {
 
           <div
 
-            className="flex items-center gap-3 px-5 py-3"
-
-            style={{
-
-              borderBottom: `3px solid ${COLORS.vino}`,
-
-              background: COLORS.grisSuave,
-
-            }}
+            className="flex items-center gap-3 px-5 py-3 border-b-[3px] border-theme-primary bg-gray-50"
 
           >
 
             <div className="bg-white p-2 rounded-lg">
 
-              <FaFilter color={COLORS.vino} />
+              <FaFilter className="text-theme-primary" />
 
             </div>
 
             <div>
 
-              <p className="text-sm font-semibold" style={{ color: COLORS.guinda }}>Filtros avanzados</p>
+              <p className="text-sm font-semibold text-theme-primary-hover">Filtros avanzados</p>
 
               <p className="text-xs text-gray-500">Aplique criterios sin ocupar espacio en pantalla</p>
 
@@ -1807,13 +1774,11 @@ const Productos = () => {
 
               <div className="lg:col-span-2">
 
-                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Búsqueda</label>
+                <label className="text-xs font-semibold text-theme-primary-hover">Búsqueda</label>
 
                 <div
 
-                  className="mt-1 flex items-center rounded-lg border px-3 py-2 focus-within:ring-2"
-
-                  style={{ borderColor: COLORS.vino }}
+                  className="mt-1 flex items-center rounded-lg border px-3 py-2 focus-within:ring-2 border-theme-primary"
 
                 >
 
@@ -1839,7 +1804,7 @@ const Productos = () => {
 
               <div>
 
-                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Estado</label>
+                <label className="text-xs font-semibold text-theme-primary-hover">Estado</label>
 
                 <select
 
@@ -1849,9 +1814,7 @@ const Productos = () => {
 
                   onChange={(e) => handleFilterChange('estado', e.target.value)}
 
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
-
-                  style={{ borderColor: COLORS.vino }}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
 
                 >
 
@@ -1869,7 +1832,7 @@ const Productos = () => {
 
               <div>
 
-                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Unidad</label>
+                <label className="text-xs font-semibold text-theme-primary-hover">Unidad</label>
 
                 <select
 
@@ -1877,9 +1840,7 @@ const Productos = () => {
 
                   onChange={(e) => handleFilterChange('unidad', e.target.value)}
 
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
-
-                  style={{ borderColor: COLORS.vino }}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
 
                 >
 
@@ -1901,7 +1862,7 @@ const Productos = () => {
 
               <div>
 
-                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Nivel Inventario</label>
+                <label className="text-xs font-semibold text-theme-primary-hover">Nivel Inventario</label>
 
                 <select
 
@@ -1909,9 +1870,7 @@ const Productos = () => {
 
                   onChange={(e) => handleFilterChange('stock', e.target.value)}
 
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
-
-                  style={{ borderColor: COLORS.vino }}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
 
                 >
 
@@ -1983,9 +1942,7 @@ const Productos = () => {
 
             <div
 
-              className="flex items-center justify-between rounded-t-2xl px-6 py-4 text-white"
-
-              style={{ background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})` }}
+              className="flex items-center justify-between rounded-t-2xl px-6 py-4 text-white bg-theme-gradient"
 
             >
 
@@ -2007,7 +1964,7 @@ const Productos = () => {
 
                 <div>
 
-                  <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Clave *</label>
+                  <label className="text-xs font-semibold text-theme-primary-hover">Clave *</label>
 
                   <input
 
@@ -2019,9 +1976,7 @@ const Productos = () => {
 
                     maxLength={50}
 
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.clave ? 'border-red-500' : ''}`}
-
-                    style={{ borderColor: formErrors.clave ? COLORS.danger : COLORS.vino }}
+                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.clave ? 'border-red-500' : 'border-theme-primary'}`}
 
                   />
 
@@ -2031,7 +1986,7 @@ const Productos = () => {
 
                 <div>
 
-                  <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Unidad *</label>
+                  <label className="text-xs font-semibold text-theme-primary-hover">Unidad *</label>
 
                   <select
 
@@ -2039,9 +1994,7 @@ const Productos = () => {
 
                     onChange={(e) => setFormData({ ...formData, unidad_medida: e.target.value })}
 
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.unidad_medida ? 'border-red-500' : ''}`}
-
-                    style={{ borderColor: formErrors.unidad_medida ? COLORS.danger : COLORS.vino }}
+                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.unidad_medida ? 'border-red-500' : 'border-theme-primary'}`}
 
                   >
 
@@ -2065,7 +2018,7 @@ const Productos = () => {
 
               <div>
 
-                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Descripción *</label>
+                <label className="text-xs font-semibold text-theme-primary-hover">Descripción *</label>
 
                 <textarea
 
@@ -2077,9 +2030,7 @@ const Productos = () => {
 
                   maxLength={300}
 
-                  className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.descripcion ? 'border-red-500' : ''}`}
-
-                  style={{ borderColor: formErrors.descripcion ? COLORS.danger : COLORS.vino }}
+                  className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.descripcion ? 'border-red-500' : 'border-theme-primary'}`}
 
                 />
 
@@ -2097,7 +2048,7 @@ const Productos = () => {
 
                 <div>
 
-                  <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Precio unitario *</label>
+                  <label className="text-xs font-semibold text-theme-primary-hover">Precio unitario *</label>
 
                   <input
 
@@ -2111,9 +2062,7 @@ const Productos = () => {
 
                     onChange={(e) => setFormData({ ...formData, precio_unitario: e.target.value })}
 
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.precio_unitario ? 'border-red-500' : ''}`}
-
-                    style={{ borderColor: formErrors.precio_unitario ? COLORS.danger : COLORS.vino }}
+                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.precio_unitario ? 'border-red-500' : 'border-theme-primary'}`}
 
                   />
 
@@ -2123,7 +2072,7 @@ const Productos = () => {
 
                 <div>
 
-                  <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Inventario mínimo *</label>
+                  <label className="text-xs font-semibold text-theme-primary-hover">Inventario mínimo *</label>
 
                   <input
 
@@ -2137,9 +2086,7 @@ const Productos = () => {
 
                     onChange={(e) => setFormData({ ...formData, stock_minimo: e.target.value })}
 
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.stock_minimo ? 'border-red-500' : ''}`}
-
-                    style={{ borderColor: formErrors.stock_minimo ? COLORS.danger : COLORS.vino }}
+                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.stock_minimo ? 'border-red-500' : 'border-theme-primary'}`}
 
                   />
 
@@ -2149,7 +2096,7 @@ const Productos = () => {
 
               </div>
 
-              <div className="flex items-center gap-2 rounded-lg border px-4 py-3" style={{ borderColor: COLORS.vino }}>
+              <div className="flex items-center gap-2 rounded-lg border px-4 py-3 border-theme-primary">
 
                 <input
 
@@ -2185,9 +2132,7 @@ const Productos = () => {
                   type="submit"
                   disabled={savingProduct}
 
-                  className="rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-
-                  style={{ background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})` }}
+                  className="rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 bg-theme-gradient"
 
                 >
                   {savingProduct && (
@@ -2217,9 +2162,7 @@ const Productos = () => {
 
             <div
 
-              className="flex items-center justify-between rounded-t-2xl px-6 py-4 text-white"
-
-              style={{ background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})` }}
+              className="flex items-center justify-between rounded-t-2xl px-6 py-4 text-white bg-theme-gradient"
 
             >
 
