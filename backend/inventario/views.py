@@ -224,28 +224,10 @@ class CustomPagination(PageNumberPagination):
             self.request = request
             return list(self.page)
 
-class UserSerializer(serializers.ModelSerializer):
-    grupos = serializers.SerializerMethodField()
-    rol = serializers.SerializerMethodField()
+# ISS-002: UserSerializer eliminado - usar el de core.serializers
+# from core.serializers import UserSerializer (si se necesita)
 
-    class Meta:
-        model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'is_active', 'is_staff', 'is_superuser', 'grupos', 'rol', 'date_joined']
-        read_only_fields = ['id', 'date_joined']
-
-    def get_grupos(self, obj):
-        return [g.name for g in obj.groups.all()]
-
-    def get_rol(self, obj):
-        if obj.is_superuser:
-            return 'SUPERUSER'
-        grupos = obj.groups.all()
-        if grupos.exists():
-            return grupos.first().name
-        return 'USUARIO'
-
-# NOTA: UserViewSet est� en core/views.py - importar desde all�
-# Clase UserViewSet eliminada (duplicada, ya existe en core/views.py)
+# NOTA: UserViewSet está en core/views.py - importar desde allí
 
 class ProductoViewSet(viewsets.ModelViewSet):
     queryset = Producto.objects.select_related('created_by').all()
@@ -371,7 +353,8 @@ class ProductoViewSet(viewsets.ModelViewSet):
             )
         except Exception as e:
             # traceback removido por seguridad (ISS-008)
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"Error al crear producto: {str(e)}", exc_info=True)
+            return Response({'error': 'Error al crear producto. Verifique los datos ingresados.'}, status=status.HTTP_400_BAD_REQUEST)
     
     def update(self, request, *args, **kwargs):
         """
@@ -391,7 +374,8 @@ class ProductoViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         except Exception as e:
             # traceback removido por seguridad (ISS-008)
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"Error al actualizar producto: {str(e)}", exc_info=True)
+            return Response({'error': 'Error al actualizar producto. Verifique los datos ingresados.'}, status=status.HTTP_400_BAD_REQUEST)
     
     def destroy(self, request, *args, **kwargs):
         """

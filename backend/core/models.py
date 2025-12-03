@@ -23,6 +23,22 @@ from .constants import (
 )
 import logging
 
+
+# ISS-016: Validador de tamaño de archivo para imágenes
+def validate_image_max_size(value, max_size_kb=500):
+    """Valida que una imagen no exceda el tamaño máximo (default 500KB)"""
+    if value:
+        max_size_bytes = max_size_kb * 1024
+        if value.size > max_size_bytes:
+            raise ValidationError(
+                f'El archivo es demasiado grande. Máximo permitido: {max_size_kb}KB'
+            )
+
+
+def validate_logo_size(value):
+    """Validador específico para logos (max 500KB)"""
+    validate_image_max_size(value, max_size_kb=500)
+
 logger = logging.getLogger(__name__)
 
 
@@ -989,6 +1005,11 @@ class Notificacion(models.Model):
     class Meta:
         db_table = 'notificaciones'
         ordering = ['-fecha_creacion']
+        # ISS-010: Índices para consultas frecuentes
+        indexes = [
+            models.Index(fields=['usuario', 'leida', '-fecha_creacion'], name='idx_notif_user_read'),
+            models.Index(fields=['usuario', '-fecha_creacion'], name='idx_notif_user_date'),
+        ]
 
     def __str__(self):
         return f"{self.titulo} - {self.usuario.username}"
@@ -1058,6 +1079,7 @@ class ConfiguracionSistema(models.Model):
         upload_to='configuracion/logos/',
         null=True,
         blank=True,
+        validators=[validate_logo_size],  # ISS-016: Validar tamaño
         help_text="Logo para el header de la interfaz (PNG/JPG, max 500KB)"
     )
     
@@ -1066,6 +1088,7 @@ class ConfiguracionSistema(models.Model):
         upload_to='configuracion/logos/',
         null=True,
         blank=True,
+        validators=[validate_logo_size],  # ISS-016: Validar tamaño
         help_text="Logo o fondo institucional para PDFs (PNG, recomendado 800x1200px)"
     )
     

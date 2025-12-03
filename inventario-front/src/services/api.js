@@ -21,6 +21,7 @@ const isDev = import.meta.env.DEV || import.meta.env.MODE === 'development';
 
 // Flag para detectar configuración inválida
 let apiConfigError = null;
+let httpInsecureError = false;
 
 // Determinar baseURL
 let apiBaseUrl;
@@ -42,17 +43,21 @@ if (configuredUrl) {
   apiBaseUrl = 'https://api-no-configurada.error';
 }
 
-// Validar HTTPS en producción
+// ISS-005: Validar HTTPS en producción - BLOQUEAR si no es seguro
 if (!isDev && apiBaseUrl && !apiBaseUrl.startsWith('https://')) {
+  httpInsecureError = true;
+  apiConfigError = 'ERROR DE SEGURIDAD: La API debe usar HTTPS en producción. ' +
+    'Los datos no están protegidos. Contacte al administrador.';
   console.error(
-    '[API] ADVERTENCIA DE SEGURIDAD: La API no usa HTTPS en producción. ' +
+    '[API] ERROR DE SEGURIDAD: La API no usa HTTPS en producción. ' +
     'Esto expone tokens y datos sensibles. URL actual:', apiBaseUrl
   );
 }
 
-// Exportar función para verificar estado de configuración (ISS-001)
+// Exportar función para verificar estado de configuración (ISS-001, ISS-005)
 export const getApiConfigError = () => apiConfigError;
 export const isApiConfigured = () => !apiConfigError;
+export const isHttpInsecure = () => httpInsecureError;
 
 const apiClient = axios.create({
   baseURL: `${apiBaseUrl}/`,

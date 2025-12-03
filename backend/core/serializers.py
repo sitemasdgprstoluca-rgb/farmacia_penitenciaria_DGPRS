@@ -539,6 +539,10 @@ class ProductoSerializer(serializers.ModelSerializer):
         """Valida precio: debe ser positivo y con máximo 2 decimales"""
         from decimal import Decimal, InvalidOperation
         
+        # ISS-006: Validar None explícitamente antes de conversión
+        if value is None:
+            raise serializers.ValidationError("El precio es requerido")
+        
         # Convertir a Decimal si es float o string (ISS-006)
         if not isinstance(value, Decimal):
             try:

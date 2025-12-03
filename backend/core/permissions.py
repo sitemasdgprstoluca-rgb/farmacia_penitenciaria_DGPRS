@@ -127,10 +127,21 @@ class IsCentroUser(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         if _has_role(request.user, ['admin', 'farmacia']):
             return True
-        if hasattr(obj, 'centro'):
-            user_centro = getattr(request.user, 'centro', None)
+        
+        user_centro = getattr(request.user, 'centro', None)
+        if not user_centro:
+            return False  # ISS-012: Usuario sin centro no puede acceder a objetos
+        
+        # ISS-012: Validar por centro del objeto
+        if hasattr(obj, 'centro') and obj.centro:
             return obj.centro == user_centro
-        return False
+        
+        # ISS-012: Validar por usuario_solicita (para requisiciones)
+        if hasattr(obj, 'usuario_solicita'):
+            solicita_centro = getattr(obj.usuario_solicita, 'centro', None)
+            return solicita_centro == user_centro
+        
+        return False  # ISS-012: Por defecto denegar si no hay forma de validar
 
 
 class CanAuthorizeRequisicion(permissions.BasePermission):
