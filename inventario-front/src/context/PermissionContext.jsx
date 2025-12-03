@@ -215,27 +215,11 @@ const calcularPermisos = (userData, userGroups) => {
   const isCentroUser = role === 'CENTRO';
   const isVistaUser = role === 'VISTA';
 
-  // Si el backend envía permisos calculados, usarlos directamente
-  // Esto incluye los permisos personalizados por el admin
-  if (userData?.permisos && typeof userData.permisos === 'object') {
-    return {
-      role,
-      isSuperuser,
-      isAdmin,
-      isFarmaciaAdmin,
-      isCentroUser,
-      isVistaUser,
-      groupNames,
-      ...userData.permisos,
-      verPerfil: true, // Siempre puede ver su perfil
-      esSuperusuario: isSuperuser, // Siempre calcular desde is_superuser
-    };
-  }
-
-  // Fallback: usar permisos por rol si el backend no envió permisos
+  // Obtener permisos base del rol
   const basePerms = PERMISOS_POR_ROL[role] || PERMISOS_POR_ROL.SIN_ROL;
 
-  return {
+  // Flags derivados que siempre se calculan
+  const flagsDerivados = {
     role,
     isSuperuser,
     isAdmin,
@@ -243,7 +227,26 @@ const calcularPermisos = (userData, userGroups) => {
     isCentroUser,
     isVistaUser,
     groupNames,
+    verPerfil: true, // Siempre puede ver su perfil
+    esSuperusuario: isSuperuser, // Siempre calcular desde is_superuser
+    // Permisos especiales que dependen del rol, no del backend
+    configurarTema: isAdmin || isFarmaciaAdmin, // Solo ADMIN y FARMACIA pueden configurar tema
+  };
+
+  // Si el backend envía permisos calculados, mezclarlos con los base y flags
+  // Los permisos del backend tienen prioridad sobre los base (excepto flags derivados)
+  if (userData?.permisos && typeof userData.permisos === 'object') {
+    return {
+      ...basePerms,           // Permisos base del rol (fallback)
+      ...userData.permisos,   // Permisos del backend (override)
+      ...flagsDerivados,      // Flags derivados (siempre calculados)
+    };
+  }
+
+  // Fallback: usar permisos por rol si el backend no envió permisos
+  return {
     ...basePerms,
+    ...flagsDerivados,
   };
 };
 
