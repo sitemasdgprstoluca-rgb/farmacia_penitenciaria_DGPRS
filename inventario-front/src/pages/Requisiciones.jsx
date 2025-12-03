@@ -848,6 +848,12 @@ const Requisiciones = () => {
   const handleDescargarPDF = async (id, tipo, folio) => {
     if (actionLoading === `pdf-${id}`) return; // Evitar doble clic
     
+    // Guard de permisos - validar antes de hacer la petición
+    if (!permisos?.descargarHojaRecoleccion) {
+      toast.error('No tienes permiso para descargar PDFs');
+      return;
+    }
+    
     setActionLoading(`pdf-${id}`);
     try {
       let response;

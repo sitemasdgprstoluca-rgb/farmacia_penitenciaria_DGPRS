@@ -41,6 +41,7 @@ function Layout() {
     if (loggingOut) return;
     setLoggingOut(true);
     
+    let navegacionExitosa = false;
     try {
       const refresh = localStorage.getItem("refresh_token");
       await authAPI.logout({ refresh });
@@ -60,12 +61,21 @@ function Layout() {
       localStorage.removeItem("user");
       try {
         navigate("/login");
+        navegacionExitosa = true;
       } catch (navError) {
         // Si la navegación falla por algún motivo, forzar recarga
         console.error("Error navegando al login:", navError);
-        window.location.href = "/login";
+        try {
+          window.location.href = "/login";
+          navegacionExitosa = true;
+        } catch (fallbackError) {
+          console.error("Error en fallback de navegación:", fallbackError);
+        }
       }
-      // No resetear loggingOut porque ya navegamos
+      // Resetear loggingOut solo si la navegación falló completamente
+      if (!navegacionExitosa) {
+        setLoggingOut(false);
+      }
     }
   };
 
