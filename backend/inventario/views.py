@@ -1329,10 +1329,15 @@ class LoteViewSet(viewsets.ModelViewSet):
         elif activo == 'false':
             queryset = queryset.filter(deleted_at__isnull=False)
         
-        # Busqueda por numero de lote
+        # Busqueda por numero de lote, clave o descripcion producto (ISS-003)
         search = self.request.query_params.get('search')
         if search and search.strip():
-            queryset = queryset.filter(numero_lote__icontains=search)
+            search_term = search.strip()
+            queryset = queryset.filter(
+                Q(numero_lote__icontains=search_term) |
+                Q(producto__clave__icontains=search_term) |
+                Q(producto__descripcion__icontains=search_term)
+            )
         
         # Filtrar por estado de caducidad seg�n especificaci�n SIFP:
         # ?? Normal: > 6 meses (180 d�as)

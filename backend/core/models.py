@@ -737,33 +737,39 @@ class Requisicion(models.Model):
         return len(self.get_transiciones_disponibles()) == 0
     
     def save(self, *args, **kwargs):
-        """Auto-generar folio si no existe"""
+        """Auto-generar folio si no existe (ISS-010: con protección contra race conditions)"""
         if not self.folio:
             # Generar folio: REQ-CENTRO-YYYYMMDD-NNNN
             from django.utils import timezone
+            from django.db import transaction
+            
             today = timezone.now()
             fecha = today.strftime('%Y%m%d')
             centro_codigo = self.centro.clave[:3] if self.centro else 'GEN'
+            prefijo = f'REQ-{centro_codigo}-{fecha}'
             
-            # Obtener último número del día
-            ultima = Requisicion.objects.filter(
-                folio__startswith=f'REQ-{centro_codigo}-{fecha}'
-            ).order_by('-folio').first()
-            
-            if ultima:
-                # Extraer número y sumar 1
-                try:
-                    ultimo_num = int(ultima.folio.split('-')[-1])
-                    nuevo_num = ultimo_num + 1
-                except (ValueError, IndexError):
+            # ISS-010: Usar transacción y select_for_update para evitar race conditions
+            with transaction.atomic():
+                # Bloquear filas existentes para este prefijo mientras calculamos
+                ultima = Requisicion.objects.select_for_update().filter(
+                    folio__startswith=prefijo
+                ).order_by('-folio').first()
+                
+                if ultima:
+                    # Extraer número y sumar 1
+                    try:
+                        ultimo_num = int(ultima.folio.split('-')[-1])
+                        nuevo_num = ultimo_num + 1
+                    except (ValueError, IndexError):
+                        nuevo_num = 1
+                else:
                     nuevo_num = 1
-            else:
-                nuevo_num = 1
-            
-            self.folio = f'REQ-{centro_codigo}-{fecha}-{nuevo_num:04d}'
-            logger.info(f"Folio generado automáticamente: {self.folio}")
-        
-        super().save(*args, **kwargs)
+                
+                self.folio = f'{prefijo}-{nuevo_num:04d}'
+                logger.info(f"Folio generado automáticamente: {self.folio}")
+                super().save(*args, **kwargs)
+        else:
+            super().save(*args, **kwargs)
 
 
 class DetalleRequisicion(models.Model):
@@ -1538,29 +1544,34 @@ class HojaRecoleccion(models.Model):
         return f"Hoja {self.folio_hoja} - {self.requisicion.folio}"
     
     def save(self, *args, **kwargs):
-        """Auto-generar folio si no existe"""
+        """Auto-generar folio si no existe (ISS-010: con protección contra race conditions)"""
         if not self.folio_hoja:
             from django.utils import timezone
+            from django.db import transaction
+            
             today = timezone.now()
             fecha = today.strftime('%Y%m%d')
+            prefijo = f'HR-{fecha}'
             
-            # Obtener último número del día
-            ultima = HojaRecoleccion.objects.filter(
-                folio_hoja__startswith=f'HR-{fecha}'
-            ).order_by('-folio_hoja').first()
-            
-            if ultima:
-                try:
-                    ultimo_num = int(ultima.folio_hoja.split('-')[-1])
-                    nuevo_num = ultimo_num + 1
-                except (ValueError, IndexError):
+            # ISS-010: Usar transacción y select_for_update para evitar race conditions
+            with transaction.atomic():
+                ultima = HojaRecoleccion.objects.select_for_update().filter(
+                    folio_hoja__startswith=prefijo
+                ).order_by('-folio_hoja').first()
+                
+                if ultima:
+                    try:
+                        ultimo_num = int(ultima.folio_hoja.split('-')[-1])
+                        nuevo_num = ultimo_num + 1
+                    except (ValueError, IndexError):
+                        nuevo_num = 1
+                else:
                     nuevo_num = 1
-            else:
-                nuevo_num = 1
-            
-            self.folio_hoja = f'HR-{fecha}-{nuevo_num:04d}'
-        
-        super().save(*args, **kwargs)
+                
+                self.folio_hoja = f'{prefijo}-{nuevo_num:04d}'
+                super().save(*args, **kwargs)
+        else:
+            super().save(*args, **kwargs)
     
     @classmethod
     def generar_hash(cls, contenido_dict):

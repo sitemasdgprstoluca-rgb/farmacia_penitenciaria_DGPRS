@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   requisicionesAPI,
@@ -131,83 +131,86 @@ const Requisiciones = () => {
     // El catálogo solo se invalida con forzarRecarga=true o al cambiar de centro
   }, [user?.centro?.id]);
   
-  // Cargar catálogo de lotes con stock - con caché y paginación optimizada
-  const cargarCatalogoLotes = useCallback(async (forzarRecarga = false) => {
-    // Si ya está cargado y no se fuerza, no recargar
-    if (catalogoCargado && !forzarRecarga && catalogoLotes.length > 0) {
-      return;
-    }
-    
+  // Ref para debounce de búsqueda (ISS-003)
+  const searchTimeoutRef = useRef(null);
+  const [totalLotesDisponibles, setTotalLotesDisponibles] = useState(0);
+  
+  // ISS-003: Función optimizada que busca en servidor en lugar de cargar todo
+  const buscarLotesServidor = useCallback(async (termino = '') => {
     setLoadingCatalogo(true);
     try {
-      // Cargar lotes disponibles con stock > 0, no vencidos
       const baseParams = {
         stock_min: 1,
-        solo_disponibles: 'true',  // Solo lotes disponibles y no vencidos
+        solo_disponibles: 'true',
         ordering: 'producto__descripcion,fecha_caducidad',
-        page_size: 500, // Páginas grandes para minimizar requests
+        page_size: 50, // Solo 50 resultados a la vez
       };
       
-      // CRÍTICO: Filtrar lotes según el rol del usuario
+      // Filtrar por centro según rol
       if (permisos.isFarmaciaAdmin || permisos.isAdmin) {
-        // Admin/Farmacia ven lotes de farmacia central
         baseParams.centro = 'central';
       } else if (user?.centro?.id) {
-        // Usuarios de centro SOLO ven lotes de su centro (aislamiento de datos)
         baseParams.centro = user.centro.id;
       } else {
-        // Sin centro definido, no cargar lotes (seguridad)
         console.warn('Usuario sin centro definido, no se cargan lotes');
         setCatalogoLotes([]);
         setLoadingCatalogo(false);
         return;
       }
       
-      // Cargar lotes usando paginación basada en 'next' URL del backend
-      // Esto maneja correctamente paginación offset y cursor
-      let allLotes = [];
-      let currentPage = 1;
-      let hasMore = true;
-      const MAX_PAGES = 20; // Límite de seguridad (10,000 lotes máximo)
-      const TIMEOUT_MS = 30000; // 30 segundos máximo para cargar catálogo
-      const startTime = Date.now();
-      
-      while (hasMore && currentPage <= MAX_PAGES) {
-        // Verificar timeout
-        if (Date.now() - startTime > TIMEOUT_MS) {
-          console.warn('Timeout cargando catálogo de lotes, usando resultados parciales');
-          break;
-        }
-        
-        const params = { ...baseParams, page: currentPage };
-        const resp = await lotesAPI.getAll(params);
-        const lotes = resp.data.results || resp.data || [];
-        
-        if (lotes.length === 0) {
-          hasMore = false;
-        } else {
-          allLotes = [...allLotes, ...lotes];
-          // Verificar si hay más páginas usando 'next' del backend
-          hasMore = !!resp.data.next;
-          currentPage++;
-        }
+      // Agregar término de búsqueda si existe
+      if (termino.trim()) {
+        baseParams.search = termino.trim();
       }
       
-      setCatalogoLotes(allLotes);
+      const resp = await lotesAPI.getAll(baseParams);
+      const lotes = resp.data.results || resp.data || [];
+      const total = resp.data.count || lotes.length;
+      
+      setCatalogoLotes(lotes);
+      setTotalLotesDisponibles(total);
       setCatalogoCargado(true);
-      
-      // Log informativo si se truncó
-      if (currentPage > MAX_PAGES) {
-        console.warn(`Catálogo truncado a ${MAX_PAGES} páginas (${allLotes.length} lotes)`);
-      }
     } catch (error) {
-      console.error('Error cargando catálogo de lotes:', error);
-      toast.error('Error al cargar catálogo de lotes');
+      console.error('Error buscando lotes:', error);
+      toast.error('Error al buscar lotes');
       setCatalogoLotes([]);
     } finally {
       setLoadingCatalogo(false);
     }
-  }, [permisos.isFarmaciaAdmin, permisos.isAdmin, user?.centro?.id, catalogoCargado, catalogoLotes.length]);
+  }, [permisos.isFarmaciaAdmin, permisos.isAdmin, user?.centro?.id]);
+  
+  // ISS-003: Cargar catálogo inicial (solo primera página)
+  const cargarCatalogoLotes = useCallback(async (forzarRecarga = false) => {
+    // Si ya está cargado y no se fuerza, no recargar
+    if (catalogoCargado && !forzarRecarga && catalogoLotes.length > 0) {
+      return;
+    }
+    await buscarLotesServidor('');
+  }, [catalogoCargado, catalogoLotes.length, buscarLotesServidor]);
+  
+  // ISS-003: Handler con debounce para búsqueda en servidor
+  const handleCatalogoBusquedaChange = useCallback((valor) => {
+    setCatalogoBusqueda(valor);
+    
+    // Cancelar timeout anterior
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    // Debounce de 300ms para evitar muchas requests
+    searchTimeoutRef.current = setTimeout(() => {
+      buscarLotesServidor(valor);
+    }, 300);
+  }, [buscarLotesServidor]);
+  
+  // Limpiar timeout al desmontar
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const cargarCatalogos = useCallback(async () => {
     try {
@@ -690,18 +693,11 @@ const Requisiciones = () => {
     });
   };
   
-  // Filtrar catálogo por búsqueda
+  // ISS-003: catalogoFiltrado ahora usa resultados del servidor directamente
+  // La búsqueda se hace en el servidor con debounce, no en cliente
   const catalogoFiltrado = useMemo(() => {
-    if (!catalogoBusqueda.trim()) return catalogoLotes;
-    
-    const busqueda = catalogoBusqueda.toLowerCase();
-    return catalogoLotes.filter((lote) => 
-      lote.producto_clave?.toLowerCase().includes(busqueda) ||
-      lote.producto_descripcion?.toLowerCase().includes(busqueda) ||
-      lote.producto_nombre?.toLowerCase().includes(busqueda) ||
-      lote.numero_lote?.toLowerCase().includes(busqueda)
-    );
-  }, [catalogoLotes, catalogoBusqueda]);
+    return catalogoLotes; // Ya viene filtrado del servidor
+  }, [catalogoLotes]);
   
   // Agrupar lotes por producto para mejor visualización
   const catalogoAgrupado = useMemo(() => {
@@ -1450,7 +1446,7 @@ const Requisiciones = () => {
               {/* Vista de Catálogo */}
               {!vistaCarrito ? (
                 <div className="flex-1 flex flex-col min-h-0">
-                  {/* Buscador del catálogo */}
+                  {/* Buscador del catálogo - ISS-003: búsqueda en servidor con debounce */}
                   <div className="mb-4 flex-shrink-0">
                     <div className="relative">
                       <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -1458,19 +1454,25 @@ const Requisiciones = () => {
                         type="text"
                         placeholder="Buscar por clave, descripción o número de lote..."
                         value={catalogoBusqueda}
-                        onChange={(e) => setCatalogoBusqueda(e.target.value)}
+                        onChange={(e) => handleCatalogoBusquedaChange(e.target.value)}
                         className="w-full border rounded-lg pl-10 pr-4 py-3 text-sm"
                         autoFocus
                       />
                       {catalogoBusqueda && (
                         <button
-                          onClick={() => setCatalogoBusqueda('')}
+                          onClick={() => handleCatalogoBusquedaChange('')}
                           className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                         >
                           <FaTimes />
                         </button>
                       )}
                     </div>
+                    {/* Indicador de resultados del servidor */}
+                    {totalLotesDisponibles > catalogoLotes.length && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Mostrando {catalogoLotes.length} de {totalLotesDisponibles} lotes. Escribe para buscar más específico.
+                      </p>
+                    )}
                   </div>
 
                   {/* Lista del catálogo */}
