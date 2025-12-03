@@ -28,6 +28,7 @@ import {
 function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [loggingOut, setLoggingOut] = useState(false); // Estado para evitar clics múltiples en logout
   const location = useLocation();
   const navigate = useNavigate();
   const { user, permisos, getRolPrincipal } = usePermissions();
@@ -36,6 +37,10 @@ function Layout() {
   const tienePermisoNotificaciones = permisos?.verNotificaciones;
 
   const handleLogout = async () => {
+    // Evitar múltiples clics durante el logout
+    if (loggingOut) return;
+    setLoggingOut(true);
+    
     try {
       const refresh = localStorage.getItem("refresh_token");
       await authAPI.logout({ refresh });
@@ -54,6 +59,7 @@ function Layout() {
       localStorage.removeItem("refresh_token");
       localStorage.removeItem("user");
       navigate("/login");
+      // No resetear loggingOut porque ya navegamos
     }
   };
 
@@ -204,13 +210,14 @@ function Layout() {
         >
           <button
             onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg text-white font-bold transition-all"
+            disabled={loggingOut}
+            className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg text-white font-bold transition-all disabled:opacity-60 disabled:cursor-not-allowed"
             style={{ backgroundColor: "rgba(255,255,255,0.15)" }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.25)")}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.15)")}
+            onMouseEnter={(e) => !loggingOut && (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.25)")}
+            onMouseLeave={(e) => !loggingOut && (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.15)")}
           >
-            <FaSignOutAlt size={20} />
-            <span>Cerrar Sesión</span>
+            <FaSignOutAlt size={20} className={loggingOut ? 'animate-pulse' : ''} />
+            <span>{loggingOut ? 'Cerrando...' : 'Cerrar Sesión'}</span>
           </button>
         </div>
       </aside>

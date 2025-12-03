@@ -32,7 +32,9 @@ function Notificaciones() {
   const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(false);
   const [marcandoTodas, setMarcandoTodas] = useState(false); // Estado para evitar doble clic
+  const [marcandoId, setMarcandoId] = useState(null); // ID de notificación que se está marcando
   const [deleteId, setDeleteId] = useState(null);
+  const [eliminandoId, setEliminandoId] = useState(null); // ID de notificación que se está eliminando
   const [filters, setFilters] = useState({
     tipo: "",
     desde: "",
@@ -86,6 +88,9 @@ function Notificaciones() {
   const leidas = total - sinLeer;
 
   const marcarLeida = async (id) => {
+    // Evitar doble clic
+    if (marcandoId === id) return;
+    setMarcandoId(id);
     try {
       await notificacionesAPI.marcarLeida(id);
       setNotificaciones((prev) => prev.map((n) => (n.id === id ? { ...n, leida: true } : n)));
@@ -93,6 +98,8 @@ function Notificaciones() {
       setSinLeer((prev) => Math.max(prev - 1, 0));
     } catch (error) {
       toast.error(error.response?.data?.detail || "No se pudo marcar como leída");
+    } finally {
+      setMarcandoId(null);
     }
   };
 
@@ -114,6 +121,10 @@ function Notificaciones() {
   };
 
   const eliminar = async (id) => {
+    // Evitar doble clic
+    if (eliminandoId === id) return;
+    setEliminandoId(id);
+    
     const notif = notificaciones.find((n) => n.id === id);
     try {
       await notificacionesAPI.delete(id);
@@ -132,6 +143,7 @@ function Notificaciones() {
       toast.error(error.response?.data?.detail || "No se pudo eliminar");
     } finally {
       setDeleteId(null);
+      setEliminandoId(null);
     }
   };
 
@@ -296,16 +308,18 @@ function Notificaciones() {
                       {!notif.leida && (
                         <button
                           onClick={() => marcarLeida(notif.id)}
-                          className="px-3 py-1 rounded-lg border border-blue-100 text-blue-600 hover:bg-blue-50 text-xs"
+                          disabled={marcandoId === notif.id}
+                          className="px-3 py-1 rounded-lg border border-blue-100 text-blue-600 hover:bg-blue-50 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          Marcar leída
+                          {marcandoId === notif.id ? 'Marcando...' : 'Marcar leída'}
                         </button>
                       )}
                       <button
                         onClick={() => setDeleteId(notif.id)}
-                        className="px-3 py-1 rounded-lg border border-red-100 text-red-600 hover:bg-red-50 text-xs"
+                        disabled={eliminandoId === notif.id}
+                        className="px-3 py-1 rounded-lg border border-red-100 text-red-600 hover:bg-red-50 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        Eliminar
+                        {eliminandoId === notif.id ? 'Eliminando...' : 'Eliminar'}
                       </button>
                     </td>
                   </tr>
