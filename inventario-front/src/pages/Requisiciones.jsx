@@ -772,6 +772,13 @@ const Requisiciones = () => {
       return;
     }
     
+    // VALIDACIÓN OBLIGATORIA: Centro debe estar definido
+    const centroFinal = form.centro || user?.centro?.id;
+    if (!centroFinal) {
+      toast.error('Debes seleccionar un centro para la requisición');
+      return;
+    }
+    
     if (!form.items.length) {
       toast.error('Agrega al menos un producto');
       return;
@@ -783,7 +790,7 @@ const Requisiciones = () => {
     setIsSubmitting(true);
     try {
       const payload = {
-        centro: form.centro || user?.centro?.id || null,
+        centro: centroFinal,
         detalles: form.items.map((i) => ({
           producto: i.producto,
           lote: i.lote || null,

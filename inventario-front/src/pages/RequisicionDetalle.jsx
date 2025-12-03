@@ -440,6 +440,16 @@ const RequisicionDetalle = () => {
   };
 
   const handleDescargarPDF = async (tipo) => {
+    // Validar permisos y acceso por centro antes de descargar
+    if (!permisos?.descargarHojaRecoleccion) {
+      toast.error('No tienes permisos para descargar documentos');
+      return;
+    }
+    if (!tieneAccesoPorCentro) {
+      toast.error('No tienes acceso a documentos de este centro');
+      return;
+    }
+    
     try {
       setProcesando(true);
       let response;
@@ -898,18 +908,20 @@ const RequisicionDetalle = () => {
             </div>
           )}
 
-          {/* Botón de descarga */}
-          <div className="mt-4 flex justify-end">
-            <button
-              onClick={() => handleDescargarPDF('aceptacion')}
-              disabled={procesando}
-              className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
-              style={{ backgroundColor: COLORS.vino }}
-            >
-              <FaFileDownload />
-              Descargar PDF de Recolección
-            </button>
-          </div>
+          {/* Botón de descarga - Solo si tiene permiso y acceso por centro */}
+          {puedeDescargarHoja && (
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={() => handleDescargarPDF('aceptacion')}
+                disabled={procesando}
+                className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
+                style={{ backgroundColor: COLORS.vino }}
+              >
+                <FaFileDownload />
+                Descargar PDF de Recolección
+              </button>
+            </div>
+          )}
         </div>
       )}
 
