@@ -509,7 +509,7 @@ const Centros = () => {
               ) : (
                 centros.map((centro, index) => (
                   <tr key={centro.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{index + 1}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">{(currentPage - 1) * PAGE_SIZE + index + 1}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">
                       {centro.clave}
                     </td>
@@ -560,7 +560,7 @@ const Centros = () => {
                           </button>
                           {puedeEliminar && (
                             <button
-                              onClick={() => handleDelete(centro.id)}
+                              onClick={() => handleDelete(centro)}
                               className="text-red-600 hover:text-red-800 disabled:opacity-50"
                               title="Eliminar"
                               disabled={actionLoading === centro.id}
@@ -744,11 +744,11 @@ const Centros = () => {
                 accept=".xlsx,.xls"
                 onChange={handleImportar}
                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                disabled={loading}
+                disabled={importLoading}
               />
             </div>
             
-            {loading && (
+            {importLoading && (
               <div className="mb-4 text-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent mx-auto" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }}></div>
                 <p className="text-sm text-gray-600 mt-2">Procesando archivo...</p>

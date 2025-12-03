@@ -155,10 +155,17 @@ const Movimientos = () => {
     cargarCatalogos();
   }, [cargarCatalogos]);
 
+  // Estado para saber si el centro del usuario ya fue resuelto (evita carga prematura)
+  const [centroResuelto, setCentroResuelto] = useState(puedeVerTodosCentros || !!centroInicial);
+
   // Sincronizar filtro de centro cuando el usuario se hidrata tardíamente
   // Esto evita que usuarios de centro vean movimientos de otros centros durante carga inicial
   useEffect(() => {
-    if (!puedeVerTodosCentros && centroUsuario) {
+    if (puedeVerTodosCentros) {
+      // Admin/Farmacia/Vista pueden ver todo, marcar como resuelto
+      setCentroResuelto(true);
+    } else if (centroUsuario) {
+      // Usuario de centro: sincronizar filtro y marcar resuelto
       const centroStr = centroUsuario.toString();
       if (filtros.centro !== centroStr) {
         setFiltros(prev => ({ ...prev, centro: centroStr }));
@@ -166,13 +173,17 @@ const Movimientos = () => {
       if (filtrosAplicados.centro !== centroStr) {
         setFiltrosAplicados(prev => ({ ...prev, centro: centroStr }));
       }
+      setCentroResuelto(true);
     }
+    // Si no es admin y aún no tiene centro, seguir esperando (centroResuelto = false)
   }, [centroUsuario, puedeVerTodosCentros]);
 
-  // Solo recargar cuando cambia la página o los filtros APLICADOS
+  // Solo recargar cuando cambia la página o los filtros APLICADOS Y el centro está resuelto
   useEffect(() => {
-    cargarMovimientos();
-  }, [cargarMovimientos]);
+    if (centroResuelto) {
+      cargarMovimientos();
+    }
+  }, [cargarMovimientos, centroResuelto]);
 
   // Scroll al movimiento resaltado cuando viene del dashboard
   useEffect(() => {
