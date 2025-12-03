@@ -302,7 +302,9 @@ const Requisiciones = () => {
   const puedeEditar = (requisicion) => {
     // Primero validar permiso fino
     if (!permisos.editarRequisicion) return false;
-    if (requisicion.estado !== 'borrador') return false;
+    // Normalizar estado a minúsculas para evitar problemas de casing
+    const estadoNormalizado = requisicion.estado?.toLowerCase();
+    if (estadoNormalizado !== 'borrador') return false;
     if (permisos.isFarmaciaAdmin) return true;
     if (permisos.isCentroUser) {
       const userCentro = user?.centro?.id;
@@ -312,12 +314,17 @@ const Requisiciones = () => {
   };
 
   // Validar permiso fino de enviar además de las condiciones de edición
-  const puedeEnviar = (req) => permisos.enviarRequisicion && puedeEditar(req) && req.estado === 'borrador';
+  const puedeEnviar = (req) => {
+    const estadoNormalizado = req.estado?.toLowerCase();
+    return permisos.enviarRequisicion && puedeEditar(req) && estadoNormalizado === 'borrador';
+  };
 
   // Validar si puede cancelar - similar a puedeEditar pero sin restricción de estado borrador
   const puedeCancelar = (requisicion) => {
+    // Normalizar estado a minúsculas para evitar problemas de casing
+    const estadoNormalizado = requisicion.estado?.toLowerCase();
     // Estados finales no se pueden cancelar
-    if (['surtida', 'cancelada', 'rechazada'].includes(requisicion.estado)) return false;
+    if (['surtida', 'cancelada', 'rechazada'].includes(estadoNormalizado)) return false;
     // Validar permiso fino
     if (!permisos.cancelarRequisicion) return false;
     // Admin/Farmacia pueden cancelar cualquiera
@@ -508,6 +515,9 @@ const Requisiciones = () => {
   
   // Agregar lote desde el catálogo precargado
   const agregarDesdeCatalogo = (lote) => {
+    // Bloquear modificaciones durante envío/guardado
+    if (isSubmitting) return;
+    
     // Verificar si ya existe este lote en la requisición
     const existe = form.items.find((i) => i.lote === lote.id);
     if (existe) {
@@ -550,6 +560,9 @@ const Requisiciones = () => {
   
   // Incrementar cantidad desde catálogo
   const incrementarCantidad = (loteId) => {
+    // Bloquear modificaciones durante envío/guardado
+    if (isSubmitting) return;
+    
     const itemIndex = form.items.findIndex((i) => i.lote === loteId);
     if (itemIndex === -1) return;
     
@@ -570,6 +583,9 @@ const Requisiciones = () => {
   
   // Decrementar cantidad desde catálogo
   const decrementarCantidad = (loteId) => {
+    // Bloquear modificaciones durante envío/guardado
+    if (isSubmitting) return;
+    
     const itemIndex = form.items.findIndex((i) => i.lote === loteId);
     if (itemIndex === -1) return;
     
@@ -632,6 +648,9 @@ const Requisiciones = () => {
   };
 
   const actualizarCantidad = (idx, value) => {
+    // Bloquear modificaciones durante envío/guardado
+    if (isSubmitting) return;
+    
     const item = form.items[idx];
     const maxCantidad = item.stock_disponible || 9999;
     const cantidad = Math.min(Math.max(1, Number(value) || 1), maxCantidad);
@@ -643,6 +662,9 @@ const Requisiciones = () => {
   };
 
   const eliminarItem = (idx) => {
+    // Bloquear modificaciones durante envío/guardado
+    if (isSubmitting) return;
+    
     setForm((prev) => {
       const items = prev.items.filter((_, i) => i !== idx);
       return { ...prev, items };
@@ -1419,7 +1441,8 @@ const Requisiciones = () => {
                                       <div className="flex items-center justify-center gap-1">
                                         <button
                                           onClick={() => decrementarCantidad(lote.id)}
-                                          className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-700 transition-colors"
+                                          disabled={isSubmitting}
+                                          className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                           <FaMinus className="text-xs" />
                                         </button>
@@ -1428,7 +1451,7 @@ const Requisiciones = () => {
                                         </span>
                                         <button
                                           onClick={() => incrementarCantidad(lote.id)}
-                                          disabled={cantidadCarrito >= stockDisponible}
+                                          disabled={isSubmitting || cantidadCarrito >= stockDisponible}
                                           className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                           <FaPlus className="text-xs" />
@@ -1437,7 +1460,7 @@ const Requisiciones = () => {
                                     ) : (
                                       <button
                                         onClick={() => agregarDesdeCatalogo(lote)}
-                                        disabled={stockDisponible <= 0}
+                                        disabled={isSubmitting || stockDisponible <= 0}
                                         className="px-4 py-1.5 rounded-lg text-white text-xs font-semibold hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 mx-auto"
                                         style={{ backgroundColor: COLORS.vino }}
                                       >
@@ -1532,7 +1555,8 @@ const Requisiciones = () => {
                                           actualizarCantidad(idx, item.cantidad_solicitada - 1);
                                         }
                                       }}
-                                      className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
+                                      disabled={isSubmitting}
+                                      className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                       <FaMinus className="text-xs" />
                                     </button>
@@ -1542,12 +1566,13 @@ const Requisiciones = () => {
                                       max={item.stock_disponible || 9999}
                                       value={item.cantidad_solicitada}
                                       onChange={(e) => actualizarCantidad(idx, e.target.value)}
-                                      className="w-16 border rounded px-2 py-1 text-center font-bold"
+                                      disabled={isSubmitting}
+                                      className="w-16 border rounded px-2 py-1 text-center font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                                     />
                                     <button
                                       onClick={() => actualizarCantidad(idx, item.cantidad_solicitada + 1)}
-                                      disabled={item.cantidad_solicitada >= (item.stock_disponible || 9999)}
-                                      className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center disabled:opacity-50"
+                                      disabled={isSubmitting || item.cantidad_solicitada >= (item.stock_disponible || 9999)}
+                                      className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                       <FaPlus className="text-xs" />
                                     </button>
@@ -1556,7 +1581,8 @@ const Requisiciones = () => {
                                 <td className="px-4 py-3 text-center">
                                   <button
                                     onClick={() => eliminarItem(idx)}
-                                    className="text-red-600 hover:text-red-800 p-2 rounded hover:bg-red-50 transition-colors"
+                                    disabled={isSubmitting}
+                                    className="text-red-600 hover:text-red-800 p-2 rounded hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                     title="Quitar del pedido"
                                   >
                                     <FaTrash />
