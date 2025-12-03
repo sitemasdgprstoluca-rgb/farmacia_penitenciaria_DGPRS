@@ -205,6 +205,11 @@ const Requisiciones = () => {
     if (!centroResuelto || filtroCentro === 'PENDING') {
       return;
     }
+    // BLOQUEAR carga si el usuario no tiene centro asignado (seguridad)
+    // Esto evita que usuarios sin centro vean todas las requisiciones
+    if (errorCentroNoAsignado) {
+      return;
+    }
     // Validar rango de fechas antes de buscar
     if (filtroFechaDesde && filtroFechaHasta && filtroFechaDesde > filtroFechaHasta) {
       // No cargar si hay error de rango de fechas
@@ -240,9 +245,13 @@ const Requisiciones = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, filtroEstado, grupoEstado, searchTerm, filtroCentro, filtroFechaDesde, filtroFechaHasta, centroResuelto]);
+  }, [currentPage, filtroEstado, grupoEstado, searchTerm, filtroCentro, filtroFechaDesde, filtroFechaHasta, centroResuelto, errorCentroNoAsignado]);
 
   const cargarResumenEstados = useCallback(async () => {
+    // BLOQUEAR si usuario sin centro asignado (misma lógica que cargarRequisiciones)
+    if (errorCentroNoAsignado || !centroResuelto || filtroCentro === 'PENDING') {
+      return;
+    }
     try {
       // Sincronizar resumen con TODOS los filtros activos para que los contadores coincidan con la tabla
       const params = {};
@@ -258,7 +267,7 @@ const Requisiciones = () => {
     } catch (error) {
       console.warn('No fue posible cargar resumen de estados', error);
     }
-  }, [filtroCentro, filtroEstado, grupoEstado, searchTerm, filtroFechaDesde, filtroFechaHasta]);
+  }, [filtroCentro, filtroEstado, grupoEstado, searchTerm, filtroFechaDesde, filtroFechaHasta, errorCentroNoAsignado, centroResuelto]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -289,9 +298,14 @@ const Requisiciones = () => {
     // Si user aún no está cargado, mantener PENDING y centroResuelto=false
   }, [user, esAdminOFarmacia]);
 
+  // Debounce para evitar múltiples peticiones por tecla en filtros
   useEffect(() => {
-    cargarRequisiciones();
-    cargarResumenEstados();
+    const timeoutId = setTimeout(() => {
+      cargarRequisiciones();
+      cargarResumenEstados();
+    }, 400); // 400ms de debounce
+
+    return () => clearTimeout(timeoutId);
   }, [cargarRequisiciones, cargarResumenEstados]);
 
   useEffect(() => {
