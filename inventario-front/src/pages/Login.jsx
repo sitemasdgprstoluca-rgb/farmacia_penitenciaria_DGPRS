@@ -95,8 +95,6 @@ function Login() {
             />
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Sistema de Farmacia Penitenciaria</h1>
-          <p className="text-lg text-pink-100">Control de Abasto de Medicamentos</p>
-          <p className="text-white text-sm mt-2 font-medium">Subsecretaría de Seguridad - Estado de México</p>
         </div>
 
         <div
