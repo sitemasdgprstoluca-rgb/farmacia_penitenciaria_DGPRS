@@ -29,9 +29,14 @@ const COLORS = ['#9F2241', '#10B981', '#F59E0B', '#06B6D4', '#8B5CF6'];
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { getRolPrincipal, permisos } = usePermissions();
+  const { getRolPrincipal, permisos, user } = usePermissions();
   const rolPrincipal = getRolPrincipal();
-  const esVistaUser = rolPrincipal === 'VISTA_USER';
+  const esVistaUser = rolPrincipal === 'VISTA_USER' || rolPrincipal === 'VISTA';
+  
+  // Detectar si el usuario tiene acceso global o está restringido a un centro
+  const puedeVerGlobal = ['ADMIN', 'FARMACIA', 'VISTA'].includes(rolPrincipal) || permisos?.isSuperuser;
+  const centroUsuario = user?.centro?.id || user?.centro;
+  const esCentroUser = rolPrincipal === 'CENTRO' || (!puedeVerGlobal && centroUsuario);
 
   const [kpis, setKpis] = useState({
     total_productos: 0,
@@ -49,7 +54,8 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [movimientosCollapsed, setMovimientosCollapsed] = useState(true); // Colapsado por defecto
-  const [selectedCentro, setSelectedCentro] = useState(null);
+  // Para usuarios de centro, forzar su centro asignado; para globales, null (todos)
+  const [selectedCentro, setSelectedCentro] = useState(esCentroUser ? centroUsuario : null);
   const [centroNombre, setCentroNombre] = useState('');
 
   // eslint-disable-next-line no-unused-vars
@@ -94,8 +100,12 @@ const Dashboard = () => {
         throw new Error('Sesión no encontrada');
       }
 
-      // Parámetros con filtro de centro opcional
-      const params = centroId ? { centro: centroId } : {};
+      // Para usuarios de centro, SIEMPRE forzar su centro asignado
+      // Esto asegura aislamiento de datos aunque el backend también lo valide
+      const centroEfectivo = esCentroUser ? centroUsuario : centroId;
+      
+      // Parámetros con filtro de centro
+      const params = centroEfectivo ? { centro: centroEfectivo } : {};
 
       // Cargar resumen KPIs y movimientos
       const response = await dashboardAPI.getResumen(params);
@@ -116,6 +126,8 @@ const Dashboard = () => {
           : nextKpis,
       );
 
+      // Filtrar movimientos para Vista: solo los que tengan producto__clave
+      // El backend ya debería filtrar por centro, pero añadimos filtro local por seguridad
       const movimientosData = response.data.ultimos_movimientos || [];
       setMovimientos(
         esVistaUser ? movimientosData.filter((mov) => mov.producto__clave) : movimientosData,
@@ -149,15 +161,21 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [esVistaUser]);
+  }, [esVistaUser, esCentroUser, centroUsuario]);
 
   useEffect(() => {
     loadDashboard(selectedCentro);
   }, [loadDashboard, selectedCentro]);
 
   const handleCentroChange = (centroId, nombreCentro = '') => {
+    // Los usuarios de centro no pueden cambiar su centro
+    if (esCentroUser) return;
+    
     setSelectedCentro(centroId);
     setCentroNombre(nombreCentro);
+    // Resetear estados de visualización al cambiar de centro
+    setMostrarTodos(false);
+    setMovimientosCollapsed(true);
     // El useEffect se encarga de cargar cuando selectedCentro cambia
   };
 
@@ -182,7 +200,7 @@ const Dashboard = () => {
     );
   };
 
-  if (!permisos?.verProductos) {
+  if (!permisos?.verDashboard) {
     return (
       <div className="dashboard-container">
         <div className="error-alert">No tiene permisos para ver el dashboard.</div>
@@ -201,6 +219,8 @@ const Dashboard = () => {
     );
   }
 
+  // Las tarjetas KPI usan verDashboard como permiso base - si puede ver el dashboard, ve los KPIs
+  // Cada KPI adicional puede tener su propio permiso granular si se requiere
   const statCards = [
     {
       title: 'TOTAL',
@@ -212,7 +232,7 @@ const Dashboard = () => {
       iconBg: '#9F2241',
       badge: '↑ 12%',
       badgeColor: '#10B981',
-      show: permisos.verProductos,
+      show: permisos?.verDashboard && permisos?.verProductos,
     },
     {
       title: 'INVENTARIO TOTAL',
@@ -224,7 +244,7 @@ const Dashboard = () => {
       iconBg: '#10B981',
       badge: '↑ 6%',
       badgeColor: '#10B981',
-      show: permisos.verLotes,
+      show: permisos?.verDashboard, // KPI básico del dashboard
     },
     {
       title: 'LOTES ACTIVOS',
@@ -236,7 +256,7 @@ const Dashboard = () => {
       iconBg: '#06B6D4',
       badge: '≈ 0%',
       badgeColor: '#6B7280',
-      show: permisos.verRequisiciones,
+      show: permisos?.verDashboard && permisos?.verLotes,
     },
     {
       title: 'MOVIMIENTOS',
@@ -248,7 +268,7 @@ const Dashboard = () => {
       iconBg: '#F59E0B',
       badge: '↑ 15%',
       badgeColor: '#10B981',
-      show: permisos.verCentros,
+      show: permisos?.verDashboard && permisos?.verMovimientos,
     },
   ];
 
@@ -304,7 +324,7 @@ const Dashboard = () => {
           <div>
             <strong>Error de conexión con el backend</strong>
             <p>{error}</p>
-            <button onClick={loadDashboard} className="btn btn-primary">
+            <button onClick={() => loadDashboard(selectedCentro)} className="btn btn-primary">
               Reintentar
             </button>
           </div>
@@ -470,8 +490,9 @@ const Dashboard = () => {
                 {mostrarTodos ? 'Ver menos' : `Ver todos (${movimientos.length})`}
               </button>
               <button 
+                onClick={(e) => { e.stopPropagation(); setMovimientosCollapsed(!movimientosCollapsed); }}
                 className="text-gray-600 hover:text-gray-800 transition-colors"
-                style={{ background: 'none', border: 'none', padding: '4px', fontSize: '20px' }}
+                style={{ background: 'none', border: 'none', padding: '4px', fontSize: '20px', cursor: 'pointer' }}
                 aria-label={movimientosCollapsed ? "Expandir" : "Contraer"}
               >
                 {movimientosCollapsed ? <FaChevronDown /> : <FaChevronUp />}
