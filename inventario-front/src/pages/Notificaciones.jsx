@@ -332,21 +332,23 @@ function Notificaciones() {
                     </td>
                     <td className="px-4 py-3 text-sm text-right space-x-2">
                       {!notif.leida && (
-                        <button
+                        <ProtectedButton
+                          permiso="verNotificaciones"
                           onClick={() => marcarLeida(notif.id)}
                           disabled={marcandoId === notif.id}
                           className="px-3 py-1 rounded-lg border border-blue-100 text-blue-600 hover:bg-blue-50 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {marcandoId === notif.id ? 'Marcando...' : 'Marcar leída'}
-                        </button>
+                        </ProtectedButton>
                       )}
-                      <button
+                      <ProtectedButton
+                        permiso="gestionarNotificaciones"
                         onClick={() => setDeleteId(notif.id)}
                         disabled={eliminandoId === notif.id}
                         className="px-3 py-1 rounded-lg border border-red-100 text-red-600 hover:bg-red-50 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {eliminandoId === notif.id ? 'Eliminando...' : 'Eliminar'}
-                      </button>
+                      </ProtectedButton>
                     </td>
                   </tr>
                 ))}
