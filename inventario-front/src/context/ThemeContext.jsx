@@ -15,6 +15,41 @@ const aplicarCSSVariables = (cssVariables) => {
 };
 
 /**
+ * Genera CSS variables a partir de la configuración de colores
+ * Útil cuando el backend no devuelve css_variables en la respuesta
+ */
+const generarCSSVariablesDesdeConfig = (config) => {
+  if (!config) return null;
+  return {
+    '--color-primary': config.color_primario,
+    '--color-primary-hover': config.color_primario_hover,
+    '--color-secondary': config.color_secundario,
+    '--color-accent': config.color_acento,
+    '--color-background': config.color_fondo,
+    '--color-sidebar-bg': config.color_fondo_sidebar,
+    '--color-header-bg': config.color_fondo_header,
+    '--color-card-bg': config.color_fondo_card,
+    '--color-text': config.color_texto,
+    '--color-text-secondary': config.color_texto_secundario,
+    '--color-sidebar-text': config.color_texto_sidebar,
+    '--color-header-text': config.color_texto_header,
+    '--color-success': config.color_exito,
+    '--color-warning': config.color_advertencia,
+    '--color-error': config.color_error,
+    '--color-info': config.color_info,
+  };
+};
+
+/**
+ * Actualiza el título del documento
+ */
+const actualizarTituloDocumento = (nombre) => {
+  if (nombre) {
+    document.title = nombre;
+  }
+};
+
+/**
  * Valores por defecto del tema (colores institucionales - guinda/rojo)
  */
 const temaDefault = {
@@ -92,7 +127,12 @@ export const ThemeProvider = ({ children }) => {
       const config = response.data;
       
       setConfiguracion(config);
-      aplicarCSSVariables(config.css_variables);
+      // Aplicar CSS variables - usar las del backend o generarlas si no vienen
+      const cssVars = config.css_variables || generarCSSVariablesDesdeConfig(config);
+      aplicarCSSVariables(cssVars);
+      
+      // Actualizar título del documento si cambió
+      actualizarTituloDocumento(config.nombre_sistema);
       
       return { success: true, data: config };
     } catch (err) {
@@ -158,6 +198,9 @@ export const ThemeProvider = ({ children }) => {
       const config = response.data.configuracion;
       
       setConfiguracion(config);
+      // Re-aplicar CSS variables para mantener colores (backend puede no incluirlos)
+      const cssVars = config.css_variables || generarCSSVariablesDesdeConfig(config);
+      aplicarCSSVariables(cssVars);
       
       return { success: true, data: config };
     } catch (err) {
@@ -181,6 +224,9 @@ export const ThemeProvider = ({ children }) => {
       const config = response.data.configuracion;
       
       setConfiguracion(config);
+      // Re-aplicar CSS variables para mantener colores (backend puede no incluirlos)
+      const cssVars = config.css_variables || generarCSSVariablesDesdeConfig(config);
+      aplicarCSSVariables(cssVars);
       
       return { success: true, data: config };
     } catch (err) {
@@ -201,6 +247,9 @@ export const ThemeProvider = ({ children }) => {
       const config = response.data.configuracion;
       
       setConfiguracion(config);
+      // Re-aplicar CSS variables para mantener colores (backend puede no incluirlos)
+      const cssVars = config.css_variables || generarCSSVariablesDesdeConfig(config);
+      aplicarCSSVariables(cssVars);
       
       return { success: true, data: config };
     } catch (err) {
@@ -221,6 +270,9 @@ export const ThemeProvider = ({ children }) => {
       const config = response.data.configuracion;
       
       setConfiguracion(config);
+      // Re-aplicar CSS variables para mantener colores (backend puede no incluirlos)
+      const cssVars = config.css_variables || generarCSSVariablesDesdeConfig(config);
+      aplicarCSSVariables(cssVars);
       
       return { success: true, data: config };
     } catch (err) {
@@ -237,6 +289,15 @@ export const ThemeProvider = ({ children }) => {
     cargarTema();
   }, [cargarTema]);
 
+  /**
+   * Aplica variables CSS localmente para preview en tiempo real
+   * No persiste en backend, solo actualiza la UI temporalmente
+   */
+  const aplicarCSSVariablesLocalmente = useCallback((colores) => {
+    const cssVars = generarCSSVariablesDesdeConfig(colores);
+    aplicarCSSVariables(cssVars);
+  }, []);
+
   const value = {
     configuracion,
     cargando,
@@ -249,6 +310,7 @@ export const ThemeProvider = ({ children }) => {
     subirLogoPdf,
     eliminarLogoHeader,
     eliminarLogoPdf,
+    aplicarCSSVariablesLocalmente, // Para preview en tiempo real
     temaActivo: configuracion.tema_activo,
     nombreSistema: configuracion.nombre_sistema,
     temasDisponibles: configuracion.temas_disponibles || temaDefault.temas_disponibles,

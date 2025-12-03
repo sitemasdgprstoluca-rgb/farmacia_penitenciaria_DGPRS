@@ -67,7 +67,8 @@ const ConfiguracionTema = () => {
     subirLogoPdf,
     eliminarLogoHeader,
     eliminarLogoPdf,
-    temasDisponibles 
+    temasDisponibles,
+    aplicarCSSVariablesLocalmente // Para preview en tiempo real 
   } = useTheme();
   
   const [formData, setFormData] = useState({});
@@ -88,6 +89,10 @@ const ConfiguracionTema = () => {
     eliminandoLogoPdf: false,
   });
   
+  // Timeout de seguridad para operaciones bloqueadas (30 segundos)
+  const TIMEOUT_OPERACION_MS = 30000;
+  const timeoutRef = useRef(null);
+  
   const logoHeaderRef = useRef(null);
   const logoPdfRef = useRef(null);
 
@@ -107,6 +112,28 @@ const ConfiguracionTema = () => {
   
   // Para deshabilitar UI global (indicador visual)
   const hayOperacionEnCurso = Object.values(operacionEnCurso).some(v => v);
+  
+  /**
+   * Resetea todas las operaciones en curso (escape de seguridad)
+   * Útil cuando una operación queda bloqueada por error de red
+   */
+  const resetearOperaciones = useCallback(() => {
+    setOperacionEnCurso({
+      aplicandoTema: false,
+      guardandoColores: false,
+      guardandoIdentidad: false,
+      restableciendo: false,
+      subiendoLogoHeader: false,
+      subiendoLogoPdf: false,
+      eliminandoLogoHeader: false,
+      eliminandoLogoPdf: false,
+    });
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    toast.info('Operaciones desbloqueadas');
+  }, []);
 
   // Inicializar formulario con datos actuales
   useEffect(() => {
@@ -153,6 +180,7 @@ const ConfiguracionTema = () => {
   /**
    * Handler genérico para operaciones asíncronas con manejo de errores
    * Permite concurrencia entre grupos de operaciones diferentes
+   * Incluye timeout de seguridad para evitar bloqueos permanentes
    */
   const ejecutarOperacion = useCallback(async (nombreOperacion, operacion, mensajeExito, grupoBloqueo = 'tema') => {
     if (!validarPermisos()) return { success: false };
@@ -168,6 +196,18 @@ const ConfiguracionTema = () => {
     }
 
     setOperacionEnCurso(prev => ({ ...prev, [nombreOperacion]: true }));
+    
+    // Configurar timeout de seguridad
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      setOperacionEnCurso(prev => {
+        if (prev[nombreOperacion]) {
+          toast.error('La operación tardó demasiado. Se ha desbloqueado automáticamente.');
+          return { ...prev, [nombreOperacion]: false };
+        }
+        return prev;
+      });
+    }, TIMEOUT_OPERACION_MS);
     
     try {
       const resultado = await operacion();
@@ -187,6 +227,10 @@ const ConfiguracionTema = () => {
       toast.error(mensaje);
       return { success: false, error: mensaje };
     } finally {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
       setOperacionEnCurso(prev => ({ ...prev, [nombreOperacion]: false }));
     }
   }, [validarPermisos, hayOperacionTemaEnCurso, hayOperacionLogoEnCurso, hayOperacionIdentidadEnCurso]);
@@ -202,12 +246,14 @@ const ConfiguracionTema = () => {
 
   /**
    * Maneja cambios en inputs de color con validación
+   * Aplica preview en tiempo real si el color es válido
    */
   const handleColorChange = (e) => {
     const { name, value } = e.target;
     
     // Siempre actualizar el formData para que el usuario vea lo que escribe
-    setFormData(prev => ({ ...prev, [name]: value }));
+    const nuevoFormData = { ...formData, [name]: value };
+    setFormData(nuevoFormData);
     setModoEdicion(true);
     
     // Validar el color
@@ -219,6 +265,11 @@ const ConfiguracionTema = () => {
         delete nuevos[name];
         return nuevos;
       });
+      
+      // Aplicar preview en tiempo real si el color es válido
+      if (esColorValido(value)) {
+        aplicarCSSVariablesLocalmente(nuevoFormData);
+      }
     }
   };
 
@@ -464,9 +515,9 @@ const ConfiguracionTema = () => {
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="bg-white rounded-xl shadow-lg p-6 border-l-4" style={{ borderLeftColor: '#9F2241' }}>
+      <div className="bg-white rounded-xl shadow-lg p-6 border-l-4" style={{ borderLeftColor: 'var(--color-primary, #9F2241)' }}>
         <div className="flex items-center gap-4">
-          <div className="p-3 rounded-full" style={{ background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)' }}>
+          <div className="p-3 rounded-full" style={{ background: 'var(--color-sidebar-bg, linear-gradient(135deg, #9F2241 0%, #6B1839 100%))' }}>
             <FaPalette className="text-2xl text-white" />
           </div>
           <div>
@@ -476,11 +527,20 @@ const ConfiguracionTema = () => {
         </div>
       </div>
 
-      {/* Indicador de operación en curso */}
+      {/* Indicador de operación en curso con botón de desbloqueo */}
       {hayOperacionEnCurso && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-3">
-          <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-          <span className="text-blue-700">Procesando...</span>
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+            <span className="text-blue-700">Procesando...</span>
+          </div>
+          <button
+            onClick={resetearOperaciones}
+            className="text-sm text-blue-600 hover:text-blue-800 underline"
+            title="Usar si la operación parece bloqueada"
+          >
+            Desbloquear
+          </button>
         </div>
       )}
 
