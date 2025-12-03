@@ -32,6 +32,9 @@ function Layout() {
   const navigate = useNavigate();
   const { user, permisos, getRolPrincipal } = usePermissions();
 
+  // Verificar permiso de notificaciones para centralizar conteo
+  const tienePermisoNotificaciones = permisos?.verNotificaciones;
+
   const handleLogout = async () => {
     try {
       const refresh = localStorage.getItem("refresh_token");
@@ -75,6 +78,8 @@ function Layout() {
     setSidebarOpen(window.innerWidth >= 1024);
   }, []);
 
+  // Centralizar conteo de notificaciones con validación de permisos
+  // NotificacionesBell usará este contador via props para evitar doble polling
   useEffect(() => {
     const cargarUnread = async () => {
       try {
@@ -85,12 +90,26 @@ function Layout() {
         // Silenciar error de conteo de notificaciones
       }
     };
-    if (user) {
+    // Solo cargar si tiene usuario Y permiso de ver notificaciones
+    if (user && tienePermisoNotificaciones) {
       cargarUnread();
       const id = setInterval(cargarUnread, 30000);
-      return () => clearInterval(id);
+      // Guardar referencia para limpieza en logout
+      window.notificationInterval = id;
+      return () => {
+        clearInterval(id);
+        window.notificationInterval = null;
+      };
+    } else {
+      // Sin permiso, resetear contador
+      setUnreadCount(0);
     }
-  }, [user]);
+  }, [user, tienePermisoNotificaciones]);
+
+  // Callback para que NotificacionesBell notifique cambios de contador
+  const handleNotificationCountChange = (count) => {
+    setUnreadCount(count);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -213,7 +232,10 @@ function Layout() {
               </h1>
             </div>
             <div className="flex items-center gap-4">
-              <NotificacionesBell />
+              <NotificacionesBell 
+                externalCount={unreadCount} 
+                onCountChange={handleNotificationCountChange}
+              />
               {DEV_CONFIG?.ENABLED && (
                 <span
                   className="px-3 py-2 rounded-full text-xs sm:text-sm font-bold text-white whitespace-nowrap"

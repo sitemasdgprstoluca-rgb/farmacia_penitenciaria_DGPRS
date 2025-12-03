@@ -42,13 +42,18 @@ const Requisiciones = () => {
   const rolPrincipal = getRolPrincipal();
   const esAdminOFarmacia = rolPrincipal === 'ADMIN' || rolPrincipal === 'FARMACIA';
   
+  // Flag para saber si ya se determinó el centro del usuario (evita carga prematura)
+  // Para admin/farmacia siempre está listo; para usuarios de centro, esperar hidratación
+  const [centroResuelto, setCentroResuelto] = useState(() => esAdminOFarmacia);
+  
   const [requisiciones, setRequisiciones] = useState([]);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(null); // Loading específico por acción (evita bloquear todo)
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Para usuarios de centro, pre-llenar con su centro; para admin/farmacia iniciar vacío
+  // IMPORTANTE: usar 'PENDING' como valor especial para usuarios de centro sin hidratar
   const [filtroCentro, setFiltroCentro] = useState(() => 
-    esAdminOFarmacia ? '' : (user?.centro?.id?.toString() || '')
+    esAdminOFarmacia ? '' : (user?.centro?.id?.toString() || 'PENDING')
   );
   const [filtroEstado, setFiltroEstado] = useState('');
   const [grupoEstado, setGrupoEstado] = useState('todas');
@@ -171,6 +176,11 @@ const Requisiciones = () => {
   }, []);
 
   const cargarRequisiciones = useCallback(async () => {
+    // BLOQUEAR carga si el centro del usuario no está resuelto
+    // Esto previene que usuarios de centro vean datos de otros centros
+    if (!centroResuelto || filtroCentro === 'PENDING') {
+      return;
+    }
     // Validar rango de fechas antes de buscar
     if (filtroFechaDesde && filtroFechaHasta && filtroFechaDesde > filtroFechaHasta) {
       // No cargar si hay error de rango de fechas
@@ -186,7 +196,8 @@ const Requisiciones = () => {
       if (filtroEstado) params.estado = filtroEstado;
       if (grupoEstado && grupoEstado !== 'todas') params.grupo_estado = grupoEstado;
       if (searchTerm) params.search = searchTerm;
-      if (filtroCentro) params.centro = filtroCentro;
+      // Solo aplicar filtro de centro si no es PENDING (ya validado arriba pero por claridad)
+      if (filtroCentro && filtroCentro !== 'PENDING') params.centro = filtroCentro;
       if (filtroFechaDesde) params.fecha_desde = filtroFechaDesde;
       if (filtroFechaHasta) params.fecha_hasta = filtroFechaHasta;
 
@@ -205,7 +216,7 @@ const Requisiciones = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, filtroEstado, grupoEstado, searchTerm, filtroCentro, filtroFechaDesde, filtroFechaHasta]);
+  }, [currentPage, filtroEstado, grupoEstado, searchTerm, filtroCentro, filtroFechaDesde, filtroFechaHasta, centroResuelto]);
 
   const cargarResumenEstados = useCallback(async () => {
     try {
@@ -227,11 +238,19 @@ const Requisiciones = () => {
 
   // Sincronizar filtroCentro cuando el usuario se hidrata (carga tardía)
   // Esto evita que usuarios de centro vean requisiciones de otros centros antes de cargar su perfil
+  // CRÍTICO: Marcar centroResuelto una vez que tengamos el centro del usuario
   useEffect(() => {
-    if (!esAdminOFarmacia && user?.centro?.id && !filtroCentro) {
-      setFiltroCentro(user.centro.id.toString());
+    if (esAdminOFarmacia) {
+      // Admin/Farmacia siempre pueden cargar (sin filtro obligatorio)
+      setCentroResuelto(true);
+    } else if (user?.centro?.id) {
+      // Usuario de centro: aplicar filtro con su centro
+      const centroId = user.centro.id.toString();
+      setFiltroCentro(centroId);
+      setCentroResuelto(true);
     }
-  }, [user?.centro?.id, esAdminOFarmacia, filtroCentro]);
+    // Si no hay centro aún, mantener PENDING y centroResuelto=false
+  }, [user?.centro?.id, esAdminOFarmacia]);
 
   useEffect(() => {
     cargarRequisiciones();

@@ -5,8 +5,13 @@ import { usePermissions } from "../hooks/usePermissions";
 
 const BELL_PAGE_SIZE = 10; // Límite de notificaciones en el dropdown
 
-const NotificacionesBell = () => {
-  const { user } = usePermissions();
+/**
+ * Componente de campana de notificaciones.
+ * Valida el permiso verNotificaciones antes de renderizar o hacer llamadas API.
+ * Recibe opcionalmente un contador externo desde Layout para evitar doble polling.
+ */
+const NotificacionesBell = ({ externalCount, onCountChange }) => {
+  const { user, permisos } = usePermissions();
   const [notificaciones, setNotificaciones] = useState([]);
   const [sinLeer, setSinLeer] = useState(0);
   const [abierto, setAbierto] = useState(false);
@@ -16,20 +21,31 @@ const NotificacionesBell = () => {
   const dropdownRef = useRef(null);
   const botonRef = useRef(null);
 
+  // Usar contador externo si se proporciona (desde Layout)
+  const displayCount = externalCount !== undefined ? externalCount : sinLeer;
+
+  // Verificar si tiene permiso de ver notificaciones
+  const tienePermiso = permisos?.verNotificaciones;
+
   // Cargar contador de no leídas (endpoint dedicado)
   const cargarContador = useCallback(async () => {
-    if (!user) return;
+    // Validar permiso además de usuario
+    if (!user || !tienePermiso) return;
     try {
       const res = await notificacionesAPI.noLeidasCount();
-      setSinLeer(res.data?.no_leidas ?? 0);
+      const count = res.data?.no_leidas ?? 0;
+      setSinLeer(count);
+      // Notificar al padre si existe callback
+      if (onCountChange) onCountChange(count);
     } catch {
       // Silencioso - el contador se actualizará en la próxima carga
     }
-  }, [user]);
+  }, [user, tienePermiso, onCountChange]);
 
   // Cargar notificaciones para el dropdown (limitado)
   const cargar = useCallback(async () => {
-    if (!user) return;
+    // Validar permiso además de usuario
+    if (!user || !tienePermiso) return;
     setCargando(true);
     try {
       const [notifRes, countRes] = await Promise.all([
@@ -41,22 +57,29 @@ const NotificacionesBell = () => {
       ]);
       const data = notifRes.data?.results || notifRes.data || [];
       setNotificaciones(Array.isArray(data) ? data : []);
-      setSinLeer(countRes.data?.no_leidas ?? 0);
+      const count = countRes.data?.no_leidas ?? 0;
+      setSinLeer(count);
+      // Notificar al padre si existe callback
+      if (onCountChange) onCountChange(count);
     } catch (err) {
       const msg = err.response?.data?.detail || err.message;
       if (msg) toast.error(msg);
     } finally {
       setCargando(false);
     }
-  }, [user]);
+  }, [user, tienePermiso, onCountChange]);
 
   useEffect(() => {
-    if (!user) return;
+    // No iniciar polling sin permiso
+    if (!user || !tienePermiso) return;
     cargar();
     // Refresco cada 30s solo del contador para minimizar tráfico
-    const id = setInterval(cargarContador, 30000);
-    return () => clearInterval(id);
-  }, [user, cargar, cargarContador]);
+    // Solo si no hay contador externo (evita doble polling)
+    if (externalCount === undefined) {
+      const id = setInterval(cargarContador, 30000);
+      return () => clearInterval(id);
+    }
+  }, [user, tienePermiso, cargar, cargarContador, externalCount]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -125,7 +148,8 @@ const NotificacionesBell = () => {
     }
   };
 
-  if (!user) return null;
+  // No renderizar si no hay usuario O no tiene permiso de ver notificaciones
+  if (!user || !tienePermiso) return null;
 
   return (
     <div className="relative">
@@ -143,9 +167,9 @@ const NotificacionesBell = () => {
             d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
           />
         </svg>
-        {sinLeer > 0 && (
+        {displayCount > 0 && (
           <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-2 py-1 text-xs font-bold text-white bg-red-600 rounded-full">
-            {sinLeer > 9 ? "9+" : sinLeer}
+            {displayCount > 9 ? "9+" : displayCount}
           </span>
         )}
       </button>
