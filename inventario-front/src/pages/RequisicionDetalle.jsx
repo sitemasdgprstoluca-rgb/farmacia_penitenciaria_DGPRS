@@ -526,7 +526,19 @@ const RequisicionDetalle = () => {
     rolUsuario === 'farmacia' ||
     rolUsuario === 'admin_farmacia';
   
-  const puedeEnviar = requisicion?.estado === 'borrador' && permisos?.enviarRequisicion;
+  // Calcular acceso por centro ANTES de usarlo en permisos
+  // Usuarios de centro solo pueden operar sobre requisiciones de su propio centro
+  // Admin/Farmacia pueden operar sobre cualquier requisición
+  const centroRequisicion = requisicion?.centro?.id || requisicion?.centro;
+  const centroUsuario = user?.centro?.id || user?.centro;
+  const esMismoCentro = centroUsuario && centroRequisicion && String(centroUsuario) === String(centroRequisicion);
+  const tieneAccesoPorCentro = esFarmacia || user?.is_superuser || esMismoCentro;
+  
+  // Enviar: usuarios de centro solo pueden enviar borradores de su centro
+  const puedeEnviar = requisicion?.estado === 'borrador' && 
+    permisos?.enviarRequisicion && 
+    tieneAccesoPorCentro;
+    
   // Validar AMBOS: rol de farmacia Y permiso fino correspondiente
   const puedeAutorizar = requisicion?.estado === 'enviada' && esFarmacia && permisos?.autorizarRequisicion;
   const puedeRechazar = requisicion?.estado === 'enviada' && esFarmacia && permisos?.rechazarRequisicion;
@@ -534,16 +546,24 @@ const RequisicionDetalle = () => {
   
   // puedeMarcarRecibida: estado surtida + (superuser O del mismo centro) + tener permiso específico confirmarRecepcion
   // Se valida tanto el centro como el permiso fino para evitar acciones no autorizadas
-  const centroRequisicion = requisicion?.centro?.id || requisicion?.centro;
-  const centroUsuario = user?.centro?.id || user?.centro;
-  const esMismoCentro = centroUsuario && centroRequisicion && String(centroUsuario) === String(centroRequisicion);
   const puedeMarcarRecibida = requisicion?.estado === 'surtida' && 
-    (user?.is_superuser || esFarmacia || esMismoCentro) &&
+    tieneAccesoPorCentro &&
     permisos?.confirmarRecepcion === true; // Debe tener permiso específico de confirmar recepción
+  
+  // Cancelar: validar centro para usuarios no privilegiados
+  const puedeCancelar = !['surtida', 'cancelada', 'rechazada', 'recibida'].includes(requisicion?.estado) && 
+    permisos?.cancelarRequisicion &&
+    tieneAccesoPorCentro; // Usuarios de centro solo pueden cancelar las suyas
     
-  const puedeCancelar = !['surtida', 'cancelada', 'rechazada', 'recibida'].includes(requisicion?.estado) && permisos?.cancelarRequisicion;
-  const puedeDescargarHoja = ['autorizada', 'parcial', 'surtida', 'recibida'].includes(requisicion?.estado) && permisos?.descargarHojaRecoleccion;
-  const puedeDescargarRechazo = requisicion?.estado === 'rechazada' && permisos?.descargarHojaRecoleccion;
+  // Descargas: validar centro para usuarios no privilegiados (aislamiento de datos)
+  const puedeDescargarHoja = ['autorizada', 'parcial', 'surtida', 'recibida'].includes(requisicion?.estado) && 
+    permisos?.descargarHojaRecoleccion &&
+    tieneAccesoPorCentro; // Usuarios de centro solo descargan hojas de su centro
+    
+  const puedeDescargarRechazo = requisicion?.estado === 'rechazada' && 
+    permisos?.descargarHojaRecoleccion &&
+    tieneAccesoPorCentro; // Usuarios de centro solo descargan rechazos de su centro
+    
   // eslint-disable-next-line no-unused-vars
   const puedeVerificarHoja = esFarmacia && hojaRecoleccion && hojaRecoleccion.estado !== 'verificada';
 
