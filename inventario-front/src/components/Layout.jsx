@@ -141,46 +141,48 @@ function Layout() {
         } w-64 lg:translate-x-0`}
         style={{ background: "var(--color-sidebar-bg, linear-gradient(180deg, #9F2241 0%, #6B1839 100%))" }}
       >
+        {/* Header del Sidebar - Logo y Título integrados */}
         <div
-          className="flex items-center justify-between p-3 border-b"
-          style={{ borderBottomColor: "rgba(255,255,255,0.2)" }}
+          className="flex items-center justify-between px-4 py-3 border-b"
+          style={{ borderBottomColor: "rgba(255,255,255,0.15)" }}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <img 
               src="/logo-sistema.png" 
               alt="Logo" 
-              className="h-10 w-10 object-contain rounded"
+              className="h-9 w-9 object-contain"
             />
-            <div>
-              <span className="font-bold text-base text-white block leading-tight">FARMACIA</span>
-              <span className="text-[10px] text-pink-100 leading-tight">SISTEMA PENITENCIARIO</span>
+            <div className="leading-none">
+              <span className="font-bold text-[15px] text-white tracking-wide">FARMACIA</span>
+              <span className="block text-[9px] text-pink-200 tracking-widest mt-0.5">SISTEMA PENITENCIARIO</span>
             </div>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-white hover:text-pink-200">
-            <FaTimes size={20} />
+          <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-white/70 hover:text-white transition-colors">
+            <FaTimes size={18} />
           </button>
         </div>
 
+        {/* Perfil de Usuario - Compacto y elegante */}
         <div
-          className="p-4 border-b"
-          style={{ borderBottomColor: "rgba(255,255,255,0.2)", backgroundColor: "rgba(255,255,255,0.1)" }}
+          className="px-4 py-3 border-b"
+          style={{ borderBottomColor: "rgba(255,255,255,0.15)", backgroundColor: "rgba(0,0,0,0.1)" }}
         >
           <div className="flex items-center gap-3">
-            <div className="bg-white rounded-full p-2">
-              <FaUserCircle className="text-3xl" style={{ color: "var(--color-primary, #9F2241)" }} />
+            <div className="bg-white/90 rounded-full p-1.5 shadow-sm">
+              <FaUserCircle className="text-2xl" style={{ color: "#9F2241" }} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-white truncate">
+              <p className="text-sm font-semibold text-white truncate leading-tight">
                 {user?.first_name} {user?.last_name}
               </p>
-              <p className="text-xs text-pink-100 truncate">{user?.email}</p>
-              <span
-                className="inline-block px-2 py-0.5 mt-1 text-xs rounded font-semibold"
-                style={{ backgroundColor: "rgba(255,255,255,0.2)", color: "white" }}
-              >
-                {getRolPrincipal()}
-              </span>
+              <p className="text-[11px] text-pink-200/80 truncate">{user?.email}</p>
             </div>
+            <span
+              className="px-2 py-0.5 text-[10px] rounded font-bold uppercase tracking-wide"
+              style={{ backgroundColor: "rgba(255,255,255,0.2)", color: "white" }}
+            >
+              {getRolPrincipal()}
+            </span>
           </div>
         </div>
 
