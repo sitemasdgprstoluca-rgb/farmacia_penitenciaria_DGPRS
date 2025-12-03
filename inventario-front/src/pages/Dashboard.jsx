@@ -34,9 +34,12 @@ const Dashboard = () => {
   const esVistaUser = rolPrincipal === 'VISTA_USER' || rolPrincipal === 'VISTA';
   
   // Detectar si el usuario tiene acceso global o está restringido a un centro
-  const puedeVerGlobal = ['ADMIN', 'FARMACIA', 'VISTA'].includes(rolPrincipal) || permisos?.isSuperuser;
+  // NOTA: El backend solo acepta filtro por centro para ADMIN/FARMACIA, no para VISTA
+  const puedeVerGlobal = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
+  // Solo ADMIN/FARMACIA pueden filtrar por centro en el backend
+  const puedeFiltrarPorCentro = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
   const centroUsuario = user?.centro?.id || user?.centro;
-  const esCentroUser = rolPrincipal === 'CENTRO' || (!puedeVerGlobal && centroUsuario);
+  const esCentroUser = rolPrincipal === 'CENTRO' || (!puedeVerGlobal && centroUsuario && !esVistaUser);
 
   const [kpis, setKpis] = useState({
     total_productos: 0,
@@ -287,8 +290,10 @@ const Dashboard = () => {
           </p>
         </div>
         <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
-          {/* Selector de centro para admin/farmacia/vista */}
-          <CentroSelector onCentroChange={handleCentroChange} selectedValue={selectedCentro} />
+          {/* Selector de centro solo para admin/farmacia (backend no soporta filtro para vista) */}
+          {puedeFiltrarPorCentro && (
+            <CentroSelector onCentroChange={handleCentroChange} selectedValue={selectedCentro} />
+          )}
           <div
             className="px-5 py-2.5 rounded-2xl font-semibold text-sm"
             style={{ background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)', color: 'white' }}
@@ -305,8 +310,8 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Indicador de filtro activo */}
-      {selectedCentro && (
+      {/* Indicador de filtro activo - solo para usuarios que pueden cambiar el filtro */}
+      {selectedCentro && puedeFiltrarPorCentro && (
         <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2">
           <span className="text-amber-600 font-medium">🔍 Mostrando datos filtrados por: <strong>{centroNombre}</strong></span>
           <button 
@@ -315,6 +320,13 @@ const Dashboard = () => {
           >
             Ver todos los centros
           </button>
+        </div>
+      )}
+      
+      {/* Indicador de centro fijo para usuarios de centro (no pueden cambiar) */}
+      {esCentroUser && centroUsuario && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2">
+          <span className="text-blue-600 font-medium">📍 Mostrando datos de tu centro asignado</span>
         </div>
       )}
 
@@ -577,22 +589,24 @@ const Dashboard = () => {
                 ))}
               </div>
               
-              {/* Botón para ir al módulo de movimientos */}
-              <div className="text-center mt-4">
-                <button
-                  onClick={() => navigate('/movimientos')}
-                  className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  style={{ 
-                    background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)', 
-                    color: 'white',
-                    border: 'none',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <FaExchangeAlt style={{ display: 'inline', marginRight: '8px' }} />
-                  Ver todos los movimientos en detalle
-                </button>
-              </div>
+              {/* Botón para ir al módulo de movimientos - solo si tiene permiso */}
+              {permisos?.verMovimientos && (
+                <div className="text-center mt-4">
+                  <button
+                    onClick={() => navigate('/movimientos')}
+                    className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    style={{ 
+                      background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)', 
+                      color: 'white',
+                      border: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <FaExchangeAlt style={{ display: 'inline', marginRight: '8px' }} />
+                    Ver todos los movimientos en detalle
+                  </button>
+                </div>
+              )}
           </div>
           )}
         </div>
