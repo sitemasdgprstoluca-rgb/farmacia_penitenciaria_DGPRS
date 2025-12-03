@@ -124,7 +124,11 @@ function Layout() {
           style={{ borderBottomColor: "rgba(255,255,255,0.2)" }}
         >
           <div className="flex items-center gap-2">
-            <FaShieldAlt className="text-2xl text-white" />
+            <img 
+              src="/logo-seguridad.jpg" 
+              alt="Logo" 
+              className="h-8 w-auto object-contain bg-white rounded p-0.5"
+            />
             <div>
               <span className="font-bold text-lg text-white block">FARMACIA</span>
               <span className="text-xs text-pink-100">SISTEMA PENITENCIARIO</span>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { FaShieldAlt, FaUser, FaLock, FaSignInAlt } from 'react-icons/fa';
+import { FaUser, FaLock, FaSignInAlt } from 'react-icons/fa';
 import { authAPI } from '../services/api';
 import { usePermissions } from '../hooks/usePermissions';
 import { setAccessToken, clearTokens } from '../services/tokenManager';
@@ -80,11 +80,13 @@ function Login() {
     >
       <div className="max-w-md w-full mx-auto">
         <div className="text-center mb-6">
-          {/* Escudo del Sistema */}
-          <div className="inline-flex items-center justify-center bg-white rounded-lg mb-4 shadow-lg p-3">
-            <div className="flex items-center justify-center w-14 h-14 bg-white rounded-full">
-              <FaShieldAlt className="text-4xl" style={{ color: '#9F2241' }} />
-            </div>
+          {/* Logo del Sistema */}
+          <div className="inline-flex items-center justify-center bg-white rounded-lg mb-4 shadow-lg p-2">
+            <img 
+              src="/logo-seguridad.jpg" 
+              alt="Secretaría de Seguridad" 
+              className="h-16 w-auto object-contain"
+            />
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Sistema de Farmacia Penitenciaria</h1>
           <p className="text-lg text-pink-100">Control de Abasto de Medicamentos</p>
