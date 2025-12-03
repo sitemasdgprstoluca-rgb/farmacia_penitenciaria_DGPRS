@@ -935,7 +935,8 @@ const Requisiciones = () => {
           <button
             key={tab.key}
             onClick={() => setGrupoEstado(tab.key)}
-            className={`px-4 py-2 rounded-full text-sm font-semibold transition ${
+            disabled={loading}
+            className={`px-4 py-2 rounded-full text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${
               grupoEstado === tab.key ? 'text-white' : 'text-gray-700 border border-gray-200 bg-white'
             }`}
             style={
