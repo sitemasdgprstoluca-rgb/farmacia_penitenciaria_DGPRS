@@ -97,14 +97,16 @@ export const ThemeProvider = ({ children }) => {
       const response = await configuracionAPI.getTema();
       const config = response.data;
       
-      if (config && config.css_variables) {
+      if (config) {
+        // Siempre actualizar configuración, aún si no vienen css_variables
         setConfiguracion(config);
-        aplicarCSSVariables(config.css_variables);
+        
+        // Aplicar CSS variables - usar las del backend o generarlas desde colores
+        const cssVars = config.css_variables || generarCSSVariablesDesdeConfig(config);
+        aplicarCSSVariables(cssVars);
         
         // Actualizar el título del documento
-        if (config.nombre_sistema) {
-          document.title = config.nombre_sistema;
-        }
+        actualizarTituloDocumento(config.nombre_sistema);
       } else {
         // Respuesta inválida, usar tema por defecto
         aplicarCSSVariables(temaDefault.css_variables);
@@ -153,7 +155,12 @@ export const ThemeProvider = ({ children }) => {
       const config = response.data.configuracion;
       
       setConfiguracion(config);
-      aplicarCSSVariables(config.css_variables);
+      // Aplicar CSS variables - usar las del backend o generarlas si no vienen
+      const cssVars = config.css_variables || generarCSSVariablesDesdeConfig(config);
+      aplicarCSSVariables(cssVars);
+      
+      // Actualizar título del documento
+      actualizarTituloDocumento(config.nombre_sistema);
       
       return { success: true, data: config };
     } catch (err) {
@@ -174,7 +181,12 @@ export const ThemeProvider = ({ children }) => {
       const config = response.data.configuracion;
       
       setConfiguracion(config);
-      aplicarCSSVariables(config.css_variables);
+      // Aplicar CSS variables - usar las del backend o generarlas si no vienen
+      const cssVars = config.css_variables || generarCSSVariablesDesdeConfig(config);
+      aplicarCSSVariables(cssVars);
+      
+      // Actualizar título del documento
+      actualizarTituloDocumento(config.nombre_sistema);
       
       return { success: true, data: config };
     } catch (err) {

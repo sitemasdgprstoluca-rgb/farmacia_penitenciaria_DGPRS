@@ -142,7 +142,7 @@ function App() {
               </PermissionsGuard>
             } />
             <Route path="configuracion-tema" element={
-              <PermissionsGuard requiredPermission="esSuperusuario">
+              <PermissionsGuard requiredPermission="configurarTema">
                 <ConfiguracionTema />
               </PermissionsGuard>
             } />

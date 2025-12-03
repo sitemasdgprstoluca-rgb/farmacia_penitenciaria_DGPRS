@@ -66,7 +66,7 @@ function Layout() {
     { path: "/trazabilidad", icon: FaHistory, label: "Trazabilidad", permission: "verTrazabilidad" },
     { path: "/notificaciones", icon: FaBell, label: "Notificaciones", permission: "verNotificaciones", badge: unreadCount },
     { path: "/perfil", icon: FaIdBadge, label: "Perfil", permission: "verPerfil" },
-    { path: "/configuracion-tema", icon: FaPalette, label: "Personalizar Tema", permission: "esSuperusuario" },
+    { path: "/configuracion-tema", icon: FaPalette, label: "Personalizar Tema", permission: "configurarTema" },
   ];
 
   const visibleMenuItems = menuItems.filter((item) => !item.permission || permisos[item.permission]);

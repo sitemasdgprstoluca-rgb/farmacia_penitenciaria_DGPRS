@@ -27,6 +27,7 @@ const PERMISOS_POR_ROL = {
     verPerfil: true,
     verMovimientos: true,
     esSuperusuario: true,
+    configurarTema: true, // Permite personalizar tema del sistema
     // Permisos granulares de requisiciones
     crearRequisicion: true,
     editarRequisicion: true,
@@ -61,6 +62,7 @@ const PERMISOS_POR_ROL = {
     verPerfil: true,
     verMovimientos: true,
     esSuperusuario: false,
+    configurarTema: true, // Farmacia puede personalizar tema
     // Permisos granulares de requisiciones
     crearRequisicion: true,
     editarRequisicion: true,
@@ -95,6 +97,7 @@ const PERMISOS_POR_ROL = {
     verPerfil: true,
     verMovimientos: false,
     esSuperusuario: false,
+    configurarTema: false, // Centro no puede personalizar tema
     // Permisos granulares de requisiciones - Centro solo crea y envía
     crearRequisicion: true,
     editarRequisicion: true,  // Solo sus propios borradores
@@ -129,6 +132,7 @@ const PERMISOS_POR_ROL = {
     verPerfil: true,
     verMovimientos: true,
     esSuperusuario: false,
+    configurarTema: false, // Vista no puede personalizar tema
     // Vista no puede modificar requisiciones
     crearRequisicion: false,
     editarRequisicion: false,
@@ -163,6 +167,7 @@ const PERMISOS_POR_ROL = {
     verPerfil: false,
     verMovimientos: false,
     esSuperusuario: false,
+    configurarTema: false,
     crearRequisicion: false,
     editarRequisicion: false,
     eliminarRequisicion: false,

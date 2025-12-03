@@ -97,8 +97,8 @@ const ConfiguracionTema = () => {
   const logoPdfRef = useRef(null);
 
   // Verificar permisos usando el sistema de permisos coherente
-  // Soporta tanto superusuario directo como el permiso 'esSuperusuario'
-  const tienePermisoTema = user?.is_superuser || permisos?.isSuperuser || permisos?.esSuperusuario;
+  // Usa el permiso 'configurarTema' que incluye ADMIN y FARMACIA
+  const tienePermisoTema = permisos?.configurarTema || user?.is_superuser || permisos?.esSuperusuario;
   const permisosResueltos = !cargandoPermisos && user !== undefined;
   
   // Agrupar operaciones por tipo para permitir concurrencia entre grupos diferentes
@@ -496,7 +496,7 @@ const ConfiguracionTema = () => {
         <div className="bg-white p-8 rounded-xl shadow-lg text-center max-w-md">
           <FaLock className="text-6xl text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-800 mb-2">Acceso Restringido</h2>
-          <p className="text-gray-600">Solo los administradores del sistema pueden acceder a la configuración del tema.</p>
+          <p className="text-gray-600">Solo los administradores del sistema y personal de farmacia pueden acceder a la configuración del tema.</p>
         </div>
       </div>
     );
