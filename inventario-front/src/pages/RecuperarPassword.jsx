@@ -3,12 +3,14 @@ import { Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { FaEnvelope, FaArrowLeft, FaPaperPlane } from 'react-icons/fa';
 import { passwordResetAPI } from '../services/api';
+import { useTheme } from '../hooks/useTheme';
 
 function RecuperarPassword() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [enviado, setEnviado] = useState(false);
   const [debugInfo, setDebugInfo] = useState(null);
+  const { temaGlobal, logoLoginUrl, nombreSistema } = useTheme();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -42,25 +44,28 @@ function RecuperarPassword() {
     <div
       className="min-h-screen w-full flex items-center justify-center p-4 overflow-auto"
       style={{
-        background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 50%, #4a0f26 100%)',
+        background: `linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 50%, ${temaGlobal?.color_primario_hover || '#4a0f26'} 100%)`,
       }}
     >
       <div className="max-w-md w-full mx-auto">
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center bg-white rounded-lg mb-4 shadow-lg p-3">
             <img 
-              src="/logo-sistema.png" 
-              alt="Secretaría de Seguridad" 
+              src={logoLoginUrl || "/logo-sistema.png"} 
+              alt="Logo del Sistema" 
               className="h-32 w-64 object-contain"
+              onError={(e) => { e.target.src = "/logo-sistema.png"; }}
             />
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Recuperar Contraseña</h1>
-          <p className="text-pink-100">Sistema de Farmacia Penitenciaria</p>
+          <p style={{ color: 'var(--color-sidebar-text, #FFFFFF)', opacity: 0.7 }}>
+            {nombreSistema || 'Sistema de Farmacia Penitenciaria'}
+          </p>
         </div>
 
         <div
           className="bg-white rounded-2xl shadow-2xl p-8 mb-6 border-t-4"
-          style={{ borderTopColor: '#9F2241' }}
+          style={{ borderTopColor: 'var(--color-primary, #9F2241)' }}
         >
           {!enviado ? (
             <form onSubmit={handleSubmit} className="space-y-5">
@@ -70,7 +75,7 @@ function RecuperarPassword() {
               </p>
 
               <div>
-                <label className="block text-sm font-bold mb-2" style={{ color: '#6B1839' }}>
+                <label className="block text-sm font-bold mb-2" style={{ color: 'var(--color-primary-hover, #6B1839)' }}>
                   Correo electrónico
                 </label>
                 <div className="relative">
@@ -91,7 +96,7 @@ function RecuperarPassword() {
                 type="submit"
                 disabled={loading}
                 className="w-full text-white py-4 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-bold shadow-xl transition-all transform hover:scale-105 hover:shadow-2xl active:scale-95"
-                style={{ background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)' }}
+                style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%)' }}
               >
                 {loading ? (
                   <>
@@ -163,9 +168,11 @@ function RecuperarPassword() {
         </div>
 
         <div className="text-center mt-6 text-white text-sm space-y-1">
-          <p className="font-bold text-base">Sistema de Control de Abasto</p>
-          <p className="font-semibold">Subsecretaría de Seguridad</p>
-          <p className="text-xs text-pink-100">Gobierno del Estado de México • 2025</p>
+          <p className="font-bold text-base">{nombreSistema || 'Sistema de Control de Abasto'}</p>
+          <p className="font-semibold">{temaGlobal?.reporte_subtitulo || 'Subsecretaría de Seguridad'}</p>
+          <p className="text-xs" style={{ color: 'var(--color-sidebar-text, #FFFFFF)', opacity: 0.7 }}>
+            {temaGlobal?.reporte_pie_pagina || 'Gobierno del Estado de México'} {temaGlobal?.reporte_ano_visible !== false ? '• 2025' : ''}
+          </p>
         </div>
       </div>
     </div>

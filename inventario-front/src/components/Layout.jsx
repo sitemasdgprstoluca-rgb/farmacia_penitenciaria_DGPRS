@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { usePermissions } from "../hooks/usePermissions";
+import { useTheme } from "../hooks/useTheme";
 import { DEV_CONFIG } from "../config/dev";
 import NotificacionesBell from "./NotificacionesBell";
 import { notificacionesAPI, authAPI } from "../services/api";
@@ -31,6 +32,7 @@ function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, permisos, getRolPrincipal } = usePermissions();
+  const { temaGlobal, logoHeaderUrl, nombreSistema } = useTheme();
 
   // Verificar permiso de notificaciones para centralizar conteo
   const tienePermisoNotificaciones = permisos?.verNotificaciones;
@@ -147,13 +149,14 @@ function Layout() {
         >
           <div className="flex items-center gap-3">
             <img 
-              src="/logo-sistema.png" 
+              src={logoHeaderUrl || "/logo-sistema.png"} 
               alt="Logo" 
               className="h-9 w-9 object-contain"
+              onError={(e) => { e.target.src = "/logo-sistema.png"; }}
             />
             <div className="leading-none">
-              <span className="font-bold text-[15px] text-white tracking-wide">FARMACIA</span>
-              <span className="block text-[9px] text-pink-200 tracking-widest mt-0.5">SISTEMA PENITENCIARIO</span>
+              <span className="font-bold text-[15px] tracking-wide" style={{ color: "var(--color-sidebar-text, #FFFFFF)" }}>FARMACIA</span>
+              <span className="block text-[9px] tracking-widest mt-0.5" style={{ color: "var(--color-sidebar-text, #FFFFFF)", opacity: 0.7 }}>SISTEMA PENITENCIARIO</span>
             </div>
           </div>
           <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-white/70 hover:text-white transition-colors">
@@ -168,7 +171,7 @@ function Layout() {
         >
           <div className="flex items-center gap-3">
             <div className="bg-white/90 rounded-full p-1.5 shadow-sm">
-              <FaUserCircle className="text-2xl" style={{ color: "#9F2241" }} />
+              <FaUserCircle className="text-2xl" style={{ color: "var(--color-primary, #9F2241)" }} />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-white truncate leading-tight">
@@ -256,7 +259,7 @@ function Layout() {
                 className="text-sm sm:text-base md:text-lg font-bold leading-snug max-w-3xl"
                 style={{ color: "var(--color-primary-hover, #6B1839)" }}
               >
-                SISTEMA DE FARMACIA PENITENCIARIA - GOBIERNO DEL ESTADO DE MEXICO
+                {nombreSistema || temaGlobal?.reporte_titulo_institucion || "SISTEMA DE FARMACIA PENITENCIARIA - GOBIERNO DEL ESTADO DE MEXICO"}
               </h1>
             </div>
             <div className="flex items-center gap-4">

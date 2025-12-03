@@ -25,7 +25,8 @@ import '../styles/Dashboard.css';
 import { dashboardAPI } from '../services/api';
 import { hasAccessToken } from '../services/tokenManager';
 
-const COLORS = ['#9F2241', '#10B981', '#F59E0B', '#06B6D4', '#8B5CF6'];
+// Colores para gráficas - usarán variables CSS cuando sea posible
+const COLORS = ['var(--color-primary, #9F2241)', '#10B981', '#F59E0B', '#06B6D4', '#8B5CF6'];
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -289,10 +290,10 @@ const Dashboard = () => {
     <div className="dashboard-container">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4">
         <div>
-          <h1 className="text-4xl font-bold" style={{ color: '#6B1839' }}>
+          <h1 className="text-4xl font-bold" style={{ color: 'var(--color-primary-hover, #6B1839)' }}>
             Panel de Control
           </h1>
-          <p className="text-base mt-2" style={{ color: '#6B7280' }}>
+          <p className="text-base mt-2" style={{ color: 'var(--color-text-secondary, #6B7280)' }}>
             {selectedCentro 
               ? `📍 Filtrando: ${centroNombre || 'Centro seleccionado'}`
               : 'Resumen general del sistema de inventario'
@@ -306,7 +307,7 @@ const Dashboard = () => {
           )}
           <div
             className="px-5 py-2.5 rounded-2xl font-semibold text-sm"
-            style={{ background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)', color: 'white' }}
+            style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%)', color: 'white' }}
           >
             <span>
               {new Date().toLocaleDateString('es-MX', {
@@ -421,7 +422,7 @@ const Dashboard = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
           {/* Gráfica 1: Consumo Mensual */}
           <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: '#6B1839' }}>
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: 'var(--color-primary-hover, #6B1839)' }}>
               <FaChartLine /> Consumo Mensual (Últimos 6 meses)
             </h3>
             {graficas.consumo_mensual.length > 0 ? (
@@ -457,7 +458,7 @@ const Dashboard = () => {
 
           {/* Gráfica 2: Inventario por Centro */}
           <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: '#6B1839' }}>
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: 'var(--color-primary-hover, #6B1839)' }}>
               <FaWarehouse /> Inventario por Centro
             </h3>
             {graficas.stock_por_centro.length > 0 ? (
@@ -485,7 +486,7 @@ const Dashboard = () => {
       {/* Gráfica 3: Requisiciones por Estado - Solo si hay datos */}
       {!esVistaUser && graficas.requisiciones_por_estado.length > 0 && (
         <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200 mt-6">
-          <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: '#6B1839' }}>
+          <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: 'var(--color-primary-hover, #6B1839)' }}>
             <FaBox /> Requisiciones por Estado
           </h3>
           <ResponsiveContainer width="100%" height={280}>

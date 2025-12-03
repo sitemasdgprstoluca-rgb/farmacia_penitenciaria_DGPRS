@@ -799,7 +799,7 @@ const Centros = () => {
             
             {importLoading && (
               <div className="mb-4 text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent mx-auto" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }}></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-4 spinner-institucional mx-auto"></div>
                 <p className="text-sm text-gray-600 mt-2">Procesando archivo...</p>
               </div>
             )}

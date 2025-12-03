@@ -479,7 +479,7 @@ const ConfiguracionTema = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-t-transparent mx-auto mb-4" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }}></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-4 spinner-institucional mx-auto mb-4"></div>
           <p className="text-gray-600">
             {!permisosResueltos ? 'Verificando permisos...' : 'Cargando configuración...'}
           </p>
@@ -558,8 +558,8 @@ const ConfiguracionTema = () => {
                   : 'text-gray-600 hover:bg-gray-50'
               }`}
               style={activeTab === tab.id ? { 
-                background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)',
-                borderBottomColor: '#9F2241'
+                background: 'var(--color-sidebar-bg, linear-gradient(135deg, #9F2241 0%, #6B1839 100%))',
+                borderBottomColor: 'var(--color-primary, #9F2241)'
               } : {}}
             >
               <tab.icon />

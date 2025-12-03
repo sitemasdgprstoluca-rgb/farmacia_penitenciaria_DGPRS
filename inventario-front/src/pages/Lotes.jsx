@@ -763,7 +763,7 @@ const handleImportar = async (e) => {
                 <tr>
                   <td colSpan="8" className="text-center py-8">
                     <div className="flex justify-center items-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }}></div>
+                      <div className="animate-spin rounded-full h-8 w-8 border-4 spinner-institucional"></div>
                       <span className="ml-2">Cargando lotes...</span>
                     </div>
                   </td>
@@ -877,10 +877,7 @@ const handleImportar = async (e) => {
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl">
             {/* Header del modal con gradiente institucional */}
-            <div className="px-6 py-4 border-b-4 flex items-center justify-between" style={{ 
-              background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)',
-              borderBottomColor: '#9F2241'
-            }}>
+            <div className="px-6 py-4 border-b-4 flex items-center justify-between modal-header-theme">
               <h2 className="text-2xl font-bold text-white">
                 {editingLote ? 'EDITAR LOTE' : 'NUEVO LOTE'}
               </h2>
@@ -1214,7 +1211,7 @@ const handleImportar = async (e) => {
             
             {loading && (
               <div className="mb-4 text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent mx-auto" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }}></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-4 spinner-institucional mx-auto"></div>
                 <p className="text-sm text-gray-600 mt-2">Procesando archivo...</p>
               </div>
             )}
@@ -1236,7 +1233,7 @@ const handleImportar = async (e) => {
       {showDocModal && selectedLoteDoc && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
-            <div className="p-6 border-b flex justify-between items-center" style={{ background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)' }}>
+            <div className="p-6 border-b flex justify-between items-center bg-theme-gradient">
               <h3 className="text-xl font-bold text-white flex items-center gap-2">
                 <FaFilePdf /> Documento del Lote
               </h3>

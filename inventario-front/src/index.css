@@ -416,3 +416,72 @@ code {
     @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent;
   }
 }
+
+/* ========================================
+   CLASES UTILITARIAS DEL TEMA GLOBAL
+   Estas clases usan las variables CSS que el ThemeContext actualiza dinámicamente
+   ======================================== */
+
+/* Spinner institucional - usa color primario del tema */
+.spinner-theme {
+  border-color: color-mix(in srgb, var(--color-primary, #9F2241) 20%, transparent);
+  border-top-color: var(--color-primary, #9F2241);
+}
+
+/* Colores de texto del tema */
+.text-theme-primary { color: var(--color-primary, #9F2241); }
+.text-theme-primary-hover { color: var(--color-primary-hover, #6B1839); }
+.text-theme-secondary { color: var(--color-text-secondary, #757575); }
+
+/* Colores de fondo del tema */
+.bg-theme-primary { background-color: var(--color-primary, #9F2241); }
+.bg-theme-primary-hover { background-color: var(--color-primary-hover, #6B1839); }
+.bg-theme-sidebar { background: var(--color-sidebar-bg, #9F2241); }
+
+
+/* Gradientes del tema */
+.gradient-theme-primary {
+  background: linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%);
+}
+
+/* Bordes del tema */
+.border-theme-primary { border-color: var(--color-primary, #9F2241); }
+.border-theme-primary-hover { border-color: var(--color-primary-hover, #6B1839); }
+
+/* Labels de formulario con color del tema */
+.form-label-theme {
+  color: var(--color-primary-hover, #6B1839);
+  font-weight: 700;
+  font-size: 0.875rem;
+}
+
+/* Encabezados con color del tema */
+.heading-theme {
+  color: var(--color-primary-hover, #6B1839);
+}
+
+/* Tarjetas con borde del tema */
+.card-theme {
+  border-left: 4px solid var(--color-primary, #9F2241);
+}
+
+/* Estados hover del tema */
+.hover\:text-theme-primary:hover { color: var(--color-primary, #9F2241); }
+.hover\:bg-theme-primary:hover { background-color: var(--color-primary, #9F2241); }
+
+/* Input con focus institucional - clase para usar en formularios */
+.input-institucional {
+  @apply w-full px-4 py-3 border-2 border-gray-200 rounded-xl transition-all;
+}
+.input-institucional:focus {
+  outline: none;
+  border-color: var(--color-primary, #9F2241);
+  box-shadow: 0 0 0 3px rgba(159, 34, 65, 0.1);
+}
+
+/* Modal header con tema */
+.modal-header-theme {
+  background: var(--color-sidebar-bg, linear-gradient(135deg, #9F2241 0%, #6B1839 100%));
+  border-bottom-color: var(--color-primary, #9F2241);
+}
+
