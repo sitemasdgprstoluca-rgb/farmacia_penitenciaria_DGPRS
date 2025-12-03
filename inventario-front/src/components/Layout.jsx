@@ -145,11 +145,11 @@ function Layout() {
           className="flex items-center justify-between p-3 border-b"
           style={{ borderBottomColor: "rgba(255,255,255,0.2)" }}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <img 
               src="/logo-sistema.png" 
               alt="Logo" 
-              className="h-14 w-28 object-contain rounded"
+              className="h-10 w-10 object-contain rounded"
             />
             <div>
               <span className="font-bold text-base text-white block leading-tight">FARMACIA</span>
