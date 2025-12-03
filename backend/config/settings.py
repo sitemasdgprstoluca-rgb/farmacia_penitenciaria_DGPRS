@@ -270,9 +270,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # REST FRAMEWORK CONFIGURATION
 # ═══════════════════════════════════════════════════════════
 REST_FRAMEWORK = {
+    # ISS-001: Solo JWT para API - SessionAuthentication removida para evitar
+    # vulnerabilidades CSRF (csrf_exempt ya no es necesario en ViewSets)
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-        'rest_framework.authentication.SessionAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',

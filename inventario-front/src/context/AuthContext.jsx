@@ -14,7 +14,8 @@ import {
   setAccessToken, 
   clearTokens, 
   getAccessToken,
-  migrateFromLocalStorage 
+  migrateFromLocalStorage,
+  setLogoutInProgress
 } from '../services/tokenManager';
 
 export function AuthProvider({ children }) {
@@ -78,30 +79,46 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
+    // ISS-003: Marcar logout en progreso ANTES de llamar a la API
+    // Esto bloquea cualquier intento de refresh automático
+    setLogoutInProgress(true);
+    
     try {
       await authAPI.logout();
     } catch (error) {
-      // Ignorar errores de logout, limpiar de todos modos
-      console.warn('Error en logout:', error);
+      // ISS-003: Incluso si el logout falla (servidor inalcanzable, etc.),
+      // limpiar el estado local. El flag logoutInProgress evita que el
+      // interceptor intente refresh con una cookie potencialmente válida.
+      console.warn('Error en logout (limpieza local realizada):', error);
     }
     
-    // Limpiar tokens de memoria
+    // Limpiar tokens de memoria (esto mantiene logoutInProgress=true)
     clearTokens();
     // Limpiar datos de usuario
     localStorage.removeItem('user');
     setUser(null);
   };
 
+  // ISS-002: Roles are lowercase from backend (admin_sistema, farmacia, centro, vista)
+  // Also support legacy roles: superusuario, admin_farmacia, usuario_normal, usuario_vista
+  const ADMIN_ROLES = ['admin_sistema', 'superusuario', 'admin_farmacia'];
+  
   const hasRole = (role) => {
     if (!user) return false;
-    if (user.rol === 'SUPERUSER') return true;
-    return user.rol === role;
+    // Normalize both to lowercase for comparison
+    const userRole = (user.rol || '').toLowerCase();
+    const targetRole = role.toLowerCase();
+    // Admin roles have access to everything
+    if (ADMIN_ROLES.includes(userRole)) return true;
+    return userRole === targetRole;
   };
 
   const hasAnyRole = (roles) => {
     if (!user) return false;
-    if (user.rol === 'SUPERUSER') return true;
-    return roles.includes(user.rol);
+    const userRole = (user.rol || '').toLowerCase();
+    // Admin roles have access to everything
+    if (ADMIN_ROLES.includes(userRole)) return true;
+    return roles.some(r => r.toLowerCase() === userRole);
   };
 
   return (

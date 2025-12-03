@@ -72,8 +72,6 @@ from reportlab.lib.pagesizes import letter, A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
-from django.views.decorators.csrf import csrf_exempt
-from django.utils.decorators import method_decorator
 
 from core.models import Producto, Lote, Movimiento, Centro, Requisicion, DetalleRequisicion, HojaRecoleccion
 from core.serializers import (
@@ -695,7 +693,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 'sugerencia': 'Verifique que el archivo tenga el formato correcto: Clave, Descripcion, Unidad, Precio, Stock Minimo, Estado'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-@method_decorator(csrf_exempt, name='dispatch')
+
 class CentroViewSet(viewsets.ModelViewSet):
     """
     ViewSet para gestionar centros penitenciarios.
@@ -1246,7 +1244,7 @@ class CentroViewSet(viewsets.ModelViewSet):
         wb.save(response)
         return response
 
-@method_decorator(csrf_exempt, name='dispatch')
+
 class LoteViewSet(viewsets.ModelViewSet):
     """
     ViewSet para gestionar lotes.
@@ -2012,7 +2010,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             'mensaje': 'Documento eliminado correctamente'
         })
 
-@method_decorator(csrf_exempt, name='dispatch')
+
 class MovimientoViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
@@ -2436,7 +2434,6 @@ class MovimientoViewSet(
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@method_decorator(csrf_exempt, name='dispatch')
 class RequisicionViewSet(viewsets.ModelViewSet):
     """
     CRUD y flujo de requisiciones con estados en minusculas

@@ -12,7 +12,8 @@ import { toast } from 'react-hot-toast';
 import { 
   getAccessToken, 
   setAccessToken, 
-  clearTokens
+  clearTokens,
+  isLogoutInProgress
 } from './tokenManager';
 
 // === CONFIGURACIÓN DE BASE URL CON VALIDACIÓN DE SEGURIDAD (ISS-001, ISS-005) ===
@@ -143,7 +144,8 @@ apiClient.interceptors.response.use(
     const now = Date.now();
     
     // Intentar refresh automático en caso de 401
-    if (status === 401 && !originalRequest._retry) {
+    // ISS-003: No intentar refresh si el logout está en progreso
+    if (status === 401 && !originalRequest._retry && !isLogoutInProgress()) {
       if (isRefreshing) {
         // Si ya se está refrescando, encolar la petición
         return new Promise((resolve, reject) => {

@@ -15,6 +15,11 @@
 // Access token almacenado SOLO en memoria (no persiste entre pestañas ni recargas)
 let accessToken = null;
 
+// ISS-003: Flag para bloquear refresh después de logout iniciado
+// Esto previene que el interceptor intente refresh con una cookie que puede existir
+// pero que el usuario ya intentó invalidar
+let logoutInProgress = false;
+
 // Callbacks para notificar cambios de sesión
 let onSessionChangeCallbacks = [];
 
@@ -24,6 +29,10 @@ let onSessionChangeCallbacks = [];
  */
 export const setAccessToken = (token) => {
   accessToken = token;
+  // Si recibimos un token válido, resetear el flag de logout
+  if (token) {
+    logoutInProgress = false;
+  }
   notifySessionChange(!!token);
 };
 
@@ -44,10 +53,27 @@ export const hasAccessToken = () => {
 };
 
 /**
+ * ISS-003: Marca que el logout está en progreso
+ * Esto bloquea intentos de refresh automático
+ */
+export const setLogoutInProgress = (inProgress) => {
+  logoutInProgress = inProgress;
+};
+
+/**
+ * ISS-003: Verifica si el logout está en progreso
+ * @returns {boolean} true si hay logout en progreso
+ */
+export const isLogoutInProgress = () => {
+  return logoutInProgress;
+};
+
+/**
  * Limpia todos los tokens (logout)
  */
 export const clearTokens = () => {
   accessToken = null;
+  logoutInProgress = true; // Bloquear refresh hasta nuevo login
   notifySessionChange(false);
 };
 
@@ -174,4 +200,6 @@ export default {
   onSessionChange,
   migrateFromLocalStorage,
   getTokenStatus,
+  setLogoutInProgress,
+  isLogoutInProgress,
 };
