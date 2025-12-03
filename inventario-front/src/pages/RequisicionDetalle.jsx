@@ -41,6 +41,15 @@ const RequisicionDetalle = () => {
   const [recepcionData, setRecepcionData] = useState({ lugar: '', observaciones: '' });
   const [showConfirmRecepcion, setShowConfirmRecepcion] = useState(false);
   
+  // Modales para acciones con validación de permisos
+  const [showEnviarModal, setShowEnviarModal] = useState(false);
+  const [showAutorizarModal, setShowAutorizarModal] = useState(false);
+  const [showAutorizarParcialModal, setShowAutorizarParcialModal] = useState(false);
+  const [autorizarObservaciones, setAutorizarObservaciones] = useState('');
+  const [showRechazarModal, setShowRechazarModal] = useState(false);
+  const [showCancelarModal, setShowCancelarModal] = useState(false);
+  const [showSurtirModal, setShowSurtirModal] = useState(false);
+  
   // Hoja de recolección
   const [hojaRecoleccion, setHojaRecoleccion] = useState(null);
   // eslint-disable-next-line no-unused-vars
@@ -135,10 +144,25 @@ const RequisicionDetalle = () => {
     });
   };
 
+  // Iniciar envío con validación de permisos
+  const iniciarEnviar = () => {
+    if (!permisos?.enviarRequisicion) {
+      toast.error('No tienes permisos para enviar requisiciones');
+      return;
+    }
+    setShowEnviarModal(true);
+  };
+
   const handleEnviar = async () => {
-    if (!window.confirm('¿Enviar esta requisición para autorización?')) return;
+    // Doble validación de permisos (defensa en profundidad)
+    if (!permisos?.enviarRequisicion) {
+      toast.error('No tienes permisos para enviar requisiciones');
+      setShowEnviarModal(false);
+      return;
+    }
     try {
       setProcesando(true);
+      setShowEnviarModal(false);
       await requisicionesAPI.enviar(id);
       toast.success('Requisición enviada');
       cargarRequisicion();
@@ -183,6 +207,12 @@ const RequisicionDetalle = () => {
   };
 
   const confirmarAutorizacion = async () => {
+    // Doble validación de permisos (defensa en profundidad)
+    if (!permisos?.autorizarRequisicion) {
+      toast.error('No tienes permisos para autorizar requisiciones');
+      return;
+    }
+    
     // Validar que al menos un item tenga cantidad > 0
     const totalAutorizado = detallesEditables.reduce((sum, d) => sum + (d.cantidad_autorizada || 0), 0);
     if (totalAutorizado === 0) {
@@ -195,37 +225,53 @@ const RequisicionDetalle = () => {
       (d.cantidad_autorizada || 0) < (d.cantidad_solicitada || 0)
     );
     
-    let observaciones = '';
     if (esParcial) {
-      observaciones = prompt(
-        'Esta es una autorización PARCIAL.\n\n' +
-        'Por favor, indique el motivo de la reducción de cantidades:\n' +
-        '(Mínimo 10 caracteres)'
-      );
-      
-      if (observaciones === null) return; // Usuario canceló
-      
-      const obsTrimmed = (observaciones || '').trim();
-      if (obsTrimmed.length < 10) {
-        toast.error('Para autorizaciones parciales, debe indicar el motivo (mínimo 10 caracteres)');
-        return;
-      }
-      observaciones = obsTrimmed;
+      // Mostrar modal para ingresar observaciones de autorización parcial
+      setAutorizarObservaciones('');
+      setShowAutorizarParcialModal(true);
     } else {
-      // Confirmación simple para autorización total
-      if (!window.confirm('¿Confirmar la autorización TOTAL de esta requisición?')) {
-        return;
-      }
+      // Mostrar modal de confirmación para autorización total
+      setShowAutorizarModal(true);
     }
-    
+  };
+  
+  // Ejecutar autorización total
+  const ejecutarAutorizacionTotal = async () => {
     try {
       setProcesando(true);
+      setShowAutorizarModal(false);
       const items = detallesEditables.map(d => ({
         id: d.id,
         cantidad_autorizada: d.cantidad_autorizada
       }));
-      await requisicionesAPI.autorizar(id, { items, observaciones });
-      toast.success(esParcial ? 'Requisición autorizada parcialmente' : 'Requisición autorizada');
+      await requisicionesAPI.autorizar(id, { items, observaciones: '' });
+      toast.success('Requisición autorizada');
+      setModoAutorizar(false);
+      cargarRequisicion();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al autorizar');
+    } finally {
+      setProcesando(false);
+    }
+  };
+  
+  // Ejecutar autorización parcial con observaciones
+  const ejecutarAutorizacionParcial = async (observaciones) => {
+    const obsTrimmed = (observaciones || '').trim();
+    if (obsTrimmed.length < 10) {
+      toast.error('Para autorizaciones parciales, debe indicar el motivo (mínimo 10 caracteres)');
+      return;
+    }
+    
+    try {
+      setProcesando(true);
+      setShowAutorizarParcialModal(false);
+      const items = detallesEditables.map(d => ({
+        id: d.id,
+        cantidad_autorizada: d.cantidad_autorizada
+      }));
+      await requisicionesAPI.autorizar(id, { items, observaciones: obsTrimmed });
+      toast.success('Requisición autorizada parcialmente');
       setModoAutorizar(false);
       cargarRequisicion();
     } catch (error) {
@@ -235,20 +281,23 @@ const RequisicionDetalle = () => {
     }
   };
 
-  const handleRechazar = async () => {
-    // Validación interna de permisos
+  // Iniciar rechazo con validación de permisos
+  const iniciarRechazar = () => {
     if (!permisos?.rechazarRequisicion) {
       toast.error('No tienes permisos para rechazar requisiciones');
       return;
     }
-    
-    const motivo = prompt(
-      `Motivo del rechazo para ${requisicion?.folio || 'esta requisición'}:\n` +
-      '(Mínimo 10 caracteres)'
-    );
-    
-    // Validar que se ingresó un motivo
-    if (motivo === null) return; // Usuario canceló
+    setShowRechazarModal(true);
+  };
+
+  // Ejecutar rechazo con motivo del modal
+  const ejecutarRechazar = async (motivo) => {
+    // Doble validación de permisos (defensa en profundidad)
+    if (!permisos?.rechazarRequisicion) {
+      toast.error('No tienes permisos para rechazar requisiciones');
+      setShowRechazarModal(false);
+      return;
+    }
     
     const motivoTrimmed = (motivo || '').trim();
     if (motivoTrimmed.length < 10) {
@@ -258,6 +307,7 @@ const RequisicionDetalle = () => {
     
     try {
       setProcesando(true);
+      setShowRechazarModal(false);
       await requisicionesAPI.rechazar(id, { observaciones: motivoTrimmed });
       toast.success('Requisición rechazada');
       cargarRequisicion();
@@ -268,13 +318,26 @@ const RequisicionDetalle = () => {
     }
   };
 
-  const handleSurtir = async () => {
-    // Validación interna de permisos
+  // Iniciar surtido con validación de permisos
+  const iniciarSurtir = () => {
     if (!permisos?.surtirRequisicion) {
       toast.error('No tienes permisos para surtir requisiciones');
       return;
     }
-    if (!window.confirm('¿Marcar esta requisición como surtida? Se descontará el inventario automáticamente.')) return;
+    setShowSurtirModal(true);
+  };
+
+  // Ejecutar surtido después de confirmación en modal
+  const ejecutarSurtir = async () => {
+    // Doble validación de permisos (defensa en profundidad)
+    if (!permisos?.surtirRequisicion) {
+      toast.error('No tienes permisos para surtir requisiciones');
+      setShowSurtirModal(false);
+      return;
+    }
+    
+    setShowSurtirModal(false);
+    
     try {
       setProcesando(true);
       await requisicionesAPI.surtir(id);
@@ -294,20 +357,31 @@ const RequisicionDetalle = () => {
     }
   };
 
-  const handleCancelar = async () => {
-    const motivo = prompt(
-      `Motivo de cancelación para ${requisicion?.folio || 'esta requisición'}:\n` +
-      '(Obligatorio para auditoría - mínimo 5 caracteres)'
-    );
-    
-    // Validar que se ingresó un motivo
-    if (motivo === null) return; // Usuario canceló
+  // Iniciar cancelación con validación de permisos
+  const iniciarCancelar = () => {
+    if (!permisos?.cancelarRequisicion) {
+      toast.error('No tienes permisos para cancelar requisiciones');
+      return;
+    }
+    setShowCancelarModal(true);
+  };
+
+  // Ejecutar cancelación después de confirmación en modal
+  const ejecutarCancelar = async (motivo) => {
+    // Doble validación de permisos (defensa en profundidad)
+    if (!permisos?.cancelarRequisicion) {
+      toast.error('No tienes permisos para cancelar requisiciones');
+      setShowCancelarModal(false);
+      return;
+    }
     
     const motivoTrimmed = (motivo || '').trim();
     if (motivoTrimmed.length < 5) {
       toast.error('Debe ingresar un motivo de cancelación (mínimo 5 caracteres)');
       return;
     }
+    
+    setShowCancelarModal(false);
     
     try {
       setProcesando(true);
@@ -846,7 +920,7 @@ const RequisicionDetalle = () => {
             <>
               {puedeEnviar && (
                 <button
-                  onClick={handleEnviar}
+                  onClick={iniciarEnviar}
                   disabled={procesando}
                   className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
                   style={{ backgroundColor: COLORS.vino }}
@@ -868,7 +942,7 @@ const RequisicionDetalle = () => {
 
               {puedeRechazar && (
                 <button
-                  onClick={handleRechazar}
+                  onClick={iniciarRechazar}
                   disabled={procesando}
                   className="flex items-center gap-2 px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
                 >
@@ -878,7 +952,7 @@ const RequisicionDetalle = () => {
 
               {puedeSurtir && (
                 <button
-                  onClick={handleSurtir}
+                  onClick={iniciarSurtir}
                   disabled={procesando}
                   className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
                   style={{ backgroundColor: COLORS.vino }}
@@ -920,7 +994,7 @@ const RequisicionDetalle = () => {
 
               {puedeCancelar && (
                 <button
-                  onClick={handleCancelar}
+                  onClick={iniciarCancelar}
                   disabled={procesando}
                   className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
                 >
@@ -938,6 +1012,84 @@ const RequisicionDetalle = () => {
           </div>
         )}
       </div>
+
+      {/* Modal de confirmación para enviar */}
+      <ConfirmModal
+        open={showEnviarModal}
+        onCancel={() => setShowEnviarModal(false)}
+        onConfirm={handleEnviar}
+        title="Enviar requisición"
+        message={`¿Confirma que desea enviar la requisición ${requisicion?.folio || ''} para autorización?`}
+        confirmText="Enviar"
+        cancelText="Cancelar"
+        tone="info"
+      />
+
+      {/* Modal de confirmación para autorización total */}
+      <ConfirmModal
+        open={showAutorizarModal}
+        onCancel={() => setShowAutorizarModal(false)}
+        onConfirm={ejecutarAutorizacionTotal}
+        title="Autorizar requisición"
+        message={`¿Confirma que desea autorizar COMPLETAMENTE la requisición ${requisicion?.folio || ''}? Se aprobarán todas las cantidades solicitadas.`}
+        confirmText="Autorizar"
+        cancelText="Cancelar"
+        tone="info"
+      />
+
+      {/* Modal de input para autorización parcial */}
+      <InputModal
+        open={showAutorizarParcialModal}
+        onCancel={() => setShowAutorizarParcialModal(false)}
+        onConfirm={ejecutarAutorizacionParcial}
+        title="Autorización parcial"
+        message="Indique las modificaciones realizadas a las cantidades"
+        placeholder="Ej: ajuste de cantidades por disponibilidad en inventario"
+        minLength={10}
+        confirmText="Autorizar"
+        cancelText="Cancelar"
+        tone="info"
+      />
+
+      {/* Modal de input para rechazar */}
+      <InputModal
+        open={showRechazarModal}
+        onCancel={() => setShowRechazarModal(false)}
+        onConfirm={ejecutarRechazar}
+        title="Rechazar requisición"
+        message="Ingrese el motivo del rechazo (obligatorio para auditoría)"
+        placeholder="Motivo del rechazo (mínimo 10 caracteres)"
+        minLength={10}
+        confirmText="Rechazar"
+        cancelText="Cancelar"
+        tone="danger"
+      />
+
+      {/* Modal de confirmación para surtir */}
+      <ConfirmModal
+        open={showSurtirModal}
+        onCancel={() => setShowSurtirModal(false)}
+        onConfirm={ejecutarSurtir}
+        title="Surtir requisición"
+        message={`¿Marcar la requisición ${requisicion?.folio || ''} como surtida? Se descontará el inventario automáticamente.`}
+        confirmText="Surtir"
+        cancelText="Cancelar"
+        tone="info"
+      />
+
+      {/* Modal de input para cancelar */}
+      <InputModal
+        open={showCancelarModal}
+        onCancel={() => setShowCancelarModal(false)}
+        onConfirm={ejecutarCancelar}
+        title="Cancelar requisición"
+        message="Ingrese el motivo de cancelación (obligatorio para auditoría)"
+        placeholder="Motivo de cancelación (mínimo 5 caracteres)"
+        minLength={5}
+        confirmText="Cancelar requisición"
+        cancelText="Volver"
+        tone="danger"
+      />
 
       {/* Modal de confirmación de recepción */}
       {showConfirmRecepcion && (
