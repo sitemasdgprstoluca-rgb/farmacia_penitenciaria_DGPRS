@@ -1,5 +1,7 @@
-import { PRIMARY_GRADIENT } from '../constants/theme';
-
+/**
+ * PageHeader - Encabezado de página con gradiente del tema
+ * Usa variables CSS para colores dinámicos
+ */
 const PageHeader = ({ icon: Icon, title, subtitle, badge, actions }) => {
   const renderBadge = () => {
     if (!badge) return null;
@@ -15,8 +17,7 @@ const PageHeader = ({ icon: Icon, title, subtitle, badge, actions }) => {
 
   return (
     <div
-      className="rounded-2xl p-6 text-white shadow-lg"
-      style={{ background: PRIMARY_GRADIENT }}
+      className="rounded-2xl p-6 text-white shadow-lg bg-theme-gradient"
     >
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-4">

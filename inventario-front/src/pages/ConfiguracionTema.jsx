@@ -575,7 +575,7 @@ const ConfiguracionTema = () => {
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold text-gray-800">Selecciona un Tema</h2>
                 <span className="text-sm text-gray-500">
-                  Tema activo: <span className="font-semibold" style={{ color: '#9F2241' }}>{temaSeleccionado}</span>
+                  Tema activo: <span className="font-semibold text-theme-primary">{temaSeleccionado}</span>
                 </span>
               </div>
               
@@ -663,8 +663,7 @@ const ConfiguracionTema = () => {
                   <button
                     onClick={handleGuardar}
                     disabled={hayOperacionTemaEnCurso || !modoEdicion || hayErroresColor}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-white disabled:opacity-50"
-                    style={{ background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)' }}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-white disabled:opacity-50 bg-theme-gradient"
                     title={hayErroresColor ? 'Corrige los errores de color primero' : ''}
                   >
                     {operacionEnCurso.guardandoColores ? (
@@ -847,8 +846,7 @@ const ConfiguracionTema = () => {
                     <button
                       onClick={() => logoHeaderRef.current?.click()}
                       disabled={hayOperacionLogoEnCurso}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white disabled:opacity-50"
-                      style={{ background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)' }}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white disabled:opacity-50 bg-theme-gradient"
                     >
                       {operacionEnCurso.subiendoLogoHeader ? (
                         <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
@@ -950,8 +948,7 @@ const ConfiguracionTema = () => {
                 <button
                   onClick={handleGuardarIdentidad}
                   disabled={hayOperacionIdentidadEnCurso}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-white disabled:opacity-50"
-                  style={{ background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)' }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-white disabled:opacity-50 bg-theme-gradient"
                 >
                   {operacionEnCurso.guardandoIdentidad ? (
                     <>

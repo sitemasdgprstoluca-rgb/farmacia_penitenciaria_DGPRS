@@ -51,6 +51,9 @@ def _obtener_colores_tema():
             'subtitulo': tema.reporte_subtitulo or 'Secretaría de Seguridad',
             'pie_pagina': tema.reporte_pie_pagina or '',
             'ano_visible': tema.reporte_ano_visible,
+            # Logo de reportes (ruta del archivo)
+            'logo_reportes_path': _obtener_ruta_logo_reportes(tema),
+            'fondo_reportes_path': _obtener_ruta_fondo_reportes(tema),
         }
     except Exception as e:
         logger.warning(f"No se pudo cargar TemaGlobal: {e}")
@@ -72,7 +75,39 @@ def _obtener_colores_tema():
             'subtitulo': 'Secretaría de Seguridad',
             'pie_pagina': '',
             'ano_visible': True,
+            'logo_reportes_path': None,
+            'fondo_reportes_path': None,
         }
+
+
+def _obtener_ruta_logo_reportes(tema):
+    """
+    Obtiene la ruta absoluta del logo de reportes desde el TemaGlobal.
+    """
+    try:
+        if tema and tema.logo_reportes:
+            logo_path = Path(settings.MEDIA_ROOT) / tema.logo_reportes.name
+            if logo_path.exists():
+                return str(logo_path)
+    except Exception as e:
+        logger.warning(f"Error obteniendo logo de reportes: {e}")
+    return None
+
+
+def _obtener_ruta_fondo_reportes(tema):
+    """
+    Obtiene la ruta absoluta del fondo de reportes desde el TemaGlobal.
+    Si no hay fondo personalizado, usa el fondo institucional por defecto.
+    """
+    try:
+        if tema and tema.fondo_reportes:
+            fondo_path = Path(settings.MEDIA_ROOT) / tema.fondo_reportes.name
+            if fondo_path.exists():
+                return str(fondo_path)
+    except Exception as e:
+        logger.warning(f"Error obteniendo fondo de reportes: {e}")
+    # Fallback a fondo institucional
+    return None
 
 
 # Colores institucionales - ahora se cargan dinámicamente desde TemaGlobal
@@ -94,7 +129,14 @@ def obtener_ruta_fondo():
     """
     Obtiene la ruta correcta al fondo institucional.
     Funciona en desarrollo (static/) y producción (staticfiles/).
+    También considera el fondo personalizado del tema si existe.
     """
+    # Primero intentar obtener fondo del tema
+    colores_tema = _obtener_colores_tema()
+    if colores_tema.get('fondo_reportes_path'):
+        return Path(colores_tema['fondo_reportes_path'])
+    
+    # Fallback a fondo institucional
     rutas_posibles = [
         Path(settings.BASE_DIR) / 'static' / 'img' / 'pdf' / 'fondoOficial.png',
         Path(settings.STATIC_ROOT) / 'img' / 'pdf' / 'fondoOficial.png' if hasattr(settings, 'STATIC_ROOT') and settings.STATIC_ROOT else None,
@@ -341,15 +383,77 @@ def crear_encabezado(styles, colores_tema=None):
     return titulo_style
 
 
-def crear_pie_pagina(canvas, doc):
-    """Agrega número de página al pie - LEGACY, usar FondoOficialCanvas"""
+def crear_pie_pagina(canvas, doc, colores_tema=None):
+    """
+    Agrega número de página al pie con información del tema.
+    Incluye año si está configurado en el tema.
+    """
+    if colores_tema is None:
+        colores_tema = _obtener_colores_tema()
+    
     canvas.saveState()
     canvas.setFont('Helvetica', 9)
     page_num = canvas.getPageNumber()
-    text = f"Página {page_num}"
-    canvas.drawRightString(7.5 * inch, 0.5 * inch, text)
-    canvas.drawString(inch, 0.5 * inch, f"Generado: {timezone.now().strftime('%d/%m/%Y %H:%M')}")
+    
+    # Pie izquierdo: fecha y opcional año
+    fecha_texto = f"Generado: {timezone.now().strftime('%d/%m/%Y %H:%M')}"
+    if colores_tema.get('ano_visible', True):
+        ano_actual = timezone.now().year
+        fecha_texto = f"{ano_actual} - {fecha_texto}"
+    
+    # Pie derecho: página y opcional pie personalizado
+    pie_personalizado = colores_tema.get('pie_pagina', '')
+    pagina_texto = f"Página {page_num}"
+    
+    canvas.drawString(inch, 0.5 * inch, fecha_texto)
+    canvas.drawRightString(7.5 * inch, 0.5 * inch, pagina_texto)
+    
+    # Pie central si hay texto personalizado
+    if pie_personalizado:
+        canvas.setFont('Helvetica', 7)
+        canvas.drawCentredString(4.25 * inch, 0.35 * inch, pie_personalizado)
+    
     canvas.restoreState()
+
+
+def _crear_encabezado_con_logo(elements, styles, titulo_reporte, colores_tema=None):
+    """
+    Crea un encabezado de reporte que incluye logo si está configurado.
+    
+    Args:
+        elements: Lista de elementos del PDF
+        styles: Estilos de ReportLab
+        titulo_reporte: Título del reporte
+        colores_tema: Configuración del tema
+    """
+    if colores_tema is None:
+        colores_tema = _obtener_colores_tema()
+    
+    # Logo de reportes (si existe)
+    logo_path = colores_tema.get('logo_reportes_path')
+    if logo_path and os.path.exists(logo_path):
+        try:
+            logo = RLImage(logo_path, width=1.5*inch, height=0.75*inch)
+            logo.hAlign = 'CENTER'
+            elements.append(logo)
+            elements.append(Spacer(1, 0.1*inch))
+        except Exception as e:
+            logger.warning(f"No se pudo cargar logo de reportes: {e}")
+    
+    # Título del reporte
+    titulo = Paragraph(titulo_reporte, styles['TituloReporte'])
+    elements.append(titulo)
+    
+    # Subtítulo con nombre de institución si está configurado
+    nombre_institucion = colores_tema.get('nombre_institucion', '')
+    subtitulo = colores_tema.get('subtitulo', '')
+    if nombre_institucion or subtitulo:
+        subtitulo_texto = f"{nombre_institucion}"
+        if subtitulo:
+            subtitulo_texto += f"<br/>{subtitulo}"
+        elements.append(Paragraph(subtitulo_texto, styles['SubtituloReporte']))
+    
+    elements.append(Spacer(1, 0.2*inch))
 
 
 def generar_reporte_inventario(productos_data, formato='pdf', filtros=None):
@@ -365,14 +469,20 @@ def generar_reporte_inventario(productos_data, formato='pdf', filtros=None):
         BytesIO con el PDF generado
     """
     buffer = BytesIO()
+    colores_tema = _obtener_colores_tema()
     
-    # Usar documento con fondo institucional
-    fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
+    # Usar fondo del tema o institucional
+    fondo_path = colores_tema.get('fondo_reportes_path')
+    if not fondo_path:
+        fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
     
     doc = _crear_doc_con_fondo(buffer, fondo_path)
     
     elements = []
-    styles = _obtener_estilos_institucionales()
+    styles = _obtener_estilos_institucionales(colores_tema)
+    
+    # Encabezado con logo
+    _crear_encabezado_con_logo(elements, styles, "REPORTE DE INVENTARIO GENERAL", colores_tema)
     
     # Título
     titulo = Paragraph("REPORTE DE INVENTARIO GENERAL", styles['TituloReporte'])

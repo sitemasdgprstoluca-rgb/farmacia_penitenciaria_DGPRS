@@ -18,6 +18,7 @@
      Estos valores serán actualizados dinámicamente por ThemeContext */
   --color-primary: #9F2241;
   --color-primary-hover: #6B1839;
+  --color-primary-light: rgba(159, 34, 65, 0.2);
   --color-secondary: #424242;
   --color-accent: #BC955C;
   --color-background: #F5F5F5;
@@ -32,6 +33,14 @@
   --color-warning: #FF9800;
   --color-error: #F44336;
   --color-info: #2196F3;
+  
+  /* Tipografía dinámica del tema - actualizados por ThemeContext */
+  --font-family-principal: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  --font-family-titulos: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-size-titulo: 2rem;
+  --font-size-subtitulo: 1.5rem;
+  --font-size-cuerpo: 1rem;
+  --font-size-pequeño: 0.875rem;
   
   /* Estados (mantener compatibilidad con clases existentes) */
   --color-danger: var(--color-error);
@@ -71,13 +80,26 @@
 }
 
 body {
-  font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-family: var(--font-family-principal);
+  font-size: var(--font-size-cuerpo);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: var(--bg-secondary);
   color: var(--text-primary);
   line-height: 1.6;
+}
+
+/* Títulos usan fuente de títulos del tema */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-family-titulos);
+}
+
+h1 { font-size: var(--font-size-titulo); }
+h2 { font-size: var(--font-size-subtitulo); }
+
+/* Texto pequeño */
+small, .text-sm, .text-xs {
+  font-size: var(--font-size-pequeño);
 }
 
 code {

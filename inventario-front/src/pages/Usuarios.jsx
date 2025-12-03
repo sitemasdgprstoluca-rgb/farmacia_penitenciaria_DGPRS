@@ -3,7 +3,7 @@ import { usuariosAPI, centrosAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
 import { FaPlus, FaEdit, FaTrash, FaKey, FaUsers, FaTimes, FaDownload, FaFileUpload, FaSearch, FaFilter, FaShieldAlt } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
-import { COLORS, PRIMARY_GRADIENT } from '../constants/theme';
+import { COLORS } from '../constants/theme';
 import { usePermissions } from '../hooks/usePermissions';
 
 const ROLES = [
@@ -592,8 +592,7 @@ function Usuarios() {
           type="button"
           onClick={handleExportar}
           disabled={exportLoading || importLoading}
-          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ background: PRIMARY_GRADIENT, border: '1px solid rgba(255,255,255,0.3)' }}
+          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
         >
           <FaDownload /> {exportLoading ? 'Exportando...' : 'Exportar'}
         </button>
@@ -604,8 +603,7 @@ function Usuarios() {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={exportLoading || importLoading}
-            className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ background: PRIMARY_GRADIENT, border: '1px solid rgba(255,255,255,0.3)' }}
+            className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
           >
             <FaFileUpload /> {importLoading ? 'Importando...' : 'Importar'}
           </button>
@@ -723,7 +721,7 @@ function Usuarios() {
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead style={{ background: PRIMARY_GRADIENT }}>
+            <thead className="bg-theme-gradient">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase">#</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase">Usuario</th>
@@ -1114,8 +1112,7 @@ function Usuarios() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 text-white rounded-lg font-semibold transition hover:opacity-90"
-                  style={{ background: PRIMARY_GRADIENT }}
+                  className="flex-1 px-4 py-2 text-white rounded-lg font-semibold transition hover:opacity-90 bg-theme-gradient"
                 >
                   {editingUsuario ? 'Actualizar' : 'Crear'} Usuario
                 </button>
@@ -1216,8 +1213,7 @@ function Usuarios() {
                 <button
                   type="submit"
                   disabled={actionLoading || !PASSWORD_REGEX.test(passwordData.new_password) || passwordData.new_password !== passwordData.confirm_password}
-                  className="flex-1 px-4 py-2 text-white rounded-lg font-semibold transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ background: PRIMARY_GRADIENT }}
+                  className="flex-1 px-4 py-2 text-white rounded-lg font-semibold transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
                 >
                   {actionLoading ? 'Cambiando...' : 'Cambiar Contraseña'}
                 </button>

@@ -18,7 +18,7 @@ import {
 } from 'react-icons/fa';
 import { DEV_CONFIG } from '../config/dev';
 import PageHeader from '../components/PageHeader';
-import { COLORS, PRIMARY_GRADIENT, SECONDARY_GRADIENT } from '../constants/theme';
+import { COLORS, SECONDARY_GRADIENT } from '../constants/theme';
 import Pagination from '../components/Pagination';
 import { usePermissions } from '../hooks/usePermissions';
 
@@ -554,11 +554,7 @@ const handleImportar = async (e) => {
           type="button"
           onClick={handleExportar}
           disabled={loading}
-          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50"
-          style={{
-            background: PRIMARY_GRADIENT,
-            border: '1px solid rgba(255,255,255,0.4)'
-          }}
+          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 bg-theme-gradient"
         >
           <FaFileExcel /> Exportar
         </button>

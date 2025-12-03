@@ -15,14 +15,16 @@ const aplicarCSSVariables = (cssVariables) => {
 };
 
 /**
- * Genera CSS variables a partir de la configuración de colores
+ * Genera CSS variables a partir de la configuración de colores y tipografía
  * Útil cuando el backend no devuelve css_variables en la respuesta
  */
 const generarCSSVariablesDesdeConfig = (config) => {
   if (!config) return null;
   return {
+    // Colores
     '--color-primary': config.color_primario,
     '--color-primary-hover': config.color_primario_hover,
+    '--color-primary-light': `rgba(${hexToRgb(config.color_primario)}, 0.2)`,
     '--color-secondary': config.color_secundario,
     '--color-accent': config.color_acento,
     '--color-background': config.color_fondo,
@@ -37,7 +39,25 @@ const generarCSSVariablesDesdeConfig = (config) => {
     '--color-warning': config.color_advertencia,
     '--color-error': config.color_error,
     '--color-info': config.color_info,
+    // Tipografía
+    '--font-family-principal': config.tipografia_principal || "'Montserrat', sans-serif",
+    '--font-family-titulos': config.tipografia_titulos || "'Montserrat', sans-serif",
+    '--font-size-titulo': config.tamano_titulo || '2rem',
+    '--font-size-subtitulo': config.tamano_subtitulo || '1.5rem',
+    '--font-size-cuerpo': config.tamano_cuerpo || '1rem',
+    '--font-size-pequeño': config.tamano_pequeno || '0.875rem',
   };
+};
+
+/**
+ * Convierte color hex a RGB para usar en rgba()
+ */
+const hexToRgb = (hex) => {
+  if (!hex) return '159, 34, 65'; // default color
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result 
+    ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`
+    : '159, 34, 65';
 };
 
 /**
@@ -58,6 +78,7 @@ const temaDefault = {
   css_variables: {
     '--color-primary': '#9F2241',
     '--color-primary-hover': '#6B1839',
+    '--color-primary-light': 'rgba(159, 34, 65, 0.2)',
     '--color-secondary': '#424242',
     '--color-accent': '#BC955C',
     '--color-background': '#F5F5F5',
@@ -72,6 +93,12 @@ const temaDefault = {
     '--color-warning': '#FF9800',
     '--color-error': '#F44336',
     '--color-info': '#2196F3',
+    '--font-family-principal': "'Montserrat', sans-serif",
+    '--font-family-titulos': "'Montserrat', sans-serif",
+    '--font-size-titulo': '2rem',
+    '--font-size-subtitulo': '1.5rem',
+    '--font-size-cuerpo': '1rem',
+    '--font-size-pequeño': '0.875rem',
   },
   temas_disponibles: [
     { id: 'default', nombre: 'Por Defecto (Institucional)' },

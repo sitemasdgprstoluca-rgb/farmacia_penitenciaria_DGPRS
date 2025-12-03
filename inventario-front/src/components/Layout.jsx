@@ -135,7 +135,7 @@ function Layout() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen" style={{ backgroundColor: "var(--color-background, #F5F5F5)" }}>
       <aside
         className={`fixed top-0 left-0 z-40 h-screen shadow-lg transition-transform ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
@@ -243,7 +243,13 @@ function Layout() {
       </aside>
 
       <div className="transition-all min-h-screen flex flex-col lg:ml-64">
-        <header className="bg-white shadow-sm sticky top-0 z-30" style={{ borderBottom: "3px solid var(--color-primary, #9F2241)" }}>
+        <header 
+          className="shadow-sm sticky top-0 z-30" 
+          style={{ 
+            backgroundColor: "var(--color-card-bg, #FFFFFF)", 
+            borderBottom: "3px solid var(--color-primary, #9F2241)" 
+          }}
+        >
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-4">
             <div className="flex items-center gap-3 sm:gap-4">
               <button

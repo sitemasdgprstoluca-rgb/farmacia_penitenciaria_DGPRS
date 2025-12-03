@@ -10,7 +10,7 @@ import {
   FaBuilding, FaChevronDown
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
-import { COLORS, PRIMARY_GRADIENT, SECONDARY_GRADIENT } from '../constants/theme';
+import { COLORS, SECONDARY_GRADIENT } from '../constants/theme';
 
 const PAGE_SIZE = 20;
 
@@ -333,11 +333,7 @@ const Centros = () => {
           type="button"
           onClick={handleExportar}
           disabled={exportLoading}
-          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50"
-          style={{
-            background: PRIMARY_GRADIENT,
-            border: '1px solid rgba(255,255,255,0.4)'
-          }}
+          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 bg-theme-gradient"
         >
           <FaFileExcel /> {exportLoading ? 'Exportando...' : 'Exportar'}
         </button>

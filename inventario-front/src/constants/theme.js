@@ -1,3 +1,7 @@
+/**
+ * Constantes de tema - Usar variables CSS dinámicas para compatibilidad con TemaGlobal
+ * Los valores hardcoded son fallback para compatibilidad
+ */
 export const COLORS = {
   vino: '#9F2241',
   guinda: '#6B1839',
@@ -10,5 +14,10 @@ export const COLORS = {
   info: '#0284C7'
 };
 
-export const PRIMARY_GRADIENT = `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})`;
-export const SECONDARY_GRADIENT = `linear-gradient(135deg, ${COLORS.guinda}, ${COLORS.vino})`;
+// Gradientes que usan variables CSS del tema - se actualizan dinámicamente
+export const PRIMARY_GRADIENT = 'var(--color-sidebar-bg, linear-gradient(135deg, #9F2241 0%, #6B1839 100%))';
+export const SECONDARY_GRADIENT = 'var(--color-sidebar-bg, linear-gradient(135deg, #6B1839 0%, #9F2241 100%))';
+
+// Helper para obtener gradiente con colores específicos (cuando se necesita)
+export const getGradient = (colorStart, colorEnd) => 
+  `linear-gradient(135deg, ${colorStart} 0%, ${colorEnd} 100%)`;

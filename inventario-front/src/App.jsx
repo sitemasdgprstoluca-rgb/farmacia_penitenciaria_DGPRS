@@ -35,9 +35,9 @@ const ConfiguracionTema = lazy(() => import('./pages/ConfiguracionTema'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const ServerError = lazy(() => import('./pages/ServerError'));
 
-// Componente de carga para Suspense
+// Componente de carga para Suspense - usa variable CSS del tema para fondo
 const PageLoader = () => (
-  <div className="min-h-screen flex items-center justify-center bg-gray-50">
+  <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background, #F5F5F5)' }}>
     <div className="text-center">
       <div className="animate-spin rounded-full h-12 w-12 border-4 spinner-institucional mx-auto"></div>
       <p className="mt-4 text-gray-600">Cargando...</p>
@@ -91,7 +91,7 @@ function ProtectedRoute({ children }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background, #F5F5F5)' }}>
         <div className="animate-spin rounded-full h-12 w-12 border-4 spinner-institucional"></div>
       </div>
     );
