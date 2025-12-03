@@ -170,6 +170,7 @@ function Usuarios() {
         clearTimeout(debounceRef.current);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm, filterRol, filterEstado, filterCentro, esAdminOFarmacia, user?.centro?.id]);
   
   const cargarCentros = async () => {

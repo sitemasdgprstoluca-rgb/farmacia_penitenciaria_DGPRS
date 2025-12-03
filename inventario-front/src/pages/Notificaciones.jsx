@@ -27,6 +27,7 @@ const badgeByTipo = {
 };
 
 function Notificaciones() {
+  // eslint-disable-next-line no-unused-vars
   const { permisos } = usePermissions();
   const [notificaciones, setNotificaciones] = useState([]);
   const [total, setTotal] = useState(0);

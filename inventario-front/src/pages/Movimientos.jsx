@@ -15,7 +15,6 @@ const Movimientos = () => {
   
   // Detectar si puede ver todos los centros o solo el suyo
   const rolPrincipal = getRolPrincipal();
-  const esAdminOFarmacia = ['ADMIN', 'FARMACIA'].includes(rolPrincipal);
   const puedeVerTodosCentros = ['ADMIN', 'FARMACIA', 'VISTA'].includes(rolPrincipal);
   const centroUsuario = user?.centro?.id || user?.centro || user?.centro_id;
   
@@ -176,6 +175,7 @@ const Movimientos = () => {
       setCentroResuelto(true);
     }
     // Si no es admin y aún no tiene centro, seguir esperando (centroResuelto = false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [centroUsuario, puedeVerTodosCentros]);
 
   // Solo recargar cuando cambia la página o los filtros APLICADOS Y el centro está resuelto

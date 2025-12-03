@@ -37,6 +37,7 @@ const RequisicionDetalle = () => {
   const [procesando, setProcesando] = useState(false);
   
   // Modal para confirmar recepción
+  // eslint-disable-next-line no-unused-vars
   const [showRecepcionModal, setShowRecepcionModal] = useState(false);
   const [recepcionData, setRecepcionData] = useState({ lugar: '', observaciones: '' });
   const [showConfirmRecepcion, setShowConfirmRecepcion] = useState(false);
@@ -45,6 +46,7 @@ const RequisicionDetalle = () => {
   const [showEnviarModal, setShowEnviarModal] = useState(false);
   const [showAutorizarModal, setShowAutorizarModal] = useState(false);
   const [showAutorizarParcialModal, setShowAutorizarParcialModal] = useState(false);
+  // eslint-disable-next-line no-unused-vars
   const [autorizarObservaciones, setAutorizarObservaciones] = useState('');
   const [showRechazarModal, setShowRechazarModal] = useState(false);
   const [showCancelarModal, setShowCancelarModal] = useState(false);

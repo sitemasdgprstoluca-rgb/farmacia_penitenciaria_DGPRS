@@ -32,7 +32,7 @@ import { DEV_CONFIG } from '../config/dev';
 
 import { usePermissions } from '../hooks/usePermissions';
 
-import { ProtectedComponent, ProtectedButton } from '../components/ProtectedAction';
+import { ProtectedButton } from '../components/ProtectedAction';
 import Pagination from '../components/Pagination';
 
 import { COLORS } from '../constants/theme';

@@ -104,6 +104,7 @@ function Perfil() {
 
   useEffect(() => {
     cargarPerfil();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const guardarDatos = async (e) => {

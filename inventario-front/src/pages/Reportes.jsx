@@ -271,7 +271,6 @@ const Reportes = () => {
     // Limpiar datos para evitar exportar información desactualizada
     // El usuario debe volver a aplicar filtros antes de exportar
     setDatos([]);
-    setTotalRegistros(0);
   };
 
   const getTipoIcon = () => {

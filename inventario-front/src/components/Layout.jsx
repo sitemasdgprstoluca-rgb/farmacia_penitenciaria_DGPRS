@@ -18,7 +18,6 @@ import {
   FaBars,
   FaTimes,
   FaSignOutAlt,
-  FaShieldAlt,
   FaExchangeAlt,
   FaBell,
   FaIdBadge,
