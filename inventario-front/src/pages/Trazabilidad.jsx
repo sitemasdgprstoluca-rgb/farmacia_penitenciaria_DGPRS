@@ -635,7 +635,7 @@ const Trazabilidad = () => {
               {/* Botón de exportar PDF */}
               <button
                 onClick={handleExportarPdf}
-                disabled={exportingPdf || !resultados}
+                disabled={exportingPdf || !resultados || (tipoBusqueda === 'lote' && !esAdminOFarmacia)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                 style={{ background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' }}
                 title={!esAdminOFarmacia && tipoBusqueda === 'lote' ? 'Requiere permisos de Admin/Farmacia' : 'Exportar trazabilidad a PDF'}
