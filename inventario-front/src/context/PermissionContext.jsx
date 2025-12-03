@@ -47,6 +47,9 @@ const PERMISOS_POR_ROL = {
     eliminarLote: true,
     exportarLotes: true,
     importarLotes: true,
+    // Permisos granulares de movimientos
+    crearMovimiento: true,
+    exportarMovimientos: true,
   },
   FARMACIA: {
     verDashboard: true,
@@ -82,6 +85,9 @@ const PERMISOS_POR_ROL = {
     eliminarLote: true,
     exportarLotes: true,
     importarLotes: true,
+    // Permisos granulares de movimientos
+    crearMovimiento: true,
+    exportarMovimientos: true,
   },
   CENTRO: {
     verDashboard: true,
@@ -117,6 +123,9 @@ const PERMISOS_POR_ROL = {
     eliminarLote: false,
     exportarLotes: false,
     importarLotes: false,
+    // Permisos granulares de movimientos - Centro no tiene acceso
+    crearMovimiento: false,
+    exportarMovimientos: false,
   },
   VISTA: {
     verDashboard: true,
@@ -152,6 +161,9 @@ const PERMISOS_POR_ROL = {
     eliminarLote: false,
     exportarLotes: true,  // Puede exportar para consulta
     importarLotes: false,
+    // Permisos granulares de movimientos - Vista solo exportar
+    crearMovimiento: false,
+    exportarMovimientos: true,  // Puede exportar para consulta
   },
   SIN_ROL: {
     verDashboard: false,
@@ -185,6 +197,9 @@ const PERMISOS_POR_ROL = {
     eliminarLote: false,
     exportarLotes: false,
     importarLotes: false,
+    // Permisos granulares de movimientos
+    crearMovimiento: false,
+    exportarMovimientos: false,
   },
 };
 

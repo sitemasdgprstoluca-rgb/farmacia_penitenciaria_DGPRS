@@ -20,6 +20,7 @@ function Pagination({
     for (let p = start; p <= end; p += 1) {
       pages.push(
         <button
+          type="button"
           key={p}
           onClick={() => goTo(p)}
           className={`px-3 py-1 rounded-lg border text-sm ${p === page ? 'bg-[#9F2241] text-white border-[#9F2241]' : 'bg-white text-gray-700 border-gray-200'}`}

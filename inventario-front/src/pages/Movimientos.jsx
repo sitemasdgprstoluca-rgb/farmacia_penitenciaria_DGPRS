@@ -19,9 +19,9 @@ const Movimientos = () => {
   const puedeVerTodosCentros = ['ADMIN', 'FARMACIA', 'VISTA'].includes(rolPrincipal);
   const centroUsuario = user?.centro?.id || user?.centro || user?.centro_id;
   
-  // Permisos específicos para acciones
-  const puedeRegistrarMovimiento = esAdminOFarmacia && permisos?.verMovimientos;
-  const puedeExportar = esAdminOFarmacia && permisos?.verMovimientos;
+  // Permisos específicos para acciones (usando permisos granulares)
+  const puedeRegistrarMovimiento = permisos?.crearMovimiento === true;
+  const puedeExportar = permisos?.exportarMovimientos === true;
   
   const [movimientos, setMovimientos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -500,7 +500,7 @@ const Movimientos = () => {
                   <button
                     onClick={exportarPdf}
                     className="text-sm px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
-                    disabled={loading || exporting !== null}
+                    disabled={loading || exporting !== null || hayFiltrosPendientes}
                     title={hayFiltrosPendientes ? "Aplica los filtros primero" : "Exportar a PDF"}
                   >
                     {exporting === 'pdf' ? "Generando..." : "Exportar PDF"}
@@ -508,7 +508,7 @@ const Movimientos = () => {
                   <button
                     onClick={exportarExcel}
                     className="text-sm px-3 py-1 rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
-                    disabled={loading || exporting !== null}
+                    disabled={loading || exporting !== null || hayFiltrosPendientes}
                     title={hayFiltrosPendientes ? "Aplica los filtros primero" : "Exportar a Excel"}
                   >
                     {exporting === 'excel' ? "Generando..." : "Exportar Excel"}
