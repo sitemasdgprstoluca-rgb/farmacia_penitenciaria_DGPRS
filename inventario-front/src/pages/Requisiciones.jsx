@@ -139,21 +139,21 @@ const Requisiciones = () => {
     setLoadingCatalogo(true);
     try {
       // Cargar lotes disponibles con stock > 0, no vencidos
-      // Paginación limitada para evitar cargas masivas
-      const params = {
+      // Cargar TODOS los lotes usando paginación completa para evitar truncar el catálogo
+      const baseParams = {
         stock_min: 1,
         solo_disponibles: 'true',  // Solo lotes disponibles y no vencidos
         ordering: 'producto__descripcion,fecha_caducidad',
-        page_size: 200, // Límite razonable por página
+        page_size: 500, // Páginas grandes para minimizar requests
       };
       
       // CRÍTICO: Filtrar lotes según el rol del usuario
       if (permisos.isFarmaciaAdmin || permisos.isAdmin) {
         // Admin/Farmacia ven lotes de farmacia central
-        params.centro = 'central';
+        baseParams.centro = 'central';
       } else if (user?.centro?.id) {
         // Usuarios de centro SOLO ven lotes de su centro (aislamiento de datos)
-        params.centro = user.centro.id;
+        baseParams.centro = user.centro.id;
       } else {
         // Sin centro definido, no cargar lotes (seguridad)
         console.warn('Usuario sin centro definido, no se cargan lotes');
@@ -162,9 +162,21 @@ const Requisiciones = () => {
         return;
       }
       
-      const resp = await lotesAPI.getAll(params);
-      const lotes = resp.data.results || resp.data || [];
-      setCatalogoLotes(lotes);
+      // Cargar todas las páginas de lotes para no truncar el catálogo
+      let allLotes = [];
+      let nextUrl = null;
+      let page = 1;
+      
+      do {
+        const params = { ...baseParams, page };
+        const resp = await lotesAPI.getAll(params);
+        const lotes = resp.data.results || resp.data || [];
+        allLotes = [...allLotes, ...lotes];
+        nextUrl = resp.data.next;
+        page++;
+      } while (nextUrl && page <= 10); // Máximo 10 páginas (5000 lotes) como límite de seguridad
+      
+      setCatalogoLotes(allLotes);
       setCatalogoCargado(true);
     } catch (error) {
       console.error('Error cargando catálogo de lotes:', error);
@@ -232,17 +244,21 @@ const Requisiciones = () => {
 
   const cargarResumenEstados = useCallback(async () => {
     try {
-      // Enviar filtro de centro para que el resumen sea consistente
+      // Sincronizar resumen con TODOS los filtros activos para que los contadores coincidan con la tabla
       const params = {};
-      if (filtroCentro) {
-        params.centro = filtroCentro;
-      }
+      if (filtroCentro && filtroCentro !== 'PENDING') params.centro = filtroCentro;
+      if (filtroEstado) params.estado = filtroEstado;
+      if (grupoEstado && grupoEstado !== 'todas') params.grupo_estado = grupoEstado;
+      if (searchTerm) params.search = searchTerm;
+      if (filtroFechaDesde) params.fecha_desde = filtroFechaDesde;
+      if (filtroFechaHasta) params.fecha_hasta = filtroFechaHasta;
+      
       const resumen = await requisicionesAPI.resumenEstados(params);
       setResumenEstados(resumen.data || { por_estado: {}, por_grupo: {} });
     } catch (error) {
       console.warn('No fue posible cargar resumen de estados', error);
     }
-  }, [filtroCentro]);
+  }, [filtroCentro, filtroEstado, grupoEstado, searchTerm, filtroFechaDesde, filtroFechaHasta]);
 
   useEffect(() => {
     setCurrentPage(1);
