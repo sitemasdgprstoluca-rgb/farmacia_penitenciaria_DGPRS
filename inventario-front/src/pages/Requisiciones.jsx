@@ -45,6 +45,8 @@ const Requisiciones = () => {
   // Flag para saber si ya se determinó el centro del usuario (evita carga prematura)
   // Para admin/farmacia siempre está listo; para usuarios de centro, esperar hidratación
   const [centroResuelto, setCentroResuelto] = useState(() => esAdminOFarmacia);
+  // Flag para indicar error de configuración (usuario sin centro asignado)
+  const [errorCentroNoAsignado, setErrorCentroNoAsignado] = useState(false);
   
   const [requisiciones, setRequisiciones] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -145,9 +147,19 @@ const Requisiciones = () => {
         page_size: 200, // Límite razonable por página
       };
       
-      // Si es farmacia/admin, mostrar lotes de farmacia central por defecto
+      // CRÍTICO: Filtrar lotes según el rol del usuario
       if (permisos.isFarmaciaAdmin || permisos.isAdmin) {
+        // Admin/Farmacia ven lotes de farmacia central
         params.centro = 'central';
+      } else if (user?.centro?.id) {
+        // Usuarios de centro SOLO ven lotes de su centro (aislamiento de datos)
+        params.centro = user.centro.id;
+      } else {
+        // Sin centro definido, no cargar lotes (seguridad)
+        console.warn('Usuario sin centro definido, no se cargan lotes');
+        setCatalogoLotes([]);
+        setLoadingCatalogo(false);
+        return;
       }
       
       const resp = await lotesAPI.getAll(params);
@@ -160,7 +172,7 @@ const Requisiciones = () => {
     } finally {
       setLoadingCatalogo(false);
     }
-  }, [permisos.isFarmaciaAdmin, permisos.isAdmin, catalogoCargado, catalogoLotes.length]);
+  }, [permisos.isFarmaciaAdmin, permisos.isAdmin, user?.centro?.id, catalogoCargado, catalogoLotes.length]);
 
   const cargarCatalogos = useCallback(async () => {
     try {
@@ -243,14 +255,23 @@ const Requisiciones = () => {
     if (esAdminOFarmacia) {
       // Admin/Farmacia siempre pueden cargar (sin filtro obligatorio)
       setCentroResuelto(true);
+      setErrorCentroNoAsignado(false);
     } else if (user?.centro?.id) {
       // Usuario de centro: aplicar filtro con su centro
       const centroId = user.centro.id.toString();
       setFiltroCentro(centroId);
       setCentroResuelto(true);
+      setErrorCentroNoAsignado(false);
+    } else if (user && !user.centro?.id) {
+      // Usuario autenticado pero SIN centro asignado - error de configuración
+      // Marcar como resuelto para evitar spinner infinito, pero con error
+      setCentroResuelto(true);
+      setErrorCentroNoAsignado(true);
+      setFiltroCentro(''); // Limpiar PENDING
+      console.error('Usuario sin centro asignado:', user.username || user.email);
     }
-    // Si no hay centro aún, mantener PENDING y centroResuelto=false
-  }, [user?.centro?.id, esAdminOFarmacia]);
+    // Si user aún no está cargado, mantener PENDING y centroResuelto=false
+  }, [user, esAdminOFarmacia]);
 
   useEffect(() => {
     cargarRequisiciones();
@@ -840,8 +861,10 @@ const Requisiciones = () => {
       permission="crearRequisicion"
       onClick={abrirModalCrear}
       type="button"
-      className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white"
+      disabled={errorCentroNoAsignado || !centroResuelto}
+      className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
       style={{ color: COLORS.vino }}
+      title={errorCentroNoAsignado ? 'No tienes un centro asignado' : undefined}
     >
       <FaPlus /> Nueva Requisición
     </ProtectedButton>
@@ -991,12 +1014,30 @@ const Requisiciones = () => {
         )}
       </div>
 
+      {/* Mensaje de error si usuario no tiene centro asignado */}
+      {errorCentroNoAsignado && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+          <FaExclamationTriangle className="text-red-500 text-4xl mx-auto mb-3" />
+          <h3 className="text-lg font-bold text-red-700 mb-2">Sin centro asignado</h3>
+          <p className="text-red-600 mb-4">
+            Tu cuenta de usuario no tiene un centro penitenciario asignado. 
+            Contacta al administrador del sistema para que te asigne un centro.
+          </p>
+          <p className="text-sm text-gray-500">
+            Sin un centro asignado no es posible ver ni crear requisiciones.
+          </p>
+        </div>
+      )}
+
       {/* Lista de Requisiciones */}
+      {!errorCentroNoAsignado && (
       <div className="grid grid-cols-1 gap-4">
-        {loading ? (
+        {loading || !centroResuelto ? (
           <div className="text-center py-8">
             <div className="animate-spin rounded-full h-10 w-10 border-4 border-t-transparent mx-auto" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }} />
-            <p className="mt-3 text-gray-600">Cargando requisiciones...</p>
+            <p className="mt-3 text-gray-600">
+              {!centroResuelto ? 'Verificando permisos...' : 'Cargando requisiciones...'}
+            </p>
           </div>
         ) : requisiciones.length === 0 ? (
           <div className="text-center py-8 bg-white rounded-lg shadow">
@@ -1152,8 +1193,9 @@ const Requisiciones = () => {
           })
         )}
       </div>
+      )}
 
-      {!loading && totalRequisiciones > 0 && (
+      {!loading && !errorCentroNoAsignado && totalRequisiciones > 0 && (
         <div className="mt-6">
           <Pagination
             page={currentPage}

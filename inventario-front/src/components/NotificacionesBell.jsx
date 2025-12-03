@@ -103,7 +103,10 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
     try {
       await notificacionesAPI.marcarLeida(id);
       setNotificaciones((prev) => prev.map((n) => (n.id === id ? { ...n, leida: true } : n)));
-      setSinLeer((prev) => Math.max(prev - 1, 0));
+      const nuevoContador = Math.max(sinLeer - 1, 0);
+      setSinLeer(nuevoContador);
+      // Sincronizar contador externo (Layout)
+      if (onCountChange) onCountChange(nuevoContador);
     } catch (err) {
       toast.error(err.response?.data?.detail || "No se pudo marcar como leida");
     } finally {
@@ -118,9 +121,12 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
     try {
       await notificacionesAPI.delete(id);
       setNotificaciones((prev) => prev.filter((n) => n.id !== id));
-      // Si era no leída, decrementar contador
+      // Si era no leída, decrementar contador y sincronizar
       if (notif && !notif.leida) {
-        setSinLeer((prev) => Math.max(prev - 1, 0));
+        const nuevoContador = Math.max(sinLeer - 1, 0);
+        setSinLeer(nuevoContador);
+        // Sincronizar contador externo (Layout)
+        if (onCountChange) onCountChange(nuevoContador);
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || "No se pudo eliminar");
@@ -138,6 +144,8 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
       const marcadas = res.data?.marcadas || 0;
       setNotificaciones((prev) => prev.map((n) => ({ ...n, leida: true })));
       setSinLeer(0);
+      // Sincronizar contador externo (Layout)
+      if (onCountChange) onCountChange(0);
       if (marcadas > 0) {
         toast.success(`${marcadas} notificaciones marcadas`);
       }
