@@ -120,18 +120,18 @@ function Layout() {
         style={{ background: "var(--color-sidebar-bg, linear-gradient(180deg, #9F2241 0%, #6B1839 100%))" }}
       >
         <div
-          className="flex items-center justify-between p-4 border-b"
+          className="flex items-center justify-between p-3 border-b"
           style={{ borderBottomColor: "rgba(255,255,255,0.2)" }}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <img 
               src="/logo-seguridad.jpg" 
               alt="Logo" 
-              className="h-8 w-auto object-contain bg-white rounded p-0.5"
+              className="h-10 w-auto object-contain rounded"
             />
             <div>
-              <span className="font-bold text-lg text-white block">FARMACIA</span>
-              <span className="text-xs text-pink-100">SISTEMA PENITENCIARIO</span>
+              <span className="font-bold text-base text-white block leading-tight">FARMACIA</span>
+              <span className="text-[10px] text-pink-100 leading-tight">SISTEMA PENITENCIARIO</span>
             </div>
           </div>
           <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-white hover:text-pink-200">
