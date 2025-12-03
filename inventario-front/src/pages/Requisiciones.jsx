@@ -47,6 +47,8 @@ const Requisiciones = () => {
   const [centroResuelto, setCentroResuelto] = useState(() => esAdminOFarmacia);
   // Flag para indicar error de configuración (usuario sin centro asignado)
   const [errorCentroNoAsignado, setErrorCentroNoAsignado] = useState(false);
+  // Flag para timeout de hidratación con opción de reintento
+  const [hidratacionTimeout, setHidratacionTimeout] = useState(false);
   
   const [requisiciones, setRequisiciones] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -125,8 +127,8 @@ const Requisiciones = () => {
     setLotesProducto([]);
     setCatalogoBusqueda('');
     setVistaCarrito(false);
-    // Limpiar caché para forzar recarga al reabrir
-    setCatalogoCargado(false);
+    // NO limpiar caché del catálogo - mantener durante la sesión para evitar recargas pesadas
+    // El catálogo solo se invalida con forzarRecarga=true o al cambiar de centro
   }, [user?.centro?.id]);
   
   // Cargar catálogo de lotes con stock - con caché y paginación optimizada
@@ -139,7 +141,6 @@ const Requisiciones = () => {
     setLoadingCatalogo(true);
     try {
       // Cargar lotes disponibles con stock > 0, no vencidos
-      // Cargar TODOS los lotes usando paginación completa para evitar truncar el catálogo
       const baseParams = {
         stock_min: 1,
         solo_disponibles: 'true',  // Solo lotes disponibles y no vencidos
@@ -162,24 +163,46 @@ const Requisiciones = () => {
         return;
       }
       
-      // Cargar todas las páginas de lotes para no truncar el catálogo
+      // Cargar lotes usando paginación basada en 'next' URL del backend
+      // Esto maneja correctamente paginación offset y cursor
       let allLotes = [];
-      let nextUrl = null;
-      let page = 1;
+      let currentPage = 1;
+      let hasMore = true;
+      const MAX_PAGES = 20; // Límite de seguridad (10,000 lotes máximo)
+      const TIMEOUT_MS = 30000; // 30 segundos máximo para cargar catálogo
+      const startTime = Date.now();
       
-      do {
-        const params = { ...baseParams, page };
+      while (hasMore && currentPage <= MAX_PAGES) {
+        // Verificar timeout
+        if (Date.now() - startTime > TIMEOUT_MS) {
+          console.warn('Timeout cargando catálogo de lotes, usando resultados parciales');
+          break;
+        }
+        
+        const params = { ...baseParams, page: currentPage };
         const resp = await lotesAPI.getAll(params);
         const lotes = resp.data.results || resp.data || [];
-        allLotes = [...allLotes, ...lotes];
-        nextUrl = resp.data.next;
-        page++;
-      } while (nextUrl && page <= 10); // Máximo 10 páginas (5000 lotes) como límite de seguridad
+        
+        if (lotes.length === 0) {
+          hasMore = false;
+        } else {
+          allLotes = [...allLotes, ...lotes];
+          // Verificar si hay más páginas usando 'next' del backend
+          hasMore = !!resp.data.next;
+          currentPage++;
+        }
+      }
       
       setCatalogoLotes(allLotes);
       setCatalogoCargado(true);
+      
+      // Log informativo si se truncó
+      if (currentPage > MAX_PAGES) {
+        console.warn(`Catálogo truncado a ${MAX_PAGES} páginas (${allLotes.length} lotes)`);
+      }
     } catch (error) {
       console.error('Error cargando catálogo de lotes:', error);
+      toast.error('Error al cargar catálogo de lotes');
       setCatalogoLotes([]);
     } finally {
       setLoadingCatalogo(false);
@@ -297,6 +320,33 @@ const Requisiciones = () => {
     }
     // Si user aún no está cargado, mantener PENDING y centroResuelto=false
   }, [user, esAdminOFarmacia]);
+
+  // Timeout de seguridad para hidratación - evita spinner infinito si la sesión falla
+  useEffect(() => {
+    // Solo aplicar timeout si no es admin/farmacia y el centro no está resuelto
+    if (esAdminOFarmacia || centroResuelto) {
+      setHidratacionTimeout(false);
+      return;
+    }
+    
+    const timeoutId = setTimeout(() => {
+      if (!centroResuelto) {
+        console.warn('Timeout esperando hidratación del centro del usuario');
+        setHidratacionTimeout(true);
+      }
+    }, 10000); // 10 segundos de timeout
+    
+    return () => clearTimeout(timeoutId);
+  }, [esAdminOFarmacia, centroResuelto]);
+
+  // Función para reintentar carga de usuario
+  const reintentarCarga = useCallback(() => {
+    setHidratacionTimeout(false);
+    setCentroResuelto(false);
+    setFiltroCentro('PENDING');
+    // Forzar recarga del perfil de usuario
+    window.location.reload();
+  }, []);
 
   // Debounce para evitar múltiples peticiones por tecla en filtros
   useEffect(() => {
@@ -1112,10 +1162,32 @@ const Requisiciones = () => {
       <div className="grid grid-cols-1 gap-4">
         {loading || !centroResuelto ? (
           <div className="text-center py-8">
-            <div className="animate-spin rounded-full h-10 w-10 border-4 border-t-transparent mx-auto" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }} />
-            <p className="mt-3 text-gray-600">
-              {!centroResuelto ? 'Verificando permisos...' : 'Cargando requisiciones...'}
-            </p>
+            {hidratacionTimeout ? (
+              // Mostrar opción de reintento si hay timeout
+              <>
+                <FaExclamationTriangle className="text-yellow-500 text-4xl mx-auto mb-3" />
+                <p className="text-gray-700 font-medium mb-2">
+                  La verificación de permisos está tardando más de lo esperado
+                </p>
+                <p className="text-gray-500 text-sm mb-4">
+                  Puede haber un problema de conexión o la sesión expiró.
+                </p>
+                <button
+                  onClick={reintentarCarga}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Reintentar
+                </button>
+              </>
+            ) : (
+              // Spinner normal
+              <>
+                <div className="animate-spin rounded-full h-10 w-10 border-4 border-t-transparent mx-auto" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }} />
+                <p className="mt-3 text-gray-600">
+                  {!centroResuelto ? 'Verificando permisos...' : 'Cargando requisiciones...'}
+                </p>
+              </>
+            )}
           </div>
         ) : requisiciones.length === 0 ? (
           <div className="text-center py-8 bg-white rounded-lg shadow">
