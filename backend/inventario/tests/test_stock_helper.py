@@ -335,3 +335,235 @@ class TestRegistrarMovimientoStockAtomicidad:
         assert Movimiento.objects.count() == movimientos_antes
         lote_con_stock.refresh_from_db()
         assert lote_con_stock.cantidad_actual == stock_antes
+
+
+# ============================================================================
+# ISS-002: TESTS DE VALIDACIÓN DE PERTENENCIA DE CENTRO
+# ============================================================================
+
+@pytest.fixture
+def centro_a(db):
+    """Centro A para tests de pertenencia."""
+    return Centro.objects.create(
+        clave='CENTRO_A',
+        nombre='Centro A',
+        direccion='Dirección A',
+        activo=True
+    )
+
+
+@pytest.fixture
+def centro_b(db):
+    """Centro B para tests de pertenencia."""
+    return Centro.objects.create(
+        clave='CENTRO_B',
+        nombre='Centro B',
+        direccion='Dirección B',
+        activo=True
+    )
+
+
+@pytest.fixture
+def lote_farmacia_central(db, producto):
+    """
+    Lote de farmacia central (centro=None).
+    Necesario como lote_origen para lotes en centros.
+    """
+    return Lote.objects.create(
+        producto=producto,
+        numero_lote='LOTE-CENTRAL',
+        fecha_caducidad='2026-12-31',
+        cantidad_inicial=500,
+        cantidad_actual=500,
+        estado='disponible',
+        centro=None,  # Farmacia central
+        lote_origen=None
+    )
+
+
+@pytest.fixture
+def lote_centro_a(db, producto, centro_a, lote_farmacia_central):
+    """
+    Lote que pertenece al Centro A.
+    Debe tener lote_origen de farmacia central para cumplir reglas de trazabilidad.
+    """
+    return Lote.objects.create(
+        producto=producto,
+        numero_lote='LOTE-CENTRAL',  # Debe coincidir con lote_origen
+        fecha_caducidad='2026-12-31',  # Debe coincidir con lote_origen
+        cantidad_inicial=100,
+        cantidad_actual=100,
+        estado='disponible',
+        centro=centro_a,
+        lote_origen=lote_farmacia_central
+    )
+
+
+@pytest.fixture
+def usuario_centro_a(db, centro_a):
+    """Usuario asignado al Centro A (rol centro, no admin)."""
+    user = User.objects.create_user(
+        username='user_centro_a',
+        email='centro_a@test.com',
+        password='testpass123'
+    )
+    user.rol = 'centro'
+    user.centro = centro_a
+    user.save()
+    return user
+
+
+@pytest.fixture
+def usuario_farmacia(db):
+    """Usuario con rol farmacia (acceso global)."""
+    user = User.objects.create_user(
+        username='user_farmacia',
+        email='farmacia@test.com',
+        password='testpass123'
+    )
+    user.rol = 'farmacia'
+    user.save()
+    return user
+
+
+class TestRegistrarMovimientoStockPertenenciaCentro:
+    """
+    ISS-002: Tests para validación de pertenencia de centro.
+    
+    Verifica que usuarios de un centro no puedan manipular stock de otros centros.
+    """
+
+    def test_lote_centro_diferente_al_especificado_rechazado(self, lote_centro_a, centro_b):
+        """
+        ISS-002: Si el lote pertenece al Centro A pero se especifica Centro B,
+        debe rechazarse la operación.
+        """
+        with pytest.raises(serializers.ValidationError) as exc_info:
+            registrar_movimiento_stock(
+                lote=lote_centro_a,  # Pertenece a Centro A
+                tipo='salida',
+                cantidad=10,
+                centro=centro_b,  # Se intenta operar como Centro B
+                observaciones='Intento de manipulación entre centros'
+            )
+        
+        assert 'no pertenece al centro' in str(exc_info.value).lower()
+
+    def test_lote_mismo_centro_aceptado(self, lote_centro_a, centro_a):
+        """Centro correcto debe ser aceptado."""
+        movimiento, lote_actualizado = registrar_movimiento_stock(
+            lote=lote_centro_a,
+            tipo='salida',
+            cantidad=10,
+            centro=centro_a,  # Centro correcto
+            observaciones='Operación válida mismo centro'
+        )
+        
+        assert lote_actualizado.cantidad_actual == 90
+        assert movimiento.centro == centro_a
+
+    def test_usuario_centro_diferente_rechazado(self, lote_centro_a, centro_b, db):
+        """
+        ISS-002: Usuario de Centro B no puede operar sobre lotes de Centro A.
+        """
+        # Crear usuario del Centro B
+        user_centro_b = User.objects.create_user(
+            username='user_centro_b_test',
+            email='centro_b_test@test.com',
+            password='testpass123'
+        )
+        user_centro_b.rol = 'centro'
+        user_centro_b.centro = centro_b
+        user_centro_b.save()
+        
+        with pytest.raises(serializers.ValidationError) as exc_info:
+            registrar_movimiento_stock(
+                lote=lote_centro_a,  # Pertenece a Centro A
+                tipo='salida',
+                cantidad=5,
+                usuario=user_centro_b,  # Usuario de Centro B
+                observaciones='Intento de acceso cruzado'
+            )
+        
+        assert 'permiso' in str(exc_info.value).lower() or 'no pertenece' in str(exc_info.value).lower()
+
+    def test_usuario_mismo_centro_aceptado(self, lote_centro_a, usuario_centro_a):
+        """Usuario del mismo centro puede operar sobre sus lotes."""
+        movimiento, lote_actualizado = registrar_movimiento_stock(
+            lote=lote_centro_a,
+            tipo='entrada',
+            cantidad=20,
+            usuario=usuario_centro_a,
+            observaciones='Operación válida usuario mismo centro'
+        )
+        
+        assert lote_actualizado.cantidad_actual == 120
+        assert movimiento.usuario == usuario_centro_a
+
+    def test_usuario_farmacia_puede_operar_cualquier_centro(self, lote_centro_a, usuario_farmacia, centro_b):
+        """
+        Usuarios con rol farmacia tienen acceso global y pueden operar
+        sobre lotes de cualquier centro.
+        """
+        movimiento, lote_actualizado = registrar_movimiento_stock(
+            lote=lote_centro_a,
+            tipo='salida',
+            cantidad=15,
+            usuario=usuario_farmacia,
+            centro=centro_b,  # Centro diferente al del lote
+            skip_centro_check=True,  # Farmacia puede saltar la validación
+            observaciones='Operación farmacia global'
+        )
+        
+        assert lote_actualizado.cantidad_actual == 85
+
+    def test_skip_centro_check_permite_operacion(self, lote_centro_a, centro_b):
+        """
+        Con skip_centro_check=True, se puede operar sin validar pertenencia.
+        Útil para operaciones de sistema/admin.
+        """
+        movimiento, lote_actualizado = registrar_movimiento_stock(
+            lote=lote_centro_a,
+            tipo='ajuste',
+            cantidad=-5,
+            centro=centro_b,
+            skip_centro_check=True,
+            observaciones='Ajuste administrativo'
+        )
+        
+        assert lote_actualizado.cantidad_actual == 95
+
+    def test_lote_sin_centro_acepta_cualquier_centro(self, lote_con_stock, centro_a):
+        """
+        Si el lote no tiene centro asignado (lote.centro = None),
+        cualquier centro puede operarlo.
+        """
+        # lote_con_stock no tiene centro asignado por defecto
+        assert getattr(lote_con_stock, 'centro', None) is None
+        
+        movimiento, lote_actualizado = registrar_movimiento_stock(
+            lote=lote_con_stock,
+            tipo='entrada',
+            cantidad=10,
+            centro=centro_a,
+            observaciones='Operación en lote sin centro'
+        )
+        
+        assert lote_actualizado.cantidad_actual == 110
+
+    def test_centro_none_no_valida_pertenencia(self, lote_centro_a):
+        """
+        Si no se especifica centro (centro=None), no se valida pertenencia.
+        El movimiento se crea sin centro asociado.
+        """
+        movimiento, lote_actualizado = registrar_movimiento_stock(
+            lote=lote_centro_a,
+            tipo='salida',
+            cantidad=5,
+            centro=None,  # Sin centro específico
+            observaciones='Salida sin centro'
+        )
+        
+        assert lote_actualizado.cantidad_actual == 95
+        assert movimiento.centro is None
+

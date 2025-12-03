@@ -35,8 +35,31 @@ if not LOG_TO_STDOUT:
 MAINTENANCE_MODE = config('MAINTENANCE_MODE', default=False, cast=bool)
 SKIP_SECURITY_VALIDATION = config('SKIP_SECURITY_VALIDATION', default=False, cast=bool)
 
-# Solo validar en producción Y cuando no estamos en modo mantenimiento
-if not DEBUG and not MAINTENANCE_MODE and not SKIP_SECURITY_VALIDATION:
+# ISS-004: Detectar comandos de gestión de Django para permitir operaciones offline
+# Esto evita bloqueos en migraciones, collectstatic, y pipelines de CI
+import sys
+_is_management_command = len(sys.argv) > 1 and sys.argv[0].endswith('manage.py')
+_offline_commands = {'migrate', 'makemigrations', 'collectstatic', 'check', 'showmigrations', 
+                     'dbshell', 'shell', 'createsuperuser', 'test', 'flush', 'dumpdata', 'loaddata'}
+_is_offline_command = _is_management_command and len(sys.argv) > 1 and sys.argv[1] in _offline_commands
+
+# Variables de entorno para CI/CD pipelines
+RUNNING_MIGRATIONS = config('RUNNING_MIGRATIONS', default=False, cast=bool)
+RUNNING_COLLECTSTATIC = config('RUNNING_COLLECTSTATIC', default=False, cast=bool)
+CI_ENVIRONMENT = config('CI', default=False, cast=bool) or config('CI_ENVIRONMENT', default=False, cast=bool)
+
+# Determinar si debemos saltar validación
+_skip_validation = (
+    MAINTENANCE_MODE or 
+    SKIP_SECURITY_VALIDATION or 
+    _is_offline_command or 
+    RUNNING_MIGRATIONS or 
+    RUNNING_COLLECTSTATIC or
+    CI_ENVIRONMENT
+)
+
+# Solo validar en producción Y cuando no estamos en modo mantenimiento/offline
+if not DEBUG and not _skip_validation:
     # Lista de verificaciones de seguridad para producción
     _security_errors = []
     

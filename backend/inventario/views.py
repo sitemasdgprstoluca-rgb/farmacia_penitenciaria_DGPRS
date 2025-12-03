@@ -26,45 +26,109 @@ logger = logging.getLogger(__name__)
 # -----------------------------------------------------------
 # VALIDADORES DE IMPORTACIÓN EXCEL
 # -----------------------------------------------------------
+
+# Magic bytes para formatos Excel válidos
+# XLSX/XLSM son archivos ZIP (PK\x03\x04)
+# XLS antiguo usa formato OLE2 (Compound File Binary Format)
+EXCEL_MAGIC_BYTES = {
+    '.xlsx': b'PK\x03\x04',  # ZIP archive (Office Open XML)
+    '.xlsm': b'PK\x03\x04',  # ZIP archive with macros
+    '.xls': b'\xD0\xCF\x11\xE0',  # OLE2 Compound Document
+}
+
+
 def validar_archivo_excel(file):
     """
-    Valida archivo Excel antes de procesarlo.
+    Valida archivo Excel antes de procesarlo con múltiples capas de seguridad.
+    
+    Validaciones:
+    1. Archivo presente y con nombre válido
+    2. Extensión permitida (.xlsx, .xls)
+    3. Tamaño dentro de límites
+    4. Magic bytes correctos (contenido real coincide con extensión)
     
     Retorna: (es_valido, mensaje_error)
     """
-    # Validar que hay archivo
+    # 1. Validar que hay archivo
     if not file:
         return False, 'No se recibió archivo'
     
-    # Validar extensión
-    nombre = file.name.lower() if hasattr(file, 'name') else ''
-    # Si no hay nombre/extensión (p.ej. BytesIO), asumir .xlsx para no bloquear importaciones legítimas
-    ext = os.path.splitext(nombre)[1] or '.xlsx'
+    # 2. ISS-001: Validar nombre obligatorio - rechazar archivos sin nombre
+    nombre = getattr(file, 'name', None)
+    if not nombre or not nombre.strip():
+        return False, 'El archivo debe tener un nombre válido'
+    
+    nombre_lower = nombre.lower().strip()
+    ext = os.path.splitext(nombre_lower)[1]
+    
+    # 3. Validar extensión
+    if not ext:
+        return False, 'El archivo debe tener una extensión (.xlsx o .xls)'
+    
     extensiones_permitidas = getattr(settings, 'IMPORT_ALLOWED_EXTENSIONS', ['.xlsx', '.xls'])
     if ext not in extensiones_permitidas:
         return False, f'Extensión no permitida: {ext}. Use: {", ".join(extensiones_permitidas)}'
     
-    # Validar tamaño
+    # 4. Validar tamaño ANTES de leer contenido
     max_size_mb = getattr(settings, 'IMPORT_MAX_FILE_SIZE_MB', 10)
     max_size_bytes = max_size_mb * 1024 * 1024
-    if hasattr(file, 'size') and file.size > max_size_bytes:
-        return False, f'Archivo demasiado grande: {file.size / 1024 / 1024:.1f}MB. Máximo: {max_size_mb}MB'
+    
+    file_size = getattr(file, 'size', None)
+    if file_size is not None and file_size > max_size_bytes:
+        return False, f'Archivo demasiado grande: {file_size / 1024 / 1024:.1f}MB. Máximo: {max_size_mb}MB'
+    
+    # 5. ISS-001: Validar magic bytes - contenido real del archivo
+    try:
+        # Guardar posición actual y leer primeros bytes
+        pos = file.tell() if hasattr(file, 'tell') else 0
+        header = file.read(8)  # Leer suficientes bytes para identificar formato
+        
+        # Restaurar posición para que el archivo pueda ser procesado después
+        if hasattr(file, 'seek'):
+            file.seek(pos)
+        
+        if not header or len(header) < 4:
+            return False, 'Archivo vacío o corrupto'
+        
+        # Verificar magic bytes según extensión
+        expected_magic = EXCEL_MAGIC_BYTES.get(ext)
+        if expected_magic:
+            if not header.startswith(expected_magic):
+                # El contenido no coincide con la extensión declarada
+                logger.warning(
+                    f"Archivo rechazado: extensión {ext} pero magic bytes incorrectos. "
+                    f"Header: {header[:8].hex()}"
+                )
+                return False, f'El contenido del archivo no corresponde a un archivo {ext} válido'
+    except Exception as e:
+        logger.error(f"Error validando magic bytes: {e}")
+        return False, 'Error al validar el contenido del archivo'
     
     return True, None
 
 
 def validar_filas_excel(ws):
     """
-    Valida número de filas en worksheet.
+    Valida número de filas en worksheet con streaming y corte temprano.
+    
+    ISS-003: Optimizado para no recorrer archivos enormes innecesariamente.
+    Se detiene al superar el límite máximo permitido.
     
     Retorna: (es_valido, mensaje_error, num_filas)
     """
     max_rows = getattr(settings, 'IMPORT_MAX_ROWS', 5000)
-    # Contar filas con datos (excluyendo encabezado)
-    num_filas = sum(1 for _ in ws.iter_rows(min_row=2, values_only=True) if any(cell for cell in _))
+    # Margen adicional para detener el conteo (evitar contar millones de filas)
+    cutoff = max_rows + 1
     
-    if num_filas > max_rows:
-        return False, f'Demasiadas filas: {num_filas}. Máximo permitido: {max_rows}', num_filas
+    num_filas = 0
+    # ISS-003: Streaming con corte temprano - detenerse apenas superamos el límite
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        # Solo contar filas que tienen al menos un valor no vacío
+        if any(cell is not None and str(cell).strip() for cell in row):
+            num_filas += 1
+            if num_filas > max_rows:
+                # Corte temprano: ya sabemos que excede el límite
+                return False, f'El archivo excede el máximo de {max_rows} filas permitidas', num_filas
     
     return True, None, num_filas
 from reportlab.lib import colors
@@ -141,10 +205,29 @@ def get_user_centro(user):
     return getattr(user, 'centro', None) or getattr(getattr(user, 'profile', None), 'centro', None)
 
 
-def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=None, requisicion=None, observaciones=''):
+def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=None, requisicion=None, observaciones='', skip_centro_check=False):
     """
     Helper central para registrar un movimiento y actualizar cantidad_actual del lote.
-    Nota: antes los movimientos solo se guardaban en BD sin ajustar el stock, lo que desalineaba dashboard/reportes.
+    
+    ISS-002: Incluye validación de pertenencia de centro para prevenir manipulación
+    de inventario entre centros.
+    
+    Args:
+        lote: Instancia del Lote a modificar
+        tipo: 'entrada', 'salida' o 'ajuste'
+        cantidad: Cantidad a mover (positivo)
+        usuario: Usuario que realiza la operación (opcional)
+        centro: Centro donde se registra el movimiento (opcional)
+        requisicion: Requisición asociada (opcional)
+        observaciones: Texto descriptivo (opcional)
+        skip_centro_check: Si True, omite validación de pertenencia (solo para operaciones
+                          de sistema/admin que ya validaron permisos)
+    
+    Raises:
+        ValidationError: Si los datos son inválidos o hay problemas de autorización
+    
+    Returns:
+        tuple: (movimiento_creado, lote_actualizado)
     """
     tipo_normalizado = (tipo or '').lower()
     if tipo_normalizado not in ('entrada', 'salida', 'ajuste'):
@@ -155,6 +238,39 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         cantidad_int = int(cantidad)
     except (TypeError, ValueError):
         raise serializers.ValidationError({'cantidad': 'La cantidad debe ser un numero entero'})
+
+    # =========================================================================
+    # ISS-002: Validación de pertenencia de centro
+    # =========================================================================
+    # Si se pasa un centro explícito, verificar que el lote pertenezca a ese centro
+    # Esto previene que usuarios de un centro manipulen stock de otros centros
+    if not skip_centro_check and centro is not None:
+        lote_centro = getattr(lote, 'centro', None)
+        if lote_centro is not None and lote_centro.pk != centro.pk:
+            logger.warning(
+                f"Intento de operación de stock rechazado: "
+                f"usuario={getattr(usuario, 'username', 'N/A')}, "
+                f"lote_centro={lote_centro.pk}, centro_solicitado={centro.pk}"
+            )
+            raise serializers.ValidationError({
+                'centro': 'El lote no pertenece al centro especificado. Operación no autorizada.'
+            })
+    
+    # Si el usuario no es admin/farmacia, verificar que tenga acceso al centro del lote
+    if not skip_centro_check and usuario is not None and hasattr(usuario, 'is_authenticated') and usuario.is_authenticated:
+        if not is_farmacia_or_admin(usuario):
+            user_centro = get_user_centro(usuario)
+            lote_centro = getattr(lote, 'centro', None)
+            if lote_centro is not None and user_centro is not None:
+                if user_centro.pk != lote_centro.pk:
+                    logger.warning(
+                        f"Acceso no autorizado a lote de otro centro: "
+                        f"usuario={usuario.username}, user_centro={user_centro.pk}, "
+                        f"lote_centro={lote_centro.pk}"
+                    )
+                    raise serializers.ValidationError({
+                        'lote': 'No tiene permiso para operar sobre lotes de otros centros.'
+                    })
 
     delta = cantidad_int
     if tipo_normalizado == 'salida' and delta > 0:
