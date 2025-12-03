@@ -69,6 +69,8 @@ const Lotes = () => {
   const { getRolPrincipal, permisos, user } = usePermissions();
   const rolPrincipal = getRolPrincipal();
   const puedeVerGlobal = ['ADMIN', 'FARMACIA', 'VISTA'].includes(rolPrincipal) || permisos?.isSuperuser;
+  // Centro del usuario para forzar filtro si no tiene permisos globales
+  const centroUsuario = user?.centro?.id || user?.centro || user?.centro_id;
   // Solo ADMIN y FARMACIA pueden ver campos de contrato (para auditoría)
   const puedeVerContrato = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
   
@@ -107,7 +109,17 @@ const Lotes = () => {
   const [filtroCaducidad, setFiltroCaducidad] = useState('');
   const [filtroConStock, setFiltroConStock] = useState('');
   const [filtroActivo, setFiltroActivo] = useState('');
-  const [filtroCentro, setFiltroCentro] = useState('');
+  // Usuarios sin permisos globales siempre deben filtrar por su centro
+  const [filtroCentro, setFiltroCentro] = useState(() => {
+    // Si no puede ver global, forzar su centro
+    const rol = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user'))?.rol : null;
+    const esGlobal = ['ADMIN', 'FARMACIA', 'VISTA'].includes(rol);
+    if (!esGlobal) {
+      const userStored = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')) : null;
+      return userStored?.centro?.id?.toString() || userStored?.centro?.toString() || userStored?.centro_id?.toString() || '';
+    }
+    return '';
+  });
   
   const [formData, setFormData] = useState({
     producto: '',
@@ -136,6 +148,13 @@ const Lotes = () => {
       cargarCentros();
     }
   }, [puedeVerGlobal]);
+
+  // Forzar filtro de centro para usuarios sin permisos globales
+  useEffect(() => {
+    if (!puedeVerGlobal && centroUsuario) {
+      setFiltroCentro(centroUsuario.toString());
+    }
+  }, [puedeVerGlobal, centroUsuario]);
 
   const cargarCentros = async () => {
     try {
@@ -212,7 +231,9 @@ const Lotes = () => {
       if (filtroCaducidad) params.caducidad = filtroCaducidad;
       if (filtroConStock) params.con_stock = filtroConStock;
       if (filtroActivo) params.activo = filtroActivo;
-      if (filtroCentro) params.centro = filtroCentro;
+      // Forzar filtro de centro para usuarios sin permisos globales
+      const centroParaCargar = !puedeVerGlobal ? (centroUsuario?.toString() || filtroCentro) : filtroCentro;
+      if (centroParaCargar) params.centro = centroParaCargar;
 
       const response = await lotesAPI.getAll(params);
       setLotes(response.data.results || response.data);
@@ -228,7 +249,7 @@ const Lotes = () => {
     } finally {
       setLoading(false);
     }
-  }, [applyMockLotes, currentPage, filtroActivo, filtroCaducidad, filtroConStock, filtroProducto, filtroCentro, pageSize, searchTerm]);
+  }, [applyMockLotes, currentPage, filtroActivo, filtroCaducidad, filtroConStock, filtroProducto, filtroCentro, pageSize, searchTerm, puedeVerGlobal, centroUsuario]);
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
@@ -394,7 +415,12 @@ const Lotes = () => {
     setFiltroCaducidad('');
     setFiltroConStock('');
     setFiltroActivo('');
-    setFiltroCentro('');
+    // Si no puede ver global, mantener filtro de su centro
+    if (puedeVerGlobal) {
+      setFiltroCentro('');
+    } else {
+      setFiltroCentro(centroUsuario?.toString() || '');
+    }
     setCurrentPage(1);
   };
 
@@ -413,7 +439,9 @@ const Lotes = () => {
       if (filtroCaducidad) params.caducidad = filtroCaducidad;
       if (filtroConStock) params.con_stock = filtroConStock;
       if (filtroActivo) params.activo = filtroActivo;
-      if (filtroCentro) params.centro = filtroCentro;
+      // Forzar filtro de centro para usuarios sin permisos globales
+      const centroParaExportar = !puedeVerGlobal ? (centroUsuario?.toString() || filtroCentro) : filtroCentro;
+      if (centroParaExportar) params.centro = centroParaExportar;
       
       const response = await lotesAPI.exportar(params);
       
