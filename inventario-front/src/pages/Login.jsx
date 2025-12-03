@@ -81,11 +81,11 @@ function Login() {
       <div className="max-w-md w-full mx-auto">
         <div className="text-center mb-6">
           {/* Logo del Sistema */}
-          <div className="inline-flex items-center justify-center bg-white rounded-lg mb-4 shadow-lg p-2">
+          <div className="inline-flex items-center justify-center mb-4">
             <img 
               src="/logo-seguridad.jpg" 
               alt="Secretaría de Seguridad" 
-              className="h-16 w-auto object-contain"
+              className="h-24 w-auto object-contain rounded-lg"
             />
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Sistema de Farmacia Penitenciaria</h1>
