@@ -5,6 +5,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
+from django.core.mail import send_mail
+from django.conf import settings
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -13,6 +15,46 @@ import logging
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
+
+
+def send_password_reset_email(user, uid, token):
+    """
+    Envía el correo de recuperación de contraseña de forma segura.
+    ISS-003: Los tokens NUNCA deben aparecer en logs.
+    """
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    reset_url = f"{frontend_url}/reset-password?uid={uid}&token={token}"
+    
+    subject = 'Recuperación de contraseña - Sistema de Farmacia Penitenciaria'
+    message = f"""
+    Hola {user.first_name or user.username},
+    
+    Has solicitado restablecer tu contraseña.
+    
+    Haz clic en el siguiente enlace para crear una nueva contraseña:
+    {reset_url}
+    
+    Este enlace expirará en 24 horas.
+    
+    Si no solicitaste este cambio, ignora este mensaje.
+    
+    Atentamente,
+    Sistema de Farmacia Penitenciaria
+    """
+    
+    try:
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=False,
+        )
+        return True
+    except Exception as e:
+        # ISS-003: NO loguear detalles sensibles, solo el tipo de error
+        logger.error(f"Error enviando email de reset para usuario ID {user.pk}: {type(e).__name__}")
+        return False
 
 
 class PasswordResetRequestView(APIView):
@@ -38,17 +80,15 @@ class PasswordResetRequestView(APIView):
             token = default_token_generator.make_token(user)
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             
-            # TODO: Implementar envío de email
-            # Por ahora solo logueamos y retornamos éxito
-            logger.info(f"Password reset solicitado para: {email}")
-            logger.info(f"Token generado: uid={uid}, token={token}")
+            # ISS-003: Enviar email de forma segura (sin loguear tokens)
+            email_sent = send_password_reset_email(user, uid, token)
             
-            # En producción, aquí enviarías el email
-            # send_password_reset_email(user, uid, token)
+            # Log seguro: solo indica que se procesó, sin datos sensibles
+            logger.info(f"Password reset procesado para usuario ID {user.pk}, email_sent={email_sent}")
             
         except User.DoesNotExist:
-            # No revelar si el usuario existe o no
-            logger.info(f"Password reset solicitado para email inexistente: {email}")
+            # No revelar si el usuario existe o no (log sin email completo)
+            logger.debug("Password reset solicitado para email no registrado")
         
         # Siempre retornar éxito para no revelar información
         return Response({

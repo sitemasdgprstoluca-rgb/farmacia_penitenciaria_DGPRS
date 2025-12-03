@@ -230,9 +230,11 @@ class Producto(models.Model):
                 })
 
     def save(self, *args, **kwargs):
+        # ISS-001: Capturar estado ANTES de guardar para log correcto
+        is_new = self.pk is None
         self.full_clean()
         super().save(*args, **kwargs)
-        logger.info(f"Producto {self.clave} {'creado' if self.pk is None else 'actualizado'}")
+        logger.info(f"Producto {self.clave} {'creado' if is_new else 'actualizado'}")
 
     def __str__(self):
         return f"{self.clave} - {self.descripcion[:50]}"
@@ -438,9 +440,21 @@ class Lote(models.Model):
                     'lote_origen': 'Los lotes de farmacia central no deben tener lote origen'
                 })
         else:
-            # Lote de centro: DEBE tener lote_origen (excepto en creación inicial vía surtido)
-            # La validación de lote_origen se relaja aquí porque se asigna después del create
-            pass
+            # ISS-002: Lote de centro DEBE tener lote_origen para trazabilidad
+            if self.lote_origen is None:
+                raise ValidationError({
+                    'lote_origen': 'Los lotes en centros deben tener un lote origen de farmacia central para garantizar trazabilidad'
+                })
+            # Validar que lote_origen sea del mismo producto
+            if self.lote_origen.producto_id != self.producto_id:
+                raise ValidationError({
+                    'lote_origen': 'El lote origen debe ser del mismo producto'
+                })
+            # Validar que la fecha de caducidad coincida
+            if self.lote_origen.fecha_caducidad != self.fecha_caducidad:
+                raise ValidationError({
+                    'fecha_caducidad': 'La fecha de caducidad debe coincidir con la del lote origen'
+                })
         
         # Validar que lote_origen sea de farmacia central si está definido
         if self.lote_origen is not None:
