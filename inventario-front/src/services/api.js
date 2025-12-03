@@ -18,10 +18,13 @@ import {
 // === CONFIGURACIÓN DE BASE URL CON VALIDACIÓN DE SEGURIDAD (ISS-001, ISS-005) ===
 const configuredUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
 const isDev = import.meta.env.DEV || import.meta.env.MODE === 'development';
+// ISS-003: Flag para permitir HTTP en entornos de staging/testing controlados
+const allowInsecureHttp = import.meta.env.VITE_ALLOW_INSECURE_HTTP === 'true';
 
 // Flag para detectar configuración inválida
 let apiConfigError = null;
 let httpInsecureError = false;
+let httpInsecureWarning = false;
 
 // Determinar baseURL
 let apiBaseUrl;
@@ -43,21 +46,32 @@ if (configuredUrl) {
   apiBaseUrl = 'https://api-no-configurada.error';
 }
 
-// ISS-005: Validar HTTPS en producción - BLOQUEAR si no es seguro
+// ISS-003/ISS-005: Validar HTTPS en producción con modo degradado opcional
 if (!isDev && apiBaseUrl && !apiBaseUrl.startsWith('https://')) {
-  httpInsecureError = true;
-  apiConfigError = 'ERROR DE SEGURIDAD: La API debe usar HTTPS en producción. ' +
-    'Los datos no están protegidos. Contacte al administrador.';
-  console.error(
-    '[API] ERROR DE SEGURIDAD: La API no usa HTTPS en producción. ' +
-    'Esto expone tokens y datos sensibles. URL actual:', apiBaseUrl
-  );
+  if (allowInsecureHttp) {
+    // ISS-003: Modo degradado - permitir HTTP con advertencia visible
+    httpInsecureWarning = true;
+    console.warn(
+      '[API] ⚠️ ADVERTENCIA: Usando HTTP en entorno no-desarrollo. ' +
+      'Los datos pueden estar expuestos. Solo para staging/testing.'
+    );
+  } else {
+    // Bloquear HTTP en producción por defecto
+    httpInsecureError = true;
+    apiConfigError = 'ERROR DE SEGURIDAD: La API debe usar HTTPS en producción. ' +
+      'Los datos no están protegidos. Contacte al administrador.';
+    console.error(
+      '[API] ERROR DE SEGURIDAD: La API no usa HTTPS en producción. ' +
+      'Esto expone tokens y datos sensibles. URL actual:', apiBaseUrl
+    );
+  }
 }
 
-// Exportar función para verificar estado de configuración (ISS-001, ISS-005)
+// Exportar función para verificar estado de configuración (ISS-001, ISS-003, ISS-005)
 export const getApiConfigError = () => apiConfigError;
 export const isApiConfigured = () => !apiConfigError;
 export const isHttpInsecure = () => httpInsecureError;
+export const hasHttpWarning = () => httpInsecureWarning;
 
 const apiClient = axios.create({
   baseURL: `${apiBaseUrl}/`,

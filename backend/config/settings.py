@@ -5,22 +5,38 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Logging defaults (can be overridden by env)
-LOG_LEVEL = config('LOG_LEVEL', default='INFO')
-# En producción (Render, etc.) usar solo stdout ya que el disco es efímero
-LOG_TO_STDOUT = config('LOG_TO_STDOUT', default=False, cast=bool)
-LOG_FILE = config('LOG_FILE', default=str(BASE_DIR / 'logs' / 'django.log'))
-if not LOG_TO_STDOUT:
-    Path(LOG_FILE).parent.mkdir(parents=True, exist_ok=True)
-
-# SECURITY
+# SECURITY - definir DEBUG primero para usarlo en logging
 SECRET_KEY = config('SECRET_KEY', default='' if not config('DEBUG', default=False, cast=bool) else 'dev-only-insecure-key-not-for-production')
 DEBUG = config('DEBUG', default=False, cast=bool)
+
+# Logging defaults (can be overridden by env)
+LOG_LEVEL = config('LOG_LEVEL', default='INFO')
+# ISS-004: En producción (Render, containers) usar stdout por defecto ya que el disco es efímero
+# Detectar automáticamente entornos containerizados
+_is_container = config('RENDER', default=False, cast=bool) or config('DYNO', default='') or config('KUBERNETES_SERVICE_HOST', default='')
+LOG_TO_STDOUT = config('LOG_TO_STDOUT', default=_is_container or not DEBUG, cast=bool)
+LOG_FILE = config('LOG_FILE', default=str(BASE_DIR / 'logs' / 'django.log'))
+
+# ISS-004: Solo crear directorio de logs si no usamos stdout y manejamos errores
+if not LOG_TO_STDOUT:
+    try:
+        Path(LOG_FILE).parent.mkdir(parents=True, exist_ok=True)
+    except (PermissionError, OSError) as e:
+        # Si no podemos crear el directorio, forzar stdout
+        import sys
+        print(f"[WARNING] No se puede crear directorio de logs ({e}), usando stdout", file=sys.stderr)
+        LOG_TO_STDOUT = True
 
 # ═══════════════════════════════════════════════════════════
 # VALIDACIÓN ESTRICTA EN PRODUCCIÓN
 # ═══════════════════════════════════════════════════════════
-if not DEBUG:
+# ISS-002: Modo mantenimiento para permitir comandos administrativos
+# sin bloquear por validaciones de entorno (migraciones, collectstatic, etc.)
+MAINTENANCE_MODE = config('MAINTENANCE_MODE', default=False, cast=bool)
+SKIP_SECURITY_VALIDATION = config('SKIP_SECURITY_VALIDATION', default=False, cast=bool)
+
+# Solo validar en producción Y cuando no estamos en modo mantenimiento
+if not DEBUG and not MAINTENANCE_MODE and not SKIP_SECURITY_VALIDATION:
     # Lista de verificaciones de seguridad para producción
     _security_errors = []
     

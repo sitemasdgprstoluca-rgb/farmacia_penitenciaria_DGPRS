@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 # -----------------------------------------------------------
-# VALIDADORES DE IMPORTACI�N EXCEL
+# VALIDADORES DE IMPORTACIÓN EXCEL
 # -----------------------------------------------------------
 def validar_archivo_excel(file):
     """
@@ -34,28 +34,28 @@ def validar_archivo_excel(file):
     """
     # Validar que hay archivo
     if not file:
-        return False, 'No se recibi� archivo'
+        return False, 'No se recibió archivo'
     
-    # Validar extensi�n
+    # Validar extensión
     nombre = file.name.lower() if hasattr(file, 'name') else ''
-    # Si no hay nombre/extensi�n (p.ej. BytesIO), asumir .xlsx para no bloquear importaciones leg�timas
+    # Si no hay nombre/extensión (p.ej. BytesIO), asumir .xlsx para no bloquear importaciones legítimas
     ext = os.path.splitext(nombre)[1] or '.xlsx'
     extensiones_permitidas = getattr(settings, 'IMPORT_ALLOWED_EXTENSIONS', ['.xlsx', '.xls'])
     if ext not in extensiones_permitidas:
-        return False, f'Extensi�n no permitida: {ext}. Use: {", ".join(extensiones_permitidas)}'
+        return False, f'Extensión no permitida: {ext}. Use: {", ".join(extensiones_permitidas)}'
     
-    # Validar tama�o
+    # Validar tamaño
     max_size_mb = getattr(settings, 'IMPORT_MAX_FILE_SIZE_MB', 10)
     max_size_bytes = max_size_mb * 1024 * 1024
     if hasattr(file, 'size') and file.size > max_size_bytes:
-        return False, f'Archivo demasiado grande: {file.size / 1024 / 1024:.1f}MB. M�ximo: {max_size_mb}MB'
+        return False, f'Archivo demasiado grande: {file.size / 1024 / 1024:.1f}MB. Máximo: {max_size_mb}MB'
     
     return True, None
 
 
 def validar_filas_excel(ws):
     """
-    Valida n�mero de filas en worksheet.
+    Valida número de filas en worksheet.
     
     Retorna: (es_valido, mensaje_error, num_filas)
     """
@@ -64,7 +64,7 @@ def validar_filas_excel(ws):
     num_filas = sum(1 for _ in ws.iter_rows(min_row=2, values_only=True) if any(cell for cell in _))
     
     if num_filas > max_rows:
-        return False, f'Demasiadas filas: {num_filas}. M�ximo permitido: {max_rows}', num_filas
+        return False, f'Demasiadas filas: {num_filas}. Máximo permitido: {max_rows}', num_filas
     
     return True, None, num_filas
 from reportlab.lib import colors
