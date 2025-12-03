@@ -149,7 +149,7 @@ function Layout() {
             <img 
               src="/logo-sistema.png" 
               alt="Logo" 
-              className="h-10 w-auto object-contain rounded"
+              className="h-14 w-28 object-contain rounded"
             />
             <div>
               <span className="font-bold text-base text-white block leading-tight">FARMACIA</span>

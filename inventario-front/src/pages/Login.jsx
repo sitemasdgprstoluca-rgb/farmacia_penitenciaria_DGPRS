@@ -85,7 +85,7 @@ function Login() {
             <img 
               src="/logo-sistema.png" 
               alt="Secretaría de Seguridad" 
-              className="h-24 w-auto object-contain rounded-lg"
+              className="h-40 w-80 object-contain rounded-lg"
             />
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Sistema de Farmacia Penitenciaria</h1>
