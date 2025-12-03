@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import ConfirmModal from "../components/ConfirmModal";
 import { notificacionesAPI } from "../services/api";
+import { usePermissions } from "../hooks/usePermissions";
+import { ProtectedButton } from "../components/ProtectedAction";
 
 const TIPOS = [
   { value: "", label: "Todos" },
@@ -25,6 +27,7 @@ const badgeByTipo = {
 };
 
 function Notificaciones() {
+  const { permisos } = usePermissions();
   const [notificaciones, setNotificaciones] = useState([]);
   const [total, setTotal] = useState(0);
   const [sinLeer, setSinLeer] = useState(0);
@@ -35,6 +38,7 @@ function Notificaciones() {
   const [marcandoId, setMarcandoId] = useState(null); // ID de notificación que se está marcando
   const [deleteId, setDeleteId] = useState(null);
   const [eliminandoId, setEliminandoId] = useState(null); // ID de notificación que se está eliminando
+  const [fechaError, setFechaError] = useState(''); // Error de validación de fechas
   const [filters, setFilters] = useState({
     tipo: "",
     desde: "",
@@ -43,6 +47,13 @@ function Notificaciones() {
   });
 
   const fetchData = async (targetPage = 1) => {
+    // Validar rango de fechas antes de consultar
+    if (filters.desde && filters.hasta && filters.desde > filters.hasta) {
+      setFechaError('La fecha "Desde" no puede ser mayor a "Hasta"');
+      return;
+    }
+    setFechaError('');
+    
     setLoading(true);
     try {
       const params = {
@@ -157,20 +168,22 @@ function Notificaciones() {
           <p className="text-gray-600 text-sm">Historial de eventos y alertas del sistema</p>
         </div>
         <div className="flex items-center gap-3">
-          <button
+          <ProtectedButton
+            permission="gestionarNotificaciones"
             onClick={marcarTodas}
             className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
             disabled={loading || marcandoTodas || sinLeer === 0}
           >
-            {marcandoTodas ? 'Marcando...' : 'Marcar todas como leidas'}
-          </button>
-          <button
+            {marcandoTodas ? 'Marcando...' : 'Marcar todas como leídas'}
+          </ProtectedButton>
+          <ProtectedButton
+            permission="verNotificaciones"
             onClick={() => fetchData(page)}
-            className="px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
+            className="px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={loading}
           >
             Refrescar
-          </button>
+          </ProtectedButton>
         </div>
       </div>
 
@@ -211,7 +224,7 @@ function Notificaciones() {
                 type="date"
                 value={filters.desde}
                 onChange={(e) => setFilters((f) => ({ ...f, desde: e.target.value }))}
-                className="mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
+                className={`mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500 ${fechaError ? 'border-red-500' : ''}`}
               />
             </div>
             <div>
@@ -220,8 +233,11 @@ function Notificaciones() {
                 type="date"
                 value={filters.hasta}
                 onChange={(e) => setFilters((f) => ({ ...f, hasta: e.target.value }))}
-                className="mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
+                className={`mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500 ${fechaError ? 'border-red-500' : ''}`}
               />
+              {fechaError && (
+                <p className="text-xs text-red-600 mt-1">{fechaError}</p>
+              )}
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500">Por página</label>

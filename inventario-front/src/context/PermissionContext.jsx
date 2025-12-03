@@ -50,6 +50,14 @@ const PERMISOS_POR_ROL = {
     // Permisos granulares de movimientos
     crearMovimiento: true,
     exportarMovimientos: true,
+    // Permisos granulares de productos
+    crearProducto: true,
+    editarProducto: true,
+    eliminarProducto: true,
+    exportarProductos: true,
+    importarProductos: true,
+    // Permisos de notificaciones
+    gestionarNotificaciones: true,
   },
   FARMACIA: {
     verDashboard: true,
@@ -88,6 +96,14 @@ const PERMISOS_POR_ROL = {
     // Permisos granulares de movimientos
     crearMovimiento: true,
     exportarMovimientos: true,
+    // Permisos granulares de productos
+    crearProducto: true,
+    editarProducto: true,
+    eliminarProducto: true,
+    exportarProductos: true,
+    importarProductos: true,
+    // Permisos de notificaciones
+    gestionarNotificaciones: true,
   },
   CENTRO: {
     verDashboard: true,
@@ -126,6 +142,14 @@ const PERMISOS_POR_ROL = {
     // Permisos granulares de movimientos - Centro no tiene acceso
     crearMovimiento: false,
     exportarMovimientos: false,
+    // Permisos granulares de productos - Centro no tiene acceso
+    crearProducto: false,
+    editarProducto: false,
+    eliminarProducto: false,
+    exportarProductos: false,
+    importarProductos: false,
+    // Permisos de notificaciones
+    gestionarNotificaciones: true,
   },
   VISTA: {
     verDashboard: true,
@@ -164,6 +188,14 @@ const PERMISOS_POR_ROL = {
     // Permisos granulares de movimientos - Vista solo exportar
     crearMovimiento: false,
     exportarMovimientos: true,  // Puede exportar para consulta
+    // Permisos granulares de productos - Vista solo exportar
+    crearProducto: false,
+    editarProducto: false,
+    eliminarProducto: false,
+    exportarProductos: true,  // Puede exportar para consulta
+    importarProductos: false,
+    // Permisos de notificaciones
+    gestionarNotificaciones: false,
   },
   SIN_ROL: {
     verDashboard: false,
@@ -200,6 +232,14 @@ const PERMISOS_POR_ROL = {
     // Permisos granulares de movimientos
     crearMovimiento: false,
     exportarMovimientos: false,
+    // Permisos granulares de productos
+    crearProducto: false,
+    editarProducto: false,
+    eliminarProducto: false,
+    exportarProductos: false,
+    importarProductos: false,
+    // Permisos de notificaciones
+    gestionarNotificaciones: false,
   },
 };
 

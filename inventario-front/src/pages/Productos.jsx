@@ -32,7 +32,7 @@ import { DEV_CONFIG } from '../config/dev';
 
 import { usePermissions } from '../hooks/usePermissions';
 
-import { ProtectedComponent } from '../components/ProtectedAction';
+import { ProtectedComponent, ProtectedButton } from '../components/ProtectedAction';
 import Pagination from '../components/Pagination';
 
 import { COLORS } from '../constants/theme';
@@ -1673,121 +1673,62 @@ const Productos = () => {
           )}
 
           <div className="flex flex-wrap gap-3">
+              <ProtectedButton
+                permission="exportarProductos"
+                type="button"
+                onClick={handleExportar}
+                disabled={exportLoading}
+                className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})`,
+                  border: '1px solid rgba(255,255,255,0.4)'
+                }}
+              >
+                {exportLoading ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent inline-block" />
+                ) : (
+                  <FaDownload />
+                )}
+                {exportLoading ? 'Exportando...' : 'Exportar'}
+              </ProtectedButton>
 
-            <ProtectedComponent permission="verProductos">
+              <ProtectedButton
+                permission="importarProductos"
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importLoading}
+                className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  background: `linear-gradient(135deg, ${COLORS.guinda}, ${COLORS.vino})`,
+                  border: '1px solid rgba(255,255,255,0.4)'
+                }}
+              >
+                {importLoading ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent inline-block" />
+                ) : (
+                  <FaFileUpload />
+                )}
+                {importLoading ? 'Importando...' : 'Importar'}
+              </ProtectedButton>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                style={{ display: 'none' }}
+                onChange={handleImportar}
+              />
 
-              {puede.exportar && (
-
-                <button
-
-                  type="button"
-
-                  onClick={handleExportar}
-
-                  disabled={exportLoading}
-
-                  className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
-
-                  style={{
-
-                    background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})`,
-
-                    border: '1px solid rgba(255,255,255,0.4)'
-
-                  }}
-
-                >
-
-                  {exportLoading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent inline-block" />
-                  ) : (
-                    <FaDownload />
-                  )}
-
-                  {exportLoading ? 'Exportando...' : 'Exportar'}
-
-                </button>
-
-              )}
-
-              {puede.importar && (
-
-                <>
-
-                  <button
-
-                    type="button"
-
-                    onClick={() => fileInputRef.current?.click()}
-
-                    disabled={importLoading}
-
-                    className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
-
-                    style={{
-
-                      background: `linear-gradient(135deg, ${COLORS.guinda}, ${COLORS.vino})`,
-
-                      border: '1px solid rgba(255,255,255,0.4)'
-
-                    }}
-
-                  >
-
-                    {importLoading ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent inline-block" />
-                    ) : (
-                      <FaFileUpload />
-                    )}
-
-                    {importLoading ? 'Importando...' : 'Importar'}
-
-                  </button>
-
-                  <input
-
-                    ref={fileInputRef}
-
-                    type="file"
-
-                    accept=".xlsx,.xls"
-
-                    className="hidden"
-
-                    style={{ display: 'none' }}
-
-                    onChange={handleImportar}
-
-                  />
-
-                </>
-
-              )}
-
-              {puede.crear && (
-
-                <button
-
-                  type="button"
-
-                  onClick={() => openModal()}
-
-                  className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white"
-
-                  style={{ color: COLORS.vino }}
-
-                >
-
-                  <FaPlus />
-
-                  Nuevo Producto
-
-                </button>
-
-              )}
-
-            </ProtectedComponent>
-
+              <ProtectedButton
+                permission="crearProducto"
+                type="button"
+                onClick={() => openModal()}
+                className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white"
+                style={{ color: COLORS.vino }}
+              >
+                <FaPlus />
+                Nuevo Producto
+              </ProtectedButton>
           </div>
 
         </div>
