@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import Pagination from "../components/Pagination";
@@ -565,7 +565,7 @@ const Movimientos = () => {
                     className="border rounded-lg px-3 py-2"
                   >
                     <option value="">Todos</option>
-                    {productos.slice(0, 50).map((p) => (
+                    {productos.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.clave} - {p.descripcion}
                       </option>
@@ -660,9 +660,8 @@ const Movimientos = () => {
                     </tr>
                   ) : (
                     movimientos.map((mov) => (
-                      <>
+                      <React.Fragment key={mov.id}>
                         <tr 
-                          key={mov.id} 
                           ref={highlightId === mov.id ? highlightRef : null}
                           className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors ${
                             highlightId === mov.id ? 'bg-yellow-50 ring-2 ring-yellow-400' : ''
@@ -708,7 +707,7 @@ const Movimientos = () => {
                         </tr>
                         {/* Fila expandida con detalles */}
                         {expandedId === mov.id && (
-                          <tr key={`${mov.id}-detail`} className="bg-gray-50">
+                          <tr className="bg-gray-50">
                             <td colSpan={columnas.length + 1} className="px-6 py-4">
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                 <div>
@@ -749,7 +748,7 @@ const Movimientos = () => {
                             </td>
                           </tr>
                         )}
-                      </>
+                      </React.Fragment>
                     ))
                   )}
                 </tbody>
