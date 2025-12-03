@@ -110,14 +110,11 @@ const Lotes = () => {
   const [filtroConStock, setFiltroConStock] = useState('');
   const [filtroActivo, setFiltroActivo] = useState('');
   // Usuarios sin permisos globales siempre deben filtrar por su centro
+  // CORREGIDO: Usar contexto de autenticación (centroUsuario) en lugar de localStorage
+  // para evitar desincronización en cambios de sesión
   const [filtroCentro, setFiltroCentro] = useState(() => {
-    // Si no puede ver global, forzar su centro
-    const rol = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user'))?.rol : null;
-    const esGlobal = ['ADMIN', 'FARMACIA', 'VISTA'].includes(rol);
-    if (!esGlobal) {
-      const userStored = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')) : null;
-      return userStored?.centro?.id?.toString() || userStored?.centro?.toString() || userStored?.centro_id?.toString() || '';
-    }
+    // Inicializar vacío - el useEffect se encargará de forzar el centro correcto
+    // según el contexto de autenticación actual
     return '';
   });
   

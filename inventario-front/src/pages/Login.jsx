@@ -56,14 +56,20 @@ function Login() {
       // Limpiar tokens usando tokenManager (no localStorage directo)
       clearTokens();
       localStorage.removeItem('user');
+      
+      // Mensajes de error alineados con contratos de prueba
       if (error.response?.status === 401 || error.response?.status === 400) {
-        setErrorMessage('Credenciales inválidas');
+        setErrorMessage('Usuario o contraseña incorrectos');
       } else if (error.response?.status === 404) {
-        setErrorMessage('Credenciales inválidas');
+        setErrorMessage('Usuario o contraseña incorrectos');
       } else if (error.response?.data?.non_field_errors) {
         setErrorMessage(error.response.data.non_field_errors[0]);
+      } else if (error.response?.data?.detail) {
+        setErrorMessage(error.response.data.detail);
+      } else if (error.message) {
+        setErrorMessage('Error de conexión. Intente nuevamente.');
       } else {
-        setErrorMessage('Credenciales inválidas');
+        setErrorMessage('Usuario o contraseña incorrectos');
       }
       toast.error('No fue posible iniciar sesión');
     } finally {
