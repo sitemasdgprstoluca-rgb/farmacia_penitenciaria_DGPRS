@@ -1287,3 +1287,217 @@ class HojaRecoleccionSerializer(serializers.ModelSerializer):
         if not obj.contenido_json or 'detalles' not in obj.contenido_json:
             return []
         return obj.contenido_json.get('detalles', [])
+
+
+# ============================================================================
+# SERIALIZERS PARA TEMA GLOBAL
+# ============================================================================
+from .models import TemaGlobal
+
+
+class TemaGlobalSerializer(serializers.ModelSerializer):
+    """
+    Serializer completo para TemaGlobal.
+    Incluye URLs de imagenes y configuracion JSON para el frontend.
+    """
+    logo_header_url = serializers.SerializerMethodField()
+    logo_login_url = serializers.SerializerMethodField()
+    logo_reportes_url = serializers.SerializerMethodField()
+    favicon_url = serializers.SerializerMethodField()
+    imagen_fondo_login_url = serializers.SerializerMethodField()
+    imagen_fondo_reportes_url = serializers.SerializerMethodField()
+    
+    css_variables = serializers.SerializerMethodField()
+    config_completa = serializers.SerializerMethodField()
+    
+    creado_por_nombre = serializers.CharField(source='creado_por.get_full_name', read_only=True)
+    modificado_por_nombre = serializers.CharField(source='modificado_por.get_full_name', read_only=True)
+    
+    class Meta:
+        model = TemaGlobal
+        fields = [
+            'id', 'nombre', 'descripcion', 'activo', 'es_tema_institucional',
+            # Logos
+            'logo_header', 'logo_header_url',
+            'logo_login', 'logo_login_url',
+            'logo_reportes', 'logo_reportes_url',
+            'favicon', 'favicon_url',
+            'imagen_fondo_login', 'imagen_fondo_login_url',
+            'imagen_fondo_reportes', 'imagen_fondo_reportes_url',
+            # Colores principales
+            'color_primario', 'color_primario_hover',
+            'color_secundario', 'color_secundario_hover',
+            # Colores de estado
+            'color_exito', 'color_error', 'color_advertencia', 'color_info',
+            # Colores de fondo
+            'color_fondo_principal', 'color_fondo_tarjetas',
+            'color_fondo_sidebar', 'color_fondo_header',
+            # Colores de texto
+            'color_texto_principal', 'color_texto_secundario',
+            'color_texto_invertido', 'color_texto_links',
+            # Colores de bordes
+            'color_borde', 'color_borde_focus',
+            # Tipografia
+            'fuente_principal', 'fuente_titulos',
+            'tamano_h1', 'tamano_h2', 'tamano_h3',
+            'tamano_texto_base', 'tamano_texto_pequeno',
+            'tamano_etiquetas', 'tamano_botones',
+            'peso_titulos', 'peso_texto_normal', 'peso_botones',
+            # Reportes
+            'reporte_ano_visible', 'reporte_titulo_institucion',
+            'reporte_subtitulo', 'reporte_pie_pagina',
+            'reporte_color_encabezado', 'reporte_color_texto_encabezado',
+            'reporte_color_filas_alternas',
+            # Estilos
+            'border_radius_base', 'border_radius_botones', 'shadow_base',
+            # Computed
+            'css_variables', 'config_completa',
+            # Auditoria
+            'creado_por', 'creado_por_nombre',
+            'modificado_por', 'modificado_por_nombre',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['es_tema_institucional', 'created_at', 'updated_at']
+    
+    def get_logo_header_url(self, obj):
+        if obj.logo_header:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.logo_header.url)
+            return obj.logo_header.url
+        return None
+    
+    def get_logo_login_url(self, obj):
+        if obj.logo_login:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.logo_login.url)
+            return obj.logo_login.url
+        return None
+    
+    def get_logo_reportes_url(self, obj):
+        if obj.logo_reportes:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.logo_reportes.url)
+            return obj.logo_reportes.url
+        return None
+    
+    def get_favicon_url(self, obj):
+        if obj.favicon:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.favicon.url)
+            return obj.favicon.url
+        return None
+    
+    def get_imagen_fondo_login_url(self, obj):
+        if obj.imagen_fondo_login:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.imagen_fondo_login.url)
+            return obj.imagen_fondo_login.url
+        return None
+    
+    def get_imagen_fondo_reportes_url(self, obj):
+        if obj.imagen_fondo_reportes:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.imagen_fondo_reportes.url)
+            return obj.imagen_fondo_reportes.url
+        return None
+    
+    def get_css_variables(self, obj):
+        return obj.to_css_variables()
+    
+    def get_config_completa(self, obj):
+        return obj.to_json_config()
+
+
+class TemaGlobalPublicoSerializer(serializers.ModelSerializer):
+    """
+    Serializer publico para TemaGlobal (sin campos de auditoria).
+    Usado para el endpoint publico que cualquier usuario puede consultar.
+    """
+    logo_header_url = serializers.SerializerMethodField()
+    logo_login_url = serializers.SerializerMethodField()
+    logo_reportes_url = serializers.SerializerMethodField()
+    favicon_url = serializers.SerializerMethodField()
+    imagen_fondo_login_url = serializers.SerializerMethodField()
+    
+    css_variables = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = TemaGlobal
+        fields = [
+            'id', 'nombre',
+            # URLs de imagenes
+            'logo_header_url', 'logo_login_url', 'logo_reportes_url',
+            'favicon_url', 'imagen_fondo_login_url',
+            # Colores
+            'color_primario', 'color_primario_hover',
+            'color_secundario', 'color_secundario_hover',
+            'color_exito', 'color_error', 'color_advertencia', 'color_info',
+            'color_fondo_principal', 'color_fondo_tarjetas',
+            'color_fondo_sidebar', 'color_fondo_header',
+            'color_texto_principal', 'color_texto_secundario',
+            'color_texto_invertido', 'color_texto_links',
+            'color_borde', 'color_borde_focus',
+            # Tipografia
+            'fuente_principal', 'fuente_titulos',
+            'tamano_h1', 'tamano_h2', 'tamano_h3',
+            'tamano_texto_base', 'tamano_texto_pequeno',
+            'tamano_etiquetas', 'tamano_botones',
+            'peso_titulos', 'peso_texto_normal', 'peso_botones',
+            # Reportes (solo lo necesario para UI)
+            'reporte_ano_visible', 'reporte_titulo_institucion',
+            # Estilos
+            'border_radius_base', 'border_radius_botones', 'shadow_base',
+            # CSS variables
+            'css_variables',
+            'updated_at',
+        ]
+    
+    def get_logo_header_url(self, obj):
+        if obj.logo_header:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.logo_header.url)
+            return obj.logo_header.url
+        return None
+    
+    def get_logo_login_url(self, obj):
+        if obj.logo_login:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.logo_login.url)
+            return obj.logo_login.url
+        return None
+    
+    def get_logo_reportes_url(self, obj):
+        if obj.logo_reportes:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.logo_reportes.url)
+            return obj.logo_reportes.url
+        return None
+    
+    def get_favicon_url(self, obj):
+        if obj.favicon:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.favicon.url)
+            return obj.favicon.url
+        return None
+    
+    def get_imagen_fondo_login_url(self, obj):
+        if obj.imagen_fondo_login:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.imagen_fondo_login.url)
+            return obj.imagen_fondo_login.url
+        return None
+    
+    def get_css_variables(self, obj):
+        return obj.to_css_variables()
+

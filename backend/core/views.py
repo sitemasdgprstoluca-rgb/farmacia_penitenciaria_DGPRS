@@ -1572,6 +1572,272 @@ class ConfiguracionSistemaViewSet(viewsets.ViewSet):
         })
 
 
+# ============================================================================
+# VIEWSET PARA TEMA GLOBAL
+# ============================================================================
+
+from core.models import TemaGlobal
+from core.serializers import TemaGlobalSerializer, TemaGlobalPublicoSerializer
+
+
+class TemaGlobalViewSet(viewsets.ViewSet):
+    """
+    ViewSet para gestionar el tema global del sistema.
+    
+    Endpoints:
+    - GET /api/tema/activo/ - Obtener tema activo (público)
+    - GET /api/tema/ - Obtener tema para administración
+    - PUT /api/tema/ - Actualizar tema (solo admin)
+    - POST /api/tema/restablecer/ - Restablecer tema institucional (solo admin)
+    - DELETE /api/tema/eliminar-logo/<tipo>/ - Eliminar logo específico (solo admin)
+    """
+    
+    def get_permissions(self):
+        """Permisos según la acción"""
+        if self.action in ['tema_activo']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
+    
+    @action(detail=False, methods=['get'], url_path='activo')
+    def tema_activo(self, request):
+        """
+        GET /api/tema/activo/
+        Endpoint público para obtener el tema activo.
+        Puede ser consultado sin autenticación (para login, etc).
+        """
+        tema = TemaGlobal.get_tema_activo()
+        serializer = TemaGlobalPublicoSerializer(tema, context={'request': request})
+        return Response(serializer.data)
+    
+    def list(self, request):
+        """
+        GET /api/tema/
+        Obtener el tema activo con información completa (admin).
+        """
+        tema = TemaGlobal.get_tema_activo()
+        serializer = TemaGlobalSerializer(tema, context={'request': request})
+        return Response(serializer.data)
+    
+    def update(self, request, pk=None):
+        """
+        PUT /api/tema/
+        Actualizar el tema global. Solo administradores.
+        """
+        if not request.user.is_superuser:
+            return Response(
+                {'error': 'Solo superusuarios pueden modificar el tema global'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        tema = TemaGlobal.get_tema_activo()
+        
+        # No permitir modificar tema institucional base
+        if tema.es_tema_institucional:
+            # Si intentan modificar el institucional, crear uno nuevo basado en él
+            tema.pk = None
+            tema.nombre = 'Tema Personalizado'
+            tema.es_tema_institucional = False
+        
+        serializer = TemaGlobalSerializer(tema, data=request.data, partial=True, context={'request': request})
+        
+        if serializer.is_valid():
+            # Guardar con auditoría
+            tema_guardado = serializer.save()
+            if tema.pk is None:
+                # Es un tema nuevo
+                tema_guardado.creado_por = request.user
+            tema_guardado.modificado_por = request.user
+            tema_guardado.save()
+            
+            # Registrar en auditoría
+            AuditoriaLog.objects.create(
+                usuario=request.user,
+                accion='ACTUALIZACION',
+                modelo_afectado='TemaGlobal',
+                objeto_id=tema_guardado.id,
+                descripcion=f'Tema global actualizado: {tema_guardado.nombre}',
+                datos_nuevos=serializer.data
+            )
+            
+            logger.info(f"Tema global actualizado por {request.user.username}")
+            
+            return Response({
+                'mensaje': 'Tema actualizado correctamente',
+                'tema': TemaGlobalSerializer(tema_guardado, context={'request': request}).data
+            })
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['post'], url_path='restablecer')
+    def restablecer_institucional(self, request):
+        """
+        POST /api/tema/restablecer/
+        Restablecer al tema institucional por defecto.
+        """
+        if not request.user.is_superuser:
+            return Response(
+                {'error': 'Solo superusuarios pueden restablecer el tema'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Desactivar todos los temas actuales
+        TemaGlobal.objects.update(activo=False)
+        
+        # Buscar o crear el tema institucional
+        tema_institucional = TemaGlobal.objects.filter(es_tema_institucional=True).first()
+        
+        if tema_institucional:
+            tema_institucional.activo = True
+            tema_institucional.save()
+        else:
+            # Crear tema institucional por defecto
+            tema_institucional = TemaGlobal.crear_tema_institucional()
+        
+        # Registrar en auditoría
+        AuditoriaLog.objects.create(
+            usuario=request.user,
+            accion='ACTUALIZACION',
+            modelo_afectado='TemaGlobal',
+            objeto_id=tema_institucional.id,
+            descripcion='Tema restablecido a institucional'
+        )
+        
+        logger.info(f"Tema restablecido a institucional por {request.user.username}")
+        
+        serializer = TemaGlobalSerializer(tema_institucional, context={'request': request})
+        return Response({
+            'mensaje': 'Tema restablecido al institucional',
+            'tema': serializer.data
+        })
+    
+    @action(detail=False, methods=['delete'], url_path='eliminar-logo/(?P<tipo>\\w+)')
+    def eliminar_logo(self, request, tipo=None):
+        """
+        DELETE /api/tema/eliminar-logo/<tipo>/
+        Elimina un logo específico del tema.
+        
+        Tipos válidos: header, login, reportes, favicon, fondo_login, fondo_reportes
+        """
+        if not request.user.is_superuser:
+            return Response(
+                {'error': 'Solo superusuarios pueden eliminar logos'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        campos_logo = {
+            'header': 'logo_header',
+            'login': 'logo_login',
+            'reportes': 'logo_reportes',
+            'favicon': 'favicon',
+            'fondo_login': 'imagen_fondo_login',
+            'fondo_reportes': 'imagen_fondo_reportes',
+        }
+        
+        if tipo not in campos_logo:
+            return Response(
+                {'error': f'Tipo de logo no válido. Opciones: {list(campos_logo.keys())}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        tema = TemaGlobal.get_tema_activo()
+        campo = campos_logo[tipo]
+        archivo = getattr(tema, campo)
+        
+        if archivo:
+            archivo.delete(save=False)
+            setattr(tema, campo, None)
+            tema.modificado_por = request.user
+            tema.save()
+            
+            logger.info(f"Logo {tipo} eliminado del tema por {request.user.username}")
+            
+            return Response({
+                'mensaje': f'Logo {tipo} eliminado correctamente',
+                'tema': TemaGlobalSerializer(tema, context={'request': request}).data
+            })
+        
+        return Response({
+            'mensaje': f'El logo {tipo} no estaba configurado',
+            'tema': TemaGlobalSerializer(tema, context={'request': request}).data
+        })
+    
+    @action(detail=False, methods=['post'], url_path='subir-logo/(?P<tipo>\\w+)')
+    def subir_logo(self, request, tipo=None):
+        """
+        POST /api/tema/subir-logo/<tipo>/
+        Sube un logo específico al tema.
+        
+        Tipos válidos: header, login, reportes, favicon, fondo_login, fondo_reportes
+        """
+        if not request.user.is_superuser:
+            return Response(
+                {'error': 'Solo superusuarios pueden subir logos'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        campos_logo = {
+            'header': 'logo_header',
+            'login': 'logo_login',
+            'reportes': 'logo_reportes',
+            'favicon': 'favicon',
+            'fondo_login': 'imagen_fondo_login',
+            'fondo_reportes': 'imagen_fondo_reportes',
+        }
+        
+        if tipo not in campos_logo:
+            return Response(
+                {'error': f'Tipo de logo no válido. Opciones: {list(campos_logo.keys())}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if 'archivo' not in request.FILES:
+            return Response(
+                {'error': 'No se proporcionó ningún archivo'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        archivo = request.FILES['archivo']
+        
+        # Validar tipo de archivo
+        tipos_permitidos = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml']
+        if tipo == 'favicon':
+            tipos_permitidos.append('image/x-icon')
+        
+        if archivo.content_type not in tipos_permitidos:
+            return Response(
+                {'error': f'Tipo de archivo no permitido. Tipos válidos: {tipos_permitidos}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar tamaño (max 5MB para imágenes, 500KB para favicon)
+        max_size = 500 * 1024 if tipo == 'favicon' else 5 * 1024 * 1024
+        if archivo.size > max_size:
+            max_mb = max_size / (1024 * 1024)
+            return Response(
+                {'error': f'El archivo excede el tamaño máximo permitido ({max_mb}MB)'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        tema = TemaGlobal.get_tema_activo()
+        campo = campos_logo[tipo]
+        
+        # Eliminar archivo anterior si existe
+        archivo_anterior = getattr(tema, campo)
+        if archivo_anterior:
+            archivo_anterior.delete(save=False)
+        
+        # Guardar nuevo archivo
+        setattr(tema, campo, archivo)
+        tema.modificado_por = request.user
+        tema.save()
+        
+        logger.info(f"Logo {tipo} actualizado en el tema por {request.user.username}")
+        
+        return Response({
+            'mensaje': f'Logo {tipo} actualizado correctamente',
+            'tema': TemaGlobalSerializer(tema, context={'request': request}).data
+        })
+
 
 
 

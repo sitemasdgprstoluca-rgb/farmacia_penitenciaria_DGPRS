@@ -9,7 +9,8 @@ from rest_framework.routers import SimpleRouter
 from core.views import (
     LogoutView,
     UserViewSet, ImportacionLogViewSet, AuditoriaLogViewSet, DevAutoLoginView,
-    DetalleRequisicionViewSet, NotificacionViewSet, ConfiguracionSistemaViewSet
+    DetalleRequisicionViewSet, NotificacionViewSet, ConfiguracionSistemaViewSet,
+    TemaGlobalViewSet
 )
 # JWT Views seguros (cookies HttpOnly para refresh token)
 from core.serializers_jwt import (
@@ -70,6 +71,24 @@ urlpatterns = [
     path('configuracion/tema/restablecer/', ConfiguracionSistemaViewSet.as_view({
         'post': 'restablecer'
     }), name='configuracion-restablecer'),
+    
+    # Tema Global (personalización completa)
+    path('tema/', TemaGlobalViewSet.as_view({
+        'get': 'list',
+        'put': 'update',
+    }), name='tema-global'),
+    path('tema/activo/', TemaGlobalViewSet.as_view({
+        'get': 'tema_activo'
+    }), name='tema-activo'),
+    path('tema/restablecer/', TemaGlobalViewSet.as_view({
+        'post': 'restablecer_institucional'
+    }), name='tema-restablecer'),
+    path('tema/eliminar-logo/<str:tipo>/', TemaGlobalViewSet.as_view({
+        'delete': 'eliminar_logo'
+    }), name='tema-eliminar-logo'),
+    path('tema/subir-logo/<str:tipo>/', TemaGlobalViewSet.as_view({
+        'post': 'subir_logo'
+    }), name='tema-subir-logo'),
     
     # Router (incluye /usuarios/me/ como accion del UserViewSet)
     path('', include(router.urls)),

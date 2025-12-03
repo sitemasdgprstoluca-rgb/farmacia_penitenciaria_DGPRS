@@ -1,6 +1,7 @@
 """
 Generador de reportes PDF profesionales para el sistema de farmacia penitenciaria
 Con imagen de fondo oficial del Gobierno del Estado de México
+Integra colores del TemaGlobal para personalización
 """
 
 from reportlab.lib import colors
@@ -21,7 +22,61 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Colores institucionales del Gobierno del Estado de México
+
+def _obtener_colores_tema():
+    """
+    Obtiene los colores del TemaGlobal activo.
+    Retorna un diccionario con colores HexColor de ReportLab.
+    Si no hay tema, usa valores por defecto institucionales.
+    """
+    try:
+        from core.models import TemaGlobal
+        tema = TemaGlobal.get_tema_activo()
+        
+        return {
+            'primario': colors.HexColor(tema.color_primario or '#632842'),
+            'primario_hover': colors.HexColor(tema.color_primario_hover or '#8a3b5c'),
+            'secundario': colors.HexColor(tema.color_secundario or '#424242'),
+            'texto': colors.HexColor(tema.color_texto_principal or '#1f2937'),
+            'texto_secundario': colors.HexColor(tema.color_texto_secundario or '#6b7280'),
+            'encabezado': colors.HexColor(tema.reporte_color_encabezado or '#632842'),
+            'texto_encabezado': colors.HexColor(tema.reporte_color_texto_encabezado or '#FFFFFF'),
+            'filas_alternas': colors.HexColor(tema.reporte_color_filas_alternas or '#F5F5F5'),
+            'exito': colors.HexColor(tema.color_exito or '#4CAF50'),
+            'error': colors.HexColor(tema.color_error or '#F44336'),
+            'advertencia': colors.HexColor(tema.color_advertencia or '#FF9800'),
+            'info': colors.HexColor(tema.color_info or '#2196F3'),
+            # Metadatos del tema
+            'nombre_institucion': tema.reporte_titulo_institucion or 'Sistema de Farmacia Penitenciaria',
+            'subtitulo': tema.reporte_subtitulo or 'Secretaría de Seguridad',
+            'pie_pagina': tema.reporte_pie_pagina or '',
+            'ano_visible': tema.reporte_ano_visible,
+        }
+    except Exception as e:
+        logger.warning(f"No se pudo cargar TemaGlobal: {e}")
+        # Valores por defecto
+        return {
+            'primario': colors.HexColor('#632842'),
+            'primario_hover': colors.HexColor('#8a3b5c'),
+            'secundario': colors.HexColor('#424242'),
+            'texto': colors.HexColor('#1f2937'),
+            'texto_secundario': colors.HexColor('#6b7280'),
+            'encabezado': colors.HexColor('#632842'),
+            'texto_encabezado': colors.HexColor('#FFFFFF'),
+            'filas_alternas': colors.HexColor('#F5F5F5'),
+            'exito': colors.HexColor('#4CAF50'),
+            'error': colors.HexColor('#F44336'),
+            'advertencia': colors.HexColor('#FF9800'),
+            'info': colors.HexColor('#2196F3'),
+            'nombre_institucion': 'Sistema de Farmacia Penitenciaria',
+            'subtitulo': 'Secretaría de Seguridad',
+            'pie_pagina': '',
+            'ano_visible': True,
+        }
+
+
+# Colores institucionales - ahora se cargan dinámicamente desde TemaGlobal
+# Estos valores son fallback para compatibilidad
 COLOR_GUINDA = colors.HexColor('#632842')  # Color oficial
 COLOR_GUINDA_CLARO = colors.HexColor('#8a3b5c')
 COLOR_DORADO = colors.HexColor('#B8860B')
@@ -159,16 +214,28 @@ def _build_con_fondo(doc, elements):
     doc.build(elements, canvasmaker=CanvasConFondo)
 
 
-def _obtener_estilos_institucionales():
-    """Retorna estilos personalizados con colores institucionales"""
+def _obtener_estilos_institucionales(colores_tema=None):
+    """
+    Retorna estilos personalizados con colores institucionales.
+    
+    Args:
+        colores_tema: dict con colores del tema (opcional).
+                     Si no se proporciona, se cargan del TemaGlobal.
+    """
+    if colores_tema is None:
+        colores_tema = _obtener_colores_tema()
+    
     styles = getSampleStyleSheet()
+    
+    color_primario = colores_tema.get('primario', COLOR_GUINDA)
+    color_texto = colores_tema.get('texto', COLOR_TEXTO)
     
     # Título principal del reporte
     styles.add(ParagraphStyle(
         'TituloReporte',
         parent=styles['Heading1'],
         fontSize=16,
-        textColor=COLOR_GUINDA,
+        textColor=color_primario,
         alignment=TA_CENTER,
         spaceAfter=20,
         spaceBefore=10,
@@ -180,7 +247,7 @@ def _obtener_estilos_institucionales():
         'SubtituloReporte',
         parent=styles['Heading2'],
         fontSize=11,
-        textColor=COLOR_TEXTO,
+        textColor=color_texto,
         alignment=TA_CENTER,
         spaceAfter=15,
         fontName='Helvetica'
@@ -191,7 +258,7 @@ def _obtener_estilos_institucionales():
         'SeccionTitulo',
         parent=styles['Heading3'],
         fontSize=11,
-        textColor=COLOR_GUINDA,
+        textColor=color_primario,
         spaceAfter=8,
         spaceBefore=12,
         fontName='Helvetica-Bold'
@@ -200,8 +267,25 @@ def _obtener_estilos_institucionales():
     return styles
 
 
-def _crear_tabla_institucional(data, col_widths=None, header=True):
-    """Crea una tabla con estilo institucional - fondo transparente para ver imagen de fondo"""
+def _crear_tabla_institucional(data, col_widths=None, header=True, colores_tema=None):
+    """
+    Crea una tabla con estilo institucional - fondo transparente para ver imagen de fondo.
+    
+    Args:
+        data: Datos de la tabla
+        col_widths: Anchos de columnas
+        header: Si la primera fila es encabezado
+        colores_tema: dict con colores del tema (opcional)
+    """
+    if colores_tema is None:
+        colores_tema = _obtener_colores_tema()
+    
+    color_primario = colores_tema.get('primario', COLOR_GUINDA)
+    color_texto = colores_tema.get('texto', COLOR_TEXTO)
+    color_encabezado = colores_tema.get('encabezado', COLOR_GUINDA)
+    color_texto_encabezado = colores_tema.get('texto_encabezado', colors.white)
+    color_filas_alternas = colores_tema.get('filas_alternas', colors.HexColor('#F5F5F5'))
+    
     table = Table(data, colWidths=col_widths, repeatRows=1 if header else 0)
     
     estilos = [
@@ -213,15 +297,15 @@ def _crear_tabla_institucional(data, col_widths=None, header=True):
         ('RIGHTPADDING', (0, 0), (-1, -1), 4),
         ('TOPPADDING', (0, 0), (-1, -1), 4),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
-        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+        ('GRID', (0, 0), (-1, -1), 0.5, color_primario),
+        ('TEXTCOLOR', (0, 0), (-1, -1), color_texto),
         ('WORDWRAP', (0, 0), (-1, -1), True),
     ]
     
     if header:
         estilos.extend([
-            ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('BACKGROUND', (0, 0), (-1, 0), color_encabezado),
+            ('TEXTCOLOR', (0, 0), (-1, 0), color_texto_encabezado),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 7),  # Reducir también el header
             ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
@@ -232,13 +316,24 @@ def _crear_tabla_institucional(data, col_widths=None, header=True):
     return table
 
 
-def crear_encabezado(styles):
-    """Crea el encabezado estándar para reportes"""
+def crear_encabezado(styles, colores_tema=None):
+    """
+    Crea el encabezado estándar para reportes.
+    
+    Args:
+        styles: Estilos base de ReportLab
+        colores_tema: dict con colores del tema (opcional)
+    """
+    if colores_tema is None:
+        colores_tema = _obtener_colores_tema()
+    
+    color_primario = colores_tema.get('primario', COLOR_GUINDA)
+    
     titulo_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
         fontSize=16,
-        textColor=COLOR_GUINDA,
+        textColor=color_primario,
         alignment=TA_CENTER,
         spaceAfter=30
     )

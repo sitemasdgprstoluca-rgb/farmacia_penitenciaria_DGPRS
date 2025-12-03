@@ -1736,3 +1736,542 @@ class DetalleHojaRecoleccion(models.Model):
     
     def __str__(self):
         return f"{self.producto.clave} - {self.cantidad_autorizada} unidades"
+
+
+# ============================================================================
+# TEMA GLOBAL DEL SISTEMA
+# ============================================================================
+
+def tema_logo_path(instance, filename):
+    """Genera ruta para logos del tema"""
+    import os
+    ext = filename.split('.')[-1]
+    return f'tema/logos/{instance.tipo_logo}_{instance.id}.{ext}'
+
+
+def tema_imagen_path(instance, filename):
+    """Genera ruta para imagenes del tema (fondos, etc)"""
+    import os
+    from django.utils import timezone
+    timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    ext = filename.split('.')[-1]
+    return f'tema/imagenes/{timestamp}.{ext}'
+
+
+class TemaGlobal(models.Model):
+    """
+    Configuracion global del tema del sistema.
+    Solo debe existir un registro activo a la vez (singleton pattern).
+    
+    Almacena:
+    - Logos e imagenes
+    - Paleta de colores
+    - Tipografias
+    - Configuracion de reportes
+    - Ano visible en documentos
+    """
+    
+    # -------------------------------------------------------------------------
+    # METADATA
+    # -------------------------------------------------------------------------
+    nombre = models.CharField(
+        max_length=100,
+        default='Tema Institucional',
+        help_text='Nombre descriptivo del tema'
+    )
+    descripcion = models.TextField(
+        blank=True,
+        help_text='Descripcion del tema'
+    )
+    activo = models.BooleanField(
+        default=True,
+        help_text='Solo un tema puede estar activo a la vez'
+    )
+    es_tema_institucional = models.BooleanField(
+        default=False,
+        help_text='Indica si es el tema institucional por defecto'
+    )
+    
+    # -------------------------------------------------------------------------
+    # LOGOS E IMAGENES
+    # -------------------------------------------------------------------------
+    logo_header = models.ImageField(
+        upload_to='tema/logos/',
+        null=True,
+        blank=True,
+        validators=[validate_logo_size],
+        help_text='Logo principal mostrado en el header (max 500KB)'
+    )
+    logo_login = models.ImageField(
+        upload_to='tema/logos/',
+        null=True,
+        blank=True,
+        validators=[validate_logo_size],
+        help_text='Logo para pantalla de login (max 500KB)'
+    )
+    logo_reportes = models.ImageField(
+        upload_to='tema/logos/',
+        null=True,
+        blank=True,
+        validators=[validate_logo_size],
+        help_text='Logo para encabezado de reportes PDF (max 500KB)'
+    )
+    favicon = models.ImageField(
+        upload_to='tema/logos/',
+        null=True,
+        blank=True,
+        help_text='Favicon del sitio (ICO o PNG 32x32)'
+    )
+    imagen_fondo_login = models.ImageField(
+        upload_to='tema/imagenes/',
+        null=True,
+        blank=True,
+        help_text='Imagen de fondo para pantalla de login'
+    )
+    imagen_fondo_reportes = models.ImageField(
+        upload_to='tema/imagenes/',
+        null=True,
+        blank=True,
+        help_text='Imagen de fondo/marca de agua para reportes'
+    )
+    
+    # -------------------------------------------------------------------------
+    # COLORES - Paleta Principal
+    # -------------------------------------------------------------------------
+    color_primario = models.CharField(
+        max_length=7,
+        default='#1e3a5f',
+        help_text='Color primario (hex). Usado en header, botones principales'
+    )
+    color_primario_hover = models.CharField(
+        max_length=7,
+        default='#15293f',
+        help_text='Color primario en hover'
+    )
+    color_secundario = models.CharField(
+        max_length=7,
+        default='#3b82f6',
+        help_text='Color secundario/acento'
+    )
+    color_secundario_hover = models.CharField(
+        max_length=7,
+        default='#2563eb',
+        help_text='Color secundario en hover'
+    )
+    
+    # Colores de estado
+    color_exito = models.CharField(
+        max_length=7,
+        default='#10b981',
+        help_text='Color para estados de exito (verde)'
+    )
+    color_error = models.CharField(
+        max_length=7,
+        default='#ef4444',
+        help_text='Color para errores (rojo)'
+    )
+    color_advertencia = models.CharField(
+        max_length=7,
+        default='#f59e0b',
+        help_text='Color para advertencias (amarillo/naranja)'
+    )
+    color_info = models.CharField(
+        max_length=7,
+        default='#3b82f6',
+        help_text='Color para informacion (azul)'
+    )
+    
+    # Colores de fondo
+    color_fondo_principal = models.CharField(
+        max_length=7,
+        default='#f3f4f6',
+        help_text='Color de fondo principal del layout'
+    )
+    color_fondo_tarjetas = models.CharField(
+        max_length=7,
+        default='#ffffff',
+        help_text='Color de fondo de tarjetas y paneles'
+    )
+    color_fondo_sidebar = models.CharField(
+        max_length=7,
+        default='#1e3a5f',
+        help_text='Color de fondo del sidebar/menu'
+    )
+    color_fondo_header = models.CharField(
+        max_length=7,
+        default='#1e3a5f',
+        help_text='Color de fondo del header'
+    )
+    
+    # Colores de texto
+    color_texto_principal = models.CharField(
+        max_length=7,
+        default='#1f2937',
+        help_text='Color de texto principal'
+    )
+    color_texto_secundario = models.CharField(
+        max_length=7,
+        default='#6b7280',
+        help_text='Color de texto secundario/muted'
+    )
+    color_texto_invertido = models.CharField(
+        max_length=7,
+        default='#ffffff',
+        help_text='Color de texto sobre fondos oscuros'
+    )
+    color_texto_links = models.CharField(
+        max_length=7,
+        default='#3b82f6',
+        help_text='Color de enlaces'
+    )
+    
+    # Colores de bordes y elementos
+    color_borde = models.CharField(
+        max_length=7,
+        default='#e5e7eb',
+        help_text='Color de bordes por defecto'
+    )
+    color_borde_focus = models.CharField(
+        max_length=7,
+        default='#3b82f6',
+        help_text='Color de borde en focus'
+    )
+    
+    # -------------------------------------------------------------------------
+    # TIPOGRAFIA
+    # -------------------------------------------------------------------------
+    FUENTES_DISPONIBLES = [
+        ('Inter', 'Inter (Sans-serif moderno)'),
+        ('Roboto', 'Roboto (Sans-serif Google)'),
+        ('Open Sans', 'Open Sans (Sans-serif legible)'),
+        ('Lato', 'Lato (Sans-serif elegante)'),
+        ('Montserrat', 'Montserrat (Sans-serif geometrico)'),
+        ('Poppins', 'Poppins (Sans-serif redondeado)'),
+        ('Source Sans Pro', 'Source Sans Pro (Adobe)'),
+        ('Nunito', 'Nunito (Sans-serif suave)'),
+        ('Arial', 'Arial (Sistema)'),
+        ('Helvetica', 'Helvetica (Sistema)'),
+    ]
+    
+    fuente_principal = models.CharField(
+        max_length=50,
+        default='Inter',
+        choices=FUENTES_DISPONIBLES,
+        help_text='Familia tipografica principal'
+    )
+    fuente_titulos = models.CharField(
+        max_length=50,
+        default='Inter',
+        choices=FUENTES_DISPONIBLES,
+        help_text='Familia tipografica para titulos'
+    )
+    
+    # Tamanos de fuente (en rem para responsividad)
+    tamano_h1 = models.CharField(
+        max_length=10,
+        default='2rem',
+        help_text='Tamano de titulos H1'
+    )
+    tamano_h2 = models.CharField(
+        max_length=10,
+        default='1.5rem',
+        help_text='Tamano de titulos H2'
+    )
+    tamano_h3 = models.CharField(
+        max_length=10,
+        default='1.25rem',
+        help_text='Tamano de titulos H3'
+    )
+    tamano_texto_base = models.CharField(
+        max_length=10,
+        default='1rem',
+        help_text='Tamano de texto base/parrafos'
+    )
+    tamano_texto_pequeno = models.CharField(
+        max_length=10,
+        default='0.875rem',
+        help_text='Tamano de texto pequeno'
+    )
+    tamano_etiquetas = models.CharField(
+        max_length=10,
+        default='0.875rem',
+        help_text='Tamano de etiquetas de formulario'
+    )
+    tamano_botones = models.CharField(
+        max_length=10,
+        default='0.875rem',
+        help_text='Tamano de texto en botones'
+    )
+    
+    # Pesos de fuente
+    peso_titulos = models.CharField(
+        max_length=10,
+        default='700',
+        help_text='Peso de fuente para titulos (400-900)'
+    )
+    peso_texto_normal = models.CharField(
+        max_length=10,
+        default='400',
+        help_text='Peso de fuente para texto normal'
+    )
+    peso_botones = models.CharField(
+        max_length=10,
+        default='600',
+        help_text='Peso de fuente para botones'
+    )
+    
+    # -------------------------------------------------------------------------
+    # CONFIGURACION DE REPORTES
+    # -------------------------------------------------------------------------
+    reporte_ano_visible = models.CharField(
+        max_length=10,
+        default='2025',
+        help_text='Ano que aparece en los reportes'
+    )
+    reporte_titulo_institucion = models.CharField(
+        max_length=200,
+        default='Sistema de Farmacia Penitenciaria',
+        help_text='Titulo de la institucion en reportes'
+    )
+    reporte_subtitulo = models.CharField(
+        max_length=200,
+        blank=True,
+        default='Control de Inventario y Distribucion',
+        help_text='Subtitulo en reportes'
+    )
+    reporte_pie_pagina = models.CharField(
+        max_length=300,
+        blank=True,
+        default='Documento generado por el Sistema de Farmacia Penitenciaria',
+        help_text='Texto del pie de pagina en reportes'
+    )
+    
+    # Colores especificos de reportes
+    reporte_color_encabezado = models.CharField(
+        max_length=7,
+        default='#1e3a5f',
+        help_text='Color de fondo del encabezado de tablas en reportes'
+    )
+    reporte_color_texto_encabezado = models.CharField(
+        max_length=7,
+        default='#ffffff',
+        help_text='Color de texto en encabezado de tablas'
+    )
+    reporte_color_filas_alternas = models.CharField(
+        max_length=7,
+        default='#f9fafb',
+        help_text='Color de filas alternas en tablas'
+    )
+    
+    # -------------------------------------------------------------------------
+    # OTROS ESTILOS
+    # -------------------------------------------------------------------------
+    border_radius_base = models.CharField(
+        max_length=10,
+        default='0.5rem',
+        help_text='Radio de borde base para elementos'
+    )
+    border_radius_botones = models.CharField(
+        max_length=10,
+        default='0.375rem',
+        help_text='Radio de borde para botones'
+    )
+    shadow_base = models.CharField(
+        max_length=100,
+        default='0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+        help_text='Sombra base para tarjetas'
+    )
+    
+    # -------------------------------------------------------------------------
+    # AUDITORIA
+    # -------------------------------------------------------------------------
+    creado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='temas_creados'
+    )
+    modificado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='temas_modificados'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'tema_global'
+        verbose_name = 'Tema Global'
+        verbose_name_plural = 'Temas Globales'
+    
+    def __str__(self):
+        estado = '(Activo)' if self.activo else ''
+        return f"{self.nombre} {estado}"
+    
+    def save(self, *args, **kwargs):
+        # Si este tema se activa, desactivar los demas
+        if self.activo:
+            TemaGlobal.objects.exclude(pk=self.pk).update(activo=False)
+        super().save(*args, **kwargs)
+    
+    @classmethod
+    def get_tema_activo(cls):
+        """Obtiene el tema activo actual o crea el institucional si no existe"""
+        tema = cls.objects.filter(activo=True).first()
+        if not tema:
+            tema = cls.crear_tema_institucional()
+        return tema
+    
+    @classmethod
+    def crear_tema_institucional(cls):
+        """Crea el tema institucional por defecto"""
+        tema, created = cls.objects.get_or_create(
+            es_tema_institucional=True,
+            defaults={
+                'nombre': 'Tema Institucional',
+                'descripcion': 'Tema oficial del Sistema de Farmacia Penitenciaria',
+                'activo': True,
+            }
+        )
+        if created:
+            logger.info("Tema institucional creado")
+        return tema
+    
+    def to_css_variables(self):
+        """Convierte la configuracion a variables CSS"""
+        return {
+            # Colores principales
+            '--color-primary': self.color_primario,
+            '--color-primary-hover': self.color_primario_hover,
+            '--color-secondary': self.color_secundario,
+            '--color-secondary-hover': self.color_secundario_hover,
+            
+            # Estados
+            '--color-success': self.color_exito,
+            '--color-error': self.color_error,
+            '--color-warning': self.color_advertencia,
+            '--color-info': self.color_info,
+            
+            # Fondos
+            '--color-bg-main': self.color_fondo_principal,
+            '--color-bg-card': self.color_fondo_tarjetas,
+            '--color-bg-sidebar': self.color_fondo_sidebar,
+            '--color-bg-header': self.color_fondo_header,
+            
+            # Texto
+            '--color-text-primary': self.color_texto_principal,
+            '--color-text-secondary': self.color_texto_secundario,
+            '--color-text-inverted': self.color_texto_invertido,
+            '--color-text-link': self.color_texto_links,
+            
+            # Bordes
+            '--color-border': self.color_borde,
+            '--color-border-focus': self.color_borde_focus,
+            
+            # Tipografia
+            '--font-family-main': f"'{self.fuente_principal}', sans-serif",
+            '--font-family-headings': f"'{self.fuente_titulos}', sans-serif",
+            '--font-size-h1': self.tamano_h1,
+            '--font-size-h2': self.tamano_h2,
+            '--font-size-h3': self.tamano_h3,
+            '--font-size-base': self.tamano_texto_base,
+            '--font-size-sm': self.tamano_texto_pequeno,
+            '--font-size-label': self.tamano_etiquetas,
+            '--font-size-button': self.tamano_botones,
+            '--font-weight-headings': self.peso_titulos,
+            '--font-weight-normal': self.peso_texto_normal,
+            '--font-weight-button': self.peso_botones,
+            
+            # Bordes y sombras
+            '--border-radius-base': self.border_radius_base,
+            '--border-radius-button': self.border_radius_botones,
+            '--shadow-base': self.shadow_base,
+        }
+    
+    def to_json_config(self):
+        """Exporta toda la configuracion como JSON para el frontend"""
+        config = {
+            'id': self.id,
+            'nombre': self.nombre,
+            'es_tema_institucional': self.es_tema_institucional,
+            
+            # URLs de imagenes
+            'logos': {
+                'header': self.logo_header.url if self.logo_header else None,
+                'login': self.logo_login.url if self.logo_login else None,
+                'reportes': self.logo_reportes.url if self.logo_reportes else None,
+                'favicon': self.favicon.url if self.favicon else None,
+            },
+            'imagenes': {
+                'fondo_login': self.imagen_fondo_login.url if self.imagen_fondo_login else None,
+                'fondo_reportes': self.imagen_fondo_reportes.url if self.imagen_fondo_reportes else None,
+            },
+            
+            # Colores
+            'colores': {
+                'primario': self.color_primario,
+                'primario_hover': self.color_primario_hover,
+                'secundario': self.color_secundario,
+                'secundario_hover': self.color_secundario_hover,
+                'exito': self.color_exito,
+                'error': self.color_error,
+                'advertencia': self.color_advertencia,
+                'info': self.color_info,
+                'fondo_principal': self.color_fondo_principal,
+                'fondo_tarjetas': self.color_fondo_tarjetas,
+                'fondo_sidebar': self.color_fondo_sidebar,
+                'fondo_header': self.color_fondo_header,
+                'texto_principal': self.color_texto_principal,
+                'texto_secundario': self.color_texto_secundario,
+                'texto_invertido': self.color_texto_invertido,
+                'texto_links': self.color_texto_links,
+                'borde': self.color_borde,
+                'borde_focus': self.color_borde_focus,
+            },
+            
+            # Tipografia
+            'tipografia': {
+                'fuente_principal': self.fuente_principal,
+                'fuente_titulos': self.fuente_titulos,
+                'tamanos': {
+                    'h1': self.tamano_h1,
+                    'h2': self.tamano_h2,
+                    'h3': self.tamano_h3,
+                    'base': self.tamano_texto_base,
+                    'pequeno': self.tamano_texto_pequeno,
+                    'etiquetas': self.tamano_etiquetas,
+                    'botones': self.tamano_botones,
+                },
+                'pesos': {
+                    'titulos': self.peso_titulos,
+                    'normal': self.peso_texto_normal,
+                    'botones': self.peso_botones,
+                },
+            },
+            
+            # Reportes
+            'reportes': {
+                'ano_visible': self.reporte_ano_visible,
+                'titulo_institucion': self.reporte_titulo_institucion,
+                'subtitulo': self.reporte_subtitulo,
+                'pie_pagina': self.reporte_pie_pagina,
+                'color_encabezado': self.reporte_color_encabezado,
+                'color_texto_encabezado': self.reporte_color_texto_encabezado,
+                'color_filas_alternas': self.reporte_color_filas_alternas,
+            },
+            
+            # Estilos generales
+            'estilos': {
+                'border_radius_base': self.border_radius_base,
+                'border_radius_botones': self.border_radius_botones,
+                'shadow_base': self.shadow_base,
+            },
+            
+            # Variables CSS listas para usar
+            'css_variables': self.to_css_variables(),
+            
+            # Metadata
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+        return config

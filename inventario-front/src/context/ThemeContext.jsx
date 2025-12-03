@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ThemeContext } from './contexts';
-import { configuracionAPI } from '../services/api';
+import { configuracionAPI, temaGlobalAPI } from '../services/api';
 
 /**
  * Aplica las variables CSS al documento
@@ -84,35 +84,60 @@ const temaDefault = {
 
 export const ThemeProvider = ({ children }) => {
   const [configuracion, setConfiguracion] = useState(temaDefault);
+  const [temaGlobal, setTemaGlobal] = useState(null); // Nuevo: tema global completo
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
 
   /**
-   * Carga la configuración del tema desde el backend
+   * Carga la configuración del tema desde el backend (TemaGlobal)
    */
   const cargarTema = useCallback(async () => {
     try {
       setCargando(true);
       setError(null);
+      
+      // Intentar cargar desde TemaGlobal primero (nuevo sistema)
+      try {
+        const response = await temaGlobalAPI.getTemaActivo();
+        const tema = response.data;
+        
+        if (tema && tema.css_variables) {
+          setTemaGlobal(tema);
+          // Aplicar CSS variables del nuevo sistema
+          aplicarCSSVariables(tema.css_variables);
+          
+          // Actualizar favicon si está definido
+          if (tema.favicon_url) {
+            const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
+            link.type = 'image/x-icon';
+            link.rel = 'shortcut icon';
+            link.href = tema.favicon_url;
+            document.getElementsByTagName('head')[0].appendChild(link);
+          }
+          
+          // Actualizar título con nombre del tema si no hay nombre_sistema
+          if (tema.reporte_titulo_institucion) {
+            document.title = tema.reporte_titulo_institucion;
+          }
+          return;
+        }
+      } catch (temaErr) {
+        console.warn('TemaGlobal no disponible, usando configuración legacy');
+      }
+      
+      // Fallback a sistema legacy
       const response = await configuracionAPI.getTema();
       const config = response.data;
       
       if (config) {
-        // Siempre actualizar configuración, aún si no vienen css_variables
         setConfiguracion(config);
-        
-        // Aplicar CSS variables - usar las del backend o generarlas desde colores
         const cssVars = config.css_variables || generarCSSVariablesDesdeConfig(config);
         aplicarCSSVariables(cssVars);
-        
-        // Actualizar el título del documento
         actualizarTituloDocumento(config.nombre_sistema);
       } else {
-        // Respuesta inválida, usar tema por defecto
         aplicarCSSVariables(temaDefault.css_variables);
       }
     } catch (err) {
-      // Silenciar error - usar tema por defecto sin bloquear la app
       console.warn('Tema: usando valores por defecto');
       aplicarCSSVariables(temaDefault.css_variables);
     } finally {
@@ -121,27 +146,141 @@ export const ThemeProvider = ({ children }) => {
   }, []);
 
   /**
-   * Actualiza la configuración del tema
+   * Actualiza la configuración del tema (TemaGlobal)
    */
   const actualizarTema = async (nuevaConfig) => {
     try {
-      const response = await configuracionAPI.updateTema(nuevaConfig);
-      const config = response.data;
-      
-      setConfiguracion(config);
-      // Aplicar CSS variables - usar las del backend o generarlas si no vienen
-      const cssVars = config.css_variables || generarCSSVariablesDesdeConfig(config);
-      aplicarCSSVariables(cssVars);
-      
-      // Actualizar título del documento si cambió
-      actualizarTituloDocumento(config.nombre_sistema);
-      
-      return { success: true, data: config };
+      // Intentar actualizar con TemaGlobal primero
+      try {
+        const response = await temaGlobalAPI.updateTema(nuevaConfig);
+        const resultado = response.data;
+        const tema = resultado.tema || resultado;
+        
+        setTemaGlobal(tema);
+        if (tema.css_variables) {
+          aplicarCSSVariables(tema.css_variables);
+        }
+        
+        return { success: true, data: tema };
+      } catch (temaErr) {
+        // Fallback a sistema legacy
+        const response = await configuracionAPI.updateTema(nuevaConfig);
+        const config = response.data;
+        
+        setConfiguracion(config);
+        const cssVars = config.css_variables || generarCSSVariablesDesdeConfig(config);
+        aplicarCSSVariables(cssVars);
+        actualizarTituloDocumento(config.nombre_sistema);
+        
+        return { success: true, data: config };
+      }
     } catch (err) {
       console.error('Error al actualizar el tema:', err);
       return { 
         success: false, 
         error: err.response?.data?.error || 'Error al actualizar el tema' 
+      };
+    }
+  };
+
+  /**
+   * Actualiza el TemaGlobal completo (nuevo sistema)
+   */
+  const actualizarTemaGlobal = async (nuevoTema) => {
+    try {
+      const response = await temaGlobalAPI.updateTema(nuevoTema);
+      const resultado = response.data;
+      const tema = resultado.tema || resultado;
+      
+      setTemaGlobal(tema);
+      if (tema.css_variables) {
+        aplicarCSSVariables(tema.css_variables);
+      }
+      
+      return { success: true, data: tema };
+    } catch (err) {
+      console.error('Error al actualizar tema global:', err);
+      return { 
+        success: false, 
+        error: err.response?.data?.error || 'Error al actualizar el tema' 
+      };
+    }
+  };
+
+  /**
+   * Sube un logo al TemaGlobal
+   * @param {string} tipo - header, login, reportes, favicon, fondo_login, fondo_reportes
+   * @param {File} file - archivo a subir
+   */
+  const subirLogoTema = async (tipo, file) => {
+    try {
+      const formData = new FormData();
+      formData.append('archivo', file);
+      
+      const response = await temaGlobalAPI.subirLogo(tipo, formData);
+      const resultado = response.data;
+      const tema = resultado.tema || resultado;
+      
+      setTemaGlobal(tema);
+      if (tema.css_variables) {
+        aplicarCSSVariables(tema.css_variables);
+      }
+      
+      return { success: true, data: tema };
+    } catch (err) {
+      console.error(`Error al subir logo ${tipo}:`, err);
+      return { 
+        success: false, 
+        error: err.response?.data?.error || `Error al subir el logo ${tipo}` 
+      };
+    }
+  };
+
+  /**
+   * Elimina un logo del TemaGlobal
+   * @param {string} tipo - header, login, reportes, favicon, fondo_login, fondo_reportes
+   */
+  const eliminarLogoTema = async (tipo) => {
+    try {
+      const response = await temaGlobalAPI.eliminarLogo(tipo);
+      const resultado = response.data;
+      const tema = resultado.tema || resultado;
+      
+      setTemaGlobal(tema);
+      if (tema.css_variables) {
+        aplicarCSSVariables(tema.css_variables);
+      }
+      
+      return { success: true, data: tema };
+    } catch (err) {
+      console.error(`Error al eliminar logo ${tipo}:`, err);
+      return { 
+        success: false, 
+        error: err.response?.data?.error || `Error al eliminar el logo ${tipo}` 
+      };
+    }
+  };
+
+  /**
+   * Restablece al tema institucional (TemaGlobal)
+   */
+  const restablecerTemaInstitucional = async () => {
+    try {
+      const response = await temaGlobalAPI.restablecerInstitucional();
+      const resultado = response.data;
+      const tema = resultado.tema || resultado;
+      
+      setTemaGlobal(tema);
+      if (tema.css_variables) {
+        aplicarCSSVariables(tema.css_variables);
+      }
+      
+      return { success: true, data: tema };
+    } catch (err) {
+      console.error('Error al restablecer tema institucional:', err);
+      return { 
+        success: false, 
+        error: err.response?.data?.error || 'Error al restablecer el tema' 
       };
     }
   };
@@ -310,10 +449,23 @@ export const ThemeProvider = ({ children }) => {
     aplicarCSSVariables(cssVars);
   }, []);
 
+  /**
+   * Aplica CSS variables desde un objeto de tema (para preview)
+   */
+  const previewTema = useCallback((tema) => {
+    if (tema?.css_variables) {
+      aplicarCSSVariables(tema.css_variables);
+    }
+  }, []);
+
   const value = {
+    // Estado
     configuracion,
+    temaGlobal,
     cargando,
     error,
+    
+    // Funciones legacy
     cargarTema,
     actualizarTema,
     aplicarTemaPredefinido,
@@ -322,10 +474,27 @@ export const ThemeProvider = ({ children }) => {
     subirLogoPdf,
     eliminarLogoHeader,
     eliminarLogoPdf,
-    aplicarCSSVariablesLocalmente, // Para preview en tiempo real
-    temaActivo: configuracion.tema_activo,
-    nombreSistema: configuracion.nombre_sistema,
+    
+    // Nuevas funciones TemaGlobal
+    actualizarTemaGlobal,
+    subirLogoTema,
+    eliminarLogoTema,
+    restablecerTemaInstitucional,
+    previewTema,
+    
+    // Utilidades
+    aplicarCSSVariablesLocalmente,
+    
+    // Computed
+    temaActivo: temaGlobal?.nombre || configuracion.tema_activo,
+    nombreSistema: temaGlobal?.reporte_titulo_institucion || configuracion.nombre_sistema,
     temasDisponibles: configuracion.temas_disponibles || temaDefault.temas_disponibles,
+    
+    // URLs de logos (TemaGlobal)
+    logoHeaderUrl: temaGlobal?.logo_header_url || configuracion?.logo_header_url,
+    logoLoginUrl: temaGlobal?.logo_login_url,
+    logoReportesUrl: temaGlobal?.logo_reportes_url,
+    faviconUrl: temaGlobal?.favicon_url,
   };
 
   return (

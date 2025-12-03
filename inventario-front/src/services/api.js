@@ -495,6 +495,24 @@ export const configuracionAPI = {
   eliminarLogoPdf: () => apiClient.delete('/configuracion/tema/eliminar-logo-pdf/'),
 };
 
+// API de Tema Global (personalización completa)
+export const temaGlobalAPI = {
+  // Obtener tema activo (público - sin autenticación para login)
+  getTemaActivo: () => apiClient.get('/tema/activo/'),
+  // Obtener tema completo para administración (autenticado)
+  getTema: () => apiClient.get('/tema/'),
+  // Actualizar tema global (solo superusuario)
+  updateTema: (data) => apiClient.put('/tema/', data),
+  // Restablecer a tema institucional (solo superusuario)
+  restablecerInstitucional: () => apiClient.post('/tema/restablecer/'),
+  // Subir logo específico (tipos: header, login, reportes, favicon, fondo_login, fondo_reportes)
+  subirLogo: (tipo, formData) => apiClient.post(`/tema/subir-logo/${tipo}/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  // Eliminar logo específico
+  eliminarLogo: (tipo) => apiClient.delete(`/tema/eliminar-logo/${tipo}/`),
+};
+
 // Hojas de Recolección - Sistema de seguridad para entregas
 export const hojasRecoleccionAPI = {
   // Listar hojas (filtrable por estado, centro, folio)
