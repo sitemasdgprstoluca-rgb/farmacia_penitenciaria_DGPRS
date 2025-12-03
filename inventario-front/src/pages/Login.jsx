@@ -83,7 +83,7 @@ function Login() {
           {/* Logo del Sistema */}
           <div className="inline-flex items-center justify-center mb-4">
             <img 
-              src="/logo-seguridad.jpg" 
+              src="/logo-sistema.png" 
               alt="Secretaría de Seguridad" 
               className="h-24 w-auto object-contain rounded-lg"
             />

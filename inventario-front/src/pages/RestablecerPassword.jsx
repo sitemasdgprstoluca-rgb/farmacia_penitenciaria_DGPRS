@@ -104,7 +104,7 @@ function RestablecerPassword() {
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center bg-white rounded-lg mb-4 shadow-lg p-2">
             <img 
-              src="/logo-seguridad.jpg" 
+              src="/logo-sistema.png" 
               alt="Secretaría de Seguridad" 
               className="h-16 w-auto object-contain"
             />

@@ -147,7 +147,7 @@ function Layout() {
         >
           <div className="flex items-center gap-3">
             <img 
-              src="/logo-seguridad.jpg" 
+              src="/logo-sistema.png" 
               alt="Logo" 
               className="h-10 w-auto object-contain rounded"
             />
