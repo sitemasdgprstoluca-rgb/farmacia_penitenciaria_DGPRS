@@ -167,8 +167,18 @@ const Dashboard = () => {
   }, [esVistaUser, esCentroUser, centroUsuario]);
 
   useEffect(() => {
+    // No cargar si no tiene permiso de dashboard o no hay token
+    if (!permisos?.verDashboard) {
+      setLoading(false);
+      return;
+    }
+    if (!hasAccessToken()) {
+      setError('Sesión no encontrada');
+      setLoading(false);
+      return;
+    }
     loadDashboard(selectedCentro);
-  }, [loadDashboard, selectedCentro]);
+  }, [loadDashboard, selectedCentro, permisos?.verDashboard]);
 
   const handleCentroChange = (centroId, nombreCentro = '') => {
     // Los usuarios de centro no pueden cambiar su centro
@@ -336,9 +346,28 @@ const Dashboard = () => {
           <div>
             <strong>Error de conexión con el backend</strong>
             <p>{error}</p>
-            <button onClick={() => loadDashboard(selectedCentro)} className="btn btn-primary">
-              Reintentar
-            </button>
+            {error.includes('Sesión') ? (
+              <button onClick={() => navigate('/login')} className="btn btn-primary">
+                Ir a iniciar sesión
+              </button>
+            ) : (
+              <button 
+                onClick={() => {
+                  if (!hasAccessToken()) {
+                    navigate('/login');
+                    return;
+                  }
+                  if (!permisos?.verDashboard) {
+                    setError('No tiene permisos para ver el dashboard');
+                    return;
+                  }
+                  loadDashboard(selectedCentro);
+                }} 
+                className="btn btn-primary"
+              >
+                Reintentar
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -481,8 +510,8 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* Últimos Movimientos - Compacto y legible */}
-      {!esVistaUser && movimientos.length > 0 && (
+      {/* Últimos Movimientos - Solo si tiene permiso de ver movimientos */}
+      {!esVistaUser && permisos?.verMovimientos && movimientos.length > 0 && (
         <div className="dashboard-section mt-6">
           <div className="section-header" style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => setMovimientosCollapsed(!movimientosCollapsed)}>
             <h3>
@@ -518,8 +547,8 @@ const Dashboard = () => {
                 {(mostrarTodos ? movimientos : movimientos.slice(0, 5)).map((mov, index) => (
                   <div 
                     key={mov.id || index} 
-                    onClick={() => navigate('/movimientos', { state: { highlightId: mov.id } })}
-                    className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md hover:border-gray-300 transition-all cursor-pointer"
+                    onClick={() => permisos?.verMovimientos && navigate('/movimientos', { state: { highlightId: mov.id } })}
+                    className={`bg-white rounded-lg border border-gray-200 p-4 transition-all ${permisos?.verMovimientos ? 'hover:shadow-md hover:border-gray-300 cursor-pointer' : ''}`}
                     style={{ borderLeft: `4px solid ${mov.tipo_movimiento === 'ENTRADA' ? '#10B981' : '#EF4444'}` }}
                   >
                     <div className="flex items-start justify-between gap-4">
@@ -581,9 +610,11 @@ const Dashboard = () => {
                           </span>
                         )}
                       </div>
-                      <span className="text-gray-400 flex items-center gap-1">
-                        <FaEye size={12} /> Ver detalle
-                      </span>
+                      {permisos?.verMovimientos && (
+                        <span className="text-gray-400 flex items-center gap-1">
+                          <FaEye size={12} /> Ver detalle
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))}
