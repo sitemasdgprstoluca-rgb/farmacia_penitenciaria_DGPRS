@@ -15,10 +15,12 @@ from django.contrib.auth.models import Group
 from datetime import datetime, timedelta, date
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
-import traceback
 import random
 import os
+import logging
 from io import BytesIO
+
+logger = logging.getLogger(__name__)
 
 
 # -----------------------------------------------------------
@@ -413,7 +415,8 @@ class ProductoViewSet(viewsets.ModelViewSet):
             return Response({'mensaje': 'Producto eliminado exitosamente'}, status=status.HTTP_204_NO_CONTENT)
         except Exception as e:
             # traceback removido por seguridad (ISS-008)
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error(f"Error al eliminar producto: {str(e)}", exc_info=True)
+            return Response({'error': 'Error al eliminar producto'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=True, methods=['post'], url_path='toggle-activo')
     def toggle_activo(self, request, pk=None):
@@ -455,8 +458,6 @@ class ProductoViewSet(viewsets.ModelViewSet):
         except Producto.DoesNotExist:
             return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"Error en toggle_activo: {str(e)}", exc_info=True)
             return Response({'error': f'Error interno: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
@@ -499,10 +500,8 @@ class ProductoViewSet(viewsets.ModelViewSet):
         except Producto.DoesNotExist:
             return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"Error en auditoria: {str(e)}", exc_info=True)
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'error': 'Error al obtener auditoría'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=False, methods=['get'], url_path='exportar-excel')
     def exportar_excel(self, request):
@@ -901,8 +900,6 @@ class CentroViewSet(viewsets.ModelViewSet):
         except Centro.DoesNotExist:
             return Response({'error': 'Centro no encontrado'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"Error en toggle_activo centro: {str(e)}", exc_info=True)
             return Response({'error': f'Error interno: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -3208,11 +3205,11 @@ def dashboard_resumen(request):
         
     except Exception as exc:
         # traceback removido por seguridad (ISS-008)
+        logger.exception('Error en dashboard_resumen')
         return Response({
             'kpi': {'total_productos': 0, 'stock_total': 0, 'lotes_activos': 0, 'movimientos_mes': 0},
             'ultimos_movimientos': [],
-            'error': str(exc),
-            'debug': traceback.format_exc()
+            'error': 'Error interno del servidor'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -3377,12 +3374,12 @@ def dashboard_graficas(request):
         
     except Exception as exc:
         # traceback removido por seguridad (ISS-008)
+        logger.exception('Error en dashboard_graficas')
         return Response({
             'consumo_mensual': [],
             'stock_por_centro': [],
             'requisiciones_por_estado': [],
-            'error': str(exc),
-            'debug': traceback.format_exc()
+            'error': 'Error interno del servidor'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
