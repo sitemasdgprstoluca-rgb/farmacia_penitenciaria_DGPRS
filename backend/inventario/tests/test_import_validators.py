@@ -390,3 +390,133 @@ class TestValidacionIntegrada:
         # Magic bytes de ZIP son válidos, así que pasa esta validación
         # La validación de contenido Excel real ocurriría en el procesamiento
         assert valido  # Pasa validación básica de formato
+
+
+# ============================================================================
+# ISS-001: TESTS PARA LECTURA CON LÍMITE DE BYTES
+# ============================================================================
+
+from inventario.views import leer_archivo_con_limite, cargar_workbook_seguro
+
+
+class TestLeerArchivoConLimite:
+    """Tests para leer_archivo_con_limite - prevención de DoS."""
+    
+    def test_archivo_dentro_de_limite(self):
+        """Archivo dentro del límite debe leerse completamente."""
+        content = b'PK\x03\x04' + b'x' * 1000
+        file = BytesIO(content)
+        
+        buffer, bytes_leidos = leer_archivo_con_limite(file, max_bytes=5000)
+        
+        assert buffer is not None
+        assert bytes_leidos == len(content)
+        assert buffer.read() == content
+    
+    def test_archivo_excede_limite_rechazado(self):
+        """ISS-001: Archivo que excede límite real debe ser rechazado."""
+        content = b'x' * 10000  # 10KB
+        file = BytesIO(content)
+        
+        # Límite de 5KB
+        buffer, error_msg = leer_archivo_con_limite(file, max_bytes=5000)
+        
+        assert buffer is None
+        assert 'excede el tamaño máximo' in error_msg
+    
+    def test_limite_exacto_aceptado(self):
+        """Archivo exactamente en el límite debe ser aceptado."""
+        content = b'x' * 5000
+        file = BytesIO(content)
+        
+        buffer, bytes_leidos = leer_archivo_con_limite(file, max_bytes=5000)
+        
+        assert buffer is not None
+        assert bytes_leidos == 5000
+    
+    def test_archivo_sin_size_declarado(self):
+        """ISS-001: Archivo sin file.size debe validarse por bytes reales."""
+        content = b'x' * 10000
+        file = BytesIO(content)
+        # No tiene atributo size
+        
+        # Debe rechazarse al exceder límite
+        buffer, error_msg = leer_archivo_con_limite(file, max_bytes=5000)
+        
+        assert buffer is None
+        assert 'excede' in error_msg
+    
+    def test_archivo_vacio(self):
+        """Archivo vacío debe retornar buffer vacío."""
+        file = BytesIO(b'')
+        
+        buffer, bytes_leidos = leer_archivo_con_limite(file, max_bytes=5000)
+        
+        assert buffer is not None
+        assert bytes_leidos == 0
+
+
+class TestCargarWorkbookSeguro:
+    """Tests para cargar_workbook_seguro - carga con límites."""
+    
+    def test_xlsx_valido_carga_correctamente(self):
+        """Archivo XLSX válido debe cargarse correctamente."""
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws['A1'] = 'Test'
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        buffer.name = 'test.xlsx'
+        
+        workbook, error = cargar_workbook_seguro(buffer)
+        
+        assert workbook is not None
+        assert error is None
+        assert workbook.active['A1'].value == 'Test'
+        workbook.close()
+    
+    def test_archivo_muy_grande_rechazado(self):
+        """ISS-001: Archivo que excede límite debe rechazarse antes de load_workbook."""
+        # Simular archivo grande
+        large_content = b'PK\x03\x04' + b'x' * (15 * 1024 * 1024)  # 15MB
+        file = BytesIO(large_content)
+        file.name = 'huge.xlsx'
+        
+        with patch('inventario.views.settings') as mock_settings:
+            mock_settings.IMPORT_MAX_FILE_SIZE_MB = 10  # Límite de 10MB
+            
+            workbook, error = cargar_workbook_seguro(file)
+        
+        assert workbook is None
+        assert 'excede' in error or 'tamaño' in error.lower()
+    
+    def test_archivo_corrupto_error_controlado(self):
+        """Archivo corrupto debe retornar error descriptivo."""
+        # Contenido que parece XLSX pero está corrupto
+        corrupt_content = b'PK\x03\x04' + b'not valid xlsx content'
+        file = BytesIO(corrupt_content)
+        file.name = 'corrupt.xlsx'
+        
+        workbook, error = cargar_workbook_seguro(file)
+        
+        assert workbook is None
+        assert error is not None
+        assert 'Error' in error
+    
+    def test_read_only_mode_activado(self):
+        """Debe usar read_only=True para eficiencia de memoria."""
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws['A1'] = 'Test'
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        buffer.name = 'test.xlsx'
+        
+        workbook, error = cargar_workbook_seguro(buffer)
+        
+        assert workbook is not None
+        # En modo read_only, el workbook tiene esta propiedad
+        assert workbook.read_only == True
+        workbook.close()

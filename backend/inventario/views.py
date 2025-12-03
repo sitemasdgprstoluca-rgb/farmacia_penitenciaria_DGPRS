@@ -37,6 +37,54 @@ EXCEL_MAGIC_BYTES = {
 }
 
 
+def leer_archivo_con_limite(file, max_bytes):
+    """
+    ISS-001: Lee un archivo con límite estricto de bytes.
+    
+    Previene DoS por archivos enormes que no declaran tamaño correcto.
+    Lee en chunks y aborta si se excede el límite.
+    
+    Args:
+        file: Archivo a leer (UploadedFile o similar)
+        max_bytes: Máximo de bytes permitidos
+    
+    Returns:
+        tuple: (BytesIO con contenido, bytes_leidos) o (None, error_message)
+    """
+    CHUNK_SIZE = 64 * 1024  # 64KB chunks
+    buffer = BytesIO()
+    bytes_leidos = 0
+    
+    try:
+        # Asegurar que estamos al inicio del archivo
+        if hasattr(file, 'seek'):
+            file.seek(0)
+        
+        while True:
+            chunk = file.read(CHUNK_SIZE)
+            if not chunk:
+                break
+            
+            bytes_leidos += len(chunk)
+            
+            # ISS-001: Corte estricto si excede el límite
+            if bytes_leidos > max_bytes:
+                logger.warning(
+                    f"Archivo rechazado: tamaño real ({bytes_leidos} bytes) "
+                    f"excede límite ({max_bytes} bytes)"
+                )
+                return None, f'El archivo excede el tamaño máximo permitido ({max_bytes / 1024 / 1024:.1f}MB)'
+            
+            buffer.write(chunk)
+        
+        buffer.seek(0)
+        return buffer, bytes_leidos
+        
+    except Exception as e:
+        logger.error(f"Error leyendo archivo: {e}")
+        return None, f'Error al leer el archivo: {str(e)}'
+
+
 def validar_archivo_excel(file):
     """
     Valida archivo Excel antes de procesarlo con múltiples capas de seguridad.
@@ -69,7 +117,7 @@ def validar_archivo_excel(file):
     if ext not in extensiones_permitidas:
         return False, f'Extensión no permitida: {ext}. Use: {", ".join(extensiones_permitidas)}'
     
-    # 4. Validar tamaño ANTES de leer contenido
+    # 4. Validar tamaño declarado ANTES de leer contenido (primera línea de defensa)
     max_size_mb = getattr(settings, 'IMPORT_MAX_FILE_SIZE_MB', 10)
     max_size_bytes = max_size_mb * 1024 * 1024
     
@@ -105,6 +153,41 @@ def validar_archivo_excel(file):
         return False, 'Error al validar el contenido del archivo'
     
     return True, None
+
+
+def cargar_workbook_seguro(file):
+    """
+    ISS-001: Carga un workbook Excel con límites de seguridad estrictos.
+    
+    1. Lee el archivo con límite real de bytes (no confía en file.size)
+    2. Usa read_only=True para streaming y menor uso de memoria
+    3. Usa data_only=True para ignorar fórmulas (previene ataques por fórmulas)
+    
+    Returns:
+        tuple: (workbook, error_message) - workbook es None si hay error
+    """
+    max_size_mb = getattr(settings, 'IMPORT_MAX_FILE_SIZE_MB', 10)
+    max_size_bytes = max_size_mb * 1024 * 1024
+    
+    # Leer archivo con límite estricto de bytes
+    buffer, resultado = leer_archivo_con_limite(file, max_size_bytes)
+    
+    if buffer is None:
+        # resultado contiene el mensaje de error
+        return None, resultado
+    
+    try:
+        # ISS-001: Usar read_only=True para streaming y data_only=True para ignorar fórmulas
+        # Esto reduce significativamente el uso de memoria en archivos grandes
+        wb = openpyxl.load_workbook(
+            buffer, 
+            read_only=True,  # Streaming mode - no carga todo en memoria
+            data_only=True   # Ignora fórmulas - solo valores (previene ataques)
+        )
+        return wb, None
+    except Exception as e:
+        logger.error(f"Error cargando workbook: {e}")
+        return None, f'Error al procesar el archivo Excel: {str(e)}'
 
 
 def validar_filas_excel(ws):
@@ -692,9 +775,9 @@ class ProductoViewSet(viewsets.ModelViewSet):
         Fila 1: Encabezados (se ignora)
         Columnas: Clave | Descripcion | Unidad | Precio | Stock Minimo | Estado
         
-        L�mites de seguridad:
-        - Tama�o m�ximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
-        - Filas m�ximas: configurado en IMPORT_MAX_ROWS (default 5000)
+        Limites de seguridad:
+        - Tamano maximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
+        - Filas maximas: configurado en IMPORT_MAX_ROWS (default 5000)
         - Extensiones: .xlsx, .xls
         """
         file = request.FILES.get('file')
@@ -703,17 +786,25 @@ class ProductoViewSet(viewsets.ModelViewSet):
         es_valido, error_msg = validar_archivo_excel(file)
         if not es_valido:
             return Response({
-                'error': 'Archivo inv�lido',
+                'error': 'Archivo invalido',
                 'mensaje': error_msg
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            wb = openpyxl.load_workbook(file)
+            # ISS-001: Usar carga segura con limite real de bytes
+            wb, error_carga = cargar_workbook_seguro(file)
+            if wb is None:
+                return Response({
+                    'error': 'Error al procesar archivo',
+                    'mensaje': error_carga
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
             ws = wb.active
             
-            # Validar n�mero de filas
+            # Validar numero de filas
             filas_validas, error_filas, num_filas = validar_filas_excel(ws)
             if not filas_validas:
+                wb.close()  # Liberar recursos en modo read_only
                 return Response({
                     'error': 'Archivo demasiado grande',
                     'mensaje': error_filas
@@ -1200,9 +1291,9 @@ class CentroViewSet(viewsets.ModelViewSet):
         - Telefono (opcional)
         - Estado (Activo/Inactivo)
         
-        L�mites de seguridad:
-        - Tama�o m�ximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
-        - Filas m�ximas: configurado en IMPORT_MAX_ROWS (default 5000)
+        Limites de seguridad:
+        - Tamano maximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
+        - Filas maximas: configurado en IMPORT_MAX_ROWS (default 5000)
         - Extensiones: .xlsx, .xls
         """
         file = request.FILES.get('file')
@@ -1211,17 +1302,25 @@ class CentroViewSet(viewsets.ModelViewSet):
         es_valido, error_msg = validar_archivo_excel(file)
         if not es_valido:
             return Response({
-                'error': 'Archivo inv�lido',
+                'error': 'Archivo invalido',
                 'mensaje': error_msg
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            wb = openpyxl.load_workbook(file)
+            # ISS-001: Usar carga segura con limite real de bytes
+            wb, error_carga = cargar_workbook_seguro(file)
+            if wb is None:
+                return Response({
+                    'error': 'Error al procesar archivo',
+                    'mensaje': error_carga
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
             ws = wb.active
             
-            # Validar n�mero de filas
+            # Validar numero de filas
             filas_validas, error_filas, num_filas = validar_filas_excel(ws)
             if not filas_validas:
+                wb.close()  # Liberar recursos en modo read_only
                 return Response({
                     'error': 'Archivo demasiado grande',
                     'mensaje': error_filas
@@ -1631,9 +1730,9 @@ class LoteViewSet(viewsets.ModelViewSet):
         """
         Importa lotes desde Excel con validaciones.
         
-        L�mites de seguridad:
-        - Tama�o m�ximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
-        - Filas m�ximas: configurado en IMPORT_MAX_ROWS (default 5000)
+        Limites de seguridad:
+        - Tamano maximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
+        - Filas maximas: configurado en IMPORT_MAX_ROWS (default 5000)
         - Extensiones: .xlsx, .xls
         """
         file = request.FILES.get('file')
@@ -1642,17 +1741,25 @@ class LoteViewSet(viewsets.ModelViewSet):
         es_valido, error_msg = validar_archivo_excel(file)
         if not es_valido:
             return Response({
-                'error': 'Archivo inv�lido',
+                'error': 'Archivo invalido',
                 'mensaje': error_msg
             }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            wb = openpyxl.load_workbook(file)
+            # ISS-001: Usar carga segura con limite real de bytes
+            wb, error_carga = cargar_workbook_seguro(file)
+            if wb is None:
+                return Response({
+                    'error': 'Error al procesar archivo',
+                    'mensaje': error_carga
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
             ws = wb.active
             
-            # Validar n�mero de filas
+            # Validar numero de filas
             filas_validas, error_filas, num_filas = validar_filas_excel(ws)
             if not filas_validas:
+                wb.close()  # Liberar recursos en modo read_only
                 return Response({
                     'error': 'Archivo demasiado grande',
                     'mensaje': error_filas
