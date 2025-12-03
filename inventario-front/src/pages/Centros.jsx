@@ -7,7 +7,7 @@ import Pagination from '../components/Pagination';
 import { 
   FaPlus, FaEdit, FaTrash, FaToggleOn, FaToggleOff, 
   FaSearch, FaFileExcel, FaFileUpload, FaDownload, FaFilter,
-  FaBuilding
+  FaBuilding, FaChevronDown
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { COLORS, PRIMARY_GRADIENT, SECONDARY_GRADIENT } from '../constants/theme';
@@ -50,6 +50,7 @@ const Centros = () => {
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
+  const [showFiltersMenu, setShowFiltersMenu] = useState(false);
   
   // Permisos derivados
   const puedeEditar = permisos.isFarmaciaAdmin || permisos.isAdmin || permisos.isSuperuser;
@@ -440,62 +441,108 @@ const Centros = () => {
         actions={headerActions}
       />
 
-      {/* Filtros */}
-      <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="md:col-span-2 relative">
-            <FaSearch className="absolute left-3 top-3 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por clave, nombre, dirección..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          
-          <select
-            value={filtroEstado}
-            onChange={(e) => setFiltroEstado(e.target.value)}
-            className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Todos los estados</option>
-            <option value="activo">Activo</option>
-            <option value="inactivo">Inactivo</option>
-          </select>
-          
-          <button
-            onClick={limpiarFiltros}
-            className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 flex items-center justify-center gap-2"
-          >
-            <FaFilter /> Limpiar Filtros
-          </button>
-        </div>
+      {/* Botón toggle filtros */}
+      <div className="mb-4 flex justify-end">
+        <button
+          type="button"
+          onClick={() => setShowFiltersMenu(!showFiltersMenu)}
+          aria-expanded={showFiltersMenu}
+          aria-haspopup="true"
+          className="flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-white"
+        >
+          <FaFilter color={COLORS.vino} />
+          {showFiltersMenu ? 'Ocultar filtros' : 'Mostrar filtros'}
+          <FaChevronDown className={`transition ${showFiltersMenu ? 'rotate-180' : ''}`} />
+        </button>
       </div>
+
+      {/* Panel de filtros colapsable */}
+      {showFiltersMenu && (
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+          <div
+            className="flex items-center gap-3 px-5 py-3"
+            style={{
+              borderBottom: `3px solid ${COLORS.vino}`,
+              background: COLORS.grisSuave,
+            }}
+          >
+            <div className="bg-white p-2 rounded-lg">
+              <FaFilter color={COLORS.vino} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold" style={{ color: COLORS.guinda }}>Filtros avanzados</p>
+              <p className="text-xs text-gray-500">Aplique criterios sin ocupar espacio en pantalla</p>
+            </div>
+          </div>
+
+          <div className="space-y-3 px-5 py-3">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+              <div className="lg:col-span-2">
+                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Búsqueda</label>
+                <div
+                  className="mt-1 flex items-center rounded-lg border px-3 py-2 focus-within:ring-2"
+                  style={{ borderColor: COLORS.vino }}
+                >
+                  <FaSearch className="mr-2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full border-none bg-transparent text-sm focus:outline-none"
+                    placeholder="Buscar por clave, nombre, dirección..."
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Estado</label>
+                <select
+                  value={filtroEstado}
+                  onChange={(e) => setFiltroEstado(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
+                  style={{ borderColor: COLORS.vino }}
+                >
+                  <option value="">Todos los estados</option>
+                  <option value="activo">Activo</option>
+                  <option value="inactivo">Inactivo</option>
+                </select>
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={limpiarFiltros}
+                  className="w-full rounded-lg border px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                >
+                  Limpiar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tabla */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+            <thead
+              style={{
+                background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})`,
+              }}
+            >
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">#</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Clave</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tipo</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Responsable</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Requisiciones</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usuarios</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                {['#', 'Clave', 'Nombre', 'Tipo', 'Responsable', 'Requisiciones', 'Usuarios', 'Estado', 'Acciones'].map((col) => (
+                  <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
+                    {col}
+                  </th>
+                ))}
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white divide-y divide-gray-100">
               {loading ? (
                 <tr>
                   <td colSpan="9" className="text-center py-8">
                     <div className="flex justify-center items-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }}></div>
+                      <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent" style={{ borderColor: `${COLORS.vino}33`, borderTopColor: COLORS.vino }}></div>
                       <span className="ml-2">Cargando centros...</span>
                     </div>
                   </td>
@@ -508,70 +555,72 @@ const Centros = () => {
                 </tr>
               ) : (
                 centros.map((centro, index) => (
-                  <tr key={centro.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{(currentPage - 1) * PAGE_SIZE + index + 1}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">
+                  <tr key={centro.id} className={`transition ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100`}>
+                    <td className="px-4 py-3 text-sm font-semibold text-gray-500">{(currentPage - 1) * PAGE_SIZE + index + 1}</td>
+                    <td className="px-4 py-3 text-sm font-semibold text-gray-800">
                       {centro.clave}
                     </td>
-                    <td className="px-6 py-4 text-sm">{centro.nombre}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{centro.tipo || '-'}</td>
-                    <td className="px-6 py-4 text-sm">{centro.responsable || '-'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
-                      <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
+                    <td className="px-4 py-3 text-sm text-gray-600">{centro.nombre}</td>
+                    <td className="px-4 py-3 text-sm">{centro.tipo || '-'}</td>
+                    <td className="px-4 py-3 text-sm">{centro.responsable || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-center">
+                      <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-semibold">
                         {centro.total_requisiciones || 0}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
-                      <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
+                    <td className="px-4 py-3 text-sm text-center">
+                      <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-semibold">
                         {centro.total_usuarios || 0}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-3">
                       <span className={`px-2 py-1 text-xs rounded-full ${
                         centro.activo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                       }`}>
                         {centro.activo ? 'Activo' : 'Inactivo'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
-                      {puedeEditar ? (
-                        <>
-                          <button
-                            onClick={() => handleEdit(centro)}
-                            className="text-blue-600 hover:text-blue-800 disabled:opacity-50"
-                            title="Editar"
-                            disabled={actionLoading === centro.id}
-                          >
-                            <FaEdit className="inline" />
-                          </button>
-                          <button
-                            onClick={() => handleToggleActivo(centro)}
-                            className={`disabled:opacity-50 ${centro.activo ? 'text-green-600 hover:text-green-800' : 'text-gray-400 hover:text-gray-600'}`}
-                            title={centro.activo ? 'Desactivar' : 'Activar'}
-                            disabled={actionLoading === centro.id}
-                          >
-                            {actionLoading === centro.id ? (
-                              <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent inline-block" />
-                            ) : centro.activo ? (
-                              <FaToggleOn className="inline" />
-                            ) : (
-                              <FaToggleOff className="inline" />
-                            )}
-                          </button>
-                          {puedeEliminar && (
+                    <td className="px-4 py-3 text-sm">
+                      <div className="flex items-center gap-3">
+                        {puedeEditar ? (
+                          <>
                             <button
-                              onClick={() => handleDelete(centro)}
-                              className="text-red-600 hover:text-red-800 disabled:opacity-50"
-                              title="Eliminar"
+                              onClick={() => handleEdit(centro)}
+                              className="text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Editar"
                               disabled={actionLoading === centro.id}
                             >
-                              <FaTrash className="inline" />
+                              <FaEdit />
                             </button>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-gray-400 text-xs">Sin acciones</span>
-                      )}
+                            <button
+                              onClick={() => handleToggleActivo(centro)}
+                              className={`disabled:opacity-50 disabled:cursor-not-allowed ${centro.activo ? 'text-green-600 hover:text-green-800' : 'text-gray-400 hover:text-gray-600'}`}
+                              title={centro.activo ? 'Desactivar' : 'Activar'}
+                              disabled={actionLoading === centro.id}
+                            >
+                              {actionLoading === centro.id ? (
+                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent inline-block" />
+                              ) : centro.activo ? (
+                                <FaToggleOn size={18} />
+                              ) : (
+                                <FaToggleOff size={18} />
+                              )}
+                            </button>
+                            {puedeEliminar && (
+                              <button
+                                onClick={() => handleDelete(centro)}
+                                className="text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Eliminar"
+                                disabled={actionLoading === centro.id}
+                              >
+                                <FaTrash />
+                              </button>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-gray-400 text-xs">Sin acciones</span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

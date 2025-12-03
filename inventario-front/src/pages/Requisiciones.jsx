@@ -29,6 +29,8 @@ import {
   FaShoppingCart,
   FaMinus,
   FaExclamationTriangle,
+  FaFilter,
+  FaChevronDown,
 } from 'react-icons/fa';
 import { COLORS } from '../constants/theme';
 
@@ -65,6 +67,7 @@ const Requisiciones = () => {
   const [filtroFechaDesde, setFiltroFechaDesde] = useState(''); // Nuevo filtro fecha desde
   const [filtroFechaHasta, setFiltroFechaHasta] = useState(''); // Nuevo filtro fecha hasta
   const [fechaError, setFechaError] = useState(''); // Error de validación de fechas
+  const [showFiltersMenu, setShowFiltersMenu] = useState(false); // Toggle filtros colapsables
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRequisiciones, setTotalRequisiciones] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -1016,134 +1019,177 @@ const Requisiciones = () => {
         actions={headerActions}
       />
 
-      <div className="flex flex-wrap gap-3">
-        {stateTabs.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setGrupoEstado(tab.key)}
-            disabled={loading}
-            className={`px-4 py-2 rounded-full text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${
-              grupoEstado === tab.key ? 'text-white' : 'text-gray-700 border border-gray-200 bg-white'
-            }`}
-            style={
-              grupoEstado === tab.key
-                ? { background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})` }
-                : {}
-            }
-          >
-            {tab.label}
-            {resumenEstados.por_grupo?.[tab.key] ? ` (${resumenEstados.por_grupo[tab.key]})` : ''}
-          </button>
-        ))}
+      {/* Tabs de estado y botón de filtros */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-3">
+          {stateTabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setGrupoEstado(tab.key)}
+              disabled={loading}
+              className={`px-4 py-2 rounded-full text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${
+                grupoEstado === tab.key ? 'text-white' : 'text-gray-700 border border-gray-200 bg-white'
+              }`}
+              style={
+                grupoEstado === tab.key
+                  ? { background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})` }
+                  : {}
+              }
+            >
+              {tab.label}
+              {resumenEstados.por_grupo?.[tab.key] ? ` (${resumenEstados.por_grupo[tab.key]})` : ''}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowFiltersMenu(!showFiltersMenu)}
+          aria-expanded={showFiltersMenu}
+          className="flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-white"
+        >
+          <FaFilter color={COLORS.vino} />
+          {showFiltersMenu ? 'Ocultar filtros' : 'Mostrar filtros'}
+          <FaChevronDown className={`transition ${showFiltersMenu ? 'rotate-180' : ''}`} />
+        </button>
       </div>
 
-      {/* Filtros */}
-      <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <input
-            type="text"
-            placeholder="Buscar por folio..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-          />
-
-          <select
-            value={filtroEstado}
-            onChange={(e) => setFiltroEstado(e.target.value)}
-            className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+      {/* Panel de filtros colapsable */}
+      {showFiltersMenu && (
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+          <div
+            className="flex items-center gap-3 px-5 py-3"
+            style={{
+              borderBottom: `3px solid ${COLORS.vino}`,
+              background: COLORS.grisSuave,
+            }}
           >
-            <option value="">Todos los estados</option>
-            <option value="borrador">Borrador</option>
-            <option value="enviada">Pendiente</option>
-            <option value="autorizada">Autorizada</option>
-            <option value="rechazada">Rechazada</option>
-            <option value="surtida">Surtida</option>
-          </select>
+            <div className="bg-white p-2 rounded-lg">
+              <FaFilter color={COLORS.vino} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold" style={{ color: COLORS.guinda }}>Filtros avanzados</p>
+              <p className="text-xs text-gray-500">Aplique criterios sin ocupar espacio en pantalla</p>
+            </div>
+          </div>
 
-          {/* Solo mostrar filtro de centro para farmacia/admin */}
-          {(permisos.isFarmaciaAdmin || permisos.isAdmin) && (
-            <select
-              value={filtroCentro}
-              onChange={(e) => setFiltroCentro(e.target.value)}
-              className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Todos los centros</option>
-              {centros.map((c) => (
-                <option key={c.id} value={c.id}>{c.nombre}</option>
-              ))}
-            </select>
-          )}
-
-          <div className="flex flex-col gap-1">
-            <div className="flex gap-2 items-center">
-              <input
-                type="date"
-                value={filtroFechaDesde}
-                onChange={(e) => {
-                  const desde = e.target.value;
-                  // Validar orden cronológico antes de actualizar
-                  if (desde && filtroFechaHasta && desde > filtroFechaHasta) {
-                    setFechaError('La fecha "desde" no puede ser posterior a "hasta"');
-                    return; // No actualizar estado con rango inválido
-                  }
-                  setFechaError('');
-                  setFiltroFechaDesde(desde);
-                }}
-                max={filtroFechaHasta || undefined}
-                className={`px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 flex-1 ${
-                  fechaError ? 'border-red-400' : ''
-                }`}
-                title="Fecha desde"
-              />
-              <span className="text-gray-400">a</span>
-              <input
-                type="date"
-                value={filtroFechaHasta}
-                onChange={(e) => {
-                  const hasta = e.target.value;
-                  // Validar orden cronológico antes de actualizar
-                  if (filtroFechaDesde && hasta && filtroFechaDesde > hasta) {
-                    setFechaError('La fecha "hasta" no puede ser anterior a "desde"');
-                    return; // No actualizar estado con rango inválido
-                  }
-                  setFechaError('');
-                  setFiltroFechaHasta(hasta);
-                }}
-                min={filtroFechaDesde || undefined}
-                className={`px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 flex-1 ${
-                  fechaError ? 'border-red-400' : ''
-                }`}
-                title="Fecha hasta"
-              />
+          <div className="space-y-3 px-5 py-3">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+              <div>
+                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Búsqueda</label>
+                <div
+                  className="mt-1 flex items-center rounded-lg border px-3 py-2 focus-within:ring-2"
+                  style={{ borderColor: COLORS.vino }}
+                >
+                  <FaSearch className="mr-2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full border-none bg-transparent text-sm focus:outline-none"
+                    placeholder="Buscar por folio..."
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Estado</label>
+                <select
+                  value={filtroEstado}
+                  onChange={(e) => setFiltroEstado(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
+                  style={{ borderColor: COLORS.vino }}
+                >
+                  <option value="">Todos los estados</option>
+                  <option value="borrador">Borrador</option>
+                  <option value="enviada">Pendiente</option>
+                  <option value="autorizada">Autorizada</option>
+                  <option value="rechazada">Rechazada</option>
+                  <option value="surtida">Surtida</option>
+                </select>
+              </div>
+              {/* Solo mostrar filtro de centro para farmacia/admin */}
+              {(permisos.isFarmaciaAdmin || permisos.isAdmin) && (
+                <div>
+                  <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Centro</label>
+                  <select
+                    value={filtroCentro}
+                    onChange={(e) => setFiltroCentro(e.target.value)}
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
+                    style={{ borderColor: COLORS.vino }}
+                  >
+                    <option value="">Todos los centros</option>
+                    {centros.map((c) => (
+                      <option key={c.id} value={c.id}>{c.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Fecha desde</label>
+                <input
+                  type="date"
+                  value={filtroFechaDesde}
+                  onChange={(e) => {
+                    const desde = e.target.value;
+                    if (desde && filtroFechaHasta && desde > filtroFechaHasta) {
+                      setFechaError('La fecha "desde" no puede ser posterior a "hasta"');
+                      return;
+                    }
+                    setFechaError('');
+                    setFiltroFechaDesde(desde);
+                  }}
+                  max={filtroFechaHasta || undefined}
+                  className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${fechaError ? 'border-red-400' : ''}`}
+                  style={{ borderColor: fechaError ? undefined : COLORS.vino }}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Fecha hasta</label>
+                <input
+                  type="date"
+                  value={filtroFechaHasta}
+                  onChange={(e) => {
+                    const hasta = e.target.value;
+                    if (filtroFechaDesde && hasta && filtroFechaDesde > hasta) {
+                      setFechaError('La fecha "hasta" no puede ser anterior a "desde"');
+                      return;
+                    }
+                    setFechaError('');
+                    setFiltroFechaHasta(hasta);
+                  }}
+                  min={filtroFechaDesde || undefined}
+                  className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${fechaError ? 'border-red-400' : ''}`}
+                  style={{ borderColor: fechaError ? undefined : COLORS.vino }}
+                />
+              </div>
             </div>
             {fechaError && (
               <span className="text-xs text-red-500">{fechaError}</span>
             )}
+            {/* Botón limpiar filtros */}
+            {(searchTerm || filtroEstado || (esAdminOFarmacia && filtroCentro) || filtroFechaDesde || filtroFechaHasta || (grupoEstado && grupoEstado !== 'todas')) && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setFiltroEstado('');
+                    if (esAdminOFarmacia) {
+                      setFiltroCentro('');
+                    }
+                    setFiltroFechaDesde('');
+                    setFiltroFechaHasta('');
+                    setFechaError('');
+                    setGrupoEstado('todas');
+                  }}
+                  className="rounded-lg border px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                >
+                  Limpiar filtros
+                </button>
+              </div>
+            )}
           </div>
         </div>
-        
-        {/* Botón limpiar filtros - NO borra filtroCentro para usuarios de centro */}
-        {(searchTerm || filtroEstado || (esAdminOFarmacia && filtroCentro) || filtroFechaDesde || filtroFechaHasta || (grupoEstado && grupoEstado !== 'todas')) && (
-          <button
-            onClick={() => {
-              setSearchTerm('');
-              setFiltroEstado('');
-              // Solo limpiar centro si el usuario puede ver todos los centros
-              if (esAdminOFarmacia) {
-                setFiltroCentro('');
-              }
-              setFiltroFechaDesde('');
-              setFiltroFechaHasta('');
-              setFechaError('');
-              setGrupoEstado('todas');
-            }}
-            className="mt-3 text-sm text-blue-600 hover:text-blue-800 underline"
-          >
-            Limpiar todos los filtros
-          </button>
-        )}
-      </div>
+      )}
 
       {/* Mensaje de error si usuario no tiene centro asignado */}
       {errorCentroNoAsignado && (

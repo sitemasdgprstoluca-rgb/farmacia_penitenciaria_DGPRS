@@ -13,7 +13,8 @@ import {
   FaWarehouse,
   FaFilePdf,
   FaDownload,
-  FaTimes
+  FaTimes,
+  FaChevronDown
 } from 'react-icons/fa';
 import { DEV_CONFIG } from '../config/dev';
 import PageHeader from '../components/PageHeader';
@@ -96,6 +97,7 @@ const Lotes = () => {
   const [showDocModal, setShowDocModal] = useState(false);
   const [selectedLoteDoc, setSelectedLoteDoc] = useState(null);
   const [editingLote, setEditingLote] = useState(null);
+  const [showFiltersMenu, setShowFiltersMenu] = useState(false);
   
   // Paginación
   const [currentPage, setCurrentPage] = useState(1);
@@ -599,95 +601,164 @@ const handleImportar = async (e) => {
         actions={headerActions}
       />
 
-      {/* Filtros */}
-      <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-          <div className="md:col-span-2">
-            <input
-              type="text"
-              placeholder="Buscar por número de lote, producto..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          
-          <select
-            value={filtroProducto}
-            onChange={(e) => setFiltroProducto(e.target.value)}
-            className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Todos los productos</option>
-            {productos.map(p => (
-              <option key={p.id} value={p.id}>
-                {p.clave} - {p.descripcion.substring(0, 30)}
-              </option>
-            ))}
-          </select>
-          
-          <select
-            value={filtroCaducidad}
-            onChange={(e) => setFiltroCaducidad(e.target.value)}
-            className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-          >
-            {nivelCaducidad.map(n => (
-              <option key={n.value} value={n.value}>{n.label}</option>
-            ))}
-          </select>
-
-          <select
-            value={filtroConStock}
-            onChange={(e) => setFiltroConStock(e.target.value)}
-            className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Todos</option>
-            <option value="con_stock">Con Inventario</option>
-            <option value="sin_stock">Sin Inventario</option>
-          </select>
-          
-          {/* Selector de Centro - solo para admin/farmacia/vista */}
-          {puedeVerGlobal && (
-            <select
-              value={filtroCentro}
-              onChange={(e) => setFiltroCentro(e.target.value)}
-              className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Todos los centros</option>
-              <option value="central">Farmacia Central</option>
-              {centros.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre}
-                </option>
-              ))}
-            </select>
-          )}
-          
-          <button
-            onClick={limpiarFiltros}
-            className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 flex items-center justify-center gap-2"
-          >
-            <FaFilter /> Limpiar
-          </button>
-        </div>
+      {/* Botón toggle filtros */}
+      <div className="mb-4 flex justify-end">
+        <button
+          type="button"
+          onClick={() => setShowFiltersMenu(!showFiltersMenu)}
+          aria-expanded={showFiltersMenu}
+          aria-haspopup="true"
+          className="flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-white"
+        >
+          <FaFilter color={COLORS.vino} />
+          {showFiltersMenu ? 'Ocultar filtros' : 'Mostrar filtros'}
+          <FaChevronDown className={`transition ${showFiltersMenu ? 'rotate-180' : ''}`} />
+        </button>
       </div>
+
+      {/* Panel de filtros colapsable */}
+      {showFiltersMenu && (
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+          <div
+            className="flex items-center gap-3 px-5 py-3"
+            style={{
+              borderBottom: `3px solid ${COLORS.vino}`,
+              background: COLORS.grisSuave,
+            }}
+          >
+            <div className="bg-white p-2 rounded-lg">
+              <FaFilter color={COLORS.vino} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold" style={{ color: COLORS.guinda }}>Filtros avanzados</p>
+              <p className="text-xs text-gray-500">Aplique criterios sin ocupar espacio en pantalla</p>
+            </div>
+          </div>
+
+          <div className="space-y-3 px-5 py-3">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-6">
+              <div className="lg:col-span-2">
+                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Búsqueda</label>
+                <div
+                  className="mt-1 flex items-center rounded-lg border px-3 py-2 focus-within:ring-2"
+                  style={{ borderColor: COLORS.vino }}
+                >
+                  <FaFilter className="mr-2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full border-none bg-transparent text-sm focus:outline-none"
+                    placeholder="Buscar por número de lote, producto..."
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Producto</label>
+                <select
+                  value={filtroProducto}
+                  onChange={(e) => setFiltroProducto(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
+                  style={{ borderColor: COLORS.vino }}
+                >
+                  <option value="">Todos los productos</option>
+                  {productos.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.clave} - {p.descripcion?.substring(0, 30)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Caducidad</label>
+                <select
+                  value={filtroCaducidad}
+                  onChange={(e) => setFiltroCaducidad(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
+                  style={{ borderColor: COLORS.vino }}
+                >
+                  {nivelCaducidad.map(n => (
+                    <option key={n.value} value={n.value}>{n.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Inventario</label>
+                <select
+                  value={filtroConStock}
+                  onChange={(e) => setFiltroConStock(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
+                  style={{ borderColor: COLORS.vino }}
+                >
+                  <option value="">Todos</option>
+                  <option value="con_stock">Con Inventario</option>
+                  <option value="sin_stock">Sin Inventario</option>
+                </select>
+              </div>
+              {/* Selector de Centro - solo para admin/farmacia/vista */}
+              {puedeVerGlobal ? (
+                <div>
+                  <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Centro</label>
+                  <select
+                    value={filtroCentro}
+                    onChange={(e) => setFiltroCentro(e.target.value)}
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
+                    style={{ borderColor: COLORS.vino }}
+                  >
+                    <option value="">Todos los centros</option>
+                    <option value="central">Farmacia Central</option>
+                    {centros.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={limpiarFiltros}
+                    className="w-full rounded-lg border px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                  >
+                    Limpiar
+                  </button>
+                </div>
+              )}
+              {puedeVerGlobal && (
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={limpiarFiltros}
+                    className="w-full rounded-lg border px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                  >
+                    Limpiar
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tabla */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+            <thead
+              style={{
+                background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})`,
+              }}
+            >
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">#</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Producto</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Número Lote</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Caducidad</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Días</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Alerta</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Inventario</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                {['#', 'Producto', 'Número Lote', 'Caducidad', 'Días', 'Alerta', 'Inventario', 'Acciones'].map((col) => (
+                  <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
+                    {col}
+                  </th>
+                ))}
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white divide-y divide-gray-100">
               {loading ? (
                 <tr>
                   <td colSpan="8" className="text-center py-8">
@@ -705,12 +776,12 @@ const handleImportar = async (e) => {
                 </tr>
               ) : (
                 lotes.map((lote, index) => (
-                  <tr key={lote.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  <tr key={lote.id} className={`transition ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100`}>
+                    <td className="px-4 py-3 text-sm font-semibold text-gray-500">
                       {(currentPage - 1) * pageSize + index + 1}
                     </td>
-                    <td className="px-6 py-4 text-sm">
-                      <div className="font-medium text-blue-600">{lote.producto_clave}</div>
+                    <td className="px-4 py-3 text-sm">
+                      <div className="font-semibold text-gray-800">{lote.producto_clave}</div>
                       <div 
                         className="text-gray-500 text-xs cursor-help relative group"
                         title={lote.producto_descripcion}
@@ -724,22 +795,22 @@ const handleImportar = async (e) => {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono font-bold">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm font-mono font-bold text-gray-800">
                       {lote.numero_lote}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm">
                       {new Date(lote.fecha_caducidad).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm">
                       {lote.dias_para_caducar}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-3 whitespace-nowrap">
                       <span className={`px-2 py-1 text-xs rounded-full ${getAlertaClass(lote.alerta_caducidad)}`}>
                         {getAlertaIcon(lote.alerta_caducidad)}
                         {lote.alerta_caducidad?.toUpperCase()}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm">
                       <span className={lote.cantidad_actual === 0 ? 'text-red-600 font-bold' : ''}>
                         {lote.cantidad_actual} / {lote.cantidad_inicial}
                       </span>
@@ -747,38 +818,40 @@ const handleImportar = async (e) => {
                         ({lote.porcentaje_consumido}% usado)
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2 flex items-center gap-1">
-                      {/* Botón PDF - visible para todos, subir solo farmacia */}
-                      <button
-                        onClick={() => handleDocumentoModal(lote)}
-                        disabled={loading}
-                        className={`p-1 rounded disabled:opacity-50 ${lote.documento_url ? 'text-green-600 hover:text-green-800 hover:bg-green-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}
-                        title={lote.documento_url ? `Ver: ${lote.documento_nombre || 'documento.pdf'}` : (puede.subirDocumento ? 'Subir documento PDF' : 'Sin documento')}
-                      >
-                        <FaFilePdf className="text-lg" />
-                      </button>
-                      {/* Botón Editar - solo farmacia/admin */}
-                      {puede.editar && (
+                    <td className="px-4 py-3 whitespace-nowrap text-sm">
+                      <div className="flex items-center gap-3">
+                        {/* Botón PDF - visible para todos, subir solo farmacia */}
                         <button
-                          onClick={() => handleEdit(lote)}
+                          onClick={() => handleDocumentoModal(lote)}
                           disabled={loading}
-                          className="p-1 rounded text-blue-600 hover:text-blue-800 hover:bg-blue-50 disabled:opacity-50"
-                          title="Editar"
+                          className={`disabled:opacity-50 disabled:cursor-not-allowed ${lote.documento_url ? 'text-green-600 hover:text-green-800' : 'text-gray-400 hover:text-gray-600'}`}
+                          title={lote.documento_url ? `Ver: ${lote.documento_nombre || 'documento.pdf'}` : (puede.subirDocumento ? 'Subir documento PDF' : 'Sin documento')}
                         >
-                          <FaEdit className="text-lg" />
+                          <FaFilePdf />
                         </button>
-                      )}
-                      {/* Botón Eliminar - solo farmacia/admin */}
-                      {puede.eliminar && (
-                        <button
-                          onClick={() => handleDelete(lote.id, lote)}
-                          disabled={loading}
-                          className="p-1 rounded text-red-600 hover:text-red-800 hover:bg-red-50 disabled:opacity-50"
-                          title="Desactivar lote"
-                        >
-                          <FaTrash className="text-lg" />
-                        </button>
-                      )}
+                        {/* Botón Editar - solo farmacia/admin */}
+                        {puede.editar && (
+                          <button
+                            onClick={() => handleEdit(lote)}
+                            disabled={loading}
+                            className="text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Editar"
+                          >
+                            <FaEdit />
+                          </button>
+                        )}
+                        {/* Botón Eliminar - solo farmacia/admin */}
+                        {puede.eliminar && (
+                          <button
+                            onClick={() => handleDelete(lote.id, lote)}
+                            disabled={loading}
+                            className="text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Desactivar lote"
+                          >
+                            <FaTrash />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

@@ -4,6 +4,8 @@ import { toast } from "react-hot-toast";
 import Pagination from "../components/Pagination";
 import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, descargarArchivo } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
+import { FaFilter, FaChevronDown, FaExchangeAlt, FaDownload, FaFileExcel, FaFilePdf } from "react-icons/fa";
+import { COLORS } from "../constants/theme";
 
 const PAGE_SIZE = 25;
 
@@ -70,6 +72,7 @@ const Movimientos = () => {
   const [productoFiltro, setProductoFiltro] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [exporting, setExporting] = useState(null); // 'pdf' | 'excel' | null
+  const [showFiltersMenu, setShowFiltersMenu] = useState(false);
 
   const columnas = useMemo(
     () => ["producto", "tipo", "cantidad", "centro", "fecha"],
@@ -364,17 +367,68 @@ const Movimientos = () => {
   };
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-bold text-gray-900">Movimientos</h1>
-          <p className="text-gray-600">Registra y consulta movimientos de inventario</p>
+    <div className="space-y-6 p-4 sm:p-6">
+      {/* Header con gradiente institucional */}
+      <div
+        className="rounded-2xl p-6 text-white shadow-lg"
+        style={{
+          background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})`,
+        }}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="bg-white/20 p-3 rounded-full">
+              <FaExchangeAlt size={24} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold">Movimientos de Inventario</h1>
+              <p className="text-white/80 text-sm">Total: {total} movimientos | Balance: {stats.balance >= 0 ? '+' : ''}{stats.balance}</p>
+            </div>
+          </div>
+          {hayFiltrosActivos && (
+            <span className="bg-white/20 px-4 py-1 rounded-full text-sm font-semibold">
+              {Object.values(filtrosAplicados).filter(v => v !== "").length} filtros activos
+            </span>
+          )}
+          <div className="flex flex-wrap gap-3">
+            {puedeExportar && (
+              <>
+                <button
+                  onClick={exportarPdf}
+                  disabled={loading || exporting !== null || hayFiltrosPendientes}
+                  className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})`,
+                    border: '1px solid rgba(255,255,255,0.4)'
+                  }}
+                  title={hayFiltrosPendientes ? "Aplica los filtros primero" : "Exportar a PDF"}
+                >
+                  <FaFilePdf />
+                  {exporting === 'pdf' ? 'Generando...' : 'PDF'}
+                </button>
+                <button
+                  onClick={exportarExcel}
+                  disabled={loading || exporting !== null || hayFiltrosPendientes}
+                  className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    background: `linear-gradient(135deg, ${COLORS.guinda}, ${COLORS.vino})`,
+                    border: '1px solid rgba(255,255,255,0.4)'
+                  }}
+                  title={hayFiltrosPendientes ? "Aplica los filtros primero" : "Exportar a Excel"}
+                >
+                  <FaFileExcel />
+                  {exporting === 'excel' ? 'Generando...' : 'Excel'}
+                </button>
+              </>
+            )}
+          </div>
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-          {/* Formulario de registro - solo para admin/farmacia */}
-          {puedeRegistrarMovimiento ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        {/* Formulario de registro - solo para admin/farmacia */}
+        {puedeRegistrarMovimiento ? (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
             <h2 className="text-xl font-semibold text-gray-800 mb-4">Nuevo movimiento</h2>
 
             <div className="space-y-4">
@@ -485,231 +539,251 @@ const Movimientos = () => {
           </div>
           )}
 
-          <div className={`${puedeRegistrarMovimiento ? 'lg:col-span-2' : 'lg:col-span-3'} bg-white rounded-xl shadow-sm border border-gray-200`}>
-            <div className="px-6 py-4 border-b border-gray-200 flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-800">Movimientos</h3>
-                <div className="flex gap-2 items-center">
-                  {hayFiltrosPendientes && (
-                    <span className="text-xs text-orange-600 mr-2" title="Aplica los filtros antes de exportar">
-                      ⚠ Filtros sin aplicar
-                    </span>
-                  )}
-                  {puedeExportar && (
-                  <>
-                  <button
-                    onClick={exportarPdf}
-                    className="text-sm px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
-                    disabled={loading || exporting !== null || hayFiltrosPendientes}
-                    title={hayFiltrosPendientes ? "Aplica los filtros primero" : "Exportar a PDF"}
-                  >
-                    {exporting === 'pdf' ? "Generando..." : "Exportar PDF"}
-                  </button>
-                  <button
-                    onClick={exportarExcel}
-                    className="text-sm px-3 py-1 rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
-                    disabled={loading || exporting !== null || hayFiltrosPendientes}
-                    title={hayFiltrosPendientes ? "Aplica los filtros primero" : "Exportar a Excel"}
-                  >
-                    {exporting === 'excel' ? "Generando..." : "Exportar Excel"}
-                  </button>
-                  </>
-                  )}
-                  <button
-                    onClick={cargarMovimientos}
-                    className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
-                    disabled={loading || exporting !== null}
-                  >
-                    {loading ? "Cargando..." : "Recargar"}
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-gray-700">Fecha inicio</label>
-                  <input
-                    type="date"
-                    value={filtros.fecha_inicio}
-                    onChange={(e) => handleFiltro("fecha_inicio", e.target.value)}
-                    className="border rounded-lg px-3 py-2"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-gray-700">Fecha fin</label>
-                  <input
-                    type="date"
-                    value={filtros.fecha_fin}
-                    onChange={(e) => handleFiltro("fecha_fin", e.target.value)}
-                    className="border rounded-lg px-3 py-2"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-gray-700">Tipo</label>
-                  <select
-                    value={filtros.tipo}
-                    onChange={(e) => handleFiltro("tipo", e.target.value)}
-                    className="border rounded-lg px-3 py-2"
-                  >
-                    <option value="">Todos</option>
-                    <option value="entrada">Entrada</option>
-                    <option value="salida">Salida</option>
-                    <option value="ajuste">Ajuste</option>
-                  </select>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-gray-700">Producto</label>
-                  <select
-                    value={filtros.producto}
-                    onChange={(e) => handleFiltro("producto", e.target.value)}
-                    className="border rounded-lg px-3 py-2"
-                  >
-                    <option value="">Todos</option>
-                    {productos.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.clave} - {p.descripcion}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-gray-700">Centro</label>
-                  <select
-                    value={filtros.centro}
-                    onChange={(e) => handleFiltro("centro", e.target.value)}
-                    className="border rounded-lg px-3 py-2 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                    disabled={!puedeVerTodosCentros}
-                    title={!puedeVerTodosCentros ? "Solo puedes ver movimientos de tu centro" : ""}
-                  >
-                    {puedeVerTodosCentros && <option value="">Todos</option>}
-                    {centros.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nombre}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-gray-700">Lote</label>
-                  <input
-                    type="text"
-                    value={filtros.lote}
-                    onChange={(e) => handleFiltro("lote", e.target.value)}
-                    className="border rounded-lg px-3 py-2"
-                    placeholder="Número de lote"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-gray-700">Buscar</label>
-                  <input
-                    type="text"
-                    value={filtros.search}
-                    onChange={(e) => handleFiltro("search", e.target.value)}
-                    className="border rounded-lg px-3 py-2"
-                    placeholder="Producto o documento"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-2 items-center">
-                <button
-                  onClick={aplicarFiltros}
-                  className={`px-4 py-2 rounded text-white text-sm font-semibold transition ${
-                    hayFiltrosPendientes 
-                      ? 'bg-blue-600 hover:bg-blue-700 animate-pulse' 
-                      : 'bg-blue-600 hover:bg-blue-700'
-                  }`}
-                  disabled={loading}
-                >
-                  {hayFiltrosPendientes ? '⚡ Aplicar filtros' : 'Aplicar filtros'}
-                </button>
-                <button
-                  onClick={limpiarFiltros}
-                  className="px-3 py-2 rounded bg-gray-200 text-sm hover:bg-gray-300"
-                  disabled={loading || !hayFiltrosActivos}
-                >
-                  Limpiar
-                </button>
-                {hayFiltrosActivos && (
-                  <span className="text-xs text-gray-500 ml-2">
-                    {Object.values(filtrosAplicados).filter(v => v !== "").length} filtro(s) activo(s)
+          <div className={`${puedeRegistrarMovimiento ? 'lg:col-span-2' : 'lg:col-span-3'} space-y-4`}>
+            {/* Botón toggle filtros */}
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-800">Lista de Movimientos</h3>
+              <div className="flex items-center gap-3">
+                {hayFiltrosPendientes && (
+                  <span className="text-xs text-orange-600" title="Aplica los filtros antes de exportar">
+                    ⚠ Filtros sin aplicar
                   </span>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setShowFiltersMenu(!showFiltersMenu)}
+                  aria-expanded={showFiltersMenu}
+                  className="flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-white"
+                >
+                  <FaFilter color={COLORS.vino} />
+                  {showFiltersMenu ? 'Ocultar filtros' : 'Mostrar filtros'}
+                  <FaChevronDown className={`transition ${showFiltersMenu ? 'rotate-180' : ''}`} />
+                </button>
               </div>
             </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead className="bg-gray-100 border-b border-gray-200">
-                  <tr>
-                    {columnas.map((col) => (
-                      <th key={col} className="px-4 py-3 text-left font-semibold">
-                        {col.toUpperCase()}
-                      </th>
-                    ))}
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Acciones
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {!movimientos.length ? (
+
+            {/* Panel de filtros colapsable */}
+            {showFiltersMenu && (
+              <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+                <div
+                  className="flex items-center gap-3 px-5 py-3"
+                  style={{
+                    borderBottom: `3px solid ${COLORS.vino}`,
+                    background: COLORS.grisSuave,
+                  }}
+                >
+                  <div className="bg-white p-2 rounded-lg">
+                    <FaFilter color={COLORS.vino} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: COLORS.guinda }}>Filtros avanzados</p>
+                    <p className="text-xs text-gray-500">Aplique criterios sin ocupar espacio en pantalla</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3 px-5 py-3">
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+                    <div>
+                      <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Fecha inicio</label>
+                      <input
+                        type="date"
+                        value={filtros.fecha_inicio}
+                        onChange={(e) => handleFiltro("fecha_inicio", e.target.value)}
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
+                        style={{ borderColor: COLORS.vino }}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Fecha fin</label>
+                      <input
+                        type="date"
+                        value={filtros.fecha_fin}
+                        onChange={(e) => handleFiltro("fecha_fin", e.target.value)}
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
+                        style={{ borderColor: COLORS.vino }}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Tipo</label>
+                      <select
+                        value={filtros.tipo}
+                        onChange={(e) => handleFiltro("tipo", e.target.value)}
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
+                        style={{ borderColor: COLORS.vino }}
+                      >
+                        <option value="">Todos</option>
+                        <option value="entrada">Entrada</option>
+                        <option value="salida">Salida</option>
+                        <option value="ajuste">Ajuste</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Producto</label>
+                      <select
+                        value={filtros.producto}
+                        onChange={(e) => handleFiltro("producto", e.target.value)}
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
+                        style={{ borderColor: COLORS.vino }}
+                      >
+                        <option value="">Todos</option>
+                        {productos.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.clave} - {p.descripcion}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Centro</label>
+                      <select
+                        value={filtros.centro}
+                        onChange={(e) => handleFiltro("centro", e.target.value)}
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        style={{ borderColor: COLORS.vino }}
+                        disabled={!puedeVerTodosCentros}
+                        title={!puedeVerTodosCentros ? "Solo puedes ver movimientos de tu centro" : ""}
+                      >
+                        {puedeVerTodosCentros && <option value="">Todos</option>}
+                        {centros.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.nombre}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Lote</label>
+                      <input
+                        type="text"
+                        value={filtros.lote}
+                        onChange={(e) => handleFiltro("lote", e.target.value)}
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
+                        style={{ borderColor: COLORS.vino }}
+                        placeholder="Número de lote"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold" style={{ color: COLORS.guinda }}>Búsqueda</label>
+                      <input
+                        type="text"
+                        value={filtros.search}
+                        onChange={(e) => handleFiltro("search", e.target.value)}
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2"
+                        style={{ borderColor: COLORS.vino }}
+                        placeholder="Producto o documento"
+                      />
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <button
+                        onClick={aplicarFiltros}
+                        disabled={loading}
+                        className="flex-1 rounded-lg px-3 py-2 text-sm font-semibold text-white transition disabled:opacity-50"
+                        style={{ background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})` }}
+                      >
+                        {hayFiltrosPendientes ? '⚡ Aplicar' : 'Aplicar'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={limpiarFiltros}
+                        disabled={loading || !hayFiltrosActivos}
+                        className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Limpiar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Tabla de movimientos */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead
+                    style={{
+                      background: `linear-gradient(135deg, ${COLORS.vino}, ${COLORS.guinda})`,
+                    }}
+                  >
                     <tr>
-                      <td colSpan={columnas.length + 1} className="px-4 py-6 text-center text-gray-500">
-                        {loading ? "Cargando..." : "Sin movimientos"}
-                      </td>
+                      {columnas.map((col) => (
+                        <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
+                          {col.toUpperCase()}
+                        </th>
+                      ))}
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
+                        Acciones
+                      </th>
                     </tr>
-                  ) : (
-                    movimientos.map((mov) => (
-                      <React.Fragment key={mov.id}>
-                        <tr 
-                          ref={highlightId === mov.id ? highlightRef : null}
-                          className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors ${
-                            highlightId === mov.id ? 'bg-yellow-50 ring-2 ring-yellow-400' : ''
-                          } ${expandedId === mov.id ? 'bg-blue-50' : ''}`}
-                          onClick={() => setExpandedId(expandedId === mov.id ? null : mov.id)}
-                        >
-                          <td className="px-4 py-3 text-gray-800">
-                            <div className="font-medium">{mov.producto_descripcion || mov.producto_nombre || mov.producto || ""}</div>
-                            <div className="text-xs text-gray-500">Lote: {mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`px-2 py-1 rounded text-xs font-semibold ${
-                                mov.tipo === "entrada"
-                                  ? "bg-green-100 text-green-800"
-                                  : mov.tipo === "salida"
-                                  ? "bg-red-100 text-red-800"
-                                  : "bg-yellow-100 text-yellow-800"
-                              }`}
-                            >
-                              {mov.tipo?.toUpperCase()}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-right font-semibold text-gray-900">
-                            {mov.tipo === 'salida' ? '-' : '+'}{Math.abs(mov.cantidad)}
-                          </td>
-                          <td className="px-4 py-3 text-gray-700">{mov.centro_nombre || mov.centro || "Farmacia Central"}</td>
-                          <td className="px-4 py-3 text-gray-600">
-                            {mov.fecha_movimiento
-                              ? new Date(mov.fecha_movimiento).toLocaleString('es-MX')
-                              : mov.fecha
-                              ? new Date(mov.fecha).toLocaleString('es-MX')
-                              : ""}
-                          </td>
-                          <td className="px-4 py-3">
-                            <button 
-                              className="text-blue-600 hover:text-blue-800 text-sm"
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === mov.id ? null : mov.id); }}
-                            >
-                              {expandedId === mov.id ? '▲ Ocultar' : '▼ Detalles'}
-                            </button>
-                          </td>
-                        </tr>
-                        {/* Fila expandida con detalles */}
-                        {expandedId === mov.id && (
-                          <tr className="bg-gray-50">
-                            <td colSpan={columnas.length + 1} className="px-6 py-4">
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={columnas.length + 1} className="text-center py-8">
+                          <div className="flex justify-center items-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent" style={{ borderColor: `${COLORS.vino}33`, borderTopColor: COLORS.vino }}></div>
+                            <span className="ml-2 text-gray-600">Cargando movimientos...</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : !movimientos.length ? (
+                      <tr>
+                        <td colSpan={columnas.length + 1} className="px-4 py-8 text-center text-gray-500">
+                          Sin movimientos
+                        </td>
+                      </tr>
+                    ) : (
+                      movimientos.map((mov, index) => (
+                        <React.Fragment key={mov.id}>
+                          <tr 
+                            ref={highlightId === mov.id ? highlightRef : null}
+                            className={`transition cursor-pointer ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100 ${
+                              highlightId === mov.id ? 'bg-yellow-50 ring-2 ring-yellow-400' : ''
+                            } ${expandedId === mov.id ? 'bg-blue-50' : ''}`}
+                            onClick={() => setExpandedId(expandedId === mov.id ? null : mov.id)}
+                          >
+                            <td className="px-4 py-3 text-sm">
+                              <div className="font-semibold text-gray-800">{mov.producto_descripcion || mov.producto_nombre || mov.producto || ""}</div>
+                              <div className="text-xs text-gray-500">Lote: {mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              <span
+                                className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                  mov.tipo === "entrada"
+                                    ? "bg-green-100 text-green-800"
+                                    : mov.tipo === "salida"
+                                    ? "bg-red-100 text-red-800"
+                                    : "bg-yellow-100 text-yellow-800"
+                                }`}
+                              >
+                                {mov.tipo?.toUpperCase()}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right font-semibold text-gray-900">
+                              {mov.tipo === 'salida' ? '-' : '+'}{Math.abs(mov.cantidad)}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700">{mov.centro_nombre || mov.centro || "Farmacia Central"}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">
+                              {mov.fecha_movimiento
+                                ? new Date(mov.fecha_movimiento).toLocaleString('es-MX')
+                                : mov.fecha
+                                ? new Date(mov.fecha).toLocaleString('es-MX')
+                                : ""}
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              <button 
+                                className="text-blue-600 hover:text-blue-800"
+                                onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === mov.id ? null : mov.id); }}
+                              >
+                                {expandedId === mov.id ? '▲ Ocultar' : '▼ Detalles'}
+                              </button>
+                            </td>
+                          </tr>
+                          {/* Fila expandida con detalles */}
+                          {expandedId === mov.id && (
+                            <tr className="bg-gray-50">
+                              <td colSpan={columnas.length + 1} className="px-6 py-4">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                 <div>
                                   <span className="font-semibold text-gray-600">ID Movimiento:</span>
                                   <p className="text-gray-800">{mov.id}</p>
@@ -745,31 +819,30 @@ const Movimientos = () => {
                                   </div>
                                 )}
                               </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <div className="px-6 py-4 border-t border-gray-200 text-sm text-gray-700 flex flex-wrap gap-4">
-              <span>
-                <strong>Entradas:</strong> +{stats.entradas}
-              </span>
-              <span>
-                <strong>Salidas:</strong> -{stats.salidas}
-              </span>
-              <span className={stats.balance >= 0 ? "text-green-600" : "text-red-600"}>
-                <strong>Balance:</strong> {stats.balance >= 0 ? "+" : ""}{stats.balance}
-              </span>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="px-6 py-4 border-t border-gray-200 text-sm text-gray-700 flex flex-wrap gap-4">
+                <span>
+                  <strong>Entradas:</strong> +{stats.entradas}
+                </span>
+                <span>
+                  <strong>Salidas:</strong> -{stats.salidas}
+                </span>
+                <span className={stats.balance >= 0 ? "text-green-600" : "text-red-600"}>
+                  <strong>Balance:</strong> {stats.balance >= 0 ? "+" : ""}{stats.balance}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
 
-        {total > 0 && (
-          <div className="mt-6">
+          {total > 0 && (
             <Pagination
               page={page}
               totalPages={Math.max(1, Math.ceil(total / PAGE_SIZE))}
@@ -777,8 +850,8 @@ const Movimientos = () => {
               pageSize={PAGE_SIZE}
               onPageChange={setPage}
             />
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
