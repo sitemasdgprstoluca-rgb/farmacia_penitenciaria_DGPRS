@@ -453,63 +453,6 @@ class ProductoSerializer(serializers.ModelSerializer):
             return obj.created_by.get_full_name() or obj.created_by.username
         return None
     
-    def validate_descripcion(self, value):
-        """
-        Valida descripción: longitud mínima, no vacía
-        """
-        if not value or len(value.strip()) < 5:
-            raise serializers.ValidationError(
-                "La descripción debe tener al menos 5 caracteres"
-            )
-        return value.strip()
-    
-    def validate_precio_unitario(self, value):
-        """
-        Valida precio unitario: debe ser positivo
-        """
-        if value is None or value <= 0:
-            raise serializers.ValidationError(
-                "El precio unitario debe ser mayor a 0"
-            )
-        
-        # Validar rango razonable (opcional)
-        if value > 1000000:  # 1 millón
-            raise serializers.ValidationError(
-                "El precio parece demasiado alto. Verifique."
-            )
-        
-        return value
-    
-    def validate_stock_minimo(self, value):
-        """
-        Valida stock mínimo: debe ser no negativo
-        """
-        if value is None or value < 0:
-            raise serializers.ValidationError(
-                "El stock mínimo no puede ser negativo"
-            )
-        
-        return value
-    
-    def validate_unidad_medida(self, value):
-        """
-        Valida unidad de medida contra constantes permitidas
-        """
-        if not value:
-            raise serializers.ValidationError(
-                "La unidad de medida es obligatoria"
-            )
-        
-        value_upper = value.upper()
-        unidades_validas = ['PIEZA', 'CAJA', 'FRASCO', 'SOBRE', 'AMPOLLETA', 'TABLETA', 'CAPSULA', 'ML', 'GR']
-        
-        if value_upper not in unidades_validas:
-            raise serializers.ValidationError(
-                f"Unidad de medida inválida. Opciones: {', '.join(unidades_validas)}"
-            )
-        
-        return value_upper
-    
     def validate_clave(self, value):
         """
         Valida clave: normaliza a mayúsculas, verifica unicidad y formato
@@ -593,11 +536,20 @@ class ProductoSerializer(serializers.ModelSerializer):
         return value
     
     def validate_precio_unitario(self, value):
-        """Valida precio: debe ser positivo"""
+        """Valida precio: debe ser positivo y con máximo 2 decimales"""
+        from decimal import Decimal, InvalidOperation
+        
+        # Convertir a Decimal si es float o string (ISS-006)
+        if not isinstance(value, Decimal):
+            try:
+                value = Decimal(str(value))
+            except (InvalidOperation, ValueError, TypeError):
+                raise serializers.ValidationError("El precio debe ser un número válido")
+        
         if value <= 0:
             raise serializers.ValidationError("El precio debe ser mayor a 0")
         
-        # Validar máximo 2 decimales
+        # Validar máximo decimales permitidos
         if value.as_tuple().exponent < -PRODUCTO_PRECIO_DECIMAL_PLACES:
             raise serializers.ValidationError(
                 f"El precio solo puede tener {PRODUCTO_PRECIO_DECIMAL_PLACES} decimales"

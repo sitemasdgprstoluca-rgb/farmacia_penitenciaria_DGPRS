@@ -7,6 +7,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { usePermissions } from './hooks/usePermissions';
 import { useInactivityLogout } from './hooks/useInactivityLogout';
 import PermissionsGuard from './components/PermissionsGuard';
+import { getApiConfigError } from './services/api';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // LAZY LOADING - Mejora el tiempo de carga inicial dividiendo el bundle
@@ -44,6 +45,30 @@ const PageLoader = () => (
   </div>
 );
 
+// Componente de error de configuración (ISS-001)
+const ConfigErrorPage = ({ error }) => (
+  <div className="min-h-screen flex items-center justify-center bg-gray-100">
+    <div className="max-w-lg w-full mx-4 bg-white rounded-lg shadow-xl p-8 text-center">
+      <div className="mx-auto w-16 h-16 flex items-center justify-center rounded-full bg-red-100 mb-4">
+        <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+      </div>
+      <h1 className="text-2xl font-bold text-gray-900 mb-2">Error de Configuración</h1>
+      <p className="text-gray-600 mb-4">{error}</p>
+      <div className="bg-gray-50 rounded p-4 text-left text-sm">
+        <p className="font-medium text-gray-700 mb-2">Para resolver este problema:</p>
+        <ol className="list-decimal list-inside text-gray-600 space-y-1">
+          <li>Verifique que el archivo <code className="bg-gray-200 px-1 rounded">.env</code> existe</li>
+          <li>Asegúrese de que <code className="bg-gray-200 px-1 rounded">VITE_API_URL</code> está configurado</li>
+          <li>Reconstruya la aplicación después de los cambios</li>
+        </ol>
+      </div>
+      <p className="text-xs text-gray-400 mt-4">SIFP - Sistema de Inventario de Farmacia Penitenciaria</p>
+    </div>
+  </div>
+);
+
 function SessionManager() {
   useInactivityLogout();
   return null;
@@ -66,6 +91,12 @@ function ProtectedRoute({ children }) {
 }
 
 function App() {
+  // ISS-001: Verificar configuración de API antes de renderizar
+  const configError = getApiConfigError();
+  if (configError) {
+    return <ConfigErrorPage error={configError} />;
+  }
+
   return (
     <Router>
       <PermissionProvider>

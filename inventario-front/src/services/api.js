@@ -15,9 +15,12 @@ import {
   clearTokens
 } from './tokenManager';
 
-// === CONFIGURACIÓN DE BASE URL CON VALIDACIÓN DE SEGURIDAD (ISS-005) ===
+// === CONFIGURACIÓN DE BASE URL CON VALIDACIÓN DE SEGURIDAD (ISS-001, ISS-005) ===
 const configuredUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
 const isDev = import.meta.env.DEV || import.meta.env.MODE === 'development';
+
+// Flag para detectar configuración inválida
+let apiConfigError = null;
 
 // Determinar baseURL
 let apiBaseUrl;
@@ -28,7 +31,9 @@ if (configuredUrl) {
   apiBaseUrl = 'http://127.0.0.1:8000/api';
   console.info('[API] Modo desarrollo: usando', apiBaseUrl);
 } else {
-  // En producción, exigir configuración explícita
+  // En producción, exigir configuración explícita (ISS-001)
+  apiConfigError = 'ERROR DE CONFIGURACIÓN: La aplicación no puede conectarse al servidor. ' +
+    'Contacte al administrador del sistema.';
   console.error(
     '[API] ERROR CRÍTICO: VITE_API_URL no está configurada en producción. ' +
     'Configure la variable de entorno VITE_API_URL con una URL HTTPS válida.'
@@ -44,6 +49,10 @@ if (!isDev && apiBaseUrl && !apiBaseUrl.startsWith('https://')) {
     'Esto expone tokens y datos sensibles. URL actual:', apiBaseUrl
   );
 }
+
+// Exportar función para verificar estado de configuración (ISS-001)
+export const getApiConfigError = () => apiConfigError;
+export const isApiConfigured = () => !apiConfigError;
 
 const apiClient = axios.create({
   baseURL: `${apiBaseUrl}/`,

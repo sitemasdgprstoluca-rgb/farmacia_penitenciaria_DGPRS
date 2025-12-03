@@ -55,14 +55,6 @@ EXTRA_PERMISSIONS = [
     'VER_PERFIL',
 ]
 
-# Grupos lógicos de estados de requisición para filtros y resúmenes
-REQUISICION_GRUPOS_ESTADO = {
-    'pendientes': ['borrador', 'enviada'],
-    'aceptadas_parciales': ['autorizada', 'parcial'],
-    'surtidas': ['surtida'],
-    'rechazadas_canceladas': ['rechazada', 'cancelada'],
-}
-
 # Tipos de movimiento
 TIPOS_MOVIMIENTO = [
     ('entrada', 'Entrada'),
