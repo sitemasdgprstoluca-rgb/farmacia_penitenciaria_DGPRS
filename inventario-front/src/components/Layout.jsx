@@ -58,7 +58,13 @@ function Layout() {
       localStorage.removeItem("token");
       localStorage.removeItem("refresh_token");
       localStorage.removeItem("user");
-      navigate("/login");
+      try {
+        navigate("/login");
+      } catch (navError) {
+        // Si la navegación falla por algún motivo, forzar recarga
+        console.error("Error navegando al login:", navError);
+        window.location.href = "/login";
+      }
       // No resetear loggingOut porque ya navegamos
     }
   };
