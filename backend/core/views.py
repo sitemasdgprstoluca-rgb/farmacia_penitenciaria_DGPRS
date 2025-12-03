@@ -815,7 +815,14 @@ class NotificacionViewSet(
 
     @action(detail=False, methods=['post'], url_path='marcar-todas-leidas')
     def marcar_todas_leidas(self, request):
-        """POST /api/notificaciones/marcar-todas-leidas/"""
+        """
+        POST /api/notificaciones/marcar-todas-leidas/
+        
+        Marca como leídas las notificaciones que coinciden con los filtros actuales.
+        Respeta los query params: tipo, desde, hasta, leida.
+        Solo afecta las notificaciones del usuario autenticado (get_queryset ya filtra).
+        """
+        # get_queryset() ya aplica filtros de tipo, desde, hasta, leida y usuario
         updated = self.get_queryset().filter(leida=False).update(leida=True)
         return Response({'marcadas': updated})
 

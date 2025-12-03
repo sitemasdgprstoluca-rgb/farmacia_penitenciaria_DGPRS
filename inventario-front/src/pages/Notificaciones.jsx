@@ -118,11 +118,21 @@ function Notificaciones() {
     if (sinLeer === 0 || marcandoTodas) return;
     setMarcandoTodas(true);
     try {
-      // Usar endpoint batch en lugar de loop individual
-      const res = await notificacionesAPI.marcarTodasLeidas();
+      // Construir parámetros respetando los filtros activos
+      const params = {};
+      if (filters.tipo) params.tipo = filters.tipo;
+      if (filters.desde) params.desde = filters.desde;
+      if (filters.hasta) params.hasta = filters.hasta;
+      // Solo marcar las no leídas (no tiene sentido marcar las ya leídas)
+      params.leida = 'false';
+      
+      // Usar endpoint batch pasando los filtros activos
+      const res = await notificacionesAPI.marcarTodasLeidas(params);
       const marcadas = res.data?.marcadas || 0;
+      
+      // Actualizar solo las notificaciones visibles que coinciden con filtros
       setNotificaciones((prev) => prev.map((n) => ({ ...n, leida: true })));
-      setSinLeer(0);
+      setSinLeer((prev) => Math.max(prev - marcadas, 0));
       toast.success(`${marcadas} notificaciones marcadas como leídas`);
     } catch (error) {
       toast.error(error.response?.data?.detail || "No se pudo completar la acción");

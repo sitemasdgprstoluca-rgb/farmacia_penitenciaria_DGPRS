@@ -148,8 +148,9 @@ const PERMISOS_POR_ROL = {
     eliminarProducto: false,
     exportarProductos: false,
     importarProductos: false,
-    // Permisos de notificaciones
-    gestionarNotificaciones: true,
+    // Permisos de notificaciones - CENTRO solo puede ver y marcar SUS propias notificaciones
+    // No tiene acceso a gestión masiva ni administrativa de notificaciones
+    gestionarNotificaciones: false,
   },
   VISTA: {
     verDashboard: true,

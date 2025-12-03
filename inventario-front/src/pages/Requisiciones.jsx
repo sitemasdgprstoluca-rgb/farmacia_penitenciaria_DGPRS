@@ -396,12 +396,31 @@ const Requisiciones = () => {
     return labels[estado] || estado?.toUpperCase();
   };
 
-  const abrirModalCrear = () => {
+  const abrirModalCrear = async () => {
     // Validar permisos antes de abrir
     if (!permisos?.crearRequisicion) {
       toast.error('No tienes permisos para crear requisiciones');
       return;
     }
+    
+    // Validación adicional: verificar estado del centro en backend
+    // Esto previene desalineación front/back si el centro fue desactivado
+    if (!esAdminOFarmacia && user?.centro?.id) {
+      try {
+        const resp = await centrosAPI.getById(user.centro.id);
+        const centro = resp.data;
+        if (!centro || centro.activo === false) {
+          toast.error('Tu centro está desactivado. Contacta al administrador.');
+          return;
+        }
+      } catch (error) {
+        // Si no puede verificar el centro, mejor prevenir la acción
+        toast.error('No se pudo verificar el estado de tu centro');
+        console.error('Error verificando centro:', error);
+        return;
+      }
+    }
+    
     resetForm();
     setEditRequisicion(null);
     cargarCatalogoLotes(); // Cargar catálogo al abrir

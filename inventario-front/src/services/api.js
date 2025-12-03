@@ -411,7 +411,8 @@ export const reportesAPI = {
 export const notificacionesAPI = {
   getAll: (params) => apiClient.get('/notificaciones/', { params }),
   marcarLeida: (id) => apiClient.post(`/notificaciones/${id}/marcar-leida/`),
-  marcarTodasLeidas: () => apiClient.post('/notificaciones/marcar-todas-leidas/'),
+  // Pasar filtros para respetar el contexto actual (tipo, desde, hasta, leida)
+  marcarTodasLeidas: (params) => apiClient.post('/notificaciones/marcar-todas-leidas/', null, { params }),
   delete: (id) => apiClient.delete(`/notificaciones/${id}/`),
   noLeidasCount: () => apiClient.get('/notificaciones/no-leidas-count/'),
 };
