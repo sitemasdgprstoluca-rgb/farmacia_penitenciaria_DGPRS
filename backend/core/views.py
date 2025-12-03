@@ -399,18 +399,26 @@ class UserViewSet(viewsets.ModelViewSet):
         """POST /api/usuarios/importar-excel/ - Importa usuarios desde Excel
         
         Columnas esperadas:
-        - username (requerido, único)
+        - username (requerido, único, se normaliza a minúsculas)
         - email (opcional, se genera si falta)
         - first_name (opcional)
         - last_name (opcional)
         - rol (opcional: admin, farmacia, centro, vista; default: centro)
         - password (opcional, mín 8 chars; default: temporal que requiere cambio)
         - centro_clave (opcional: clave del centro a asignar)
+        
+        SEGURIDAD:
+        - Tamaño máximo de archivo: 5MB
+        - Máximo de filas: 1000
+        - Solo archivos .xlsx
+        - Usernames normalizados a minúsculas
+        - Contraseñas temporales NO se exponen en respuesta
         """
         import openpyxl
+        import re
         from .models import Centro
         
-        # Admin y Farmacia pueden importar usuarios
+        # === VALIDACIÓN DE PERMISOS ===
         if not request.user.is_superuser and request.user.rol not in ['admin_sistema', 'farmacia', 'admin_farmacia']:
             return Response({'error': 'No tiene permisos para importar usuarios'}, status=status.HTTP_403_FORBIDDEN)
         
@@ -418,46 +426,121 @@ class UserViewSet(viewsets.ModelViewSet):
         if not archivo:
             return Response({'error': 'No se recibió archivo'}, status=status.HTTP_400_BAD_REQUEST)
         
+        # === VALIDACIÓN DE ARCHIVO (ISS-001) ===
+        MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+        MAX_ROWS = 1000
+        ALLOWED_EXTENSIONS = ['.xlsx']
+        
+        # Validar tamaño
+        if archivo.size > MAX_FILE_SIZE:
+            return Response(
+                {'error': f'Archivo demasiado grande. Máximo permitido: {MAX_FILE_SIZE // (1024*1024)}MB'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar extensión
+        file_ext = '.' + archivo.name.split('.')[-1].lower() if '.' in archivo.name else ''
+        if file_ext not in ALLOWED_EXTENSIONS:
+            return Response(
+                {'error': f'Tipo de archivo no permitido. Solo se aceptan: {ALLOWED_EXTENSIONS}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar contenido (magic bytes para xlsx/zip)
+        archivo.seek(0)
+        header = archivo.read(4)
+        archivo.seek(0)
+        if header[:4] != b'PK\x03\x04':  # ZIP/XLSX magic bytes
+            return Response(
+                {'error': 'El archivo no parece ser un Excel válido (.xlsx)'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # === CONSTANTES DE VALIDACIÓN ===
+        ROLES_VALIDOS = ['admin_sistema', 'admin_farmacia', 'farmacia', 'centro', 'vista', 'usuario_normal', 'usuario_vista']
+        USERNAME_PATTERN = re.compile(r'^[a-z0-9_.-]{3,50}$')
+        EMAIL_PATTERN = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+        
         try:
+            wb = openpyxl.load_workbook(archivo, read_only=True, data_only=True)
+            ws = wb.active
+            
+            # Contar filas antes de procesar
+            row_count = sum(1 for _ in ws.iter_rows(min_row=2, max_row=MAX_ROWS + 2, values_only=True))
+            if row_count > MAX_ROWS:
+                return Response(
+                    {'error': f'Demasiadas filas. Máximo permitido: {MAX_ROWS}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Reabrir para procesar (read_only no permite re-iterar)
+            archivo.seek(0)
+            wb = openpyxl.load_workbook(archivo)
+            ws = wb.active
+            
+            creados = 0
+            actualizados = 0
+            errores = []
+            usuarios_con_reset = 0  # Solo conteo, NO exponemos contraseñas (ISS-002)
+            cambios_auditoria = []  # Para logging de cambios masivos
+            
             with transaction.atomic():
-                wb = openpyxl.load_workbook(archivo)
-                ws = wb.active
-                
-                creados = 0
-                actualizados = 0
-                errores = []
-                usuarios_requieren_reset = []
-                
-                ROLES_VALIDOS = ['admin_sistema', 'admin_farmacia', 'farmacia', 'centro', 'vista', 'usuario_normal', 'usuario_vista']
-                
-                for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=MAX_ROWS + 1, values_only=True), start=2):
                     valores = list(row) + [None] * 10
-                    username = str(valores[0] or '').strip()
-                    email = str(valores[1] or '').strip()
-                    first_name = str(valores[2] or '').strip()
-                    last_name = str(valores[3] or '').strip()
+                    
+                    # === EXTRACCIÓN Y NORMALIZACIÓN (ISS-003) ===
+                    username_raw = str(valores[0] or '').strip()
+                    username = username_raw.lower()  # Normalizar a minúsculas
+                    email = str(valores[1] or '').strip().lower()
+                    first_name = str(valores[2] or '').strip()[:100]  # Limitar longitud
+                    last_name = str(valores[3] or '').strip()[:100]
                     rol = str(valores[4] or 'centro').strip().lower()
                     password = str(valores[5] or '').strip()
                     centro_clave = str(valores[6] or '').strip().upper()
                     
+                    # Saltar filas vacías
                     if not username:
                         continue
                     
-                    # Validar username
-                    if len(username) < 3:
-                        errores.append({'fila': row_idx, 'error': f'Username "{username}" muy corto (mín 3 chars)'})
+                    # === VALIDACIONES ESTRICTAS ===
+                    
+                    # Validar formato de username
+                    if not USERNAME_PATTERN.match(username):
+                        errores.append({
+                            'fila': row_idx, 
+                            'campo': 'username',
+                            'error': f'Username "{username}" inválido. Solo letras minúsculas, números, guiones y puntos (3-50 chars)'
+                        })
                         continue
                     
-                    # Validar rol
+                    # Validar rol estrictamente (NO usar default silencioso)
                     if rol not in ROLES_VALIDOS:
-                        rol = 'centro'  # Default seguro
+                        errores.append({
+                            'fila': row_idx,
+                            'campo': 'rol', 
+                            'error': f'Rol "{rol}" no válido. Roles permitidos: {ROLES_VALIDOS}'
+                        })
+                        continue
+                    
+                    # Validar email si se proporciona
+                    if email and not EMAIL_PATTERN.match(email):
+                        errores.append({
+                            'fila': row_idx,
+                            'campo': 'email',
+                            'error': f'Email "{email}" no tiene formato válido'
+                        })
+                        continue
                     
                     # Buscar centro si se proporcionó
                     centro = None
                     if centro_clave:
                         centro = Centro.objects.filter(clave__iexact=centro_clave, activo=True).first()
                         if not centro:
-                            errores.append({'fila': row_idx, 'error': f'Centro "{centro_clave}" no encontrado o inactivo'})
+                            errores.append({
+                                'fila': row_idx,
+                                'campo': 'centro_clave',
+                                'error': f'Centro "{centro_clave}" no encontrado o inactivo'
+                            })
                             continue
                     
                     # Generar password seguro si no se proporciona o es débil
@@ -465,63 +548,113 @@ class UserViewSet(viewsets.ModelViewSet):
                     if not password or len(password) < 8:
                         import secrets
                         import string
-                        # Generar password temporal seguro
-                        chars = string.ascii_letters + string.digits + '!@#$%'
+                        chars = string.ascii_letters + string.digits + '!@#$%&*'
                         password = ''.join(secrets.choice(chars) for _ in range(12))
                         requiere_reset = True
                     
+                    # === CREAR O ACTUALIZAR USUARIO ===
                     try:
-                        user, created = User.objects.get_or_create(
-                            username=username,
-                            defaults={
-                                'email': email or f'{username}@sistema.local',
-                                'first_name': first_name,
-                                'last_name': last_name,
-                                'rol': rol,
-                                'centro': centro,
-                                'is_active': True,
-                                'activo': True,
-                            }
-                        )
+                        # Buscar case-insensitive para evitar duplicados (ISS-003)
+                        existing_user = User.objects.filter(username__iexact=username).first()
                         
-                        if created:
+                        if existing_user is None:
+                            # Crear nuevo usuario
+                            user = User.objects.create(
+                                username=username,
+                                email=email or f'{username}@sistema.local',
+                                first_name=first_name,
+                                last_name=last_name,
+                                rol=rol,
+                                centro=centro,
+                                is_active=True,
+                                activo=True,
+                            )
                             user.set_password(password)
                             user.save()
                             creados += 1
                             if requiere_reset:
-                                usuarios_requieren_reset.append({
-                                    'username': username,
-                                    'password_temporal': password
-                                })
+                                usuarios_con_reset += 1
+                            
+                            cambios_auditoria.append({
+                                'accion': 'crear',
+                                'username': username,
+                                'rol': rol,
+                                'centro': centro_clave or None
+                            })
                         else:
-                            # Actualizar usuario existente (sin cambiar password)
-                            user.email = email or user.email
-                            user.first_name = first_name or user.first_name
-                            user.last_name = last_name or user.last_name
-                            if rol:
-                                user.rol = rol
-                            if centro:
-                                user.centro = centro
-                            user.save()
+                            # Actualizar usuario existente - registrar cambios
+                            cambios = []
+                            if email and existing_user.email != email:
+                                cambios.append(f'email: {existing_user.email} -> {email}')
+                                existing_user.email = email
+                            if first_name and existing_user.first_name != first_name:
+                                existing_user.first_name = first_name
+                            if last_name and existing_user.last_name != last_name:
+                                existing_user.last_name = last_name
+                            if existing_user.rol != rol:
+                                cambios.append(f'rol: {existing_user.rol} -> {rol}')
+                                existing_user.rol = rol
+                            if centro and existing_user.centro != centro:
+                                cambios.append(f'centro: {existing_user.centro} -> {centro}')
+                                existing_user.centro = centro
+                            
+                            existing_user.save()
                             actualizados += 1
                             
+                            if cambios:
+                                cambios_auditoria.append({
+                                    'accion': 'actualizar',
+                                    'username': username,
+                                    'cambios': cambios
+                                })
+                                
                     except Exception as e:
-                        errores.append({'fila': row_idx, 'error': str(e)})
+                        logger.error(f"Error procesando fila {row_idx}: {e}")
+                        errores.append({
+                            'fila': row_idx,
+                            'campo': 'general',
+                            'error': f'Error al procesar: {str(e)[:100]}'
+                        })
                 
-                return Response({
-                    'mensaje': f'Importación completada',
-                    'resumen': {
-                        'creados': creados,
-                        'actualizados': actualizados,
-                        'errores': len(errores)
-                    },
-                    'usuarios_requieren_reset': usuarios_requieren_reset[:20] if usuarios_requieren_reset else [],
-                    'errores': errores[:10],
-                    'nota': 'Los usuarios con password temporal deben cambiar su contraseña en el primer inicio de sesión'
-                })
+                # Registrar auditoría de importación masiva
+                if cambios_auditoria:
+                    logger.info(
+                        f"Importación masiva por {request.user.username}: "
+                        f"{creados} creados, {actualizados} actualizados, {len(errores)} errores"
+                    )
+            
+            # === RESPUESTA SIN CONTRASEÑAS (ISS-002) ===
+            return Response({
+                'mensaje': 'Importación completada exitosamente',
+                'resumen': {
+                    'creados': creados,
+                    'actualizados': actualizados,
+                    'errores': len(errores),
+                    'usuarios_requieren_cambio_password': usuarios_con_reset
+                },
+                # NO incluimos contraseñas - deben gestionarse por canal seguro
+                'errores': errores[:20],  # Limitar errores mostrados
+                'nota': (
+                    f'{usuarios_con_reset} usuarios fueron creados con contraseña temporal. '
+                    'Las credenciales deben entregarse por un canal seguro (NO por esta API). '
+                    'Los usuarios deberán cambiar su contraseña en el primer inicio de sesión.'
+                ) if usuarios_con_reset > 0 else None,
+                'advertencia': (
+                    'Se encontraron errores en algunas filas. Revise el detalle y corrija el archivo.'
+                ) if errores else None
+            })
+            
+        except openpyxl.utils.exceptions.InvalidFileException:
+            return Response(
+                {'error': 'El archivo no es un Excel válido o está corrupto'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
             logger.error(f"Error al importar usuarios: {e}")
-            return Response({'error': f'Error al procesar archivo: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'Error inesperado al procesar archivo. Contacte al administrador.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 # NOTA: ProductoViewSet, LoteViewSet, RequisicionViewSet y CentroViewSet

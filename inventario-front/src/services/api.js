@@ -15,11 +15,35 @@ import {
   clearTokens
 } from './tokenManager';
 
-const apiBaseUrl = (
-  import.meta.env.VITE_API_URL ||
-  import.meta.env.VITE_API_BASE_URL ||
-  'http://127.0.0.1:8000/api/'
-).replace(/\/+$/, '');
+// === CONFIGURACIÓN DE BASE URL CON VALIDACIÓN DE SEGURIDAD (ISS-005) ===
+const configuredUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
+const isDev = import.meta.env.DEV || import.meta.env.MODE === 'development';
+
+// Determinar baseURL
+let apiBaseUrl;
+if (configuredUrl) {
+  apiBaseUrl = configuredUrl.replace(/\/+$/, '');
+} else if (isDev) {
+  // Solo permitir HTTP localhost en desarrollo
+  apiBaseUrl = 'http://127.0.0.1:8000/api';
+  console.info('[API] Modo desarrollo: usando', apiBaseUrl);
+} else {
+  // En producción, exigir configuración explícita
+  console.error(
+    '[API] ERROR CRÍTICO: VITE_API_URL no está configurada en producción. ' +
+    'Configure la variable de entorno VITE_API_URL con una URL HTTPS válida.'
+  );
+  // Usar placeholder que fallará de forma evidente
+  apiBaseUrl = 'https://api-no-configurada.error';
+}
+
+// Validar HTTPS en producción
+if (!isDev && apiBaseUrl && !apiBaseUrl.startsWith('https://')) {
+  console.error(
+    '[API] ADVERTENCIA DE SEGURIDAD: La API no usa HTTPS en producción. ' +
+    'Esto expone tokens y datos sensibles. URL actual:', apiBaseUrl
+  );
+}
 
 const apiClient = axios.create({
   baseURL: `${apiBaseUrl}/`,

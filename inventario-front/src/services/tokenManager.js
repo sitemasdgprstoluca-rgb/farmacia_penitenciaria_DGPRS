@@ -78,18 +78,78 @@ const notifySessionChange = (isAuthenticated) => {
 };
 
 /**
+ * Decodifica un JWT sin verificar firma (solo para leer payload)
+ * @param {string} token - Token JWT
+ * @returns {Object|null} Payload decodificado o null si inválido
+ */
+const decodeJWT = (token) => {
+  try {
+    if (!token || typeof token !== 'string') return null;
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    
+    const payload = parts[1];
+    // Decodificar base64url
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    console.warn('Error decodificando JWT:', e);
+    return null;
+  }
+};
+
+/**
+ * Verifica si un token JWT está expirado
+ * @param {string} token - Token JWT
+ * @returns {boolean} true si está expirado o es inválido
+ */
+const isTokenExpired = (token) => {
+  const payload = decodeJWT(token);
+  if (!payload || !payload.exp) return true;
+  
+  // Agregar margen de 30 segundos para evitar race conditions
+  const now = Math.floor(Date.now() / 1000);
+  return payload.exp < (now + 30);
+};
+
+/**
  * Migración desde localStorage (para usuarios existentes)
  * Solo debe ejecutarse una vez al cargar la app
+ * 
+ * SEGURIDAD (ISS-004): Valida el token antes de usarlo
+ * - Verifica estructura JWT válida
+ * - Verifica que no esté expirado
+ * - Descarta tokens inválidos
  */
 export const migrateFromLocalStorage = () => {
   const oldToken = localStorage.getItem('token');
   if (oldToken) {
-    // Intentar usar el token existente
-    accessToken = oldToken;
-    // Limpiar localStorage por seguridad
+    // Limpiar localStorage primero por seguridad
     localStorage.removeItem('token');
     localStorage.removeItem('refresh_token');
-    console.info('Tokens migrados desde localStorage a memoria');
+    
+    // Validar token antes de usarlo (ISS-004)
+    const payload = decodeJWT(oldToken);
+    
+    if (!payload) {
+      console.warn('Token migrado inválido (no es JWT válido), descartado');
+      return false;
+    }
+    
+    if (isTokenExpired(oldToken)) {
+      console.warn('Token migrado expirado, descartado');
+      return false;
+    }
+    
+    // Token válido y no expirado, usar temporalmente
+    accessToken = oldToken;
+    console.info('Token migrado y validado desde localStorage a memoria');
     return true;
   }
   return false;
