@@ -224,21 +224,25 @@ class RequisicionStateMachine:
         return errores
     
     def _validar_precondiciones_surtir(self) -> List[str]:
-        """Valida precondiciones para surtir."""
-        from django.db.models import Sum, Q
+        """
+        ISS-001/ISS-002 FIX: Valida precondiciones para surtir.
+        
+        SOLO valida stock en farmacia central, no incluye stock del centro destino.
+        """
+        from django.db.models import Sum
         from core.models import Lote
         
         errores = []
-        centro = self.requisicion.centro
         
         for detalle in self.requisicion.detalles.select_related('producto'):
             cantidad_requerida = (detalle.cantidad_autorizada or detalle.cantidad_solicitada) - (detalle.cantidad_surtida or 0)
             if cantidad_requerida <= 0:
                 continue
             
-            # Stock disponible en farmacia central + centro destino
+            # ISS-001/ISS-002 FIX: Stock SOLO en farmacia central (centro=NULL)
+            # NO incluir stock del centro destino - eso causaría doble contabilización
             stock_disponible = Lote.objects.filter(
-                Q(centro__isnull=True) | Q(centro=centro),
+                centro__isnull=True,  # Solo farmacia central
                 producto=detalle.producto,
                 estado='disponible',
                 deleted_at__isnull=True,
@@ -247,7 +251,7 @@ class RequisicionStateMachine:
             
             if stock_disponible < cantidad_requerida:
                 errores.append(
-                    f"Stock insuficiente para {detalle.producto.clave}: "
+                    f"Stock insuficiente en farmacia central para {detalle.producto.clave}: "
                     f"requerido {cantidad_requerida}, disponible {stock_disponible}"
                 )
         

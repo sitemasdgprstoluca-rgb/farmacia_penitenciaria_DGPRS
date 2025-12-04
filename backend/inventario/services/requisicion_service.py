@@ -133,15 +133,18 @@ class RequisicionService:
     
     def validar_stock_disponible(self):
         """
-        Valida que hay stock suficiente para todos los items.
+        ISS-001 FIX: Valida que hay stock suficiente SOLO en farmacia central.
+        
+        IMPORTANTE: Las requisiciones SOLO se surten desde farmacia central.
+        El stock del centro destino NO debe considerarse para validación,
+        ya que ese stock ya fue transferido previamente y pertenece al centro.
         
         Returns:
             list: Lista vacía si hay stock suficiente
             
         Raises:
-            StockInsuficienteError: Si no hay stock suficiente
+            StockInsuficienteError: Si no hay stock suficiente en farmacia central
         """
-        centro_requisicion = self.requisicion.centro
         errores_stock = []
         
         for detalle in self.requisicion.detalles.select_related('producto'):
@@ -149,9 +152,10 @@ class RequisicionService:
             if requerido <= 0:
                 continue
             
-            # Lotes de farmacia central (centro=None) o del centro destino
+            # ISS-001 FIX: SOLO lotes de farmacia central (centro=NULL)
+            # NO incluir lotes del centro destino - eso sería doble contabilización
             disponible = Lote.objects.filter(
-                Q(centro__isnull=True) | Q(centro=centro_requisicion),
+                centro__isnull=True,  # Solo farmacia central
                 producto=detalle.producto,
                 estado='disponible',
                 deleted_at__isnull=True,
@@ -231,10 +235,14 @@ class RequisicionService:
             cantidad_surtida_item = 0
             lotes_usados = []
             
-            # ISS-014: Obtener lotes CON BLOQUEO para evitar race conditions
+            # ISS-002 FIX + ISS-014: Obtener lotes SOLO de farmacia central CON BLOQUEO
             # select_for_update() bloquea las filas hasta que termine la transacción
+            # 
+            # IMPORTANTE: Solo usamos lotes de farmacia central (centro=NULL).
+            # Los lotes del centro destino NO deben usarse como fuente de surtido,
+            # ya que pertenecen al centro y usarlos causaría doble contabilización.
             lotes = Lote.objects.select_for_update().filter(
-                Q(centro__isnull=True) | Q(centro=centro_requisicion),
+                centro__isnull=True,  # ISS-002 FIX: Solo farmacia central
                 producto=detalle.producto,
                 estado='disponible',
                 deleted_at__isnull=True,
@@ -473,10 +481,22 @@ class CentroPermissionMixin:
     """
     ISS-030: Mixin para validar acceso por centro.
     
+    ISS-003 FIX: Usa catálogo real de roles del sistema.
+    
     Uso:
         class MyViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             ...
     """
+    
+    # ISS-003 FIX: Roles con acceso global (pueden ver/operar en cualquier centro)
+    ROLES_ACCESO_GLOBAL = {
+        # Administradores
+        'admin_sistema', 'superusuario', 'administrador',
+        # Farmacia
+        'farmacia', 'admin_farmacia', 'farmaceutico', 'usuario_farmacia',
+        # Vista (solo lectura pero global)
+        'vista', 'usuario_vista',
+    }
     
     def get_centro_from_request(self):
         """Obtiene centro_id del request (body o query params)."""
@@ -485,7 +505,7 @@ class CentroPermissionMixin:
     
     def check_centro_permission(self, centro_id=None):
         """
-        Verifica que el usuario tenga acceso al centro especificado.
+        ISS-003 FIX: Verifica que el usuario tenga acceso al centro especificado.
         
         Args:
             centro_id: ID del centro a verificar (o None para obtener del request)
@@ -503,12 +523,13 @@ class CentroPermissionMixin:
         
         user = self.request.user
         
-        # Admin y farmacia pueden acceder a cualquier centro
+        # Superuser siempre tiene acceso
         if user.is_superuser:
             return
         
-        user_rol = getattr(user, 'rol', '').lower()
-        if user_rol in ['admin', 'farmacia']:
+        # ISS-003 FIX: Verificar contra catálogo real de roles globales
+        user_rol = (getattr(user, 'rol', '') or '').lower()
+        if user_rol in self.ROLES_ACCESO_GLOBAL:
             return
         
         # Verificar si usuario pertenece al centro
@@ -530,9 +551,9 @@ class CentroPermissionMixin:
     
     def filter_queryset_by_centro(self, queryset):
         """
-        ISS-030: Filtra queryset por centro del usuario.
+        ISS-003 FIX + ISS-030: Filtra queryset por centro del usuario.
         
-        Admin/farmacia ven todo. Usuarios de centro solo ven su centro.
+        Roles globales ven todo. Usuarios de centro solo ven su centro.
         
         Args:
             queryset: QuerySet a filtrar
@@ -545,8 +566,9 @@ class CentroPermissionMixin:
         if user.is_superuser:
             return queryset
         
-        user_rol = getattr(user, 'rol', '').lower()
-        if user_rol in ['admin', 'farmacia']:
+        # ISS-003 FIX: Verificar contra catálogo real de roles
+        user_rol = (getattr(user, 'rol', '') or '').lower()
+        if user_rol in self.ROLES_ACCESO_GLOBAL:
             return queryset
         
         # Usuario de centro: filtrar por su centro
