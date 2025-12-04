@@ -1,6 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ThemeContext } from './contexts';
 import { configuracionAPI, temaGlobalAPI } from '../services/api';
+import { supabaseThemeAPI, isSupabaseAvailable } from '../services/supabase';
+
+// ============================================================================
+// CONSTANTES Y CLAVES DE ALMACENAMIENTO
+// ============================================================================
+const STORAGE_KEY_TEMA = 'sifp_tema_cache';
+const STORAGE_KEY_UPDATED = 'sifp_tema_updated_at';
 
 /**
  * Aplica las variables CSS al documento
@@ -11,14 +18,66 @@ const aplicarCSSVariables = (cssVariables) => {
     return;
   }
   
-  console.log('ThemeContext: Aplicando CSS variables:', cssVariables);
   const root = document.documentElement;
   Object.entries(cssVariables).forEach(([variable, valor]) => {
     if (valor) {
       root.style.setProperty(variable, valor);
-      console.log(`  ${variable}: ${valor}`);
     }
   });
+  console.log('ThemeContext: Variables CSS aplicadas correctamente');
+};
+
+/**
+ * Guarda el tema en localStorage para persistencia entre recargas
+ */
+const guardarTemaEnCache = (tema) => {
+  try {
+    if (!tema) return;
+    const cacheData = {
+      css_variables: tema.css_variables,
+      reporte_titulo_institucion: tema.reporte_titulo_institucion,
+      favicon_url: tema.favicon_url,
+      logo_header_url: tema.logo_header_url,
+      logo_login_url: tema.logo_login_url,
+      logo_reportes_url: tema.logo_reportes_url,
+      nombre: tema.nombre,
+      updated_at: tema.updated_at || new Date().toISOString()
+    };
+    localStorage.setItem(STORAGE_KEY_TEMA, JSON.stringify(cacheData));
+    localStorage.setItem(STORAGE_KEY_UPDATED, cacheData.updated_at);
+    console.log('ThemeContext: Tema guardado en caché local');
+  } catch (err) {
+    console.warn('ThemeContext: No se pudo guardar tema en localStorage:', err);
+  }
+};
+
+/**
+ * Recupera el tema desde localStorage
+ */
+const obtenerTemaDeCache = () => {
+  try {
+    const cached = localStorage.getItem(STORAGE_KEY_TEMA);
+    if (cached) {
+      const tema = JSON.parse(cached);
+      console.log('ThemeContext: Tema recuperado de caché local');
+      return tema;
+    }
+  } catch (err) {
+    console.warn('ThemeContext: Error leyendo caché local:', err);
+  }
+  return null;
+};
+
+/**
+ * Invalida la caché local del tema
+ */
+const invalidarCacheTema = () => {
+  try {
+    localStorage.removeItem(STORAGE_KEY_TEMA);
+    localStorage.removeItem(STORAGE_KEY_UPDATED);
+  } catch (err) {
+    // Ignorar errores de localStorage
+  }
 };
 
 /**
@@ -65,6 +124,65 @@ const hexToRgb = (hex) => {
   return result 
     ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`
     : '159, 34, 65';
+};
+
+/**
+ * Normaliza los datos de Supabase al formato esperado por el frontend
+ */
+const normalizarTemaSupabase = (temaSupabase) => {
+  if (!temaSupabase) return null;
+  
+  // Si ya tiene css_variables como objeto, usarlas directamente
+  let cssVars = temaSupabase.css_variables;
+  
+  // Si css_variables es string JSON, parsearlo
+  if (typeof cssVars === 'string') {
+    try {
+      cssVars = JSON.parse(cssVars);
+    } catch (e) {
+      cssVars = null;
+    }
+  }
+  
+  // Si no hay css_variables, generarlas desde los campos individuales
+  if (!cssVars || Object.keys(cssVars).length === 0) {
+    cssVars = {
+      '--color-primary': temaSupabase.primary_color || '#0ea5e9',
+      '--color-primary-hover': temaSupabase.primary_hover_color || '#0284c7',
+      '--color-primary-light': temaSupabase.primary_light_color || '#e0f2fe',
+      '--color-secondary': temaSupabase.secondary_color || '#64748b',
+      '--color-accent': temaSupabase.accent_color || '#f59e0b',
+      '--color-background': temaSupabase.background_color || '#f8fafc',
+      '--color-sidebar-bg': temaSupabase.sidebar_bg || '#1e293b',
+      '--color-sidebar-hover': temaSupabase.sidebar_hover || '#334155',
+      '--color-header-bg': temaSupabase.header_bg || '#ffffff',
+      '--color-card-bg': temaSupabase.card_bg || '#ffffff',
+      '--color-text': temaSupabase.text_primary || '#1e293b',
+      '--color-text-secondary': temaSupabase.text_secondary || '#64748b',
+      '--color-text-muted': temaSupabase.text_muted || '#94a3b8',
+      '--color-sidebar-text': temaSupabase.text_on_primary || '#ffffff',
+      '--color-header-text': temaSupabase.text_on_primary || '#ffffff',
+      '--color-success': temaSupabase.success_color || '#22c55e',
+      '--color-warning': temaSupabase.warning_color || '#f59e0b',
+      '--color-error': temaSupabase.error_color || '#ef4444',
+      '--color-info': temaSupabase.info_color || '#3b82f6',
+      '--color-border': temaSupabase.border_color || '#e2e8f0',
+      '--border-radius': temaSupabase.border_radius || '0.5rem',
+      '--font-family-principal': temaSupabase.font_family || '"Inter", sans-serif',
+    };
+  }
+  
+  return {
+    id: temaSupabase.id,
+    nombre: temaSupabase.nombre || 'Tema Personalizado',
+    css_variables: cssVars,
+    logo_header_url: temaSupabase.logo_header_url,
+    logo_login_url: temaSupabase.logo_login_url,
+    logo_reportes_url: temaSupabase.logo_reports_url,
+    favicon_url: temaSupabase.favicon_url,
+    reporte_titulo_institucion: temaSupabase.report_title || 'Sistema de Farmacia Penitenciaria',
+    updated_at: temaSupabase.updated_at,
+  };
 };
 
 /**
@@ -118,66 +236,130 @@ const temaDefault = {
 
 export const ThemeProvider = ({ children }) => {
   const [configuracion, setConfiguracion] = useState(temaDefault);
-  const [temaGlobal, setTemaGlobal] = useState(null); // Nuevo: tema global completo
+  const [temaGlobal, setTemaGlobal] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
+  const [temaAplicado, setTemaAplicado] = useState(false);
 
   /**
-   * Carga la configuración del tema desde el backend (TemaGlobal)
+   * Aplica el tema (CSS variables, favicon, título)
+   */
+  const aplicarTemaCompleto = useCallback((tema) => {
+    if (!tema) return;
+    
+    // Aplicar CSS variables
+    if (tema.css_variables) {
+      aplicarCSSVariables(tema.css_variables);
+    }
+    
+    // Actualizar favicon si está definido
+    if (tema.favicon_url) {
+      const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
+      link.type = 'image/x-icon';
+      link.rel = 'shortcut icon';
+      link.href = tema.favicon_url;
+      document.getElementsByTagName('head')[0].appendChild(link);
+    }
+    
+    // Actualizar título
+    if (tema.reporte_titulo_institucion) {
+      document.title = tema.reporte_titulo_institucion;
+    }
+    
+    setTemaAplicado(true);
+  }, []);
+
+  /**
+   * Carga la configuración del tema desde Supabase (fuente principal)
+   * FLUJO:
+   * 1. Aplicar caché local inmediatamente (rehidratación rápida)
+   * 2. Consultar SUPABASE primero (fuente de verdad)
+   * 3. Si Supabase falla, intentar API Django
+   * 4. Fallback a valores por defecto
    */
   const cargarTema = useCallback(async () => {
     try {
       setCargando(true);
       setError(null);
       
-      // Intentar cargar desde TemaGlobal primero (nuevo sistema)
+      // PASO 1: Rehidratación rápida desde caché local
+      const temaCache = obtenerTemaDeCache();
+      if (temaCache && temaCache.css_variables) {
+        console.log('ThemeContext: Aplicando tema desde caché local');
+        setTemaGlobal(temaCache);
+        aplicarTemaCompleto(temaCache);
+      }
+      
+      // PASO 2: SUPABASE como fuente principal
+      if (isSupabaseAvailable()) {
+        try {
+          console.log('ThemeContext: Consultando Supabase...');
+          const temaSupabase = await supabaseThemeAPI.getActiveTheme();
+          
+          if (temaSupabase && temaSupabase.css_variables) {
+            // Normalizar datos de Supabase al formato esperado
+            const temaNormalizado = normalizarTemaSupabase(temaSupabase);
+            setTemaGlobal(temaNormalizado);
+            aplicarTemaCompleto(temaNormalizado);
+            guardarTemaEnCache(temaNormalizado);
+            console.log('ThemeContext: Tema cargado desde Supabase ✓');
+            return;
+          }
+        } catch (supabaseErr) {
+          console.warn('ThemeContext: Supabase no disponible:', supabaseErr);
+        }
+      }
+      
+      // PASO 3: Fallback a API Django
       try {
         const response = await temaGlobalAPI.getTemaActivo();
         const tema = response.data;
         
         if (tema && tema.css_variables) {
           setTemaGlobal(tema);
-          // Aplicar CSS variables del nuevo sistema
-          aplicarCSSVariables(tema.css_variables);
-          
-          // Actualizar favicon si está definido
-          if (tema.favicon_url) {
-            const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
-            link.type = 'image/x-icon';
-            link.rel = 'shortcut icon';
-            link.href = tema.favicon_url;
-            document.getElementsByTagName('head')[0].appendChild(link);
-          }
-          
-          // Actualizar título con nombre del tema si no hay nombre_sistema
-          if (tema.reporte_titulo_institucion) {
-            document.title = tema.reporte_titulo_institucion;
-          }
+          aplicarTemaCompleto(tema);
+          guardarTemaEnCache(tema);
+          console.log('ThemeContext: Tema cargado desde API Django');
           return;
         }
-      } catch (temaErr) {
-        console.warn('TemaGlobal no disponible, usando configuración legacy');
+      } catch (apiErr) {
+        console.warn('ThemeContext: API Django no disponible');
+        if (temaCache && temaCache.css_variables) {
+          return; // Ya aplicamos caché
+        }
       }
       
-      // Fallback a sistema legacy
-      const response = await configuracionAPI.getTema();
-      const config = response.data;
-      
-      if (config) {
-        setConfiguracion(config);
-        const cssVars = config.css_variables || generarCSSVariablesDesdeConfig(config);
-        aplicarCSSVariables(cssVars);
-        actualizarTituloDocumento(config.nombre_sistema);
-      } else {
-        aplicarCSSVariables(temaDefault.css_variables);
+      // PASO 4: Fallback a sistema legacy
+      if (!temaCache) {
+        try {
+          const response = await configuracionAPI.getTema();
+          const config = response.data;
+          
+          if (config) {
+            setConfiguracion(config);
+            const cssVars = config.css_variables || generarCSSVariablesDesdeConfig(config);
+            aplicarCSSVariables(cssVars);
+            actualizarTituloDocumento(config.nombre_sistema);
+            setTemaAplicado(true);
+          } else {
+            aplicarCSSVariables(temaDefault.css_variables);
+            setTemaAplicado(true);
+          }
+        } catch (legacyErr) {
+          console.warn('ThemeContext: Usando tema por defecto');
+          aplicarCSSVariables(temaDefault.css_variables);
+          setTemaAplicado(true);
+        }
       }
     } catch (err) {
-      console.warn('Tema: usando valores por defecto');
+      console.error('ThemeContext: Error cargando tema:', err);
+      setError(err);
       aplicarCSSVariables(temaDefault.css_variables);
+      setTemaAplicado(true);
     } finally {
       setCargando(false);
     }
-  }, []);
+  }, [aplicarTemaCompleto]);
 
   /**
    * Actualiza la configuración del tema (TemaGlobal)
@@ -193,6 +375,7 @@ export const ThemeProvider = ({ children }) => {
         setTemaGlobal(tema);
         if (tema.css_variables) {
           aplicarCSSVariables(tema.css_variables);
+          guardarTemaEnCache(tema);
         }
         
         return { success: true, data: tema };
@@ -218,22 +401,67 @@ export const ThemeProvider = ({ children }) => {
   };
 
   /**
-   * Actualiza el TemaGlobal completo (nuevo sistema)
+   * Actualiza el TemaGlobal completo
+   * Guarda en SUPABASE como fuente principal, luego en API Django y caché local
    */
   const actualizarTemaGlobal = async (nuevoTema) => {
     try {
-      console.log('ThemeContext: Actualizando tema con:', nuevoTema);
+      console.log('ThemeContext: Actualizando tema...');
+      
+      // Preparar datos para Supabase
+      const datosSupabase = {
+        primary_color: nuevoTema.color_primario || nuevoTema.primary_color,
+        primary_hover_color: nuevoTema.color_primario_hover || nuevoTema.primary_hover_color,
+        secondary_color: nuevoTema.color_secundario || nuevoTema.secondary_color,
+        accent_color: nuevoTema.color_acento || nuevoTema.accent_color,
+        background_color: nuevoTema.color_fondo || nuevoTema.background_color,
+        sidebar_bg: nuevoTema.color_fondo_sidebar || nuevoTema.sidebar_bg,
+        header_bg: nuevoTema.color_fondo_header || nuevoTema.header_bg,
+        card_bg: nuevoTema.color_fondo_card || nuevoTema.card_bg,
+        text_primary: nuevoTema.color_texto || nuevoTema.text_primary,
+        text_secondary: nuevoTema.color_texto_secundario || nuevoTema.text_secondary,
+        success_color: nuevoTema.color_exito || nuevoTema.success_color,
+        warning_color: nuevoTema.color_advertencia || nuevoTema.warning_color,
+        error_color: nuevoTema.color_error || nuevoTema.error_color,
+        info_color: nuevoTema.color_info || nuevoTema.info_color,
+        border_color: nuevoTema.color_borde || nuevoTema.border_color,
+        logo_header_url: nuevoTema.logo_header_url,
+        logo_login_url: nuevoTema.logo_login_url,
+        logo_reports_url: nuevoTema.logo_reportes_url || nuevoTema.logo_reports_url,
+        favicon_url: nuevoTema.favicon_url,
+        report_title: nuevoTema.reporte_titulo_institucion || nuevoTema.report_title,
+        css_variables: nuevoTema.css_variables,
+      };
+      
+      // PASO 1: Guardar en Supabase (fuente de verdad)
+      if (isSupabaseAvailable()) {
+        try {
+          const temaSupabase = await supabaseThemeAPI.updateTheme(datosSupabase);
+          if (temaSupabase) {
+            const temaNormalizado = normalizarTemaSupabase(temaSupabase);
+            setTemaGlobal(temaNormalizado);
+            if (temaNormalizado.css_variables) {
+              aplicarCSSVariables(temaNormalizado.css_variables);
+              guardarTemaEnCache(temaNormalizado);
+            }
+            console.log('ThemeContext: Tema guardado en Supabase ✓');
+            return { success: true, data: temaNormalizado };
+          }
+        } catch (supabaseErr) {
+          console.warn('ThemeContext: Error guardando en Supabase:', supabaseErr);
+        }
+      }
+      
+      // PASO 2: Fallback a API Django
       const response = await temaGlobalAPI.updateTema(nuevoTema);
       const resultado = response.data;
-      console.log('ThemeContext: Respuesta del servidor:', resultado);
       const tema = resultado.tema || resultado;
       
       setTemaGlobal(tema);
       if (tema.css_variables) {
-        console.log('ThemeContext: Aplicando nuevas CSS variables después de guardar');
         aplicarCSSVariables(tema.css_variables);
-      } else {
-        console.warn('ThemeContext: El servidor no devolvió css_variables');
+        guardarTemaEnCache(tema);
+        console.log('ThemeContext: Tema guardado en API Django');
       }
       
       return { success: true, data: tema };
@@ -248,11 +476,43 @@ export const ThemeProvider = ({ children }) => {
 
   /**
    * Sube un logo al TemaGlobal
+   * Primero intenta Supabase Storage, luego API Django
    * @param {string} tipo - header, login, reportes, favicon, fondo_login, fondo_reportes
    * @param {File} file - archivo a subir
    */
   const subirLogoTema = async (tipo, file) => {
     try {
+      // PASO 1: Intentar subir a Supabase Storage
+      if (isSupabaseAvailable()) {
+        try {
+          const logoUrl = await supabaseThemeAPI.uploadLogo(file, tipo);
+          if (logoUrl) {
+            // Actualizar el tema con la nueva URL del logo
+            const campoLogo = {
+              'header': 'logo_header_url',
+              'login': 'logo_login_url',
+              'reportes': 'logo_reports_url',
+              'favicon': 'favicon_url',
+            }[tipo] || `logo_${tipo}_url`;
+            
+            const temaActualizado = await supabaseThemeAPI.updateTheme({
+              [campoLogo]: logoUrl
+            });
+            
+            if (temaActualizado) {
+              const temaNormalizado = normalizarTemaSupabase(temaActualizado);
+              setTemaGlobal(temaNormalizado);
+              guardarTemaEnCache(temaNormalizado);
+              console.log(`ThemeContext: Logo ${tipo} subido a Supabase ✓`);
+              return { success: true, data: temaNormalizado };
+            }
+          }
+        } catch (supabaseErr) {
+          console.warn('ThemeContext: Error subiendo a Supabase:', supabaseErr);
+        }
+      }
+      
+      // PASO 2: Fallback a API Django
       const formData = new FormData();
       formData.append('archivo', file);
       
@@ -263,6 +523,7 @@ export const ThemeProvider = ({ children }) => {
       setTemaGlobal(tema);
       if (tema.css_variables) {
         aplicarCSSVariables(tema.css_variables);
+        guardarTemaEnCache(tema);
       }
       
       return { success: true, data: tema };
@@ -288,6 +549,7 @@ export const ThemeProvider = ({ children }) => {
       setTemaGlobal(tema);
       if (tema.css_variables) {
         aplicarCSSVariables(tema.css_variables);
+        guardarTemaEnCache(tema);
       }
       
       return { success: true, data: tema };
@@ -312,6 +574,9 @@ export const ThemeProvider = ({ children }) => {
       setTemaGlobal(tema);
       if (tema.css_variables) {
         aplicarCSSVariables(tema.css_variables);
+        // Invalidar caché anterior y guardar el nuevo tema institucional
+        invalidarCacheTema();
+        guardarTemaEnCache(tema);
       }
       
       return { success: true, data: tema };
