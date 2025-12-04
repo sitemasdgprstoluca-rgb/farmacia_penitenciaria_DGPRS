@@ -654,6 +654,219 @@ class Producto(models.Model):
         }
 
 
+class Contrato(models.Model):
+    """
+    ISS-005 FIX (audit5): Modelo de Contrato para trazabilidad y límites.
+    
+    Centraliza la información de contratos de adquisición:
+    - Número de contrato (único)
+    - Vigencia (fechas inicio/fin)
+    - Proveedor
+    - Límites de cantidad por producto
+    - Estado activo/inactivo
+    
+    Los Lotes pueden referenciar un Contrato para validar límites
+    y trazabilidad completa.
+    """
+    numero_contrato = models.CharField(
+        max_length=100,
+        unique=True,
+        db_index=True,
+        help_text="Número único de contrato"
+    )
+    descripcion = models.TextField(
+        blank=True,
+        help_text="Descripción del contrato"
+    )
+    proveedor = models.CharField(
+        max_length=200,
+        help_text="Nombre del proveedor"
+    )
+    fecha_inicio = models.DateField(
+        help_text="Fecha de inicio de vigencia"
+    )
+    fecha_fin = models.DateField(
+        help_text="Fecha de fin de vigencia"
+    )
+    monto_maximo = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="Monto máximo del contrato"
+    )
+    activo = models.BooleanField(
+        default=True,
+        help_text="Si el contrato está vigente y puede usarse"
+    )
+    observaciones = models.TextField(
+        blank=True,
+        help_text="Notas adicionales del contrato"
+    )
+    
+    # Auditoría
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='contratos_creados'
+    )
+
+    class Meta:
+        db_table = 'contratos'
+        ordering = ['-fecha_inicio']
+        indexes = [
+            models.Index(fields=['numero_contrato']),
+            models.Index(fields=['proveedor']),
+            models.Index(fields=['fecha_inicio', 'fecha_fin']),
+            models.Index(fields=['activo']),
+        ]
+        verbose_name = 'Contrato'
+        verbose_name_plural = 'Contratos'
+
+    def __str__(self):
+        return f"{self.numero_contrato} - {self.proveedor}"
+    
+    def clean(self):
+        super().clean()
+        # Validar que fecha_fin >= fecha_inicio
+        if self.fecha_inicio and self.fecha_fin:
+            if self.fecha_fin < self.fecha_inicio:
+                raise ValidationError({
+                    'fecha_fin': 'La fecha de fin no puede ser anterior a la fecha de inicio'
+                })
+    
+    def esta_vigente(self):
+        """Verifica si el contrato está dentro de su período de vigencia"""
+        from django.utils import timezone
+        hoy = timezone.now().date()
+        return self.activo and self.fecha_inicio <= hoy <= self.fecha_fin
+    
+    def get_cantidad_utilizada(self, producto=None):
+        """
+        Calcula la cantidad total ingresada bajo este contrato.
+        
+        Args:
+            producto: Si se especifica, filtra solo ese producto
+            
+        Returns:
+            int: Cantidad total de unidades ingresadas
+        """
+        from django.db.models import Sum
+        
+        filtros = {'contrato': self}
+        if producto:
+            filtros['producto'] = producto
+        
+        return Lote.objects.filter(**filtros).aggregate(
+            total=Sum('cantidad_inicial')
+        )['total'] or 0
+    
+    def validar_entrada(self, producto, cantidad, fecha_caducidad=None):
+        """
+        ISS-005 FIX: Valida si una entrada es permitida bajo este contrato.
+        
+        Verifica:
+        1. Contrato activo
+        2. Dentro de vigencia
+        3. No excede límites (si aplican)
+        
+        Args:
+            producto: Producto a ingresar
+            cantidad: Cantidad a ingresar
+            fecha_caducidad: Fecha de caducidad del lote (opcional)
+            
+        Raises:
+            ValidationError: Si la entrada no es permitida
+        """
+        from django.utils import timezone
+        from django.conf import settings
+        
+        hoy = timezone.now().date()
+        MIN_DIAS_CADUCIDAD = getattr(settings, 'LOTE_MIN_DIAS_CADUCIDAD', 90)
+        
+        if not self.activo:
+            raise ValidationError({
+                'contrato': f'El contrato {self.numero_contrato} no está activo'
+            })
+        
+        if not (self.fecha_inicio <= hoy <= self.fecha_fin):
+            raise ValidationError({
+                'contrato': f'El contrato {self.numero_contrato} no está vigente. '
+                           f'Vigencia: {self.fecha_inicio} a {self.fecha_fin}'
+            })
+        
+        # Validar caducidad mínima si se especifica
+        if fecha_caducidad:
+            dias_caducidad = (fecha_caducidad - hoy).days
+            if dias_caducidad < MIN_DIAS_CADUCIDAD:
+                raise ValidationError({
+                    'fecha_caducidad': f'La caducidad ({dias_caducidad} días) es menor al '
+                                      f'mínimo requerido ({MIN_DIAS_CADUCIDAD} días) para este contrato'
+                })
+        
+        # Validar que la caducidad no exceda la vigencia del contrato
+        if fecha_caducidad and fecha_caducidad < self.fecha_fin:
+            logger.warning(
+                f"ISS-005: Lote con caducidad {fecha_caducidad} es menor a fin de contrato "
+                f"{self.fecha_fin}. El producto puede caducar durante la vigencia del contrato."
+            )
+
+
+class ContratoProducto(models.Model):
+    """
+    ISS-005 FIX (audit5): Límites de producto por contrato.
+    
+    Define cantidades máximas y precios acordados por producto
+    dentro de un contrato específico.
+    """
+    contrato = models.ForeignKey(
+        Contrato,
+        on_delete=models.CASCADE,
+        related_name='productos'
+    )
+    producto = models.ForeignKey(
+        'Producto',
+        on_delete=models.PROTECT,
+        related_name='contratos_productos'
+    )
+    cantidad_maxima = models.IntegerField(
+        validators=[MinValueValidator(1)],
+        help_text="Cantidad máxima permitida bajo este contrato"
+    )
+    precio_unitario = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))],
+        help_text="Precio unitario acordado en el contrato"
+    )
+    
+    class Meta:
+        db_table = 'contratos_productos'
+        unique_together = ['contrato', 'producto']
+        verbose_name = 'Producto en Contrato'
+        verbose_name_plural = 'Productos en Contrato'
+    
+    def __str__(self):
+        return f"{self.contrato.numero_contrato} - {self.producto.clave}: máx {self.cantidad_maxima}"
+    
+    def get_cantidad_utilizada(self):
+        """Retorna la cantidad ya ingresada de este producto bajo este contrato"""
+        return self.contrato.get_cantidad_utilizada(producto=self.producto)
+    
+    def get_cantidad_disponible(self):
+        """Retorna la cantidad restante disponible para ingresar"""
+        return max(0, self.cantidad_maxima - self.get_cantidad_utilizada())
+    
+    def puede_ingresar(self, cantidad):
+        """Verifica si se puede ingresar la cantidad especificada"""
+        return cantidad <= self.get_cantidad_disponible()
+
+
 class Lote(models.Model):
     """
     Modelo de Lote de Producto
@@ -718,7 +931,16 @@ class Lote(models.Model):
         max_length=100,
         blank=True,
         db_index=True,
-        help_text="Número de contrato de adquisición para trazabilidad"
+        help_text="Número de contrato de adquisición para trazabilidad (legacy)"
+    )
+    # ISS-005 FIX (audit5): Referencia al modelo Contrato para validación completa
+    contrato = models.ForeignKey(
+        'Contrato',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='lotes',
+        help_text="Contrato de adquisición (nuevo modelo con límites y vigencia)"
     )
     marca = models.CharField(
         max_length=150,
@@ -1463,10 +1685,14 @@ class Requisicion(models.Model):
                     update_fields.append('updated_by')
                 if nuevo_estado == 'rechazada':
                     update_fields.extend(['motivo_rechazo', 'observaciones'])
+                    # ISS-002 FIX (audit5): Liberar reservas al rechazar
+                    self._liberar_reservas()
                 if nuevo_estado in ['autorizada', 'parcial']:
                     update_fields.append('fecha_autorizacion')
                     if usuario:
                         update_fields.append('usuario_autoriza')
+                    # ISS-002 FIX (audit5): Registrar reservas al autorizar
+                    self._registrar_reservas(usuario=usuario)
                 
                 self.save(update_fields=update_fields)
         
@@ -1523,6 +1749,42 @@ class Requisicion(models.Model):
             raise ValidationError({
                 'stock': f"Stock insuficiente para autorizar: {'; '.join(errores)}"
             })
+    
+    def _registrar_reservas(self, usuario=None):
+        """
+        ISS-002 FIX (audit5): Registra reservas de stock al autorizar.
+        
+        Guarda en cada DetalleRequisicion la cantidad reservada y la fecha,
+        para trazabilidad y para calcular compromisos de forma más precisa.
+        
+        Args:
+            usuario: Usuario que realiza la autorización
+        """
+        from django.utils import timezone
+        
+        ahora = timezone.now()
+        
+        for detalle in self.detalles.all():
+            # La cantidad reservada es la autorizada (o solicitada si aún no se autoriza)
+            cantidad_a_reservar = detalle.cantidad_autorizada or detalle.cantidad_solicitada
+            
+            detalle.cantidad_reservada = cantidad_a_reservar
+            detalle.fecha_reserva = ahora
+            detalle.save(update_fields=['cantidad_reservada', 'fecha_reserva'])
+        
+        logger.info(
+            f"ISS-002: Reservas registradas para requisición {self.folio} "
+            f"por {usuario.username if usuario else 'sistema'}"
+        )
+    
+    def _liberar_reservas(self):
+        """
+        ISS-002 FIX (audit5): Libera reservas de stock al rechazar o cancelar.
+        
+        Limpia los campos de reserva en los detalles.
+        """
+        self.detalles.update(cantidad_reservada=0, fecha_reserva=None)
+        logger.info(f"ISS-002: Reservas liberadas para requisición {self.folio}")
     
     def get_transiciones_disponibles(self):
         """
@@ -1613,6 +1875,17 @@ class DetalleRequisicion(models.Model):
         default=0,
         validators=[MinValueValidator(0)]
     )
+    # ISS-002 FIX (audit5): Campo para registrar reserva de stock al autorizar
+    cantidad_reservada = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Cantidad reservada al momento de autorizar (para garantizar stock)"
+    )
+    fecha_reserva = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Fecha/hora en que se realizó la reserva de stock"
+    )
     observaciones = models.TextField(blank=True)
 
     class Meta:
@@ -1699,6 +1972,74 @@ class DetalleSurtido(models.Model):
 
     def __str__(self):
         return f"Surtido {self.cantidad} de {self.lote.numero_lote} para detalle {self.detalle_requisicion_id}"
+
+
+class DetalleRecepcion(models.Model):
+    """
+    ISS-006 FIX (audit5): Trazabilidad de recepción por lote.
+    
+    Registra exactamente qué lotes se recibieron en cada detalle de requisición,
+    permitiendo al centro auditar qué productos/lotes/caducidades llegaron.
+    
+    Diferencia con DetalleSurtido:
+    - DetalleSurtido: Lo que farmacia ENVIÓ (perspectiva de salida)
+    - DetalleRecepcion: Lo que centro RECIBIÓ (perspectiva de entrada, puede diferir)
+    """
+    detalle_requisicion = models.ForeignKey(
+        DetalleRequisicion,
+        on_delete=models.CASCADE,
+        related_name='recepciones'
+    )
+    lote_centro = models.ForeignKey(
+        'Lote',
+        on_delete=models.PROTECT,
+        related_name='detalles_recepcion',
+        help_text='Lote creado en el centro al recibir'
+    )
+    cantidad_recibida = models.IntegerField(
+        validators=[MinValueValidator(1)],
+        help_text='Cantidad efectivamente recibida de este lote'
+    )
+    cantidad_esperada = models.IntegerField(
+        validators=[MinValueValidator(0)],
+        default=0,
+        help_text='Cantidad que se esperaba recibir (según surtido)'
+    )
+    tiene_discrepancia = models.BooleanField(
+        default=False,
+        help_text='Si la cantidad recibida difiere de la esperada'
+    )
+    observaciones = models.TextField(
+        blank=True,
+        help_text='Notas sobre el estado del producto recibido'
+    )
+    fecha_recepcion = models.DateTimeField(auto_now_add=True)
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    class Meta:
+        db_table = 'detalle_recepciones'
+        ordering = ['-fecha_recepcion']
+        indexes = [
+            models.Index(fields=['detalle_requisicion', 'lote_centro']),
+            models.Index(fields=['lote_centro', '-fecha_recepcion']),
+            models.Index(fields=['tiene_discrepancia']),
+        ]
+        verbose_name = 'Detalle de Recepción'
+        verbose_name_plural = 'Detalles de Recepción'
+
+    def __str__(self):
+        return f"Recepción {self.cantidad_recibida} de {self.lote_centro.numero_lote} para detalle {self.detalle_requisicion_id}"
+    
+    def clean(self):
+        super().clean()
+        # Detectar discrepancia automáticamente
+        if self.cantidad_esperada > 0:
+            self.tiene_discrepancia = self.cantidad_recibida != self.cantidad_esperada
 
 
 class Movimiento(models.Model):
