@@ -164,7 +164,7 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
       <button
         ref={botonRef}
         onClick={() => setAbierto((v) => !v)}
-        className="relative p-2 text-gray-600 hover:text-gray-900 transition"
+        className="relative p-2 text-white hover:text-white/80 transition"
         aria-label="Notificaciones"
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -195,7 +195,7 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
             {sinLeer > 0 && (
               <button
                 onClick={marcarTodas}
-                className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="text-xs text-primary-600 hover:text-primary-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={cargando || marcandoTodas}
               >
                 {marcandoTodas ? 'Marcando...' : 'Marcar todas'}

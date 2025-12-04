@@ -144,8 +144,8 @@ function Layout() {
       >
         {/* Header del Sidebar - Logo y Título integrados */}
         <div
-          className="flex items-center justify-between px-4 py-3 border-b"
-          style={{ borderBottomColor: "rgba(255,255,255,0.15)" }}
+          className="flex items-center justify-between px-4 h-[72px]"
+          style={{ borderBottom: "1px solid rgba(255,255,255,0.15)" }}
         >
           <div className="flex items-center gap-3">
             <img 
@@ -188,7 +188,7 @@ function Layout() {
           </div>
         </div>
 
-        <nav className="p-4 space-y-1 overflow-y-auto h-[calc(100vh-200px)]">
+        <nav className="p-4 space-y-1 overflow-y-auto h-[calc(100vh-220px)]">
           {visibleMenuItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
@@ -247,13 +247,13 @@ function Layout() {
 
       <div className="transition-all min-h-screen flex flex-col lg:ml-64">
         <header 
-          className="shadow-sm sticky top-0 z-30" 
+          className="shadow-sm sticky top-0 z-30 h-[72px] flex items-center" 
           style={{ 
             background: "linear-gradient(135deg, var(--color-header-bg, var(--color-primary, #9F2241)) 0%, var(--color-primary-hover, #6B1839) 100%)",
             borderBottom: "3px solid var(--color-primary-hover, #6B1839)" 
           }}
         >
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 w-full">
             <div className="flex items-center gap-3 sm:gap-4">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
