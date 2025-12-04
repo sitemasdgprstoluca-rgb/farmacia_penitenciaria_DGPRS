@@ -431,7 +431,7 @@ const Centros = () => {
       <PageHeader
         icon={FaBuilding}
         title="Gestión de Centros Penitenciarios"
-        subtitle={`Total: ${centros.length} centros registrados`}
+        subtitle={`Total: ${totalCentros} centros registrados | Página ${currentPage} de ${totalPages}`}
         badge={filtrosActivos ? `${filtrosActivos} filtros activos` : null}
         actions={headerActions}
       />

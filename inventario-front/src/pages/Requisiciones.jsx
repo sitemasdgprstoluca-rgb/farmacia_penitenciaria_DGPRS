@@ -1244,9 +1244,26 @@ const Requisiciones = () => {
             Tu cuenta de usuario no tiene un centro penitenciario asignado. 
             Contacta al administrador del sistema para que te asigne un centro.
           </p>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 mb-4">
             Sin un centro asignado no es posible ver ni crear requisiciones.
           </p>
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors flex items-center gap-2"
+            >
+              <FaSearch className="w-4 h-4" /> Verificar de nuevo
+            </button>
+            <button
+              onClick={() => {
+                // Redirigir al perfil para que el usuario pueda ver su información
+                navigate('/perfil');
+              }}
+              className="px-4 py-2 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors"
+            >
+              Ver mi perfil
+            </button>
+          </div>
         </div>
       )}
 
