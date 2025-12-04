@@ -128,11 +128,12 @@ const hexToRgb = (hex) => {
 
 /**
  * Normaliza los datos de Supabase al formato esperado por el frontend
+ * IMPORTANTE: Si css_variables existe y tiene datos, usarlas TAL CUAL sin mezclar
  */
 const normalizarTemaSupabase = (temaSupabase) => {
   if (!temaSupabase) return null;
   
-  // Si ya tiene css_variables como objeto, usarlas directamente
+  // Si ya tiene css_variables como objeto válido, usarlas DIRECTAMENTE
   let cssVars = temaSupabase.css_variables;
   
   // Si css_variables es string JSON, parsearlo
@@ -144,31 +145,37 @@ const normalizarTemaSupabase = (temaSupabase) => {
     }
   }
   
-  // Si no hay css_variables, generarlas desde los campos individuales
-  if (!cssVars || Object.keys(cssVars).length === 0) {
+  // Si css_variables es un objeto con datos, usarlo TAL CUAL (sin mezclar defaults)
+  if (cssVars && typeof cssVars === 'object' && Object.keys(cssVars).length > 0) {
+    // Ya tenemos CSS variables válidas, no mezclar con defaults
+    console.log('ThemeContext: Usando css_variables de Supabase directamente');
+  } else {
+    // SOLO si no hay css_variables, generarlas desde campos individuales
+    // Usar colores INSTITUCIONALES (guinda) como fallback, NO azules
+    console.log('ThemeContext: Generando css_variables desde campos individuales');
     cssVars = {
-      '--color-primary': temaSupabase.primary_color || '#0ea5e9',
-      '--color-primary-hover': temaSupabase.primary_hover_color || '#0284c7',
-      '--color-primary-light': temaSupabase.primary_light_color || '#e0f2fe',
-      '--color-secondary': temaSupabase.secondary_color || '#64748b',
-      '--color-accent': temaSupabase.accent_color || '#f59e0b',
-      '--color-background': temaSupabase.background_color || '#f8fafc',
-      '--color-sidebar-bg': temaSupabase.sidebar_bg || '#1e293b',
-      '--color-sidebar-hover': temaSupabase.sidebar_hover || '#334155',
-      '--color-header-bg': temaSupabase.header_bg || '#ffffff',
-      '--color-card-bg': temaSupabase.card_bg || '#ffffff',
-      '--color-text': temaSupabase.text_primary || '#1e293b',
-      '--color-text-secondary': temaSupabase.text_secondary || '#64748b',
-      '--color-text-muted': temaSupabase.text_muted || '#94a3b8',
-      '--color-sidebar-text': temaSupabase.text_on_primary || '#ffffff',
-      '--color-header-text': temaSupabase.text_on_primary || '#ffffff',
-      '--color-success': temaSupabase.success_color || '#22c55e',
-      '--color-warning': temaSupabase.warning_color || '#f59e0b',
-      '--color-error': temaSupabase.error_color || '#ef4444',
-      '--color-info': temaSupabase.info_color || '#3b82f6',
-      '--color-border': temaSupabase.border_color || '#e2e8f0',
+      '--color-primary': temaSupabase.primary_color || '#9F2241',
+      '--color-primary-hover': temaSupabase.primary_hover_color || '#6B1839',
+      '--color-primary-light': temaSupabase.primary_light_color || 'rgba(159, 34, 65, 0.2)',
+      '--color-secondary': temaSupabase.secondary_color || '#424242',
+      '--color-accent': temaSupabase.accent_color || '#BC955C',
+      '--color-background': temaSupabase.background_color || '#F5F5F5',
+      '--color-sidebar-bg': temaSupabase.sidebar_bg || '#9F2241',
+      '--color-sidebar-hover': temaSupabase.sidebar_hover || '#6B1839',
+      '--color-header-bg': temaSupabase.header_bg || '#9F2241',
+      '--color-card-bg': temaSupabase.card_bg || '#FFFFFF',
+      '--color-text': temaSupabase.text_primary || '#212121',
+      '--color-text-secondary': temaSupabase.text_secondary || '#757575',
+      '--color-text-muted': temaSupabase.text_muted || '#9E9E9E',
+      '--color-sidebar-text': temaSupabase.text_on_primary || '#FFFFFF',
+      '--color-header-text': temaSupabase.text_on_primary || '#FFFFFF',
+      '--color-success': temaSupabase.success_color || '#4CAF50',
+      '--color-warning': temaSupabase.warning_color || '#FF9800',
+      '--color-error': temaSupabase.error_color || '#F44336',
+      '--color-info': temaSupabase.info_color || '#2196F3',
+      '--color-border': temaSupabase.border_color || '#E0E0E0',
       '--border-radius': temaSupabase.border_radius || '0.5rem',
-      '--font-family-principal': temaSupabase.font_family || '"Inter", sans-serif',
+      '--font-family-principal': temaSupabase.font_family || "'Montserrat', sans-serif",
     };
   }
   
@@ -436,20 +443,53 @@ export const ThemeProvider = ({ children }) => {
    */
   const actualizarTemaGlobal = async (nuevoTema) => {
     try {
-      console.log('ThemeContext: Actualizando tema...');
+      console.log('ThemeContext: Actualizando tema...', nuevoTema);
       
-      // Preparar datos para Supabase
+      // PRIMERO: Generar css_variables completas desde los datos del formulario
+      // Esto asegura que SIEMPRE tengamos un objeto css_variables válido
+      const cssVariablesGeneradas = {
+        '--color-primary': nuevoTema.color_primario || nuevoTema.color_fondo_sidebar || nuevoTema.primary_color || '#9F2241',
+        '--color-primary-hover': nuevoTema.color_primario_hover || nuevoTema.color_fondo_header || nuevoTema.primary_hover_color || '#6B1839',
+        '--color-primary-light': `rgba(${hexToRgb(nuevoTema.color_primario || nuevoTema.color_fondo_sidebar || '#9F2241')}, 0.2)`,
+        '--color-secondary': nuevoTema.color_secundario || nuevoTema.secondary_color || '#424242',
+        '--color-accent': nuevoTema.color_acento || nuevoTema.accent_color || '#BC955C',
+        '--color-background': nuevoTema.color_fondo || nuevoTema.color_fondo_principal || nuevoTema.background_color || '#F5F5F5',
+        '--color-sidebar-bg': nuevoTema.color_fondo_sidebar || nuevoTema.sidebar_bg || nuevoTema.color_primario || '#9F2241',
+        '--color-sidebar-hover': nuevoTema.color_fondo_header || nuevoTema.sidebar_hover || '#6B1839',
+        '--color-header-bg': nuevoTema.color_fondo_header || nuevoTema.header_bg || nuevoTema.color_primario_hover || '#9F2241',
+        '--color-card-bg': nuevoTema.color_fondo_card || nuevoTema.color_fondo_tarjetas || nuevoTema.card_bg || '#FFFFFF',
+        '--color-text': nuevoTema.color_texto || nuevoTema.color_texto_principal || nuevoTema.text_primary || '#212121',
+        '--color-text-secondary': nuevoTema.color_texto_secundario || nuevoTema.text_secondary || '#757575',
+        '--color-text-muted': nuevoTema.color_texto_muted || nuevoTema.text_muted || '#9E9E9E',
+        '--color-sidebar-text': nuevoTema.color_texto_sidebar || nuevoTema.color_texto_invertido || nuevoTema.text_on_primary || '#FFFFFF',
+        '--color-header-text': nuevoTema.color_texto_header || nuevoTema.color_texto_invertido || nuevoTema.text_on_primary || '#FFFFFF',
+        '--color-success': nuevoTema.color_exito || nuevoTema.success_color || '#4CAF50',
+        '--color-warning': nuevoTema.color_advertencia || nuevoTema.warning_color || '#FF9800',
+        '--color-error': nuevoTema.color_error || nuevoTema.error_color || '#F44336',
+        '--color-info': nuevoTema.color_info || nuevoTema.info_color || '#2196F3',
+        '--color-border': nuevoTema.color_borde || nuevoTema.border_color || '#E0E0E0',
+        '--border-radius': nuevoTema.border_radius || '0.5rem',
+        '--font-family-principal': nuevoTema.font_family || "'Montserrat', sans-serif",
+      };
+      
+      // Usar css_variables existentes si las hay, o las generadas
+      const cssVariablesFinal = nuevoTema.css_variables && Object.keys(nuevoTema.css_variables).length > 0 
+        ? nuevoTema.css_variables 
+        : cssVariablesGeneradas;
+      
+      // Preparar datos para Supabase con css_variables SIEMPRE incluidas
       const datosSupabase = {
-        primary_color: nuevoTema.color_primario || nuevoTema.primary_color,
-        primary_hover_color: nuevoTema.color_primario_hover || nuevoTema.primary_hover_color,
+        primary_color: nuevoTema.color_primario || nuevoTema.color_fondo_sidebar || nuevoTema.primary_color,
+        primary_hover_color: nuevoTema.color_primario_hover || nuevoTema.color_fondo_header || nuevoTema.primary_hover_color,
         secondary_color: nuevoTema.color_secundario || nuevoTema.secondary_color,
         accent_color: nuevoTema.color_acento || nuevoTema.accent_color,
-        background_color: nuevoTema.color_fondo || nuevoTema.background_color,
+        background_color: nuevoTema.color_fondo || nuevoTema.color_fondo_principal || nuevoTema.background_color,
         sidebar_bg: nuevoTema.color_fondo_sidebar || nuevoTema.sidebar_bg,
         header_bg: nuevoTema.color_fondo_header || nuevoTema.header_bg,
-        card_bg: nuevoTema.color_fondo_card || nuevoTema.card_bg,
-        text_primary: nuevoTema.color_texto || nuevoTema.text_primary,
+        card_bg: nuevoTema.color_fondo_card || nuevoTema.color_fondo_tarjetas || nuevoTema.card_bg,
+        text_primary: nuevoTema.color_texto || nuevoTema.color_texto_principal || nuevoTema.text_primary,
         text_secondary: nuevoTema.color_texto_secundario || nuevoTema.text_secondary,
+        text_on_primary: nuevoTema.color_texto_sidebar || nuevoTema.color_texto_invertido || nuevoTema.text_on_primary,
         success_color: nuevoTema.color_exito || nuevoTema.success_color,
         warning_color: nuevoTema.color_advertencia || nuevoTema.warning_color,
         error_color: nuevoTema.color_error || nuevoTema.error_color,
@@ -460,8 +500,11 @@ export const ThemeProvider = ({ children }) => {
         logo_reports_url: nuevoTema.logo_reportes_url || nuevoTema.logo_reports_url,
         favicon_url: nuevoTema.favicon_url,
         report_title: nuevoTema.reporte_titulo_institucion || nuevoTema.report_title,
-        css_variables: nuevoTema.css_variables,
+        // CRÍTICO: Guardar css_variables como JSON para persistencia completa
+        css_variables: cssVariablesFinal,
       };
+      
+      console.log('ThemeContext: CSS Variables a guardar:', cssVariablesFinal);
       
       let temaFinal = null;
       let supabaseOk = false;
