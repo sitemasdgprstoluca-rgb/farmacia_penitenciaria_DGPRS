@@ -698,7 +698,7 @@ const Movimientos = () => {
                     <tr>
                       <td colSpan={columnas.length + 1} className="text-center py-8">
                         <div className="flex justify-center items-center">
-                          <div className="spinner-institucional"></div>
+                          <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent spinner-institucional"></div>
                           <span className="ml-2 text-gray-600">Cargando movimientos...</span>
                         </div>
                       </td>

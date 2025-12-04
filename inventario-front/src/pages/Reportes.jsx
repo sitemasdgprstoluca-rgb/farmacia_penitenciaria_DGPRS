@@ -663,7 +663,7 @@ const Reportes = () => {
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="text-center">
-                <div className="spinner-institucional mx-auto mb-4"></div>
+                <div className="animate-spin rounded-full h-10 w-10 border-4 border-t-transparent spinner-institucional mx-auto mb-4"></div>
                 <p className="text-gray-600 font-semibold">Cargando reporte...</p>
               </div>
             </div>

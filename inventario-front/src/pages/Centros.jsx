@@ -527,7 +527,7 @@ const Centros = () => {
                 <tr>
                   <td colSpan="9" className="text-center py-8">
                     <div className="flex justify-center items-center">
-                      <div className="spinner-institucional"></div>
+                      <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent spinner-institucional"></div>
                       <span className="ml-2">Cargando centros...</span>
                     </div>
                   </td>
