@@ -27,8 +27,7 @@ const badgeByTipo = {
 };
 
 function Notificaciones() {
-  // eslint-disable-next-line no-unused-vars
-  const { permisos } = usePermissions();
+  const { permisos, loading: loadingPermisos } = usePermissions();
   const [notificaciones, setNotificaciones] = useState([]);
   const [total, setTotal] = useState(0);
   const [sinLeer, setSinLeer] = useState(0);
@@ -47,7 +46,17 @@ function Notificaciones() {
     leida: "",
   });
 
+  // Verificar permiso de ver notificaciones
+  const tienePermisoVer = permisos?.verNotificaciones;
+  const tienePermisoGestionar = permisos?.gestionarNotificaciones;
+
   const fetchData = async (targetPage = 1) => {
+    // VALIDAR PERMISO antes de llamar al backend
+    if (!tienePermisoVer) {
+      console.warn('Notificaciones: Usuario sin permiso verNotificaciones');
+      return;
+    }
+    
     // Validar rango de fechas antes de consultar
     if (filters.desde && filters.hasta && filters.desde > filters.hasta) {
       setFechaError('La fecha "Desde" no puede ser mayor a "Hasta"');
@@ -89,9 +98,12 @@ function Notificaciones() {
   };
 
   useEffect(() => {
-    fetchData(1);
+    // Solo cargar si tiene permiso
+    if (tienePermisoVer) {
+      fetchData(1);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.tipo, filters.desde, filters.hasta, filters.leida, pageSize]);
+  }, [filters.tipo, filters.desde, filters.hasta, filters.leida, pageSize, tienePermisoVer]);
 
   // Ya no necesitamos filtrado local - el backend ya filtrÃ³
   const filtered = notificaciones;
@@ -170,6 +182,23 @@ function Notificaciones() {
   };
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  // Si el usuario no tiene permiso para ver notificaciones, mostrar mensaje
+  if (!tienePermisoVer) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
+        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
+          <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h2 className="text-xl font-semibold text-gray-900">Acceso denegado</h2>
+        <p className="text-gray-600 text-center max-w-md">
+          No tienes permiso para ver las notificaciones. Contacta al administrador si crees que deberías tener acceso.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -334,16 +363,16 @@ function Notificaciones() {
                     <td className="px-4 py-3 text-sm text-right space-x-2">
                       {!notif.leida && (
                         <ProtectedButton
-                          permiso="verNotificaciones"
+                          permission="verNotificaciones"
                           onClick={() => marcarLeida(notif.id)}
                           disabled={marcandoId === notif.id}
-                          className="px-3 py-1 rounded-lg border border-blue-100 text-blue-600 hover:bg-blue-50 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-3 py-1 rounded-lg border border-primary-100 text-primary-600 hover:bg-primary-50 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {marcandoId === notif.id ? 'Marcando...' : 'Marcar leída'}
                         </ProtectedButton>
                       )}
                       <ProtectedButton
-                        permiso="gestionarNotificaciones"
+                        permission="gestionarNotificaciones"
                         onClick={() => setDeleteId(notif.id)}
                         disabled={eliminandoId === notif.id}
                         className="px-3 py-1 rounded-lg border border-red-100 text-red-600 hover:bg-red-50 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
