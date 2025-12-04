@@ -274,7 +274,7 @@ const calcularPermisos = (userData, userGroups) => {
   // Obtener permisos base del rol
   const basePerms = PERMISOS_POR_ROL[role] || PERMISOS_POR_ROL.SIN_ROL;
 
-  // Flags derivados que siempre se calculan
+  // Flags derivados que siempre se calculan (NO incluir permisos de módulos aquí)
   const flagsDerivados = {
     role,
     isSuperuser,
@@ -285,8 +285,7 @@ const calcularPermisos = (userData, userGroups) => {
     groupNames,
     verPerfil: true, // Siempre puede ver su perfil
     esSuperusuario: isSuperuser, // Siempre calcular desde is_superuser
-    // Permisos especiales que dependen del rol, no del backend
-    configurarTema: isAdmin || isFarmaciaAdmin, // Solo ADMIN y FARMACIA pueden configurar tema
+    // configurarTema viene del basePerms del rol, NO lo sobrescribimos aquí
   };
 
   // Si el backend envía permisos calculados, mezclarlos con los base y flags
@@ -295,7 +294,7 @@ const calcularPermisos = (userData, userGroups) => {
     return {
       ...basePerms,           // Permisos base del rol (fallback)
       ...userData.permisos,   // Permisos del backend (override)
-      ...flagsDerivados,      // Flags derivados (siempre calculados)
+      ...flagsDerivados,      // Flags derivados (siempre calculados, NO incluye configurarTema)
     };
   }
 
