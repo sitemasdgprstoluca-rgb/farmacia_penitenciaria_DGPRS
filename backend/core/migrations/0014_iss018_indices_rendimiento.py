@@ -4,15 +4,40 @@ ISS-018: Índices de base de datos optimizados.
 Migración para agregar índices que mejoran el rendimiento
 de consultas frecuentes. Usa IF NOT EXISTS para evitar
 errores si los índices ya existen.
+
+También verifica que las tablas existan antes de crear
+índices para manejar casos de BD parcialmente migradas.
 """
 from django.db import migrations
 
 
+def table_exists(schema_editor, table_name):
+    """Verifica si una tabla existe en la base de datos."""
+    cursor = schema_editor.connection.cursor()
+    if schema_editor.connection.vendor == 'postgresql':
+        cursor.execute(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = %s)",
+            [table_name]
+        )
+        return cursor.fetchone()[0]
+    else:
+        # SQLite
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            [table_name]
+        )
+        return cursor.fetchone() is not None
+
+
 def create_index_if_not_exists(schema_editor, table_name, index_name, columns):
     """
-    Crea un índice solo si no existe.
+    Crea un índice solo si no existe Y si la tabla existe.
     Compatible con PostgreSQL y SQLite.
     """
+    # Verificar primero si la tabla existe
+    if not table_exists(schema_editor, table_name):
+        return  # No crear índice si la tabla no existe
+    
     if schema_editor.connection.vendor == 'postgresql':
         # PostgreSQL soporta IF NOT EXISTS
         columns_sql = ', '.join(columns)
