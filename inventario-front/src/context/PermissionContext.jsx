@@ -112,7 +112,7 @@ const PERMISOS_POR_ROL = {
     verRequisiciones: true,
     verCentros: false,
     verUsuarios: false,
-    verReportes: true,
+    verReportes: false,  // Centro NO debe ver Reportes - solo admin/farmacia
     verTrazabilidad: false,
     verAuditoria: false,
     verNotificaciones: true,

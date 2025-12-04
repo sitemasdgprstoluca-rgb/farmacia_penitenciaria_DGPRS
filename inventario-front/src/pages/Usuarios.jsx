@@ -185,6 +185,10 @@ function Usuarios() {
   const handleOpenModal = (usuario = null) => {
     if (usuario) {
       setEditingUsuario(usuario);
+      // Normalizar centro: puede venir como objeto {id, nombre} o como número
+      const centroValue = usuario.centro 
+        ? (typeof usuario.centro === 'object' ? usuario.centro.id : usuario.centro)
+        : '';
       setFormData({
         username: usuario.username,
         email: usuario.email || '',
@@ -194,7 +198,7 @@ function Usuarios() {
         password: '',
         password_confirm: '',
         rol: usuario.rol || 'centro',
-        centro: usuario.centro?.id || '',
+        centro: centroValue,
         is_active: usuario.is_active !== false,
         // Cargar permisos personalizados existentes
         perm_dashboard: usuario.perm_dashboard,
