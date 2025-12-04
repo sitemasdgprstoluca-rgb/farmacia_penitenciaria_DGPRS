@@ -74,6 +74,24 @@ export const isApiConfigured = () => !apiConfigError;
 export const isHttpInsecure = () => httpInsecureError;
 export const hasHttpWarning = () => httpInsecureWarning;
 
+// ISS-003 FIX: Fail-fast helper - lanzar error inmediatamente si API no está configurada
+const assertApiConfigured = () => {
+  if (apiConfigError) {
+    const error = new Error(apiConfigError);
+    error.name = 'ApiConfigurationError';
+    error.isConfigError = true;
+    console.error('[API] Fail-fast: intento de usar API sin configuración válida');
+    throw error;
+  }
+};
+
+// ISS-003: Ejecutar validación fail-fast al cargar el módulo en producción
+if (!isDev && apiConfigError) {
+  console.error('[API] ⛔ FAIL-FAST: La API no está configurada correctamente.');
+  console.error('[API] Error:', apiConfigError);
+  // No lanzar error aquí para permitir que App.jsx muestre el error
+}
+
 const apiClient = axios.create({
   baseURL: `${apiBaseUrl}/`,
   headers: {
@@ -128,6 +146,9 @@ const redirectToLogin = () => {
 // Interceptor para añadir token desde memoria
 apiClient.interceptors.request.use(
   (config) => {
+    // ISS-003 FIX: Fail-fast si la API no está configurada correctamente
+    assertApiConfigured();
+    
     if (activityCallback) {
       activityCallback();
     }

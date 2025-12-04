@@ -240,10 +240,21 @@ class Producto(models.Model):
         return f"{self.clave} - {self.descripcion[:50]}"
     
     def get_stock_actual(self):
-        """Calcula el stock actual sumando todos los lotes disponibles"""
+        """
+        Calcula el stock actual sumando todos los lotes disponibles.
+        
+        ISS-001 FIX: Excluye lotes con soft-delete (deleted_at) y lotes vencidos.
+        Solo cuenta lotes activos, no eliminados y con fecha de caducidad vigente.
+        """
+        from django.utils import timezone
+        today = timezone.now().date()
         return sum(
             lote.cantidad_actual
-            for lote in self.lotes.filter(estado='disponible')
+            for lote in self.lotes.filter(
+                estado='disponible',
+                deleted_at__isnull=True,  # Excluir soft-deleted
+                fecha_caducidad__gte=today  # Excluir vencidos
+            )
         )
     
     def get_nivel_stock(self):
@@ -482,8 +493,10 @@ class Lote(models.Model):
                 'cantidad_actual': 'La cantidad actual no puede ser mayor a la cantidad inicial'
             })
         
-        # Validar fecha de caducidad
-        if self.fecha_caducidad and self.fecha_caducidad < date.today():
+        # ISS-002 FIX: Validar fecha de caducidad con timezone-aware date
+        from django.utils import timezone
+        today = timezone.now().date()
+        if self.fecha_caducidad and self.fecha_caducidad < today:
             self.estado = 'vencido'
             logger.warning(f"Lote {self.numero_lote} marcado como vencido automáticamente")
         
@@ -520,13 +533,17 @@ class Lote(models.Model):
         return self.codigo_barras
     
     def dias_para_caducar(self):
-        """Calcula días restantes para caducidad"""
-        delta = self.fecha_caducidad - date.today()
+        """Calcula días restantes para caducidad usando timezone-aware date (ISS-002)"""
+        from django.utils import timezone
+        today = timezone.now().date()
+        delta = self.fecha_caducidad - today
         return delta.days
     
     def esta_caducado(self):
-        """Verifica si el lote está vencido"""
-        return self.fecha_caducidad < date.today()
+        """Verifica si el lote está vencido usando timezone-aware date (ISS-002)"""
+        from django.utils import timezone
+        today = timezone.now().date()
+        return self.fecha_caducidad < today
     
     def alerta_caducidad(self):
         """
