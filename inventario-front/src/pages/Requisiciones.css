@@ -37,7 +37,7 @@
 }
 
 .btn-icon.btn-info {
-  color: #0ea5e9;
+  color: var(--color-primary);
 }
 
 .btn-icon.btn-info:hover {

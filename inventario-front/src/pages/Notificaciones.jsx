@@ -182,7 +182,7 @@ function Notificaciones() {
           <ProtectedButton
             permission="gestionarNotificaciones"
             onClick={marcarTodas}
-            className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm hover:bg-primary-700 disabled:opacity-60 disabled:cursor-not-allowed"
             disabled={loading || marcandoTodas || sinLeer === 0}
           >
             {marcandoTodas ? 'Marcando...' : 'Marcar todas como leídas'}
@@ -269,7 +269,7 @@ function Notificaciones() {
 
         <div className="bg-white rounded-xl shadow p-4">
           <p className="text-sm text-gray-500">Sin leer</p>
-          <p className="text-3xl font-bold text-blue-700">{sinLeer}</p>
+          <p className="text-3xl font-bold text-primary-700">{sinLeer}</p>
           <p className="text-xs text-gray-500 mt-1">Leídas: {leidas} / Total: {total}</p>
         </div>
       </div>

@@ -127,8 +127,62 @@ const hexToRgb = (hex) => {
 };
 
 /**
+ * Detecta si un color es del tema azul incorrecto (legacy bug)
+ * Estos colores no deberían estar en producción
+ */
+const esColorAzulLegacy = (color) => {
+  if (!color) return false;
+  const azulesLegacy = [
+    '#0ea5e9', '#0284c7', '#0369a1', // Sky blue
+    '#3b82f6', '#2563eb', '#1d4ed8', // Blue
+    '#64748b', '#475569', '#334155', // Slate (sidebar dark)
+    '#1e293b', '#0f172a',            // Slate dark
+    '#e0f2fe', '#f0f9ff',            // Sky light
+    '#f8fafc', '#f1f5f9',            // Slate light
+  ];
+  return azulesLegacy.some(azul => color.toLowerCase() === azul.toLowerCase());
+};
+
+/**
+ * Corrige colores azules legacy reemplazándolos con los institucionales
+ */
+const corregirColoresLegacy = (cssVars) => {
+  if (!cssVars) return null;
+  
+  const corregido = { ...cssVars };
+  let huboCorreccion = false;
+  
+  // Mapeo de correcciones: azul -> guinda institucional
+  const correcciones = {
+    '--color-primary': '#9F2241',
+    '--color-primary-hover': '#6B1839',
+    '--color-primary-light': 'rgba(159, 34, 65, 0.2)',
+    '--color-sidebar-bg': '#9F2241',
+    '--color-sidebar-hover': '#6B1839',
+    '--color-header-bg': '#9F2241',
+    '--color-secondary': '#424242',
+    '--color-background': '#F5F5F5',
+  };
+  
+  for (const [variable, valorDefault] of Object.entries(correcciones)) {
+    if (corregido[variable] && esColorAzulLegacy(corregido[variable])) {
+      console.warn(`ThemeContext: Corrigiendo color legacy ${variable}: ${corregido[variable]} -> ${valorDefault}`);
+      corregido[variable] = valorDefault;
+      huboCorreccion = true;
+    }
+  }
+  
+  if (huboCorreccion) {
+    console.log('ThemeContext: Se corrigieron colores azules legacy');
+  }
+  
+  return corregido;
+};
+
+/**
  * Normaliza los datos de Supabase al formato esperado por el frontend
  * IMPORTANTE: Si css_variables existe y tiene datos, usarlas TAL CUAL sin mezclar
+ * ADEMÁS: Corrige cualquier color azul legacy que haya quedado en la base de datos
  */
 const normalizarTemaSupabase = (temaSupabase) => {
   if (!temaSupabase) return null;
@@ -178,6 +232,9 @@ const normalizarTemaSupabase = (temaSupabase) => {
       '--font-family-principal': temaSupabase.font_family || "'Montserrat', sans-serif",
     };
   }
+  
+  // CRÍTICO: Corregir cualquier color azul legacy que pueda haber quedado en Supabase
+  cssVars = corregirColoresLegacy(cssVars);
   
   return {
     id: temaSupabase.id,
