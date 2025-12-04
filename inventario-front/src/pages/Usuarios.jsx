@@ -364,12 +364,10 @@ function Usuarios() {
         last_name: formData.last_name,
         adscripcion: formData.adscripcion,
         rol: formData.rol,
-        is_active: formData.is_active
+        is_active: formData.is_active,
+        // Siempre enviar centro (como número o null para quitar asignación)
+        centro: formData.centro ? parseInt(formData.centro, 10) : null
       };
-      
-      if (formData.centro) {
-        payload.centro = formData.centro;
-      }
       
       if (!editingUsuario && formData.password) {
         payload.password = formData.password;
