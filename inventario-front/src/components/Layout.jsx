@@ -249,8 +249,8 @@ function Layout() {
         <header 
           className="shadow-sm sticky top-0 z-30" 
           style={{ 
-            backgroundColor: "var(--color-card-bg, #FFFFFF)", 
-            borderBottom: "3px solid var(--color-primary, #9F2241)" 
+            background: "linear-gradient(135deg, var(--color-header-bg, var(--color-primary, #9F2241)) 0%, var(--color-primary-hover, #6B1839) 100%)",
+            borderBottom: "3px solid var(--color-primary-hover, #6B1839)" 
           }}
         >
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-4">
@@ -258,15 +258,15 @@ function Layout() {
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
                 className="transition-colors"
-                style={{ color: "var(--color-primary, #9F2241)" }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = "var(--color-primary-hover, #6B1839)")}
-                onMouseLeave={(e) => (e.currentTarget.style.color = "var(--color-primary, #9F2241)")}
+                style={{ color: "var(--color-header-text, #FFFFFF)" }}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.8")}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
               >
                 <FaBars size={24} />
               </button>
               <h1
                 className="text-sm sm:text-base md:text-lg font-bold leading-snug max-w-3xl"
-                style={{ color: "var(--color-primary-hover, #6B1839)" }}
+                style={{ color: "var(--color-header-text, #FFFFFF)" }}
               >
                 {nombreSistema || temaGlobal?.reporte_titulo_institucion || "SISTEMA DE FARMACIA PENITENCIARIA - GOBIERNO DEL ESTADO DE MEXICO"}
               </h1>
