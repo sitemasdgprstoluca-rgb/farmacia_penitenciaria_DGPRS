@@ -36,6 +36,7 @@ PERMISOS_POR_ROL = {
         'verNotificaciones': True,
         'verPerfil': True,
         'verMovimientos': True,
+        'configurarTema': True,  # Solo Admin puede personalizar tema
         # Permisos granulares de requisiciones
         'crearRequisicion': True,
         'editarRequisicion': True,
@@ -60,6 +61,7 @@ PERMISOS_POR_ROL = {
         'verNotificaciones': True,
         'verPerfil': True,
         'verMovimientos': True,
+        'configurarTema': False,  # Farmacia NO puede personalizar tema
         # Permisos granulares de requisiciones
         'crearRequisicion': True,
         'editarRequisicion': True,
@@ -78,12 +80,13 @@ PERMISOS_POR_ROL = {
         'verRequisiciones': True,
         'verCentros': False,
         'verUsuarios': False,
-        'verReportes': True,
+        'verReportes': False,  # Centro NO debe ver Reportes - solo admin/farmacia
         'verTrazabilidad': False,
         'verAuditoria': False,
         'verNotificaciones': True,
         'verPerfil': True,
         'verMovimientos': False,
+        'configurarTema': False,  # Centro no puede personalizar tema
         # Permisos granulares de requisiciones - Centro solo crea y envía
         'crearRequisicion': True,
         'editarRequisicion': True,  # Solo sus propios borradores
@@ -108,6 +111,7 @@ PERMISOS_POR_ROL = {
         'verNotificaciones': True,
         'verPerfil': True,
         'verMovimientos': True,
+        'configurarTema': False,  # Vista no puede personalizar tema
         # Vista no puede modificar requisiciones
         'crearRequisicion': False,
         'editarRequisicion': False,
@@ -132,6 +136,7 @@ PERMISOS_POR_ROL = {
         'verNotificaciones': False,
         'verPerfil': False,
         'verMovimientos': False,
+        'configurarTema': False,
         'crearRequisicion': False,
         'editarRequisicion': False,
         'eliminarRequisicion': False,

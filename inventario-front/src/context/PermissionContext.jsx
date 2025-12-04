@@ -73,7 +73,7 @@ const PERMISOS_POR_ROL = {
     verPerfil: true,
     verMovimientos: true,
     esSuperusuario: false,
-    configurarTema: true, // Farmacia puede personalizar tema
+    configurarTema: false, // Farmacia NO puede personalizar tema - solo Admin
     // Permisos granulares de requisiciones
     crearRequisicion: true,
     editarRequisicion: true,
