@@ -1,0 +1,565 @@
+"""
+Servicio transaccional para operaciones de requisiciones.
+
+ISS-011: Implementa transacciones atómicas para el surtido
+ISS-021: Servicio centralizado con rollback completo
+ISS-014: Bloqueo optimista en descuentos de lote
+"""
+import logging
+from django.db import transaction
+from django.db.models import Sum, Q, F
+from django.utils import timezone
+from rest_framework import serializers
+
+from core.models import Lote, Movimiento
+
+logger = logging.getLogger(__name__)
+
+
+class RequisicionServiceError(Exception):
+    """Excepción base para errores del servicio de requisiciones."""
+    def __init__(self, message, details=None, code='error'):
+        super().__init__(message)
+        self.message = message
+        self.details = details or {}
+        self.code = code
+
+
+class StockInsuficienteError(RequisicionServiceError):
+    """Error cuando no hay stock suficiente para surtir."""
+    def __init__(self, message, detalles_stock):
+        super().__init__(message, details={'detalles_stock': detalles_stock}, code='stock_insuficiente')
+        self.detalles_stock = detalles_stock
+
+
+class EstadoInvalidoError(RequisicionServiceError):
+    """Error cuando la requisición no está en un estado válido para la operación."""
+    def __init__(self, message, estado_actual):
+        super().__init__(message, details={'estado_actual': estado_actual}, code='estado_invalido')
+        self.estado_actual = estado_actual
+
+
+class PermisoRequisicionError(RequisicionServiceError):
+    """Error de permisos para operar sobre la requisición."""
+    def __init__(self, message):
+        super().__init__(message, code='permiso_denegado')
+
+
+class RequisicionService:
+    """
+    Servicio transaccional para operaciones de requisiciones.
+    
+    ISS-011, ISS-021: Todas las operaciones son atómicas con rollback completo.
+    ISS-014: Usa select_for_update() para bloqueo optimista de lotes.
+    ISS-030: Valida permisos de acceso por centro.
+    """
+    
+    ESTADOS_SURTIBLES = ['autorizada', 'parcial']
+    TRANSICIONES_VALIDAS = {
+        'borrador': ['enviada', 'cancelada'],
+        'enviada': ['en_revision', 'rechazada', 'cancelada'],
+        'en_revision': ['autorizada', 'rechazada'],
+        'autorizada': ['surtida', 'parcial', 'cancelada'],
+        'parcial': ['surtida', 'cancelada'],
+        'surtida': ['recibida'],
+        'recibida': [],  # Estado final
+        'rechazada': ['borrador'],  # Permite reenvío
+        'cancelada': []  # Estado final
+    }
+    
+    def __init__(self, requisicion, usuario):
+        """
+        Inicializa el servicio.
+        
+        Args:
+            requisicion: Instancia del modelo Requisicion
+            usuario: Usuario que realiza la operación
+        """
+        self.requisicion = requisicion
+        self.usuario = usuario
+        self._movimientos_creados = []
+        self._lotes_actualizados = []
+    
+    def validar_transicion_estado(self, nuevo_estado):
+        """
+        ISS-012: Valida que la transición de estado sea válida.
+        
+        Args:
+            nuevo_estado: Estado destino
+            
+        Raises:
+            EstadoInvalidoError: Si la transición no es válida
+        """
+        estado_actual = (self.requisicion.estado or 'borrador').lower()
+        transiciones_permitidas = self.TRANSICIONES_VALIDAS.get(estado_actual, [])
+        
+        if nuevo_estado.lower() not in transiciones_permitidas:
+            raise EstadoInvalidoError(
+                f"Transición de estado inválida: {estado_actual} → {nuevo_estado}. "
+                f"Transiciones permitidas: {transiciones_permitidas}",
+                estado_actual=estado_actual
+            )
+    
+    def validar_permisos_surtido(self, is_farmacia_or_admin_fn, get_user_centro_fn):
+        """
+        ISS-030: Valida permisos del usuario para surtir.
+        
+        Args:
+            is_farmacia_or_admin_fn: Función que verifica si usuario es farmacia/admin
+            get_user_centro_fn: Función que obtiene el centro del usuario
+            
+        Raises:
+            PermisoRequisicionError: Si el usuario no tiene permiso
+        """
+        if self.usuario.is_superuser:
+            return True
+            
+        if is_farmacia_or_admin_fn(self.usuario):
+            return True
+        
+        # Usuario de centro: solo puede surtir su propio centro
+        centro_user = get_user_centro_fn(self.usuario)
+        if not centro_user:
+            raise PermisoRequisicionError(
+                "Usuario sin centro asignado no puede surtir requisiciones"
+            )
+        
+        if self.requisicion.centro_id != centro_user.id:
+            raise PermisoRequisicionError(
+                "No puede surtir requisiciones de otro centro"
+            )
+        
+        return True
+    
+    def validar_stock_disponible(self):
+        """
+        Valida que hay stock suficiente para todos los items.
+        
+        Returns:
+            list: Lista vacía si hay stock suficiente
+            
+        Raises:
+            StockInsuficienteError: Si no hay stock suficiente
+        """
+        centro_requisicion = self.requisicion.centro
+        errores_stock = []
+        
+        for detalle in self.requisicion.detalles.select_related('producto'):
+            requerido = (detalle.cantidad_autorizada or detalle.cantidad_solicitada) - (detalle.cantidad_surtida or 0)
+            if requerido <= 0:
+                continue
+            
+            # Lotes de farmacia central (centro=None) o del centro destino
+            disponible = Lote.objects.filter(
+                Q(centro__isnull=True) | Q(centro=centro_requisicion),
+                producto=detalle.producto,
+                estado='disponible',
+                deleted_at__isnull=True,
+                cantidad_actual__gt=0
+            ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+            
+            if disponible < requerido:
+                errores_stock.append({
+                    'producto': detalle.producto.clave,
+                    'producto_descripcion': detalle.producto.descripcion[:50],
+                    'requerido': requerido,
+                    'disponible': disponible,
+                    'deficit': requerido - disponible
+                })
+        
+        if errores_stock:
+            raise StockInsuficienteError(
+                f"Stock insuficiente para {len(errores_stock)} producto(s)",
+                detalles_stock=errores_stock
+            )
+        
+        return []
+    
+    @transaction.atomic
+    def surtir(self, is_farmacia_or_admin_fn, get_user_centro_fn):
+        """
+        ISS-011, ISS-021: Surte una requisición de forma atómica.
+        
+        Todo el proceso está envuelto en una transacción:
+        1. Validar estado de requisición
+        2. Validar permisos del usuario
+        3. Validar stock disponible
+        4. Para cada item:
+           a. Obtener lotes con bloqueo (select_for_update)
+           b. Descontar de farmacia central
+           c. Crear entrada en centro destino
+           d. Registrar movimientos
+        5. Actualizar estado de requisición
+        
+        Si cualquier paso falla, se hace rollback completo.
+        
+        Args:
+            is_farmacia_or_admin_fn: Función para verificar rol
+            get_user_centro_fn: Función para obtener centro del usuario
+            
+        Returns:
+            dict: Resultado del surtido con detalles
+            
+        Raises:
+            EstadoInvalidoError: Si la requisición no está en estado surtible
+            PermisoRequisicionError: Si el usuario no tiene permiso
+            StockInsuficienteError: Si no hay stock suficiente
+        """
+        # 1. Validar estado
+        estado_actual = (self.requisicion.estado or '').lower()
+        if estado_actual not in self.ESTADOS_SURTIBLES:
+            raise EstadoInvalidoError(
+                f"Solo se pueden surtir requisiciones en estado: {self.ESTADOS_SURTIBLES}",
+                estado_actual=estado_actual
+            )
+        
+        # 2. Validar permisos
+        self.validar_permisos_surtido(is_farmacia_or_admin_fn, get_user_centro_fn)
+        
+        # 3. Validar stock (pre-check)
+        self.validar_stock_disponible()
+        
+        centro_requisicion = self.requisicion.centro
+        items_surtidos = []
+        
+        # 4. Procesar cada detalle
+        for detalle in self.requisicion.detalles.select_related('producto'):
+            pendiente = (detalle.cantidad_autorizada or detalle.cantidad_solicitada) - (detalle.cantidad_surtida or 0)
+            if pendiente <= 0:
+                continue
+            
+            cantidad_surtida_item = 0
+            lotes_usados = []
+            
+            # ISS-014: Obtener lotes CON BLOQUEO para evitar race conditions
+            # select_for_update() bloquea las filas hasta que termine la transacción
+            lotes = Lote.objects.select_for_update().filter(
+                Q(centro__isnull=True) | Q(centro=centro_requisicion),
+                producto=detalle.producto,
+                estado='disponible',
+                deleted_at__isnull=True,
+                cantidad_actual__gt=0
+            ).order_by('fecha_caducidad', 'id')  # FEFO
+            
+            for lote in lotes:
+                if pendiente <= 0:
+                    break
+                
+                usar = min(pendiente, lote.cantidad_actual)
+                
+                # Guardar stock previo antes de descontar
+                stock_previo = lote.cantidad_actual
+                
+                # ISS-014: Descontar con verificación atómica
+                lote_info = self._descontar_lote_atomico(lote, usar)
+                
+                # Registrar movimiento de salida (pasando stock_previo para validación)
+                movimiento_salida = self._crear_movimiento(
+                    lote=lote,
+                    tipo='salida',
+                    cantidad=-usar,
+                    centro=lote.centro,
+                    observaciones=f'SALIDA_POR_REQUISICION {self.requisicion.folio}',
+                    stock_previo=stock_previo
+                )
+                
+                # Si lote era de farmacia central, crear entrada en centro destino
+                if lote.centro is None and centro_requisicion:
+                    lote_destino = self._obtener_o_crear_lote_destino(
+                        lote_origen=lote,
+                        centro_destino=centro_requisicion,
+                        cantidad=usar
+                    )
+                    
+                    movimiento_entrada = self._crear_movimiento(
+                        lote=lote_destino,
+                        tipo='entrada',
+                        cantidad=usar,
+                        centro=centro_requisicion,
+                        observaciones=f'ENTRADA_POR_REQUISICION {self.requisicion.folio}'
+                    )
+                
+                lotes_usados.append({
+                    'lote_numero': lote.numero_lote,
+                    'cantidad': usar,
+                    'lote_origen_id': lote.pk
+                })
+                
+                detalle.cantidad_surtida = (detalle.cantidad_surtida or 0) + usar
+                pendiente -= usar
+                cantidad_surtida_item += usar
+            
+            # Guardar detalle actualizado
+            detalle.save(update_fields=['cantidad_surtida'])
+            
+            items_surtidos.append({
+                'producto': detalle.producto.clave,
+                'cantidad_surtida': cantidad_surtida_item,
+                'lotes_usados': lotes_usados
+            })
+        
+        # 5. Actualizar estado de requisición
+        # Refrescar detalles para verificar si está completamente surtida
+        from core.models import Requisicion as RequisicionModel
+        requisicion_actualizada = RequisicionModel.objects.get(pk=self.requisicion.pk)
+        detalles_actualizados = requisicion_actualizada.detalles.all()
+        
+        completada = all(
+            (d.cantidad_autorizada or d.cantidad_solicitada) <= (d.cantidad_surtida or 0)
+            for d in detalles_actualizados
+        )
+        
+        nuevo_estado = 'surtida' if completada else 'parcial'
+        self.requisicion.estado = nuevo_estado
+        self.requisicion.save(update_fields=['estado'])
+        
+        logger.info(
+            f"Requisición {self.requisicion.folio} surtida exitosamente por {self.usuario.username}. "
+            f"Estado: {nuevo_estado}. Items: {len(items_surtidos)}"
+        )
+        
+        return {
+            'exito': True,
+            'folio': self.requisicion.folio,
+            'estado': nuevo_estado,
+            'completada': completada,
+            'items_surtidos': items_surtidos,
+            'total_items': len(items_surtidos),
+            'usuario': self.usuario.username,
+            'fecha': timezone.now().isoformat()
+        }
+    
+    def _descontar_lote_atomico(self, lote, cantidad):
+        """
+        ISS-014: Descuenta cantidad del lote de forma atómica.
+        
+        El lote ya debe estar bloqueado con select_for_update().
+        Usa F() expressions para actualización atómica.
+        
+        Args:
+            lote: Instancia del lote (bloqueada)
+            cantidad: Cantidad a descontar
+            
+        Returns:
+            dict: Información del lote actualizado
+            
+        Raises:
+            serializers.ValidationError: Si no hay stock suficiente
+        """
+        # Verificación final de stock (el lote está bloqueado)
+        if lote.cantidad_actual < cantidad:
+            raise serializers.ValidationError({
+                'cantidad': f'Stock insuficiente en lote {lote.numero_lote}. '
+                           f'Disponible: {lote.cantidad_actual}, Requerido: {cantidad}'
+            })
+        
+        stock_anterior = lote.cantidad_actual
+        nuevo_stock = stock_anterior - cantidad
+        
+        # Actualizar con F() para atomicidad adicional
+        Lote.objects.filter(pk=lote.pk).update(
+            cantidad_actual=F('cantidad_actual') - cantidad,
+            estado='agotado' if nuevo_stock == 0 else 'disponible',
+            updated_at=timezone.now()
+        )
+        
+        # Refrescar instancia
+        lote.refresh_from_db()
+        
+        self._lotes_actualizados.append({
+            'lote_id': lote.pk,
+            'numero_lote': lote.numero_lote,
+            'stock_anterior': stock_anterior,
+            'cantidad_descontada': cantidad,
+            'stock_nuevo': lote.cantidad_actual
+        })
+        
+        return {
+            'lote_id': lote.pk,
+            'stock_anterior': stock_anterior,
+            'stock_nuevo': lote.cantidad_actual
+        }
+    
+    def _crear_movimiento(self, lote, tipo, cantidad, centro, observaciones, stock_previo=None):
+        """
+        Crea un movimiento de inventario.
+        
+        Args:
+            lote: Lote asociado
+            tipo: 'entrada' o 'salida'
+            cantidad: Cantidad (negativo para salidas)
+            centro: Centro del movimiento
+            observaciones: Texto descriptivo
+            stock_previo: Stock antes del movimiento (para validación)
+            
+        Returns:
+            Movimiento: Instancia creada
+        """
+        movimiento = Movimiento(
+            tipo=tipo,
+            lote=lote,
+            centro=centro,
+            requisicion=self.requisicion,
+            usuario=self.usuario if self.usuario.is_authenticated else None,
+            cantidad=cantidad,
+            observaciones=observaciones
+        )
+        # Pasar stock previo para evitar re-validación (ya descontamos)
+        if stock_previo is not None:
+            movimiento._stock_pre_movimiento = stock_previo
+        movimiento.save()
+        
+        self._movimientos_creados.append(movimiento)
+        return movimiento
+    
+    def _obtener_o_crear_lote_destino(self, lote_origen, centro_destino, cantidad):
+        """
+        Obtiene o crea lote destino en el centro.
+        
+        El lote en el centro es una COPIA FIEL del lote de farmacia:
+        - Mismo número de lote
+        - Misma fecha de caducidad
+        - Vinculado a lote_origen
+        
+        Args:
+            lote_origen: Lote de farmacia central
+            centro_destino: Centro donde crear/actualizar lote
+            cantidad: Cantidad a agregar
+            
+        Returns:
+            Lote: Instancia del lote destino
+        """
+        # Buscar lote existente con mismo número en el centro
+        lote_destino = Lote.objects.select_for_update().filter(
+            producto=lote_origen.producto,
+            numero_lote=lote_origen.numero_lote,
+            centro=centro_destino,
+            deleted_at__isnull=True
+        ).first()
+        
+        if lote_destino:
+            # Reactivar si estaba agotado
+            if lote_destino.estado == 'agotado':
+                lote_destino.estado = 'disponible'
+            
+            # Actualizar cantidad
+            Lote.objects.filter(pk=lote_destino.pk).update(
+                cantidad_actual=F('cantidad_actual') + cantidad,
+                cantidad_inicial=F('cantidad_inicial') + cantidad,
+                estado='disponible',
+                updated_at=timezone.now()
+            )
+            lote_destino.refresh_from_db()
+        else:
+            # Crear nuevo lote: COPIA FIEL del lote de farmacia
+            lote_destino = Lote.objects.create(
+                producto=lote_origen.producto,
+                numero_lote=lote_origen.numero_lote,
+                centro=centro_destino,
+                fecha_caducidad=lote_origen.fecha_caducidad,
+                cantidad_inicial=cantidad,
+                cantidad_actual=cantidad,
+                estado='disponible',
+                precio_compra=lote_origen.precio_compra,
+                proveedor=lote_origen.proveedor,
+                lote_origen=lote_origen,
+                observaciones=f'Transferido de farmacia central via requisición {self.requisicion.folio}'
+            )
+        
+        return lote_destino
+
+
+class CentroPermissionMixin:
+    """
+    ISS-030: Mixin para validar acceso por centro.
+    
+    Uso:
+        class MyViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
+            ...
+    """
+    
+    def get_centro_from_request(self):
+        """Obtiene centro_id del request (body o query params)."""
+        centro_id = self.request.data.get('centro') or self.request.query_params.get('centro')
+        return centro_id
+    
+    def check_centro_permission(self, centro_id=None):
+        """
+        Verifica que el usuario tenga acceso al centro especificado.
+        
+        Args:
+            centro_id: ID del centro a verificar (o None para obtener del request)
+            
+        Raises:
+            PermissionDenied: Si no tiene acceso
+        """
+        from rest_framework.exceptions import PermissionDenied
+        
+        if centro_id is None:
+            centro_id = self.get_centro_from_request()
+        
+        if centro_id is None:
+            return  # No se especificó centro, permitir
+        
+        user = self.request.user
+        
+        # Admin y farmacia pueden acceder a cualquier centro
+        if user.is_superuser:
+            return
+        
+        user_rol = getattr(user, 'rol', '').lower()
+        if user_rol in ['admin', 'farmacia']:
+            return
+        
+        # Verificar si usuario pertenece al centro
+        user_centro = getattr(user, 'centro', None)
+        if user_centro is None:
+            raise PermissionDenied("Usuario sin centro asignado")
+        
+        try:
+            centro_id_int = int(centro_id)
+        except (TypeError, ValueError):
+            raise PermissionDenied("ID de centro inválido")
+        
+        if user_centro.pk != centro_id_int:
+            logger.warning(
+                f"Acceso denegado a centro {centro_id} para usuario {user.username} "
+                f"(centro asignado: {user_centro.pk})"
+            )
+            raise PermissionDenied("No tiene acceso a este centro")
+    
+    def filter_queryset_by_centro(self, queryset):
+        """
+        ISS-030: Filtra queryset por centro del usuario.
+        
+        Admin/farmacia ven todo. Usuarios de centro solo ven su centro.
+        
+        Args:
+            queryset: QuerySet a filtrar
+            
+        Returns:
+            QuerySet filtrado
+        """
+        user = self.request.user
+        
+        if user.is_superuser:
+            return queryset
+        
+        user_rol = getattr(user, 'rol', '').lower()
+        if user_rol in ['admin', 'farmacia']:
+            return queryset
+        
+        # Usuario de centro: filtrar por su centro
+        user_centro = getattr(user, 'centro', None)
+        if user_centro is None:
+            return queryset.none()
+        
+        # Intentar filtrar por campo 'centro'
+        if hasattr(queryset.model, 'centro'):
+            return queryset.filter(centro=user_centro)
+        
+        # Para requisiciones, filtrar por centro de la requisición
+        if hasattr(queryset.model, 'centro_id'):
+            return queryset.filter(centro_id=user_centro.pk)
+        
+        return queryset

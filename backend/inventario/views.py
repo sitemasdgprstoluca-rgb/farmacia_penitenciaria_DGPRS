@@ -20,6 +20,9 @@ import os
 import logging
 from io import BytesIO
 
+# ISS-011, ISS-021, ISS-030: Import de servicios transaccionales
+from inventario.services import CentroPermissionMixin
+
 logger = logging.getLogger(__name__)
 
 
@@ -2657,11 +2660,16 @@ class MovimientoViewSet(
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-class RequisicionViewSet(viewsets.ModelViewSet):
+class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     """
-    CRUD y flujo de requisiciones con estados en minusculas
-    (borrador -> enviada -> autorizada/parcial -> surtida o rechazada/cancelada).
-    Las validaciones se alinean con los campos reales del modelo y la UI.
+    ISS-030: CRUD y flujo de requisiciones con control de acceso por centro.
+    
+    Estados en minúsculas:
+    (borrador -> enviada -> autorizada/parcial -> surtida o rechazada/cancelada)
+    
+    ISS-011, ISS-021: El método surtir() usa RequisicionService para transacciones atómicas.
+    ISS-014: Bloqueo optimista de lotes durante el surtido.
+    ISS-030: Validación de acceso por centro en todas las operaciones.
     """
     queryset = Requisicion.objects.select_related('centro', 'usuario_solicita', 'usuario_autoriza').prefetch_related('detalles__producto').all()
     serializer_class = RequisicionSerializer
@@ -2961,151 +2969,82 @@ class RequisicionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def surtir(self, request, pk=None):
         """
-        Surte una requisici�n autorizada.
+        ISS-011, ISS-021: Surte una requisición autorizada de forma ATÓMICA.
+        
+        Usa RequisicionService para garantizar:
+        - Transacción atómica con rollback completo si falla cualquier paso
+        - Bloqueo optimista de lotes (select_for_update)
+        - Validación de permisos por centro
         
         PERMISOS:
-        - Superuser: puede surtir cualquier requisici�n
-        - Farmacia (admin_farmacia, farmacia): puede surtir cualquier requisici�n
+        - Superuser: puede surtir cualquier requisición
+        - Farmacia (admin_farmacia, farmacia): puede surtir cualquier requisición
         - Centro: solo puede surtir requisiciones de su propio centro
         
-        L�GICA DE STOCK:
-        - Primero usa lotes de farmacia central (centro=NULL) ? crea entrada en centro destino
+        LÓGICA DE STOCK:
+        - Primero usa lotes de farmacia central (centro=NULL) → crea entrada en centro destino
         - Si no hay en farmacia central, usa lotes del centro solicitante (salida interna)
         """
+        from inventario.services import (
+            RequisicionService,
+            StockInsuficienteError,
+            EstadoInvalidoError,
+            PermisoRequisicionError
+        )
+        
         requisicion = self.get_object()
-        estado_actual = (requisicion.estado or '').lower()
-        if estado_actual not in ['autorizada', 'parcial']:
-            return Response({'error': 'Solo se pueden surtir requisiciones autorizadas'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # PERMISOS: Farmacia/admin puede surtir cualquier requisici�n
-        user = request.user
-        if not user.is_superuser and not is_farmacia_or_admin(user):
-            # Usuario de centro: solo puede surtir su propio centro
-            centro_user = self._user_centro(user)
-            if not centro_user or requisicion.centro_id != centro_user.id:
-                return Response({'error': 'No puedes surtir requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
-
-        # SEGURIDAD: Solo usar lotes de farmacia central (centro=None) o del centro solicitante
-        # Esto evita descuentos de stock entre centros
-        centro_requisicion = requisicion.centro
-        
-        errores_stock = []
-        for detalle in requisicion.detalles.select_related('producto'):
-            requerido = (detalle.cantidad_autorizada or detalle.cantidad_solicitada) - (detalle.cantidad_surtida or 0)
-            if requerido <= 0:
-                continue
-            # Lotes de farmacia central (centro=None) o del centro de destino
-            disponible = Lote.objects.filter(
-                Q(centro__isnull=True) | Q(centro=centro_requisicion),
-                producto=detalle.producto,
-                estado='disponible',
-                deleted_at__isnull=True,
-                cantidad_actual__gt=0
-            ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
-            if disponible < requerido:
-                errores_stock.append({
-                    'producto': detalle.producto.clave,
-                    'requerido': requerido,
-                    'disponible': disponible
-                })
-        if errores_stock:
-            return Response({'error': 'Stock insuficiente para surtir', 'detalles': errores_stock}, status=status.HTTP_400_BAD_REQUEST)
-
-        with transaction.atomic():
-            for detalle in requisicion.detalles.select_related('producto'):
-                pendiente = (detalle.cantidad_autorizada or detalle.cantidad_solicitada) - (detalle.cantidad_surtida or 0)
-                if pendiente <= 0:
-                    continue
-                # FEFO: Lotes de farmacia central o del centro, ordenados por caducidad
-                lotes = Lote.objects.filter(
-                    Q(centro__isnull=True) | Q(centro=centro_requisicion),
-                    producto=detalle.producto,
-                    estado='disponible',
-                    deleted_at__isnull=True,
-                    cantidad_actual__gt=0
-                ).order_by('fecha_caducidad', 'id')
-
-                for lote in lotes:
-                    if pendiente <= 0:
-                        break
-                    usar = min(pendiente, lote.cantidad_actual)
-                    
-                    # PASO 1: Registrar SALIDA del lote origen (farmacia central o mismo centro)
-                    movimiento_salida, lote_actualizado = registrar_movimiento_stock(
-                        lote=lote,
-                        tipo='salida',
-                        cantidad=usar,
-                        centro=lote.centro,  # Centro del lote origen
-                        usuario=request.user if request.user.is_authenticated else None,
-                        requisicion=requisicion,
-                        observaciones=f'SALIDA_POR_REQUISICION {requisicion.folio}'
-                    )
-                    
-                    # PASO 2: Si el lote era de farmacia central (centro=None), crear ENTRADA en centro destino
-                    # REGLA DE ORO: El lote en el centro es una COPIA FIEL del lote de farmacia
-                    # - Mismo producto
-                    # - Mismo n�mero de lote (SIN modificar)
-                    # - Misma fecha de caducidad
-                    # - Vinculado a lote_origen (trazabilidad obligatoria)
-                    if lote.centro is None and centro_requisicion:
-                        # Buscar lote existente en el centro destino con MISMO n�mero de lote
-                        lote_destino = Lote.objects.filter(
-                            producto=detalle.producto,
-                            numero_lote=lote.numero_lote,  # MISMO n�mero de lote
-                            centro=centro_requisicion,
-                            deleted_at__isnull=True
-                        ).first()
-                        
-                        if lote_destino:
-                            # Si existe y est� agotado, reactivarlo
-                            if lote_destino.estado == 'agotado':
-                                lote_destino.estado = 'disponible'
-                                lote_destino.save(update_fields=['estado'])
-                        else:
-                            # Crear nuevo lote: COPIA FIEL del lote de farmacia
-                            # El n�mero de lote es ID�NTICO al de farmacia
-                            lote_destino = Lote(
-                                producto=detalle.producto,
-                                numero_lote=lote.numero_lote,  # MISMO n�mero de lote
-                                centro=centro_requisicion,
-                                fecha_caducidad=lote.fecha_caducidad,  # MISMA caducidad
-                                cantidad_inicial=usar,
-                                cantidad_actual=0,  # Se actualiza con el movimiento
-                                estado='disponible',
-                                precio_compra=lote.precio_compra,
-                                proveedor=lote.proveedor,
-                                lote_origen=lote,  # VINCULACI�N OBLIGATORIA al lote de farmacia
-                                observaciones=f'Transferido de farmacia central via requisicion {requisicion.folio}'
-                            )
-                            # Guardar sin validaci�n full_clean para permitir la creaci�n
-                            lote_destino.save()
-                        
-                        # Registrar ENTRADA en el centro destino
-                        # IMPORTANTE: Asociar la requisici�n al movimiento de entrada para trazabilidad completa
-                        movimiento_entrada, _ = registrar_movimiento_stock(
-                            lote=lote_destino,
-                            tipo='entrada',
-                            cantidad=usar,
-                            centro=centro_requisicion,
-                            usuario=request.user if request.user.is_authenticated else None,
-                            requisicion=None,  # La requisici�n solo se registra en la salida para no duplicar conteos
-                            observaciones=f'ENTRADA_POR_REQUISICION {requisicion.folio}'
-                        )
-                    
-                    detalle.cantidad_surtida = (detalle.cantidad_surtida or 0) + usar
-                    detalle.save(update_fields=['cantidad_surtida'])
-                    pendiente -= usar
-
-            detalles_actualizados = Requisicion.objects.get(pk=requisicion.pk).detalles.all()
-            completada = all(
-                (d.cantidad_autorizada or d.cantidad_solicitada) <= (d.cantidad_surtida or 0)
-                for d in detalles_actualizados
+        try:
+            # ISS-011, ISS-021: Usar servicio transaccional
+            service = RequisicionService(requisicion, request.user)
+            resultado = service.surtir(
+                is_farmacia_or_admin_fn=is_farmacia_or_admin,
+                get_user_centro_fn=get_user_centro
             )
-            requisicion.estado = 'surtida' if completada else 'parcial'
-            requisicion.save(update_fields=['estado'])
+            
+            # Refrescar requisición para serializer
+            requisicion.refresh_from_db()
+            
+            return Response({
+                'mensaje': 'Requisición surtida exitosamente',
+                'requisicion': RequisicionSerializer(requisicion).data,
+                'detalles_surtido': resultado
+            })
+            
+        except EstadoInvalidoError as e:
+            return Response({
+                'error': str(e),
+                'codigo': e.code,
+                'estado_actual': e.estado_actual
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        except PermisoRequisicionError as e:
+            return Response({
+                'error': str(e),
+                'codigo': e.code
+            }, status=status.HTTP_403_FORBIDDEN)
+            
+        except StockInsuficienteError as e:
+            return Response({
+                'error': str(e),
+                'codigo': e.code,
+                'detalles': e.detalles_stock
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            logger.exception(f"Error inesperado al surtir requisición {requisicion.folio}: {e}")
+            return Response({
+                'error': 'Error interno al procesar el surtido. Por favor intente nuevamente.',
+                'codigo': 'error_interno'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        return Response({'mensaje': 'Requisicion surtida', 'requisicion': RequisicionSerializer(requisicion).data})
-
+    # === MÉTODO LEGACY COMENTADO - Mantener como referencia ===
+    # @action(detail=True, methods=['post'])
+    # def surtir_legacy(self, request, pk=None):
+    #     """
+    #     DEPRECADO: Método original sin transacción atómica.
+    #     Ver surtir() para la implementación correcta con ISS-011/ISS-021.
+    #     """
     @action(detail=True, methods=['post'], url_path='marcar-recibida')
     def marcar_recibida(self, request, pk=None):
         """

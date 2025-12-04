@@ -64,13 +64,14 @@ class E2EFlujosCompletos(TestCase):
             stock_minimo=5,
             created_by=self.admin,
         )
+        # Lote en farmacia CENTRAL (centro=None)
         self.lote = Lote.objects.create(
             producto=self.producto,
             numero_lote="LOT001",
             fecha_caducidad=date.today() + timedelta(days=60),
             cantidad_inicial=100,
             cantidad_actual=100,
-            centro=self.farmacia,  # Asignar el lote a la farmacia
+            centro=None,  # Farmacia central
             created_by=self.admin,
         )
 
