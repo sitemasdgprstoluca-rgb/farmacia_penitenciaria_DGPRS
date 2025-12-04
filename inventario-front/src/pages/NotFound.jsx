@@ -24,8 +24,7 @@ function NotFound() {
         <div className="space-y-3">
           <Link
             to="/dashboard"
-            className="inline-flex items-center gap-2 px-6 py-3 text-white rounded-lg font-semibold transition-all transform hover:scale-105 hover:shadow-lg"
-            style={{ background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)' }}
+            className="inline-flex items-center gap-2 px-6 py-3 text-white rounded-lg font-semibold transition-all transform hover:scale-105 hover:shadow-lg bg-theme-gradient"
           >
             <FaHome />
             Ir al Dashboard

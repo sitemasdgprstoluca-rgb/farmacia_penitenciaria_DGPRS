@@ -177,7 +177,7 @@ function Layout() {
               <p className="text-sm font-semibold text-white truncate leading-tight">
                 {user?.first_name} {user?.last_name}
               </p>
-              <p className="text-[11px] text-pink-200/80 truncate">{user?.email}</p>
+              <p className="text-[11px] truncate" style={{ color: "rgba(255,255,255,0.7)" }}>{user?.email}</p>
             </div>
             <span
               className="px-2 py-0.5 text-[10px] rounded font-bold uppercase tracking-wide"
@@ -215,7 +215,10 @@ function Layout() {
                 <Icon size={18} />
                 <span className="text-sm flex-1">{item.label}</span>
                 {item.badge > 0 && (
-                  <span className="ml-auto inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold bg-white text-red-600 rounded-full min-w-[24px]">
+                  <span 
+                    className="ml-auto inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold bg-white rounded-full min-w-[24px]"
+                    style={{ color: "var(--color-primary, #9F2241)" }}
+                  >
                     {item.badge > 99 ? "99+" : item.badge}
                   </span>
                 )}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import { lotesAPI, productosAPI, centrosAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
 import { hasAccessToken } from '../services/tokenManager';
@@ -72,10 +72,10 @@ const Lotes = () => {
   const puedeVerGlobal = ['ADMIN', 'FARMACIA', 'VISTA'].includes(rolPrincipal) || permisos?.isSuperuser;
   // Centro del usuario para forzar filtro si no tiene permisos globales
   const centroUsuario = user?.centro?.id || user?.centro || user?.centro_id;
-  // Solo ADMIN y FARMACIA pueden ver campos de contrato (para auditoría)
+  // Solo ADMIN y FARMACIA pueden ver campos de contrato (para auditorÃ­a)
   const puedeVerContrato = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
   
-  // Permisos específicos para acciones - usar permisos finos del backend
+  // Permisos especÃ­ficos para acciones - usar permisos finos del backend
   const esFarmaciaAdmin = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
   const puede = {
     // Usar permisos finos si existen, sino fallback al rol
@@ -99,7 +99,7 @@ const Lotes = () => {
   const [editingLote, setEditingLote] = useState(null);
   const [showFiltersMenu, setShowFiltersMenu] = useState(false);
   
-  // Paginación
+  // PaginaciÃ³n
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalLotes, setTotalLotes] = useState(0);
@@ -112,11 +112,11 @@ const Lotes = () => {
   const [filtroConStock, setFiltroConStock] = useState('');
   const [filtroActivo, setFiltroActivo] = useState('');
   // Usuarios sin permisos globales siempre deben filtrar por su centro
-  // CORREGIDO: Usar contexto de autenticación (centroUsuario) en lugar de localStorage
-  // para evitar desincronización en cambios de sesión
+  // CORREGIDO: Usar contexto de autenticaciÃ³n (centroUsuario) en lugar de localStorage
+  // para evitar desincronizaciÃ³n en cambios de sesiÃ³n
   const [filtroCentro, setFiltroCentro] = useState(() => {
-    // Inicializar vacío - el useEffect se encargará de forzar el centro correcto
-    // según el contexto de autenticación actual
+    // Inicializar vacÃ­o - el useEffect se encargarÃ¡ de forzar el centro correcto
+    // segÃºn el contexto de autenticaciÃ³n actual
     return '';
   });
   
@@ -135,10 +135,10 @@ const Lotes = () => {
 
   const nivelCaducidad = [
     { value: '', label: 'Todas las caducidades' },
-    { value: 'vencido', label: '🔴 Vencidos' },
-    { value: 'critico', label: '🔴 Crítico (< 3 meses)' },
-    { value: 'proximo', label: '🟡 Próximo (3-6 meses)' },
-    { value: 'normal', label: '🟢 Normal (> 6 meses)' }
+    { value: 'vencido', label: 'ðŸ”´ Vencidos' },
+    { value: 'critico', label: 'ðŸ”´ CrÃ­tico (< 3 meses)' },
+    { value: 'proximo', label: 'ðŸŸ¡ PrÃ³ximo (3-6 meses)' },
+    { value: 'normal', label: 'ðŸŸ¢ Normal (> 6 meses)' }
   ];
 
   useEffect(() => {
@@ -313,11 +313,11 @@ const Lotes = () => {
       return;
     }
     
-    if (loading) return; // Evitar múltiples clics
+    if (loading) return; // Evitar mÃºltiples clics
     
-    const confirmMsg = `¿Está seguro de DESACTIVAR el lote ${lote?.numero_lote || id}?\n\n` +
-      `⚠️ El lote quedará marcado como eliminado (soft delete).\n` +
-      `Nota: Esta acción es reversible por un administrador.`;
+    const confirmMsg = `Â¿EstÃ¡ seguro de DESACTIVAR el lote ${lote?.numero_lote || id}?\n\n` +
+      `âš ï¸ El lote quedarÃ¡ marcado como eliminado (soft delete).\n` +
+      `Nota: Esta acciÃ³n es reversible por un administrador.`;
     
     if (!window.confirm(confirmMsg)) return;
     
@@ -377,7 +377,7 @@ const Lotes = () => {
   };
 
   const handleEliminarDocumento = async () => {
-    if (!window.confirm('¿Está seguro de eliminar el documento?')) return;
+    if (!window.confirm('Â¿EstÃ¡ seguro de eliminar el documento?')) return;
     
     try {
       setLoading(true);
@@ -464,7 +464,7 @@ const handleImportar = async (e) => {
   const file = e.target.files[0];
   if (!file) return;
   
-  // Validar extensión
+  // Validar extensiÃ³n
   const extension = file.name.split('.').pop()?.toLowerCase();
   if (!['xlsx', 'xls'].includes(extension)) {
     toast.error('Solo se permiten archivos Excel (.xlsx, .xls)');
@@ -472,10 +472,10 @@ const handleImportar = async (e) => {
     return;
   }
   
-  // Validar tamaño (máx 10MB)
+  // Validar tamaÃ±o (mÃ¡x 10MB)
   const maxSize = 10 * 1024 * 1024;
   if (file.size > maxSize) {
-    toast.error(`El archivo excede el tamaño máximo de 10MB (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+    toast.error(`El archivo excede el tamaÃ±o mÃ¡ximo de 10MB (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
     e.target.value = '';
     return;
   }
@@ -496,11 +496,11 @@ const handleImportar = async (e) => {
     const errores = response.data?.errores || [];
 
     toast.success(
-      `Importación completada: ${resumen.exitos || 0} filas correctas de ${resumen.total || 0}`
+      `ImportaciÃ³n completada: ${resumen.exitos || 0} filas correctas de ${resumen.total || 0}`
     );
     
     if (errores.length) {
-      console.warn('Errores en importación de lotes:', errores);
+      console.warn('Errores en importaciÃ³n de lotes:', errores);
       // Mostrar primeros 3 errores al usuario
       const primeros = errores.slice(0, 3);
       primeros.forEach((err, idx) => {
@@ -508,7 +508,7 @@ const handleImportar = async (e) => {
         toast.error(msg, { duration: 5000 });
       });
       if (errores.length > 3) {
-        toast.error(`... y ${errores.length - 3} errores más. Revise la consola.`, { duration: 5000 });
+        toast.error(`... y ${errores.length - 3} errores mÃ¡s. Revise la consola.`, { duration: 5000 });
       }
     }
     
@@ -590,13 +590,13 @@ const handleImportar = async (e) => {
     <div className="p-6 space-y-6">
       <PageHeader
         icon={FaWarehouse}
-        title="Gestión de Lotes"
-        subtitle={`Total: ${totalLotes} lotes | Página ${currentPage} de ${totalPages}`}
+        title="GestiÃ³n de Lotes"
+        subtitle={`Total: ${totalLotes} lotes | PÃ¡gina ${currentPage} de ${totalPages}`}
         badge={filtrosActivos ? `${filtrosActivos} filtros activos` : null}
         actions={headerActions}
       />
 
-      {/* Botón toggle filtros */}
+      {/* BotÃ³n toggle filtros */}
       <div className="mb-4 flex justify-end">
         <button
           type="button"
@@ -629,7 +629,7 @@ const handleImportar = async (e) => {
           <div className="space-y-3 px-5 py-3">
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-6">
               <div className="lg:col-span-2">
-                <label className="text-xs font-semibold text-theme-primary-hover">Búsqueda</label>
+                <label className="text-xs font-semibold text-theme-primary-hover">BÃºsqueda</label>
                 <div
                   className="mt-1 flex items-center rounded-lg border px-3 py-2 focus-within:ring-2 border-theme-primary"
                 >
@@ -639,7 +639,7 @@ const handleImportar = async (e) => {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full border-none bg-transparent text-sm focus:outline-none"
-                    placeholder="Buscar por número de lote, producto..."
+                    placeholder="Buscar por nÃºmero de lote, producto..."
                   />
                 </div>
               </div>
@@ -733,7 +733,7 @@ const handleImportar = async (e) => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="thead-theme">
               <tr>
-                {['#', 'Producto', 'Número Lote', 'Caducidad', 'Días', 'Alerta', 'Inventario', 'Acciones'].map((col) => (
+                {['#', 'Producto', 'NÃºmero Lote', 'Caducidad', 'DÃ­as', 'Alerta', 'Inventario', 'Acciones'].map((col) => (
                   <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
                     {col}
                   </th>
@@ -771,7 +771,7 @@ const handleImportar = async (e) => {
                         {lote.producto_descripcion?.substring(0, 40)}{lote.producto_descripcion?.length > 40 ? '...' : ''}
                         {/* Tooltip on hover */}
                         <div className="absolute z-50 hidden group-hover:block bg-gray-900 text-white text-xs rounded-lg py-2 px-3 -top-2 left-0 transform -translate-y-full w-64 shadow-lg">
-                          <p className="font-semibold mb-1">Descripción completa:</p>
+                          <p className="font-semibold mb-1">DescripciÃ³n completa:</p>
                           <p>{lote.producto_descripcion}</p>
                           <div className="absolute bottom-0 left-4 transform translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900"></div>
                         </div>
@@ -802,7 +802,7 @@ const handleImportar = async (e) => {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm">
                       <div className="flex items-center gap-3">
-                        {/* Botón PDF - visible para todos, subir solo farmacia */}
+                        {/* BotÃ³n PDF - visible para todos, subir solo farmacia */}
                         <button
                           onClick={() => handleDocumentoModal(lote)}
                           disabled={loading}
@@ -811,7 +811,7 @@ const handleImportar = async (e) => {
                         >
                           <FaFilePdf />
                         </button>
-                        {/* Botón Editar - solo farmacia/admin */}
+                        {/* BotÃ³n Editar - solo farmacia/admin */}
                         {puede.editar && (
                           <button
                             onClick={() => handleEdit(lote)}
@@ -822,7 +822,7 @@ const handleImportar = async (e) => {
                             <FaEdit />
                           </button>
                         )}
-                        {/* Botón Eliminar - solo farmacia/admin */}
+                        {/* BotÃ³n Eliminar - solo farmacia/admin */}
                         {puede.eliminar && (
                           <button
                             onClick={() => handleDelete(lote.id, lote)}
@@ -842,7 +842,7 @@ const handleImportar = async (e) => {
           </table>
         </div>
 
-        {/* Paginación */}
+        {/* PaginaciÃ³n */}
         {totalPages > 1 && (
           <Pagination
             page={currentPage}
@@ -875,7 +875,7 @@ const handleImportar = async (e) => {
               <div className="p-6 space-y-5">
                 {/* Producto */}
                 <div>
-                  <label className="block text-sm font-bold mb-2" style={{ color: '#6B1839' }}>
+                  <label className="block text-sm font-bold mb-2" className="text-theme-primary-hover">
                     PRODUCTO <span className="text-red-600">*</span>
                   </label>
                   <select
@@ -907,10 +907,10 @@ const handleImportar = async (e) => {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  {/* Código de Lote */}
+                  {/* CÃ³digo de Lote */}
                   <div>
-                    <label className="block text-sm font-bold mb-2" style={{ color: '#6B1839' }}>
-                      CÓDIGO DE LOTE <span className="text-red-600">*</span>
+                    <label className="block text-sm font-bold mb-2" className="text-theme-primary-hover">
+                      CÃ“DIGO DE LOTE <span className="text-red-600">*</span>
                     </label>
                     <input
                       type="text"
@@ -929,14 +929,14 @@ const handleImportar = async (e) => {
                       disabled={editingLote}
                       minLength={3}
                       maxLength={100}
-                      placeholder="Ingrese el código del lote"
+                      placeholder="Ingrese el cÃ³digo del lote"
                     />
-                    <p className="text-xs text-gray-500 italic mt-1">Se convertirá a mayúsculas automáticamente</p>
+                    <p className="text-xs text-gray-500 italic mt-1">Se convertirÃ¡ a mayÃºsculas automÃ¡ticamente</p>
                   </div>
                   
                   {/* Fecha Caducidad */}
                   <div>
-                    <label className="block text-sm font-bold mb-2" style={{ color: '#6B1839' }}>
+                    <label className="block text-sm font-bold mb-2" className="text-theme-primary-hover">
                       FECHA DE CADUCIDAD <span className="text-red-600">*</span>
                     </label>
                     <input
@@ -959,7 +959,7 @@ const handleImportar = async (e) => {
                       <p className="text-xs font-bold mt-1" style={{ color: '#D97706' }}>
                         {(() => {
                           const dias = Math.ceil((new Date(formData.fecha_caducidad) - new Date()) / (1000 * 60 * 60 * 24));
-                          return dias < 0 ? '-s  Vencido' : `Caduca en ${dias} días`;
+                          return dias < 0 ? '-s  Vencido' : `Caduca en ${dias} dÃ­as`;
                         })()}
                       </p>
                     )}
@@ -969,7 +969,7 @@ const handleImportar = async (e) => {
                 <div className="grid grid-cols-2 gap-4">
                   {/* Cantidad Actual */}
                   <div>
-                    <label className="block text-sm font-bold mb-2" style={{ color: '#6B1839' }}>
+                    <label className="block text-sm font-bold mb-2" className="text-theme-primary-hover">
                       CANTIDAD ACTUAL <span className="text-red-600">*</span>
                     </label>
                     <input
@@ -994,7 +994,7 @@ const handleImportar = async (e) => {
                   
                   {/* Precio de Compra */}
                   <div>
-                    <label className="block text-sm font-bold mb-2" style={{ color: '#6B1839' }}>
+                    <label className="block text-sm font-bold mb-2" className="text-theme-primary-hover">
                       PRECIO DE COMPRA
                     </label>
                     <div className="relative">
@@ -1021,7 +1021,7 @@ const handleImportar = async (e) => {
                 </div>
               
                 <div>
-                  <label className="block text-sm font-bold mb-2" style={{ color: '#6B1839' }}>
+                  <label className="block text-sm font-bold mb-2" className="text-theme-primary-hover">
                     PROVEEDOR
                   </label>
                   <input
@@ -1047,8 +1047,8 @@ const handleImportar = async (e) => {
                 {puedeVerContrato && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-bold mb-2" style={{ color: '#6B1839' }}>
-                      NÚMERO DE CONTRATO
+                    <label className="block text-sm font-bold mb-2" className="text-theme-primary-hover">
+                      NÃšMERO DE CONTRATO
                     </label>
                     <input
                       type="text"
@@ -1070,7 +1070,7 @@ const handleImportar = async (e) => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-bold mb-2" style={{ color: '#6B1839' }}>
+                    <label className="block text-sm font-bold mb-2" className="text-theme-primary-hover">
                       MARCA
                     </label>
                     <input
@@ -1086,7 +1086,7 @@ const handleImportar = async (e) => {
                         e.target.style.borderColor = '#E5E7EB';
                         e.target.style.boxShadow = 'none';
                       }}
-                      placeholder="Ej: Bayer, Pfizer, Genérico"
+                      placeholder="Ej: Bayer, Pfizer, GenÃ©rico"
                       maxLength={150}
                     />
                     <p className="text-xs text-gray-400 mt-1">Marca del medicamento</p>
@@ -1100,12 +1100,12 @@ const handleImportar = async (e) => {
                     type="checkbox"
                     checked={true}
                     className="w-5 h-5 rounded"
-                    style={{ accentColor: '#9F2241' }}
+                    style={{ accentColor: 'var(--color-primary)' }}
                     disabled
                   />
                   <div>
-                    <label className="font-bold text-sm" style={{ color: '#6B1839' }}>Lote activo</label>
-                    <p className="text-xs text-gray-600">Los lotes inactivos no estarín disponibles para salidas</p>
+                    <label className="font-bold text-sm text-theme-primary-hover">Lote activo</label>
+                    <p className="text-xs text-gray-600">Los lotes inactivos no estarÃ­n disponibles para salidas</p>
                   </div>
                 </div>
 
@@ -1116,8 +1116,8 @@ const handleImportar = async (e) => {
                     <div className="flex items-start gap-3 p-4 rounded-xl" style={{ backgroundColor: '#FEF3C7', border: '2px solid #F59E0B' }}>
                       <FaExclamationTriangle className="text-xl mt-0.5" style={{ color: '#F59E0B' }} />
                       <div>
-                        <p className="font-bold text-sm" style={{ color: '#92400E' }}>-s  Atención:</p>
-                        <p className="text-sm" style={{ color: '#78350F' }}>Este lote está príximo a caducar en {dias} días</p>
+                        <p className="font-bold text-sm" style={{ color: '#92400E' }}>-s  AtenciÃ³n:</p>
+                        <p className="text-sm" style={{ color: '#78350F' }}>Este lote estÃ¡ prÃ­ximo a caducar en {dias} dÃ­as</p>
                       </div>
                     </div>
                   );
@@ -1141,13 +1141,10 @@ const handleImportar = async (e) => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-8 py-3 rounded-xl font-bold transition-all transform hover:scale-105 shadow-lg disabled:opacity-50"
-                  style={{ 
-                    background: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)',
-                    color: 'white'
-                  }}
+                  className="px-8 py-3 rounded-xl font-bold transition-all transform hover:scale-105 shadow-lg disabled:opacity-50 text-white bg-theme-gradient"
                 >
                   {loading ? 'GUARDANDO...' : '-o" GUARDAR LOTE'}
+                </button>
                 </button>
               </div>
             </form>
@@ -1158,54 +1155,61 @@ const handleImportar = async (e) => {
       {/* Modal Importar */}
       {showImportModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold mb-4">Importar Lotes desde Excel</h2>
-            
-            <div className="mb-4">
-              <p className="text-sm text-gray-600 mb-2">
-                El archivo debe contener las siguientes columnas:
-              </p>
-              <ul className="text-sm text-gray-600 list-disc list-inside">
-                <li>Producto (Clave o ID)</li>
-                <li>Número Lote</li>
-                <li>Fecha Caducidad (YYYY-MM-DD)</li>
-                <li>Cantidad</li>
-                <li>Precio Compra (opcional)</li>
-                <li>Proveedor (opcional)</li>
-                <li>Factura (opcional)</li>
-                <li>Número Contrato (opcional)</li>
-                <li>Marca (opcional)</li>
-              </ul>
-            </div>
-            
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">
-                Seleccionar archivo Excel (.xlsx, .xls)
-              </label>
-              <input
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={handleImportar}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                disabled={loading}
-              />
-            </div>
-            
-            {loading && (
-              <div className="mb-4 text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-4 spinner-institucional mx-auto"></div>
-                <p className="text-sm text-gray-600 mt-2">Procesando archivo...</p>
-              </div>
-            )}
-            
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setShowImportModal(false)}
-                className="px-4 py-2 border rounded-lg hover:bg-gray-100"
-                disabled={loading}
-              >
-                Cerrar
+          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="px-6 py-4 bg-theme-gradient rounded-t-2xl flex items-center justify-between">
+              <h2 className="text-xl font-bold text-white">Importar Lotes desde Excel</h2>
+              <button onClick={() => setShowImportModal(false)} className="text-white/70 hover:text-white">
+                <FaTimes size={24} />
               </button>
+            </div>
+            
+            <div className="p-6">
+              <div className="mb-4">
+                <p className="text-sm text-gray-600 mb-2">
+                  El archivo debe contener las siguientes columnas:
+                </p>
+                <ul className="text-sm text-gray-600 list-disc list-inside">
+                  <li>Producto (Clave o ID)</li>
+                  <li>Número Lote</li>
+                  <li>Fecha Caducidad (YYYY-MM-DD)</li>
+                  <li>Cantidad</li>
+                  <li>Precio Compra (opcional)</li>
+                  <li>Proveedor (opcional)</li>
+                  <li>Factura (opcional)</li>
+                  <li>Número Contrato (opcional)</li>
+                  <li>Marca (opcional)</li>
+                </ul>
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">
+                  Seleccionar archivo Excel (.xlsx, .xls)
+                </label>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleImportar}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-theme-primary"
+                  disabled={loading}
+                />
+              </div>
+              
+              {loading && (
+                <div className="mb-4 text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-4 spinner-institucional mx-auto"></div>
+                  <p className="text-sm text-gray-600 mt-2">Procesando archivo...</p>
+                </div>
+              )}
+              
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setShowImportModal(false)}
+                  className="px-4 py-2 border rounded-lg hover:bg-gray-100"
+                  disabled={loading}
+                >
+                  Cerrar
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1237,7 +1241,7 @@ const handleImportar = async (e) => {
                 <div className="space-y-3">
                   <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
                     <p className="text-sm text-green-800 font-medium">
-                      ✓ Documento actual: {selectedLoteDoc.documento_nombre || 'documento.pdf'}
+                      âœ“ Documento actual: {selectedLoteDoc.documento_nombre || 'documento.pdf'}
                     </p>
                   </div>
                   <div className="flex gap-2">
@@ -1275,7 +1279,7 @@ const handleImportar = async (e) => {
                   disabled={loading}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                 />
-                <p className="text-xs text-gray-500 mt-1">Solo archivos PDF, máximo 10MB</p>
+                <p className="text-xs text-gray-500 mt-1">Solo archivos PDF, mÃ¡ximo 10MB</p>
               </div>
             </div>
             

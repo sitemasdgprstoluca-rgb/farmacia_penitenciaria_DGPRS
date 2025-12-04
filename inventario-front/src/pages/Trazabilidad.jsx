@@ -585,7 +585,7 @@ const Trazabilidad = () => {
       {/* Estado de carga */}
       {loading && (
         <div className="text-center py-8 bg-white rounded-lg shadow">
-          <div className="animate-spin rounded-full h-10 w-10 border-4 border-t-transparent mx-auto" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }} />
+          <div className="animate-spin rounded-full h-10 w-10 border-4 border-t-transparent mx-auto spinner-institucional" />
           <p className="mt-3 text-gray-600">Buscando información...</p>
         </div>
       )}

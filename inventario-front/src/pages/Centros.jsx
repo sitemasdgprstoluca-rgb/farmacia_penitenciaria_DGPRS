@@ -7,7 +7,7 @@ import Pagination from '../components/Pagination';
 import { 
   FaPlus, FaEdit, FaTrash, FaToggleOn, FaToggleOff, 
   FaSearch, FaFileExcel, FaFileUpload, FaDownload, FaFilter,
-  FaBuilding, FaChevronDown
+  FaBuilding, FaChevronDown, FaTimes
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { COLORS, SECONDARY_GRADIENT } from '../constants/theme';
@@ -631,10 +631,16 @@ const Centros = () => {
       {/* Modal Crear/Editar */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">
-              {editingCentro ? 'Editar Centro' : 'Nuevo Centro'}
-            </h2>
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl">
+            <div className="px-6 py-4 bg-theme-gradient rounded-t-2xl flex items-center justify-between">
+              <h2 className="text-xl font-bold text-white">
+                {editingCentro ? 'Editar Centro' : 'Nuevo Centro'}
+              </h2>
+              <button onClick={() => { setShowModal(false); resetForm(); }} className="text-white/70 hover:text-white">
+                <FaTimes size={24} />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
             
             <form onSubmit={handleSubmit}>
               <div className="grid grid-cols-2 gap-4 mb-4">
@@ -736,12 +742,13 @@ const Centros = () => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  className="px-4 py-2 bg-theme-gradient text-white rounded-lg hover:opacity-90 disabled:opacity-50"
                 >
                   {loading ? 'Guardando...' : 'Guardar'}
                 </button>
               </div>
             </form>
+            </div>
           </div>
         </div>
       )}
@@ -749,54 +756,61 @@ const Centros = () => {
       {/* Modal Importar */}
       {showImportModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold mb-4">Importar Centros desde Excel</h2>
-            
-            <div className="mb-4">
-              <p className="text-sm text-gray-600 mb-2">
-                El archivo debe contener las siguientes columnas:
-              </p>
-              <ul className="text-sm text-gray-600 list-disc list-inside">
-                <li>Clave (requerido, único)</li>
-                <li>Nombre (requerido, mín 5 caracteres)</li>
-                <li>Tipo (opcional)</li>
-                <li>Dirección (opcional)</li>
-                <li>Teléfono (opcional)</li>
-                <li>Responsable (opcional)</li>
-              </ul>
-              <p className="text-sm text-blue-600 mt-2">
-                Descarga la plantilla para ver el formato correcto
-              </p>
-            </div>
-            
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">
-                Seleccionar archivo Excel (.xlsx, .xls)
-              </label>
-              <input
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={handleImportar}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                disabled={importLoading}
-              />
-            </div>
-            
-            {importLoading && (
-              <div className="mb-4 text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-4 spinner-institucional mx-auto"></div>
-                <p className="text-sm text-gray-600 mt-2">Procesando archivo...</p>
-              </div>
-            )}
-            
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setShowImportModal(false)}
-                className="px-4 py-2 border rounded-lg hover:bg-gray-100"
-                disabled={loading}
-              >
-                Cerrar
+          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="px-6 py-4 bg-theme-gradient rounded-t-2xl flex items-center justify-between">
+              <h2 className="text-xl font-bold text-white">Importar Centros desde Excel</h2>
+              <button onClick={() => setShowImportModal(false)} className="text-white/70 hover:text-white">
+                <FaTimes size={24} />
               </button>
+            </div>
+            
+            <div className="p-6">
+              <div className="mb-4">
+                <p className="text-sm text-gray-600 mb-2">
+                  El archivo debe contener las siguientes columnas:
+                </p>
+                <ul className="text-sm text-gray-600 list-disc list-inside">
+                  <li>Clave (requerido, único)</li>
+                  <li>Nombre (requerido, mín 5 caracteres)</li>
+                  <li>Tipo (opcional)</li>
+                  <li>Dirección (opcional)</li>
+                  <li>Teléfono (opcional)</li>
+                  <li>Responsable (opcional)</li>
+                </ul>
+                <p className="text-sm text-theme-primary mt-2">
+                  Descarga la plantilla para ver el formato correcto
+                </p>
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">
+                  Seleccionar archivo Excel (.xlsx, .xls)
+                </label>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleImportar}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-theme-primary"
+                  disabled={importLoading}
+                />
+              </div>
+              
+              {importLoading && (
+                <div className="mb-4 text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-4 spinner-institucional mx-auto"></div>
+                  <p className="text-sm text-gray-600 mt-2">Procesando archivo...</p>
+                </div>
+              )}
+              
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setShowImportModal(false)}
+                  className="px-4 py-2 border rounded-lg hover:bg-gray-100"
+                  disabled={loading}
+                >
+                  Cerrar
+                </button>
+              </div>
             </div>
           </div>
         </div>

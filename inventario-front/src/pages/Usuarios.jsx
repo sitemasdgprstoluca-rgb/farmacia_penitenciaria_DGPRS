@@ -712,7 +712,7 @@ function Usuarios() {
 
       {loading ? (
         <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-t-transparent mx-auto" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }}></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-t-transparent mx-auto spinner-institucional"></div>
           <p className="mt-3 text-gray-600">Cargando usuarios...</p>
         </div>
       ) : (
@@ -824,11 +824,11 @@ function Usuarios() {
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white px-6 py-4 border-b flex justify-between items-center rounded-t-2xl">
-              <h3 className="text-xl font-bold text-theme-primary">
+            <div className="sticky top-0 bg-theme-gradient px-6 py-4 flex justify-between items-center rounded-t-2xl">
+              <h3 className="text-xl font-bold text-white">
                 {editingUsuario ? 'Editar Usuario' : 'Nuevo Usuario'}
               </h3>
-              <button onClick={handleCloseModal} className="text-gray-400 hover:text-gray-600">
+              <button onClick={handleCloseModal} className="text-white/70 hover:text-white">
                 <FaTimes size={24} />
               </button>
             </div>
@@ -1122,12 +1122,12 @@ function Usuarios() {
       {/* Modal Cambiar Contraseña */}
       {showPasswordModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
-            <div className="px-6 py-4 border-b flex justify-between items-center">
-              <h3 className="text-xl font-bold text-theme-primary">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+            <div className="px-6 py-4 bg-theme-gradient rounded-t-2xl flex justify-between items-center">
+              <h3 className="text-xl font-bold text-white">
                 Cambiar Contraseña
               </h3>
-              <button onClick={() => setShowPasswordModal(false)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => setShowPasswordModal(false)} className="text-white/70 hover:text-white">
                 <FaTimes size={24} />
               </button>
             </div>

@@ -534,3 +534,8 @@ code {
   background: color-mix(in srgb, var(--color-primary, #9F2241) 10%, transparent);
 }
 
+/* Gradiente de fondo del tema - para botones y elementos destacados */
+.bg-theme-gradient {
+  background: linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%);
+}
+

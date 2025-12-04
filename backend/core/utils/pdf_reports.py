@@ -100,8 +100,8 @@ def _obtener_ruta_fondo_reportes(tema):
     Si no hay fondo personalizado, usa el fondo institucional por defecto.
     """
     try:
-        if tema and tema.fondo_reportes:
-            fondo_path = Path(settings.MEDIA_ROOT) / tema.fondo_reportes.name
+        if tema and tema.imagen_fondo_reportes:
+            fondo_path = Path(settings.MEDIA_ROOT) / tema.imagen_fondo_reportes.name
             if fondo_path.exists():
                 return str(fondo_path)
     except Exception as e:
@@ -395,11 +395,11 @@ def crear_pie_pagina(canvas, doc, colores_tema=None):
     canvas.setFont('Helvetica', 9)
     page_num = canvas.getPageNumber()
     
-    # Pie izquierdo: fecha y opcional año
+    # Pie izquierdo: fecha y opcional año configurable del tema
     fecha_texto = f"Generado: {timezone.now().strftime('%d/%m/%Y %H:%M')}"
-    if colores_tema.get('ano_visible', True):
-        ano_actual = timezone.now().year
-        fecha_texto = f"{ano_actual} - {fecha_texto}"
+    ano_tema = colores_tema.get('ano_visible', '')
+    if ano_tema:
+        fecha_texto = f"{ano_tema} - {fecha_texto}"
     
     # Pie derecho: página y opcional pie personalizado
     pie_personalizado = colores_tema.get('pie_pagina', '')

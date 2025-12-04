@@ -2,11 +2,45 @@ import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-const BRAND_COLORS = {
-  primary: '#9F2241',
-  secondary: '#6B1839',
-  accent: '#EED5DD',
-  text: '#1F2937',
+// Obtener colores del tema desde CSS variables (set by ThemeProvider)
+const getThemeColors = () => {
+  const root = document.documentElement;
+  const getVar = (name, fallback) =>
+    getComputedStyle(root).getPropertyValue(name).trim() || fallback;
+  
+  return {
+    primary: getVar('--color-primary', '#9F2241'),
+    primaryHover: getVar('--color-primary-hover', '#6B1839'),
+    secondary: getVar('--color-secondary', '#6B1839'),
+    text: getVar('--color-text-primary', '#1F2937'),
+    textSecondary: getVar('--color-text-secondary', '#6b7280'),
+    // Colores específicos de reportes
+    reporteEncabezado: getVar('--color-reporte-encabezado', '#632842'),
+    reporteTextoEncabezado: getVar('--color-reporte-texto-encabezado', '#FFFFFF'),
+    reporteFilasAlternas: getVar('--color-reporte-filas-alternas', '#F5F5F5'),
+  };
+};
+
+// Obtener configuración del tema para reportes
+const getThemeConfig = () => {
+  const root = document.documentElement;
+  const getVar = (name, fallback) =>
+    getComputedStyle(root).getPropertyValue(name).trim() || fallback;
+  
+  return {
+    nombreInstitucion: getVar('--tema-nombre-institucion', 'Sistema de Farmacia Penitenciaria'),
+    subtitulo: getVar('--tema-subtitulo', 'Gobierno del Estado de México'),
+    piePagina: getVar('--tema-pie-pagina', ''),
+    anoVisible: getVar('--tema-ano-visible', new Date().getFullYear().toString()),
+  };
+};
+
+// Convertir hex a RGB array para jsPDF
+const hexToRgb = (hex) => {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)]
+    : [159, 34, 65]; // fallback guinda
 };
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -24,21 +58,27 @@ const triggerDownload = (blob, fileName) => {
   link.remove();
 };
 
-const addFooter = (sheet, columnCount) => {
+const addFooter = (sheet, columnCount, colors, config) => {
   sheet.addRow([]);
   const lastRowNumber = sheet.lastRow.number;
   sheet.mergeCells(lastRowNumber, 1, lastRowNumber, columnCount);
   const footerCell = sheet.getCell(`A${lastRowNumber}`);
-  footerCell.value = 'Sistema de Farmacia Penitenciaria - Gobierno del Estado de México';
+  // Usar texto del tema o fallback
+  const footerText = config.piePagina || `${config.nombreInstitucion} - ${config.subtitulo}`;
+  footerCell.value = footerText;
   footerCell.font = {
     italic: true,
     size: 12,
-    color: { argb: hexToARGB(BRAND_COLORS.secondary) },
+    color: { argb: hexToARGB(colors.secondary) },
   };
   footerCell.alignment = { horizontal: 'center' };
 };
 
 export const createExcelReport = async ({ title, subtitle, columns, rows, fileName }) => {
+  // Obtener colores y config del tema
+  const colors = getThemeColors();
+  const config = getThemeConfig();
+  
   const workbook = new ExcelJS.Workbook();
   workbook.created = new Date();
   const sheet = workbook.addWorksheet('Reporte');
@@ -51,8 +91,8 @@ export const createExcelReport = async ({ title, subtitle, columns, rows, fileNa
     gradient: 'angle',
     degree: 45,
     stops: [
-      { position: 0, color: { argb: hexToARGB(BRAND_COLORS.primary) } },
-      { position: 1, color: { argb: hexToARGB(BRAND_COLORS.secondary) } },
+      { position: 0, color: { argb: hexToARGB(colors.primary) } },
+      { position: 1, color: { argb: hexToARGB(colors.secondary) } },
     ],
   };
   titleCell.font = { size: 18, bold: true, color: { argb: 'FFFFFFFF' } };
@@ -63,7 +103,7 @@ export const createExcelReport = async ({ title, subtitle, columns, rows, fileNa
     sheet.mergeCells(2, 1, 2, columns.length);
     const subtitleCell = sheet.getCell(2, 1);
     subtitleCell.value = subtitle;
-    subtitleCell.font = { size: 12, color: { argb: hexToARGB(BRAND_COLORS.accent) } };
+    subtitleCell.font = { size: 12, color: { argb: hexToARGB(colors.textSecondary) } };
     subtitleCell.alignment = { horizontal: 'center' };
     sheet.getRow(2).height = 20;
   }
@@ -75,7 +115,7 @@ export const createExcelReport = async ({ title, subtitle, columns, rows, fileNa
     cell.fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: hexToARGB(BRAND_COLORS.primary) },
+      fgColor: { argb: hexToARGB(colors.primary) },
     };
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     cell.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -106,7 +146,7 @@ export const createExcelReport = async ({ title, subtitle, columns, rows, fileNa
     sheet.getColumn(index + 1).width = col.width || 20;
   });
 
-  addFooter(sheet, columns.length);
+  addFooter(sheet, columns.length, colors, config);
 
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: XLSX_MIME });
@@ -114,9 +154,18 @@ export const createExcelReport = async ({ title, subtitle, columns, rows, fileNa
 };
 
 const createPdfReport = ({ title, subtitle, columns, rows, fileName, orientation = 'landscape' }) => {
+  // Obtener colores y config del tema
+  const colors = getThemeColors();
+  const config = getThemeConfig();
+  const primaryRgb = hexToRgb(colors.primary);
+  const secondaryRgb = hexToRgb(colors.secondary);
+  const textRgb = hexToRgb(colors.text);
+  
   const doc = new jsPDF(orientation, 'pt', 'a4');
   const pageWidth = doc.internal.pageSize.getWidth();
-  doc.setFillColor(159, 34, 65);
+  
+  // Encabezado con color primario del tema
+  doc.setFillColor(...primaryRgb);
   doc.rect(0, 0, pageWidth, 60, 'F');
   doc.setFontSize(18);
   doc.setTextColor(255, 255, 255);
@@ -135,16 +184,18 @@ const createPdfReport = ({ title, subtitle, columns, rows, fileName, orientation
         typeof col.value === 'function' ? col.value(row, index) : row[col.key] ?? ''
       )
     ),
-    styles: { fontSize: 9, cellPadding: 6, textColor: [33, 37, 41] },
-    headStyles: { fillColor: [159, 34, 65], textColor: [255, 255, 255] },
-    alternateRowStyles: { fillColor: [248, 236, 240] },
+    styles: { fontSize: 9, cellPadding: 6, textColor: textRgb },
+    headStyles: { fillColor: primaryRgb, textColor: [255, 255, 255] },
+    alternateRowStyles: { fillColor: hexToRgb(colors.reporteFilasAlternas) },
     margin: { left: 40, right: 40 },
   });
 
+  // Pie de página con texto del tema
+  const footerText = config.piePagina || `${config.nombreInstitucion} - ${config.subtitulo}`;
   doc.setFontSize(10);
-  doc.setTextColor(107, 24, 57);
+  doc.setTextColor(...secondaryRgb);
   doc.text(
-    'Sistema de Farmacia Penitenciaria - Gobierno del Estado de México',
+    footerText,
     40,
     doc.internal.pageSize.getHeight() - 24
   );

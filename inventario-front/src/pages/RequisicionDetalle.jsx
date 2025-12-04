@@ -582,7 +582,7 @@ const RequisicionDetalle = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-12 w-12 border-4 border-t-transparent" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }}></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-t-transparent spinner-institucional"></div>
       </div>
     );
   }
@@ -1032,7 +1032,7 @@ const RequisicionDetalle = () => {
 
         {procesando && (
           <div className="mt-4 flex items-center gap-2 text-gray-500">
-            <div className="animate-spin rounded-full h-4 w-4 border-2 border-t-transparent" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }}></div>
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-t-transparent spinner-institucional"></div>
             Procesando...
           </div>
         )}

@@ -1,20 +1,21 @@
 /* ============================================
    SISTEMA DE DISEÑO - VARIABLES GLOBALES
+   Ahora usa variables CSS del tema global
 ============================================ */
 :root {
-  --primary-color: #632842;
-  --primary-light: #8b3a5a;
+  --primary-color: var(--color-primary, #632842);
+  --primary-light: var(--color-primary-hover, #8b3a5a);
   --primary-dark: #4a1d31;
-  --secondary-color: #6c757d;
-  --success-color: #28a745;
-  --danger-color: #dc3545;
-  --warning-color: #ffc107;
-  --info-color: #17a2b8;
-  --light-bg: #f8f9fa;
+  --secondary-color: var(--color-secondary, #6c757d);
+  --success-color: var(--color-success, #28a745);
+  --danger-color: var(--color-error, #dc3545);
+  --warning-color: var(--color-warning, #ffc107);
+  --info-color: var(--color-info, #17a2b8);
+  --light-bg: var(--color-bg-main, #f8f9fa);
   --white: #ffffff;
-  --border-color: #e9ecef;
-  --text-dark: #333333;
-  --text-muted: #666666;
+  --border-color: var(--color-border, #e9ecef);
+  --text-dark: var(--color-text-primary, #333333);
+  --text-muted: var(--color-text-secondary, #666666);
   --text-light: #999999;
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.12);

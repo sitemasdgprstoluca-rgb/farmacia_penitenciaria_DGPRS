@@ -12,7 +12,7 @@ function PermissionsGuard({ children, requiredPermission, fallback = null, redir
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-4 border-t-transparent" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }} />
+        <div className="animate-spin rounded-full h-10 w-10 border-4 border-t-transparent spinner-institucional" />
       </div>
     );
   }

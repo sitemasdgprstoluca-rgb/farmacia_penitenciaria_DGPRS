@@ -2139,39 +2139,74 @@ class TemaGlobal(models.Model):
         return tema
     
     def to_css_variables(self):
-        """Convierte la configuracion a variables CSS"""
+        """Convierte la configuracion a variables CSS compatibles con el frontend"""
+        # Función helper para calcular color light con opacidad
+        def hex_to_rgba_light(hex_color, opacity=0.2):
+            hex_color = hex_color.lstrip('#')
+            r = int(hex_color[0:2], 16)
+            g = int(hex_color[2:4], 16)
+            b = int(hex_color[4:6], 16)
+            return f'rgba({r}, {g}, {b}, {opacity})'
+        
         return {
-            # Colores principales
+            # Colores principales - nombres compatibles con frontend
             '--color-primary': self.color_primario,
             '--color-primary-hover': self.color_primario_hover,
+            '--color-primary-light': hex_to_rgba_light(self.color_primario),
             '--color-secondary': self.color_secundario,
             '--color-secondary-hover': self.color_secundario_hover,
+            '--color-accent': self.color_secundario,  # Alias para compatibilidad
             
             # Estados
             '--color-success': self.color_exito,
             '--color-error': self.color_error,
             '--color-warning': self.color_advertencia,
             '--color-info': self.color_info,
+            '--color-danger': self.color_error,  # Alias para compatibilidad
             
-            # Fondos
+            # Fondos - NOMBRES QUE USA EL FRONTEND
+            '--color-background': self.color_fondo_principal,
+            '--color-sidebar-bg': self.color_fondo_sidebar,
+            '--color-header-bg': self.color_fondo_header,
+            '--color-card-bg': self.color_fondo_tarjetas,
+            # Aliases alternativos por compatibilidad
             '--color-bg-main': self.color_fondo_principal,
             '--color-bg-card': self.color_fondo_tarjetas,
             '--color-bg-sidebar': self.color_fondo_sidebar,
             '--color-bg-header': self.color_fondo_header,
+            '--bg-primary': self.color_fondo_tarjetas,
+            '--bg-secondary': self.color_fondo_principal,
             
-            # Texto
-            '--color-text-primary': self.color_texto_principal,
+            # Texto - NOMBRES QUE USA EL FRONTEND
+            '--color-text': self.color_texto_principal,
             '--color-text-secondary': self.color_texto_secundario,
+            '--color-sidebar-text': self.color_texto_invertido,
+            '--color-header-text': self.color_texto_invertido,
+            # Aliases alternativos por compatibilidad
+            '--color-text-primary': self.color_texto_principal,
             '--color-text-inverted': self.color_texto_invertido,
             '--color-text-link': self.color_texto_links,
+            '--text-primary': self.color_texto_principal,
+            '--text-secondary': self.color_texto_secundario,
             
             # Bordes
             '--color-border': self.color_borde,
             '--color-border-focus': self.color_borde_focus,
+            '--border-color': self.color_borde,
             
-            # Tipografia
+            # Tipografia - NOMBRES QUE USA EL FRONTEND
+            '--font-family-principal': f"'{self.fuente_principal}', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif",
+            '--font-family-titulos': f"'{self.fuente_titulos}', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+            # Aliases alternativos
             '--font-family-main': f"'{self.fuente_principal}', sans-serif",
             '--font-family-headings': f"'{self.fuente_titulos}', sans-serif",
+            
+            # Tamaños de fuente - NOMBRES QUE USA EL FRONTEND
+            '--font-size-titulo': self.tamano_h1,
+            '--font-size-subtitulo': self.tamano_h2,
+            '--font-size-cuerpo': self.tamano_texto_base,
+            '--font-size-pequeño': self.tamano_texto_pequeno,
+            # Aliases alternativos
             '--font-size-h1': self.tamano_h1,
             '--font-size-h2': self.tamano_h2,
             '--font-size-h3': self.tamano_h3,
@@ -2179,6 +2214,8 @@ class TemaGlobal(models.Model):
             '--font-size-sm': self.tamano_texto_pequeno,
             '--font-size-label': self.tamano_etiquetas,
             '--font-size-button': self.tamano_botones,
+            
+            # Pesos de fuente
             '--font-weight-headings': self.peso_titulos,
             '--font-weight-normal': self.peso_texto_normal,
             '--font-weight-button': self.peso_botones,
@@ -2187,6 +2224,18 @@ class TemaGlobal(models.Model):
             '--border-radius-base': self.border_radius_base,
             '--border-radius-button': self.border_radius_botones,
             '--shadow-base': self.shadow_base,
+            '--radius-sm': '4px',
+            '--radius-md': '6px',
+            '--radius-lg': self.border_radius_base,
+            
+            # Configuración de reportes (para frontend)
+            '--color-reporte-encabezado': self.reporte_color_encabezado,
+            '--color-reporte-texto-encabezado': self.reporte_color_texto_encabezado,
+            '--color-reporte-filas-alternas': self.reporte_color_filas_alternas,
+            '--tema-nombre-institucion': self.reporte_titulo_institucion,
+            '--tema-subtitulo': self.reporte_subtitulo,
+            '--tema-pie-pagina': self.reporte_pie_pagina,
+            '--tema-ano-visible': str(self.reporte_ano_visible),
         }
     
     def to_json_config(self):

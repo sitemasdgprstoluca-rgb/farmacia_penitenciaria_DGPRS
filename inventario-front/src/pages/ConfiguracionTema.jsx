@@ -14,7 +14,11 @@ import {
   FaDesktop,
   FaCheck,
   FaExclamationTriangle,
-  FaLock
+  FaLock,
+  FaFont,
+  FaFileAlt,
+  FaGlobe,
+  FaRedo
 } from 'react-icons/fa';
 import './ConfiguracionTema.css';
 
@@ -59,14 +63,19 @@ const ConfiguracionTema = () => {
   const { user, permisos, loading: cargandoPermisos } = usePermissions();
   const { 
     configuracion, 
+    temaGlobal,
     cargando: cargandoTema, 
-    actualizarTema, 
+    actualizarTema,
+    actualizarTemaGlobal,
     aplicarTemaPredefinido, 
     restablecerTema,
+    restablecerTemaInstitucional,
     subirLogoHeader,
     subirLogoPdf,
+    subirLogoTema,
     eliminarLogoHeader,
     eliminarLogoPdf,
+    eliminarLogoTema,
     temasDisponibles,
     aplicarCSSVariablesLocalmente // Para preview en tiempo real 
   } = useTheme();
@@ -82,11 +91,21 @@ const ConfiguracionTema = () => {
     aplicandoTema: false,
     guardandoColores: false,
     guardandoIdentidad: false,
+    guardandoReportes: false,
     restableciendo: false,
+    restablecerInstitucional: false,
     subiendoLogoHeader: false,
     subiendoLogoPdf: false,
+    subiendoLogoLogin: false,
+    subiendoFavicon: false,
+    subiendoFondoLogin: false,
+    subiendoFondoReportes: false,
     eliminandoLogoHeader: false,
     eliminandoLogoPdf: false,
+    eliminandoLogoLogin: false,
+    eliminandoFavicon: false,
+    eliminandoFondoLogin: false,
+    eliminandoFondoReportes: false,
   });
   
   // Timeout de seguridad para operaciones bloqueadas (30 segundos)
@@ -95,6 +114,10 @@ const ConfiguracionTema = () => {
   
   const logoHeaderRef = useRef(null);
   const logoPdfRef = useRef(null);
+  const logoLoginRef = useRef(null);
+  const faviconRef = useRef(null);
+  const fondoLoginRef = useRef(null);
+  const fondoReportesRef = useRef(null);
 
   // Verificar permisos usando el sistema de permisos coherente
   // Usa el permiso 'configurarTema' que incluye ADMIN y FARMACIA
@@ -102,13 +125,19 @@ const ConfiguracionTema = () => {
   const permisosResueltos = !cargandoPermisos && user !== undefined;
   
   // Agrupar operaciones por tipo para permitir concurrencia entre grupos diferentes
-  const operacionesBloqueantes = ['aplicandoTema', 'guardandoColores', 'restableciendo'];
-  const operacionesLogos = ['subiendoLogoHeader', 'subiendoLogoPdf', 'eliminandoLogoHeader', 'eliminandoLogoPdf'];
+  const operacionesBloqueantes = ['aplicandoTema', 'guardandoColores', 'restableciendo', 'restablecerInstitucional'];
+  const operacionesLogos = [
+    'subiendoLogoHeader', 'subiendoLogoPdf', 'subiendoLogoLogin', 'subiendoFavicon',
+    'subiendoFondoLogin', 'subiendoFondoReportes',
+    'eliminandoLogoHeader', 'eliminandoLogoPdf', 'eliminandoLogoLogin', 'eliminandoFavicon',
+    'eliminandoFondoLogin', 'eliminandoFondoReportes'
+  ];
   
   // Estado de operaciones por grupo (para bloqueo interno del grupo)
   const hayOperacionTemaEnCurso = operacionesBloqueantes.some(op => operacionEnCurso[op]);
   const hayOperacionLogoEnCurso = operacionesLogos.some(op => operacionEnCurso[op]);
   const hayOperacionIdentidadEnCurso = operacionEnCurso.guardandoIdentidad;
+  const hayOperacionReportesEnCurso = operacionEnCurso.guardandoReportes;
   
   // Para deshabilitar UI global (indicador visual)
   const hayOperacionEnCurso = Object.values(operacionEnCurso).some(v => v);
@@ -122,11 +151,21 @@ const ConfiguracionTema = () => {
       aplicandoTema: false,
       guardandoColores: false,
       guardandoIdentidad: false,
+      guardandoReportes: false,
       restableciendo: false,
+      restablecerInstitucional: false,
       subiendoLogoHeader: false,
       subiendoLogoPdf: false,
+      subiendoLogoLogin: false,
+      subiendoFavicon: false,
+      subiendoFondoLogin: false,
+      subiendoFondoReportes: false,
       eliminandoLogoHeader: false,
       eliminandoLogoPdf: false,
+      eliminandoLogoLogin: false,
+      eliminandoFavicon: false,
+      eliminandoFondoLogin: false,
+      eliminandoFondoReportes: false,
     });
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
@@ -135,36 +174,61 @@ const ConfiguracionTema = () => {
     toast.info('Operaciones desbloqueadas');
   }, []);
 
-  // Inicializar formulario con datos actuales
+  // Inicializar formulario con datos actuales (preferir temaGlobal sobre configuracion legacy)
   useEffect(() => {
-    if (configuracion) {
+    const tema = temaGlobal || configuracion;
+    if (tema) {
+      // Mapear campos del TemaGlobal al formulario
+      const colores = tema.colores || {};
+      const tipografia = tema.tipografia || {};
+      const reportes = tema.reportes || {};
+      
       setFormData({
-        nombre_sistema: configuracion.nombre_sistema || '',
-        nombre_institucion: configuracion.nombre_institucion || '',
-        subtitulo_institucion: configuracion.subtitulo_institucion || '',
-        logo_url: configuracion.logo_url || '',
-        color_primario: normalizarColor(configuracion.color_primario, '#9F2241'),
-        color_primario_hover: normalizarColor(configuracion.color_primario_hover, '#6B1839'),
-        color_secundario: normalizarColor(configuracion.color_secundario, '#424242'),
-        color_acento: normalizarColor(configuracion.color_acento, '#BC955C'),
-        color_fondo: normalizarColor(configuracion.color_fondo, '#F5F5F5'),
-        color_fondo_sidebar: normalizarColor(configuracion.color_fondo_sidebar, '#9F2241'),
-        color_fondo_header: normalizarColor(configuracion.color_fondo_header, '#9F2241'),
-        color_fondo_card: normalizarColor(configuracion.color_fondo_card, '#FFFFFF'),
-        color_texto: normalizarColor(configuracion.color_texto, '#212121'),
-        color_texto_secundario: normalizarColor(configuracion.color_texto_secundario, '#757575'),
-        color_texto_sidebar: normalizarColor(configuracion.color_texto_sidebar, '#FFFFFF'),
-        color_texto_header: normalizarColor(configuracion.color_texto_header, '#FFFFFF'),
-        color_exito: normalizarColor(configuracion.color_exito, '#4CAF50'),
-        color_advertencia: normalizarColor(configuracion.color_advertencia, '#FF9800'),
-        color_error: normalizarColor(configuracion.color_error, '#F44336'),
-        color_info: normalizarColor(configuracion.color_info, '#2196F3'),
+        // Identidad
+        nombre_sistema: tema.reporte_titulo_institucion || tema.nombre_sistema || '',
+        nombre_institucion: reportes.titulo_institucion || tema.nombre_institucion || '',
+        subtitulo_institucion: reportes.subtitulo || tema.subtitulo_institucion || '',
+        
+        // Colores principales
+        color_primario: normalizarColor(colores.primario || tema.color_primario, '#9F2241'),
+        color_primario_hover: normalizarColor(colores.primario_hover || tema.color_primario_hover, '#6B1839'),
+        color_secundario: normalizarColor(colores.secundario || tema.color_secundario, '#424242'),
+        color_acento: normalizarColor(colores.acento || tema.color_acento, '#BC955C'),
+        
+        // Colores de fondo
+        color_fondo: normalizarColor(colores.fondo_principal || tema.color_fondo, '#F5F5F5'),
+        color_fondo_sidebar: normalizarColor(colores.fondo_sidebar || tema.color_fondo_sidebar, '#9F2241'),
+        color_fondo_header: normalizarColor(colores.fondo_header || tema.color_fondo_header, '#9F2241'),
+        color_fondo_card: normalizarColor(colores.fondo_tarjetas || tema.color_fondo_card, '#FFFFFF'),
+        
+        // Colores de texto
+        color_texto: normalizarColor(colores.texto_principal || tema.color_texto, '#212121'),
+        color_texto_secundario: normalizarColor(colores.texto_secundario || tema.color_texto_secundario, '#757575'),
+        color_texto_sidebar: normalizarColor(colores.texto_invertido || tema.color_texto_sidebar, '#FFFFFF'),
+        color_texto_header: normalizarColor(colores.texto_invertido || tema.color_texto_header, '#FFFFFF'),
+        
+        // Colores de estado
+        color_exito: normalizarColor(colores.exito || tema.color_exito, '#4CAF50'),
+        color_advertencia: normalizarColor(colores.advertencia || tema.color_advertencia, '#FF9800'),
+        color_error: normalizarColor(colores.error || tema.color_error, '#F44336'),
+        color_info: normalizarColor(colores.info || tema.color_info, '#2196F3'),
+        
+        // Tipografía
+        fuente_principal: tipografia.fuente_principal || 'Montserrat',
+        fuente_titulos: tipografia.fuente_titulos || 'Montserrat',
+        
+        // Reportes
+        reporte_color_encabezado: normalizarColor(reportes.color_encabezado || tema.reporte_color_encabezado, '#1e3a5f'),
+        reporte_color_texto_encabezado: normalizarColor(reportes.color_texto_encabezado || tema.reporte_color_texto_encabezado, '#ffffff'),
+        reporte_color_filas_alternas: normalizarColor(reportes.color_filas_alternas || tema.reporte_color_filas_alternas, '#f9fafb'),
+        reporte_pie_pagina: reportes.pie_pagina || tema.reporte_pie_pagina || '',
+        reporte_ano_visible: reportes.ano_visible ?? tema.reporte_ano_visible ?? true,
       });
-      setTemaSeleccionado(configuracion.tema_activo || 'default');
+      setTemaSeleccionado(tema.tema_activo || tema.nombre || 'default');
       setModoEdicion(false);
       setErroresColor({});
     }
-  }, [configuracion]);
+  }, [temaGlobal, configuracion]);
 
   /**
    * Valida permisos antes de ejecutar una acción
@@ -188,7 +252,8 @@ const ConfiguracionTema = () => {
     // Verificar bloqueo solo dentro del mismo grupo
     const estaBloquado = grupoBloqueo === 'tema' ? hayOperacionTemaEnCurso :
                          grupoBloqueo === 'logo' ? hayOperacionLogoEnCurso :
-                         grupoBloqueo === 'identidad' ? hayOperacionIdentidadEnCurso : false;
+                         grupoBloqueo === 'identidad' ? hayOperacionIdentidadEnCurso :
+                         grupoBloqueo === 'reportes' ? hayOperacionReportesEnCurso : false;
     
     if (estaBloquado) {
       toast.error('Espera a que termine la operación actual');
@@ -233,7 +298,7 @@ const ConfiguracionTema = () => {
       }
       setOperacionEnCurso(prev => ({ ...prev, [nombreOperacion]: false }));
     }
-  }, [validarPermisos, hayOperacionTemaEnCurso, hayOperacionLogoEnCurso, hayOperacionIdentidadEnCurso]);
+  }, [validarPermisos, hayOperacionTemaEnCurso, hayOperacionLogoEnCurso, hayOperacionIdentidadEnCurso, hayOperacionReportesEnCurso]);
 
   /**
    * Maneja cambios en inputs de texto
@@ -328,7 +393,8 @@ const ConfiguracionTema = () => {
   };
 
   /**
-   * Guarda los colores personalizados
+   * Guarda los colores personalizados usando TemaGlobal API
+   * IMPORTANTE: Sincroniza color_primario con color_fondo_sidebar para coherencia visual
    */
   const handleGuardar = async () => {
     if (!validarColoresAntesDeGuardar()) {
@@ -336,10 +402,33 @@ const ConfiguracionTema = () => {
       return;
     }
 
+    // Preparar datos para TemaGlobal
+    // Sincronizar colores primarios con sidebar/header para coherencia visual
+    const datosActualizacion = {
+      // Colores principales - sincronizados con sidebar para bg-theme-gradient
+      color_primario: formData.color_fondo_sidebar || formData.color_primario,
+      color_primario_hover: formData.color_fondo_header || formData.color_primario_hover,
+      color_secundario: formData.color_secundario,
+      // Colores de fondo
+      color_fondo_principal: formData.color_fondo,
+      color_fondo_sidebar: formData.color_fondo_sidebar,
+      color_fondo_header: formData.color_fondo_header,
+      color_fondo_tarjetas: formData.color_fondo_card,
+      // Colores de texto
+      color_texto_principal: formData.color_texto,
+      color_texto_secundario: formData.color_texto_secundario,
+      color_texto_invertido: formData.color_texto_sidebar,
+      // Colores de estado
+      color_exito: formData.color_exito,
+      color_advertencia: formData.color_advertencia,
+      color_error: formData.color_error,
+      color_info: formData.color_info,
+    };
+
     const resultado = await ejecutarOperacion(
       'guardandoColores',
-      () => actualizarTema({ ...formData, tema_activo: 'custom' }),
-      'Configuración guardada correctamente',
+      () => actualizarTemaGlobal ? actualizarTemaGlobal(datosActualizacion) : actualizarTema({ ...formData, tema_activo: 'custom' }),
+      'Configuración de colores guardada correctamente',
       'tema'
     );
 
@@ -349,14 +438,18 @@ const ConfiguracionTema = () => {
   };
 
   /**
-   * Guarda la identidad institucional
-   * Envía la configuración completa para no perder colores ni tema activo
+   * Guarda la identidad institucional usando TemaGlobal
    */
   const handleGuardarIdentidad = async () => {
+    const datosIdentidad = {
+      reporte_titulo_institucion: formData.nombre_institucion || formData.nombre_sistema,
+      reporte_subtitulo: formData.subtitulo_institucion,
+    };
+
     const resultado = await ejecutarOperacion(
       'guardandoIdentidad',
-      () => actualizarTema({
-        ...formData, // Incluir todos los datos del formulario (colores + identidad)
+      () => actualizarTemaGlobal ? actualizarTemaGlobal(datosIdentidad) : actualizarTema({
+        ...formData,
       }),
       'Identidad institucional actualizada',
       'identidad'
@@ -368,7 +461,31 @@ const ConfiguracionTema = () => {
   };
 
   /**
-   * Restablece el tema a valores por defecto
+   * Guarda la configuración de reportes usando TemaGlobal
+   */
+  const handleGuardarReportes = async () => {
+    const datosReportes = {
+      reporte_color_encabezado: formData.reporte_color_encabezado,
+      reporte_color_texto_encabezado: formData.reporte_color_texto_encabezado,
+      reporte_color_filas_alternas: formData.reporte_color_filas_alternas,
+      reporte_pie_pagina: formData.reporte_pie_pagina,
+      reporte_ano_visible: formData.reporte_ano_visible,
+    };
+
+    const resultado = await ejecutarOperacion(
+      'guardandoReportes',
+      () => actualizarTemaGlobal ? actualizarTemaGlobal(datosReportes) : actualizarTema(datosReportes),
+      'Configuración de reportes actualizada',
+      'reportes'
+    );
+
+    if (resultado.success) {
+      setModoEdicion(false);
+    }
+  };
+
+  /**
+   * Restablece el tema a valores por defecto (legacy)
    */
   const handleRestablecer = async () => {
     if (!window.confirm('¿Estás seguro de restablecer a los valores por defecto?\n\nEsto restablecerá todos los colores pero mantendrá los logos e información institucional.')) {
@@ -379,6 +496,36 @@ const ConfiguracionTema = () => {
       'restableciendo',
       restablecerTema,
       'Colores restablecidos a valores por defecto',
+      'tema'
+    );
+
+    if (resultado.success) {
+      setModoEdicion(false);
+      setErroresColor({});
+    }
+  };
+
+  /**
+   * Restablece completamente al tema institucional (TemaGlobal)
+   * Restaura colores, tipografías, logos y fondos oficiales
+   */
+  const handleRestablecerInstitucional = async () => {
+    if (!window.confirm(
+      '¿Estás seguro de restablecer TODO al tema institucional?\n\n' +
+      'Esta acción restaurará:\n' +
+      '• Todos los colores oficiales\n' +
+      '• Tipografías por defecto\n' +
+      '• Logos institucionales\n' +
+      '• Fondos y configuración de reportes\n\n' +
+      'Esta acción no se puede deshacer.'
+    )) {
+      return;
+    }
+
+    const resultado = await ejecutarOperacion(
+      'restablecerInstitucional',
+      restablecerTemaInstitucional,
+      'Tema institucional restaurado completamente',
       'tema'
     );
 
@@ -474,6 +621,87 @@ const ConfiguracionTema = () => {
     );
   };
 
+  /**
+   * Handler genérico para subir logos usando TemaGlobal API
+   * @param {string} tipo - header, login, reportes, favicon, fondo_login, fondo_reportes
+   * @param {string} nombreOperacion - nombre para el estado de operación
+   * @param {File} file - archivo a subir
+   * @param {object} validaciones - { maxSize, allowedTypes }
+   */
+  const handleSubirLogoTema = async (tipo, nombreOperacion, file, validaciones) => {
+    if (!file) return;
+
+    const { maxSize = 500 * 1024, allowedTypes = ['image/png', 'image/jpeg', 'image/jpg'] } = validaciones;
+
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Formato no válido');
+      return;
+    }
+    if (file.size > maxSize) {
+      toast.error(`El archivo no puede superar ${Math.round(maxSize / 1024)}KB`);
+      return;
+    }
+
+    await ejecutarOperacion(
+      nombreOperacion,
+      () => subirLogoTema(tipo, file),
+      `${tipo.charAt(0).toUpperCase() + tipo.slice(1).replace('_', ' ')} actualizado`,
+      'logo'
+    );
+  };
+
+  /**
+   * Handler genérico para eliminar logos usando TemaGlobal API
+   */
+  const handleEliminarLogoTema = async (tipo, nombreOperacion, mensaje) => {
+    if (!window.confirm(`¿Eliminar ${mensaje}?`)) return;
+
+    await ejecutarOperacion(
+      nombreOperacion,
+      () => eliminarLogoTema(tipo),
+      `${mensaje} eliminado`,
+      'logo'
+    );
+  };
+
+  // Handlers específicos para cada tipo de logo/imagen del TemaGlobal
+  const handleSubirLogoLogin = async (e) => {
+    await handleSubirLogoTema('login', 'subiendoLogoLogin', e.target.files[0], {
+      maxSize: 500 * 1024,
+      allowedTypes: ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
+    });
+    if (logoLoginRef.current) logoLoginRef.current.value = '';
+  };
+
+  const handleSubirFavicon = async (e) => {
+    await handleSubirLogoTema('favicon', 'subiendoFavicon', e.target.files[0], {
+      maxSize: 100 * 1024,
+      allowedTypes: ['image/png', 'image/x-icon', 'image/ico', 'image/vnd.microsoft.icon']
+    });
+    if (faviconRef.current) faviconRef.current.value = '';
+  };
+
+  const handleSubirFondoLogin = async (e) => {
+    await handleSubirLogoTema('fondo_login', 'subiendoFondoLogin', e.target.files[0], {
+      maxSize: 2 * 1024 * 1024,
+      allowedTypes: ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
+    });
+    if (fondoLoginRef.current) fondoLoginRef.current.value = '';
+  };
+
+  const handleSubirFondoReportes = async (e) => {
+    await handleSubirLogoTema('fondo_reportes', 'subiendoFondoReportes', e.target.files[0], {
+      maxSize: 2 * 1024 * 1024,
+      allowedTypes: ['image/png', 'image/jpeg', 'image/jpg']
+    });
+    if (fondoReportesRef.current) fondoReportesRef.current.value = '';
+  };
+
+  const handleEliminarLogoLogin = () => handleEliminarLogoTema('login', 'eliminandoLogoLogin', 'el logo de login');
+  const handleEliminarFavicon = () => handleEliminarLogoTema('favicon', 'eliminandoFavicon', 'el favicon');
+  const handleEliminarFondoLogin = () => handleEliminarLogoTema('fondo_login', 'eliminandoFondoLogin', 'el fondo de login');
+  const handleEliminarFondoReportes = () => handleEliminarLogoTema('fondo_reportes', 'eliminandoFondoReportes', 'el fondo de reportes');
+
   // Estado de carga inicial (permisos + tema)
   if (!permisosResueltos || cargandoTema) {
     return (
@@ -506,8 +734,19 @@ const ConfiguracionTema = () => {
     { id: 'temas', label: 'Temas', icon: FaPalette },
     { id: 'colores', label: 'Colores', icon: FaDesktop },
     { id: 'logos', label: 'Logos', icon: FaImage },
+    { id: 'reportes', label: 'Reportes', icon: FaFileAlt },
     { id: 'identidad', label: 'Identidad', icon: FaBuilding },
   ];
+
+  // Obtener URLs de logos desde temaGlobal o configuracion
+  const logoUrls = {
+    header: temaGlobal?.logo_header_url || temaGlobal?.logos?.header || configuracion?.logo_header_url,
+    login: temaGlobal?.logo_login_url || temaGlobal?.logos?.login,
+    reportes: temaGlobal?.logo_reportes_url || temaGlobal?.logos?.reportes || configuracion?.logo_pdf_url,
+    favicon: temaGlobal?.favicon_url || temaGlobal?.logos?.favicon,
+    fondoLogin: temaGlobal?.imagen_fondo_login_url || temaGlobal?.imagenes?.fondo_login,
+    fondoReportes: temaGlobal?.imagen_fondo_reportes_url || temaGlobal?.imagenes?.fondo_reportes,
+  };
 
   // Verifica si hay errores de color
   const hayErroresColor = Object.keys(erroresColor).length > 0;
@@ -806,135 +1045,380 @@ const ConfiguracionTema = () => {
           {/* TAB: Logos */}
           {activeTab === 'logos' && (
             <div className="space-y-6">
-              <h2 className="text-lg font-bold text-gray-800">Gestión de Logos</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold text-gray-800">Gestión de Logos e Imágenes</h2>
+                {restablecerTemaInstitucional && (
+                  <button
+                    onClick={handleRestablecerInstitucional}
+                    disabled={hayOperacionTemaEnCurso}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    {operacionEnCurso.restablecerInstitucional ? (
+                      <div className="animate-spin h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full"></div>
+                    ) : (
+                      <FaRedo />
+                    )}
+                    Restablecer Todo
+                  </button>
+                )}
+              </div>
 
-              <div className="grid md:grid-cols-2 gap-6">
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {/* Logo Header */}
                 <div className="bg-gray-50 p-6 rounded-xl">
                   <div className="flex items-center gap-3 mb-4">
                     <FaDesktop className="text-xl text-gray-600" />
                     <div>
                       <h3 className="font-semibold text-gray-800">Logo del Header</h3>
-                      <p className="text-sm text-gray-500">Aparece en la barra superior del sistema</p>
+                      <p className="text-sm text-gray-500">Barra superior del sistema</p>
                     </div>
                   </div>
                   
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center mb-4 bg-white">
-                    {configuracion?.logo_header_url ? (
-                      <img 
-                        src={configuracion.logo_header_url} 
-                        alt="Logo Header" 
-                        className="max-h-20 mx-auto object-contain"
-                      />
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center mb-4 bg-white min-h-[100px] flex items-center justify-center">
+                    {logoUrls.header ? (
+                      <img src={logoUrls.header} alt="Logo Header" className="max-h-20 mx-auto object-contain" />
                     ) : (
                       <div className="text-gray-400">
-                        <FaImage className="text-4xl mx-auto mb-2" />
-                        <p>Sin logo configurado</p>
+                        <FaImage className="text-3xl mx-auto mb-2" />
+                        <p className="text-sm">Sin logo</p>
                       </div>
                     )}
                   </div>
                   
                   <div className="flex gap-2">
-                    <input
-                      type="file"
-                      ref={logoHeaderRef}
-                      onChange={handleSubirLogoHeader}
-                      accept="image/png,image/jpeg,image/jpg,image/webp"
-                      className="hidden"
-                      disabled={hayOperacionLogoEnCurso}
-                    />
-                    <button
-                      onClick={() => logoHeaderRef.current?.click()}
-                      disabled={hayOperacionLogoEnCurso}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white disabled:opacity-50 bg-theme-gradient"
-                    >
-                      {operacionEnCurso.subiendoLogoHeader ? (
-                        <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                      ) : (
-                        <FaUpload />
-                      )}
-                      {configuracion?.logo_header_url ? 'Cambiar' : 'Subir Logo'}
+                    <input type="file" ref={logoHeaderRef} onChange={handleSubirLogoHeader} accept="image/png,image/jpeg,image/jpg,image/webp" className="hidden" disabled={hayOperacionLogoEnCurso} />
+                    <button onClick={() => logoHeaderRef.current?.click()} disabled={hayOperacionLogoEnCurso} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-white text-sm disabled:opacity-50 bg-theme-gradient">
+                      {operacionEnCurso.subiendoLogoHeader ? <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div> : <FaUpload />}
+                      {logoUrls.header ? 'Cambiar' : 'Subir'}
                     </button>
-                    {configuracion?.logo_header_url && (
-                      <button
-                        onClick={handleEliminarLogoHeader}
-                        disabled={hayOperacionLogoEnCurso}
-                        className="px-4 py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
-                      >
-                        {operacionEnCurso.eliminandoLogoHeader ? (
-                          <div className="animate-spin h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full"></div>
-                        ) : (
-                          <FaTrash />
-                        )}
+                    {logoUrls.header && (
+                      <button onClick={handleEliminarLogoHeader} disabled={hayOperacionLogoEnCurso} className="px-3 py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50">
+                        {operacionEnCurso.eliminandoLogoHeader ? <div className="animate-spin h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full"></div> : <FaTrash />}
                       </button>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">PNG, JPG o WebP. Máximo 500KB.</p>
+                  <p className="text-xs text-gray-500 mt-2">PNG, JPG, WebP. Máx 500KB</p>
                 </div>
 
-                {/* Logo PDF */}
+                {/* Logo Login */}
+                <div className="bg-gray-50 p-6 rounded-xl">
+                  <div className="flex items-center gap-3 mb-4">
+                    <FaGlobe className="text-xl text-blue-600" />
+                    <div>
+                      <h3 className="font-semibold text-gray-800">Logo de Login</h3>
+                      <p className="text-sm text-gray-500">Pantalla de inicio de sesión</p>
+                    </div>
+                  </div>
+                  
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center mb-4 bg-white min-h-[100px] flex items-center justify-center">
+                    {logoUrls.login ? (
+                      <img src={logoUrls.login} alt="Logo Login" className="max-h-20 mx-auto object-contain" />
+                    ) : (
+                      <div className="text-gray-400">
+                        <FaGlobe className="text-3xl mx-auto mb-2" />
+                        <p className="text-sm">Sin logo</p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <input type="file" ref={logoLoginRef} onChange={handleSubirLogoLogin} accept="image/png,image/jpeg,image/jpg,image/webp" className="hidden" disabled={hayOperacionLogoEnCurso} />
+                    <button onClick={() => logoLoginRef.current?.click()} disabled={hayOperacionLogoEnCurso} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)' }}>
+                      {operacionEnCurso.subiendoLogoLogin ? <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div> : <FaUpload />}
+                      {logoUrls.login ? 'Cambiar' : 'Subir'}
+                    </button>
+                    {logoUrls.login && (
+                      <button onClick={handleEliminarLogoLogin} disabled={hayOperacionLogoEnCurso} className="px-3 py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50">
+                        {operacionEnCurso.eliminandoLogoLogin ? <div className="animate-spin h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full"></div> : <FaTrash />}
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">PNG, JPG, WebP. Máx 500KB</p>
+                </div>
+
+                {/* Logo Reportes */}
                 <div className="bg-gray-50 p-6 rounded-xl">
                   <div className="flex items-center gap-3 mb-4">
                     <FaFilePdf className="text-xl text-red-600" />
                     <div>
-                      <h3 className="font-semibold text-gray-800">Logo Institucional (PDFs)</h3>
-                      <p className="text-sm text-gray-500">Fondo/logo para reportes y documentos PDF</p>
+                      <h3 className="font-semibold text-gray-800">Logo de Reportes</h3>
+                      <p className="text-sm text-gray-500">Encabezado de PDFs</p>
                     </div>
                   </div>
                   
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center mb-4 bg-white">
-                    {configuracion?.logo_pdf_url ? (
-                      <img 
-                        src={configuracion.logo_pdf_url} 
-                        alt="Logo PDF" 
-                        className="max-h-32 mx-auto object-contain"
-                      />
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center mb-4 bg-white min-h-[100px] flex items-center justify-center">
+                    {logoUrls.reportes ? (
+                      <img src={logoUrls.reportes} alt="Logo Reportes" className="max-h-20 mx-auto object-contain" />
                     ) : (
                       <div className="text-gray-400">
-                        <FaFilePdf className="text-4xl mx-auto mb-2" />
-                        <p>Sin logo institucional</p>
-                        <p className="text-xs">Se usará el fondo por defecto</p>
+                        <FaFilePdf className="text-3xl mx-auto mb-2" />
+                        <p className="text-sm">Sin logo</p>
                       </div>
                     )}
                   </div>
                   
                   <div className="flex gap-2">
-                    <input
-                      type="file"
-                      ref={logoPdfRef}
-                      onChange={handleSubirLogoPdf}
-                      accept="image/png,image/jpeg,image/jpg"
-                      className="hidden"
-                      disabled={hayOperacionLogoEnCurso}
-                    />
-                    <button
-                      onClick={() => logoPdfRef.current?.click()}
-                      disabled={hayOperacionLogoEnCurso}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white disabled:opacity-50"
-                      style={{ background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' }}
-                    >
-                      {operacionEnCurso.subiendoLogoPdf ? (
-                        <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                      ) : (
-                        <FaUpload />
-                      )}
-                      {configuracion?.logo_pdf_url ? 'Cambiar' : 'Subir Logo'}
+                    <input type="file" ref={logoPdfRef} onChange={handleSubirLogoPdf} accept="image/png,image/jpeg,image/jpg" className="hidden" disabled={hayOperacionLogoEnCurso} />
+                    <button onClick={() => logoPdfRef.current?.click()} disabled={hayOperacionLogoEnCurso} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' }}>
+                      {operacionEnCurso.subiendoLogoPdf ? <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div> : <FaUpload />}
+                      {logoUrls.reportes ? 'Cambiar' : 'Subir'}
                     </button>
-                    {configuracion?.logo_pdf_url && (
-                      <button
-                        onClick={handleEliminarLogoPdf}
-                        disabled={hayOperacionLogoEnCurso}
-                        className="px-4 py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
-                      >
-                        {operacionEnCurso.eliminandoLogoPdf ? (
-                          <div className="animate-spin h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full"></div>
-                        ) : (
-                          <FaTrash />
-                        )}
+                    {logoUrls.reportes && (
+                      <button onClick={handleEliminarLogoPdf} disabled={hayOperacionLogoEnCurso} className="px-3 py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50">
+                        {operacionEnCurso.eliminandoLogoPdf ? <div className="animate-spin h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full"></div> : <FaTrash />}
                       </button>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">PNG o JPG. Recomendado 800x1200px. Máximo 2MB.</p>
+                  <p className="text-xs text-gray-500 mt-2">PNG, JPG. Máx 2MB</p>
+                </div>
+
+                {/* Favicon */}
+                <div className="bg-gray-50 p-6 rounded-xl">
+                  <div className="flex items-center gap-3 mb-4">
+                    <FaImage className="text-xl text-purple-600" />
+                    <div>
+                      <h3 className="font-semibold text-gray-800">Favicon</h3>
+                      <p className="text-sm text-gray-500">Icono del navegador</p>
+                    </div>
+                  </div>
+                  
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center mb-4 bg-white min-h-[100px] flex items-center justify-center">
+                    {logoUrls.favicon ? (
+                      <img src={logoUrls.favicon} alt="Favicon" className="max-h-16 mx-auto object-contain" />
+                    ) : (
+                      <div className="text-gray-400">
+                        <FaImage className="text-3xl mx-auto mb-2" />
+                        <p className="text-sm">Sin favicon</p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <input type="file" ref={faviconRef} onChange={handleSubirFavicon} accept="image/png,image/x-icon,image/ico" className="hidden" disabled={hayOperacionLogoEnCurso} />
+                    <button onClick={() => faviconRef.current?.click()} disabled={hayOperacionLogoEnCurso} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)' }}>
+                      {operacionEnCurso.subiendoFavicon ? <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div> : <FaUpload />}
+                      {logoUrls.favicon ? 'Cambiar' : 'Subir'}
+                    </button>
+                    {logoUrls.favicon && (
+                      <button onClick={handleEliminarFavicon} disabled={hayOperacionLogoEnCurso} className="px-3 py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50">
+                        {operacionEnCurso.eliminandoFavicon ? <div className="animate-spin h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full"></div> : <FaTrash />}
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">PNG, ICO. Máx 100KB. 32x32 recomendado</p>
+                </div>
+
+                {/* Fondo Login */}
+                <div className="bg-gray-50 p-6 rounded-xl">
+                  <div className="flex items-center gap-3 mb-4">
+                    <FaDesktop className="text-xl text-teal-600" />
+                    <div>
+                      <h3 className="font-semibold text-gray-800">Fondo de Login</h3>
+                      <p className="text-sm text-gray-500">Imagen de fondo en login</p>
+                    </div>
+                  </div>
+                  
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center mb-4 bg-white min-h-[100px] flex items-center justify-center">
+                    {logoUrls.fondoLogin ? (
+                      <img src={logoUrls.fondoLogin} alt="Fondo Login" className="max-h-20 mx-auto object-contain" />
+                    ) : (
+                      <div className="text-gray-400">
+                        <FaDesktop className="text-3xl mx-auto mb-2" />
+                        <p className="text-sm">Sin fondo</p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <input type="file" ref={fondoLoginRef} onChange={handleSubirFondoLogin} accept="image/png,image/jpeg,image/jpg,image/webp" className="hidden" disabled={hayOperacionLogoEnCurso} />
+                    <button onClick={() => fondoLoginRef.current?.click()} disabled={hayOperacionLogoEnCurso} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #14B8A6 0%, #0D9488 100%)' }}>
+                      {operacionEnCurso.subiendoFondoLogin ? <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div> : <FaUpload />}
+                      {logoUrls.fondoLogin ? 'Cambiar' : 'Subir'}
+                    </button>
+                    {logoUrls.fondoLogin && (
+                      <button onClick={handleEliminarFondoLogin} disabled={hayOperacionLogoEnCurso} className="px-3 py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50">
+                        {operacionEnCurso.eliminandoFondoLogin ? <div className="animate-spin h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full"></div> : <FaTrash />}
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">PNG, JPG, WebP. Máx 2MB</p>
+                </div>
+
+                {/* Fondo Reportes */}
+                <div className="bg-gray-50 p-6 rounded-xl">
+                  <div className="flex items-center gap-3 mb-4">
+                    <FaFileAlt className="text-xl text-orange-600" />
+                    <div>
+                      <h3 className="font-semibold text-gray-800">Fondo de Reportes</h3>
+                      <p className="text-sm text-gray-500">Marca de agua en PDFs</p>
+                    </div>
+                  </div>
+                  
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center mb-4 bg-white min-h-[100px] flex items-center justify-center">
+                    {logoUrls.fondoReportes ? (
+                      <img src={logoUrls.fondoReportes} alt="Fondo Reportes" className="max-h-20 mx-auto object-contain" />
+                    ) : (
+                      <div className="text-gray-400">
+                        <FaFileAlt className="text-3xl mx-auto mb-2" />
+                        <p className="text-sm">Sin fondo</p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <input type="file" ref={fondoReportesRef} onChange={handleSubirFondoReportes} accept="image/png,image/jpeg,image/jpg" className="hidden" disabled={hayOperacionLogoEnCurso} />
+                    <button onClick={() => fondoReportesRef.current?.click()} disabled={hayOperacionLogoEnCurso} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #F97316 0%, #EA580C 100%)' }}>
+                      {operacionEnCurso.subiendoFondoReportes ? <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div> : <FaUpload />}
+                      {logoUrls.fondoReportes ? 'Cambiar' : 'Subir'}
+                    </button>
+                    {logoUrls.fondoReportes && (
+                      <button onClick={handleEliminarFondoReportes} disabled={hayOperacionLogoEnCurso} className="px-3 py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50">
+                        {operacionEnCurso.eliminandoFondoReportes ? <div className="animate-spin h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full"></div> : <FaTrash />}
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">PNG, JPG. Máx 2MB</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: Reportes */}
+          {activeTab === 'reportes' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold text-gray-800">Configuración de Reportes PDF</h2>
+                <button
+                  onClick={handleGuardarReportes}
+                  disabled={hayOperacionReportesEnCurso}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-white disabled:opacity-50 bg-theme-gradient"
+                >
+                  {operacionEnCurso.guardandoReportes ? (
+                    <>
+                      <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <FaSave /> Guardar Configuración
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Colores de Reportes */}
+                <div className="bg-gray-50 p-5 rounded-xl">
+                  <h3 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                    <FaPalette className="text-gray-500" />
+                    Colores de Tablas en Reportes
+                  </h3>
+                  <div className="space-y-4">
+                    <ColorInput 
+                      label="Color de Encabezado" 
+                      name="reporte_color_encabezado" 
+                      value={formData.reporte_color_encabezado} 
+                      onChange={handleColorChange} 
+                      disabled={hayOperacionReportesEnCurso} 
+                    />
+                    <ColorInput 
+                      label="Color de Texto Encabezado" 
+                      name="reporte_color_texto_encabezado" 
+                      value={formData.reporte_color_texto_encabezado} 
+                      onChange={handleColorChange} 
+                      disabled={hayOperacionReportesEnCurso} 
+                    />
+                    <ColorInput 
+                      label="Color Filas Alternas" 
+                      name="reporte_color_filas_alternas" 
+                      value={formData.reporte_color_filas_alternas} 
+                      onChange={handleColorChange} 
+                      disabled={hayOperacionReportesEnCurso} 
+                    />
+                  </div>
+                </div>
+
+                {/* Configuración adicional */}
+                <div className="bg-gray-50 p-5 rounded-xl">
+                  <h3 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                    <FaFileAlt className="text-gray-500" />
+                    Textos y Opciones
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Pie de Página
+                      </label>
+                      <input
+                        type="text"
+                        name="reporte_pie_pagina"
+                        value={formData.reporte_pie_pagina || ''}
+                        onChange={handleInputChange}
+                        placeholder="Texto del pie de página en reportes"
+                        disabled={hayOperacionReportesEnCurso}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 disabled:opacity-50 disabled:bg-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          name="reporte_ano_visible"
+                          checked={formData.reporte_ano_visible ?? true}
+                          onChange={(e) => {
+                            setFormData(prev => ({ ...prev, reporte_ano_visible: e.target.checked }));
+                            setModoEdicion(true);
+                          }}
+                          disabled={hayOperacionReportesEnCurso}
+                          className="w-5 h-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                        />
+                        <span className="text-sm font-medium text-gray-700">
+                          Mostrar año en reportes
+                        </span>
+                      </label>
+                      <p className="text-xs text-gray-500 mt-1 ml-8">
+                        Muestra el año actual en el encabezado de los reportes PDF
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Vista previa de tabla de reporte */}
+              <div className="mt-6">
+                <h3 className="font-semibold text-gray-700 mb-4">Vista Previa de Tabla</h3>
+                <div className="bg-white rounded-lg border shadow overflow-hidden">
+                  <table className="w-full">
+                    <thead>
+                      <tr style={{ backgroundColor: formData.reporte_color_encabezado, color: formData.reporte_color_texto_encabezado }}>
+                        <th className="px-4 py-3 text-left font-semibold">Producto</th>
+                        <th className="px-4 py-3 text-left font-semibold">Cantidad</th>
+                        <th className="px-4 py-3 text-left font-semibold">Precio</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="px-4 py-3">Producto A</td>
+                        <td className="px-4 py-3">100</td>
+                        <td className="px-4 py-3">$50.00</td>
+                      </tr>
+                      <tr style={{ backgroundColor: formData.reporte_color_filas_alternas }}>
+                        <td className="px-4 py-3">Producto B</td>
+                        <td className="px-4 py-3">250</td>
+                        <td className="px-4 py-3">$75.00</td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3">Producto C</td>
+                        <td className="px-4 py-3">50</td>
+                        <td className="px-4 py-3">$120.00</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  {formData.reporte_pie_pagina && (
+                    <div className="border-t px-4 py-2 text-xs text-gray-500 text-center">
+                      {formData.reporte_pie_pagina} {formData.reporte_ano_visible && `- ${new Date().getFullYear()}`}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1021,9 +1505,9 @@ const ConfiguracionTema = () => {
                   </label>
                   <div className="border rounded-lg p-6 bg-white shadow-inner">
                     <div className="text-center border-b pb-4">
-                      {configuracion?.logo_pdf_url ? (
+                      {logoUrls.reportes ? (
                         <img 
-                          src={configuracion.logo_pdf_url} 
+                          src={logoUrls.reportes} 
                           alt="Logo" 
                           className="h-16 mx-auto mb-2 object-contain"
                         />
@@ -1040,11 +1524,17 @@ const ConfiguracionTema = () => {
                       </p>
                       <p className="text-xs text-gray-500 mt-1">
                         {formData.nombre_sistema || 'Sistema de Farmacia'}
+                        {formData.reporte_ano_visible && ` - ${new Date().getFullYear()}`}
                       </p>
                     </div>
                     <div className="mt-4 text-center text-xs text-gray-400">
                       [Contenido del reporte]
                     </div>
+                    {formData.reporte_pie_pagina && (
+                      <div className="mt-4 pt-2 border-t text-center text-xs text-gray-500">
+                        {formData.reporte_pie_pagina}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

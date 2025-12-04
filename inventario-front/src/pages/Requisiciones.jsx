@@ -1216,7 +1216,7 @@ const Requisiciones = () => {
             ) : (
               // Spinner normal
               <>
-                <div className="animate-spin rounded-full h-10 w-10 border-4 border-t-transparent mx-auto" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }} />
+                <div className="animate-spin rounded-full h-10 w-10 border-4 border-t-transparent mx-auto spinner-institucional" />
                 <p className="mt-3 text-gray-600">
                   {!centroResuelto ? 'Verificando permisos...' : 'Cargando requisiciones...'}
                 </p>
@@ -1394,12 +1394,12 @@ const Requisiciones = () => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-40 px-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full relative max-h-[95vh] flex flex-col">
             {/* Header del modal */}
-            <div className="p-4 border-b flex items-center justify-between flex-shrink-0">
+            <div className="p-4 bg-theme-gradient rounded-t-xl flex items-center justify-between flex-shrink-0">
               <div>
-                <h2 className="text-xl font-bold text-theme-primary">
+                <h2 className="text-xl font-bold text-white">
                   {editRequisicion ? 'Editar requisición' : 'Nueva requisición'}
                 </h2>
-                <p className="text-sm text-gray-500 mt-1">
+                <p className="text-sm text-white/80 mt-1">
                   Selecciona los productos y cantidades que necesitas
                 </p>
               </div>
@@ -1410,8 +1410,8 @@ const Requisiciones = () => {
                   onClick={() => setVistaCarrito(false)}
                   className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all ${
                     !vistaCarrito 
-                      ? 'text-white bg-theme-primary' 
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      ? 'text-theme-primary bg-white' 
+                      : 'bg-white/20 text-white hover:bg-white/30'
                   }`}
                 >
                   <FaSearch /> Catálogo
@@ -1420,8 +1420,8 @@ const Requisiciones = () => {
                   onClick={() => setVistaCarrito(true)}
                   className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all relative ${
                     vistaCarrito 
-                      ? 'text-white bg-theme-primary' 
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      ? 'text-theme-primary bg-white' 
+                      : 'bg-white/20 text-white hover:bg-white/30'
                   }`}
                 >
                   <FaShoppingCart /> 
@@ -1433,6 +1433,14 @@ const Requisiciones = () => {
                       {form.items.length}
                     </span>
                   )}
+                </button>
+                
+                {/* Botón cerrar */}
+                <button 
+                  onClick={() => { setShowModal(false); resetForm(); }}
+                  className="text-white/70 hover:text-white ml-4"
+                >
+                  <FaTimes size={24} />
                 </button>
               </div>
             </div>
@@ -1506,7 +1514,7 @@ const Requisiciones = () => {
                   <div className="flex-1 overflow-y-auto border rounded-lg">
                     {loadingCatalogo ? (
                       <div className="flex items-center justify-center py-12">
-                        <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent mr-3" style={{ borderColor: '#9F224133', borderTopColor: '#9F2241' }} />
+                        <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent mr-3 spinner-institucional" />
                         <span className="text-gray-500">Cargando catálogo...</span>
                       </div>
                     ) : catalogoAgrupado.length === 0 ? (

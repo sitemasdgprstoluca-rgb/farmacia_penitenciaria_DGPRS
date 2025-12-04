@@ -16,9 +16,14 @@ import {
 import { reportesAPI, centrosAPI, descargarArchivo } from "../services/api";
 import PageHeader from "../components/PageHeader";
 
+// Los colores ahora se leen del tema CSS - esto es solo para compatibilidad
+const getThemeColor = (varName, fallback) => {
+  return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || fallback;
+};
+
 const COLORS = {
-  vino: '#9F2241',
-  vinoOscuro: '#6B1839',
+  get vino() { return getThemeColor('--color-primary', '#9F2241'); },
+  get vinoOscuro() { return getThemeColor('--color-primary-hover', '#6B1839'); },
 };
 
 const baseFilters = {
