@@ -22,6 +22,7 @@ from .constants import (
     NIVELES_STOCK,
 )
 import logging
+import os
 
 
 # ISS-016: Validador de tamaño de archivo para imágenes
@@ -39,13 +40,115 @@ def validate_logo_size(value):
     """Validador específico para logos (max 500KB)"""
     validate_image_max_size(value, max_size_kb=500)
 
+
+# ISS-005: Validador de archivos PDF
+def validate_pdf_file(value):
+    """
+    ISS-005: Valida que el archivo sea PDF válido y no exceda tamaño máximo.
+    
+    Validaciones:
+    - Extensión .pdf
+    - Tamaño máximo 10MB
+    - Content-type application/pdf (si está disponible)
+    """
+    if not value:
+        return
+    
+    # Validar extensión
+    ext = os.path.splitext(value.name)[1].lower()
+    if ext != '.pdf':
+        raise ValidationError('Solo se permiten archivos PDF (.pdf)')
+    
+    # Validar tamaño (máximo 10MB)
+    max_size_bytes = 10 * 1024 * 1024  # 10MB
+    if value.size > max_size_bytes:
+        raise ValidationError(
+            f'El archivo PDF es demasiado grande. Máximo permitido: 10MB. '
+            f'Tamaño actual: {value.size / (1024*1024):.2f}MB'
+        )
+    
+    # Validar content-type si está disponible
+    if hasattr(value, 'content_type'):
+        allowed_types = ['application/pdf', 'application/x-pdf']
+        if value.content_type not in allowed_types:
+            raise ValidationError(
+                f'Tipo de archivo no válido. Se esperaba PDF, se recibió: {value.content_type}'
+            )
+
+
+# ISS-005: Función para generar nombre seguro de archivo PDF
+def pdf_upload_path(instance, filename):
+    """
+    ISS-005: Genera ruta segura para archivos PDF.
+    
+    Formato: lotes/documentos/YYYY/MM/producto_lote_timestamp.pdf
+    """
+    import uuid
+    from django.utils import timezone
+    
+    # Sanitizar nombre (remover caracteres peligrosos)
+    safe_name = "".join(c for c in filename if c.isalnum() or c in '._-')
+    
+    # Generar nombre único
+    timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    unique_id = uuid.uuid4().hex[:8]
+    
+    # Obtener info del lote si está disponible
+    producto_clave = getattr(instance, 'producto', None)
+    if producto_clave and hasattr(producto_clave, 'clave'):
+        producto_clave = producto_clave.clave[:20]
+    else:
+        producto_clave = 'doc'
+    
+    numero_lote = getattr(instance, 'numero_lote', 'lote')[:20] if instance else 'lote'
+    
+    # Formato final: lotes/documentos/2024/12/PROD123_LOT456_20241204_123456_abc12345.pdf
+    new_filename = f"{producto_clave}_{numero_lote}_{timestamp}_{unique_id}.pdf"
+    
+    year = timezone.now().strftime('%Y')
+    month = timezone.now().strftime('%m')
+    
+    return f"lotes/documentos/{year}/{month}/{new_filename}"
+
 logger = logging.getLogger(__name__)
 
 
 class User(AbstractUser):
     """
-    Modelo de usuario extendido con roles y asignación de centro
+    Modelo de usuario extendido con roles y asignación de centro.
+    
+    ISS-009: Incluye validación de coherencia entre rol y permisos personalizados.
     """
+    
+    # ISS-009: Definir permisos máximos permitidos por rol
+    # True = puede tener el permiso, False = nunca puede tenerlo
+    PERMISOS_POR_ROL = {
+        'admin_sistema': {
+            'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': True,
+            'perm_requisiciones': True, 'perm_centros': True, 'perm_usuarios': True,
+            'perm_reportes': True, 'perm_trazabilidad': True, 'perm_auditoria': True,
+            'perm_notificaciones': True, 'perm_movimientos': True,
+        },
+        'farmacia': {
+            'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': True,
+            'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
+            'perm_reportes': True, 'perm_trazabilidad': True, 'perm_auditoria': False,
+            'perm_notificaciones': True, 'perm_movimientos': True,
+        },
+        'usuario_centro': {
+            'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': True,
+            'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
+            'perm_reportes': True, 'perm_trazabilidad': True, 'perm_auditoria': False,
+            'perm_notificaciones': True, 'perm_movimientos': True,
+        },
+        'usuario_normal': {
+            'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': False,
+            'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
+            'perm_reportes': False, 'perm_trazabilidad': False, 'perm_auditoria': False,
+            'perm_notificaciones': True, 'perm_movimientos': False,
+        },
+    }
+    
     rol = models.CharField(
         max_length=20,
         choices=ROLES_USUARIO,
@@ -86,6 +189,76 @@ class User(AbstractUser):
             models.Index(fields=['rol', 'activo']),
             models.Index(fields=['centro', 'activo']),
         ]
+
+    def clean(self):
+        """
+        ISS-009: Valida coherencia entre rol y permisos personalizados.
+        
+        Evita que un usuario tenga permisos que excedan su rol.
+        """
+        super().clean()
+        
+        # Superusers pueden tener cualquier permiso
+        if self.is_superuser:
+            return
+        
+        # Obtener permisos permitidos para este rol
+        permisos_rol = self.PERMISOS_POR_ROL.get(self.rol, {})
+        
+        # Lista de campos de permisos
+        campos_permisos = [
+            'perm_dashboard', 'perm_productos', 'perm_lotes', 'perm_requisiciones',
+            'perm_centros', 'perm_usuarios', 'perm_reportes', 'perm_trazabilidad',
+            'perm_auditoria', 'perm_notificaciones', 'perm_movimientos'
+        ]
+        
+        errores = {}
+        for campo in campos_permisos:
+            valor_actual = getattr(self, campo, None)
+            permitido = permisos_rol.get(campo, False)
+            
+            # Si el permiso está explícitamente en True pero el rol no lo permite
+            if valor_actual is True and not permitido:
+                nombre_legible = campo.replace('perm_', '').replace('_', ' ').title()
+                errores[campo] = (
+                    f'El rol "{self.get_rol_display()}" no permite el permiso "{nombre_legible}". '
+                    f'Cambie el rol a uno superior o desactive este permiso.'
+                )
+        
+        if errores:
+            raise ValidationError(errores)
+    
+    def get_permisos_efectivos(self):
+        """
+        ISS-009: Retorna los permisos efectivos del usuario.
+        
+        Combina permisos del rol base con personalizaciones, 
+        respetando los límites del rol.
+        """
+        permisos_rol = self.PERMISOS_POR_ROL.get(self.rol, {})
+        efectivos = {}
+        
+        campos_permisos = [
+            'perm_dashboard', 'perm_productos', 'perm_lotes', 'perm_requisiciones',
+            'perm_centros', 'perm_usuarios', 'perm_reportes', 'perm_trazabilidad',
+            'perm_auditoria', 'perm_notificaciones', 'perm_movimientos'
+        ]
+        
+        for campo in campos_permisos:
+            valor_personalizado = getattr(self, campo, None)
+            maximo_rol = permisos_rol.get(campo, False)
+            
+            if self.is_superuser:
+                # Superuser tiene todos los permisos
+                efectivos[campo] = True
+            elif valor_personalizado is not None:
+                # Personalización: solo si está dentro del límite del rol
+                efectivos[campo] = valor_personalizado and maximo_rol
+            else:
+                # Sin personalización: usar default del rol
+                efectivos[campo] = maximo_rol
+        
+        return efectivos
 
     def __str__(self):
         return f"{self.get_full_name()} ({self.get_rol_display()})"
@@ -423,12 +596,13 @@ class Lote(models.Model):
         help_text="Código de barras del lote (RFC-45)"
     )
     
-    # Documento PDF adjunto (contrato, certificado, soporte documental)
+    # ISS-005: Documento PDF adjunto con validación de tipo/tamaño
     documento_pdf = models.FileField(
-        upload_to='lotes/documentos/%Y/%m/',
+        upload_to=pdf_upload_path,
+        validators=[validate_pdf_file],
         null=True,
         blank=True,
-        help_text="Documento PDF de soporte (contrato, certificado, etc.)"
+        help_text="Documento PDF de soporte (contrato, certificado, etc.) - Máximo 10MB"
     )
     documento_nombre = models.CharField(
         max_length=255,
@@ -460,6 +634,14 @@ class Lote(models.Model):
         blank=True,
         related_name='lotes_creados'
     )
+    # ISS-007: Campo de auditoría para rastrear quién modifica lotes
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='lotes_modificados',
+        help_text="Usuario que realizó la última modificación"
+    )
 
     class Meta:
         db_table = 'lotes'
@@ -470,7 +652,23 @@ class Lote(models.Model):
             models.UniqueConstraint(
                 fields=['producto', 'numero_lote', 'centro'],
                 name='unique_lote_por_producto_centro'
-            )
+            ),
+            # ISS-019: Constraints de integridad
+            models.CheckConstraint(
+                check=models.Q(cantidad_actual__gte=0),
+                name='ck_lote_cantidad_no_negativa',
+                violation_error_message='La cantidad actual no puede ser negativa'
+            ),
+            models.CheckConstraint(
+                check=models.Q(cantidad_inicial__gte=1),
+                name='ck_lote_cantidad_inicial_positiva',
+                violation_error_message='La cantidad inicial debe ser al menos 1'
+            ),
+            models.CheckConstraint(
+                check=models.Q(cantidad_actual__lte=models.F('cantidad_inicial')),
+                name='ck_lote_actual_no_excede_inicial',
+                violation_error_message='La cantidad actual no puede exceder la cantidad inicial'
+            ),
         ]
         indexes = [
             models.Index(fields=['estado']),
@@ -761,6 +959,15 @@ class Requisicion(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # ISS-007: Campo de auditoría para rastrear modificaciones
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='requisiciones_modificadas',
+        help_text="Usuario que realizó la última modificación"
+    )
 
     class Meta:
         db_table = 'requisiciones'
@@ -940,6 +1147,14 @@ class DetalleRequisicion(models.Model):
         indexes = [
             models.Index(fields=['requisicion', 'producto']),
             models.Index(fields=['lote']),
+        ]
+        # ISS-019: Constraints de integridad
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(cantidad_solicitada__gte=1),
+                name='ck_detalle_cantidad_solicitada_positiva',
+                violation_error_message='La cantidad solicitada debe ser al menos 1'
+            ),
         ]
 
 
