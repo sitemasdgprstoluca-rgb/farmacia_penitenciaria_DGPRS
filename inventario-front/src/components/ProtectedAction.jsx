@@ -5,6 +5,7 @@ import { PermissionContext } from '../context/contexts';
 /**
  * Hook seguro que no lanza error si el contexto no está montado.
  * Retorna permisos vacíos en lugar de romper la UI.
+ * También indica si el contexto está disponible para mostrar mensajes apropiados.
  */
 function useSafePermissions() {
   const context = useContext(PermissionContext);
@@ -14,9 +15,10 @@ function useSafePermissions() {
       permisos: {},
       verificarPermiso: () => false,
       user: null,
+      contextDisponible: false, // Flag para indicar que el contexto no está montado
     };
   }
-  return context;
+  return { ...context, contextDisponible: true };
 }
 
 /**
@@ -32,15 +34,22 @@ export function ProtectedButton({
   tooltip = true,
   ...props
 }) {
-  const { verificarPermiso } = useSafePermissions();
+  const { verificarPermiso, contextDisponible } = useSafePermissions();
   const tienePermiso = verificarPermiso(permission);
+
+  // Determinar el mensaje de tooltip según el estado
+  const getTooltipMessage = () => {
+    if (!tooltip) return '';
+    if (!contextDisponible) return 'Cargando permisos... Por favor espera';
+    return 'No tiene permisos para esta acción';
+  };
 
   if (!tienePermiso) {
     return (
       <button
         type="button"
         disabled
-        title={tooltip ? 'No tiene permisos para esta acción' : ''}
+        title={getTooltipMessage()}
         className={`${className} ${disabledClassName}`}
         {...props}
       >

@@ -38,7 +38,7 @@ const PAGE_SIZE = 10;
 
 const Requisiciones = () => {
   const navigate = useNavigate();
-  const { permisos, user, getRolPrincipal } = usePermissions();
+  const { permisos, user, getRolPrincipal, recargarUsuario } = usePermissions();
   
   // Calcular rol y si puede ver todos los centros
   const rolPrincipal = getRolPrincipal();
@@ -140,7 +140,8 @@ const Requisiciones = () => {
   const [totalLotesDisponibles, setTotalLotesDisponibles] = useState(0);
   
   // ISS-003: Función optimizada que busca en servidor en lugar de cargar todo
-  const buscarLotesServidor = useCallback(async (termino = '') => {
+  // IMPORTANTE: Acepta centroId como parámetro para respetar el centro seleccionado en el formulario
+  const buscarLotesServidor = useCallback(async (termino = '', centroId = null) => {
     setLoadingCatalogo(true);
     try {
       const baseParams = {
@@ -150,17 +151,20 @@ const Requisiciones = () => {
         page_size: 50, // Solo 50 resultados a la vez
       };
       
-      // Filtrar por centro según rol
-      if (permisos.isFarmaciaAdmin || permisos.isAdmin) {
-        baseParams.centro = 'central';
-      } else if (user?.centro?.id) {
-        baseParams.centro = user.centro.id;
-      } else {
+      // Determinar el centro a usar:
+      // 1. Si se pasa centroId explícito (del formulario), usarlo
+      // 2. Si no, para admin/farmacia usar 'central'
+      // 3. Si no, usar el centro del usuario
+      const centroAUsar = centroId || (permisos.isFarmaciaAdmin || permisos.isAdmin ? 'central' : user?.centro?.id);
+      
+      if (!centroAUsar) {
         console.warn('Usuario sin centro definido, no se cargan lotes');
         setCatalogoLotes([]);
         setLoadingCatalogo(false);
         return;
       }
+      
+      baseParams.centro = centroAUsar;
       
       // Agregar término de búsqueda si existe
       if (termino.trim()) {
@@ -181,15 +185,17 @@ const Requisiciones = () => {
     } finally {
       setLoadingCatalogo(false);
     }
-  }, [permisos.isFarmaciaAdmin, permisos.isAdmin, user?.centro?.id]);
+  }, [permisos.isFarmaciaAdmin, permisos.isAdmin, user?.centro?.id, form.centro]);
   
   // ISS-003: Cargar catálogo inicial (solo primera página)
-  const cargarCatalogoLotes = useCallback(async (forzarRecarga = false) => {
+  // Acepta centroId opcional para cargar lotes del centro correcto
+  const cargarCatalogoLotes = useCallback(async (forzarRecarga = false, centroId = null) => {
     // Si ya está cargado y no se fuerza, no recargar
-    if (catalogoCargado && !forzarRecarga && catalogoLotes.length > 0) {
+    // IMPORTANTE: Si cambia el centro, forzar recarga
+    if (catalogoCargado && !forzarRecarga && catalogoLotes.length > 0 && !centroId) {
       return;
     }
-    await buscarLotesServidor('');
+    await buscarLotesServidor('', centroId);
   }, [catalogoCargado, catalogoLotes.length, buscarLotesServidor]);
   
   // ISS-003: Handler con debounce para búsqueda en servidor
@@ -357,14 +363,43 @@ const Requisiciones = () => {
     return () => clearTimeout(timeoutId);
   }, [esAdminOFarmacia, centroResuelto]);
 
-  // Función para reintentar carga de usuario
-  const reintentarCarga = useCallback(() => {
+  // Función para reintentar carga de usuario sin forzar reload completo
+  // Intenta primero recargar desde el contexto, si falla ofrece opción de reload
+  const [reintentosHidratacion, setReintentosHidratacion] = useState(0);
+  const MAX_REINTENTOS = 2;
+  
+  const reintentarCarga = useCallback(async () => {
     setHidratacionTimeout(false);
     setCentroResuelto(false);
     setFiltroCentro('PENDING');
-    // Forzar recarga del perfil de usuario
-    window.location.reload();
-  }, []);
+    setReintentosHidratacion(prev => prev + 1);
+    
+    // Intentar recargar usuario desde el contexto si está disponible
+    if (typeof recargarUsuario === 'function') {
+      try {
+        await recargarUsuario();
+        // Dar tiempo para que el estado se actualice
+        setTimeout(() => {
+          if (!user?.centro?.id && !esAdminOFarmacia) {
+            // Si después de recargar sigue sin centro, mostrar error claro
+            if (reintentosHidratacion >= MAX_REINTENTOS) {
+              toast.error('No se pudo cargar tu perfil. Contacta al administrador.');
+            }
+          }
+        }, 1000);
+      } catch (error) {
+        console.error('Error recargando usuario:', error);
+        // Solo hacer reload completo si ya se agotaron los reintentos
+        if (reintentosHidratacion >= MAX_REINTENTOS) {
+          toast.error('Recargando página...');
+          window.location.reload();
+        }
+      }
+    } else {
+      // Fallback: reload completo si no hay función de recarga
+      window.location.reload();
+    }
+  }, [recargarUsuario, user?.centro?.id, esAdminOFarmacia, reintentosHidratacion]);
 
   // Debounce para evitar múltiples peticiones por tecla en filtros
   useEffect(() => {
@@ -491,7 +526,10 @@ const Requisiciones = () => {
     
     resetForm();
     setEditRequisicion(null);
-    cargarCatalogoLotes(); // Cargar catálogo al abrir
+    // Cargar catálogo con el centro del usuario (para usuarios de centro)
+    // o sin filtro para admin/farmacia que pueden ver todos
+    const centroParaCatalogo = !esAdminOFarmacia ? user?.centro?.id : null;
+    cargarCatalogoLotes(true, centroParaCatalogo); // Forzar recarga con el centro correcto
     setShowModal(true);
   };
 
@@ -522,7 +560,9 @@ const Requisiciones = () => {
       comentario: req.comentario || req.observaciones || '',
     });
     setEditRequisicion(req);
-    cargarCatalogoLotes(); // Cargar catálogo al editar
+    // Cargar catálogo con el centro de la requisición para mostrar lotes correctos
+    const centroRequisicion = req.centro || req.centro_id || user?.centro?.id;
+    cargarCatalogoLotes(true, centroRequisicion); // Forzar recarga con el centro de la requisición
     setShowModal(true);
 
     // Cargar stock actualizado para los items existentes
