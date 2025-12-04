@@ -154,18 +154,30 @@ const Requisiciones = () => {
       
       // Determinar el centro a usar:
       // 1. Si se pasa centroId explícito (del formulario), usarlo
-      // 2. Si no, para admin/farmacia usar 'central'
+      // 2. Si no, para admin/farmacia omitir centro (farmacia central)
       // 3. Si no, usar el centro del usuario
-      const centroAUsar = centroId || (permisos.isFarmaciaAdmin || permisos.isAdmin ? 'central' : user?.centro?.id);
-      
+      // NOTA: No usar string 'central', el backend espera ID numérico o null/vacío para farmacia central
+      let centroAUsar = centroId;
       if (!centroAUsar) {
+        if (permisos.isFarmaciaAdmin || permisos.isAdmin) {
+          centroAUsar = null; // Farmacia central = sin filtro de centro
+        } else {
+          centroAUsar = user?.centro?.id;
+        }
+      }
+      
+      if (!centroAUsar && !(permisos.isFarmaciaAdmin || permisos.isAdmin)) {
         console.warn('Usuario sin centro definido, no se cargan lotes');
         setCatalogoLotes([]);
         setLoadingCatalogo(false);
         return;
       }
       
-      baseParams.centro = centroAUsar;
+      // Solo agregar centro si es un ID numérico válido
+      if (centroAUsar && typeof centroAUsar === 'number') {
+        baseParams.centro = centroAUsar;
+      }
+      // Para farmacia central (admin/farmacia sin centro específico), no enviar parámetro centro
       
       // Agregar término de búsqueda si existe
       if (termino.trim()) {

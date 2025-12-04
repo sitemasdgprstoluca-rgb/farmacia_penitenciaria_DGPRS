@@ -287,7 +287,11 @@ const Movimientos = () => {
     
     setExporting('excel');
     try {
-      const response = await movimientosAPI.exportarExcel({ ...filtrosAplicados });
+      // Sanitizar filtros: eliminar valores vacíos antes de enviar
+      const filtrosLimpios = Object.fromEntries(
+        Object.entries(filtrosAplicados).filter(([, v]) => v !== "" && v !== null && v !== undefined)
+      );
+      const response = await movimientosAPI.exportarExcel(filtrosLimpios);
       descargarArchivo(response, `movimientos_${new Date().toISOString().split("T")[0]}.xlsx`);
       toast.success("Excel generado");
     } catch (err) {
@@ -308,7 +312,11 @@ const Movimientos = () => {
     
     setExporting('pdf');
     try {
-      const response = await movimientosAPI.exportarPdf({ ...filtrosAplicados });
+      // Sanitizar filtros: eliminar valores vacíos antes de enviar
+      const filtrosLimpios = Object.fromEntries(
+        Object.entries(filtrosAplicados).filter(([, v]) => v !== "" && v !== null && v !== undefined)
+      );
+      const response = await movimientosAPI.exportarPdf(filtrosLimpios);
       descargarArchivo(response, `movimientos_${new Date().toISOString().split("T")[0]}.pdf`);
       toast.success("PDF generado");
     } catch (err) {

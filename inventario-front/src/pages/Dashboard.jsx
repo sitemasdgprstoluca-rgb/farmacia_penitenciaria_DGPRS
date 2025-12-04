@@ -40,7 +40,9 @@ const Dashboard = () => {
   // Solo ADMIN/FARMACIA pueden filtrar por centro en el backend
   const puedeFiltrarPorCentro = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
   const centroUsuario = user?.centro?.id || user?.centro;
-  const esCentroUser = rolPrincipal === 'CENTRO' || (!puedeVerGlobal && centroUsuario && !esVistaUser);
+  // VISTA_USER también debe estar restringido a su centro asignado (no excluir con !esVistaUser)
+  const esCentroUser = rolPrincipal === 'CENTRO' || rolPrincipal === 'VISTA' || rolPrincipal === 'VISTA_USER' || 
+                       (!puedeVerGlobal && centroUsuario);
 
   const [kpis, setKpis] = useState({
     total_productos: 0,
@@ -58,7 +60,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [movimientosCollapsed, setMovimientosCollapsed] = useState(true); // Colapsado por defecto
-  // Para usuarios de centro, forzar su centro asignado; para globales, null (todos)
+  // Para usuarios de centro o VISTA, forzar su centro asignado; para globales (ADMIN/FARMACIA), null (todos)
   const [selectedCentro, setSelectedCentro] = useState(esCentroUser ? centroUsuario : null);
   const [centroNombre, setCentroNombre] = useState('');
 

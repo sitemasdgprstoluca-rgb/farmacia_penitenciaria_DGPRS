@@ -414,25 +414,31 @@ const Productos = () => {
   const esCentroUser = rolPrincipal === 'CENTRO';
   const esVistaUser = rolPrincipal === 'VISTA';
   
-  // Verificar si el usuario tiene el permiso verProductos del backend
-  // DEBE ser explícitamente true (no undefined ni null) para habilitar acciones
-  // Solo admin/farmacia o vista tienen permisos base, el resto requiere permiso explícito
+  // Verificar permisos granulares del backend para productos
+  // Estos flags específicos tienen prioridad sobre el rol genérico
   const tienePermisoProductos = permisos?.verProductos === true;
+  const tieneCrearProducto = permisos?.crearProducto === true;
+  const tieneEditarProducto = permisos?.editarProducto === true;
+  const tieneEliminarProducto = permisos?.eliminarProducto === true;
+  const tieneExportarProductos = permisos?.exportarProductos === true;
+  const tieneImportarProductos = permisos?.importarProductos === true;
 
   const puede = useMemo(() => ({
     // Para ver productos: debe tener permiso Y (ser farmacia/admin O ser vista)
     ver: tienePermisoProductos && (esFarmaciaAdmin || esVistaUser),
-    // Para acciones de escritura: debe tener permiso de productos Y ser farmacia/admin
-    crear: tienePermisoProductos && esFarmaciaAdmin,
-    editar: tienePermisoProductos && esFarmaciaAdmin,
-    eliminar: tienePermisoProductos && esFarmaciaAdmin,
-    exportar: tienePermisoProductos && (esFarmaciaAdmin || esVistaUser),
-    importar: tienePermisoProductos && esFarmaciaAdmin,
-    cambiarEstado: tienePermisoProductos && esFarmaciaAdmin,
+    // Para acciones de escritura: usar permisos granulares del backend
+    // El rol solo habilita si el permiso específico está activo
+    crear: tienePermisoProductos && tieneCrearProducto,
+    editar: tienePermisoProductos && tieneEditarProducto,
+    eliminar: tienePermisoProductos && tieneEliminarProducto,
+    exportar: tienePermisoProductos && tieneExportarProductos,
+    importar: tienePermisoProductos && tieneImportarProductos,
+    // cambiarEstado usa el permiso de editar (toggle activo es edición)
+    cambiarEstado: tienePermisoProductos && tieneEditarProducto,
     verSoloActivos: esCentroUser || esVistaUser,
-    soloLectura: !esFarmaciaAdmin || !tienePermisoProductos,
+    soloLectura: !tieneEditarProducto || !tienePermisoProductos,
     auditoria: tienePermisoProductos && esFarmaciaAdmin,
-  }), [tienePermisoProductos, esFarmaciaAdmin, esCentroUser, esVistaUser]);
+  }), [tienePermisoProductos, tieneCrearProducto, tieneEditarProducto, tieneEliminarProducto, tieneExportarProductos, tieneImportarProductos, esFarmaciaAdmin, esCentroUser, esVistaUser]);
 
 
 
@@ -615,6 +621,7 @@ const Productos = () => {
       const params = {
 
         page: currentPage,
+        page_size: PAGE_SIZE, // Sincronizar tamaño de página con el backend
 
       };
 
@@ -656,13 +663,13 @@ const Productos = () => {
 
       setProductos(enriched);
 
+      // Usar count del backend y PAGE_SIZE fijo para calcular páginas
       const total = data.count || enriched.length;
 
       setTotalProductos(total);
 
-      const effectivePageSize = enriched.length || PAGE_SIZE;
-
-      setTotalPages(Math.max(1, Math.ceil(total / (effectivePageSize || 1))));
+      // Usar PAGE_SIZE constante para cálculo consistente de páginas
+      setTotalPages(Math.max(1, Math.ceil(total / PAGE_SIZE)));
 
     } catch (err) {
 
@@ -1186,6 +1193,9 @@ const Productos = () => {
       link.click();
 
       link.remove();
+
+      // Liberar recursos del ObjectURL para evitar memory leaks
+      window.URL.revokeObjectURL(url);
 
       toast.success('Archivo exportado correctamente');
 

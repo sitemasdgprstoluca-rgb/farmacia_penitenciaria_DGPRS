@@ -314,6 +314,13 @@ function Usuarios() {
         return;
       }
     }
+    
+    // Validar que roles CENTRO y VISTA tengan centro asignado
+    const rolesRequierenCentro = ['centro', 'vista'];
+    if (rolesRequierenCentro.includes(formData.rol) && !formData.centro) {
+      toast.error(`Los usuarios con rol "${formData.rol}" deben tener un centro asignado`);
+      return;
+    }
 
     // Validar escalamiento de privilegios
     if (editingUsuario) {

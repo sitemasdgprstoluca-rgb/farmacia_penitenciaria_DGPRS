@@ -325,9 +325,18 @@ const Lotes = () => {
       const dataToSend = {
         ...formData,
         cantidad_inicial: cantidadInicial,
-        cantidad_actual: cantidadInicial, // Inicializar igual a inicial
         precio_compra: precioCompra,
       };
+      
+      // Solo inicializar cantidad_actual en creación, no en edición
+      // En edición, mantener el valor actual del backend para no sobrescribir ajustes de inventario
+      if (!editingLote) {
+        dataToSend.cantidad_actual = cantidadInicial;
+      }
+      // Si no hay centro explícito y el usuario tiene uno asignado, usarlo
+      if (!dataToSend.centro && centroUsuario && !puedeVerGlobal) {
+        dataToSend.centro = centroUsuario;
+      }
       
       // Limpiar campos vacíos para evitar enviar strings vacíos
       Object.keys(dataToSend).forEach(key => {
@@ -554,8 +563,19 @@ const handleImportar = async (e) => {
     return;
   }
   
+  // Validar que usuarios de centro tengan centro asignado
+  if (!puedeVerGlobal && !centroUsuario) {
+    toast.error('No tiene un centro asignado. No puede importar lotes.');
+    e.target.value = '';
+    return;
+  }
+  
   const formData = new FormData();
   formData.append('file', file);
+  // Incluir centro del usuario para trazabilidad si no tiene permisos globales
+  if (!puedeVerGlobal && centroUsuario) {
+    formData.append('centro', centroUsuario);
+  }
   
   try {
     setLoading(true);
