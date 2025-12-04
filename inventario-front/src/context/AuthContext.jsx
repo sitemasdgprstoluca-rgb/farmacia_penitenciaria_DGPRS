@@ -68,14 +68,21 @@ export function AuthProvider({ children }) {
     // No necesitamos manejarlo en el frontend
     
     // Obtener perfil completo si no viene en la respuesta
+    let finalUser;
     if (userData) {
       setUser(userData);
-      return userData;
+      finalUser = userData;
     } else {
       const profile = await authAPI.me();
       setUser(profile.data);
-      return profile.data;
+      finalUser = profile.data;
     }
+    
+    // Disparar evento para que ThemeContext recargue el tema con autenticación
+    // Esto resuelve el problema de temas que requieren auth para cargar
+    window.dispatchEvent(new Event('auth-login-success'));
+    
+    return finalUser;
   };
 
   const logout = async () => {

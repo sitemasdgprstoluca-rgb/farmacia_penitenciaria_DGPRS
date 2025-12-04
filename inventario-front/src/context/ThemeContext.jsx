@@ -270,67 +270,90 @@ export const ThemeProvider = ({ children }) => {
   }, []);
 
   /**
-   * Carga la configuración del tema desde Supabase (fuente principal)
-   * FLUJO:
-   * 1. Aplicar caché local inmediatamente (rehidratación rápida)
-   * 2. Consultar SUPABASE primero (fuente de verdad)
-   * 3. Si Supabase falla, intentar API Django
-   * 4. Fallback a valores por defecto
+   * Carga la configuración del tema
+   * FLUJO MEJORADO (defensivo):
+   * 1. Aplicar caché local SIEMPRE primero (rehidratación instantánea)
+   * 2. Consultar SUPABASE (fuente de verdad pública)
+   * 3. Si Supabase falla, intentar API Django (usa cliente público, no requiere auth)
+   * 4. Si API falla, MANTENER la caché (no sobrescribir con default)
+   * 5. Solo usar default si no hay absolutamente nada
+   * 
+   * @param {boolean} forzar - Si true, ignora la caché y fuerza recarga desde servidor
    */
-  const cargarTema = useCallback(async () => {
+  const cargarTema = useCallback(async (forzar = false) => {
     try {
       setCargando(true);
       setError(null);
       
-      // PASO 1: Rehidratación rápida desde caché local
+      // PASO 1: Rehidratación rápida desde caché local (SIEMPRE primero)
       const temaCache = obtenerTemaDeCache();
-      if (temaCache && temaCache.css_variables) {
-        console.log('ThemeContext: Aplicando tema desde caché local');
+      let temaAplicadoDesdeCache = false;
+      
+      if (temaCache && temaCache.css_variables && !forzar) {
+        console.log('ThemeContext: Aplicando tema desde caché local (instantáneo)');
         setTemaGlobal(temaCache);
         aplicarTemaCompleto(temaCache);
+        temaAplicadoDesdeCache = true;
       }
       
-      // PASO 2: SUPABASE como fuente principal
+      // PASO 2: SUPABASE como fuente principal (público, no requiere auth)
+      let temaObtenido = false;
+      
       if (isSupabaseAvailable()) {
         try {
           console.log('ThemeContext: Consultando Supabase...');
           const temaSupabase = await supabaseThemeAPI.getActiveTheme();
           
-          if (temaSupabase && temaSupabase.css_variables) {
+          if (temaSupabase) {
             // Normalizar datos de Supabase al formato esperado
             const temaNormalizado = normalizarTemaSupabase(temaSupabase);
-            setTemaGlobal(temaNormalizado);
-            aplicarTemaCompleto(temaNormalizado);
-            guardarTemaEnCache(temaNormalizado);
-            console.log('ThemeContext: Tema cargado desde Supabase ✓');
-            return;
+            
+            if (temaNormalizado && temaNormalizado.css_variables) {
+              setTemaGlobal(temaNormalizado);
+              aplicarTemaCompleto(temaNormalizado);
+              guardarTemaEnCache(temaNormalizado);
+              console.log('ThemeContext: Tema cargado desde Supabase ✓');
+              temaObtenido = true;
+            }
           }
         } catch (supabaseErr) {
-          console.warn('ThemeContext: Supabase no disponible:', supabaseErr);
+          console.warn('ThemeContext: Supabase no disponible:', supabaseErr.message);
+          // NO retornar aquí - intentar API Django como fallback
+        }
+      } else {
+        console.log('ThemeContext: Supabase no configurado, usando API Django');
+      }
+      
+      // PASO 3: Fallback a API Django (usa cliente PÚBLICO, no requiere auth)
+      if (!temaObtenido) {
+        try {
+          console.log('ThemeContext: Consultando API Django (público)...');
+          const response = await temaGlobalAPI.getTemaActivo();
+          const tema = response.data;
+          
+          if (tema && tema.css_variables) {
+            setTemaGlobal(tema);
+            aplicarTemaCompleto(tema);
+            guardarTemaEnCache(tema);
+            console.log('ThemeContext: Tema cargado desde API Django ✓');
+            temaObtenido = true;
+          }
+        } catch (apiErr) {
+          // Error esperado si el endpoint no existe o hay problema de red
+          const status = apiErr.response?.status;
+          console.warn(`ThemeContext: API Django no disponible (${status || 'red'})`);
+          // NO sobrescribir caché con default si ya tenemos tema aplicado
         }
       }
       
-      // PASO 3: Fallback a API Django
-      try {
-        const response = await temaGlobalAPI.getTemaActivo();
-        const tema = response.data;
-        
-        if (tema && tema.css_variables) {
-          setTemaGlobal(tema);
-          aplicarTemaCompleto(tema);
-          guardarTemaEnCache(tema);
-          console.log('ThemeContext: Tema cargado desde API Django');
-          return;
-        }
-      } catch (apiErr) {
-        console.warn('ThemeContext: API Django no disponible');
-        if (temaCache && temaCache.css_variables) {
-          return; // Ya aplicamos caché
-        }
+      // PASO 4: Si tenemos caché y no pudimos obtener tema del servidor, MANTENER caché
+      if (!temaObtenido && temaAplicadoDesdeCache) {
+        console.log('ThemeContext: Manteniendo tema desde caché (servidor no disponible)');
+        return; // NO aplicar default, ya tenemos caché aplicada
       }
       
-      // PASO 4: Fallback a sistema legacy
-      if (!temaCache) {
+      // PASO 5: Sistema legacy (solo si no hay tema aún)
+      if (!temaObtenido && !temaAplicadoDesdeCache) {
         try {
           const response = await configuracionAPI.getTema();
           const config = response.data;
@@ -341,20 +364,26 @@ export const ThemeProvider = ({ children }) => {
             aplicarCSSVariables(cssVars);
             actualizarTituloDocumento(config.nombre_sistema);
             setTemaAplicado(true);
-          } else {
-            aplicarCSSVariables(temaDefault.css_variables);
-            setTemaAplicado(true);
+            console.log('ThemeContext: Tema cargado desde sistema legacy');
+            return;
           }
         } catch (legacyErr) {
-          console.warn('ThemeContext: Usando tema por defecto');
-          aplicarCSSVariables(temaDefault.css_variables);
-          setTemaAplicado(true);
+          // Legacy tampoco disponible
         }
+        
+        // PASO 6: Último recurso - tema por defecto (solo si no hay NADA)
+        console.warn('ThemeContext: Sin datos de tema, usando valores por defecto');
+        aplicarCSSVariables(temaDefault.css_variables);
+        setTemaAplicado(true);
       }
     } catch (err) {
-      console.error('ThemeContext: Error cargando tema:', err);
+      console.error('ThemeContext: Error crítico cargando tema:', err);
       setError(err);
-      aplicarCSSVariables(temaDefault.css_variables);
+      // Solo aplicar default si no hay caché
+      const temaCache = obtenerTemaDeCache();
+      if (!temaCache) {
+        aplicarCSSVariables(temaDefault.css_variables);
+      }
       setTemaAplicado(true);
     } finally {
       setCargando(false);
@@ -402,7 +431,8 @@ export const ThemeProvider = ({ children }) => {
 
   /**
    * Actualiza el TemaGlobal completo
-   * Guarda en SUPABASE como fuente principal, luego en API Django y caché local
+   * IMPORTANTE: Guarda en AMBOS Supabase Y API Django para mantener sincronización
+   * Si uno falla, el otro sirve de respaldo
    */
   const actualizarTemaGlobal = async (nuevoTema) => {
     try {
@@ -433,43 +463,66 @@ export const ThemeProvider = ({ children }) => {
         css_variables: nuevoTema.css_variables,
       };
       
-      // PASO 1: Guardar en Supabase (fuente de verdad)
+      let temaFinal = null;
+      let supabaseOk = false;
+      let djangoOk = false;
+      
+      // PASO 1: Guardar en Supabase (fuente de verdad pública)
       if (isSupabaseAvailable()) {
         try {
           const temaSupabase = await supabaseThemeAPI.updateTheme(datosSupabase);
           if (temaSupabase) {
-            const temaNormalizado = normalizarTemaSupabase(temaSupabase);
-            setTemaGlobal(temaNormalizado);
-            if (temaNormalizado.css_variables) {
-              aplicarCSSVariables(temaNormalizado.css_variables);
-              guardarTemaEnCache(temaNormalizado);
-            }
+            temaFinal = normalizarTemaSupabase(temaSupabase);
+            supabaseOk = true;
             console.log('ThemeContext: Tema guardado en Supabase ✓');
-            return { success: true, data: temaNormalizado };
           }
         } catch (supabaseErr) {
-          console.warn('ThemeContext: Error guardando en Supabase:', supabaseErr);
+          console.warn('ThemeContext: Error guardando en Supabase:', supabaseErr.message);
+          // Continuar con Django aunque Supabase falle
         }
       }
       
-      // PASO 2: Fallback a API Django
-      const response = await temaGlobalAPI.updateTema(nuevoTema);
-      const resultado = response.data;
-      const tema = resultado.tema || resultado;
-      
-      setTemaGlobal(tema);
-      if (tema.css_variables) {
-        aplicarCSSVariables(tema.css_variables);
-        guardarTemaEnCache(tema);
-        console.log('ThemeContext: Tema guardado en API Django');
+      // PASO 2: SIEMPRE intentar guardar en API Django (sincronización)
+      // Esto mantiene ambos sistemas sincronizados como respaldo
+      try {
+        const response = await temaGlobalAPI.updateTema(nuevoTema);
+        const resultado = response.data;
+        const temaDjango = resultado.tema || resultado;
+        
+        // Si no obtuvimos tema de Supabase, usar el de Django
+        if (!temaFinal && temaDjango) {
+          temaFinal = temaDjango;
+        }
+        djangoOk = true;
+        console.log('ThemeContext: Tema guardado en API Django ✓');
+      } catch (djangoErr) {
+        console.warn('ThemeContext: Error guardando en Django:', djangoErr.message);
+        // Si Supabase funcionó, no es error crítico
       }
       
-      return { success: true, data: tema };
+      // Si al menos uno funcionó, actualizar estado y caché
+      if (temaFinal) {
+        setTemaGlobal(temaFinal);
+        if (temaFinal.css_variables) {
+          aplicarCSSVariables(temaFinal.css_variables);
+          guardarTemaEnCache(temaFinal);
+        }
+        
+        const source = supabaseOk && djangoOk ? 'Supabase + Django' 
+                     : supabaseOk ? 'Supabase' 
+                     : 'Django';
+        console.log(`ThemeContext: Tema actualizado (${source})`);
+        
+        return { success: true, data: temaFinal };
+      }
+      
+      // Si ambos fallaron, es un error
+      throw new Error('No se pudo guardar el tema en ningún servidor');
     } catch (err) {
       console.error('Error al actualizar tema global:', err);
       return { 
         success: false, 
-        error: err.response?.data?.error || 'Error al actualizar el tema' 
+        error: err.response?.data?.error || err.message || 'Error al actualizar el tema' 
       };
     }
   };
@@ -742,6 +795,23 @@ export const ThemeProvider = ({ children }) => {
   // Cargar tema al montar el componente
   useEffect(() => {
     cargarTema();
+  }, [cargarTema]);
+
+  // Escuchar evento de login exitoso para recargar tema con auth disponible
+  // Esto resuelve el problema de que el tema inicial puede fallar sin token
+  useEffect(() => {
+    const handleLoginSuccess = () => {
+      console.log('ThemeContext: Login detectado, recargando tema con autenticación...');
+      // Forzar recarga desde servidor (ignorar caché) para obtener tema más actualizado
+      cargarTema(true);
+    };
+
+    // Escuchar evento personalizado de login exitoso
+    window.addEventListener('auth-login-success', handleLoginSuccess);
+    
+    return () => {
+      window.removeEventListener('auth-login-success', handleLoginSuccess);
+    };
   }, [cargarTema]);
 
   /**

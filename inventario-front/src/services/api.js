@@ -82,6 +82,16 @@ const apiClient = axios.create({
   withCredentials: true, // IMPORTANTE: Enviar cookies en cada request
 });
 
+// Cliente público para endpoints que NO requieren autenticación
+// Usado para cargar tema antes del login, health checks, etc.
+const publicApiClient = axios.create({
+  baseURL: `${apiBaseUrl}/`,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  withCredentials: false, // No enviar cookies/tokens
+});
+
 let activityCallback = null;
 let lastForbiddenToast = { path: '', ts: 0 };
 let redirectingToLogin = false;
@@ -497,8 +507,8 @@ export const configuracionAPI = {
 
 // API de Tema Global (personalización completa)
 export const temaGlobalAPI = {
-  // Obtener tema activo (público - sin autenticación para login)
-  getTemaActivo: () => apiClient.get('/tema/activo/'),
+  // Obtener tema activo (PÚBLICO - usa cliente sin auth para funcionar antes del login)
+  getTemaActivo: () => publicApiClient.get('/tema/activo/'),
   // Obtener tema completo para administración (autenticado)
   getTema: () => apiClient.get('/tema/'),
   // Actualizar tema global (solo superusuario)
