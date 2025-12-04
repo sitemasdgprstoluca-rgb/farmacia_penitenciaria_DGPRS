@@ -52,20 +52,20 @@ class RequisicionService:
     ISS-011, ISS-021: Todas las operaciones son atómicas con rollback completo.
     ISS-014: Usa select_for_update() para bloqueo optimista de lotes.
     ISS-030: Valida permisos de acceso por centro.
+    ISS-002: Usa máquina de estados del modelo Requisicion (fuente única de verdad).
     """
     
-    ESTADOS_SURTIBLES = ['autorizada', 'parcial']
-    TRANSICIONES_VALIDAS = {
-        'borrador': ['enviada', 'cancelada'],
-        'enviada': ['en_revision', 'rechazada', 'cancelada'],
-        'en_revision': ['autorizada', 'rechazada'],
-        'autorizada': ['surtida', 'parcial', 'cancelada'],
-        'parcial': ['surtida', 'cancelada'],
-        'surtida': ['recibida'],
-        'recibida': [],  # Estado final
-        'rechazada': ['borrador'],  # Permite reenvío
-        'cancelada': []  # Estado final
-    }
+    @property
+    def ESTADOS_SURTIBLES(self):
+        """ISS-002: Obtener estados surtibles del modelo."""
+        from core.models import Requisicion
+        return getattr(Requisicion, 'ESTADOS_SURTIBLES', ['autorizada', 'parcial'])
+    
+    @property
+    def TRANSICIONES_VALIDAS(self):
+        """ISS-002: Obtener transiciones del modelo (fuente única de verdad)."""
+        from core.models import Requisicion
+        return Requisicion.TRANSICIONES_VALIDAS
     
     def __init__(self, requisicion, usuario):
         """

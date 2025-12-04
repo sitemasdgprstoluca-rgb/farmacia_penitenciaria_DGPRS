@@ -253,23 +253,26 @@ class StateMachineEdgeCasesTests(TestCase):
         self.assertTrue(any('inactivo' in e.lower() for e in errores))
     
     def test_cantidad_cero_bloquea_envio(self):
-        """ISS-012: Cantidad <= 0 bloquea envío."""
+        """
+        ISS-012: Cantidad <= 0 bloquea envío.
+        ISS-019: Ahora hay un CHECK constraint que previene cantidad_solicitada <= 0
+        """
+        from django.db.utils import IntegrityError
+        
         req = Requisicion.objects.create(
             folio='REQ-EDGE-002',
             centro=self.centro,
             usuario_solicita=self.admin,
             estado='borrador'
         )
-        DetalleRequisicion.objects.create(
-            requisicion=req,
-            producto=self.producto,
-            cantidad_solicitada=0  # Cantidad inválida
-        )
         
-        sm = RequisicionStateMachine(req)
-        errores = sm.validar_transicion('enviada')
-        
-        self.assertTrue(len(errores) > 0)
+        # El constraint de BD previene crear detalles con cantidad_solicitada <= 0
+        with self.assertRaises(IntegrityError):
+            DetalleRequisicion.objects.create(
+                requisicion=req,
+                producto=self.producto,
+                cantidad_solicitada=0  # Cantidad inválida - debe fallar por constraint
+            )
 
 
 # =============================================================================

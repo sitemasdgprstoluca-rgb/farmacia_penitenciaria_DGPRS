@@ -101,24 +101,25 @@ def test_requisicion_rechaza_stock_insuficiente(django_user_model):
         precio_unitario=Decimal("10.00"),
         stock_minimo=1,
     )
-    # Crear primero lote origen en farmacia central
+    # ISS-001: Ahora validamos contra FARMACIA CENTRAL, no contra el centro
+    # Crear lote origen en farmacia central con poco stock (3 unidades)
     lote_origen = Lote.objects.create(
         producto=producto,
         centro=None,  # Farmacia central
         numero_lote="L2",
         fecha_caducidad=timezone.now().date() + timezone.timedelta(days=365),
-        cantidad_inicial=10,
-        cantidad_actual=8,
+        cantidad_inicial=3,
+        cantidad_actual=3,  # Solo 3 disponibles en farmacia
         estado="disponible",
     )
-    # Lote derivado con poco stock en centro (debe tener mismo numero_lote y fecha)
+    # Lote derivado en centro (ya distribuido, no cuenta para nuevas requisiciones)
     Lote.objects.create(
         producto=producto,
         centro=centro,
-        numero_lote=lote_origen.numero_lote,  # Debe coincidir
-        fecha_caducidad=lote_origen.fecha_caducidad,  # Debe coincidir
-        cantidad_inicial=2,
-        cantidad_actual=2,
+        numero_lote=lote_origen.numero_lote,
+        fecha_caducidad=lote_origen.fecha_caducidad,
+        cantidad_inicial=20,
+        cantidad_actual=20,  # Aunque haya 20 en centro, no se usa para validar
         estado="disponible",
         lote_origen=lote_origen,
     )
@@ -126,9 +127,9 @@ def test_requisicion_rechaza_stock_insuficiente(django_user_model):
     payload = {
         "centro": centro.id,
         "items": [
-            {"producto": producto.id, "cantidad_solicitada": 5}
+            {"producto": producto.id, "cantidad_solicitada": 5}  # Pide 5 pero farmacia solo tiene 3
         ]
     }
     resp = client.post("/api/requisiciones/", payload, format="json")
     assert resp.status_code == 400
-    assert "Stock insuficiente" in str(resp.data)
+    assert "Stock insuficiente" in str(resp.data) or "farmacia central" in str(resp.data).lower()

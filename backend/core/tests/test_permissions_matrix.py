@@ -1,11 +1,13 @@
 """Tests basicos de permisos por roles."""
 
 from decimal import Decimal
+from datetime import timedelta
 from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
-from core.models import Centro, Requisicion, Producto, DetalleRequisicion
+from core.models import Centro, Requisicion, Producto, DetalleRequisicion, Lote
 
 User = get_user_model()
 
@@ -49,10 +51,21 @@ class PermissionsMatrixTest(APITestCase):
         )
         
         # Agregar detalle a la requisición
-        DetalleRequisicion.objects.create(
+        detalle = DetalleRequisicion.objects.create(
             requisicion=req,
             producto=producto,
             cantidad_solicitada=10
+        )
+        
+        # ISS-003: Crear lote en farmacia central para que haya stock
+        Lote.objects.create(
+            producto=producto,
+            centro=None,  # Farmacia central
+            numero_lote="PERM-001",
+            fecha_caducidad=timezone.now().date() + timedelta(days=365),
+            cantidad_inicial=100,
+            cantidad_actual=100,
+            estado='disponible'
         )
         
         # IMPORTANTE: Limpiar autenticación y autenticar como user normal
@@ -60,7 +73,9 @@ class PermissionsMatrixTest(APITestCase):
         self.client.force_authenticate(user=self.user_centro1)
         
         # user normal NO DEBE poder autorizar
-        resp = self.client.post(f'/api/requisiciones/{req.id}/autorizar/')
+        resp = self.client.post(f'/api/requisiciones/{req.id}/autorizar/', {
+            'items': [{'id': detalle.id, 'cantidad_autorizada': 10}]
+        }, format='json')
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN,
                         f"Usuario normal recibió {resp.status_code} en lugar de 403. Data: {resp.data}")
 
@@ -68,7 +83,9 @@ class PermissionsMatrixTest(APITestCase):
         self.client.force_authenticate(user=None)
         self.client.force_authenticate(user=self.superuser)
         
-        # superuser SÍ DEBE poder autorizar
-        resp = self.client.post(f'/api/requisiciones/{req.id}/autorizar/')
+        # ISS-003: superuser SÍ DEBE poder autorizar (ahora requiere enviar items)
+        resp = self.client.post(f'/api/requisiciones/{req.id}/autorizar/', {
+            'items': [{'id': detalle.id, 'cantidad_autorizada': 10}]
+        }, format='json')
         self.assertEqual(resp.status_code, status.HTTP_200_OK,
                         f"Superuser recibió {resp.status_code} en lugar de 200. Data: {resp.data}")

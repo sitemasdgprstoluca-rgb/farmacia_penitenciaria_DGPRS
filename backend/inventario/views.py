@@ -2679,12 +2679,31 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     def _user_centro(self, user):
         return getattr(user, 'centro', None) or getattr(getattr(user, 'profile', None), 'centro', None)
 
-    def _validar_stock_items(self, items, centro=None):
+    def _validar_stock_items(self, items, centro=None, validar_farmacia_central=True):
         """
-        Valida stock disponible. Si se proporciona centro, se usa stock por centro
-        calculado a partir de movimientos (entradas - salidas); de lo contrario usa stock global.
+        ISS-001, ISS-004: Valida stock disponible con lógica clara por ubicación.
+        
+        LÓGICA DE VALIDACIÓN:
+        - Para requisiciones (validar_farmacia_central=True): 
+          Valida contra stock de FARMACIA CENTRAL, ya que las requisiciones
+          solicitan medicamentos que serán surtidos desde farmacia.
+        
+        - Para operaciones internas de centro (validar_farmacia_central=False):
+          Valida contra stock del centro específico.
+        
+        Args:
+            items: Lista de items con producto y cantidad
+            centro: Centro para contexto (usado para info, no para validación de requisiciones)
+            validar_farmacia_central: Si True, valida contra farmacia central
+            
+        Returns:
+            list: Lista de errores de stock
         """
+        from django.utils import timezone
+        
         errores = []
+        today = timezone.now().date()
+        
         for item_data in items:
             producto_id = item_data.get('producto')
             if not producto_id:
@@ -2696,31 +2715,31 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 cantidad = int(item_data.get('cantidad_autorizada') or item_data.get('cantidad_solicitada') or 0)
             except (TypeError, ValueError):
                 continue
+            
+            if cantidad <= 0:
+                continue
 
-            disponible = producto.get_stock_actual()
-            if centro:
-                # Intentar calcular stock por centro desde lotes asociados al centro o con movimientos del centro
-                lote_ids = Movimiento.objects.filter(centro=centro, lote__producto=producto).values_list('lote_id', flat=True)
-                disponible_lotes = Lote.objects.filter(
-                    Q(id__in=lote_ids) | Q(centro=centro),
-                    estado='disponible',
-                    deleted_at__isnull=True,
-                    cantidad_actual__gt=0
-                ).aggregate(total=Coalesce(Sum('cantidad_actual'), 0))['total'] or 0
-                # Si no hay lotes asociados, caer al agregado de movimientos
-                if disponible_lotes > 0:
-                    disponible = disponible_lotes
+            # ISS-001, ISS-004: Lógica clara de validación de stock
+            if validar_farmacia_central:
+                # Requisiciones: validar contra FARMACIA CENTRAL
+                # Los centros solicitan medicamentos que están en farmacia
+                disponible = producto.get_stock_farmacia_central()
+            else:
+                # Operaciones internas: validar contra stock del centro
+                if centro:
+                    disponible = producto.get_stock_centro(centro)
                 else:
-                    disponible = Movimiento.objects.filter(
-                        centro=centro,
-                        lote__producto=producto
-                    ).aggregate(total=Coalesce(Sum('cantidad'), 0))['total'] or 0
+                    disponible = producto.get_stock_farmacia_central()
 
             if cantidad > disponible:
                 errores.append({
                     'producto': producto.clave,
+                    'descripcion': producto.descripcion[:50] if producto.descripcion else '',
                     'disponible': disponible,
-                    'solicitado': cantidad
+                    'solicitado': cantidad,
+                    'ubicacion': 'farmacia_central' if validar_farmacia_central else (
+                        centro.nombre if centro else 'farmacia_central'
+                    )
                 })
         return errores
 
@@ -2797,19 +2816,20 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             centro = Centro.objects.filter(id=data.get('centro')).first() if data.get('centro') else None
             if not centro and solicitante and not solicitante.is_superuser:
                 return Response({'error': 'No se encontro el centro para validar stock'}, status=status.HTTP_400_BAD_REQUEST)
-            # Para requisiciones, validar stock global (no del centro solicitante)
-            # El centro solicitante pide stock, no lo provee
-            errores_stock = []
-            if es_privilegiado:
-                errores_stock = self._validar_stock_items(items_data, centro=None)
-                if errores_stock:
-                    return Response({'error': 'Stock insuficiente', 'detalles': errores_stock}, status=status.HTTP_400_BAD_REQUEST)
-            else:
-                product_ids = [item.get('producto') for item in items_data if item.get('producto')]
-                if product_ids and Lote.objects.filter(producto_id__in=product_ids, deleted_at__isnull=True).exists():
-                    errores_stock = self._validar_stock_items(items_data, centro=centro)
-                    if errores_stock:
-                        return Response({'error': 'Stock insuficiente', 'detalles': errores_stock}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # ISS-001, ISS-004: Validar stock de FARMACIA CENTRAL para todas las requisiciones
+            # Las requisiciones solicitan medicamentos que serán surtidos desde farmacia central
+            errores_stock = self._validar_stock_items(
+                items_data, 
+                centro=centro,
+                validar_farmacia_central=True  # Siempre validar farmacia central para requisiciones
+            )
+            if errores_stock:
+                return Response({
+                    'error': 'Stock insuficiente en farmacia central',
+                    'detalles': errores_stock,
+                    'nota': 'Las requisiciones se surten desde farmacia central'
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             # Agregar detalles a data para que el serializer los procese
             data['detalles'] = items_data
@@ -2845,9 +2865,17 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
 
         items_data = request.data.get('items') or request.data.get('detalles') or []
         if items_data:
-            errores_stock = self._validar_stock_items(items_data, centro=requisicion.centro)
+            # ISS-001, ISS-004: Validar stock de farmacia central para requisiciones
+            errores_stock = self._validar_stock_items(
+                items_data, 
+                centro=requisicion.centro,
+                validar_farmacia_central=True
+            )
             if errores_stock:
-                return Response({'error': 'Stock insuficiente', 'detalles': errores_stock}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({
+                    'error': 'Stock insuficiente en farmacia central',
+                    'detalles': errores_stock
+                }, status=status.HTTP_400_BAD_REQUEST)
             requisicion.detalles.all().delete()
             for item_data in items_data:
                 producto_id = item_data.get('producto')
@@ -2910,25 +2938,97 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             return Response({'error': 'No tienes permiso para autorizar requisiciones'}, status=status.HTTP_403_FORBIDDEN)
 
         items_data = request.data.get('items') or request.data.get('detalles') or []
+        
+        # ISS-003: Revalidar stock disponible en FARMACIA CENTRAL antes de autorizar
+        # El stock pudo haber cambiado desde que se creó/envió la requisición
+        errores_stock = []
+        advertencias_stock = []
+        
         for item_data in items_data:
             item_id = item_data.get('id')
-            cant = item_data.get('cantidad_autorizada')
-            if item_id is None or cant is None:
+            cant_autorizada = item_data.get('cantidad_autorizada')
+            if item_id is None or cant_autorizada is None:
                 continue
             try:
                 item = requisicion.detalles.get(id=item_id)
             except DetalleRequisicion.DoesNotExist:
                 continue
-            item.cantidad_autorizada = max(0, int(cant))
+            
+            cant_autorizada = max(0, int(cant_autorizada))
+            if cant_autorizada > 0:
+                # ISS-001: Usar stock de FARMACIA CENTRAL (no global)
+                stock_farmacia = item.producto.get_stock_farmacia_central()
+                
+                if stock_farmacia < cant_autorizada:
+                    if stock_farmacia == 0:
+                        errores_stock.append({
+                            'producto': item.producto.clave,
+                            'descripcion': item.producto.descripcion[:50],
+                            'solicitado': cant_autorizada,
+                            'disponible_farmacia': stock_farmacia,
+                            'mensaje': 'Sin stock en farmacia central'
+                        })
+                    else:
+                        advertencias_stock.append({
+                            'producto': item.producto.clave,
+                            'descripcion': item.producto.descripcion[:50],
+                            'solicitado': cant_autorizada,
+                            'disponible_farmacia': stock_farmacia,
+                            'sugerido': stock_farmacia,
+                            'mensaje': f'Stock insuficiente, disponible: {stock_farmacia}'
+                        })
+            
+            item.cantidad_autorizada = cant_autorizada
             item.save()
-
-        requisicion.estado = 'autorizada'
+        
+        # ISS-003: Si hay productos sin stock, rechazar autorización o advertir
+        if errores_stock:
+            # Productos con 0 stock - no permitir autorización
+            return Response({
+                'error': 'No se puede autorizar: productos sin stock en farmacia central',
+                'detalles': errores_stock,
+                'advertencias': advertencias_stock
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Determinar estado final
+        # Si todas las cantidades autorizadas son 0 o menores a lo solicitado -> parcial
+        # IMPORTANTE: Usar consulta directa a DB para ver valores actualizados (evitar cache de QuerySet)
+        from django.db.models import Sum
+        totales = DetalleRequisicion.objects.filter(
+            requisicion=requisicion
+        ).aggregate(
+            total_sol=Sum('cantidad_solicitada'),
+            total_aut=Sum('cantidad_autorizada')
+        )
+        total_solicitado = totales['total_sol'] or 0
+        total_autorizado = totales['total_aut'] or 0
+        
+        if total_autorizado == 0:
+            return Response({
+                'error': 'Debe autorizar al menos un producto',
+                'total_solicitado': total_solicitado,
+                'total_autorizado': total_autorizado
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        nuevo_estado = 'autorizada' if total_autorizado >= total_solicitado else 'parcial'
+        
+        requisicion.estado = nuevo_estado
         requisicion.fecha_autorizacion = timezone.now()
         if request.user and request.user.is_authenticated:
             requisicion.usuario_autoriza = request.user
         requisicion.save(update_fields=['estado', 'fecha_autorizacion', 'usuario_autoriza'])
 
-        return Response({'mensaje': 'Requisicion autorizada', 'requisicion': RequisicionSerializer(requisicion).data})
+        response_data = {
+            'mensaje': f'Requisicion {nuevo_estado}',
+            'requisicion': RequisicionSerializer(requisicion).data
+        }
+        
+        # ISS-003: Incluir advertencias si hay stock parcial
+        if advertencias_stock:
+            response_data['advertencias'] = advertencias_stock
+            response_data['mensaje'] += ' (con advertencias de stock)'
+        
+        return Response(response_data)
 
     @action(detail=True, methods=['post'])
     def rechazar(self, request, pk=None):

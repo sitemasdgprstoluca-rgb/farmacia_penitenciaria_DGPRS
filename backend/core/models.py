@@ -239,27 +239,97 @@ class Producto(models.Model):
     def __str__(self):
         return f"{self.clave} - {self.descripcion[:50]}"
     
-    def get_stock_actual(self):
+    def get_stock_actual(self, centro=None):
         """
-        Calcula el stock actual sumando todos los lotes disponibles.
+        Calcula el stock actual sumando lotes disponibles.
         
-        ISS-001 FIX: Excluye lotes con soft-delete (deleted_at) y lotes vencidos.
-        Solo cuenta lotes activos, no eliminados y con fecha de caducidad vigente.
+        ISS-001 FIX: Ahora soporta filtrado por ubicación:
+        - centro=None: Solo farmacia central (lotes sin centro asignado)
+        - centro=objeto_centro: Solo lotes de ese centro específico
+        - centro='todos': Todos los lotes (comportamiento legacy, NO RECOMENDADO)
+        
+        Excluye lotes con soft-delete (deleted_at) y lotes vencidos.
+        
+        Args:
+            centro: Centro para filtrar, None para farmacia central, 'todos' para global
+            
+        Returns:
+            int: Stock disponible
         """
         from django.utils import timezone
+        from django.db.models import Sum
+        
         today = timezone.now().date()
-        return sum(
-            lote.cantidad_actual
-            for lote in self.lotes.filter(
-                estado='disponible',
-                deleted_at__isnull=True,  # Excluir soft-deleted
-                fecha_caducidad__gte=today  # Excluir vencidos
-            )
-        )
+        
+        filtros = {
+            'estado': 'disponible',
+            'deleted_at__isnull': True,
+            'fecha_caducidad__gte': today,
+        }
+        
+        # ISS-001: Filtrar por ubicación
+        if centro == 'todos':
+            # Comportamiento legacy - NO RECOMENDADO para validaciones
+            pass
+        elif centro is None:
+            # Farmacia central: solo lotes sin centro asignado
+            filtros['centro__isnull'] = True
+        else:
+            # Centro específico
+            filtros['centro'] = centro
+        
+        return self.lotes.filter(**filtros).aggregate(
+            total=Sum('cantidad_actual')
+        )['total'] or 0
     
-    def get_nivel_stock(self):
-        """Retorna el nivel de stock: critico, bajo, normal, alto"""
-        stock_actual = self.get_stock_actual()
+    def get_stock_farmacia_central(self):
+        """
+        ISS-001: Obtiene stock disponible SOLO en farmacia central.
+        
+        Este método debe usarse para validar requisiciones salientes,
+        ya que representa el inventario real disponible para distribución.
+        
+        Returns:
+            int: Stock en farmacia central
+        """
+        return self.get_stock_actual(centro=None)
+    
+    def get_stock_centro(self, centro):
+        """
+        ISS-001: Obtiene stock disponible en un centro específico.
+        
+        Args:
+            centro: Instancia del modelo Centro
+            
+        Returns:
+            int: Stock en el centro especificado
+        """
+        if centro is None:
+            return self.get_stock_farmacia_central()
+        return self.get_stock_actual(centro=centro)
+    
+    def get_stock_global(self):
+        """
+        ISS-001: Obtiene stock total en todo el sistema (farmacia + centros).
+        
+        ADVERTENCIA: No usar para validar requisiciones salientes.
+        El stock en centros ya está comprometido/distribuido.
+        
+        Returns:
+            int: Stock total en el sistema
+        """
+        return self.get_stock_actual(centro='todos')
+    
+    def get_nivel_stock(self, centro=None):
+        """
+        Retorna el nivel de stock: critico, bajo, normal, alto.
+        
+        ISS-001: Usa stock de farmacia central por defecto para indicadores.
+        
+        Args:
+            centro: Centro para calcular nivel (None = farmacia central)
+        """
+        stock_actual = self.get_stock_actual(centro=centro)
         
         if stock_actual <= self.stock_minimo * NIVELES_STOCK['critico']:
             return 'critico'
@@ -606,27 +676,36 @@ class Requisicion(models.Model):
     Modelo de Requisición de medicamentos
     Flujo: Borrador -> Enviada -> Autorizada/Rechazada -> Surtida -> Recibida
     
-    Máquina de Estados:
+    ISS-002: Máquina de Estados UNIFICADA (modelo y servicio usan la misma)
+    
+    Estados:
     - borrador: Estado inicial, puede ser editada
     - enviada: Enviada para revisión, pendiente de autorización
     - autorizada: Aprobada, lista para surtir
-    - parcial: Parcialmente autorizada
-    - rechazada: Rechazada, no se surtirá
+    - parcial: Parcialmente autorizada/surtida
+    - rechazada: Rechazada, no se surtirá (permite reenvío a borrador)
     - surtida: Surtida por farmacia, pendiente de recepción
     - recibida: Recibida por el centro destino
     - cancelada: Cancelada por el usuario
     """
-    # Definición de transiciones válidas de estado
+    # ISS-002: Definición CANÓNICA de transiciones válidas de estado
+    # Esta es la fuente única de verdad para todo el sistema
     TRANSICIONES_VALIDAS = {
         'borrador': ['enviada', 'cancelada'],
         'enviada': ['autorizada', 'parcial', 'rechazada', 'cancelada'],
-        'autorizada': ['surtida', 'cancelada'],
+        'autorizada': ['surtida', 'parcial', 'cancelada'],
         'parcial': ['surtida', 'cancelada'],
-        'rechazada': [],  # Estado terminal
-        'surtida': ['recibida'],  # Puede pasar a recibida
+        'rechazada': ['borrador'],  # ISS-002: Permite reenvío después de correcciones
+        'surtida': ['recibida'],
         'recibida': [],   # Estado terminal
         'cancelada': [],  # Estado terminal
     }
+    
+    # Estados que permiten surtido
+    ESTADOS_SURTIBLES = ['autorizada', 'parcial']
+    
+    # Estados terminales (no permiten más transiciones)
+    ESTADOS_TERMINALES = ['recibida', 'cancelada']
     
     folio = models.CharField(max_length=50, unique=True)
     centro = models.ForeignKey(
