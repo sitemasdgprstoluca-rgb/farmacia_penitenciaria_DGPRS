@@ -512,6 +512,95 @@ class Producto(models.Model):
             return 'normal'
         else:
             return 'alto'
+    
+    def get_stock_comprometido(self, centro=None):
+        """
+        ISS-008: Calcula stock comprometido por requisiciones pendientes.
+        
+        Stock comprometido = Cantidad autorizada en requisiciones que aún
+        no han sido surtidas o recibidas.
+        
+        Estados que comprometen stock:
+        - 'autorizada': Aprobada, pendiente de surtir
+        - 'parcial': Parcialmente autorizada/surtida
+        - 'surtida': Surtida pero no recibida
+        
+        Args:
+            centro: Centro destino para filtrar (None = todas las requisiciones)
+            
+        Returns:
+            int: Cantidad de stock comprometido
+        """
+        from django.db.models import Sum
+        
+        # Estados que comprometen stock (pendientes de surtir o confirmar recepción)
+        ESTADOS_COMPROMETIDOS = ['autorizada', 'parcial', 'surtida']
+        
+        filtros = {
+            'requisicion__estado__in': ESTADOS_COMPROMETIDOS,
+            'producto': self,
+        }
+        
+        # Filtrar por centro destino si se especifica
+        if centro is not None:
+            filtros['requisicion__centro'] = centro
+        
+        # Importar aquí para evitar import circular
+        from core.models import DetalleRequisicion
+        
+        # Calcular: cantidad autorizada - cantidad ya surtida
+        # Esto da el stock que aún está pendiente de entregar
+        comprometido = DetalleRequisicion.objects.filter(
+            **filtros
+        ).aggregate(
+            total=Sum('cantidad_autorizada')
+        )['total'] or 0
+        
+        surtido = DetalleRequisicion.objects.filter(
+            **filtros
+        ).aggregate(
+            total=Sum('cantidad_surtida')
+        )['total'] or 0
+        
+        return max(0, comprometido - surtido)
+    
+    def get_stock_disponible_real(self, centro=None):
+        """
+        ISS-008: Calcula stock realmente disponible (actual - comprometido).
+        
+        Este es el stock que realmente puede ser usado para nuevas requisiciones.
+        
+        Args:
+            centro: Centro para filtrar stock físico (None = farmacia central)
+            
+        Returns:
+            int: Stock disponible para nuevas requisiciones
+        """
+        stock_actual = self.get_stock_actual(centro=centro)
+        stock_comprometido = self.get_stock_comprometido()
+        return max(0, stock_actual - stock_comprometido)
+    
+    def get_resumen_stock(self, centro=None):
+        """
+        ISS-008: Retorna resumen completo del estado del stock.
+        
+        Args:
+            centro: Centro para filtrar (None = farmacia central)
+            
+        Returns:
+            dict: Resumen con stock_actual, stock_comprometido, stock_disponible
+        """
+        stock_actual = self.get_stock_actual(centro=centro)
+        stock_comprometido = self.get_stock_comprometido()
+        stock_disponible = max(0, stock_actual - stock_comprometido)
+        
+        return {
+            'stock_actual': stock_actual,
+            'stock_comprometido': stock_comprometido,
+            'stock_disponible': stock_disponible,
+            'nivel_stock': self.get_nivel_stock(centro=centro),
+            'tiene_comprometido': stock_comprometido > 0,
+        }
 
 
 class Lote(models.Model):
@@ -867,6 +956,149 @@ class Lote(models.Model):
             fecha_caducidad__lte=fecha_limite,
             cantidad_actual__gt=0
         ).select_related('producto').order_by('fecha_caducidad')
+    
+    # ==========================================
+    # ISS-010: Métodos de Control de Contratos
+    # ==========================================
+    
+    def tiene_contrato(self):
+        """
+        ISS-010: Verifica si el lote tiene número de contrato asignado.
+        
+        Returns:
+            bool: True si tiene contrato, False si no
+        """
+        return bool(self.numero_contrato and self.numero_contrato.strip())
+    
+    def get_info_contrato(self):
+        """
+        ISS-010: Retorna información completa del contrato del lote.
+        
+        Returns:
+            dict: Información del contrato con:
+                - tiene_contrato: bool
+                - numero_contrato: str o None
+                - proveedor: str
+                - factura: str
+                - marca: str
+                - precio_compra: Decimal o None
+        """
+        return {
+            'tiene_contrato': self.tiene_contrato(),
+            'numero_contrato': self.numero_contrato if self.tiene_contrato() else None,
+            'proveedor': self.proveedor or '',
+            'factura': self.factura or '',
+            'marca': self.marca or '',
+            'precio_compra': self.precio_compra,
+        }
+    
+    @classmethod
+    def por_contrato(cls, numero_contrato, solo_disponibles=True):
+        """
+        ISS-010: Obtiene todos los lotes asociados a un número de contrato.
+        
+        Args:
+            numero_contrato: Número de contrato a buscar
+            solo_disponibles: Si True, excluye lotes eliminados/vencidos
+            
+        Returns:
+            QuerySet: Lotes del contrato especificado
+        """
+        filtros = {
+            'numero_contrato': numero_contrato,
+        }
+        
+        if solo_disponibles:
+            filtros['deleted_at__isnull'] = True
+        
+        return cls.objects.filter(**filtros).select_related('producto', 'centro')
+    
+    @classmethod
+    def resumen_por_contrato(cls, numero_contrato):
+        """
+        ISS-010: Genera resumen estadístico de un contrato específico.
+        
+        Args:
+            numero_contrato: Número de contrato a analizar
+            
+        Returns:
+            dict: Resumen con:
+                - total_lotes: int
+                - total_cantidad_inicial: int
+                - total_cantidad_actual: int
+                - porcentaje_consumido: float
+                - productos: list de productos únicos
+                - estados: dict con conteo por estado
+                - valor_total: Decimal (si hay precios)
+        """
+        from django.db.models import Sum, Count
+        
+        lotes = cls.por_contrato(numero_contrato, solo_disponibles=False)
+        
+        if not lotes.exists():
+            return {
+                'numero_contrato': numero_contrato,
+                'total_lotes': 0,
+                'total_cantidad_inicial': 0,
+                'total_cantidad_actual': 0,
+                'porcentaje_consumido': 0,
+                'productos': [],
+                'estados': {},
+                'valor_total': Decimal('0.00'),
+            }
+        
+        agregados = lotes.aggregate(
+            total_lotes=Count('id'),
+            total_inicial=Sum('cantidad_inicial'),
+            total_actual=Sum('cantidad_actual'),
+        )
+        
+        # Conteo por estado
+        estados = {}
+        for lote in lotes.values('estado').annotate(count=Count('id')):
+            estados[lote['estado']] = lote['count']
+        
+        # Productos únicos
+        productos = list(lotes.values_list('producto__clave', flat=True).distinct())
+        
+        # Valor total (si hay precios)
+        valor_total = lotes.filter(precio_compra__isnull=False).aggregate(
+            total=Sum(models.F('cantidad_inicial') * models.F('precio_compra'))
+        )['total'] or Decimal('0.00')
+        
+        total_inicial = agregados['total_inicial'] or 0
+        total_actual = agregados['total_actual'] or 0
+        consumido = total_inicial - total_actual
+        porcentaje = (consumido / total_inicial * 100) if total_inicial > 0 else 0
+        
+        return {
+            'numero_contrato': numero_contrato,
+            'total_lotes': agregados['total_lotes'],
+            'total_cantidad_inicial': total_inicial,
+            'total_cantidad_actual': total_actual,
+            'cantidad_consumida': consumido,
+            'porcentaje_consumido': round(porcentaje, 2),
+            'productos': productos,
+            'estados': estados,
+            'valor_total': valor_total,
+        }
+    
+    @classmethod
+    def contratos_activos(cls):
+        """
+        ISS-010: Lista todos los números de contrato con lotes activos.
+        
+        Returns:
+            list: Lista de números de contrato únicos con lotes disponibles
+        """
+        return list(
+            cls.objects.filter(
+                deleted_at__isnull=True,
+                numero_contrato__isnull=False,
+            ).exclude(
+                numero_contrato=''
+            ).values_list('numero_contrato', flat=True).distinct().order_by('numero_contrato')
+        )
 
 
 class Requisicion(models.Model):
