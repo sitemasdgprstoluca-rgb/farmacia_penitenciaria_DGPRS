@@ -504,13 +504,13 @@ code {
 
 /* Modal header con tema */
 .modal-header-theme {
-  background: var(--color-sidebar-bg, linear-gradient(135deg, #9F2241 0%, #6B1839 100%));
+  background: linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%) !important;
   border-bottom-color: var(--color-primary, #9F2241);
 }
 
 /* Header de tabla con tema */
 .thead-theme {
-  background: var(--color-sidebar-bg, linear-gradient(135deg, #9F2241 0%, #6B1839 100%));
+  background: linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%) !important;
 }
 .thead-theme th {
   color: white;
@@ -536,6 +536,6 @@ code {
 
 /* Gradiente de fondo del tema - para botones y elementos destacados */
 .bg-theme-gradient {
-  background: linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%);
+  background: linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%) !important;
 }
 
