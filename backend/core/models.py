@@ -513,9 +513,9 @@ class Producto(models.Model):
         else:
             return 'alto'
     
-    def get_stock_comprometido(self, centro=None):
+    def get_stock_comprometido(self, centro=None, excluir_lotes_vencidos=True):
         """
-        ISS-008: Calcula stock comprometido por requisiciones pendientes.
+        ISS-008 + ISS-005 FIX (audit4): Calcula stock comprometido por requisiciones pendientes.
         
         Stock comprometido = Cantidad autorizada en requisiciones que aún
         no han sido surtidas o recibidas.
@@ -525,13 +525,21 @@ class Producto(models.Model):
         - 'parcial': Parcialmente autorizada/surtida
         - 'surtida': Surtida pero no recibida
         
+        ISS-001/ISS-003 FIX (audit4): El parámetro centro filtra compromisos
+        SOLO para requisiciones dirigidas a ese centro específico.
+        
+        ISS-005 FIX (audit4): Si excluir_lotes_vencidos=True, no cuenta
+        compromisos donde todos los lotes disponibles están vencidos.
+        
         Args:
-            centro: Centro destino para filtrar (None = todas las requisiciones)
+            centro: Centro destino para filtrar (None = farmacia central global)
+            excluir_lotes_vencidos: Si True, ignora compromisos sin stock vigente
             
         Returns:
             int: Cantidad de stock comprometido
         """
         from django.db.models import Sum
+        from django.utils import timezone
         
         # Estados que comprometen stock (pendientes de surtir o confirmar recepción)
         ESTADOS_COMPROMETIDOS = ['autorizada', 'parcial', 'surtida']
@@ -541,12 +549,28 @@ class Producto(models.Model):
             'producto': self,
         }
         
-        # Filtrar por centro destino si se especifica
+        # ISS-001/ISS-003 FIX: Filtrar por centro destino si se especifica
+        # Esto asegura que el comprometido de un centro no afecte a otro
         if centro is not None:
             filtros['requisicion__centro'] = centro
         
         # Importar aquí para evitar import circular
         from core.models import DetalleRequisicion
+        
+        # ISS-005 FIX: Si no hay stock vigente para este producto, el comprometido es 0
+        # porque no se puede cumplir de todas formas
+        if excluir_lotes_vencidos:
+            hoy = timezone.now().date()
+            stock_vigente = Lote.objects.filter(
+                producto=self,
+                centro__isnull=True,  # Solo farmacia central
+                estado='disponible',
+                deleted_at__isnull=True,
+                cantidad_actual__gt=0,
+                fecha_caducidad__gte=hoy,
+            ).exists()
+            if not stock_vigente:
+                return 0  # No hay stock vigente, liberar compromisos
         
         # Calcular: cantidad autorizada - cantidad ya surtida
         # Esto da el stock que aún está pendiente de entregar
@@ -566,23 +590,44 @@ class Producto(models.Model):
     
     def get_stock_disponible_real(self, centro=None):
         """
-        ISS-008: Calcula stock realmente disponible (actual - comprometido).
+        ISS-008 + ISS-001 FIX (audit4): Calcula stock realmente disponible.
         
         Este es el stock que realmente puede ser usado para nuevas requisiciones.
         
+        ISS-001 FIX: Ahora pasa el parámetro centro a get_stock_comprometido
+        para que el comprometido sea consistente con el stock físico consultado.
+        
+        Para farmacia central (centro=None):
+        - Stock actual: lotes en farmacia central
+        - Comprometido: requisiciones pendientes globales (todas las sedes)
+        
+        Para un centro específico:
+        - Stock actual: lotes en ese centro
+        - Comprometido: solo requisiciones de ESE centro
+        
         Args:
-            centro: Centro para filtrar stock físico (None = farmacia central)
+            centro: Centro para filtrar (None = farmacia central)
             
         Returns:
             int: Stock disponible para nuevas requisiciones
         """
         stock_actual = self.get_stock_actual(centro=centro)
-        stock_comprometido = self.get_stock_comprometido()
+        # ISS-001 FIX: Pasar centro a comprometido para consistencia
+        stock_comprometido = self.get_stock_comprometido(centro=centro)
         return max(0, stock_actual - stock_comprometido)
     
     def get_resumen_stock(self, centro=None):
         """
-        ISS-008: Retorna resumen completo del estado del stock.
+        ISS-008 + ISS-003 FIX (audit4): Retorna resumen completo del estado del stock.
+        
+        ISS-003 FIX: Ahora el stock comprometido es consistente con el centro
+        consultado, evitando mezclar compromisos de diferentes sedes.
+        
+        Para farmacia central (centro=None):
+        - Muestra comprometido global (todas las requisiciones pendientes)
+        
+        Para un centro específico:
+        - Muestra solo comprometido de ese centro
         
         Args:
             centro: Centro para filtrar (None = farmacia central)
@@ -591,8 +636,12 @@ class Producto(models.Model):
             dict: Resumen con stock_actual, stock_comprometido, stock_disponible
         """
         stock_actual = self.get_stock_actual(centro=centro)
-        stock_comprometido = self.get_stock_comprometido()
+        # ISS-003 FIX: Comprometido consistente con centro consultado
+        stock_comprometido = self.get_stock_comprometido(centro=centro)
         stock_disponible = max(0, stock_actual - stock_comprometido)
+        
+        # ISS-003 FIX: Agregar indicador de qué tipo de resumen es
+        es_farmacia_central = centro is None
         
         return {
             'stock_actual': stock_actual,
@@ -600,6 +649,8 @@ class Producto(models.Model):
             'stock_disponible': stock_disponible,
             'nivel_stock': self.get_nivel_stock(centro=centro),
             'tiene_comprometido': stock_comprometido > 0,
+            'es_farmacia_central': es_farmacia_central,
+            'centro_id': centro.pk if centro else None,
         }
 
 
@@ -872,34 +923,66 @@ class Lote(models.Model):
 
     def _validar_contrato(self):
         """
-        ISS-008 FIX (audit2): Valida reglas de contrato al crear/modificar lotes.
+        ISS-002 + ISS-004 FIX (audit4): Valida reglas de contrato al crear/modificar lotes.
         
         Solo aplica para lotes de farmacia central (entradas por contrato).
         Los lotes de centros heredan el contrato del lote_origen.
+        
+        ISS-002 FIX: Ahora bloquea en lugar de solo advertir.
+        ISS-004 FIX: Umbral de caducidad mínima parametrizable.
         """
         # Solo validar lotes de farmacia central
         if self.centro is not None:
             return
         
         from django.utils import timezone
+        from django.conf import settings
+        
         today = timezone.now().date()
         
-        # Si tiene número de contrato, validar coherencia
-        if self.numero_contrato:
-            # Advertir si la fecha de caducidad es muy próxima para entradas nuevas
-            if not self.pk and self.fecha_caducidad:  # Solo en creación
-                dias_para_caducar = (self.fecha_caducidad - today).days
-                if dias_para_caducar < 90:  # Menos de 3 meses
+        # Configuración parametrizable (con valores por defecto seguros)
+        REQUIRE_CONTRATO = getattr(settings, 'LOTE_REQUIRE_CONTRATO', False)
+        MIN_DIAS_CADUCIDAD = getattr(settings, 'LOTE_MIN_DIAS_CADUCIDAD', 90)
+        BLOQUEAR_CADUCIDAD_CORTA = getattr(settings, 'LOTE_BLOQUEAR_CADUCIDAD_CORTA', False)
+        
+        # ISS-002 FIX: Validar existencia de contrato (si está configurado como obligatorio)
+        if not self.pk and REQUIRE_CONTRATO:  # Solo en creación
+            if not self.numero_contrato or not self.numero_contrato.strip():
+                raise ValidationError({
+                    'numero_contrato': (
+                        'ISS-002: Se requiere número de contrato para entradas a farmacia central. '
+                        'Configure LOTE_REQUIRE_CONTRATO=False en settings para permitir entradas sin contrato.'
+                    )
+                })
+        
+        # ISS-004 FIX: Validar caducidad mínima
+        if not self.pk and self.fecha_caducidad:  # Solo en creación
+            dias_para_caducar = (self.fecha_caducidad - today).days
+            
+            if dias_para_caducar < MIN_DIAS_CADUCIDAD:
+                mensaje = (
+                    f'ISS-004: Lote con caducidad próxima ({dias_para_caducar} días). '
+                    f'Mínimo requerido: {MIN_DIAS_CADUCIDAD} días.'
+                )
+                
+                if BLOQUEAR_CADUCIDAD_CORTA:
+                    # Bloquear si está configurado
+                    raise ValidationError({
+                        'fecha_caducidad': mensaje + ' Configure LOTE_BLOQUEAR_CADUCIDAD_CORTA=False para permitir.'
+                    })
+                else:
+                    # Solo advertir (comportamiento legacy)
                     logger.warning(
-                        f"ISS-008: Lote {self.numero_lote} con contrato {self.numero_contrato} "
-                        f"tiene caducidad próxima ({dias_para_caducar} días)"
+                        f"ISS-004: Lote {self.numero_lote} con caducidad próxima ({dias_para_caducar} días). "
+                        f"Contrato: {self.numero_contrato or 'N/A'}"
                     )
         
-        # Si es entrada nueva y NO tiene contrato, advertir (pero no bloquear)
+        # Advertir entradas sin contrato (si no es obligatorio)
         if not self.pk and not self.numero_contrato and self.cantidad_inicial > 0:
-            logger.warning(
-                f"ISS-008: Lote {self.numero_lote} creado sin número de contrato"
-            )
+            if not REQUIRE_CONTRATO:
+                logger.warning(
+                    f"ISS-002: Lote {self.numero_lote} creado sin número de contrato"
+                )
 
     def save(self, *args, **kwargs):
         self.full_clean()
