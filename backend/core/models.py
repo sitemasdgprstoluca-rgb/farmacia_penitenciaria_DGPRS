@@ -2341,3 +2341,72 @@ class TemaGlobal(models.Model):
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
         return config
+
+
+class AuditLog(models.Model):
+    """
+    ISS-032: Modelo de log de auditoría centralizado.
+    
+    Registra todas las operaciones importantes del sistema
+    para trazabilidad y cumplimiento.
+    """
+    
+    ACTIONS = [
+        ('create', 'Crear'),
+        ('read', 'Leer'),
+        ('update', 'Actualizar'),
+        ('delete', 'Eliminar'),
+        ('soft_delete', 'Eliminar (soft)'),
+        ('restore', 'Restaurar'),
+        ('login', 'Inicio de sesión'),
+        ('logout', 'Cierre de sesión'),
+        ('login_failed', 'Login fallido'),
+        ('password_change', 'Cambio de contraseña'),
+        ('permission_change', 'Cambio de permisos'),
+        ('export', 'Exportación'),
+        ('import', 'Importación'),
+        ('transition', 'Transición de estado'),
+        ('approval', 'Aprobación'),
+        ('rejection', 'Rechazo'),
+        ('transfer', 'Transferencia'),
+        ('adjustment', 'Ajuste'),
+        ('error', 'Error'),
+    ]
+    
+    SEVERITIES = [
+        ('debug', 'Debug'),
+        ('info', 'Info'),
+        ('warning', 'Warning'),
+        ('error', 'Error'),
+        ('critical', 'Critical'),
+    ]
+    
+    timestamp = models.DateTimeField(db_index=True)
+    action = models.CharField(max_length=50, choices=ACTIONS, db_index=True)
+    severity = models.CharField(max_length=20, choices=SEVERITIES, default='info')
+    usuario_id = models.IntegerField(null=True, blank=True, db_index=True)
+    modelo = models.CharField(max_length=100, db_index=True)
+    objeto_id = models.IntegerField(null=True, blank=True)
+    objeto_repr = models.CharField(max_length=200, blank=True)
+    descripcion = models.TextField()
+    datos_anteriores = models.JSONField(null=True, blank=True)
+    datos_nuevos = models.JSONField(null=True, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=200, blank=True)
+    request_id = models.CharField(max_length=100, null=True, blank=True)
+    duracion_ms = models.FloatField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    
+    class Meta:
+        db_table = 'audit_logs'
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['timestamp', 'action'], name='idx_audit_timestamp_action'),
+            models.Index(fields=['usuario_id', 'timestamp'], name='idx_audit_usuario_timestamp'),
+            models.Index(fields=['modelo', 'objeto_id'], name='idx_audit_modelo_objeto'),
+            models.Index(fields=['severity', 'timestamp'], name='idx_audit_severity'),
+        ]
+    
+    def __str__(self):
+        return f"[{self.timestamp}] {self.action} {self.modelo}#{self.objeto_id}"
+
