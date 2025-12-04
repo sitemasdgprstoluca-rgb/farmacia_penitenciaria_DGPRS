@@ -77,7 +77,8 @@ const ConfiguracionTema = () => {
     eliminarLogoPdf,
     eliminarLogoTema,
     temasDisponibles,
-    aplicarCSSVariablesLocalmente // Para preview en tiempo real 
+    aplicarCSSVariablesLocalmente, // Para preview en tiempo real
+    cargarTema // Para recargar tema después de guardar
   } = useTheme();
   
   const [formData, setFormData] = useState({});
@@ -434,6 +435,10 @@ const ConfiguracionTema = () => {
 
     if (resultado.success) {
       setModoEdicion(false);
+      // Forzar recarga del tema para aplicar cambios inmediatamente
+      if (cargarTema) {
+        setTimeout(() => cargarTema(), 500);
+      }
     }
   };
 

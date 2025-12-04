@@ -6,11 +6,18 @@ import { configuracionAPI, temaGlobalAPI } from '../services/api';
  * Aplica las variables CSS al documento
  */
 const aplicarCSSVariables = (cssVariables) => {
-  if (!cssVariables) return;
+  if (!cssVariables) {
+    console.warn('ThemeContext: No hay CSS variables para aplicar');
+    return;
+  }
   
+  console.log('ThemeContext: Aplicando CSS variables:', cssVariables);
   const root = document.documentElement;
   Object.entries(cssVariables).forEach(([variable, valor]) => {
-    root.style.setProperty(variable, valor);
+    if (valor) {
+      root.style.setProperty(variable, valor);
+      console.log(`  ${variable}: ${valor}`);
+    }
   });
 };
 
@@ -215,13 +222,18 @@ export const ThemeProvider = ({ children }) => {
    */
   const actualizarTemaGlobal = async (nuevoTema) => {
     try {
+      console.log('ThemeContext: Actualizando tema con:', nuevoTema);
       const response = await temaGlobalAPI.updateTema(nuevoTema);
       const resultado = response.data;
+      console.log('ThemeContext: Respuesta del servidor:', resultado);
       const tema = resultado.tema || resultado;
       
       setTemaGlobal(tema);
       if (tema.css_variables) {
+        console.log('ThemeContext: Aplicando nuevas CSS variables después de guardar');
         aplicarCSSVariables(tema.css_variables);
+      } else {
+        console.warn('ThemeContext: El servidor no devolvió css_variables');
       }
       
       return { success: true, data: tema };
