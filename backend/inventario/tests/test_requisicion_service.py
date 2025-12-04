@@ -30,7 +30,8 @@ User = get_user_model()
 
 def is_farmacia_or_admin_mock(user):
     """Mock de función is_farmacia_or_admin"""
-    return user.rol in ['admin', 'farmacia'] or user.is_superuser
+    rol = getattr(user, 'rol', '')
+    return rol in ['admin', 'farmacia'] or user.is_superuser
 
 
 def get_user_centro_mock(user):
@@ -281,8 +282,8 @@ class RequisicionServicePermissionTests(TestCase):
             estado='disponible'
         )
     
-    def test_usuario_centro_puede_surtir_su_centro(self):
-        """ISS-030: Usuario de centro puede surtir requisiciones de su centro"""
+    def test_usuario_centro_no_puede_surtir(self):
+        """ISS-003: Solo farmacia/admin pueden surtir - centros NO pueden"""
         requisicion = Requisicion.objects.create(
             folio='REQ-PERM-001',
             centro=self.centro_a,
@@ -298,13 +299,14 @@ class RequisicionServicePermissionTests(TestCase):
         
         service = RequisicionService(requisicion, self.usuario_centro_a)
         
-        # No debe lanzar excepción
-        resultado = service.surtir(
-            is_farmacia_or_admin_fn=is_farmacia_or_admin_mock,
-            get_user_centro_fn=get_user_centro_mock
-        )
+        # Usuario de centro NO puede surtir (ISS-003)
+        with self.assertRaises(PermisoRequisicionError) as ctx:
+            service.surtir(
+                is_farmacia_or_admin_fn=is_farmacia_or_admin_mock,
+                get_user_centro_fn=get_user_centro_mock
+            )
         
-        self.assertTrue(resultado['exito'])
+        self.assertIn('farmacia central', str(ctx.exception))
     
     def test_usuario_centro_no_puede_surtir_otro_centro(self):
         """ISS-030: Usuario de centro NO puede surtir requisiciones de otro centro"""
@@ -420,7 +422,13 @@ class LoteLockingTests(TransactionTestCase):
         )
     
     def test_descuento_atomico_no_genera_stock_negativo(self):
-        """ISS-014: Descuentos atómicos deben prevenir stock negativo"""
+        """
+        ISS-014: Descuentos atómicos deben prevenir stock negativo.
+        
+        Nota ISS-004: Ahora se considera el stock comprometido por otras requisiciones
+        autorizadas. Si req2 está autorizada y compromete stock, req1 no podrá
+        usar ese stock.
+        """
         # Crear un segundo centro para que las requisiciones no compartan stock
         centro2 = Centro.objects.create(
             clave='CENT-LOCK-2',
@@ -430,7 +438,8 @@ class LoteLockingTests(TransactionTestCase):
             activo=True
         )
         
-        # Crear dos requisiciones de CENTROS DIFERENTES que juntas exceden el stock central
+        # Crear primera requisición ANTES de la segunda
+        # Esto asegura que cuando la primera se surte, no hay stock comprometido
         req1 = Requisicion.objects.create(
             folio='REQ-LOCK-001',
             centro=self.centro,  # Centro 1
@@ -444,6 +453,19 @@ class LoteLockingTests(TransactionTestCase):
             cantidad_autorizada=70
         )
         
+        # Primera requisición debería funcionar (70 de 100, sin stock comprometido)
+        service1 = RequisicionService(req1, self.admin)
+        resultado1 = service1.surtir(
+            is_farmacia_or_admin_fn=is_farmacia_or_admin_mock,
+            get_user_centro_fn=get_user_centro_mock
+        )
+        self.assertTrue(resultado1['exito'])
+        
+        # Verificar stock central después de primera req: 100 - 70 = 30
+        self.lote.refresh_from_db()
+        self.assertEqual(self.lote.cantidad_actual, 30)
+        
+        # Ahora crear segunda requisición que pide 70 (más que el stock restante)
         req2 = Requisicion.objects.create(
             folio='REQ-LOCK-002',
             centro=centro2,  # Centro 2 diferente
@@ -456,18 +478,6 @@ class LoteLockingTests(TransactionTestCase):
             cantidad_solicitada=70,
             cantidad_autorizada=70
         )
-        
-        # Primera requisición debería funcionar (70 de 100)
-        service1 = RequisicionService(req1, self.admin)
-        resultado1 = service1.surtir(
-            is_farmacia_or_admin_fn=is_farmacia_or_admin_mock,
-            get_user_centro_fn=get_user_centro_mock
-        )
-        self.assertTrue(resultado1['exito'])
-        
-        # Verificar stock central después de primera req: 100 - 70 = 30
-        self.lote.refresh_from_db()
-        self.assertEqual(self.lote.cantidad_actual, 30)
         
         # Segunda debe fallar por stock insuficiente (pide 70, solo hay 30 centrales)
         service2 = RequisicionService(req2, self.admin)

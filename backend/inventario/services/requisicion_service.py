@@ -102,7 +102,10 @@ class RequisicionService:
     
     def validar_permisos_surtido(self, is_farmacia_or_admin_fn, get_user_centro_fn):
         """
-        ISS-030: Valida permisos del usuario para surtir.
+        ISS-003 FIX (audit2): Valida permisos del usuario para surtir.
+        
+        IMPORTANTE: Solo farmacia central y administradores pueden surtir.
+        Los usuarios de centros NO pueden surtir, solo pueden confirmar recepción.
         
         Args:
             is_farmacia_or_admin_fn: Función que verifica si usuario es farmacia/admin
@@ -117,24 +120,18 @@ class RequisicionService:
         if is_farmacia_or_admin_fn(self.usuario):
             return True
         
-        # Usuario de centro: solo puede surtir su propio centro
-        centro_user = get_user_centro_fn(self.usuario)
-        if not centro_user:
-            raise PermisoRequisicionError(
-                "Usuario sin centro asignado no puede surtir requisiciones"
-            )
-        
-        if self.requisicion.centro_id != centro_user.id:
-            raise PermisoRequisicionError(
-                "No puede surtir requisiciones de otro centro"
-            )
-        
-        return True
+        # ISS-003 FIX (audit2): Usuarios de centro NO pueden surtir
+        # Solo pueden confirmar recepción vía confirmar_recepcion()
+        raise PermisoRequisicionError(
+            "Solo personal de farmacia central o administradores pueden surtir requisiciones. "
+            "Los usuarios de centro pueden confirmar recepción usando el endpoint correspondiente."
+        )
     
     def validar_stock_disponible(self):
         """
         ISS-001 FIX: Valida que hay stock suficiente SOLO en farmacia central.
         ISS-002 FIX: Solo considera lotes NO caducados.
+        ISS-004 FIX (audit2): Descuenta stock comprometido por otras requisiciones.
         
         IMPORTANTE: Las requisiciones SOLO se surten desde farmacia central.
         El stock del centro destino NO debe considerarse para validación,
@@ -158,7 +155,7 @@ class RequisicionService:
             
             # ISS-001 FIX: SOLO lotes de farmacia central (centro=NULL)
             # ISS-002 FIX: SOLO lotes NO caducados (fecha_caducidad >= hoy)
-            disponible = Lote.objects.filter(
+            stock_farmacia = Lote.objects.filter(
                 centro__isnull=True,  # Solo farmacia central
                 producto=detalle.producto,
                 estado='disponible',
@@ -167,12 +164,19 @@ class RequisicionService:
                 fecha_caducidad__gte=hoy,  # ISS-002 FIX: Solo lotes vigentes
             ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
             
+            # ISS-004 FIX (audit2): Descontar stock comprometido por OTRAS requisiciones
+            # (excluyendo esta misma requisición para evitar contar doble)
+            stock_comprometido = self._get_stock_comprometido_otras(detalle.producto)
+            disponible = stock_farmacia - stock_comprometido
+            
             if disponible < requerido:
                 errores_stock.append({
                     'producto': detalle.producto.clave,
                     'producto_descripcion': detalle.producto.descripcion[:50],
                     'requerido': requerido,
                     'disponible': disponible,
+                    'stock_farmacia': stock_farmacia,
+                    'stock_comprometido': stock_comprometido,
                     'deficit': requerido - disponible
                 })
         
@@ -183,6 +187,49 @@ class RequisicionService:
             )
         
         return []
+    
+    def _get_stock_comprometido_otras(self, producto):
+        """
+        ISS-004 FIX (audit2): Calcula stock comprometido por OTRAS requisiciones.
+        
+        Excluye la requisición actual para no contar doble.
+        
+        Args:
+            producto: Producto para calcular comprometido
+            
+        Returns:
+            int: Cantidad comprometida por otras requisiciones
+        """
+        from django.db.models import Sum
+        from core.models import DetalleRequisicion
+        
+        ESTADOS_COMPROMETIDOS = ['autorizada', 'parcial', 'surtida']
+        
+        comprometido = DetalleRequisicion.objects.filter(
+            requisicion__estado__in=ESTADOS_COMPROMETIDOS,
+            producto=producto
+        ).exclude(
+            requisicion_id=self.requisicion.pk  # Excluir esta requisición
+        ).aggregate(
+            total=Sum('cantidad_autorizada') - Sum('cantidad_surtida')
+        )
+        
+        # Calcular pendiente de surtir
+        total_autorizado = DetalleRequisicion.objects.filter(
+            requisicion__estado__in=ESTADOS_COMPROMETIDOS,
+            producto=producto
+        ).exclude(
+            requisicion_id=self.requisicion.pk
+        ).aggregate(total=Sum('cantidad_autorizada'))['total'] or 0
+        
+        total_surtido = DetalleRequisicion.objects.filter(
+            requisicion__estado__in=ESTADOS_COMPROMETIDOS,
+            producto=producto
+        ).exclude(
+            requisicion_id=self.requisicion.pk
+        ).aggregate(total=Sum('cantidad_surtida'))['total'] or 0
+        
+        return max(0, total_autorizado - total_surtido)
     
     @transaction.atomic
     def surtir(self, is_farmacia_or_admin_fn, get_user_centro_fn):

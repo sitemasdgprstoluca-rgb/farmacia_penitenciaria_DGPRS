@@ -866,6 +866,40 @@ class Lote(models.Model):
             raise ValidationError({
                 'precio_compra': 'El precio de compra no puede ser negativo'
             })
+        
+        # ISS-008 FIX (audit2): Validaciones de contrato
+        self._validar_contrato()
+
+    def _validar_contrato(self):
+        """
+        ISS-008 FIX (audit2): Valida reglas de contrato al crear/modificar lotes.
+        
+        Solo aplica para lotes de farmacia central (entradas por contrato).
+        Los lotes de centros heredan el contrato del lote_origen.
+        """
+        # Solo validar lotes de farmacia central
+        if self.centro is not None:
+            return
+        
+        from django.utils import timezone
+        today = timezone.now().date()
+        
+        # Si tiene número de contrato, validar coherencia
+        if self.numero_contrato:
+            # Advertir si la fecha de caducidad es muy próxima para entradas nuevas
+            if not self.pk and self.fecha_caducidad:  # Solo en creación
+                dias_para_caducar = (self.fecha_caducidad - today).days
+                if dias_para_caducar < 90:  # Menos de 3 meses
+                    logger.warning(
+                        f"ISS-008: Lote {self.numero_lote} con contrato {self.numero_contrato} "
+                        f"tiene caducidad próxima ({dias_para_caducar} días)"
+                    )
+        
+        # Si es entrada nueva y NO tiene contrato, advertir (pero no bloquear)
+        if not self.pk and not self.numero_contrato and self.cantidad_inicial > 0:
+            logger.warning(
+                f"ISS-008: Lote {self.numero_lote} creado sin número de contrato"
+            )
 
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -1306,6 +1340,21 @@ class Requisicion(models.Model):
                 'detalles': 'La requisición debe tener al menos un producto para ser enviada'
             })
         
+        # ISS-001 FIX (audit2): Validar stock disponible al autorizar
+        if nuevo_estado in ['autorizada', 'parcial']:
+            self._validar_stock_para_autorizacion()
+        
+        # ISS-002 FIX (audit2): Bloquear cambio directo a surtida/recibida
+        # Estos estados solo deben alcanzarse vía RequisicionService
+        if nuevo_estado in ['surtida', 'recibida']:
+            # Verificar que existan movimientos asociados (indica que pasó por servicio)
+            if not self.movimientos.filter(tipo='salida').exists():
+                raise ValidationError({
+                    'estado': f"No se puede cambiar a '{nuevo_estado}' sin pasar por el "
+                             f"servicio de surtido. Use RequisicionService.surtir() o "
+                             f"RequisicionService.confirmar_recepcion()."
+                })
+        
         # ISS-001 FIX: Aplicar cambios con auditoría
         estado_anterior = self.estado
         self.estado = nuevo_estado
@@ -1343,6 +1392,54 @@ class Requisicion(models.Model):
             f"por {usuario.username if usuario else 'sistema'}"
         )
         return True
+    
+    def _validar_stock_para_autorizacion(self):
+        """
+        ISS-001 FIX (audit2): Valida stock disponible antes de autorizar.
+        
+        Verifica que hay stock suficiente en farmacia central para todos
+        los productos de la requisición, considerando:
+        - Solo lotes de farmacia central (centro=NULL)
+        - Solo lotes no caducados
+        - Stock comprometido por otras requisiciones autorizadas
+        
+        Raises:
+            ValidationError: Si no hay stock suficiente
+        """
+        from django.utils import timezone
+        from django.db.models import Sum
+        
+        hoy = timezone.now().date()
+        errores = []
+        
+        for detalle in self.detalles.select_related('producto'):
+            cantidad_requerida = detalle.cantidad_solicitada
+            
+            # Stock disponible en farmacia central (no caducado)
+            stock_farmacia = Lote.objects.filter(
+                centro__isnull=True,
+                producto=detalle.producto,
+                estado='disponible',
+                deleted_at__isnull=True,
+                cantidad_actual__gt=0,
+                fecha_caducidad__gte=hoy
+            ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+            
+            # ISS-004 FIX (audit2): Descontar stock comprometido por otras requisiciones
+            stock_comprometido = detalle.producto.get_stock_comprometido()
+            stock_disponible_real = stock_farmacia - stock_comprometido
+            
+            if stock_disponible_real < cantidad_requerida:
+                errores.append(
+                    f"{detalle.producto.clave}: disponible {stock_disponible_real} "
+                    f"(farmacia: {stock_farmacia}, comprometido: {stock_comprometido}), "
+                    f"solicitado: {cantidad_requerida}"
+                )
+        
+        if errores:
+            raise ValidationError({
+                'stock': f"Stock insuficiente para autorizar: {'; '.join(errores)}"
+            })
     
     def get_transiciones_disponibles(self):
         """
