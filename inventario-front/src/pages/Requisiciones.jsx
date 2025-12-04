@@ -57,6 +57,7 @@ const Requisiciones = () => {
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(null); // Loading específico por acción (evita bloquear todo)
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [navegando, setNavegando] = useState(false); // Bloquea navegaciones múltiples
   // Para usuarios de centro, pre-llenar con su centro; para admin/farmacia iniciar vacío
   // IMPORTANTE: usar 'PENDING' como valor especial para usuarios de centro sin hidratar
   const [filtroCentro, setFiltroCentro] = useState(() => 
@@ -402,14 +403,20 @@ const Requisiciones = () => {
   }, [recargarUsuario, user?.centro?.id, esAdminOFarmacia, reintentosHidratacion]);
 
   // Debounce para evitar múltiples peticiones por tecla en filtros
+  // OPTIMIZADO: No programar timeout si el centro no está resuelto
   useEffect(() => {
+    // Si el centro no está resuelto, no tiene sentido programar la carga
+    if (!centroResuelto || filtroCentro === 'PENDING') {
+      return;
+    }
+    
     const timeoutId = setTimeout(() => {
       cargarRequisiciones();
       cargarResumenEstados();
     }, 400); // 400ms de debounce
 
     return () => clearTimeout(timeoutId);
-  }, [cargarRequisiciones, cargarResumenEstados]);
+  }, [cargarRequisiciones, cargarResumenEstados, centroResuelto, filtroCentro]);
 
   useEffect(() => {
     cargarCatalogos();
@@ -1009,13 +1016,13 @@ const Requisiciones = () => {
   };
 
   const handleDescargarPDF = async (id, tipo, folio) => {
-    if (actionLoading === `pdf-${id}`) return; // Evitar doble clic
-    
-    // Guard de permisos - validar antes de hacer la petición
+    // Guard de permisos - validar ANTES de modificar cualquier estado
     if (!permisos?.descargarHojaRecoleccion) {
       toast.error('No tienes permiso para descargar PDFs');
       return;
     }
+    
+    if (actionLoading === `pdf-${id}`) return; // Evitar doble clic
     
     setActionLoading(`pdf-${id}`);
     try {
@@ -1257,13 +1264,25 @@ const Requisiciones = () => {
                 </p>
                 <p className="text-gray-500 text-sm mb-4">
                   Puede haber un problema de conexión o la sesión expiró.
+                  {reintentosHidratacion > 0 && ` (Intento ${reintentosHidratacion} de ${MAX_REINTENTOS})`}
                 </p>
-                <button
-                  onClick={reintentarCarga}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Reintentar
-                </button>
+                <div className="flex gap-3 justify-center">
+                  <button
+                    onClick={reintentarCarga}
+                    disabled={reintentosHidratacion >= MAX_REINTENTOS}
+                    className="px-4 py-2 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {reintentosHidratacion >= MAX_REINTENTOS ? 'Reintentos agotados' : 'Reintentar'}
+                  </button>
+                  {reintentosHidratacion >= MAX_REINTENTOS && (
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                    >
+                      Recargar página
+                    </button>
+                  )}
+                </div>
               </>
             ) : (
               // Spinner normal
@@ -1317,8 +1336,13 @@ const Requisiciones = () => {
 
                 <div className="flex flex-wrap gap-2">
                   <button
-                    onClick={() => navigate(`/requisiciones/${req.id}`)}
-                    className="bg-gray-100 text-gray-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-gray-200"
+                    onClick={() => {
+                      if (navegando || isSubmitting || actionLoading) return;
+                      setNavegando(true);
+                      navigate(`/requisiciones/${req.id}`);
+                    }}
+                    disabled={navegando || isSubmitting || !!actionLoading}
+                    className="bg-gray-100 text-gray-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <FaEye /> Ver detalle
                   </button>
@@ -1346,8 +1370,13 @@ const Requisiciones = () => {
                   {/* Botón para Revisar y Ajustar - SOLO farmacia/admin con permiso */}
                   {req.estado === 'enviada' && esAdminOFarmacia && permisos.autorizarRequisicion && (
                     <button
-                      onClick={() => navigate(`/requisiciones/${req.id}`)}
-                      className="text-white px-3 py-1 rounded text-sm font-semibold flex items-center gap-1 hover:opacity-90 bg-theme-primary"
+                      onClick={() => {
+                        if (navegando || isSubmitting || actionLoading) return;
+                        setNavegando(true);
+                        navigate(`/requisiciones/${req.id}`);
+                      }}
+                      disabled={navegando || isSubmitting || !!actionLoading}
+                      className="text-white px-3 py-1 rounded text-sm font-semibold flex items-center gap-1 hover:opacity-90 bg-theme-primary disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <FaEdit /> Revisar
                     </button>
