@@ -1143,8 +1143,7 @@ const handleImportar = async (e) => {
                   disabled={loading}
                   className="px-8 py-3 rounded-xl font-bold transition-all transform hover:scale-105 shadow-lg disabled:opacity-50 text-white bg-theme-gradient"
                 >
-                  {loading ? 'GUARDANDO...' : '-o" GUARDAR LOTE'}
-                </button>
+                  {loading ? 'GUARDANDO...' : 'GUARDAR LOTE'}
                 </button>
               </div>
             </form>
