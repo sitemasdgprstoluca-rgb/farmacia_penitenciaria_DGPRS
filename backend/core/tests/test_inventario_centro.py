@@ -31,14 +31,26 @@ def test_inventario_por_centro_incluye_lote_asignado(django_user_model):
         precio_unitario=Decimal("10.00"),
         stock_minimo=1,
     )
+    # Crear primero lote origen en farmacia central
+    lote_origen = Lote.objects.create(
+        producto=producto,
+        centro=None,  # Farmacia central
+        numero_lote="L1",
+        fecha_caducidad=timezone.now().date() + timezone.timedelta(days=365),
+        cantidad_inicial=100,
+        cantidad_actual=90,
+        estado="disponible",
+    )
+    # Lote derivado en centro (debe tener mismo numero_lote y fecha)
     Lote.objects.create(
         producto=producto,
         centro=centro,
-        numero_lote="L1",
-        fecha_caducidad=timezone.now().date(),
+        numero_lote=lote_origen.numero_lote,  # Debe coincidir
+        fecha_caducidad=lote_origen.fecha_caducidad,  # Debe coincidir
         cantidad_inicial=10,
         cantidad_actual=5,
         estado="disponible",
+        lote_origen=lote_origen,
     )
     client = auth_client("centro_user", "12345678")
     resp = client.get(f"/api/centros/{centro.id}/inventario/")
@@ -89,15 +101,26 @@ def test_requisicion_rechaza_stock_insuficiente(django_user_model):
         precio_unitario=Decimal("10.00"),
         stock_minimo=1,
     )
-    # Lote con poco stock asignado al centro
+    # Crear primero lote origen en farmacia central
+    lote_origen = Lote.objects.create(
+        producto=producto,
+        centro=None,  # Farmacia central
+        numero_lote="L2",
+        fecha_caducidad=timezone.now().date() + timezone.timedelta(days=365),
+        cantidad_inicial=10,
+        cantidad_actual=8,
+        estado="disponible",
+    )
+    # Lote derivado con poco stock en centro (debe tener mismo numero_lote y fecha)
     Lote.objects.create(
         producto=producto,
         centro=centro,
-        numero_lote="L2",
-        fecha_caducidad=timezone.now().date(),
+        numero_lote=lote_origen.numero_lote,  # Debe coincidir
+        fecha_caducidad=lote_origen.fecha_caducidad,  # Debe coincidir
         cantidad_inicial=2,
         cantidad_actual=2,
         estado="disponible",
+        lote_origen=lote_origen,
     )
     client = auth_client("centro_user2", "12345678")
     payload = {
