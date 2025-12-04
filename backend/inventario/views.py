@@ -3802,7 +3802,7 @@ def trazabilidad_lote(request, codigo):
         if not lote:
             return Response({'error': 'Lote no encontrado', 'codigo_buscado': codigo}, status=status.HTTP_404_NOT_FOUND)
 
-        movimientos = Movimiento.objects.filter(lote=lote).order_by('fecha')
+        movimientos = Movimiento.objects.select_related('centro', 'usuario').filter(lote=lote).order_by('fecha')
         historial = []
         saldo = 0
         for mov in movimientos:
@@ -3813,6 +3813,9 @@ def trazabilidad_lote(request, codigo):
                 'tipo': mov.tipo.upper(),
                 'cantidad': mov.cantidad,
                 'saldo': saldo,
+                'centro': mov.centro.nombre if mov.centro else 'Farmacia Central',
+                'usuario': mov.usuario.username if mov.usuario else '-',
+                'lote': mov.lote.numero_lote if mov.lote else '-',
                 'observaciones': mov.observaciones or ''
             })
 
@@ -3857,6 +3860,9 @@ def trazabilidad_lote(request, codigo):
                 'dias_para_caducar': dias_caducidad,
                 'estado_caducidad': estado_caducidad,
                 'proveedor': lote.proveedor,
+                # ISS-FIX: Agregar centro (nombre o 'Farmacia Central' si es null)
+                'centro': lote.centro.nombre if lote.centro else 'Farmacia Central',
+                'centro_id': lote.centro.id if lote.centro else None,
                 # Campos de trazabilidad de contratos (solo para ADMIN/FARMACIA)
                 'numero_contrato': lote.numero_contrato if is_farmacia_or_admin(user) else None,
                 'marca': lote.marca if is_farmacia_or_admin(user) else None,

@@ -149,7 +149,7 @@ const Requisiciones = () => {
         stock_min: 1,
         solo_disponibles: 'true',
         ordering: 'producto__descripcion,fecha_caducidad',
-        page_size: 50, // Solo 50 resultados a la vez
+        page_size: 200, // Aumentado para mostrar más lotes (antes 50)
       };
       
       // Determinar el centro a usar:
