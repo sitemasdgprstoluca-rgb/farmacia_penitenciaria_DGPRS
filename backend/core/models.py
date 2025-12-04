@@ -513,7 +513,7 @@ class Producto(models.Model):
         else:
             return 'alto'
     
-    def get_stock_comprometido(self, centro=None, excluir_lotes_vencidos=True):
+    def get_stock_comprometido(self, centro=None, excluir_lotes_vencidos=True, excluir_requisicion=None):
         """
         ISS-008 + ISS-005 FIX (audit4): Calcula stock comprometido por requisiciones pendientes.
         
@@ -531,9 +531,13 @@ class Producto(models.Model):
         ISS-005 FIX (audit4): Si excluir_lotes_vencidos=True, no cuenta
         compromisos donde todos los lotes disponibles están vencidos.
         
+        ISS-003 FIX (audit6): El parámetro excluir_requisicion permite excluir
+        una requisición específica del cálculo (útil para re-autorizaciones).
+        
         Args:
             centro: Centro destino para filtrar (None = farmacia central global)
             excluir_lotes_vencidos: Si True, ignora compromisos sin stock vigente
+            excluir_requisicion: ID de requisición a excluir del cálculo
             
         Returns:
             int: Cantidad de stock comprometido
@@ -572,17 +576,24 @@ class Producto(models.Model):
             if not stock_vigente:
                 return 0  # No hay stock vigente, liberar compromisos
         
+        # ISS-003 FIX (audit6): Excluir requisición específica si se pide
+        # Esto evita que al re-autorizar una requisición, su propio stock
+        # comprometido se sume al cálculo, generando error de stock insuficiente
+        exclusiones = {}
+        if excluir_requisicion is not None:
+            exclusiones['requisicion__pk'] = excluir_requisicion
+        
         # Calcular: cantidad autorizada - cantidad ya surtida
         # Esto da el stock que aún está pendiente de entregar
         comprometido = DetalleRequisicion.objects.filter(
             **filtros
-        ).aggregate(
+        ).exclude(**exclusiones).aggregate(
             total=Sum('cantidad_autorizada')
         )['total'] or 0
         
         surtido = DetalleRequisicion.objects.filter(
             **filtros
-        ).aggregate(
+        ).exclude(**exclusiones).aggregate(
             total=Sum('cantidad_surtida')
         )['total'] or 0
         
@@ -815,6 +826,55 @@ class Contrato(models.Model):
                 f"ISS-005: Lote con caducidad {fecha_caducidad} es menor a fin de contrato "
                 f"{self.fecha_fin}. El producto puede caducar durante la vigencia del contrato."
             )
+        
+        # ISS-002 FIX (audit6): Validar monto máximo del contrato
+        if self.monto_maximo:
+            # Calcular monto total ya utilizado bajo este contrato
+            from django.db.models import Sum, F
+            monto_utilizado = Lote.objects.filter(
+                contrato=self
+            ).aggregate(
+                total=Sum(F('cantidad_inicial') * F('precio_compra'))
+            )['total'] or Decimal('0.00')
+            
+            # Estimar precio del producto si está en ContratoProducto
+            precio_unitario = None
+            try:
+                contrato_prod = self.productos.get(producto=producto)
+                precio_unitario = contrato_prod.precio_unitario
+            except ContratoProducto.DoesNotExist:
+                # Si no está en ContratoProducto, usar precio del producto si existe
+                precio_unitario = getattr(producto, 'precio_unitario', None)
+            
+            if precio_unitario:
+                monto_estimado = cantidad * precio_unitario
+                monto_nuevo_total = monto_utilizado + monto_estimado
+                
+                if monto_nuevo_total > self.monto_maximo:
+                    raise ValidationError({
+                        'contrato': f'La entrada excede el monto máximo del contrato. '
+                                   f'Monto utilizado: ${monto_utilizado:.2f}, '
+                                   f'Monto estimado entrada: ${monto_estimado:.2f}, '
+                                   f'Monto máximo: ${self.monto_maximo:.2f}'
+                    })
+        
+        # ISS-002 FIX (audit6): Validar cantidad máxima por producto (ContratoProducto)
+        try:
+            contrato_producto = self.productos.get(producto=producto)
+            cantidad_utilizada = contrato_producto.get_cantidad_utilizada()
+            cantidad_disponible = contrato_producto.get_cantidad_disponible()
+            
+            if cantidad > cantidad_disponible:
+                raise ValidationError({
+                    'cantidad': f'Excede la cantidad máxima para {producto.clave} en este contrato. '
+                               f'Máxima: {contrato_producto.cantidad_maxima}, '
+                               f'Utilizada: {cantidad_utilizada}, '
+                               f'Disponible: {cantidad_disponible}, '
+                               f'Solicitada: {cantidad}'
+                })
+        except ContratoProducto.DoesNotExist:
+            # Si no hay ContratoProducto definido, no hay límite por producto
+            pass
 
 
 class ContratoProducto(models.Model):
@@ -1687,6 +1747,9 @@ class Requisicion(models.Model):
                     update_fields.extend(['motivo_rechazo', 'observaciones'])
                     # ISS-002 FIX (audit5): Liberar reservas al rechazar
                     self._liberar_reservas()
+                # ISS-001 FIX (audit6): Liberar reservas al cancelar
+                elif nuevo_estado == 'cancelada':
+                    self._liberar_reservas()
                 if nuevo_estado in ['autorizada', 'parcial']:
                     update_fields.append('fecha_autorizacion')
                     if usuario:
@@ -1712,6 +1775,9 @@ class Requisicion(models.Model):
         - Solo lotes no caducados
         - Stock comprometido por otras requisiciones autorizadas
         
+        ISS-003 FIX (audit6): Excluye la propia requisición del cálculo de
+        stock comprometido para permitir re-autorizaciones.
+        
         Raises:
             ValidationError: Si no hay stock suficiente
         """
@@ -1735,7 +1801,10 @@ class Requisicion(models.Model):
             ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
             
             # ISS-004 FIX (audit2): Descontar stock comprometido por otras requisiciones
-            stock_comprometido = detalle.producto.get_stock_comprometido()
+            # ISS-003 FIX (audit6): Excluir la propia requisición para re-autorizaciones
+            stock_comprometido = detalle.producto.get_stock_comprometido(
+                excluir_requisicion=self.pk
+            )
             stock_disponible_real = stock_farmacia - stock_comprometido
             
             if stock_disponible_real < cantidad_requerida:
