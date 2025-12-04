@@ -45,8 +45,9 @@ const Requisiciones = () => {
   const esAdminOFarmacia = rolPrincipal === 'ADMIN' || rolPrincipal === 'FARMACIA';
   
   // Flag para saber si ya se determinó el centro del usuario (evita carga prematura)
-  // Para admin/farmacia siempre está listo; para usuarios de centro, esperar hidratación
-  const [centroResuelto, setCentroResuelto] = useState(() => esAdminOFarmacia);
+  // IMPORTANTE: Esperar a que user exista antes de marcar como resuelto, incluso para admin/farmacia
+  // Esto evita que el botón se habilite antes de que el perfil esté hidratado
+  const [centroResuelto, setCentroResuelto] = useState(false);
   // Flag para indicar error de configuración (usuario sin centro asignado)
   const [errorCentroNoAsignado, setErrorCentroNoAsignado] = useState(false);
   // Flag para timeout de hidratación con opción de reintento
@@ -241,9 +242,13 @@ const Requisiciones = () => {
     }
     // Validar rango de fechas antes de buscar
     if (filtroFechaDesde && filtroFechaHasta && filtroFechaDesde > filtroFechaHasta) {
-      // No cargar si hay error de rango de fechas
+      // Mostrar error visual y no cargar datos
+      setFechaError('La fecha "Desde" no puede ser mayor que "Hasta"');
+      setLoading(false);
       return;
     }
+    // Limpiar error de fechas si el rango es válido
+    setFechaError('');
     setLoading(true);
     try {
       const params = {
@@ -306,8 +311,15 @@ const Requisiciones = () => {
   // Esto evita que usuarios de centro vean requisiciones de otros centros antes de cargar su perfil
   // CRÍTICO: Marcar centroResuelto una vez que tengamos el centro del usuario
   useEffect(() => {
+    // IMPORTANTE: No marcar como resuelto hasta que user esté hidratado
+    // Esto previene que el botón de nueva requisición se habilite prematuramente
+    if (!user) {
+      // Usuario aún no cargado, mantener estado pendiente
+      return;
+    }
+    
     if (esAdminOFarmacia) {
-      // Admin/Farmacia siempre pueden cargar (sin filtro obligatorio)
+      // Admin/Farmacia pueden cargar (sin filtro obligatorio) - pero solo cuando user existe
       setCentroResuelto(true);
       setErrorCentroNoAsignado(false);
     } else if (user?.centro?.id) {

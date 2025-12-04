@@ -127,8 +127,13 @@ function Notificaciones() {
     }
   };
 
+  // Calcular si hay notificaciones no leídas en el filtro actual
+  // Si el filtro de estado es "Leídas" (leida='true'), no tiene sentido marcar como leídas
+  const filtroEsLeidas = filters.leida === 'true';
+  const puedeMarcarTodas = !filtroEsLeidas && sinLeer > 0;
+
   const marcarTodas = async () => {
-    if (sinLeer === 0 || marcandoTodas) return;
+    if (!puedeMarcarTodas || marcandoTodas) return;
     setMarcandoTodas(true);
     try {
       // Construir parámetros respetando los filtros activos
@@ -212,7 +217,8 @@ function Notificaciones() {
             permission="gestionarNotificaciones"
             onClick={marcarTodas}
             className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm hover:bg-primary-700 disabled:opacity-60 disabled:cursor-not-allowed"
-            disabled={loading || marcandoTodas || sinLeer === 0}
+            disabled={loading || marcandoTodas || !puedeMarcarTodas}
+            title={filtroEsLeidas ? 'No aplica cuando filtra por "Leídas"' : undefined}
           >
             {marcandoTodas ? 'Marcando...' : 'Marcar todas como leídas'}
           </ProtectedButton>
