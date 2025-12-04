@@ -120,6 +120,9 @@ const Lotes = () => {
     return '';
   });
   
+  // Estado para detectar usuario sin centro asignado (error de configuraci贸n)
+  const [errorSinCentro, setErrorSinCentro] = useState(false);
+  
   const [formData, setFormData] = useState({
     producto: '',
     numero_lote: '',
@@ -149,11 +152,22 @@ const Lotes = () => {
   }, [puedeVerGlobal]);
 
   // Forzar filtro de centro para usuarios sin permisos globales
+  // IMPORTANTE: Si el usuario no tiene permiso global Y no tiene centro, bloquear acceso
   useEffect(() => {
-    if (!puedeVerGlobal && centroUsuario) {
+    if (puedeVerGlobal) {
+      // Usuarios con permisos globales pueden ver todo, no hay error
+      setErrorSinCentro(false);
+    } else if (centroUsuario) {
+      // Usuario de centro con centro asignado - aplicar filtro
       setFiltroCentro(centroUsuario.toString());
+      setErrorSinCentro(false);
+    } else if (user && !centroUsuario) {
+      // Usuario autenticado pero SIN centro asignado - ERROR de configuraci贸n
+      // Esto previene que vea todos los lotes
+      setErrorSinCentro(true);
+      console.error('Usuario sin centro asignado intentando acceder a Lotes:', user?.username);
     }
-  }, [puedeVerGlobal, centroUsuario]);
+  }, [puedeVerGlobal, centroUsuario, user]);
 
   const cargarCentros = async () => {
     try {
@@ -213,6 +227,15 @@ const Lotes = () => {
   }, [currentPage, filtroActivo, filtroCaducidad, filtroConStock, filtroProducto, pageSize, searchTerm]);
 
   const cargarLotes = useCallback(async () => {
+    // SEGURIDAD: Bloquear carga si usuario sin permisos globales no tiene centro
+    if (errorSinCentro) {
+      setLotes([]);
+      setTotalLotes(0);
+      setTotalPages(1);
+      setLoading(false);
+      return;
+    }
+    
     setLoading(true);
     try {
       if (DEV_CONFIG.ENABLED && !hasAccessToken()) {
@@ -232,6 +255,13 @@ const Lotes = () => {
       if (filtroActivo) params.activo = filtroActivo;
       // Forzar filtro de centro para usuarios sin permisos globales
       const centroParaCargar = !puedeVerGlobal ? (centroUsuario?.toString() || filtroCentro) : filtroCentro;
+      // SEGURIDAD: Si no tiene permiso global y no hay centro, NO cargar
+      if (!puedeVerGlobal && !centroParaCargar) {
+        console.warn('Usuario sin centro intentando cargar lotes - bloqueado');
+        setLotes([]);
+        setLoading(false);
+        return;
+      }
       if (centroParaCargar) params.centro = centroParaCargar;
 
       const response = await lotesAPI.getAll(params);
@@ -248,7 +278,7 @@ const Lotes = () => {
     } finally {
       setLoading(false);
     }
-  }, [applyMockLotes, currentPage, filtroActivo, filtroCaducidad, filtroConStock, filtroProducto, filtroCentro, pageSize, searchTerm, puedeVerGlobal, centroUsuario]);
+  }, [applyMockLotes, currentPage, filtroActivo, filtroCaducidad, filtroConStock, filtroProducto, filtroCentro, pageSize, searchTerm, puedeVerGlobal, centroUsuario, errorSinCentro]);
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
@@ -260,13 +290,51 @@ const Lotes = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Validar y parsear cantidades antes de enviar
+    const cantidadInicial = parseInt(formData.cantidad_inicial, 10);
+    
+    // Validaci贸n: cantidad debe ser un n煤mero v谩lido
+    if (isNaN(cantidadInicial)) {
+      toast.error('La cantidad inicial debe ser un n煤mero v谩lido');
+      return;
+    }
+    
+    // Validaci贸n: cantidad no puede ser negativa
+    if (cantidadInicial < 0) {
+      toast.error('La cantidad inicial no puede ser negativa');
+      return;
+    }
+    
+    // Validaci贸n: cantidad no puede ser cero para nuevos lotes
+    if (!editingLote && cantidadInicial === 0) {
+      toast.error('La cantidad inicial debe ser mayor a cero');
+      return;
+    }
+    
+    // Parsear precio si existe
+    const precioCompra = formData.precio_compra ? parseFloat(formData.precio_compra) : null;
+    if (formData.precio_compra && (isNaN(precioCompra) || precioCompra < 0)) {
+      toast.error('El precio de compra debe ser un n煤mero v谩lido y no negativo');
+      return;
+    }
+    
     setLoading(true);
     
     try {
       const dataToSend = {
         ...formData,
-        cantidad_actual: formData.cantidad_inicial, // Inicializar igual a inicial
+        cantidad_inicial: cantidadInicial,
+        cantidad_actual: cantidadInicial, // Inicializar igual a inicial
+        precio_compra: precioCompra,
       };
+      
+      // Limpiar campos vac铆os para evitar enviar strings vac铆os
+      Object.keys(dataToSend).forEach(key => {
+        if (dataToSend[key] === '') {
+          dataToSend[key] = null;
+        }
+      });
       
       if (editingLote) {
         await lotesAPI.update(editingLote.id, dataToSend);
@@ -585,6 +653,29 @@ const handleImportar = async (e) => {
       )}
     </>
   );
+
+  // Mostrar error si el usuario no tiene centro asignado
+  if (errorSinCentro) {
+    return (
+      <div className="p-6 space-y-6">
+        <PageHeader
+          icon={FaWarehouse}
+          title="Gesti贸n de Lotes"
+          subtitle="Error de configuraci贸n"
+        />
+        <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
+            <FaExclamationTriangle className="w-8 h-8 text-red-500" />
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900">Centro no asignado</h2>
+          <p className="text-gray-600 text-center max-w-md">
+            Tu cuenta no tiene un centro penitenciario asignado. 
+            Contacta al administrador para que configure tu perfil correctamente.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -1169,13 +1260,13 @@ const handleImportar = async (e) => {
                 </p>
                 <ul className="text-sm text-gray-600 list-disc list-inside">
                   <li>Producto (Clave o ID)</li>
-                  <li>N鷐ero Lote</li>
+                  <li>N锟絤ero Lote</li>
                   <li>Fecha Caducidad (YYYY-MM-DD)</li>
                   <li>Cantidad</li>
                   <li>Precio Compra (opcional)</li>
                   <li>Proveedor (opcional)</li>
                   <li>Factura (opcional)</li>
-                  <li>N鷐ero Contrato (opcional)</li>
+                  <li>N锟絤ero Contrato (opcional)</li>
                   <li>Marca (opcional)</li>
                 </ul>
               </div>
