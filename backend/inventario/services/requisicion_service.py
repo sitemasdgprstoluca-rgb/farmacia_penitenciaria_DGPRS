@@ -134,6 +134,7 @@ class RequisicionService:
     def validar_stock_disponible(self):
         """
         ISS-001 FIX: Valida que hay stock suficiente SOLO en farmacia central.
+        ISS-002 FIX: Solo considera lotes NO caducados.
         
         IMPORTANTE: Las requisiciones SOLO se surten desde farmacia central.
         El stock del centro destino NO debe considerarse para validación,
@@ -145,6 +146,9 @@ class RequisicionService:
         Raises:
             StockInsuficienteError: Si no hay stock suficiente en farmacia central
         """
+        from django.utils import timezone
+        
+        hoy = timezone.now().date()
         errores_stock = []
         
         for detalle in self.requisicion.detalles.select_related('producto'):
@@ -153,13 +157,14 @@ class RequisicionService:
                 continue
             
             # ISS-001 FIX: SOLO lotes de farmacia central (centro=NULL)
-            # NO incluir lotes del centro destino - eso sería doble contabilización
+            # ISS-002 FIX: SOLO lotes NO caducados (fecha_caducidad >= hoy)
             disponible = Lote.objects.filter(
                 centro__isnull=True,  # Solo farmacia central
                 producto=detalle.producto,
                 estado='disponible',
                 deleted_at__isnull=True,
-                cantidad_actual__gt=0
+                cantidad_actual__gt=0,
+                fecha_caducidad__gte=hoy,  # ISS-002 FIX: Solo lotes vigentes
             ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
             
             if disponible < requerido:
@@ -182,18 +187,19 @@ class RequisicionService:
     @transaction.atomic
     def surtir(self, is_farmacia_or_admin_fn, get_user_centro_fn):
         """
-        ISS-011, ISS-021: Surte una requisición de forma atómica.
+        ISS-003 FIX + ISS-011, ISS-021: Surte una requisición de forma atómica.
         
         Todo el proceso está envuelto en una transacción:
-        1. Validar estado de requisición
-        2. Validar permisos del usuario
-        3. Validar stock disponible
-        4. Para cada item:
+        1. BLOQUEAR requisición y detalles (ISS-003 FIX)
+        2. Revalidar estado después del bloqueo
+        3. Validar permisos del usuario
+        4. Validar stock disponible
+        5. Para cada item:
            a. Obtener lotes con bloqueo (select_for_update)
            b. Descontar de farmacia central
            c. Crear entrada en centro destino
            d. Registrar movimientos
-        5. Actualizar estado de requisición
+        6. Actualizar estado de requisición
         
         Si cualquier paso falla, se hace rollback completo.
         
@@ -209,13 +215,26 @@ class RequisicionService:
             PermisoRequisicionError: Si el usuario no tiene permiso
             StockInsuficienteError: Si no hay stock suficiente
         """
-        # 1. Validar estado
-        estado_actual = (self.requisicion.estado or '').lower()
+        from django.utils import timezone
+        from core.models import Requisicion as RequisicionModel, DetalleRequisicion
+        
+        hoy = timezone.now().date()
+        
+        # ISS-003 FIX: Bloquear requisición PRIMERO para evitar doble surtido
+        # Esto previene race conditions donde dos procesos intentan surtir simultáneamente
+        requisicion_bloqueada = RequisicionModel.objects.select_for_update().get(pk=self.requisicion.pk)
+        
+        # ISS-003 FIX: Revalidar estado DESPUÉS del bloqueo
+        estado_actual = (requisicion_bloqueada.estado or '').lower()
         if estado_actual not in self.ESTADOS_SURTIBLES:
             raise EstadoInvalidoError(
-                f"Solo se pueden surtir requisiciones en estado: {self.ESTADOS_SURTIBLES}",
+                f"Solo se pueden surtir requisiciones en estado: {self.ESTADOS_SURTIBLES}. "
+                f"Estado actual: {estado_actual}",
                 estado_actual=estado_actual
             )
+        
+        # Actualizar referencia local con la versión bloqueada
+        self.requisicion = requisicion_bloqueada
         
         # 2. Validar permisos
         self.validar_permisos_surtido(is_farmacia_or_admin_fn, get_user_centro_fn)
@@ -226,10 +245,24 @@ class RequisicionService:
         centro_requisicion = self.requisicion.centro
         items_surtidos = []
         
+        # ISS-003 FIX + ISS-005 FIX: Bloquear detalles para evitar modificaciones concurrentes
+        detalles_bloqueados = DetalleRequisicion.objects.select_for_update().filter(
+            requisicion=self.requisicion
+        ).select_related('producto')
+        
         # 4. Procesar cada detalle
-        for detalle in self.requisicion.detalles.select_related('producto'):
+        for detalle in detalles_bloqueados:
             pendiente = (detalle.cantidad_autorizada or detalle.cantidad_solicitada) - (detalle.cantidad_surtida or 0)
             if pendiente <= 0:
+                continue
+            
+            # ISS-005 FIX: Validar que cantidad a surtir no exceda la autorizada
+            cantidad_autorizada = detalle.cantidad_autorizada or detalle.cantidad_solicitada
+            if (detalle.cantidad_surtida or 0) >= cantidad_autorizada:
+                logger.warning(
+                    f"Detalle {detalle.pk} ya surtido completamente: "
+                    f"surtido={detalle.cantidad_surtida}, autorizado={cantidad_autorizada}"
+                )
                 continue
             
             cantidad_surtida_item = 0
@@ -239,14 +272,15 @@ class RequisicionService:
             # select_for_update() bloquea las filas hasta que termine la transacción
             # 
             # IMPORTANTE: Solo usamos lotes de farmacia central (centro=NULL).
-            # Los lotes del centro destino NO deben usarse como fuente de surtido,
-            # ya que pertenecen al centro y usarlos causaría doble contabilización.
+            # Los lotes del centro destino NO deben usarse como fuente de surtido.
+            # ISS-002 FIX: Filtrar por fecha_caducidad >= hoy para evitar lotes vencidos
             lotes = Lote.objects.select_for_update().filter(
-                centro__isnull=True,  # ISS-002 FIX: Solo farmacia central
+                centro__isnull=True,  # Solo farmacia central
                 producto=detalle.producto,
                 estado='disponible',
                 deleted_at__isnull=True,
-                cantidad_actual__gt=0
+                cantidad_actual__gt=0,
+                fecha_caducidad__gte=hoy,  # ISS-002 FIX: Solo lotes vigentes
             ).order_by('fecha_caducidad', 'id')  # FEFO
             
             for lote in lotes:

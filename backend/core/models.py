@@ -1229,28 +1229,37 @@ class Requisicion(models.Model):
         transiciones_permitidas = self.TRANSICIONES_VALIDAS.get(estado_actual, [])
         return nuevo_estado in transiciones_permitidas
     
-    def cambiar_estado(self, nuevo_estado, usuario=None, motivo=None):
+    def cambiar_estado(self, nuevo_estado, usuario=None, motivo=None, persist=True):
         """
-        Cambia el estado de la requisición validando la transición.
+        ISS-001 FIX: Cambia el estado de forma atómica con auditoría completa.
         
         Args:
             nuevo_estado: El nuevo estado
-            usuario: Usuario que realiza el cambio (opcional)
+            usuario: Usuario que realiza el cambio (requerido para auditoría)
             motivo: Motivo del cambio (requerido para rechazos)
+            persist: Si True, guarda los cambios en BD (default True)
             
         Returns:
             bool: True si el cambio fue exitoso
             
         Raises:
-            ValidationError: Si la transición no es válida
+            ValidationError: Si la transición no es válida o estado terminal
         """
         from django.utils import timezone
+        from django.db import transaction
         
         nuevo_estado = (nuevo_estado or '').lower()
+        estado_actual = (self.estado or 'borrador').lower()
+        
+        # ISS-008 FIX: Validar que no sea estado terminal
+        if estado_actual in self.ESTADOS_TERMINALES:
+            raise ValidationError({
+                'estado': f"La requisición está en estado terminal '{estado_actual}' "
+                         f"y no puede ser modificada."
+            })
         
         if not self.puede_transicionar_a(nuevo_estado):
-            estado_actual = self.estado or 'borrador'
-            transiciones_permitidas = self.TRANSICIONES_VALIDAS.get(estado_actual.lower(), [])
+            transiciones_permitidas = self.TRANSICIONES_VALIDAS.get(estado_actual, [])
             raise ValidationError({
                 'estado': f"Transición de '{estado_actual}' a '{nuevo_estado}' no permitida. "
                          f"Transiciones válidas: {', '.join(transiciones_permitidas) or 'ninguna'}"
@@ -1267,7 +1276,8 @@ class Requisicion(models.Model):
                 'detalles': 'La requisición debe tener al menos un producto para ser enviada'
             })
         
-        # Aplicar el cambio
+        # ISS-001 FIX: Aplicar cambios con auditoría
+        estado_anterior = self.estado
         self.estado = nuevo_estado
         
         if nuevo_estado == 'rechazada' and motivo:
@@ -1279,7 +1289,29 @@ class Requisicion(models.Model):
             if usuario:
                 self.usuario_autoriza = usuario
         
-        logger.info(f"Requisición {self.folio}: estado cambiado a '{nuevo_estado}' por {usuario or 'sistema'}")
+        # ISS-006 FIX: Registrar usuario que modifica
+        if usuario:
+            self.updated_by = usuario
+        
+        # ISS-001 FIX: Persistir cambios de forma atómica
+        if persist:
+            with transaction.atomic():
+                update_fields = ['estado', 'updated_at']
+                if usuario:
+                    update_fields.append('updated_by')
+                if nuevo_estado == 'rechazada':
+                    update_fields.extend(['motivo_rechazo', 'observaciones'])
+                if nuevo_estado in ['autorizada', 'parcial']:
+                    update_fields.append('fecha_autorizacion')
+                    if usuario:
+                        update_fields.append('usuario_autoriza')
+                
+                self.save(update_fields=update_fields)
+        
+        logger.info(
+            f"Requisición {self.folio}: estado cambiado de '{estado_anterior}' a '{nuevo_estado}' "
+            f"por {usuario.username if usuario else 'sistema'}"
+        )
         return True
     
     def get_transiciones_disponibles(self):

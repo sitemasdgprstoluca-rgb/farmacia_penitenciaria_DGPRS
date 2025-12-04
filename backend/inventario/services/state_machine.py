@@ -228,10 +228,13 @@ class RequisicionStateMachine:
         ISS-001/ISS-002 FIX: Valida precondiciones para surtir.
         
         SOLO valida stock en farmacia central, no incluye stock del centro destino.
+        ISS-002 FIX: Solo considera lotes NO caducados.
         """
         from django.db.models import Sum
+        from django.utils import timezone
         from core.models import Lote
         
+        hoy = timezone.now().date()
         errores = []
         
         for detalle in self.requisicion.detalles.select_related('producto'):
@@ -240,13 +243,14 @@ class RequisicionStateMachine:
                 continue
             
             # ISS-001/ISS-002 FIX: Stock SOLO en farmacia central (centro=NULL)
-            # NO incluir stock del centro destino - eso causaría doble contabilización
+            # ISS-002 FIX: Solo lotes vigentes (fecha_caducidad >= hoy)
             stock_disponible = Lote.objects.filter(
                 centro__isnull=True,  # Solo farmacia central
                 producto=detalle.producto,
                 estado='disponible',
                 deleted_at__isnull=True,
-                cantidad_actual__gt=0
+                cantidad_actual__gt=0,
+                fecha_caducidad__gte=hoy,  # ISS-002 FIX: Solo lotes vigentes
             ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
             
             if stock_disponible < cantidad_requerida:
