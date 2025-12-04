@@ -923,16 +923,46 @@ class Lote(models.Model):
         else:  # Más de 6 meses - normal (verde)
             return 'normal'
     
-    def soft_delete(self):
-        """Marca lote como eliminado sin borrar de BD"""
+    def soft_delete(self, propagar_a_derivados=True):
+        """
+        ISS-008 FIX: Marca lote como eliminado sin borrar de BD.
+        
+        Si el lote es de farmacia central y tiene lotes derivados en centros,
+        propaga el soft-delete a esos lotes también.
+        
+        Args:
+            propagar_a_derivados: Si True, propaga eliminación a lotes derivados
+        """
         from django.utils import timezone
-        if not self.deleted_at:
+        from django.db import transaction
+        
+        if self.deleted_at:
+            return  # Ya eliminado
+        
+        with transaction.atomic():
             self.deleted_at = timezone.now()
             # Cambiar estado a 'retirado' para indicar que ya no está disponible
             if self.estado in ['disponible', 'reservado']:
                 self.estado = 'retirado'
             self.save(update_fields=['deleted_at', 'estado', 'updated_at'])
             logger.info(f"Lote {self.numero_lote} marcado como eliminado (soft delete)")
+            
+            # ISS-008 FIX: Propagar a lotes derivados si es de farmacia central
+            if propagar_a_derivados and self.centro is None:
+                lotes_derivados = Lote.objects.filter(
+                    lote_origen=self,
+                    deleted_at__isnull=True
+                )
+                
+                for lote_derivado in lotes_derivados:
+                    lote_derivado.deleted_at = self.deleted_at
+                    if lote_derivado.estado in ['disponible', 'reservado']:
+                        lote_derivado.estado = 'retirado'
+                    lote_derivado.save(update_fields=['deleted_at', 'estado', 'updated_at'])
+                    logger.warning(
+                        f"Lote derivado {lote_derivado.numero_lote} (centro: {lote_derivado.centro}) "
+                        f"eliminado por propagación desde lote origen {self.numero_lote}"
+                    )
     
     @classmethod
     def active_only(cls):
@@ -1412,14 +1442,83 @@ class DetalleRequisicion(models.Model):
             models.Index(fields=['requisicion', 'producto']),
             models.Index(fields=['lote']),
         ]
-        # ISS-019: Constraints de integridad
+        # ISS-019 + ISS-003: Constraints de integridad
         constraints = [
             models.CheckConstraint(
                 check=models.Q(cantidad_solicitada__gte=1),
                 name='ck_detalle_cantidad_solicitada_positiva',
                 violation_error_message='La cantidad solicitada debe ser al menos 1'
             ),
+            # ISS-003: Surtida no puede exceder autorizada
+            models.CheckConstraint(
+                check=models.Q(cantidad_surtida__lte=models.F('cantidad_autorizada')) | models.Q(cantidad_autorizada=0),
+                name='ck_detalle_surtida_no_excede_autorizada',
+                violation_error_message='La cantidad surtida no puede exceder la cantidad autorizada'
+            ),
+            # ISS-003: Autorizada no puede exceder solicitada
+            models.CheckConstraint(
+                check=models.Q(cantidad_autorizada__lte=models.F('cantidad_solicitada')),
+                name='ck_detalle_autorizada_no_excede_solicitada',
+                violation_error_message='La cantidad autorizada no puede exceder la cantidad solicitada'
+            ),
+            # ISS-003: Cantidades no negativas
+            models.CheckConstraint(
+                check=models.Q(cantidad_autorizada__gte=0) & models.Q(cantidad_surtida__gte=0),
+                name='ck_detalle_cantidades_no_negativas',
+                violation_error_message='Las cantidades no pueden ser negativas'
+            ),
         ]
+
+
+class DetalleSurtido(models.Model):
+    """
+    ISS-002 FIX: Tabla intermedia para trazabilidad detalle-lote en surtidos.
+    
+    Registra exactamente qué lotes se usaron para surtir cada detalle de requisición,
+    permitiendo auditoría fina y trazabilidad completa.
+    """
+    detalle_requisicion = models.ForeignKey(
+        DetalleRequisicion,
+        on_delete=models.CASCADE,
+        related_name='surtidos'
+    )
+    lote = models.ForeignKey(
+        'Lote',
+        on_delete=models.PROTECT,
+        related_name='detalle_surtidos'
+    )
+    cantidad = models.IntegerField(
+        validators=[MinValueValidator(1)],
+        help_text='Cantidad surtida de este lote específico'
+    )
+    movimiento = models.ForeignKey(
+        'Movimiento',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='detalles_surtidos',
+        help_text='Movimiento de salida asociado'
+    )
+    fecha_surtido = models.DateTimeField(auto_now_add=True)
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    class Meta:
+        db_table = 'detalle_surtidos'
+        ordering = ['-fecha_surtido']
+        indexes = [
+            models.Index(fields=['detalle_requisicion', 'lote']),
+            models.Index(fields=['lote', '-fecha_surtido']),
+        ]
+        verbose_name = 'Detalle de Surtido'
+        verbose_name_plural = 'Detalles de Surtido'
+
+    def __str__(self):
+        return f"Surtido {self.cantidad} de {self.lote.numero_lote} para detalle {self.detalle_requisicion_id}"
 
 
 class Movimiento(models.Model):
@@ -1482,7 +1581,41 @@ class Movimiento(models.Model):
         ]
 
     def clean(self):
-        """Validaciones de movimientos"""
+        """
+        Validaciones de movimientos.
+        
+        ISS-007 FIX: Valida coherencia con estado de lote y requisición.
+        """
+        from django.utils import timezone
+        
+        # ISS-007 FIX: Bloquear movimientos sobre lotes soft-deleted
+        if self.lote and self.lote.deleted_at is not None:
+            raise ValidationError({
+                'lote': f'No se pueden registrar movimientos sobre lotes eliminados '
+                       f'(lote {self.lote.numero_lote} eliminado el {self.lote.deleted_at})'
+            })
+        
+        # ISS-007 FIX: Bloquear salidas de lotes vencidos
+        if self.lote and self.tipo == 'salida':
+            today = timezone.now().date()
+            if self.lote.fecha_caducidad and self.lote.fecha_caducidad < today:
+                raise ValidationError({
+                    'lote': f'No se pueden registrar salidas de lotes vencidos '
+                           f'(lote {self.lote.numero_lote} caducó el {self.lote.fecha_caducidad})'
+                })
+        
+        # ISS-007 FIX: Validar coherencia con requisición si existe
+        if self.requisicion:
+            estado_req = (self.requisicion.estado or '').lower()
+            # Solo permitir movimientos si la requisición está en proceso
+            estados_validos_movimiento = ['autorizada', 'parcial', 'surtida']
+            if estado_req not in estados_validos_movimiento and self.tipo == 'salida':
+                raise ValidationError({
+                    'requisicion': f'No se pueden registrar movimientos de salida '
+                                  f'para requisición en estado "{estado_req}". '
+                                  f'Estados válidos: {estados_validos_movimiento}'
+                })
+        
         # Validar cantidad positiva para entradas
         if self.tipo == 'entrada' and self.cantidad <= 0:
             raise ValidationError({

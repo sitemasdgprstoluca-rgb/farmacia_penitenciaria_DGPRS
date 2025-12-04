@@ -305,6 +305,14 @@ class RequisicionService:
                     stock_previo=stock_previo
                 )
                 
+                # ISS-002 FIX: Registrar trazabilidad detalle-lote
+                self._registrar_detalle_surtido(
+                    detalle=detalle,
+                    lote=lote,
+                    cantidad=usar,
+                    movimiento=movimiento_salida
+                )
+                
                 # Si lote era de farmacia central, crear entrada en centro destino
                 if lote.centro is None and centro_requisicion:
                     lote_destino = self._obtener_o_crear_lote_destino(
@@ -454,6 +462,36 @@ class RequisicionService:
         self._movimientos_creados.append(movimiento)
         return movimiento
     
+    def _registrar_detalle_surtido(self, detalle, lote, cantidad, movimiento):
+        """
+        ISS-002 FIX: Registra trazabilidad detalle-lote en tabla intermedia.
+        
+        Args:
+            detalle: DetalleRequisicion
+            lote: Lote usado
+            cantidad: Cantidad surtida de este lote
+            movimiento: Movimiento de salida asociado
+            
+        Returns:
+            DetalleSurtido: Registro creado
+        """
+        from core.models import DetalleSurtido
+        
+        detalle_surtido = DetalleSurtido.objects.create(
+            detalle_requisicion=detalle,
+            lote=lote,
+            cantidad=cantidad,
+            movimiento=movimiento,
+            usuario=self.usuario if self.usuario.is_authenticated else None
+        )
+        
+        logger.debug(
+            f"ISS-002: Registrado surtido de {cantidad} unidades del lote {lote.numero_lote} "
+            f"para detalle {detalle.pk} de requisición {self.requisicion.folio}"
+        )
+        
+        return detalle_surtido
+    
     def _obtener_o_crear_lote_destino(self, lote_origen, centro_destino, cantidad):
         """
         Obtiene o crea lote destino en el centro.
@@ -509,6 +547,226 @@ class RequisicionService:
             )
         
         return lote_destino
+    
+    @transaction.atomic
+    def confirmar_recepcion(self, observaciones=''):
+        """
+        ISS-004 FIX: Confirma la recepción de una requisición surtida.
+        
+        Este método marca la requisición como recibida de forma transaccional,
+        registrando el usuario receptor y validando que el estado sea correcto.
+        
+        La conciliación de inventario (descuento farmacia → entrada centro) ya
+        se realizó en el surtido, por lo que este método solo:
+        1. Valida estado 'surtida' o 'parcial'
+        2. Registra usuario receptor y fecha
+        3. Cambia estado a 'recibida' o mantiene 'parcial'
+        
+        Args:
+            observaciones: Observaciones adicionales de recepción
+            
+        Returns:
+            dict: Resultado de la confirmación
+            
+        Raises:
+            EstadoInvalidoError: Si la requisición no está en estado surtible
+            PermisoRequisicionError: Si el usuario no pertenece al centro destino
+        """
+        from core.models import Requisicion as RequisicionModel
+        
+        # Bloquear requisición
+        requisicion = RequisicionModel.objects.select_for_update().get(pk=self.requisicion.pk)
+        
+        # Validar estado
+        estado_actual = (requisicion.estado or '').lower()
+        estados_recibibles = ['surtida', 'parcial']
+        
+        if estado_actual not in estados_recibibles:
+            raise EstadoInvalidoError(
+                f"Solo se pueden confirmar requisiciones en estado: {estados_recibibles}. "
+                f"Estado actual: {estado_actual}",
+                estado_actual=estado_actual
+            )
+        
+        # Validar que usuario pertenezca al centro destino
+        user_centro = getattr(self.usuario, 'centro', None)
+        if user_centro is None and not self.usuario.is_superuser:
+            raise PermisoRequisicionError(
+                "El usuario debe pertenecer a un centro para confirmar recepción"
+            )
+        
+        if user_centro and requisicion.centro_id != user_centro.pk and not self.usuario.is_superuser:
+            raise PermisoRequisicionError(
+                f"Solo usuarios del centro {requisicion.centro.nombre} pueden confirmar esta recepción"
+            )
+        
+        # Actualizar campos de recepción
+        requisicion.usuario_recibe = self.usuario
+        requisicion.fecha_recibido = timezone.now()
+        
+        # Determinar nuevo estado
+        # Si todo fue surtido completamente → recibida
+        # Si fue parcial y no hay más por surtir → recibida
+        detalles = requisicion.detalles.all()
+        todo_surtido = all(
+            (d.cantidad_autorizada or d.cantidad_solicitada) <= (d.cantidad_surtida or 0)
+            for d in detalles
+        )
+        
+        if todo_surtido or estado_actual == 'surtida':
+            nuevo_estado = 'recibida'
+        else:
+            # Mantener parcial si aún hay pendientes
+            nuevo_estado = 'parcial'
+        
+        requisicion.estado = nuevo_estado
+        
+        if observaciones:
+            requisicion.observaciones = (requisicion.observaciones or '') + f'\n[Recepción] {observaciones}'
+        
+        requisicion.save(update_fields=[
+            'estado', 'usuario_recibe', 'fecha_recibido', 'observaciones', 'updated_at'
+        ])
+        
+        logger.info(
+            f"Requisición {requisicion.folio} recibida por {self.usuario.username}. "
+            f"Estado: {nuevo_estado}"
+        )
+        
+        return {
+            'exito': True,
+            'folio': requisicion.folio,
+            'estado': nuevo_estado,
+            'usuario_recibe': self.usuario.username,
+            'fecha_recibido': requisicion.fecha_recibido.isoformat(),
+            'observaciones': observaciones
+        }
+    
+    @transaction.atomic
+    def cancelar_requisicion(self, motivo):
+        """
+        ISS-003 FIX: Cancela una requisición y revierte movimientos si aplica.
+        
+        Si la requisición tiene movimientos de surtido, los revierte:
+        - Restaura stock en lotes de farmacia
+        - Descuenta de lotes en centro
+        - Invalida movimientos previos
+        
+        Args:
+            motivo: Motivo de cancelación (obligatorio)
+            
+        Returns:
+            dict: Resultado de la cancelación
+            
+        Raises:
+            EstadoInvalidoError: Si la requisición no es cancelable
+            ValidationError: Si no se proporciona motivo
+        """
+        from django.core.exceptions import ValidationError
+        from core.models import Requisicion as RequisicionModel, Movimiento
+        
+        if not motivo:
+            raise ValidationError({'motivo': 'Se requiere un motivo para cancelar'})
+        
+        # Bloquear requisición
+        requisicion = RequisicionModel.objects.select_for_update().get(pk=self.requisicion.pk)
+        
+        # Validar estado cancelable
+        estado_actual = (requisicion.estado or '').lower()
+        estados_cancelables = ['borrador', 'enviada', 'autorizada', 'parcial']
+        
+        if estado_actual not in estados_cancelables:
+            raise EstadoInvalidoError(
+                f"No se pueden cancelar requisiciones en estado: {estado_actual}. "
+                f"Estados cancelables: {estados_cancelables}",
+                estado_actual=estado_actual
+            )
+        
+        movimientos_revertidos = []
+        
+        # ISS-003 FIX: Si hay movimientos, revertirlos
+        if estado_actual in ['autorizada', 'parcial']:
+            # Buscar movimientos de salida asociados
+            movimientos_salida = Movimiento.objects.select_for_update().filter(
+                requisicion=requisicion,
+                tipo='salida'
+            ).select_related('lote')
+            
+            for mov in movimientos_salida:
+                # Restaurar stock en lote de farmacia
+                cantidad_restaurar = abs(mov.cantidad)
+                
+                Lote.objects.filter(pk=mov.lote.pk).update(
+                    cantidad_actual=F('cantidad_actual') + cantidad_restaurar,
+                    estado='disponible',
+                    updated_at=timezone.now()
+                )
+                
+                # Registrar movimiento de ajuste
+                Movimiento.objects.create(
+                    tipo='entrada',
+                    lote=mov.lote,
+                    centro=mov.centro,
+                    requisicion=requisicion,
+                    usuario=self.usuario,
+                    cantidad=cantidad_restaurar,
+                    observaciones=f'REVERSO por cancelación de requisición {requisicion.folio}'
+                )
+                
+                movimientos_revertidos.append({
+                    'lote': mov.lote.numero_lote,
+                    'cantidad_restaurada': cantidad_restaurar
+                })
+            
+            # Buscar entradas en centro y revertir
+            movimientos_entrada = Movimiento.objects.select_for_update().filter(
+                requisicion=requisicion,
+                tipo='entrada'
+            ).select_related('lote')
+            
+            for mov in movimientos_entrada:
+                # Descontar del lote del centro
+                Lote.objects.filter(pk=mov.lote.pk).update(
+                    cantidad_actual=F('cantidad_actual') - mov.cantidad,
+                    updated_at=timezone.now()
+                )
+                
+                # Registrar movimiento de ajuste
+                Movimiento.objects.create(
+                    tipo='salida',
+                    lote=mov.lote,
+                    centro=mov.centro,
+                    requisicion=requisicion,
+                    usuario=self.usuario,
+                    cantidad=-mov.cantidad,
+                    observaciones=f'REVERSO por cancelación de requisición {requisicion.folio}'
+                )
+            
+            # Resetear cantidades surtidas en detalles
+            requisicion.detalles.update(cantidad_surtida=0)
+        
+        # Actualizar estado a cancelada
+        requisicion.estado = 'cancelada'
+        requisicion.motivo_rechazo = motivo
+        requisicion.observaciones = (requisicion.observaciones or '') + f'\n[Cancelación] {motivo}'
+        requisicion.updated_by = self.usuario
+        requisicion.save(update_fields=[
+            'estado', 'motivo_rechazo', 'observaciones', 'updated_by', 'updated_at'
+        ])
+        
+        logger.info(
+            f"Requisición {requisicion.folio} cancelada por {self.usuario.username}. "
+            f"Motivo: {motivo}. Movimientos revertidos: {len(movimientos_revertidos)}"
+        )
+        
+        return {
+            'exito': True,
+            'folio': requisicion.folio,
+            'estado': 'cancelada',
+            'motivo': motivo,
+            'movimientos_revertidos': movimientos_revertidos,
+            'usuario': self.usuario.username
+        }
 
 
 class CentroPermissionMixin:

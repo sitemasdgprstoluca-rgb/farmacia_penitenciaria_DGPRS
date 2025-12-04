@@ -169,13 +169,19 @@ class RequisicionContractValidator:
         
         return self.contrato
     
-    def validar_envio(self) -> ContratoValidacion:
+    def validar_envio(self, verificar_stock=True) -> ContratoValidacion:
         """
-        ISS-013: Valida reglas para enviar una requisición.
+        ISS-013 + ISS-006 FIX: Valida reglas para enviar una requisición.
+        
+        Args:
+            verificar_stock: Si True, valida disponibilidad de stock (default True)
         
         Returns:
             ContratoValidacion con resultados
         """
+        from django.utils import timezone
+        from core.models import Lote
+        
         self.contrato = ContratoValidacion()
         
         # Debe estar en borrador
@@ -196,6 +202,8 @@ class RequisicionContractValidator:
                 'La requisición debe tener al menos un producto'
             )
         
+        today = timezone.now().date()
+        
         # Validar cada detalle
         for detalle in self.requisicion.detalles.select_related('producto').all():
             # Cantidad solicitada > 0
@@ -215,6 +223,42 @@ class RequisicionContractValidator:
                     TipoValidacion.NEGOCIO,
                     f'El producto {detalle.producto.descripcion} está inactivo'
                 )
+            
+            # ISS-006 FIX: Validar stock disponible en farmacia central
+            if verificar_stock and detalle.cantidad_solicitada > 0:
+                # Stock disponible = lotes en farmacia central vigentes
+                stock_farmacia = Lote.objects.filter(
+                    producto=detalle.producto,
+                    centro__isnull=True,  # Farmacia central
+                    estado='disponible',
+                    deleted_at__isnull=True,
+                    fecha_caducidad__gte=today,
+                    cantidad_actual__gt=0
+                ).aggregate(total=models.Sum('cantidad_actual'))['total'] or 0
+                
+                # Stock comprometido por otras requisiciones pendientes
+                stock_comprometido = detalle.producto.get_stock_comprometido()
+                stock_disponible_real = stock_farmacia - stock_comprometido
+                
+                if stock_disponible_real < detalle.cantidad_solicitada:
+                    self.contrato.agregar_advertencia(
+                        f'detalles[{detalle.producto.clave}].stock',
+                        TipoValidacion.NEGOCIO,
+                        f'Stock insuficiente para {detalle.producto.descripcion}. '
+                        f'Disponible: {stock_disponible_real} (farmacia: {stock_farmacia}, '
+                        f'comprometido: {stock_comprometido}), Solicitado: {detalle.cantidad_solicitada}',
+                        valor_actual=stock_disponible_real
+                    )
+                
+                # Error si no hay nada de stock
+                if stock_farmacia == 0:
+                    self.contrato.agregar_error(
+                        f'detalles[{detalle.producto.clave}].stock',
+                        TipoValidacion.NEGOCIO,
+                        f'No hay stock disponible de {detalle.producto.descripcion} en farmacia central',
+                        valor_actual=0,
+                        valor_esperado=f'>={detalle.cantidad_solicitada}'
+                    )
         
         return self.contrato
     

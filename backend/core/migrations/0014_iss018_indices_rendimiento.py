@@ -21,9 +21,9 @@ def table_exists(schema_editor, table_name):
         )
         return cursor.fetchone()[0]
     else:
-        # SQLite
+        # SQLite - usar %s en lugar de ?
         cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=%s",
             [table_name]
         )
         return cursor.fetchone() is not None
@@ -47,7 +47,7 @@ def create_index_if_not_exists(schema_editor, table_name, index_name, columns):
         # SQLite: verificar si existe primero
         cursor = schema_editor.connection.cursor()
         cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
+            "SELECT name FROM sqlite_master WHERE type='index' AND name=%s",
             [index_name]
         )
         if not cursor.fetchone():
