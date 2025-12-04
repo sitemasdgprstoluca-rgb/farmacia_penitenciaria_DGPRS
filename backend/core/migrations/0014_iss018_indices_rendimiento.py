@@ -2,20 +2,136 @@
 ISS-018: Índices de base de datos optimizados.
 
 Migración para agregar índices que mejoran el rendimiento
-de consultas frecuentes.
+de consultas frecuentes. Usa IF NOT EXISTS para evitar
+errores si los índices ya existen.
 """
-from django.db import migrations, models
+from django.db import migrations
+
+
+def create_index_if_not_exists(schema_editor, table_name, index_name, columns):
+    """
+    Crea un índice solo si no existe.
+    Compatible con PostgreSQL y SQLite.
+    """
+    if schema_editor.connection.vendor == 'postgresql':
+        # PostgreSQL soporta IF NOT EXISTS
+        columns_sql = ', '.join(columns)
+        sql = f'CREATE INDEX IF NOT EXISTS "{index_name}" ON "{table_name}" ({columns_sql})'
+        schema_editor.execute(sql)
+    else:
+        # SQLite: verificar si existe primero
+        cursor = schema_editor.connection.cursor()
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
+            [index_name]
+        )
+        if not cursor.fetchone():
+            columns_sql = ', '.join(columns)
+            sql = f'CREATE INDEX "{index_name}" ON "{table_name}" ({columns_sql})'
+            schema_editor.execute(sql)
+
+
+def add_performance_indexes(apps, schema_editor):
+    """Añade todos los índices de rendimiento."""
+    
+    # === ÍNDICES PARA REQUISICIONES ===
+    create_index_if_not_exists(
+        schema_editor, 'core_requisicion', 'idx_req_estado_fecha',
+        ['estado', 'fecha_solicitud DESC']
+    )
+    create_index_if_not_exists(
+        schema_editor, 'core_requisicion', 'idx_req_centro_estado',
+        ['centro_id', 'estado', 'fecha_solicitud DESC']
+    )
+    create_index_if_not_exists(
+        schema_editor, 'core_requisicion', 'idx_req_usuario_fecha',
+        ['usuario_solicita_id', 'fecha_solicitud DESC']
+    )
+    
+    # === ÍNDICES PARA MOVIMIENTOS ===
+    create_index_if_not_exists(
+        schema_editor, 'core_movimiento', 'idx_mov_tipo_fecha',
+        ['tipo', 'fecha DESC']
+    )
+    create_index_if_not_exists(
+        schema_editor, 'core_movimiento', 'idx_mov_lote_fecha',
+        ['lote_id', 'fecha DESC']
+    )
+    create_index_if_not_exists(
+        schema_editor, 'core_movimiento', 'idx_mov_req_fecha',
+        ['requisicion_id', 'fecha DESC']
+    )
+    create_index_if_not_exists(
+        schema_editor, 'core_movimiento', 'idx_mov_usuario_fecha',
+        ['usuario_id', 'fecha DESC']
+    )
+    
+    # === ÍNDICES PARA LOTES ===
+    create_index_if_not_exists(
+        schema_editor, 'core_lote', 'idx_lote_caducidad_estado',
+        ['fecha_caducidad', 'estado']
+    )
+    create_index_if_not_exists(
+        schema_editor, 'core_lote', 'idx_lote_prod_stock',
+        ['producto_id', 'estado', 'cantidad_actual']
+    )
+    create_index_if_not_exists(
+        schema_editor, 'core_lote', 'idx_lote_centro_estado',
+        ['centro_id', 'estado', 'fecha_caducidad DESC']
+    )
+    
+    # === ÍNDICES PARA PRODUCTOS ===
+    create_index_if_not_exists(
+        schema_editor, 'core_producto', 'idx_prod_activo_desc',
+        ['activo', 'descripcion']
+    )
+    create_index_if_not_exists(
+        schema_editor, 'core_producto', 'idx_prod_stock_min',
+        ['stock_minimo', 'activo']
+    )
+    
+    # === ÍNDICES PARA DETALLES REQUISICIÓN ===
+    create_index_if_not_exists(
+        schema_editor, 'core_detallerequisicion', 'idx_det_prod_req',
+        ['producto_id', 'requisicion_id']
+    )
+
+
+def remove_performance_indexes(apps, schema_editor):
+    """Elimina los índices de rendimiento (rollback)."""
+    indexes_to_remove = [
+        'idx_req_estado_fecha',
+        'idx_req_centro_estado', 
+        'idx_req_usuario_fecha',
+        'idx_mov_tipo_fecha',
+        'idx_mov_lote_fecha',
+        'idx_mov_req_fecha',
+        'idx_mov_usuario_fecha',
+        'idx_lote_caducidad_estado',
+        'idx_lote_prod_stock',
+        'idx_lote_centro_estado',
+        'idx_prod_activo_desc',
+        'idx_prod_stock_min',
+        'idx_det_prod_req',
+    ]
+    
+    for index_name in indexes_to_remove:
+        if schema_editor.connection.vendor == 'postgresql':
+            schema_editor.execute(f'DROP INDEX IF EXISTS "{index_name}"')
+        else:
+            # SQLite
+            try:
+                schema_editor.execute(f'DROP INDEX IF EXISTS "{index_name}"')
+            except Exception:
+                pass  # Ignorar si no existe
 
 
 class Migration(migrations.Migration):
     """
     ISS-018: Migración para añadir índices de rendimiento.
     
-    Índices añadidos:
-    - Requisiciones: estado, centro+estado, fecha
-    - Movimientos: tipo, lote+tipo, fecha, centro+fecha
-    - Lotes: producto, centro, fecha_caducidad, estado+cantidad
-    - Productos: clave, activo, stock_minimo
+    Usa RunPython con IF NOT EXISTS para ser idempotente
+    y evitar errores si los índices ya existen.
     """
     
     dependencies = [
@@ -23,140 +139,8 @@ class Migration(migrations.Migration):
     ]
     
     operations = [
-        # =========================================
-        # ÍNDICES PARA REQUISICIONES
-        # =========================================
-        
-        # Búsqueda por estado (muy frecuente en listados)
-        migrations.AddIndex(
-            model_name='requisicion',
-            index=models.Index(
-                fields=['estado', '-fecha_solicitud'],
-                name='idx_req_estado_fecha'
-            ),
-        ),
-        
-        # Búsqueda por centro y estado (filtro común)
-        migrations.AddIndex(
-            model_name='requisicion',
-            index=models.Index(
-                fields=['centro', 'estado', '-fecha_solicitud'],
-                name='idx_req_centro_estado'
-            ),
-        ),
-        
-        # Búsqueda por usuario que solicita
-        migrations.AddIndex(
-            model_name='requisicion',
-            index=models.Index(
-                fields=['usuario_solicita', '-fecha_solicitud'],
-                name='idx_req_usuario_fecha'
-            ),
-        ),
-        
-        # =========================================
-        # ÍNDICES PARA MOVIMIENTOS
-        # =========================================
-        
-        # Búsqueda por tipo y fecha (reportes)
-        migrations.AddIndex(
-            model_name='movimiento',
-            index=models.Index(
-                fields=['tipo', '-fecha'],
-                name='idx_mov_tipo_fecha'
-            ),
-        ),
-        
-        # Búsqueda por lote (trazabilidad)
-        migrations.AddIndex(
-            model_name='movimiento',
-            index=models.Index(
-                fields=['lote', '-fecha'],
-                name='idx_mov_lote_fecha'
-            ),
-        ),
-        
-        # Búsqueda por requisición (surtido)
-        migrations.AddIndex(
-            model_name='movimiento',
-            index=models.Index(
-                fields=['requisicion', '-fecha'],
-                name='idx_mov_req_fecha'
-            ),
-        ),
-        
-        # Búsqueda por usuario (auditoría)
-        migrations.AddIndex(
-            model_name='movimiento',
-            index=models.Index(
-                fields=['usuario', '-fecha'],
-                name='idx_mov_usuario_fecha'
-            ),
-        ),
-        
-        # =========================================
-        # ÍNDICES PARA LOTES
-        # =========================================
-        
-        # Lotes por caducidad (alertas)
-        migrations.AddIndex(
-            model_name='lote',
-            index=models.Index(
-                fields=['fecha_caducidad', 'estado'],
-                name='idx_lote_caducidad_estado'
-            ),
-        ),
-        
-        # Lotes disponibles por producto (búsqueda de stock)
-        migrations.AddIndex(
-            model_name='lote',
-            index=models.Index(
-                fields=['producto', 'estado', 'cantidad_actual'],
-                name='idx_lote_prod_stock'
-            ),
-        ),
-        
-        # Lotes por centro (filtro frecuente)
-        migrations.AddIndex(
-            model_name='lote',
-            index=models.Index(
-                fields=['centro', 'estado', '-fecha_caducidad'],
-                name='idx_lote_centro_estado'
-            ),
-        ),
-        
-        # =========================================
-        # ÍNDICES PARA PRODUCTOS
-        # =========================================
-        
-        # Productos activos (filtro común)
-        migrations.AddIndex(
-            model_name='producto',
-            index=models.Index(
-                fields=['activo', 'descripcion'],
-                name='idx_prod_activo_desc'
-            ),
-        ),
-        
-        # Productos bajo stock (alertas)
-        migrations.AddIndex(
-            model_name='producto',
-            index=models.Index(
-                fields=['stock_minimo', 'activo'],
-                name='idx_prod_stock_min'
-            ),
-        ),
-        
-        # =========================================
-        # ÍNDICES PARA DETALLES REQUISICIÓN
-        # =========================================
-        
-        # Detalles por producto (reportes)
-        migrations.AddIndex(
-            model_name='detallerequisicion',
-            index=models.Index(
-                fields=['producto', 'requisicion'],
-                name='idx_det_prod_req'
-            ),
+        migrations.RunPython(
+            add_performance_indexes,
+            remove_performance_indexes,
         ),
     ]
