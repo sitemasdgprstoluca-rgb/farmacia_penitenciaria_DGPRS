@@ -219,7 +219,7 @@ const ConfiguracionTema = () => {
         fuente_titulos: tipografia.fuente_titulos || 'Montserrat',
         
         // Reportes
-        reporte_color_encabezado: normalizarColor(reportes.color_encabezado || tema.reporte_color_encabezado, '#1e3a5f'),
+        reporte_color_encabezado: normalizarColor(reportes.color_encabezado || tema.reporte_color_encabezado, '#9F2241'),
         reporte_color_texto_encabezado: normalizarColor(reportes.color_texto_encabezado || tema.reporte_color_texto_encabezado, '#ffffff'),
         reporte_color_filas_alternas: normalizarColor(reportes.color_filas_alternas || tema.reporte_color_filas_alternas, '#f9fafb'),
         reporte_pie_pagina: reportes.pie_pagina || tema.reporte_pie_pagina || '',

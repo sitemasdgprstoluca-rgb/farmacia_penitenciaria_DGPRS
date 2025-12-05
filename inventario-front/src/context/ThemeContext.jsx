@@ -133,6 +133,7 @@ const hexToRgb = (hex) => {
 const esColorAzulLegacy = (color) => {
   if (!color) return false;
   const azulesLegacy = [
+    '#1e3a5f', '#15293f',            // Dark navy (los colores legacy principales)
     '#0ea5e9', '#0284c7', '#0369a1', // Sky blue
     '#3b82f6', '#2563eb', '#1d4ed8', // Blue
     '#64748b', '#475569', '#334155', // Slate (sidebar dark)

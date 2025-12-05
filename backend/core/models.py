@@ -3138,22 +3138,22 @@ class TemaGlobal(models.Model):
     # -------------------------------------------------------------------------
     color_primario = models.CharField(
         max_length=7,
-        default='#1e3a5f',
+        default='#9F2241',
         help_text='Color primario (hex). Usado en header, botones principales'
     )
     color_primario_hover = models.CharField(
         max_length=7,
-        default='#15293f',
+        default='#6B1839',
         help_text='Color primario en hover'
     )
     color_secundario = models.CharField(
         max_length=7,
-        default='#3b82f6',
+        default='#424242',
         help_text='Color secundario/acento'
     )
     color_secundario_hover = models.CharField(
         max_length=7,
-        default='#2563eb',
+        default='#2E2E2E',
         help_text='Color secundario en hover'
     )
     
@@ -3192,12 +3192,12 @@ class TemaGlobal(models.Model):
     )
     color_fondo_sidebar = models.CharField(
         max_length=7,
-        default='#1e3a5f',
+        default='#9F2241',
         help_text='Color de fondo del sidebar/menu'
     )
     color_fondo_header = models.CharField(
         max_length=7,
-        default='#1e3a5f',
+        default='#9F2241',
         help_text='Color de fondo del header'
     )
     
@@ -3219,7 +3219,7 @@ class TemaGlobal(models.Model):
     )
     color_texto_links = models.CharField(
         max_length=7,
-        default='#3b82f6',
+        default='#9F2241',
         help_text='Color de enlaces'
     )
     
@@ -3231,7 +3231,7 @@ class TemaGlobal(models.Model):
     )
     color_borde_focus = models.CharField(
         max_length=7,
-        default='#3b82f6',
+        default='#9F2241',
         help_text='Color de borde en focus'
     )
     
@@ -3347,7 +3347,7 @@ class TemaGlobal(models.Model):
     # Colores especificos de reportes
     reporte_color_encabezado = models.CharField(
         max_length=7,
-        default='#1e3a5f',
+        default='#9F2241',
         help_text='Color de fondo del encabezado de tablas en reportes'
     )
     reporte_color_texto_encabezado = models.CharField(
