@@ -120,7 +120,35 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_usuarios_rol_activo ON usuarios(rol, activo);
 CREATE INDEX IF NOT EXISTS idx_usuarios_centro_activo ON usuarios(centro_id, activo);
 
--- ========== PASO 0.5: Crear usuario admin si no existe ==========
+-- ========== PASO 0.5: Crear tablas M2M para usuarios ==========
+-- Django requiere estas tablas para la relación Many-to-Many con grupos y permisos
+-- NOTA: Django usa el nombre del modelo (user) como prefijo de columna
+
+-- Eliminar tablas M2M si existen con estructura incorrecta
+DROP TABLE IF EXISTS usuarios_groups CASCADE;
+DROP TABLE IF EXISTS usuarios_user_permissions CASCADE;
+
+-- Tabla usuarios_groups (relación User <-> Group)
+CREATE TABLE usuarios_groups (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    group_id INTEGER NOT NULL REFERENCES auth_group(id) ON DELETE CASCADE,
+    UNIQUE(user_id, group_id)
+);
+CREATE INDEX idx_usuarios_groups_user_id ON usuarios_groups(user_id);
+CREATE INDEX idx_usuarios_groups_group_id ON usuarios_groups(group_id);
+
+-- Tabla usuarios_user_permissions (relación User <-> Permission)
+CREATE TABLE usuarios_user_permissions (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    permission_id INTEGER NOT NULL REFERENCES auth_permission(id) ON DELETE CASCADE,
+    UNIQUE(user_id, permission_id)
+);
+CREATE INDEX idx_usuarios_user_permissions_user_id ON usuarios_user_permissions(user_id);
+CREATE INDEX idx_usuarios_user_permissions_permission_id ON usuarios_user_permissions(permission_id);
+
+-- ========== PASO 0.6: Crear usuario admin si no existe ==========
 -- Esto es necesario para el deploy inicial en Render
 INSERT INTO usuarios (
     password, last_login, is_superuser, username, first_name, last_name, 
