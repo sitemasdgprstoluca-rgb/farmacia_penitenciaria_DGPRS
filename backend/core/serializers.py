@@ -1109,6 +1109,7 @@ class ImportacionLogSerializer(serializers.ModelSerializer):
 
 class UserMeSerializer(serializers.ModelSerializer):
     """Serializer especializado para /usuarios/me/ (lectura/edición)."""
+    centro = serializers.SerializerMethodField()
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, default='')
     grupos = serializers.SerializerMethodField()
     extra_permisos = serializers.SerializerMethodField()
@@ -1126,6 +1127,16 @@ class UserMeSerializer(serializers.ModelSerializer):
             'is_superuser', 'is_staff',  # Importante para el frontend
         ]
         read_only_fields = ['username', 'rol', 'centro', 'is_superuser', 'is_staff']
+
+    def get_centro(self, obj):
+        """Retorna el centro como objeto {id, nombre} para el frontend."""
+        if obj.centro:
+            return {
+                'id': obj.centro.id,
+                'nombre': obj.centro.nombre,
+                'clave': getattr(obj.centro, 'clave', ''),
+            }
+        return None
 
     def get_telefono(self, obj):
         """Obtener teléfono del perfil si existe."""
