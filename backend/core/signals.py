@@ -57,9 +57,9 @@ def registrar_auditoria(modelo, objeto, accion, cambios=None):
             usuario=usuario,
             accion=accion,
             modelo=modelo,
-            objeto_id=objeto.pk,
-            objeto_repr=str(objeto)[:255],
-            cambios=cambios or {},
+            objeto_id=str(objeto.pk),
+            datos_nuevos=cambios or {},
+            detalles={'objeto_repr': str(objeto)[:255]},
             ip_address=ip_address,
             user_agent=user_agent
         )
