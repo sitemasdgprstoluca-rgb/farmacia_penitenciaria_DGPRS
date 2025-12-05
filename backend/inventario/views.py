@@ -1627,10 +1627,34 @@ class LoteViewSet(viewsets.ModelViewSet):
             )
     
     def update(self, request, *args, **kwargs):
-        """Actualiza un lote existente"""
+        """Actualiza un lote existente.
+        
+        ISS-010 FIX: Validación explícita de permisos para evitar IDOR.
+        Solo admin/farmacia pueden modificar lotes de farmacia central.
+        Usuarios de centro solo pueden modificar lotes de SU centro.
+        """
         try:
             partial = kwargs.pop('partial', False)
             instance = self.get_object()
+            
+            # ISS-010: Validar permisos de escritura sobre este lote específico
+            user = request.user
+            if not is_farmacia_or_admin(user):
+                user_centro = get_user_centro(user)
+                lote_centro = instance.centro
+                
+                # Si el lote es de farmacia central o de otro centro, denegar
+                if lote_centro is None or (user_centro and lote_centro.pk != user_centro.pk):
+                    logger.warning(
+                        f"ISS-010: Intento de modificación no autorizada de lote. "
+                        f"Usuario={user.username}, lote={instance.numero_lote}, "
+                        f"lote_centro={lote_centro}, user_centro={user_centro}"
+                    )
+                    return Response(
+                        {'error': 'No tiene permisos para modificar este lote'},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            
             serializer = self.get_serializer(instance, data=request.data, partial=partial)
             serializer.is_valid(raise_exception=True)
             self.perform_update(serializer)
@@ -1652,10 +1676,31 @@ class LoteViewSet(viewsets.ModelViewSet):
         """
         Elimina un lote.
         
+        ISS-010 FIX: Validación explícita de permisos para evitar IDOR.
+        
         Validaciones:
+        - Permisos de escritura sobre el lote
         - No puede eliminarse si tiene movimientos asociados
         """
         instance = self.get_object()
+        
+        # ISS-010: Validar permisos de escritura sobre este lote específico
+        user = request.user
+        if not is_farmacia_or_admin(user):
+            user_centro = get_user_centro(user)
+            lote_centro = instance.centro
+            
+            # Si el lote es de farmacia central o de otro centro, denegar
+            if lote_centro is None or (user_centro and lote_centro.pk != user_centro.pk):
+                logger.warning(
+                    f"ISS-010: Intento de eliminación no autorizada de lote. "
+                    f"Usuario={user.username}, lote={instance.numero_lote}, "
+                    f"lote_centro={lote_centro}, user_centro={user_centro}"
+                )
+                return Response(
+                    {'error': 'No tiene permisos para eliminar este lote'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
         
         try:
             # Verificar si tiene movimientos

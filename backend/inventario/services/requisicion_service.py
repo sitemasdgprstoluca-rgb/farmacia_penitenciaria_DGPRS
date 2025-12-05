@@ -321,6 +321,10 @@ class RequisicionService:
             # IMPORTANTE: Solo usamos lotes de farmacia central (centro=NULL).
             # Los lotes del centro destino NO deben usarse como fuente de surtido.
             # ISS-002 FIX: Filtrar por fecha_caducidad >= hoy para evitar lotes vencidos
+            # 
+            # ISS-007 FIX: El order_by('id') FINAL asegura un orden determinista
+            # para evitar deadlocks cuando múltiples transacciones adquieren locks.
+            # FEFO (fecha_caducidad primero), luego ID para consistencia.
             lotes = Lote.objects.select_for_update().filter(
                 centro__isnull=True,  # Solo farmacia central
                 producto=detalle.producto,
@@ -328,7 +332,7 @@ class RequisicionService:
                 deleted_at__isnull=True,
                 cantidad_actual__gt=0,
                 fecha_caducidad__gte=hoy,  # ISS-002 FIX: Solo lotes vigentes
-            ).order_by('fecha_caducidad', 'id')  # FEFO
+            ).order_by('fecha_caducidad', 'id')  # FEFO + ID para evitar deadlocks
             
             for lote in lotes:
                 if pendiente <= 0:

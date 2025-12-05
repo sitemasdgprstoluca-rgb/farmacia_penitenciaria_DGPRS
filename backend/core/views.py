@@ -66,6 +66,36 @@ class PasswordChangeThrottle(UserRateThrottle):
     scope = 'password_change'
 
 
+# ============================================
+# ISS-013: JERARQUÍA DE ROLES PARA VALIDACIÓN
+# ============================================
+# Menor número = mayor privilegio
+# Esto previene escalamiento de privilegios
+ROLE_HIERARCHY = {
+    'superuser': 0,
+    'admin_sistema': 1,
+    'admin_farmacia': 2,
+    'farmacia': 3,
+    'centro': 4,
+    'usuario_centro': 4,
+    'vista': 5,
+    'usuario_vista': 5,
+    'usuario_normal': 5,
+}
+
+
+def get_role_level(user, rol=None):
+    """
+    ISS-013: Obtiene el nivel jerárquico de un usuario o rol.
+    Menor nivel = mayor privilegio.
+    """
+    if user and user.is_superuser:
+        return 0
+    
+    target_rol = rol or (getattr(user, 'rol', '') or '').lower()
+    return ROLE_HIERARCHY.get(target_rol, 99)
+
+
 class UserViewSet(viewsets.ModelViewSet):
     """ViewSet para gestion de usuarios"""
     queryset = User.objects.all()
@@ -145,6 +175,121 @@ class UserViewSet(viewsets.ModelViewSet):
         qs = self._apply_filters(qs, self.request.query_params)
         
         return qs.select_related('centro')
+
+    def _validate_role_hierarchy(self, requesting_user, target_role, target_user=None):
+        """
+        ISS-013: Valida que el usuario que hace la petición tenga suficientes
+        privilegios para asignar el rol objetivo.
+        
+        Reglas:
+        - Superusuarios pueden hacer cualquier cosa
+        - Un usuario no puede asignar un rol de mayor o igual privilegio que el suyo
+        - Un usuario no puede modificar a otro de mayor o igual privilegio
+        """
+        from rest_framework.exceptions import PermissionDenied
+        
+        requesting_level = get_role_level(requesting_user)
+        target_level = get_role_level(None, target_role)
+        
+        # Si el rol objetivo tiene mayor privilegio (menor nivel) que el solicitante
+        if target_level <= requesting_level and not requesting_user.is_superuser:
+            raise PermissionDenied(
+                f'No puede asignar el rol "{target_role}". '
+                f'Solo usuarios con mayor privilegio pueden asignar este rol.'
+            )
+        
+        # Si estamos modificando un usuario existente, verificar que tengamos privilegio sobre él
+        if target_user:
+            target_user_level = get_role_level(target_user)
+            if target_user_level <= requesting_level and not requesting_user.is_superuser:
+                raise PermissionDenied(
+                    f'No puede modificar a este usuario. '
+                    f'Solo usuarios con mayor privilegio pueden modificarlo.'
+                )
+
+    def perform_create(self, serializer):
+        """
+        ISS-013: Valida jerarquía de roles antes de crear usuario.
+        """
+        target_role = self.request.data.get('rol', '').lower()
+        is_superuser = self.request.data.get('is_superuser', False)
+        
+        # Si intentan crear un superusuario, validar que quien lo hace sea superusuario
+        if is_superuser and not self.request.user.is_superuser:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Solo superusuarios pueden crear otros superusuarios.')
+        
+        # Validar jerarquía de roles
+        if target_role:
+            self._validate_role_hierarchy(self.request.user, target_role)
+        
+        # Guardar el usuario
+        user = serializer.save()
+        
+        # Registrar en auditoría
+        AuditoriaLog.objects.create(
+            usuario=self.request.user,
+            accion='CREATE',
+            modelo='User',
+            objeto_id=str(user.id),
+            datos_nuevos={'username': user.username, 'rol': user.rol, 'email': user.email},
+            detalles={'objeto_repr': user.username, 'creado_por': self.request.user.username},
+            ip_address=self.request.META.get('REMOTE_ADDR')
+        )
+        logger.info(f"Usuario {user.username} creado por {self.request.user.username}")
+
+    def perform_update(self, serializer):
+        """
+        ISS-013: Valida jerarquía de roles antes de actualizar usuario.
+        """
+        instance = serializer.instance
+        target_role = self.request.data.get('rol', instance.rol).lower() if self.request.data.get('rol') else None
+        is_superuser = self.request.data.get('is_superuser')
+        
+        # Si intentan hacer superusuario, validar que quien lo hace sea superusuario
+        if is_superuser and not self.request.user.is_superuser:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Solo superusuarios pueden otorgar privilegios de superusuario.')
+        
+        # Validar que tenemos privilegio sobre el usuario a modificar
+        self._validate_role_hierarchy(self.request.user, target_role or instance.rol, instance)
+        
+        # Si cambia el rol, validar también el nuevo rol
+        if target_role and target_role != instance.rol:
+            self._validate_role_hierarchy(self.request.user, target_role)
+        
+        # Guardar datos anteriores para auditoría
+        old_data = {
+            'username': instance.username,
+            'rol': instance.rol,
+            'email': instance.email,
+            'is_active': instance.is_active,
+        }
+        
+        # Guardar el usuario
+        user = serializer.save()
+        
+        # Detectar cambios
+        new_data = {
+            'username': user.username,
+            'rol': user.rol,
+            'email': user.email,
+            'is_active': user.is_active,
+        }
+        cambios = {k: (old_data[k], new_data[k]) for k in new_data if old_data.get(k) != new_data.get(k)}
+        
+        if cambios:
+            AuditoriaLog.objects.create(
+                usuario=self.request.user,
+                accion='UPDATE',
+                modelo='User',
+                objeto_id=str(user.id),
+                datos_anteriores=old_data,
+                datos_nuevos=new_data,
+                detalles={'objeto_repr': user.username, 'modificado_por': self.request.user.username, 'cambios': list(cambios.keys())},
+                ip_address=self.request.META.get('REMOTE_ADDR')
+            )
+        logger.info(f"Usuario {user.username} actualizado por {self.request.user.username}: {cambios}")
 
     @action(detail=False, methods=['get', 'patch'], url_path='me')
     def me(self, request):

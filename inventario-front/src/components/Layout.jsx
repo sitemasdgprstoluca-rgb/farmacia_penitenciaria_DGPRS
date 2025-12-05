@@ -23,6 +23,7 @@ import {
   FaBell,
   FaIdBadge,
   FaPalette,
+  FaShieldAlt,
 } from "react-icons/fa";
 
 function Layout() {
@@ -90,6 +91,7 @@ function Layout() {
     { path: "/usuarios", icon: FaUsers, label: "Usuarios", permission: "verUsuarios" },
     { path: "/reportes", icon: FaChartBar, label: "Reportes", permission: "verReportes" },
     { path: "/trazabilidad", icon: FaHistory, label: "Trazabilidad", permission: "verTrazabilidad" },
+    { path: "/auditoria", icon: FaShieldAlt, label: "Auditoría", permission: "verAuditoria" },
     { path: "/notificaciones", icon: FaBell, label: "Notificaciones", permission: "verNotificaciones", badge: unreadCount },
     { path: "/perfil", icon: FaIdBadge, label: "Perfil", permission: "verPerfil" },
     { path: "/configuracion-tema", icon: FaPalette, label: "Personalizar Tema", permission: "configurarTema" },
