@@ -188,11 +188,11 @@ class UserViewSet(viewsets.ModelViewSet):
             if cambios:
                 AuditoriaLog.objects.create(
                     usuario=request.user,
-                    accion='actualizar_perfil',
+                    accion='UPDATE',
                     modelo='Usuario',
-                    objeto_id=request.user.id,
-                    objeto_repr=str(request.user),
-                    cambios=cambios
+                    objeto_id=str(request.user.id),
+                    datos_nuevos=cambios,
+                    detalles={'objeto_repr': str(request.user)}
                 )
             
             updated_user = User.objects.select_related('profile').get(pk=request.user.pk)
@@ -233,11 +233,10 @@ class UserViewSet(viewsets.ModelViewSet):
             # Registrar intento fallido en auditoría
             AuditoriaLog.objects.create(
                 usuario=user,
-                accion='cambiar_password_fallido',
+                accion='UPDATE',
                 modelo='Usuario',
-                objeto_id=user.id,
-                objeto_repr=str(user),
-                cambios={'razon': 'Contraseña actual incorrecta'}
+                objeto_id=str(user.id),
+                detalles={'objeto_repr': str(user), 'razon': 'Contraseña actual incorrecta', 'resultado': 'fallido'}
             )
             return Response({'error': 'Contraseña actual incorrecta'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -260,11 +259,10 @@ class UserViewSet(viewsets.ModelViewSet):
         # Registrar cambio exitoso en auditoría
         AuditoriaLog.objects.create(
             usuario=user,
-            accion='cambiar_password',
+            accion='UPDATE',
             modelo='Usuario',
-            objeto_id=user.id,
-            objeto_repr=str(user),
-            cambios={'resultado': 'Contraseña actualizada exitosamente'}
+            objeto_id=str(user.id),
+            detalles={'objeto_repr': str(user), 'resultado': 'Contraseña actualizada exitosamente'}
         )
         
         logger.info("Contraseña actualizada para usuario %s", user.username)
@@ -307,11 +305,10 @@ class UserViewSet(viewsets.ModelViewSet):
         # Registrar en auditoría
         AuditoriaLog.objects.create(
             usuario=request.user,
-            accion='cambiar_password',
+            accion='UPDATE',
             modelo='User',
-            objeto_id=usuario.id,
-            objeto_repr=usuario.username,
-            cambios={'cambiado_por': request.user.username},
+            objeto_id=str(usuario.id),
+            detalles={'objeto_repr': usuario.username, 'cambiado_por': request.user.username},
             ip_address=request.META.get('REMOTE_ADDR')
         )
         
@@ -682,9 +679,9 @@ class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsSuperuserOnly]
     pagination_class = StandardResultsSetPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['modelo', 'usuario__username', 'accion', 'objeto_repr']
-    ordering_fields = ['fecha']
-    ordering = ['-fecha']
+    search_fields = ['modelo', 'usuario__username', 'accion']
+    ordering_fields = ['timestamp']
+    ordering = ['-timestamp']
     
     def get_queryset(self):
         """Filtrado avanzado por parámetros de query"""
@@ -712,12 +709,12 @@ class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):
         # Filtro por fecha inicio
         fecha_inicio = self.request.query_params.get('fecha_inicio')
         if fecha_inicio:
-            queryset = queryset.filter(fecha__date__gte=fecha_inicio)
+            queryset = queryset.filter(timestamp__date__gte=fecha_inicio)
         
         # Filtro por fecha fin
         fecha_fin = self.request.query_params.get('fecha_fin')
         if fecha_fin:
-            queryset = queryset.filter(fecha__date__lte=fecha_fin)
+            queryset = queryset.filter(timestamp__date__lte=fecha_fin)
         
         return queryset
 
@@ -762,13 +759,19 @@ class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):
             
             # Datos
             for idx, log in enumerate(logs, 1):
+                objeto_repr = ''
+                if log.detalles and isinstance(log.detalles, dict):
+                    objeto_repr = log.detalles.get('objeto_repr', '')
+                if not objeto_repr:
+                    objeto_repr = f"{log.modelo} #{log.objeto_id}" if log.objeto_id else log.modelo
+                
                 ws.append([
                     idx,
-                    log.fecha.strftime('%d/%m/%Y %H:%M:%S') if log.fecha else '',
+                    log.timestamp.strftime('%d/%m/%Y %H:%M:%S') if log.timestamp else '',
                     log.usuario.username if log.usuario else 'Sistema',
                     log.accion,
                     log.modelo,
-                    str(log.objeto_repr)[:100] if log.objeto_repr else '',
+                    str(objeto_repr)[:100],
                     log.ip_address or ''
                 ])
             
@@ -811,12 +814,18 @@ class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):
             # Preparar datos para el generador
             auditoria_data = []
             for log in logs:
+                objeto_repr = ''
+                if log.detalles and isinstance(log.detalles, dict):
+                    objeto_repr = log.detalles.get('objeto_repr', '')
+                if not objeto_repr:
+                    objeto_repr = f"{log.modelo} #{log.objeto_id}" if log.objeto_id else log.modelo
+                
                 auditoria_data.append({
-                    'fecha': log.fecha,
+                    'fecha': log.timestamp,
                     'usuario': log.usuario.username if log.usuario else 'Sistema',
                     'accion': log.accion,
                     'modelo': log.modelo,
-                    'objeto_repr': log.objeto_repr,
+                    'objeto_repr': objeto_repr,
                     'ip_address': log.ip_address or ''
                 })
             
@@ -1656,11 +1665,11 @@ class TemaGlobalViewSet(viewsets.ViewSet):
             # Registrar en auditoría
             AuditoriaLog.objects.create(
                 usuario=request.user,
-                accion='ACTUALIZACION',
-                modelo_afectado='TemaGlobal',
-                objeto_id=tema_guardado.id,
-                descripcion=f'Tema global actualizado: {tema_guardado.nombre}',
-                datos_nuevos=serializer.data
+                accion='UPDATE',
+                modelo='TemaGlobal',
+                objeto_id=str(tema_guardado.id),
+                datos_nuevos=serializer.data,
+                detalles={'objeto_repr': f'Tema global: {tema_guardado.nombre}'}
             )
             
             logger.info(f"Tema global actualizado por {request.user.username}")
@@ -1700,10 +1709,10 @@ class TemaGlobalViewSet(viewsets.ViewSet):
         # Registrar en auditoría
         AuditoriaLog.objects.create(
             usuario=request.user,
-            accion='ACTUALIZACION',
-            modelo_afectado='TemaGlobal',
-            objeto_id=tema_institucional.id,
-            descripcion='Tema restablecido a institucional'
+            accion='UPDATE',
+            modelo='TemaGlobal',
+            objeto_id=str(tema_institucional.id),
+            detalles={'objeto_repr': 'Tema restablecido a institucional'}
         )
         
         logger.info(f"Tema restablecido a institucional por {request.user.username}")

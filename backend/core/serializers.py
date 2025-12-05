@@ -1095,10 +1095,16 @@ class NotificacionSerializer(serializers.ModelSerializer):
         read_only_fields = ['fecha_creacion']
 
 class AuditoriaLogSerializer(serializers.ModelSerializer):
-    """Serializer para logs de auditoría"""
+    """
+    Serializer para logs de auditoría
+    Adaptado a la estructura de BD existente
+    """
     usuario_nombre = serializers.SerializerMethodField()
     descripcion = serializers.SerializerMethodField()
     ip_address = serializers.CharField(read_only=True, allow_null=True)
+    fecha = serializers.DateTimeField(source='timestamp', read_only=True)
+    objeto_repr = serializers.SerializerMethodField()
+    cambios = serializers.SerializerMethodField()
     
     class Meta:
         model = AuditoriaLog
@@ -1108,6 +1114,18 @@ class AuditoriaLogSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
     
+    def get_objeto_repr(self, obj):
+        """Obtiene representación del objeto desde detalles o genera una por defecto"""
+        if obj.detalles and isinstance(obj.detalles, dict):
+            return obj.detalles.get('objeto_repr', f"{obj.modelo} #{obj.objeto_id}")
+        return f"{obj.modelo} #{obj.objeto_id}" if obj.objeto_id else obj.modelo
+    
+    def get_cambios(self, obj):
+        """Obtiene los cambios realizados"""
+        return {
+            'anterior': obj.datos_anteriores,
+            'nuevo': obj.datos_nuevos
+        }
     def get_usuario_nombre(self, obj):
         """Obtiene el nombre del usuario o 'Sistema' si es nulo"""
         if obj.usuario:
@@ -1129,7 +1147,8 @@ class AuditoriaLogSerializer(serializers.ModelSerializer):
         if obj.accion in ['LOGIN', 'LOGOUT']:
             return f"{accion_texto} en el sistema"
         
-        return f"{accion_texto} {obj.modelo}: {obj.objeto_repr}"
+        objeto_repr = self.get_objeto_repr(obj)
+        return f"{accion_texto} {obj.modelo}: {objeto_repr}"
 
 
 class ImportacionLogSerializer(serializers.ModelSerializer):
