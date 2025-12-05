@@ -10,8 +10,14 @@ pip install -r requirements.txt
 echo "=== Collecting static files ==="
 python manage.py collectstatic --no-input
 
+echo "=== Showing pending migrations ==="
+python manage.py showmigrations
+
 echo "=== Running migrations ==="
 python manage.py migrate --no-input
+
+echo "=== Verifying tables exist ==="
+python manage.py shell -c "from django.db import connection; cursor = connection.cursor(); cursor.execute(\"SELECT tablename FROM pg_tables WHERE schemaname = 'public'\"); print('Tables:', [t[0] for t in cursor.fetchall()])"
 
 echo "=== Creating/updating users ==="
 python manage.py shell << 'EOF'

@@ -149,7 +149,11 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get', 'patch'], url_path='me')
     def me(self, request):
         """GET/PATCH /api/usuarios/me/ - Perfil del usuario autenticado"""
-        UserProfile.objects.get_or_create(user=request.user)
+        try:
+            UserProfile.objects.get_or_create(user=request.user)
+        except Exception as e:
+            # Si la tabla user_profiles no existe, continuar sin profile
+            logger.warning(f"No se pudo crear UserProfile para {request.user}: {e}")
         
         if request.method == 'PATCH':
             # Guardar datos anteriores para auditoría
