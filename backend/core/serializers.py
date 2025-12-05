@@ -1087,12 +1087,26 @@ class MovimientoSerializer(serializers.ModelSerializer):
 
 
 class NotificacionSerializer(serializers.ModelSerializer):
-    requisicion_folio = serializers.CharField(source='requisicion.folio', read_only=True)
+    fecha_creacion = serializers.DateTimeField(source='created_at', read_only=True)
+    requisicion = serializers.SerializerMethodField()
+    requisicion_folio = serializers.SerializerMethodField()
 
     class Meta:
         model = Notificacion
-        fields = ['id', 'titulo', 'mensaje', 'tipo', 'leida', 'fecha_creacion', 'requisicion', 'requisicion_folio']
+        fields = ['id', 'titulo', 'mensaje', 'tipo', 'leida', 'fecha_creacion', 'url', 'datos', 'requisicion', 'requisicion_folio']
         read_only_fields = ['fecha_creacion']
+    
+    def get_requisicion(self, obj):
+        """Obtiene ID de requisición desde datos JSON si existe"""
+        if obj.datos and isinstance(obj.datos, dict):
+            return obj.datos.get('requisicion_id')
+        return None
+    
+    def get_requisicion_folio(self, obj):
+        """Obtiene folio de requisición desde datos JSON si existe"""
+        if obj.datos and isinstance(obj.datos, dict):
+            return obj.datos.get('requisicion_folio')
+        return None
 
 class AuditoriaLogSerializer(serializers.ModelSerializer):
     """
@@ -1152,8 +1166,13 @@ class AuditoriaLogSerializer(serializers.ModelSerializer):
 
 
 class ImportacionLogSerializer(serializers.ModelSerializer):
-    """Serializer liviano para auditoría de importaciones."""
+    """Serializer para auditoría de importaciones."""
     usuario_nombre = serializers.CharField(source='usuario.username', read_only=True, default=None)
+    archivo_nombre = serializers.SerializerMethodField()
+    modelo = serializers.CharField(source='tipo_importacion', read_only=True)
+    total_registros = serializers.IntegerField(source='registros_totales', read_only=True)
+    fecha_importacion = serializers.DateTimeField(source='fecha_inicio', read_only=True)
+    resultado_procesamiento = serializers.SerializerMethodField()
     
     class Meta:
         model = ImportacionLog
@@ -1163,6 +1182,18 @@ class ImportacionLogSerializer(serializers.ModelSerializer):
             'resultado_procesamiento', 'fecha_importacion', 'usuario_nombre'
         ]
         read_only_fields = fields
+    
+    def get_archivo_nombre(self, obj):
+        """Obtiene el nombre del archivo importado"""
+        return obj.archivo
+    
+    def get_resultado_procesamiento(self, obj):
+        """Genera resumen del procesamiento"""
+        return {
+            'exitosos': obj.registros_exitosos,
+            'fallidos': obj.registros_fallidos,
+            'errores': obj.errores
+        }
 
 
 class UserMeSerializer(serializers.ModelSerializer):
