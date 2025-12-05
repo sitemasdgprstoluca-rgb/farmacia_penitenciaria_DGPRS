@@ -7,67 +7,57 @@ class UserAdmin(BaseUserAdmin):
     """Admin personalizado para el modelo User."""
     
     # Campos a mostrar en la lista
-    list_display = ['username', 'email', 'first_name', 'last_name', 'is_staff', 'is_active']
-    list_filter = ['is_staff', 'is_superuser', 'is_active']
+    list_display = ['username', 'email', 'first_name', 'last_name', 'rol', 'is_staff', 'is_active']
+    list_filter = ['is_staff', 'is_superuser', 'is_active', 'rol']
     search_fields = ['username', 'first_name', 'last_name', 'email']
     
     # Agregar campos personalizados al formulario de edición
     fieldsets = BaseUserAdmin.fieldsets + (
-        ('Información Adicional', {'fields': ('telefono', 'centro')}),
+        ('Información Adicional', {'fields': ('rol', 'centro', 'adscripcion', 'activo')}),
     )
     
     # Agregar campos personalizados al formulario de creación
     add_fieldsets = BaseUserAdmin.add_fieldsets + (
-        ('Información Adicional', {'fields': ('telefono', 'centro')}),
+        ('Información Adicional', {'fields': ('rol', 'centro')}),
     )
 
 @admin.register(Lote)
 class LoteAdmin(admin.ModelAdmin):
     """
     Admin para gestión de lotes
-    CORREGIDO: Usa 'numero_lote' en lugar de 'codigo_lote'
+    Adaptado a la estructura de BD existente
     """
     list_display = [
         'id',
-        'numero_lote',  # ✅ CORREGIDO (era codigo_lote)
+        'numero_lote',
         'producto',
         'fecha_caducidad',
         'cantidad_actual',
         'cantidad_inicial',
-        'estado',
-        'dias_restantes',
-        'alerta',
-        'deleted_at'
+        'estado_display',
+        'activo',
     ]
     list_filter = [
-        'estado',
+        'activo',
         'fecha_caducidad',
         'producto',
-        'deleted_at',
-        ('fecha_entrada', admin.DateFieldListFilter),
     ]
     search_fields = [
-        'numero_lote',  # ✅ CORREGIDO
-        'producto__clave',
-        'producto__descripcion',
-        'proveedor',
-        'factura'
+        'numero_lote',
+        'producto__nombre',
+        'marca',
     ]
     readonly_fields = [
-        'fecha_entrada',
         'created_at',
         'updated_at',
-        'created_by',
-        'dias_restantes',
-        'alerta'
     ]
     fieldsets = (
         ('Información Básica', {
             'fields': (
                 'producto',
-                'numero_lote',  # ✅ CORREGIDO
+                'numero_lote',
                 'fecha_caducidad',
-                'estado'
+                'fecha_fabricacion',
             )
         }),
         ('Cantidades', {
@@ -78,69 +68,37 @@ class LoteAdmin(admin.ModelAdmin):
         }),
         ('Información de Compra', {
             'fields': (
-                'precio_compra',
-                'proveedor',
-                'factura',
-                'fecha_entrada'
+                'precio_unitario',
+                'numero_contrato',
+                'marca',
+                'ubicacion',
             )
         }),
-        ('Observaciones', {
-            'fields': ('observaciones',),
-            'classes': ('collapse',)
+        ('Estado', {
+            'fields': ('activo', 'centro'),
         }),
         ('Auditoría', {
             'fields': (
                 'created_at',
                 'updated_at',
-                'created_by',
-                'deleted_at'
             ),
             'classes': ('collapse',)
         }),
     )
     date_hierarchy = 'fecha_caducidad'
-    ordering = ['-fecha_entrada', 'fecha_caducidad']
+    ordering = ['-created_at', 'fecha_caducidad']
     
-    def dias_restantes(self, obj):
-        """Muestra días restantes para caducidad"""
-        dias = obj.dias_para_caducar()
-        if dias < 0:
-            return f"❌ VENCIDO ({abs(dias)} días)"
-        elif dias <= 7:
-            return f"🔴 {dias} días"
-        elif dias <= 30:
-            return f"🟡 {dias} días"
-        else:
-            return f"🟢 {dias} días"
-    dias_restantes.short_description = "Días para Caducar"
-    
-    def alerta(self, obj):
-        """Muestra nivel de alerta"""
-        nivel = obj.alerta_caducidad()
+    def estado_display(self, obj):
+        """Muestra el estado calculado del lote"""
+        estado = obj.estado
         iconos = {
-            'vencido': '❌',
-            'critico': '🔴',
-            'proximo': '🟡',
-            'normal': '🟢'
+            'disponible': '🟢',
+            'agotado': '⚫',
+            'caducado': '🔴',
         }
-        return f"{iconos.get(nivel, '❓')} {nivel.upper()}"
-    alerta.short_description = "Alerta"
+        return f"{iconos.get(estado, '❓')} {estado.upper()}"
+    estado_display.short_description = "Estado"
     
     def get_queryset(self, request):
-        """Incluye lotes eliminados en admin"""
-        return Lote.objects.select_related('producto', 'created_by').all()
-    
-    actions = ['marcar_vencidos', 'restaurar_eliminados']
-    
-    def marcar_vencidos(self, request, queryset):
-        """Acción masiva: marcar lotes vencidos"""
-        from datetime import date
-        actualizados = queryset.filter(fecha_caducidad__lt=date.today()).update(estado='vencido')
-        self.message_user(request, f"{actualizados} lotes marcados como vencidos")
-    marcar_vencidos.short_description = "Marcar como vencidos"
-    
-    def restaurar_eliminados(self, request, queryset):
-        """Acción masiva: restaurar lotes eliminados"""
-        actualizados = queryset.filter(deleted_at__isnull=False).update(deleted_at=None)
-        self.message_user(request, f"{actualizados} lotes restaurados")
-    restaurar_eliminados.short_description = "Restaurar eliminados"
+        """Incluye todos los lotes"""
+        return Lote.objects.select_related('producto', 'centro').all()
