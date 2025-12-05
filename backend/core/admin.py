@@ -34,11 +34,11 @@ class LoteAdmin(admin.ModelAdmin):
         'fecha_caducidad',
         'cantidad_actual',
         'cantidad_inicial',
-        'estado_display',
-        'activo',
+        'estado',
+        'is_active',
     ]
     list_filter = [
-        'activo',
+        'estado',
         'fecha_caducidad',
         'producto',
     ]
@@ -50,6 +50,7 @@ class LoteAdmin(admin.ModelAdmin):
     readonly_fields = [
         'created_at',
         'updated_at',
+        'deleted_at',
     ]
     fieldsets = (
         ('Información Básica', {
@@ -75,7 +76,7 @@ class LoteAdmin(admin.ModelAdmin):
             )
         }),
         ('Estado', {
-            'fields': ('activo', 'centro'),
+            'fields': ('estado', 'centro', 'deleted_at'),
         }),
         ('Auditoría', {
             'fields': (
@@ -88,16 +89,11 @@ class LoteAdmin(admin.ModelAdmin):
     date_hierarchy = 'fecha_caducidad'
     ordering = ['-created_at', 'fecha_caducidad']
     
-    def estado_display(self, obj):
-        """Muestra el estado calculado del lote"""
-        estado = obj.estado
-        iconos = {
-            'disponible': '🟢',
-            'agotado': '⚫',
-            'caducado': '🔴',
-        }
-        return f"{iconos.get(estado, '❓')} {estado.upper()}"
-    estado_display.short_description = "Estado"
+    def is_active(self, obj):
+        """Muestra si el lote está activo (no eliminado)"""
+        return obj.deleted_at is None
+    is_active.boolean = True
+    is_active.short_description = "Activo"
     
     def get_queryset(self, request):
         """Incluye todos los lotes"""

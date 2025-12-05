@@ -284,11 +284,16 @@ class Centro(models.Model):
     """
     Modelo de Centro Penitenciario
     Adaptado a la estructura de base de datos existente
+    
+    Campos reales en BD: id, clave, nombre, tipo, direccion, telefono, 
+    responsable, activo, created_at, updated_at
     """
+    clave = models.CharField(max_length=50, unique=True)
     nombre = models.CharField(max_length=200)
+    tipo = models.CharField(max_length=50, blank=True, null=True)
     direccion = models.TextField(blank=True, null=True)
     telefono = models.CharField(max_length=20, blank=True, null=True)
-    email = models.CharField(max_length=254, blank=True, null=True)
+    responsable = models.CharField(max_length=200, blank=True, null=True)
     activo = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -300,60 +305,74 @@ class Centro(models.Model):
 
     def __str__(self):
         return self.nombre
-    
-    # Propiedad para compatibilidad con código que usa 'clave'
-    @property
-    def clave(self):
-        return str(self.id)
 
 
 class Producto(models.Model):
     """
     Modelo de Producto Farmacéutico
     Adaptado a la estructura de base de datos existente
+    
+    Campos reales en BD: id, clave, descripcion, unidad_medida, precio_unitario, 
+    stock_minimo, activo, created_at, updated_at, created_by_id, codigo_barras_producto
     """
-    codigo_barras = models.CharField(max_length=50, unique=True, null=True, blank=True)
-    nombre = models.CharField(max_length=200)
+    clave = models.CharField(max_length=50, unique=True)
     descripcion = models.TextField(blank=True, null=True)
     unidad_medida = models.CharField(max_length=50)
-    categoria = models.CharField(max_length=100)
+    precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     stock_minimo = models.IntegerField(default=0)
-    stock_actual = models.IntegerField(default=0)
-    sustancia_activa = models.CharField(max_length=200, blank=True, null=True)
-    presentacion = models.CharField(max_length=200, blank=True, null=True)
-    concentracion = models.CharField(max_length=100, blank=True, null=True)
-    via_administracion = models.CharField(max_length=100, blank=True, null=True)
-    requiere_receta = models.BooleanField(default=False)
-    es_controlado = models.BooleanField(default=False)
     activo = models.BooleanField(default=True)
-    imagen = models.CharField(max_length=255, blank=True, null=True)
+    codigo_barras_producto = models.CharField(max_length=100, blank=True, null=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='productos_creados')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'productos'
-        ordering = ['nombre']
+        ordering = ['clave']
         managed = False  # La tabla ya existe en la BD
 
     def __str__(self):
-        return f"{self.nombre}"
+        return f"{self.clave} - {self.descripcion or 'Sin descripción'}"
     
-    # Propiedad para compatibilidad con código que usa 'clave'
+    # Propiedades para compatibilidad con código existente
     @property
-    def clave(self):
-        return self.codigo_barras or str(self.id)
+    def nombre(self):
+        return self.descripcion or self.clave
+    
+    @property
+    def codigo_barras(self):
+        return self.codigo_barras_producto
     
     def get_stock_actual(self, centro=None):
         """Calcula el stock actual sumando lotes disponibles."""
         from django.db.models import Sum
         
-        filtros = {'activo': True}
+        filtros = {'deleted_at__isnull': True, 'cantidad_actual__gt': 0}
         if centro and centro != 'todos':
             filtros['centro'] = centro
         
         return self.lotes.filter(**filtros).aggregate(
             total=Sum('cantidad_actual')
         )['total'] or 0
+    
+    def get_nivel_stock(self):
+        """Retorna el nivel de stock basado en stock actual vs stock mínimo."""
+        stock_actual = self.get_stock_actual()
+        stock_minimo = self.stock_minimo or 0
+        
+        if stock_actual == 0:
+            return 'sin_stock'
+        elif stock_minimo > 0:
+            porcentaje = (stock_actual / stock_minimo) * 100
+            if porcentaje <= 25:
+                return 'critico'
+            elif porcentaje <= 50:
+                return 'bajo'
+            elif porcentaje <= 150:
+                return 'normal'
+            else:
+                return 'alto'
+        return 'normal'
 
 
 class Lote(models.Model):
@@ -365,16 +384,26 @@ class Lote(models.Model):
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='lotes')
     cantidad_inicial = models.IntegerField(default=0)
     cantidad_actual = models.IntegerField(default=0)
-    fecha_fabricacion = models.DateField(null=True, blank=True)
+    fecha_fabricacion = models.DateField(null=True, blank=True, db_column='fecha_entrada')
     fecha_caducidad = models.DateField()
-    precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    estado = models.CharField(max_length=50, default='disponible')
+    precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0, db_column='precio_compra')
     numero_contrato = models.CharField(max_length=100, blank=True, null=True)
     marca = models.CharField(max_length=100, blank=True, null=True)
-    ubicacion = models.CharField(max_length=100, blank=True, null=True)
+    proveedor = models.CharField(max_length=200, blank=True, null=True)
+    factura = models.CharField(max_length=100, blank=True, null=True)
+    observaciones = models.TextField(blank=True, null=True)
+    codigo_barras = models.CharField(max_length=100, blank=True, null=True)
     centro = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='lotes_centro')
-    activo = models.BooleanField(default=True)
+    lote_origen = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='lotes_derivados')
+    contrato = models.IntegerField(null=True, blank=True, db_column='contrato_id')  # FK a tabla contratos si existe
+    documento_nombre = models.CharField(max_length=255, blank=True, null=True)
+    documento_pdf = models.TextField(blank=True, null=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='lotes_creados')
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='lotes_actualizados')
 
     class Meta:
         db_table = 'lotes'
@@ -385,33 +414,81 @@ class Lote(models.Model):
         return f"{self.numero_lote} - {self.producto.nombre if self.producto else 'N/A'}"
     
     @property
-    def estado(self):
-        """Calcula el estado basado en cantidad y caducidad"""
+    def estado_calculado(self):
+        """Calcula el estado basado en cantidad y caducidad (alternativo al campo estado)"""
         from django.utils import timezone
         if self.cantidad_actual <= 0:
             return 'agotado'
         if self.fecha_caducidad and self.fecha_caducidad < timezone.now().date():
             return 'caducado'
         return 'disponible'
+    
+    # Alias para compatibilidad
+    @property
+    def activo(self):
+        return self.deleted_at is None
+    
+    @property
+    def ubicacion(self):
+        """Alias de compatibilidad - retorna el nombre del centro"""
+        return self.centro.nombre if self.centro else None
+    
+    # Alias para serializer
+    @property
+    def precio_compra(self):
+        return self.precio_unitario
+    
+    @property
+    def fecha_entrada(self):
+        return self.fecha_fabricacion
+    
+    def dias_para_caducar(self):
+        """Calcula días restantes para caducidad"""
+        from django.utils import timezone
+        if not self.fecha_caducidad:
+            return None
+        delta = self.fecha_caducidad - timezone.now().date()
+        return delta.days
+    
+    def esta_caducado(self):
+        """Indica si el lote está vencido"""
+        from django.utils import timezone
+        if not self.fecha_caducidad:
+            return False
+        return self.fecha_caducidad < timezone.now().date()
+    
+    def alerta_caducidad(self):
+        """Nivel de alerta: vencido, critico, proximo, normal"""
+        dias = self.dias_para_caducar()
+        if dias is None:
+            return 'normal'
+        if dias < 0:
+            return 'vencido'
+        elif dias <= 7:
+            return 'critico'
+        elif dias <= 30:
+            return 'proximo'
+        return 'normal'
 
 
 class Movimiento(models.Model):
     """
     Modelo de Movimiento de inventario
     Adaptado a la estructura de base de datos existente
+    
+    Campos reales en BD: id, tipo, cantidad, observaciones, fecha, centro_id, 
+    lote_id, requisicion_id, documento_referencia, lugar_entrega, usuario_id
     """
     tipo = models.CharField(max_length=50)
-    producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='movimientos')
     lote = models.ForeignKey(Lote, on_delete=models.SET_NULL, null=True, blank=True, related_name='movimientos')
     cantidad = models.IntegerField()
-    centro_origen = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='movimientos_salida', db_column='centro_origen_id')
-    centro_destino = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='movimientos_entrada', db_column='centro_destino_id')
+    observaciones = models.TextField(blank=True, null=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+    centro = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='movimientos')
     requisicion = models.ForeignKey('Requisicion', on_delete=models.SET_NULL, null=True, blank=True, related_name='movimientos')
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
-    motivo = models.TextField(blank=True, null=True)
-    referencia = models.CharField(max_length=100, blank=True, null=True)
-    fecha = models.DateTimeField(auto_now_add=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    documento_referencia = models.CharField(max_length=255, blank=True, null=True)
+    lugar_entrega = models.CharField(max_length=200, blank=True, null=True)
 
     class Meta:
         db_table = 'movimientos'
@@ -421,45 +498,36 @@ class Movimiento(models.Model):
     def __str__(self):
         return f"{self.tipo} - {self.cantidad} - {self.fecha}"
     
-    # Propiedades para compatibilidad
+    # Propiedades para compatibilidad con código que espera producto
     @property
-    def centro(self):
-        return self.centro_destino or self.centro_origen
-    
-    @property
-    def observaciones(self):
-        return self.motivo
-    
-    @property
-    def documento_referencia(self):
-        return self.referencia
+    def producto(self):
+        return self.lote.producto if self.lote else None
 
 
 class Requisicion(models.Model):
     """
     Modelo de Requisicion
     Adaptado a la estructura de base de datos existente
+    
+    Campos reales en BD: id, folio, fecha_solicitud, estado, observaciones, 
+    fecha_autorizacion, motivo_rechazo, created_at, updated_at, centro_id, 
+    usuario_autoriza_id, usuario_solicita_id, fecha_recibido, lugar_entrega, 
+    observaciones_recepcion, usuario_recibe_id, updated_by_id
     """
-    numero = models.CharField(max_length=50, unique=True, db_column='numero')
-    centro_origen = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_origen', db_column='centro_origen_id')
-    centro_destino = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_destino', db_column='centro_destino_id')
-    solicitante = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_solicitadas', db_column='solicitante_id')
-    autorizador = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_autorizadas', db_column='autorizador_id')
+    folio = models.CharField(max_length=50, unique=True)
+    centro = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones')
+    usuario_solicita = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_solicitadas')
+    usuario_autoriza = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_autorizadas')
+    usuario_recibe = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_recibidas')
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_actualizadas')
     estado = models.CharField(max_length=50, default='borrador')
-    tipo = models.CharField(max_length=50, default='normal')
-    prioridad = models.CharField(max_length=20, default='normal')
-    notas = models.TextField(blank=True, null=True)
+    observaciones = models.TextField(blank=True, null=True)
+    observaciones_recepcion = models.TextField(blank=True, null=True)
+    motivo_rechazo = models.TextField(blank=True, null=True)
     lugar_entrega = models.CharField(max_length=200, blank=True, null=True)
     fecha_solicitud = models.DateTimeField(auto_now_add=True)
     fecha_autorizacion = models.DateTimeField(null=True, blank=True)
-    fecha_surtido = models.DateTimeField(null=True, blank=True)
-    fecha_entrega = models.DateTimeField(null=True, blank=True)
-    foto_firma_surtido = models.CharField(max_length=255, blank=True, null=True)
-    foto_firma_recepcion = models.CharField(max_length=255, blank=True, null=True)
-    usuario_firma_surtido = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='firmas_surtido', db_column='usuario_firma_surtido_id')
-    usuario_firma_recepcion = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='firmas_recepcion', db_column='usuario_firma_recepcion_id')
-    fecha_firma_surtido = models.DateTimeField(null=True, blank=True)
-    fecha_firma_recepcion = models.DateTimeField(null=True, blank=True)
+    fecha_recibido = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -469,38 +537,33 @@ class Requisicion(models.Model):
         managed = False  # La tabla ya existe en la BD
 
     def __str__(self):
-        return f"REQ-{self.numero}"
+        return f"REQ-{self.folio}"
     
     # Propiedades para compatibilidad con código existente
     @property
-    def folio(self):
-        return self.numero
+    def numero(self):
+        return self.folio
     
     @property
-    def centro(self):
-        return self.centro_destino
+    def solicitante(self):
+        return self.usuario_solicita
     
     @property
-    def usuario_solicita(self):
-        return self.solicitante
+    def autorizador(self):
+        return self.usuario_autoriza
     
     @property
-    def usuario_autoriza(self):
-        return self.autorizador
-    
-    @property
-    def comentario(self):
-        return self.notas
-    
-    @property
-    def observaciones(self):
-        return self.notas
+    def notas(self):
+        return self.observaciones
 
 
 class DetalleRequisicion(models.Model):
     """
     Detalle de Requisicion
     Adaptado a la estructura de base de datos existente
+    
+    Campos reales en BD: id, cantidad_solicitada, cantidad_autorizada, cantidad_surtida,
+    observaciones, producto_id, requisicion_id, lote_id, cantidad_reservada, fecha_reserva
     """
     requisicion = models.ForeignKey(Requisicion, on_delete=models.CASCADE, related_name='detalles')
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT)
@@ -508,21 +571,20 @@ class DetalleRequisicion(models.Model):
     cantidad_solicitada = models.IntegerField()
     cantidad_autorizada = models.IntegerField(null=True, blank=True)
     cantidad_surtida = models.IntegerField(null=True, blank=True)
-    cantidad_recibida = models.IntegerField(null=True, blank=True)
-    notas = models.TextField(blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    cantidad_reservada = models.IntegerField(null=True, blank=True)
+    observaciones = models.TextField(blank=True, null=True)
+    fecha_reserva = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'detalles_requisicion'
         managed = False  # La tabla ya existe en la BD
 
     def __str__(self):
-        return f"{self.requisicion.numero} - {self.producto.nombre}"
+        return f"{self.requisicion.folio} - {self.producto.clave}"
     
     @property
-    def observaciones(self):
-        return self.notas
+    def notas(self):
+        return self.observaciones
 
 
 class Notificacion(models.Model):

@@ -435,19 +435,16 @@ class ProductoSerializer(serializers.ModelSerializer):
     creado_por = serializers.SerializerMethodField(
         help_text="Usuario que creó el producto"
     )
-    imagen_url = serializers.SerializerMethodField(
-        help_text="URL de la imagen del producto"
-    )
     
     class Meta:
         model = Producto
         fields = [
             'id', 'clave', 'descripcion', 'unidad_medida', 'precio_unitario',
-            'stock_minimo', 'activo', 'imagen', 'imagen_url', 'stock_actual', 'nivel_stock',
+            'stock_minimo', 'activo', 'codigo_barras_producto', 'stock_actual', 'nivel_stock',
             'lotes_activos', 'valor_inventario', 'created_at', 'updated_at',
             'creado_por'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'creado_por', 'imagen_url']
+        read_only_fields = ['created_at', 'updated_at', 'creado_por']
     
     def get_stock_actual(self, obj):
         """Calcula stock actual de lotes disponibles"""
@@ -459,7 +456,7 @@ class ProductoSerializer(serializers.ModelSerializer):
     
     def get_lotes_activos(self, obj):
         """Cuenta lotes en estado disponible"""
-        return obj.lotes.filter(estado='disponible').count()
+        return obj.lotes.filter(estado='disponible', deleted_at__isnull=True).count()
     
     def get_valor_inventario(self, obj):
         """Calcula valor total del inventario"""
@@ -470,15 +467,6 @@ class ProductoSerializer(serializers.ModelSerializer):
         """Retorna el nombre/email del usuario que creó el producto"""
         if obj.created_by:
             return obj.created_by.get_full_name() or obj.created_by.username
-        return None
-    
-    def get_imagen_url(self, obj):
-        """Retorna la URL de la imagen del producto"""
-        if obj.imagen:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.imagen.url)
-            return obj.imagen.url
         return None
     
     def validate_clave(self, value):
@@ -934,25 +922,15 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
 class RequisicionSerializer(serializers.ModelSerializer):
     """
     Serializer para Requisición con validaciones de flujo
-    ✅ CORREGIDO: Ahora permite editar detalles
+    ✅ CORREGIDO: Adaptado a estructura real de BD
     """
     detalles = DetalleRequisicionSerializer(many=True, required=False)
-    centro_nombre = serializers.CharField(source='centro.nombre', read_only=True)
-    usuario_solicita_nombre = serializers.CharField(source='usuario_solicita.get_full_name', read_only=True)
-    usuario_autoriza_nombre = serializers.CharField(source='usuario_autoriza.get_full_name', read_only=True)
-    usuario_recibe_nombre = serializers.CharField(source='usuario_recibe.get_full_name', read_only=True, allow_null=True)
+    centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, allow_null=True)
+    usuario_solicita_nombre = serializers.SerializerMethodField()
+    usuario_autoriza_nombre = serializers.SerializerMethodField()
+    usuario_recibe_nombre = serializers.SerializerMethodField()
     total_productos = serializers.SerializerMethodField()
     puede_editar = serializers.SerializerMethodField()
-    
-    # Campos de firma
-    foto_firma_surtido_url = serializers.SerializerMethodField()
-    foto_firma_recepcion_url = serializers.SerializerMethodField()
-    usuario_firma_surtido_nombre = serializers.CharField(
-        source='usuario_firma_surtido.get_full_name', read_only=True, allow_null=True
-    )
-    usuario_firma_recepcion_nombre = serializers.CharField(
-        source='usuario_firma_recepcion.get_full_name', read_only=True, allow_null=True
-    )
     
     # Transiciones válidas de estado
     TRANSICIONES_VALIDAS = {
@@ -976,16 +954,27 @@ class RequisicionSerializer(serializers.ModelSerializer):
             # Campos de recepción
             'lugar_entrega', 'fecha_recibido', 'usuario_recibe', 'usuario_recibe_nombre',
             'observaciones_recepcion',
-            # Campos de firma de surtido
-            'foto_firma_surtido', 'foto_firma_surtido_url', 'fecha_firma_surtido',
-            'usuario_firma_surtido', 'usuario_firma_surtido_nombre',
-            # Campos de firma de recepción
-            'foto_firma_recepcion', 'foto_firma_recepcion_url', 'fecha_firma_recepcion',
-            'usuario_firma_recepcion', 'usuario_firma_recepcion_nombre',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['folio', 'fecha_solicitud', 'created_at', 'updated_at',
-                          'foto_firma_surtido_url', 'foto_firma_recepcion_url']
+        read_only_fields = ['folio', 'fecha_solicitud', 'created_at', 'updated_at']
+    
+    def get_usuario_solicita_nombre(self, obj):
+        """Nombre del usuario solicitante"""
+        if obj.usuario_solicita:
+            return obj.usuario_solicita.get_full_name() or obj.usuario_solicita.username
+        return None
+    
+    def get_usuario_autoriza_nombre(self, obj):
+        """Nombre del usuario autorizador"""
+        if obj.usuario_autoriza:
+            return obj.usuario_autoriza.get_full_name() or obj.usuario_autoriza.username
+        return None
+    
+    def get_usuario_recibe_nombre(self, obj):
+        """Nombre del usuario que recibe"""
+        if obj.usuario_recibe:
+            return obj.usuario_recibe.get_full_name() or obj.usuario_recibe.username
+        return None
     
     def get_total_productos(self, obj):
         """Cuenta productos en la requisición"""
@@ -994,24 +983,6 @@ class RequisicionSerializer(serializers.ModelSerializer):
     def get_puede_editar(self, obj):
         """Indica si la requisición puede editarse"""
         return obj.estado in ['borrador', 'enviada']
-    
-    def get_foto_firma_surtido_url(self, obj):
-        """Retorna la URL de la foto de firma de surtido"""
-        if obj.foto_firma_surtido:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.foto_firma_surtido.url)
-            return obj.foto_firma_surtido.url
-        return None
-    
-    def get_foto_firma_recepcion_url(self, obj):
-        """Retorna la URL de la foto de firma de recepción"""
-        if obj.foto_firma_recepcion:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.foto_firma_recepcion.url)
-            return obj.foto_firma_recepcion.url
-        return None
     
     def validate_estado(self, value):
         """Valida transiciones de estado"""
