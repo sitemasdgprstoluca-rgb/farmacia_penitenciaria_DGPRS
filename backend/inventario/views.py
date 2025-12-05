@@ -1497,13 +1497,24 @@ class LoteViewSet(viewsets.ModelViewSet):
         
         # SEGURIDAD: Filtrar por centro segun rol
         user = self.request.user
+        
+        # ISS-FIX: Usuarios de centro pueden ver lotes de farmacia central
+        # cuando están creando requisiciones (para_requisicion=true)
+        para_requisicion = self.request.query_params.get('para_requisicion', '').lower() == 'true'
+        
         if not is_farmacia_or_admin(user):
-            # Usuario de centro: forzado a su centro
+            # Usuario de centro
             user_centro = get_user_centro(user)
-            if user_centro:
-                queryset = queryset.filter(centro=user_centro)
-            else:
+            if not user_centro:
                 return Lote.objects.none()
+            
+            if para_requisicion:
+                # ISS-FIX: Para crear requisiciones, mostrar lotes de FARMACIA CENTRAL
+                # porque las requisiciones se surten desde farmacia central
+                queryset = queryset.filter(centro__isnull=True)
+            else:
+                # Por defecto: solo lotes de SU centro
+                queryset = queryset.filter(centro=user_centro)
         else:
             # Admin/farmacia/vista: pueden filtrar por centro especifico
             centro_param = self.request.query_params.get('centro')

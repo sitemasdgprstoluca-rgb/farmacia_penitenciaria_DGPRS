@@ -150,34 +150,12 @@ const Requisiciones = () => {
         solo_disponibles: 'true',
         ordering: 'producto__descripcion,fecha_caducidad',
         page_size: 200, // Aumentado para mostrar más lotes (antes 50)
+        para_requisicion: true,  // ISS-FIX: Mostrar lotes de farmacia central para requisiciones
       };
       
-      // Determinar el centro a usar:
-      // 1. Si se pasa centroId explícito (del formulario), usarlo
-      // 2. Si no, para admin/farmacia omitir centro (farmacia central)
-      // 3. Si no, usar el centro del usuario
-      // NOTA: No usar string 'central', el backend espera ID numérico o null/vacío para farmacia central
-      let centroAUsar = centroId;
-      if (!centroAUsar) {
-        if (permisos.isFarmaciaAdmin || permisos.isAdmin) {
-          centroAUsar = null; // Farmacia central = sin filtro de centro
-        } else {
-          centroAUsar = user?.centro?.id;
-        }
-      }
-      
-      if (!centroAUsar && !(permisos.isFarmaciaAdmin || permisos.isAdmin)) {
-        console.warn('Usuario sin centro definido, no se cargan lotes');
-        setCatalogoLotes([]);
-        setLoadingCatalogo(false);
-        return;
-      }
-      
-      // Solo agregar centro si es un ID numérico válido
-      if (centroAUsar && typeof centroAUsar === 'number') {
-        baseParams.centro = centroAUsar;
-      }
-      // Para farmacia central (admin/farmacia sin centro específico), no enviar parámetro centro
+      // ISS-FIX: Para requisiciones, siempre mostrar lotes de farmacia central
+      // El parámetro para_requisicion=true hace que el backend devuelva lotes de farmacia central
+      // incluso para usuarios CENTRO (que normalmente solo ven sus propios lotes)
       
       // Agregar término de búsqueda si existe
       if (termino.trim()) {
@@ -198,7 +176,7 @@ const Requisiciones = () => {
     } finally {
       setLoadingCatalogo(false);
     }
-  }, [permisos.isFarmaciaAdmin, permisos.isAdmin, user?.centro?.id, form.centro]);
+  }, []);  // ISS-FIX: Sin dependencias, siempre busca en farmacia central con para_requisicion=true
   
   // ISS-003: Cargar catálogo inicial (solo primera página)
   // Acepta centroId opcional para cargar lotes del centro correcto
@@ -621,7 +599,13 @@ const Requisiciones = () => {
     setLoadingLotes(true);
     
     try {
-      const resp = await lotesAPI.getAll({ producto: productoId, stock_min: 1, ordering: 'fecha_caducidad' });
+      // ISS-FIX: Usar para_requisicion=true para que usuarios CENTRO vean lotes de farmacia central
+      const resp = await lotesAPI.getAll({ 
+        producto: productoId, 
+        stock_min: 1, 
+        ordering: 'fecha_caducidad',
+        para_requisicion: true  // Mostrar lotes de farmacia central para requisiciones
+      });
       const lotes = resp.data.results || resp.data || [];
       setLotesProducto(lotes);
     } catch (error) {
