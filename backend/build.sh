@@ -23,23 +23,21 @@ User = get_user_model()
 admin_password = os.environ.get('ADMIN_PASSWORD', 'Admin123!')
 
 # ============================================
-# 1. Crear Centros si no existen
+# 1. Obtener centros existentes de la BD
 # ============================================
-centros_data = [
-    {'clave': 'FARM001', 'nombre': 'Farmacia Central', 'tipo': 'farmacia', 'activo': True},
-    {'clave': 'CERESO01', 'nombre': 'CERESO Almoloya', 'tipo': 'cereso', 'activo': True},
-    {'clave': 'CERESO02', 'nombre': 'CERESO Ecatepec', 'tipo': 'cereso', 'activo': True},
-    {'clave': 'CERESO03', 'nombre': 'CERESO Nezahualcóyotl', 'tipo': 'cereso', 'activo': True},
-]
+print("Centros existentes en BD:")
+centros_existentes = {c.clave: c for c in Centro.objects.all()}
+for clave, centro in centros_existentes.items():
+    print(f"  - {clave}: {centro.nombre}")
 
-centros_creados = {}
-for c_data in centros_data:
-    centro, created = Centro.objects.update_or_create(
-        clave=c_data['clave'],
-        defaults=c_data
-    )
-    centros_creados[c_data['clave']] = centro
-    print(f"Centro {'creado' if created else 'actualizado'}: {centro.nombre}")
+# Obtener el primer centro tipo CERESO para asignar a usuarios de prueba
+centros_cereso = Centro.objects.filter(tipo='cereso', activo=True).order_by('clave')[:2]
+centro1 = centros_cereso[0] if len(centros_cereso) > 0 else None
+centro2 = centros_cereso[1] if len(centros_cereso) > 1 else None
+
+print(f"\nCentros para usuarios de prueba:")
+print(f"  centro1 -> {centro1.nombre if centro1 else 'N/A'}")
+print(f"  centro2 -> {centro2.nombre if centro2 else 'N/A'}")
 
 # ============================================
 # 2. Crear usuarios de prueba
@@ -69,9 +67,9 @@ usuarios_data = [
         'rol': 'farmacia',
         'first_name': 'Usuario',
         'last_name': 'Farmacia Central',
-        'centro': None,  # Farmacia no tiene centro asignado
+        'centro': None,
     },
-    # Usuario de Centro 1 (CERESO Almoloya)
+    # Usuario de Centro 1
     {
         'username': 'centro1',
         'email': 'centro1@cereso.gob.mx',
@@ -81,10 +79,10 @@ usuarios_data = [
         'is_active': True,
         'rol': 'centro',
         'first_name': 'Usuario',
-        'last_name': 'CERESO Almoloya',
-        'centro': 'CERESO01',
+        'last_name': centro1.nombre if centro1 else 'Centro 1',
+        'centro': centro1,
     },
-    # Usuario de Centro 2 (CERESO Ecatepec)
+    # Usuario de Centro 2
     {
         'username': 'centro2',
         'email': 'centro2@cereso.gob.mx',
@@ -94,8 +92,8 @@ usuarios_data = [
         'is_active': True,
         'rol': 'centro',
         'first_name': 'Usuario',
-        'last_name': 'CERESO Ecatepec',
-        'centro': 'CERESO02',
+        'last_name': centro2.nombre if centro2 else 'Centro 2',
+        'centro': centro2,
     },
     # Usuario Vista (solo lectura)
     {
@@ -112,12 +110,15 @@ usuarios_data = [
     },
 ]
 
+print("\nCreando/actualizando usuarios:")
 for u_data in usuarios_data:
-    centro_clave = u_data.pop('centro')
     password = u_data.pop('password')
+    centro_obj = u_data.pop('centro')
     
-    # Obtener centro si aplica
-    centro_obj = centros_creados.get(centro_clave) if centro_clave else None
+    # Solo crear usuarios de centro si hay centros disponibles
+    if u_data['rol'] == 'centro' and centro_obj is None:
+        print(f"  SKIP: {u_data['username']} (no hay centro disponible)")
+        continue
     
     user, created = User.objects.update_or_create(
         username=u_data['username'],
@@ -125,9 +126,19 @@ for u_data in usuarios_data:
     )
     user.set_password(password)
     user.save()
-    print(f"Usuario {'creado' if created else 'actualizado'}: {user.username} (rol: {user.rol})")
+    centro_info = f" -> {centro_obj.nombre}" if centro_obj else ""
+    print(f"  {'NUEVO' if created else 'ACTUALIZADO'}: {user.username} (rol: {user.rol}){centro_info}")
 
 print(f"\n=== Total: {User.objects.count()} usuarios, {Centro.objects.count()} centros ===")
+print("\n" + "="*50)
+print("CREDENCIALES DE ACCESO:")
+print("="*50)
+print("  admin     / Admin123!     - Superusuario")
+print("  farmacia  / Farmacia123!  - Gestión inventario")
+print("  centro1   / Centro123!    - Usuario centro")
+print("  centro2   / Centro123!    - Usuario centro")
+print("  vista     / Vista123!     - Solo lectura")
+print("="*50)
 print("\n📋 CREDENCIALES DE PRUEBA:")
 print("  admin     / Admin123!     (o ADMIN_PASSWORD) - Superusuario")
 print("  farmacia  / Farmacia123!  - Gestión de inventario")
