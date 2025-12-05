@@ -4,7 +4,7 @@ from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator
 from django.core.exceptions import ValidationError
 from decimal import Decimal
-from datetime import date
+from datetime import date, timedelta
 from .constants import (
     UNIDADES_MEDIDA,
     ESTADOS_LOTE,
@@ -757,15 +757,10 @@ class Contrato(models.Model):
 
     class Meta:
         db_table = 'contratos'
+        managed = False  # Tabla no gestionada - modelo legacy no usado
         ordering = ['-fecha_inicio']
-        indexes = [
-            models.Index(fields=['numero_contrato']),
-            models.Index(fields=['proveedor']),
-            models.Index(fields=['fecha_inicio', 'fecha_fin']),
-            models.Index(fields=['activo']),
-        ]
-        verbose_name = 'Contrato'
-        verbose_name_plural = 'Contratos'
+        verbose_name = 'Contrato (Legacy)'
+        verbose_name_plural = 'Contratos (Legacy)'
 
     def __str__(self):
         return f"{self.numero_contrato} - {self.proveedor}"
@@ -793,116 +788,16 @@ class Contrato(models.Model):
             producto: Si se especifica, filtra solo ese producto
             
         Returns:
-            int: Cantidad total de unidades ingresadas
+            int: 0 (modelo legacy)
         """
-        from django.db.models import Sum
-        
-        filtros = {'contrato': self}
-        if producto:
-            filtros['producto'] = producto
-        
-        return Lote.objects.filter(**filtros).aggregate(
-            total=Sum('cantidad_inicial')
-        )['total'] or 0
+        return 0
     
     def validar_entrada(self, producto, cantidad, fecha_caducidad=None):
         """
-        ISS-005 FIX: Valida si una entrada es permitida bajo este contrato.
-        
-        Verifica:
-        1. Contrato activo
-        2. Dentro de vigencia
-        3. No excede límites (si aplican)
-        
-        Args:
-            producto: Producto a ingresar
-            cantidad: Cantidad a ingresar
-            fecha_caducidad: Fecha de caducidad del lote (opcional)
-            
-        Raises:
-            ValidationError: Si la entrada no es permitida
+        Legacy: Este modelo ya no se usa activamente.
+        Solo se mantiene numero_contrato como string en Lote.
         """
-        from django.utils import timezone
-        from django.conf import settings
-        
-        hoy = timezone.now().date()
-        MIN_DIAS_CADUCIDAD = getattr(settings, 'LOTE_MIN_DIAS_CADUCIDAD', 90)
-        
-        if not self.activo:
-            raise ValidationError({
-                'contrato': f'El contrato {self.numero_contrato} no está activo'
-            })
-        
-        if not (self.fecha_inicio <= hoy <= self.fecha_fin):
-            raise ValidationError({
-                'contrato': f'El contrato {self.numero_contrato} no está vigente. '
-                           f'Vigencia: {self.fecha_inicio} a {self.fecha_fin}'
-            })
-        
-        # Validar caducidad mínima si se especifica
-        if fecha_caducidad:
-            dias_caducidad = (fecha_caducidad - hoy).days
-            if dias_caducidad < MIN_DIAS_CADUCIDAD:
-                raise ValidationError({
-                    'fecha_caducidad': f'La caducidad ({dias_caducidad} días) es menor al '
-                                      f'mínimo requerido ({MIN_DIAS_CADUCIDAD} días) para este contrato'
-                })
-        
-        # Validar que la caducidad no exceda la vigencia del contrato
-        if fecha_caducidad and fecha_caducidad < self.fecha_fin:
-            logger.warning(
-                f"ISS-005: Lote con caducidad {fecha_caducidad} es menor a fin de contrato "
-                f"{self.fecha_fin}. El producto puede caducar durante la vigencia del contrato."
-            )
-        
-        # ISS-002 FIX (audit6): Validar monto máximo del contrato
-        if self.monto_maximo:
-            # Calcular monto total ya utilizado bajo este contrato
-            from django.db.models import Sum, F
-            monto_utilizado = Lote.objects.filter(
-                contrato=self
-            ).aggregate(
-                total=Sum(F('cantidad_inicial') * F('precio_compra'))
-            )['total'] or Decimal('0.00')
-            
-            # Estimar precio del producto si está en ContratoProducto
-            precio_unitario = None
-            try:
-                contrato_prod = self.productos.get(producto=producto)
-                precio_unitario = contrato_prod.precio_unitario
-            except ContratoProducto.DoesNotExist:
-                # Si no está en ContratoProducto, usar precio del producto si existe
-                precio_unitario = getattr(producto, 'precio_unitario', None)
-            
-            if precio_unitario:
-                monto_estimado = cantidad * precio_unitario
-                monto_nuevo_total = monto_utilizado + monto_estimado
-                
-                if monto_nuevo_total > self.monto_maximo:
-                    raise ValidationError({
-                        'contrato': f'La entrada excede el monto máximo del contrato. '
-                                   f'Monto utilizado: ${monto_utilizado:.2f}, '
-                                   f'Monto estimado entrada: ${monto_estimado:.2f}, '
-                                   f'Monto máximo: ${self.monto_maximo:.2f}'
-                    })
-        
-        # ISS-002 FIX (audit6): Validar cantidad máxima por producto (ContratoProducto)
-        try:
-            contrato_producto = self.productos.get(producto=producto)
-            cantidad_utilizada = contrato_producto.get_cantidad_utilizada()
-            cantidad_disponible = contrato_producto.get_cantidad_disponible()
-            
-            if cantidad > cantidad_disponible:
-                raise ValidationError({
-                    'cantidad': f'Excede la cantidad máxima para {producto.clave} en este contrato. '
-                               f'Máxima: {contrato_producto.cantidad_maxima}, '
-                               f'Utilizada: {cantidad_utilizada}, '
-                               f'Disponible: {cantidad_disponible}, '
-                               f'Solicitada: {cantidad}'
-                })
-        except ContratoProducto.DoesNotExist:
-            # Si no hay ContratoProducto definido, no hay límite por producto
-            pass
+        pass
 
 
 class ContratoProducto(models.Model):
@@ -935,24 +830,24 @@ class ContratoProducto(models.Model):
     
     class Meta:
         db_table = 'contratos_productos'
-        unique_together = ['contrato', 'producto']
-        verbose_name = 'Producto en Contrato'
-        verbose_name_plural = 'Productos en Contrato'
+        managed = False  # Tabla no gestionada - modelo legacy no usado
+        verbose_name = 'Producto en Contrato (Legacy)'
+        verbose_name_plural = 'Productos en Contrato (Legacy)'
     
     def __str__(self):
-        return f"{self.contrato.numero_contrato} - {self.producto.clave}: máx {self.cantidad_maxima}"
+        return f"ContratoProducto #{self.pk}"
     
     def get_cantidad_utilizada(self):
-        """Retorna la cantidad ya ingresada de este producto bajo este contrato"""
-        return self.contrato.get_cantidad_utilizada(producto=self.producto)
+        """Legacy - retorna 0"""
+        return 0
     
     def get_cantidad_disponible(self):
-        """Retorna la cantidad restante disponible para ingresar"""
-        return max(0, self.cantidad_maxima - self.get_cantidad_utilizada())
+        """Legacy - retorna cantidad_maxima"""
+        return self.cantidad_maxima
     
     def puede_ingresar(self, cantidad):
-        """Verifica si se puede ingresar la cantidad especificada"""
-        return cantidad <= self.get_cantidad_disponible()
+        """Legacy - siempre True"""
+        return True
 
 
 class Lote(models.Model):
@@ -1014,21 +909,12 @@ class Lote(models.Model):
     proveedor = models.CharField(max_length=200, blank=True)
     factura = models.CharField(max_length=100, blank=True)
     
-    # CAMPOS DE TRAZABILIDAD DE CONTRATOS
+    # CAMPO DE TRAZABILIDAD DE CONTRATOS (string, no FK)
     numero_contrato = models.CharField(
         max_length=100,
         blank=True,
         db_index=True,
-        help_text="Número de contrato de adquisición para trazabilidad (legacy)"
-    )
-    # ISS-005 FIX (audit5): Referencia al modelo Contrato para validación completa
-    contrato = models.ForeignKey(
-        'Contrato',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='lotes',
-        help_text="Contrato de adquisición (nuevo modelo con límites y vigencia)"
+        help_text="Número de contrato de adquisición para trazabilidad"
     )
     marca = models.CharField(
         max_length=150,
@@ -2102,11 +1988,7 @@ class DetalleSurtido(models.Model):
 
     class Meta:
         db_table = 'detalle_surtidos'
-        ordering = ['-fecha_surtido']
-        indexes = [
-            models.Index(fields=['detalle_requisicion', 'lote']),
-            models.Index(fields=['lote', '-fecha_surtido']),
-        ]
+        managed = False  # Tabla no gestionada - modelo legacy no usado
         verbose_name = 'Detalle de Surtido'
         verbose_name_plural = 'Detalles de Surtido'
 
@@ -2163,23 +2045,15 @@ class DetalleRecepcion(models.Model):
 
     class Meta:
         db_table = 'detalle_recepciones'
-        ordering = ['-fecha_recepcion']
-        indexes = [
-            models.Index(fields=['detalle_requisicion', 'lote_centro']),
-            models.Index(fields=['lote_centro', '-fecha_recepcion']),
-            models.Index(fields=['tiene_discrepancia']),
-        ]
-        verbose_name = 'Detalle de Recepción'
-        verbose_name_plural = 'Detalles de Recepción'
+        managed = False  # Tabla no gestionada - modelo legacy no usado
+        verbose_name = 'Detalle de Recepción (Legacy)'
+        verbose_name_plural = 'Detalles de Recepción (Legacy)'
 
     def __str__(self):
-        return f"Recepción {self.cantidad_recibida} de {self.lote_centro.numero_lote} para detalle {self.detalle_requisicion_id}"
+        return f"DetalleRecepcion #{self.pk}"
     
     def clean(self):
-        super().clean()
-        # Detectar discrepancia automáticamente
-        if self.cantidad_esperada > 0:
-            self.tiene_discrepancia = self.cantidad_recibida != self.cantidad_esperada
+        pass
 
 
 class Movimiento(models.Model):
@@ -3751,14 +3625,8 @@ class AuditLog(models.Model):
     
     class Meta:
         db_table = 'audit_logs'
-        ordering = ['-timestamp']
-        indexes = [
-            models.Index(fields=['timestamp', 'action'], name='idx_audit_timestamp_action'),
-            models.Index(fields=['usuario_id', 'timestamp'], name='idx_audit_usuario_timestamp'),
-            models.Index(fields=['modelo', 'objeto_id'], name='idx_audit_modelo_objeto'),
-            models.Index(fields=['severity', 'timestamp'], name='idx_audit_severity'),
-        ]
+        managed = False  # Tabla no gestionada - usar AuditoriaLog en su lugar
     
     def __str__(self):
-        return f"[{self.timestamp}] {self.action} {self.modelo}#{self.objeto_id}"
+        return f"AuditLog #{self.pk}"
 

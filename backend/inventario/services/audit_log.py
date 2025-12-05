@@ -241,26 +241,27 @@ class AuditLogger:
         logger.log(level, message, extra={'audit_data': log_data})
     
     def _log_to_db(self, entry: AuditEntry):
-        """Log a base de datos."""
+        """Log a base de datos usando AuditoriaLog."""
         try:
-            from core.models import AuditLog
+            from core.models import AuditoriaLog
             
-            AuditLog.objects.create(
-                timestamp=entry.timestamp,
-                action=entry.action.value,
-                severity=entry.severity.value,
+            # Mapear campos al modelo AuditoriaLog existente
+            AuditoriaLog.objects.create(
                 usuario_id=entry.usuario_id,
+                accion=f"{entry.action.value}:{entry.severity.value}",
                 modelo=entry.modelo,
                 objeto_id=entry.objeto_id,
                 objeto_repr=entry.objeto_repr,
-                descripcion=entry.descripcion,
-                datos_anteriores=entry.datos_anteriores,
-                datos_nuevos=entry.datos_nuevos,
+                cambios={
+                    'descripcion': entry.descripcion,
+                    'datos_anteriores': entry.datos_anteriores,
+                    'datos_nuevos': entry.datos_nuevos,
+                    'metadata': entry.metadata,
+                    'duracion_ms': entry.duracion_ms,
+                    'request_id': entry.request_id,
+                },
                 ip_address=entry.ip_address,
-                user_agent=entry.user_agent,
-                request_id=entry.request_id,
-                duracion_ms=entry.duracion_ms,
-                metadata=entry.metadata
+                user_agent=entry.user_agent or '',
             )
         except Exception as e:
             # No fallar por errores de auditoría

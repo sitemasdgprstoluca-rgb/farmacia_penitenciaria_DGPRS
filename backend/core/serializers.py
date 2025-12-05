@@ -83,8 +83,8 @@ PERMISOS_POR_ROL = {
         'verRequisiciones': True,
         'verCentros': False,
         'verUsuarios': False,
-        'verReportes': False,  # Centro NO debe ver Reportes - solo admin/farmacia
-        'verTrazabilidad': False,  # Centro NO debe ver Trazabilidad
+        'verReportes': True,  # Centro puede ver reportes de SU propio centro
+        'verTrazabilidad': True,  # Centro puede ver trazabilidad de SUS requisiciones
         'verAuditoria': False,
         'verNotificaciones': True,
         'verPerfil': True,
@@ -117,7 +117,7 @@ PERMISOS_POR_ROL = {
         'verCentros': True,
         'verUsuarios': True,
         'verReportes': True,
-        'verTrazabilidad': False,  # Restringido: datos sensibles
+        'verTrazabilidad': True,  # Vista puede ver trazabilidad (solo lectura)
         'verAuditoria': False,  # Restringido: datos sensibles
         'verNotificaciones': True,
         'verPerfil': True,
@@ -647,8 +647,8 @@ class LoteSerializer(serializers.ModelSerializer):
             'id', 'producto', 'producto_clave', 'producto_descripcion', 'producto_unidad',
             'numero_lote', 'fecha_caducidad', 'cantidad_inicial', 'cantidad_actual', 'stock_actual',
             'estado', 'precio_compra', 'proveedor', 'factura', 'fecha_entrada', 
-            # Campos de trazabilidad de contratos
-            'numero_contrato', 'contrato', 'marca',
+            # Campo de trazabilidad de contrato (string, no FK)
+            'numero_contrato', 'marca',
             'observaciones', 'dias_para_caducar', 'porcentaje_consumido', 
             'alerta_caducidad', 'esta_caducado', 'estado_visual',
             # Campos de ubicación y vinculación
@@ -804,24 +804,6 @@ class LoteSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     'numero_lote': f'Ya existe el lote {numero_lote} para este producto en {ubicacion}'
                 })
-        
-        # ISS-003 FIX: Validar límites de contrato al crear lotes
-        # Solo validar en creación (no en edición) y si hay contrato asociado
-        if not self.instance:  # Solo en creación
-            contrato = data.get('contrato')
-            if contrato and producto:
-                cantidad = data.get('cantidad_inicial', 0)
-                fecha_caducidad = data.get('fecha_caducidad')
-                try:
-                    # Invocar validación del modelo Contrato
-                    contrato.validar_entrada_lote(
-                        producto=producto,
-                        cantidad=cantidad,
-                        fecha_caducidad=fecha_caducidad
-                    )
-                except DjangoValidationError as e:
-                    # Convertir ValidationError de Django a serializers.ValidationError
-                    raise serializers.ValidationError(e.message_dict)
         
         return data
 

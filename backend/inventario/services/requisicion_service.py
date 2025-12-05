@@ -511,7 +511,10 @@ class RequisicionService:
     
     def _registrar_detalle_surtido(self, detalle, lote, cantidad, movimiento):
         """
-        ISS-002 FIX: Registra trazabilidad detalle-lote en tabla intermedia.
+        Registra trazabilidad de surtido.
+        
+        La trazabilidad se mantiene a través del Movimiento que ya
+        tiene referencia al lote y la requisición.
         
         Args:
             detalle: DetalleRequisicion
@@ -520,24 +523,20 @@ class RequisicionService:
             movimiento: Movimiento de salida asociado
             
         Returns:
-            DetalleSurtido: Registro creado
+            Movimiento: El movimiento de referencia (ya creado)
         """
-        from core.models import DetalleSurtido
-        
-        detalle_surtido = DetalleSurtido.objects.create(
-            detalle_requisicion=detalle,
-            lote=lote,
-            cantidad=cantidad,
-            movimiento=movimiento,
-            usuario=self.usuario if self.usuario.is_authenticated else None
-        )
+        # La trazabilidad se registra en el movimiento que ya tiene:
+        # - lote_id: El lote del que se surtió
+        # - requisicion_id: La requisición asociada
+        # - cantidad: Lo que se surtió
+        # - observaciones: Detalles adicionales
         
         logger.debug(
-            f"ISS-002: Registrado surtido de {cantidad} unidades del lote {lote.numero_lote} "
+            f"Surtido registrado: {cantidad} unidades del lote {lote.numero_lote} "
             f"para detalle {detalle.pk} de requisición {self.requisicion.folio}"
         )
         
-        return detalle_surtido
+        return movimiento
     
     def _obtener_o_crear_lote_destino(self, lote_origen, centro_destino, cantidad):
         """
