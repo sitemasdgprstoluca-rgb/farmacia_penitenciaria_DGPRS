@@ -1090,12 +1090,12 @@ class ImportacionLogSerializer(serializers.ModelSerializer):
 
 class UserMeSerializer(serializers.ModelSerializer):
     """Serializer especializado para /usuarios/me/ (lectura/edición)."""
-    centro_nombre = serializers.CharField(source='centro.nombre', read_only=True)
+    centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, default='')
     grupos = serializers.SerializerMethodField()
     extra_permisos = serializers.SerializerMethodField()
     permisos = serializers.SerializerMethodField()
-    telefono = serializers.CharField(source='profile.telefono', allow_blank=True, required=False)
-    cargo = serializers.CharField(source='profile.cargo', allow_blank=True, required=False)
+    telefono = serializers.SerializerMethodField()
+    cargo = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -1107,6 +1107,22 @@ class UserMeSerializer(serializers.ModelSerializer):
             'is_superuser', 'is_staff',  # Importante para el frontend
         ]
         read_only_fields = ['username', 'rol', 'centro', 'is_superuser', 'is_staff']
+
+    def get_telefono(self, obj):
+        """Obtener teléfono del perfil si existe."""
+        try:
+            profile = getattr(obj, 'profile', None)
+            return profile.telefono if profile else ''
+        except Exception:
+            return ''
+
+    def get_cargo(self, obj):
+        """Obtener cargo del perfil si existe."""
+        try:
+            profile = getattr(obj, 'profile', None)
+            return profile.cargo if profile else ''
+        except Exception:
+            return ''
 
     def get_grupos(self, obj):
         return [g.name for g in obj.groups.all()]
@@ -1125,10 +1141,13 @@ class UserMeSerializer(serializers.ModelSerializer):
         instance.save()
 
         if profile_data:
-            profile, _ = UserProfile.objects.get_or_create(user=instance)
-            for attr, value in profile_data.items():
-                setattr(profile, attr, value)
-            profile.save()
+            try:
+                profile, _ = UserProfile.objects.get_or_create(user=instance)
+                for attr, value in profile_data.items():
+                    setattr(profile, attr, value)
+                profile.save()
+            except Exception:
+                pass  # Si la tabla no existe, ignorar
 
         return instance
 
