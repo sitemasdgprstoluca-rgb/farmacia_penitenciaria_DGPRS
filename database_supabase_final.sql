@@ -3,6 +3,123 @@
 -- Ejecutar en Supabase SQL Editor para corregir la tabla django_migrations
 -- ==========================================================================
 
+-- ========== PASO 0: Añadir columnas faltantes a la tabla usuarios ==========
+-- Estas columnas son requeridas por el modelo User personalizado de Django
+
+-- Añadir columna 'rol' si no existe
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'rol') THEN
+        ALTER TABLE usuarios ADD COLUMN rol VARCHAR(20) DEFAULT 'usuario_normal' NOT NULL;
+    END IF;
+END $$;
+
+-- Añadir columna 'centro_id' (FK) si no existe
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'centro_id') THEN
+        ALTER TABLE usuarios ADD COLUMN centro_id INTEGER NULL;
+    END IF;
+END $$;
+
+-- Añadir columna 'adscripcion' si no existe
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'adscripcion') THEN
+        ALTER TABLE usuarios ADD COLUMN adscripcion VARCHAR(200) DEFAULT '' NOT NULL;
+    END IF;
+END $$;
+
+-- Añadir columna 'activo' si no existe
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'activo') THEN
+        ALTER TABLE usuarios ADD COLUMN activo BOOLEAN DEFAULT TRUE NOT NULL;
+    END IF;
+END $$;
+
+-- Añadir permisos personalizados por módulo
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'perm_dashboard') THEN
+        ALTER TABLE usuarios ADD COLUMN perm_dashboard BOOLEAN NULL;
+    END IF;
+END $$;
+
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'perm_productos') THEN
+        ALTER TABLE usuarios ADD COLUMN perm_productos BOOLEAN NULL;
+    END IF;
+END $$;
+
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'perm_lotes') THEN
+        ALTER TABLE usuarios ADD COLUMN perm_lotes BOOLEAN NULL;
+    END IF;
+END $$;
+
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'perm_requisiciones') THEN
+        ALTER TABLE usuarios ADD COLUMN perm_requisiciones BOOLEAN NULL;
+    END IF;
+END $$;
+
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'perm_centros') THEN
+        ALTER TABLE usuarios ADD COLUMN perm_centros BOOLEAN NULL;
+    END IF;
+END $$;
+
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'perm_usuarios') THEN
+        ALTER TABLE usuarios ADD COLUMN perm_usuarios BOOLEAN NULL;
+    END IF;
+END $$;
+
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'perm_reportes') THEN
+        ALTER TABLE usuarios ADD COLUMN perm_reportes BOOLEAN NULL;
+    END IF;
+END $$;
+
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'perm_trazabilidad') THEN
+        ALTER TABLE usuarios ADD COLUMN perm_trazabilidad BOOLEAN NULL;
+    END IF;
+END $$;
+
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'perm_auditoria') THEN
+        ALTER TABLE usuarios ADD COLUMN perm_auditoria BOOLEAN NULL;
+    END IF;
+END $$;
+
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'perm_notificaciones') THEN
+        ALTER TABLE usuarios ADD COLUMN perm_notificaciones BOOLEAN NULL;
+    END IF;
+END $$;
+
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'perm_movimientos') THEN
+        ALTER TABLE usuarios ADD COLUMN perm_movimientos BOOLEAN NULL;
+    END IF;
+END $$;
+
+-- Crear índices para la tabla usuarios si no existen
+CREATE INDEX IF NOT EXISTS idx_usuarios_rol_activo ON usuarios(rol, activo);
+CREATE INDEX IF NOT EXISTS idx_usuarios_centro_activo ON usuarios(centro_id, activo);
+
 -- ========== PASO 1: Eliminar TODAS las migraciones existentes ==========
 DELETE FROM django_migrations;
 
