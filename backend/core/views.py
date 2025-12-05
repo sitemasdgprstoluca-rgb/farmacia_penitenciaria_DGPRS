@@ -1046,8 +1046,8 @@ class ImportacionLogViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = StandardResultsSetPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['modelo', 'usuario__username', 'estado']
-    ordering_fields = ['fecha_creacion']
-    ordering = ['-fecha_creacion']
+    ordering_fields = ['fecha_inicio']
+    ordering = ['-fecha_inicio']
 
 
 class NotificacionViewSet(
@@ -1077,8 +1077,8 @@ class NotificacionViewSet(
     permission_classes = [IsAuthenticated, CanViewNotifications]
     pagination_class = StandardResultsSetPagination
     filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['fecha_creacion']
-    ordering = ['-fecha_creacion']
+    ordering_fields = ['created_at']
+    ordering = ['-created_at']
 
     def get_queryset(self):
         queryset = Notificacion.objects.filter(usuario=self.request.user)
@@ -1094,9 +1094,9 @@ class NotificacionViewSet(
         fecha_hasta = self.request.query_params.get('hasta')
         try:
             if fecha_desde:
-                queryset = queryset.filter(fecha_creacion__date__gte=fecha_desde)
+                queryset = queryset.filter(created_at__date__gte=fecha_desde)
             if fecha_hasta:
-                queryset = queryset.filter(fecha_creacion__date__lte=fecha_hasta)
+                queryset = queryset.filter(created_at__date__lte=fecha_hasta)
         except Exception:
             pass
 
