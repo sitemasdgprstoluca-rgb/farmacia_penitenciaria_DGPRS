@@ -107,17 +107,17 @@ const PERMISOS_POR_ROL = {
   },
   CENTRO: {
     verDashboard: true,
-    verProductos: false,
-    verLotes: false,
+    verProductos: true,  // ISS-FIX: Centro DEBE ver productos para crear requisiciones (solo lectura)
+    verLotes: true,  // ISS-FIX: Centro DEBE ver lotes para seleccionar en requisiciones (solo lectura)
     verRequisiciones: true,
     verCentros: false,
     verUsuarios: false,
     verReportes: false,  // Centro NO debe ver Reportes - solo admin/farmacia
-    verTrazabilidad: false,
+    verTrazabilidad: false,  // Centro NO debe ver Trazabilidad
     verAuditoria: false,
     verNotificaciones: true,
     verPerfil: true,
-    verMovimientos: false,
+    verMovimientos: true,  // ISS-FIX: Centro puede ver movimientos de SU centro
     esSuperusuario: false,
     configurarTema: false, // Centro no puede personalizar tema
     // Permisos granulares de requisiciones - Centro solo crea y envía
@@ -133,16 +133,16 @@ const PERMISOS_POR_ROL = {
     descargarHojaRecoleccion: true,  // Puede descargar para recoger
     // Permisos de gestión de usuarios
     gestionUsuarios: false,
-    // Permisos granulares de lotes - Centro no tiene acceso
+    // Permisos granulares de lotes - Centro NO puede crear/editar (solo ver)
     crearLote: false,
     editarLote: false,
     eliminarLote: false,
     exportarLotes: false,
     importarLotes: false,
-    // Permisos granulares de movimientos - Centro no tiene acceso
+    // Permisos granulares de movimientos - Centro solo ver
     crearMovimiento: false,
     exportarMovimientos: false,
-    // Permisos granulares de productos - Centro no tiene acceso
+    // Permisos granulares de productos - Centro NO puede crear/editar (solo ver)
     crearProducto: false,
     editarProducto: false,
     eliminarProducto: false,

@@ -47,6 +47,7 @@ PERMISOS_POR_ROL = {
         'rechazarRequisicion': True,
         'surtirRequisicion': True,
         'cancelarRequisicion': True,
+        'confirmarRecepcion': True,  # Admin puede confirmar recepción
         'descargarHojaRecoleccion': True,
     },
     'FARMACIA': {
@@ -72,22 +73,30 @@ PERMISOS_POR_ROL = {
         'rechazarRequisicion': True,
         'surtirRequisicion': True,
         'cancelarRequisicion': True,
+        'confirmarRecepcion': True,  # Farmacia puede confirmar recepción
         'descargarHojaRecoleccion': True,
     },
     'CENTRO': {
         'verDashboard': True,
-        'verProductos': False,
-        'verLotes': False,
+        'verProductos': True,  # ISS-FIX: Centro DEBE poder ver productos para crear requisiciones (solo lectura)
+        'verLotes': True,  # ISS-FIX: Centro DEBE poder ver lotes para seleccionar en requisiciones (solo lectura)
         'verRequisiciones': True,
         'verCentros': False,
         'verUsuarios': False,
         'verReportes': False,  # Centro NO debe ver Reportes - solo admin/farmacia
-        'verTrazabilidad': False,
+        'verTrazabilidad': False,  # Centro NO debe ver Trazabilidad
         'verAuditoria': False,
         'verNotificaciones': True,
         'verPerfil': True,
-        'verMovimientos': False,
+        'verMovimientos': True,  # ISS-FIX: Centro puede ver movimientos de SU centro
         'configurarTema': False,  # Centro no puede personalizar tema
+        # Permisos granulares - Centro NO puede crear/editar productos ni lotes
+        'crearProducto': False,
+        'editarProducto': False,
+        'eliminarProducto': False,
+        'crearLote': False,
+        'editarLote': False,
+        'eliminarLote': False,
         # Permisos granulares de requisiciones - Centro solo crea y envía
         'crearRequisicion': True,
         'editarRequisicion': True,  # Solo sus propios borradores
@@ -97,6 +106,7 @@ PERMISOS_POR_ROL = {
         'rechazarRequisicion': False,  # No puede rechazar
         'surtirRequisicion': False,  # No puede surtir
         'cancelarRequisicion': True,  # Puede cancelar las suyas
+        'confirmarRecepcion': True,  # ISS-FIX: Centro puede confirmar recepción de SUS requisiciones
         'descargarHojaRecoleccion': True,  # Puede descargar para recoger
     },
     'VISTA': {
