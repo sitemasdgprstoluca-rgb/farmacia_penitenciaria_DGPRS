@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.db.models import Sum
 from django.utils import timezone
+from django.core.exceptions import ValidationError as DjangoValidationError
 from .models import User, Centro, Producto, Lote, Requisicion, DetalleRequisicion, Movimiento, AuditoriaLog, ImportacionLog, Notificacion, UserProfile, ConfiguracionSistema, HojaRecoleccion, DetalleHojaRecoleccion
 from .constants import (
     UNIDADES_MEDIDA,
@@ -625,7 +626,7 @@ class LoteSerializer(serializers.ModelSerializer):
             'numero_lote', 'fecha_caducidad', 'cantidad_inicial', 'cantidad_actual', 'stock_actual',
             'estado', 'precio_compra', 'proveedor', 'factura', 'fecha_entrada', 
             # Campos de trazabilidad de contratos
-            'numero_contrato', 'marca',
+            'numero_contrato', 'contrato', 'marca',
             'observaciones', 'dias_para_caducar', 'porcentaje_consumido', 
             'alerta_caducidad', 'esta_caducado', 'estado_visual',
             # Campos de ubicación y vinculación
@@ -781,6 +782,24 @@ class LoteSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     'numero_lote': f'Ya existe el lote {numero_lote} para este producto en {ubicacion}'
                 })
+        
+        # ISS-003 FIX: Validar límites de contrato al crear lotes
+        # Solo validar en creación (no en edición) y si hay contrato asociado
+        if not self.instance:  # Solo en creación
+            contrato = data.get('contrato')
+            if contrato and producto:
+                cantidad = data.get('cantidad_inicial', 0)
+                fecha_caducidad = data.get('fecha_caducidad')
+                try:
+                    # Invocar validación del modelo Contrato
+                    contrato.validar_entrada_lote(
+                        producto=producto,
+                        cantidad=cantidad,
+                        fecha_caducidad=fecha_caducidad
+                    )
+                except DjangoValidationError as e:
+                    # Convertir ValidationError de Django a serializers.ValidationError
+                    raise serializers.ValidationError(e.message_dict)
         
         return data
 
