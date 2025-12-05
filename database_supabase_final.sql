@@ -120,6 +120,24 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_usuarios_rol_activo ON usuarios(rol, activo);
 CREATE INDEX IF NOT EXISTS idx_usuarios_centro_activo ON usuarios(centro_id, activo);
 
+-- ========== PASO 0.5: Crear usuario admin si no existe ==========
+-- Esto es necesario para el deploy inicial en Render
+INSERT INTO usuarios (
+    password, last_login, is_superuser, username, first_name, last_name, 
+    email, is_staff, is_active, date_joined, 
+    rol, centro_id, adscripcion, activo,
+    perm_dashboard, perm_productos, perm_lotes, perm_requisiciones,
+    perm_centros, perm_usuarios, perm_reportes, perm_trazabilidad,
+    perm_auditoria, perm_notificaciones, perm_movimientos
+)
+SELECT 
+    'pbkdf2_sha256$870000$placeholder$placeholder=', -- Password temporal (se cambiará en el build)
+    NULL, TRUE, 'admin', 'Administrador', 'Sistema',
+    'admin@farmacia.gob.mx', TRUE, TRUE, NOW(),
+    'admin_sistema', NULL, '', TRUE,
+    TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE
+WHERE NOT EXISTS (SELECT 1 FROM usuarios WHERE username = 'admin');
+
 -- ========== PASO 1: Eliminar TODAS las migraciones existentes ==========
 DELETE FROM django_migrations;
 
