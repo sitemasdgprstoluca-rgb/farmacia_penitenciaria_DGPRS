@@ -339,6 +339,10 @@ const DEFAULT_FORM = {
 
   activo: true,
 
+  imagen: null,
+
+  imagenPreview: null,
+
 };
 
 
@@ -807,6 +811,10 @@ const Productos = () => {
 
         activo: producto.activo,
 
+        imagen: null,
+
+        imagenPreview: producto.imagen_url || null,
+
       });
 
     } else {
@@ -951,24 +959,40 @@ const Productos = () => {
 
       // Preparar datos para enviar al backend
       const precioVal = parseFloat(formData.precio_unitario);
-      const dataToSend = {
-        clave: formData.clave,
-        descripcion: formData.descripcion,
-        unidad_medida: formData.unidad_medida,
-        precio_unitario: isNaN(precioVal) || precioVal < 0.01 ? 0.01 : precioVal,
-        stock_minimo: parseInt(formData.stock_minimo, 10) || 0,
-        activo: formData.activo,
-      };
+      
+      // Usar FormData si hay imagen, de lo contrario JSON normal
+      let dataToSend;
+      let hasImage = formData.imagen instanceof File;
+      
+      if (hasImage) {
+        dataToSend = new FormData();
+        dataToSend.append('clave', formData.clave);
+        dataToSend.append('descripcion', formData.descripcion);
+        dataToSend.append('unidad_medida', formData.unidad_medida);
+        dataToSend.append('precio_unitario', isNaN(precioVal) || precioVal < 0.01 ? 0.01 : precioVal);
+        dataToSend.append('stock_minimo', parseInt(formData.stock_minimo, 10) || 0);
+        dataToSend.append('activo', formData.activo);
+        dataToSend.append('imagen', formData.imagen);
+      } else {
+        dataToSend = {
+          clave: formData.clave,
+          descripcion: formData.descripcion,
+          unidad_medida: formData.unidad_medida,
+          precio_unitario: isNaN(precioVal) || precioVal < 0.01 ? 0.01 : precioVal,
+          stock_minimo: parseInt(formData.stock_minimo, 10) || 0,
+          activo: formData.activo,
+        };
+      }
 
       if (editingProduct) {
 
-        await productosAPI.update(editingProduct.id, dataToSend);
+        await productosAPI.update(editingProduct.id, dataToSend, hasImage);
 
         toast.success('Producto actualizado correctamente');
 
       } else {
 
-        await productosAPI.create(dataToSend);
+        await productosAPI.create(dataToSend, hasImage);
 
         toast.success('Producto creado correctamente');
 
@@ -2103,6 +2127,94 @@ const Productos = () => {
                   {formErrors.stock_minimo && <p className="text-xs text-red-600">{formErrors.stock_minimo}</p>}
 
                 </div>
+
+              </div>
+
+              {/* Campo de imagen del producto */}
+
+              <div>
+
+                <label className="text-xs font-semibold text-theme-primary-hover">Imagen del producto</label>
+
+                <div className="mt-1 flex items-center gap-4">
+
+                  {(formData.imagenPreview || formData.imagen) && (
+
+                    <div className="relative">
+
+                      <img
+
+                        src={formData.imagen ? URL.createObjectURL(formData.imagen) : formData.imagenPreview}
+
+                        alt="Preview"
+
+                        className="h-20 w-20 rounded-lg object-cover border border-gray-300"
+
+                      />
+
+                      <button
+
+                        type="button"
+
+                        onClick={() => setFormData({ ...formData, imagen: null, imagenPreview: null })}
+
+                        className="absolute -top-2 -right-2 rounded-full bg-red-500 text-white p-1 text-xs hover:bg-red-600"
+
+                      >
+
+                        ✕
+
+                      </button>
+
+                    </div>
+
+                  )}
+
+                  <label className="cursor-pointer flex items-center gap-2 rounded-lg border border-dashed border-gray-400 px-4 py-3 hover:border-theme-primary hover:bg-gray-50">
+
+                    <FaFileUpload className="text-gray-500" />
+
+                    <span className="text-sm text-gray-600">
+
+                      {formData.imagen ? 'Cambiar imagen' : 'Seleccionar imagen'}
+
+                    </span>
+
+                    <input
+
+                      type="file"
+
+                      accept="image/jpeg,image/png,image/webp"
+
+                      className="hidden"
+
+                      onChange={(e) => {
+
+                        const file = e.target.files?.[0];
+
+                        if (file) {
+
+                          if (file.size > 2 * 1024 * 1024) {
+
+                            toast.error('La imagen no puede exceder 2MB');
+
+                            return;
+
+                          }
+
+                          setFormData({ ...formData, imagen: file, imagenPreview: null });
+
+                        }
+
+                      }}
+
+                    />
+
+                  </label>
+
+                </div>
+
+                <p className="text-xs text-gray-500 mt-1">JPG, PNG o WebP. Máximo 2MB.</p>
 
               </div>
 

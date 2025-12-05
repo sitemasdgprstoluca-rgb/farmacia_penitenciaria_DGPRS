@@ -41,6 +41,25 @@ def validate_logo_size(value):
     validate_image_max_size(value, max_size_kb=500)
 
 
+def validate_image_size(value):
+    """Valida que la imagen no exceda 2MB"""
+    max_size = 2 * 1024 * 1024  # 2 MB
+    if value.size > max_size:
+        raise ValidationError(f'La imagen no puede exceder 2MB. Tamaño actual: {value.size/1024/1024:.1f}MB')
+
+
+def producto_imagen_path(instance, filename):
+    """Genera ruta para imágenes de productos"""
+    ext = filename.split('.')[-1]
+    return f'productos/{instance.clave}.{ext}'
+
+
+def requisicion_firma_path(instance, filename):
+    """Genera ruta para fotos de firma de requisiciones"""
+    ext = filename.split('.')[-1]
+    return f'requisiciones/firmas/{instance.folio}_{filename}'
+
+
 # ISS-005: Validador de archivos PDF
 def validate_pdf_file(value):
     """
@@ -344,6 +363,15 @@ class Producto(models.Model):
         null=True,
         blank=True,
         help_text="Código de barras del producto (opcional)"
+    )
+    
+    # Imagen del producto
+    imagen = models.ImageField(
+        upload_to=producto_imagen_path,
+        null=True,
+        blank=True,
+        validators=[validate_image_size],
+        help_text="Imagen del producto (JPG, PNG - máximo 2MB)"
     )
     
     # Campos de auditoría
@@ -1616,6 +1644,49 @@ class Requisicion(models.Model):
     observaciones_recepcion = models.TextField(
         blank=True,
         help_text="Observaciones al momento de recibir la requisición"
+    )
+    
+    # Fotos de firma para surtido y recepción
+    foto_firma_surtido = models.ImageField(
+        upload_to=requisicion_firma_path,
+        null=True,
+        blank=True,
+        validators=[validate_image_size],
+        help_text="Foto de la firma al momento de surtir la requisición (máximo 2MB)"
+    )
+    fecha_firma_surtido = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Fecha y hora en que se firmó el surtido"
+    )
+    usuario_firma_surtido = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='requisiciones_firmadas_surtido',
+        help_text="Usuario que firmó el surtido"
+    )
+    
+    foto_firma_recepcion = models.ImageField(
+        upload_to=requisicion_firma_path,
+        null=True,
+        blank=True,
+        validators=[validate_image_size],
+        help_text="Foto de la firma al momento de recibir la requisición (máximo 2MB)"
+    )
+    fecha_firma_recepcion = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Fecha y hora en que se firmó la recepción"
+    )
+    usuario_firma_recepcion = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='requisiciones_firmadas_recepcion',
+        help_text="Usuario que firmó la recepción"
     )
     
     created_at = models.DateTimeField(auto_now_add=True)

@@ -31,6 +31,8 @@ import {
   FaExclamationTriangle,
   FaFilter,
   FaChevronDown,
+  FaCamera,
+  FaFileUpload,
 } from 'react-icons/fa';
 import { COLORS } from '../constants/theme';
 
@@ -83,6 +85,7 @@ const Requisiciones = () => {
   // Modales de confirmación para acciones críticas
   const [confirmEnviar, setConfirmEnviar] = useState(null); // {id, folio}
   const [confirmSurtir, setConfirmSurtir] = useState(null); // {id, folio}
+  const [fotoFirmaSurtido, setFotoFirmaSurtido] = useState(null); // Foto para surtido
   const [inputRechazo, setInputRechazo] = useState(null); // {id, folio}
   const [inputCancelar, setInputCancelar] = useState(null); // {id, folio}
   
@@ -964,8 +967,17 @@ const Requisiciones = () => {
     setIsSubmitting(true);
     setActionLoading(id);
     setConfirmSurtir(null);
+    
     try {
-      await requisicionesAPI.surtir(id);
+      // Si hay foto de firma, enviarla como FormData
+      if (fotoFirmaSurtido) {
+        const formData = new FormData();
+        formData.append('foto_firma_surtido', fotoFirmaSurtido);
+        await requisicionesAPI.surtir(id, formData);
+      } else {
+        await requisicionesAPI.surtir(id);
+      }
+      setFotoFirmaSurtido(null);
       toast.success('Requisición surtida correctamente');
       cargarRequisiciones();
       cargarResumenEstados();
@@ -1946,17 +1958,90 @@ const Requisiciones = () => {
         tone="info"
       />
       
-      {/* Modal confirmación surtir */}
-      <ConfirmModal
-        open={!!confirmSurtir}
-        title="Surtir requisición"
-        message={`¿Confirma SURTIR la requisición ${confirmSurtir?.folio || confirmSurtir?.id}? ⚠️ Esta acción descontará el inventario de los lotes. Asegúrese de que el stock esté disponible.`}
-        confirmText="Surtir"
-        onCancel={() => setConfirmSurtir(null)}
-        onConfirm={ejecutarSurtir}
-        loading={isSubmitting}
-        tone="danger"
-      />
+      {/* Modal confirmación surtir con foto de firma opcional */}
+      {confirmSurtir && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <div className="rounded-t-2xl px-6 py-4 text-white bg-theme-gradient">
+              <h2 className="text-xl font-bold">Surtir requisición</h2>
+            </div>
+            <div className="px-6 py-4 space-y-4">
+              <p className="text-gray-700">
+                ¿Confirma SURTIR la requisición <strong>{confirmSurtir?.folio || confirmSurtir?.id}</strong>?
+              </p>
+              <p className="text-sm text-yellow-700 bg-yellow-50 p-2 rounded-lg flex items-center gap-2">
+                <FaExclamationTriangle /> Esta acción descontará el inventario de los lotes.
+              </p>
+              
+              {/* Campo para foto de firma (opcional) */}
+              <div className="border rounded-lg p-3 bg-gray-50">
+                <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <FaCamera /> Foto de firma (opcional)
+                </label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Puede adjuntar una foto de la firma de quien entrega
+                </p>
+                <div className="flex items-center gap-3">
+                  {fotoFirmaSurtido && (
+                    <div className="relative">
+                      <img
+                        src={URL.createObjectURL(fotoFirmaSurtido)}
+                        alt="Firma"
+                        className="h-16 w-16 rounded-lg object-cover border"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setFotoFirmaSurtido(null)}
+                        className="absolute -top-2 -right-2 rounded-full bg-red-500 text-white p-1 text-xs hover:bg-red-600"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+                  <label className="cursor-pointer flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 hover:bg-gray-100">
+                    <FaFileUpload className="text-gray-500" />
+                    <span className="text-sm text-gray-600">
+                      {fotoFirmaSurtido ? 'Cambiar' : 'Seleccionar'}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          if (file.size > 2 * 1024 * 1024) {
+                            toast.error('La imagen no puede exceder 2MB');
+                            return;
+                          }
+                          setFotoFirmaSurtido(file);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4 border-t">
+              <button
+                onClick={() => { setConfirmSurtir(null); setFotoFirmaSurtido(null); }}
+                disabled={isSubmitting}
+                className="rounded-lg border px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={ejecutarSurtir}
+                disabled={isSubmitting}
+                className="rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50 flex items-center gap-2 bg-theme-gradient"
+              >
+                {isSubmitting && <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />}
+                {isSubmitting ? 'Surtiendo...' : 'Confirmar Surtido'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Modal input rechazo */}
       <InputModal

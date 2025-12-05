@@ -3095,6 +3095,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         LÓGICA DE STOCK:
         - Primero usa lotes de farmacia central (centro=NULL) → crea entrada en centro destino
         - Si no hay en farmacia central, usa lotes del centro solicitante (salida interna)
+        
+        NUEVO: Soporta foto de firma de surtido vía multipart/form-data
         """
         from inventario.services import (
             RequisicionService,
@@ -3116,9 +3118,19 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             # Refrescar requisición para serializer
             requisicion.refresh_from_db()
             
+            # ISS-NEW: Manejar foto de firma de surtido si se incluye
+            foto_firma = request.FILES.get('foto_firma_surtido') or request.FILES.get('foto_firma')
+            if foto_firma:
+                # Validar tamaño (max 2MB)
+                if foto_firma.size <= 2 * 1024 * 1024:
+                    requisicion.foto_firma_surtido = foto_firma
+                    requisicion.fecha_firma_surtido = timezone.now()
+                    requisicion.usuario_firma_surtido = request.user
+                    requisicion.save(update_fields=['foto_firma_surtido', 'fecha_firma_surtido', 'usuario_firma_surtido'])
+            
             return Response({
                 'mensaje': 'Requisición surtida exitosamente',
-                'requisicion': RequisicionSerializer(requisicion).data,
+                'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data,
                 'detalles_surtido': resultado
             })
             
@@ -3204,14 +3216,122 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         requisicion.usuario_recibe = user
         requisicion.lugar_entrega = lugar_entrega
         requisicion.observaciones_recepcion = observaciones_recepcion
-        requisicion.save(update_fields=[
+        
+        # ISS-NEW: Manejar foto de firma de recepción si se incluye
+        foto_firma = request.FILES.get('foto_firma_recepcion') or request.FILES.get('foto_firma')
+        if foto_firma:
+            requisicion.foto_firma_recepcion = foto_firma
+            requisicion.fecha_firma_recepcion = timezone.now()
+            requisicion.usuario_firma_recepcion = user
+        
+        update_fields = [
             'estado', 'fecha_recibido', 'usuario_recibe', 
             'lugar_entrega', 'observaciones_recepcion'
-        ])
+        ]
+        if foto_firma:
+            update_fields.extend(['foto_firma_recepcion', 'fecha_firma_recepcion', 'usuario_firma_recepcion'])
+        
+        requisicion.save(update_fields=update_fields)
         
         return Response({
             'mensaje': 'Requisici�n marcada como recibida',
-            'requisicion': RequisicionSerializer(requisicion).data
+            'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
+        })
+
+    @action(detail=True, methods=['post'], url_path='subir-firma-surtido')
+    def subir_firma_surtido(self, request, pk=None):
+        """
+        Sube la foto de firma de surtido para una requisición.
+        Solo disponible para requisiciones en estado 'surtida' o 'recibida'.
+        Solo usuarios de farmacia/admin pueden subir esta firma.
+        """
+        from django.utils import timezone
+        
+        requisicion = self.get_object()
+        estado_actual = (requisicion.estado or '').lower()
+        
+        if estado_actual not in ['surtida', 'recibida']:
+            return Response({
+                'error': 'Solo se puede subir firma de surtido para requisiciones surtidas o recibidas',
+                'estado_actual': requisicion.estado
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # PERMISOS: Solo farmacia/admin puede subir firma de surtido
+        user = request.user
+        if not user.is_superuser and not is_farmacia_or_admin(user):
+            return Response({
+                'error': 'Solo farmacia o administradores pueden subir la firma de surtido'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        foto_firma = request.FILES.get('foto_firma_surtido') or request.FILES.get('foto_firma')
+        if not foto_firma:
+            return Response({
+                'error': 'No se proporcionó la foto de firma'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validar tamaño (max 2MB)
+        if foto_firma.size > 2 * 1024 * 1024:
+            return Response({
+                'error': 'La imagen no puede exceder 2MB'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        requisicion.foto_firma_surtido = foto_firma
+        requisicion.fecha_firma_surtido = timezone.now()
+        requisicion.usuario_firma_surtido = user
+        requisicion.save(update_fields=['foto_firma_surtido', 'fecha_firma_surtido', 'usuario_firma_surtido'])
+        
+        return Response({
+            'mensaje': 'Firma de surtido subida correctamente',
+            'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
+        })
+
+    @action(detail=True, methods=['post'], url_path='subir-firma-recepcion')
+    def subir_firma_recepcion(self, request, pk=None):
+        """
+        Sube la foto de firma de recepción para una requisición.
+        Solo disponible para requisiciones en estado 'recibida'.
+        Solo usuarios del centro receptor pueden subir esta firma.
+        """
+        from django.utils import timezone
+        
+        requisicion = self.get_object()
+        estado_actual = (requisicion.estado or '').lower()
+        
+        if estado_actual != 'recibida':
+            return Response({
+                'error': 'Solo se puede subir firma de recepción para requisiciones recibidas',
+                'estado_actual': requisicion.estado
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # PERMISOS: Solo usuarios del centro receptor pueden subir firma de recepción
+        user = request.user
+        if not user.is_superuser:
+            centro_user = self._user_centro(user)
+            if not centro_user or requisicion.centro_id != centro_user.id:
+                return Response({
+                    'error': 'Solo el centro receptor puede subir la firma de recepción'
+                }, status=status.HTTP_403_FORBIDDEN)
+        
+        foto_firma = request.FILES.get('foto_firma_recepcion') or request.FILES.get('foto_firma')
+        if not foto_firma:
+            return Response({
+                'error': 'No se proporcionó la foto de firma'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validar tamaño (max 2MB)
+        if foto_firma.size > 2 * 1024 * 1024:
+            return Response({
+                'error': 'La imagen no puede exceder 2MB'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        requisicion.foto_firma_recepcion = foto_firma
+        requisicion.fecha_firma_recepcion = timezone.now()
+        requisicion.usuario_firma_recepcion = user
+        requisicion.save(update_fields=['foto_firma_recepcion', 'fecha_firma_recepcion', 'usuario_firma_recepcion'])
+        
+        return Response({
+            'mensaje': 'Firma de recepción subida correctamente',
+            'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
         })
 
     @action(detail=True, methods=['get'], url_path='hoja-recoleccion')

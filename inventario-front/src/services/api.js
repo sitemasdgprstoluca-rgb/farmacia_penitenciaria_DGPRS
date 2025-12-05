@@ -269,9 +269,18 @@ export const descargarArchivo = (blob, nombreArchivo) => {
 export const productosAPI = {
   getAll: (params) => apiClient.get('/productos/', { params }),
   getById: (id) => apiClient.get(`/productos/${id}/`),
-  create: (data) => apiClient.post('/productos/', data),
-  update: (id, data) => apiClient.put(`/productos/${id}/`, data),
-  patch: (id, data) => apiClient.patch(`/productos/${id}/`, data),
+  create: (data, isFormData = false) => {
+    const config = isFormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : {};
+    return apiClient.post('/productos/', data, config);
+  },
+  update: (id, data, isFormData = false) => {
+    const config = isFormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : {};
+    return apiClient.put(`/productos/${id}/`, data, config);
+  },
+  patch: (id, data, isFormData = false) => {
+    const config = isFormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : {};
+    return apiClient.patch(`/productos/${id}/`, data, config);
+  },
   delete: (id) => apiClient.delete(`/productos/${id}/`),
   toggleActivo: (id) => apiClient.post(`/productos/${id}/toggle-activo/`),
   nuevos: (dias = 7) => apiClient.get(`/productos/nuevos/?dias=${dias}`),
@@ -356,10 +365,34 @@ export const requisicionesAPI = {
   enviar: (id) => apiClient.post(`/requisiciones/${id}/enviar/`),
   autorizar: (id, data) => apiClient.post(`/requisiciones/${id}/autorizar/`, data),
   rechazar: (id, data) => apiClient.post(`/requisiciones/${id}/rechazar/`, data),
-  surtir: (id) => apiClient.post(`/requisiciones/${id}/surtir/`),
-  marcarRecibida: (id, data) => apiClient.post(`/requisiciones/${id}/marcar-recibida/`, data),
+  surtir: (id, formData = null) => {
+    // Soporta subir foto de firma al surtir
+    if (formData instanceof FormData) {
+      return apiClient.post(`/requisiciones/${id}/surtir/`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+    }
+    return apiClient.post(`/requisiciones/${id}/surtir/`);
+  },
+  marcarRecibida: (id, data) => {
+    // Soporta subir foto de firma al recibir
+    if (data instanceof FormData) {
+      return apiClient.post(`/requisiciones/${id}/marcar-recibida/`, data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+    }
+    return apiClient.post(`/requisiciones/${id}/marcar-recibida/`, data);
+  },
   cancelar: (id) => apiClient.post(`/requisiciones/${id}/cancelar/`),
   resumenEstados: (params = {}) => apiClient.get('/requisiciones/resumen_estados/', { params }),
+  
+  // Subir fotos de firma
+  subirFirmaSurtido: (id, formData) => apiClient.post(`/requisiciones/${id}/subir-firma-surtido/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  subirFirmaRecepcion: (id, formData) => apiClient.post(`/requisiciones/${id}/subir-firma-recepcion/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
   
   // Descarga de PDFs
   downloadPDFAceptacion: (id) => apiClient.get(`/requisiciones/${id}/hoja-recoleccion/`, {
