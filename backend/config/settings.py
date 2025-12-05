@@ -143,7 +143,9 @@ CSP_FRAME_ANCESTORS = config('CSP_FRAME_ANCESTORS', default="'none'")
 
 # Secure browser features
 SECURE_CONTENT_TYPE_NOSNIFF = True  # X-Content-Type-Options: nosniff
-SECURE_BROWSER_XSS_FILTER = True    # X-XSS-Protection (legacy pero útil)
+# ISS-034: SECURE_BROWSER_XSS_FILTER eliminado - es obsoleto y puede causar
+# vulnerabilidades XS-Leak. Los navegadores modernos lo ignoran.
+# La protección contra XSS debe manejarse con CSP (Content-Security-Policy).
 
 # INSTALLED APPS
 INSTALLED_APPS = [

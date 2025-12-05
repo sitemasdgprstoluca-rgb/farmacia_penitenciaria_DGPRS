@@ -111,10 +111,35 @@ const publicApiClient = axios.create({
 });
 
 let activityCallback = null;
-let lastForbiddenToast = { path: '', ts: 0 };
 let redirectingToLogin = false;
 let isRefreshing = false;
 let failedQueue = [];
+
+// ISS-011: Sistema de debounce para evitar toasts duplicados
+const toastDebounce = {
+  lastToasts: new Map(), // Map<message, timestamp>
+  debounceMs: 3000,      // Mínimo 3 segundos entre toasts iguales
+  
+  shouldShow(message) {
+    const now = Date.now();
+    const lastTime = this.lastToasts.get(message);
+    if (lastTime && (now - lastTime) < this.debounceMs) {
+      return false; // Toast duplicado, no mostrar
+    }
+    this.lastToasts.set(message, now);
+    // Limpiar entradas antiguas (>10 segundos)
+    for (const [msg, time] of this.lastToasts.entries()) {
+      if (now - time > 10000) this.lastToasts.delete(msg);
+    }
+    return true;
+  },
+  
+  error(message) {
+    if (this.shouldShow(message)) {
+      toast.error(message);
+    }
+  }
+};
 
 const processQueue = (error, token = null) => {
   failedQueue.forEach(prom => {
@@ -225,24 +250,21 @@ apiClient.interceptors.response.use(
           window.notificationInterval = null;
         }
         window.dispatchEvent(new Event('session-expired'));
-        toast.error('Sesion expirada. Inicia sesion nuevamente.');
+        toastDebounce.error('Sesión expirada. Inicia sesión nuevamente.');
         redirectToLogin();
         return Promise.reject(refreshError);
       }
     }
     
+    // ISS-011: Usar toastDebounce para evitar toasts duplicados
     if (status === 403) {
-      const shouldToast = currentPath !== lastForbiddenToast.path || (now - lastForbiddenToast.ts) > 4000;
-      if (shouldToast) {
-        toast.error('No tienes permisos para esta accion.');
-        lastForbiddenToast = { path: currentPath, ts: now };
-      }
+      toastDebounce.error('No tienes permisos para esta acción.');
     } else if (status >= 400 && status < 500) {
-      if (detail) toast.error(detail);
+      if (detail) toastDebounce.error(detail);
     } else if (!error.response) {
-      toast.error('Error al conectar con el servidor.');
+      toastDebounce.error('Error al conectar con el servidor.');
     } else if (status >= 500) {
-      toast.error('Error interno del servidor.');
+      toastDebounce.error('Error interno del servidor.');
     }
     return Promise.reject(error);
   }

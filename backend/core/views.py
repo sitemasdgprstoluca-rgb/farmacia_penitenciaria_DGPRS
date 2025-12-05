@@ -385,15 +385,14 @@ class UserViewSet(viewsets.ModelViewSet):
             )
             return Response({'error': 'Contraseña actual incorrecta'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Validaciones de complejidad (unificadas con cambiar_password)
-        if len(new_password) < 8:
-            return Response({'error': 'La nueva contraseña debe tener al menos 8 caracteres'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if not any(c.isupper() for c in new_password):
-            return Response({'error': 'La nueva contraseña debe tener al menos una mayúscula'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if not any(c.isdigit() for c in new_password):
-            return Response({'error': 'La nueva contraseña debe tener al menos un número'}, status=status.HTTP_400_BAD_REQUEST)
+        # ISS-022: Usar validadores de Django en lugar de reglas duplicadas
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        
+        try:
+            validate_password(new_password, user)
+        except DjangoValidationError as e:
+            return Response({'error': '; '.join(e.messages)}, status=status.HTTP_400_BAD_REQUEST)
 
         if old_password == new_password:
             return Response({'error': 'La nueva contraseña debe ser diferente a la anterior'}, status=status.HTTP_400_BAD_REQUEST)
@@ -828,8 +827,14 @@ class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):
     ordering_fields = ['timestamp']
     ordering = ['-timestamp']
     
+    # ISS-037: Límite máximo de registros para evitar slow queries
+    MAX_AUDIT_RECORDS = 10000
+    
     def get_queryset(self):
-        """Filtrado avanzado por parámetros de query"""
+        """Filtrado avanzado por parámetros de query.
+        
+        ISS-037: Se aplica un límite máximo para evitar escaneo de tabla completa.
+        """
         queryset = AuditoriaLog.objects.select_related('usuario').all()
         
         # Filtro por acción
@@ -861,7 +866,8 @@ class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):
         if fecha_fin:
             queryset = queryset.filter(timestamp__date__lte=fecha_fin)
         
-        return queryset
+        # ISS-037: Aplicar límite máximo para evitar slow queries en tablas grandes
+        return queryset[:self.MAX_AUDIT_RECORDS]
 
     @action(detail=False, methods=['get'])
     def exportar(self, request):

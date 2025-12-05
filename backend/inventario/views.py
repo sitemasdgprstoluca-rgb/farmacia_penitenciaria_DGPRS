@@ -818,69 +818,74 @@ class ProductoViewSet(viewsets.ModelViewSet):
             errores = []
             exitos = []
             
-            # Procesar cada fila (empezando desde la fila 2)
-            for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-                try:
-                    # Extraer valores (asegurarse de tener al menos 6 columnas)
-                    valores = list(row) + [None] * 6
-                    clave = valores[0]
-                    descripcion = valores[1]
-                    unidad_medida = valores[2]
-                    precio_unitario = valores[3]
-                    stock_minimo = valores[4]
-                    estado = valores[5]
-                    
-                    # Validar campos requeridos
-                    if not clave or not descripcion:
-                        errores.append({'fila': row_idx, 'error': 'Clave y descripcion son obligatorios'})
-                        continue
-                    
-                    # Validar unidad
-                    unidad_limpia = str(unidad_medida).strip().upper() if unidad_medida else 'PIEZA'
-                    if unidad_limpia not in dict(UNIDADES_MEDIDA):
-                        errores.append({'fila': row_idx, 'error': f'Unidad no valida: {unidad_limpia}'})
-                        continue
-
-                    # Validar precio y stock
+            # ISS-019: Envolver en transacción atómica para evitar estados parciales
+            # Si hay errores críticos, se hace rollback automático
+            with transaction.atomic():
+                # Procesar cada fila (empezando desde la fila 2)
+                for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                     try:
-                        precio_val = float(precio_unitario) if precio_unitario not in [None, ''] else 0.0
-                        if precio_val < 0:
-                            raise ValueError
-                    except Exception:
-                        errores.append({'fila': row_idx, 'error': 'Precio invalido'})
-                        continue
-
-                    try:
-                        stock_min = int(stock_minimo) if stock_minimo not in [None, ''] else 10
-                        if stock_min < 0:
-                            raise ValueError
-                    except Exception:
-                        errores.append({'fila': row_idx, 'error': 'Stock minimo invalido'})
-                        continue
-
-                    # Limpiar y preparar datos
-                    datos = {
-                        'descripcion': str(descripcion).strip(),
-                        'unidad_medida': unidad_limpia,
-                        'precio_unitario': precio_val,
-                        'stock_minimo': stock_min,
-                        'activo': str(estado).lower() in ['activo', 'sI', 'si', 'si', 'true', '1', 'yes'] if estado else True
-                    }
-                    
-                    # Crear o actualizar producto
-                    producto, created = Producto.objects.update_or_create(
-                        clave=str(clave).upper().strip(),
-                        defaults=datos
-                    )
-                    
-                    if created:
-                        creados += 1
-                    else:
-                        actualizados += 1
-                    exitos.append({'fila': row_idx, 'producto_id': producto.id, 'clave': producto.clave})
+                        # Extraer valores (asegurarse de tener al menos 6 columnas)
+                        valores = list(row) + [None] * 6
+                        clave = valores[0]
+                        descripcion = valores[1]
+                        unidad_medida = valores[2]
+                        precio_unitario = valores[3]
+                        stock_minimo = valores[4]
+                        estado = valores[5]
                         
-                except Exception as e:
-                    errores.append({'fila': row_idx, 'error': str(e)})
+                        # Validar campos requeridos
+                        if not clave or not descripcion:
+                            errores.append({'fila': row_idx, 'error': 'Clave y descripcion son obligatorios'})
+                            continue
+                        
+                        # Validar unidad
+                        unidad_limpia = str(unidad_medida).strip().upper() if unidad_medida else 'PIEZA'
+                        if unidad_limpia not in dict(UNIDADES_MEDIDA):
+                            errores.append({'fila': row_idx, 'error': f'Unidad no valida: {unidad_limpia}'})
+                            continue
+
+                        # Validar precio y stock
+                        try:
+                            precio_val = float(precio_unitario) if precio_unitario not in [None, ''] else 0.0
+                            if precio_val < 0:
+                                raise ValueError
+                        except Exception:
+                            errores.append({'fila': row_idx, 'error': 'Precio invalido'})
+                            continue
+
+                        try:
+                            stock_min = int(stock_minimo) if stock_minimo not in [None, ''] else 10
+                            if stock_min < 0:
+                                raise ValueError
+                        except Exception:
+                            errores.append({'fila': row_idx, 'error': 'Stock minimo invalido'})
+                            continue
+
+                        # Limpiar y preparar datos
+                        datos = {
+                            'descripcion': str(descripcion).strip(),
+                            'unidad_medida': unidad_limpia,
+                            'precio_unitario': precio_val,
+                            'stock_minimo': stock_min,
+                            # ISS-032 FIX: Valores booleanos válidos corregidos
+                            'activo': str(estado).lower() in ['activo', 'sí', 'si', 'true', '1', 'yes', 's'] if estado else True
+                        }
+                        
+                        # Crear o actualizar producto
+                        producto, created = Producto.objects.update_or_create(
+                            clave=str(clave).upper().strip(),
+                            defaults=datos
+                        )
+                        
+                        if created:
+                            creados += 1
+                        else:
+                            actualizados += 1
+                        exitos.append({'fila': row_idx, 'producto_id': producto.id, 'clave': producto.clave})
+                            
+                    except Exception as e:
+                        errores.append({'fila': row_idx, 'error': str(e)})
+            # Fin del bloque transaction.atomic
             
             return Response({
                 'mensaje': 'Importacion completada',
