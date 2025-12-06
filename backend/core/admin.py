@@ -67,9 +67,9 @@ class LoteAdmin(admin.ModelAdmin):
     """
     Admin para Lotes - Supabase
     
-    Campos en Supabase: id, producto_id, centro_id, numero_lote, fecha_caducidad,
-    fecha_entrada, cantidad_inicial, cantidad_actual, precio_compra, estado,
-    ubicacion, observaciones, documento_soporte, created_at, updated_at
+    Campos en Supabase: id, numero_lote, producto_id, cantidad_inicial,
+    cantidad_actual, fecha_fabricacion, fecha_caducidad, precio_unitario,
+    numero_contrato, marca, ubicacion, centro_id, activo, created_at, updated_at
     """
     list_display = [
         'id',
@@ -79,29 +79,29 @@ class LoteAdmin(admin.ModelAdmin):
         'fecha_caducidad',
         'cantidad_actual',
         'cantidad_inicial',
-        'estado',
+        'activo',
     ]
     list_filter = [
-        'estado',
+        'activo',
         'fecha_caducidad',
         'centro',
     ]
     search_fields = [
         'numero_lote',
-        'producto__clave',
-        'producto__descripcion',
+        'producto__nombre',
+        'producto__codigo_barras',
     ]
     readonly_fields = [
         'created_at',
         'updated_at',
     ]
     fieldsets = (
-        ('Información Básica', {
+        ('Informacion Basica', {
             'fields': (
                 'producto',
                 'numero_lote',
+                'fecha_fabricacion',
                 'fecha_caducidad',
-                'fecha_entrada',
             )
         }),
         ('Cantidades', {
@@ -110,16 +110,17 @@ class LoteAdmin(admin.ModelAdmin):
                 'cantidad_actual',
             )
         }),
-        ('Información de Compra', {
+        ('Informacion de Compra', {
             'fields': (
-                'precio_compra',
-                'documento_soporte',
+                'precio_unitario',
+                'numero_contrato',
+                'marca',
             )
         }),
-        ('Ubicación', {
-            'fields': ('estado', 'centro', 'ubicacion', 'observaciones'),
+        ('Ubicacion', {
+            'fields': ('activo', 'centro', 'ubicacion'),
         }),
-        ('Auditoría', {
+        ('Auditoria', {
             'fields': (
                 'created_at',
                 'updated_at',
@@ -138,9 +139,9 @@ class LoteAdmin(admin.ModelAdmin):
 @admin.register(Requisicion)
 class RequisicionAdmin(admin.ModelAdmin):
     """Admin para Requisiciones - Supabase"""
-    list_display = ['id', 'folio', 'centro', 'estado', 'fecha_solicitud']
-    list_filter = ['estado', 'prioridad']
-    search_fields = ['folio']
+    list_display = ['id', 'numero', 'centro_origen', 'centro_destino', 'estado', 'fecha_solicitud']
+    list_filter = ['estado', 'prioridad', 'tipo']
+    search_fields = ['numero']
     readonly_fields = ['created_at', 'updated_at']
 
 
@@ -149,13 +150,13 @@ class DetalleRequisicionAdmin(admin.ModelAdmin):
     """Admin para Detalles de Requisicion - Supabase"""
     list_display = ['id', 'requisicion', 'producto', 'cantidad_solicitada', 'cantidad_autorizada']
     list_filter = []
-    search_fields = ['requisicion__folio', 'producto__clave']
+    search_fields = ['requisicion__numero', 'producto__nombre']
 
 
 @admin.register(Movimiento)
 class MovimientoAdmin(admin.ModelAdmin):
     """Admin para Movimientos - Supabase"""
-    list_display = ['id', 'tipo', 'lote', 'centro', 'cantidad', 'fecha']
+    list_display = ['id', 'tipo', 'producto', 'lote', 'centro_origen', 'centro_destino', 'cantidad', 'fecha']
     list_filter = ['tipo']
-    search_fields = ['lote__numero_lote']
-    readonly_fields = ['fecha']
+    search_fields = ['lote__numero_lote', 'producto__nombre', 'referencia']
+    readonly_fields = ['fecha', 'created_at']

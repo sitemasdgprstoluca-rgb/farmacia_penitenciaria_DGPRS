@@ -355,6 +355,30 @@ class Producto(models.Model):
         return self.lotes.filter(**filtros).aggregate(
             total=Sum('cantidad_actual')
         )['total'] or 0
+    
+    def get_nivel_stock(self):
+        """Retorna el nivel de stock: critico, bajo, normal, alto"""
+        stock = self.get_stock_actual()
+        if stock == 0:
+            return 'critico'
+        if self.stock_minimo > 0:
+            ratio = stock / self.stock_minimo
+            if ratio < 0.5:
+                return 'critico'
+            if ratio < 1:
+                return 'bajo'
+            if ratio > 2:
+                return 'alto'
+        return 'normal'
+    
+    @property
+    def precio_unitario(self):
+        """Precio promedio de los lotes activos"""
+        from django.db.models import Avg
+        avg = self.lotes.filter(activo=True).aggregate(
+            promedio=Avg('precio_unitario')
+        )['promedio']
+        return avg or 0
 
 
 class Lote(models.Model):
@@ -482,7 +506,7 @@ class Requisicion(models.Model):
     def __str__(self):
         return f"REQ-{self.numero}"
     
-    # Propiedades para compatibilidad con cÃ³digo existente
+    # Propiedades para compatibilidad con codigo existente
     @property
     def folio(self):
         return self.numero
@@ -490,6 +514,11 @@ class Requisicion(models.Model):
     @property
     def centro(self):
         return self.centro_destino
+    
+    @property
+    def centro_id(self):
+        """Alias para centro_destino_id (compatibilidad)"""
+        return self.centro_destino_id
     
     @property
     def usuario_solicita(self):
@@ -506,6 +535,19 @@ class Requisicion(models.Model):
     @property
     def observaciones(self):
         return self.notas
+    
+    @observaciones.setter
+    def observaciones(self, value):
+        self.notas = value
+    
+    @property
+    def motivo_rechazo(self):
+        """Alias para notas (compatibilidad)"""
+        return self.notas
+    
+    @motivo_rechazo.setter
+    def motivo_rechazo(self, value):
+        self.notas = value
 
 
 class DetalleRequisicion(models.Model):

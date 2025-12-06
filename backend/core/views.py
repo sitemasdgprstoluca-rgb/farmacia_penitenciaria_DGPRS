@@ -1177,7 +1177,7 @@ class ReportesViewSet(viewsets.ViewSet):
                 'nivel': nivel,  # Alias para compatibilidad frontend
                 'precio_unitario': float(producto.precio_unitario),
                 'valor_inventario': float(stock_actual * producto.precio_unitario),
-                'lotes_activos': producto.lotes.filter(estado='disponible').count()
+                'lotes_activos': producto.lotes.filter(activo=True, cantidad_actual__gt=0).count()
             })
 
         # Calcular productos bajo mínimo (stock_actual < stock_minimo)
@@ -1313,7 +1313,7 @@ class ReportesViewSet(viewsets.ViewSet):
         fecha_fin = request.query_params.get('fecha_fin')
 
         queryset = Requisicion.objects.select_related(
-            'centro', 'usuario_solicita', 'usuario_autoriza'
+            'centro_origen', 'centro_destino', 'solicitante', 'autorizador'
         ).prefetch_related('detalles')
 
         filtros = {}
@@ -1331,14 +1331,19 @@ class ReportesViewSet(viewsets.ViewSet):
 
         datos = []
         for req in queryset:
+            centro_nombre = ''
+            if req.centro_destino:
+                centro_nombre = req.centro_destino.nombre
+            elif req.centro_origen:
+                centro_nombre = req.centro_origen.nombre
             datos.append({
                 'id': req.id,
                 'folio': req.folio,
-                'centro_nombre': req.centro.nombre,
+                'centro_nombre': centro_nombre,
                 'estado': req.estado,
                 'fecha_solicitud': req.fecha_solicitud.isoformat(),
                 'total_items': req.detalles.count(),
-                'usuario_solicita': req.usuario_solicita.username
+                'usuario_solicita': req.solicitante.username if req.solicitante else '-'
             })
 
         if formato == 'pdf':

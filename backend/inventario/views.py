@@ -380,17 +380,17 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         # Actualizar stock y estado de disponibilidad
         lote_ref.cantidad_actual = nuevo_stock
         
-        # Para entradas, tambi�n actualizar cantidad_inicial si es necesario
+        # Para entradas, tambien actualizar cantidad_inicial si es necesario
         # Esto permite recibir stock adicional en lotes existentes
-        update_fields = ['cantidad_actual', 'estado', 'updated_at']
+        update_fields = ['cantidad_actual', 'activo', 'updated_at']
         if tipo_normalizado == 'entrada' and nuevo_stock > lote_ref.cantidad_inicial:
             lote_ref.cantidad_inicial = nuevo_stock
             update_fields.append('cantidad_inicial')
         
         if nuevo_stock == 0:
-            lote_ref.estado = 'agotado'
-        elif lote_ref.estado == 'agotado':
-            lote_ref.estado = 'disponible'
+            lote_ref.activo = False
+        elif not lote_ref.activo:
+            lote_ref.activo = True
         lote_ref.save(update_fields=update_fields)
 
         movimiento = Movimiento(
@@ -717,8 +717,8 @@ class ProductoViewSet(viewsets.ModelViewSet):
             
             # Datos de productos
             for idx, producto in enumerate(productos, start=1):
-                stock_actual = producto.lotes.filter(estado='disponible').aggregate(total=Sum('cantidad_actual'))['total'] or 0
-                lotes_activos = producto.lotes.filter(estado='disponible', cantidad_actual__gt=0).count()
+                stock_actual = producto.lotes.filter(activo=True).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+                lotes_activos = producto.lotes.filter(activo=True, cantidad_actual__gt=0).count()
                 
                 ws.append([
                     idx,
@@ -1496,7 +1496,7 @@ class LoteViewSet(viewsets.ModelViewSet):
         Seguridad: Usuarios de centro solo ven lotes de su centro.
         Admin/farmacia/vista ven todo por defecto, pueden filtrar con ?centro=.
         """
-        queryset = Lote.objects.select_related('producto', 'centro').exclude(estado__in=['caducado', 'retirado'])
+        queryset = Lote.objects.select_related('producto', 'centro').filter(activo=True)
         
         # SEGURIDAD: Filtrar por centro segun rol
         user = self.request.user
@@ -1533,10 +1533,13 @@ class LoteViewSet(viewsets.ModelViewSet):
         if producto:
             queryset = queryset.filter(producto_id=producto)
         
-        # Filtrar por estado
-        estado = self.request.query_params.get('estado')
-        if estado:
-            queryset = queryset.filter(estado=estado)
+        # Filtrar por activo (el campo real en la BD)
+        activo = self.request.query_params.get('activo')
+        if activo is not None:
+            if activo.lower() in ['true', '1', 'si']:
+                queryset = queryset.filter(activo=True)
+            elif activo.lower() in ['false', '0', 'no']:
+                queryset = queryset.filter(activo=False)
         
         # Busqueda por numero de lote, clave o descripcion producto (ISS-003)
         search = self.request.query_params.get('search')
@@ -1748,7 +1751,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
 
             ws.append([])
-            headers = ['#', 'Producto', 'Numero de lote', 'Caducidad', 'Cantidad inicial', 'Cantidad actual', 'Estado', 'Proveedor']
+            headers = ['#', 'Producto', 'Numero de lote', 'Caducidad', 'Cantidad inicial', 'Cantidad actual', 'Activo', 'Marca']
             ws.append(headers)
             header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
             header_font = Font(bold=True, color='FFFFFF', size=11)
@@ -1765,8 +1768,8 @@ class LoteViewSet(viewsets.ModelViewSet):
                     lote.fecha_caducidad.strftime('%Y-%m-%d') if lote.fecha_caducidad else '',
                     lote.cantidad_inicial,
                     lote.cantidad_actual,
-                    lote.estado,
-                    lote.proveedor or ''
+                    'Si' if lote.activo else 'No',
+                    lote.marca or ''
                 ])
 
             for col, width in zip(['A','B','C','D','E','F','G','H'], [6,12,18,14,14,14,12,16]):
@@ -1830,7 +1833,7 @@ class LoteViewSet(viewsets.ModelViewSet):
 
             for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                 try:
-                    producto_clave, numero_lote, fecha_cad, cantidad_inicial, cantidad_actual, proveedor = (row + (None,)*6)[:6]
+                    producto_clave, numero_lote, fecha_cad, cantidad_inicial, cantidad_actual, marca = (row + (None,)*6)[:6]
 
                     if not producto_clave or not numero_lote:
                         errores.append({'fila': row_idx, 'error': 'Producto y numero de lote son obligatorios'})
@@ -1868,7 +1871,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                             'fecha_caducidad': fecha_val or date.today(),
                             'cantidad_inicial': cant_ini,
                             'cantidad_actual': cant_act,
-                            'proveedor': proveedor or ''
+                            'marca': marca or ''
                         }
                     )
                     exitos.append({'fila': row_idx, 'lote_id': lote.id, 'numero_lote': lote.numero_lote, 'created': created})
@@ -2146,7 +2149,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             # Movimientos relacionados
             movimientos = Movimiento.objects.filter(
                 lote=lote
-            ).select_related('requisicion', 'usuario', 'centro').order_by('-fecha')[:20]
+            ).select_related('requisicion', 'usuario', 'centro_origen', 'centro_destino').order_by('-fecha')[:20]
             
             result['movimientos'] = [{
                 'id': m.id,
@@ -2169,91 +2172,24 @@ class LoteViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='subir-documento')
     def subir_documento(self, request, pk=None):
         """
-        Sube un documento PDF asociado al lote.
-        
-        El documento puede ser factura, remisi�n, contrato, etc.
-        
-        PERMISOS:
-        - Solo usuarios de farmacia/admin pueden subir documentos
-        
-        DATOS REQUERIDOS (multipart/form-data):
-        - documento: Archivo PDF
-        - nombre (opcional): Nombre descriptivo del documento
+        Funcionalidad de documentos no disponible.
+        La tabla lotes de Supabase no tiene campos para documentos.
         """
-        from django.core.files.uploadhandler import MemoryFileUploadHandler
-        
-        lote = self.get_object()
-        
-        # PERMISOS: Solo farmacia/admin pueden subir documentos
-        user = request.user
-        if not user.is_superuser and not is_farmacia_or_admin(user):
-            return Response({
-                'error': 'Solo el personal de farmacia puede subir documentos'
-            }, status=status.HTTP_403_FORBIDDEN)
-        
-        # Validar que se envi� un archivo
-        documento = request.FILES.get('documento')
-        if not documento:
-            return Response({
-                'error': 'No se envi� ning�n documento'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Validar tipo de archivo (solo PDF)
-        if not documento.name.lower().endswith('.pdf'):
-            return Response({
-                'error': 'Solo se permiten archivos PDF'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Validar tama�o (m�ximo 10MB)
-        if documento.size > 10 * 1024 * 1024:
-            return Response({
-                'error': 'El archivo no puede superar los 10MB'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Obtener nombre descriptivo
-        nombre_documento = request.data.get('nombre', documento.name)
-        
-        # Guardar documento
-        lote.documento_pdf = documento
-        lote.documento_nombre = nombre_documento
-        lote.save(update_fields=['documento_pdf', 'documento_nombre'])
-        
         return Response({
-            'mensaje': 'Documento subido correctamente',
-            'documento_nombre': lote.documento_nombre,
-            'documento_url': request.build_absolute_uri(lote.documento_pdf.url) if lote.documento_pdf else None
-        })
+            'error': 'Funcionalidad no disponible',
+            'detalle': 'La tabla de lotes no soporta almacenamiento de documentos'
+        }, status=status.HTTP_501_NOT_IMPLEMENTED)
 
     @action(detail=True, methods=['delete'], url_path='eliminar-documento')
     def eliminar_documento(self, request, pk=None):
         """
-        Elimina el documento PDF asociado al lote.
-        
-        PERMISOS:
-        - Solo usuarios de farmacia/admin pueden eliminar documentos
+        Funcionalidad de documentos no disponible.
+        La tabla lotes de Supabase no tiene campos para documentos.
         """
-        lote = self.get_object()
-        
-        # PERMISOS: Solo farmacia/admin pueden eliminar documentos
-        user = request.user
-        if not user.is_superuser and not is_farmacia_or_admin(user):
-            return Response({
-                'error': 'Solo el personal de farmacia puede eliminar documentos'
-            }, status=status.HTTP_403_FORBIDDEN)
-        
-        if not lote.documento_pdf:
-            return Response({
-                'error': 'El lote no tiene documento asociado'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Eliminar archivo f�sico
-        lote.documento_pdf.delete(save=False)
-        lote.documento_nombre = ''
-        lote.save(update_fields=['documento_pdf', 'documento_nombre'])
-        
         return Response({
-            'mensaje': 'Documento eliminado correctamente'
-        })
+            'error': 'Funcionalidad no disponible',
+            'detalle': 'La tabla de lotes no soporta almacenamiento de documentos'
+        }, status=status.HTTP_501_NOT_IMPLEMENTED)
 
 
 class MovimientoViewSet(
@@ -2281,7 +2217,7 @@ class MovimientoViewSet(
     
     Esto permite auditor�a completa de consumos en cada centro.
     """
-    queryset = Movimiento.objects.select_related('lote__producto', 'centro', 'usuario').all()
+    queryset = Movimiento.objects.select_related('lote__producto', 'centro_origen', 'centro_destino', 'usuario').all()
     serializer_class = MovimientoSerializer
     permission_classes = [IsCentroRole]  # Centro puede operar en sus lotes
     pagination_class = CustomPagination
@@ -2303,7 +2239,7 @@ class MovimientoViewSet(
         Seguridad: Usuarios de centro solo ven movimientos de su centro.
         Admin/farmacia/vista ven todo por defecto, pueden filtrar con ?centro=.
         """
-        queryset = Movimiento.objects.select_related('lote__producto', 'centro', 'usuario')
+        queryset = Movimiento.objects.select_related('lote__producto', 'centro_origen', 'centro_destino', 'usuario')
         
         # SEGURIDAD: Filtrar por centro segun rol
         user = self.request.user
@@ -2422,7 +2358,7 @@ class MovimientoViewSet(
             # Obtener movimientos del producto
             movimientos = Movimiento.objects.filter(
                 lote__producto=producto
-            ).select_related('lote', 'centro', 'usuario').order_by('-fecha')[:100]
+            ).select_related('lote', 'centro_origen', 'centro_destino', 'usuario').order_by('-fecha')[:100]
             
             trazabilidad_data = []
             for mov in movimientos:
@@ -2433,7 +2369,7 @@ class MovimientoViewSet(
                     'cantidad': mov.cantidad,
                     'centro': mov.centro.nombre if mov.centro else 'Farmacia Central',
                     'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
-                    'observaciones': mov.observaciones or ''
+                    'observaciones': mov.motivo or ''
                 })
             
             producto_info = {
@@ -2482,7 +2418,7 @@ class MovimientoViewSet(
             # Obtener movimientos del lote
             movimientos = Movimiento.objects.filter(
                 lote=lote
-            ).select_related('lote', 'centro', 'usuario').order_by('-fecha')[:100]
+            ).select_related('lote', 'centro_origen', 'centro_destino', 'usuario').order_by('-fecha')[:100]
             
             trazabilidad_data = []
             for mov in movimientos:
@@ -2493,7 +2429,7 @@ class MovimientoViewSet(
                     'cantidad': mov.cantidad,
                     'centro': mov.centro.nombre if mov.centro else 'Farmacia Central',
                     'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
-                    'observaciones': mov.observaciones or ''
+                    'observaciones': mov.motivo or ''
                 })
             
             producto_info = {
@@ -2504,7 +2440,7 @@ class MovimientoViewSet(
                 'stock_minimo': lote.producto.stock_minimo if lote.producto else 0,
                 'numero_lote': lote.numero_lote,
                 'fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else 'N/A',
-                'proveedor': lote.proveedor or 'No especificado',
+                'proveedor': lote.marca or 'No especificado',
             }
             
             pdf_buffer = generar_reporte_trazabilidad(trazabilidad_data, producto_info=producto_info)
@@ -2690,7 +2626,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     ISS-014: Bloqueo optimista de lotes durante el surtido.
     ISS-030: Validación de acceso por centro en todas las operaciones.
     """
-    queryset = Requisicion.objects.select_related('centro', 'usuario_solicita', 'usuario_autoriza').prefetch_related('detalles__producto').all()
+    queryset = Requisicion.objects.select_related('centro_origen', 'centro_destino', 'solicitante', 'autorizador').prefetch_related('detalles__producto').all()
     serializer_class = RequisicionSerializer
     permission_classes = [IsCentroRole]
     pagination_class = CustomPagination
@@ -2763,7 +2699,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         return errores
 
     def get_queryset(self):
-        queryset = Requisicion.objects.select_related('centro', 'usuario_solicita', 'usuario_autoriza').prefetch_related('detalles__producto')
+        queryset = Requisicion.objects.select_related('centro_origen', 'centro_destino', 'solicitante', 'autorizador').prefetch_related('detalles__producto')
         user = getattr(self.request, 'user', None)
         
         # SEGURIDAD: Filtrar por centro segun rol
@@ -2771,14 +2707,14 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             # Usuario de centro: forzado a su centro
             user_centro = self._user_centro(user)
             if user_centro:
-                queryset = queryset.filter(centro=user_centro)
+                queryset = queryset.filter(Q(centro_origen=user_centro) | Q(centro_destino=user_centro))
             else:
                 return Requisicion.objects.none()
         else:
             # Admin/farmacia/vista: pueden filtrar por centro especifico
             centro_param = self.request.query_params.get('centro')
             if centro_param:
-                queryset = queryset.filter(centro_id=centro_param)
+                queryset = queryset.filter(Q(centro_origen_id=centro_param) | Q(centro_destino_id=centro_param))
 
         estado = self.request.query_params.get('estado')
         if estado:
@@ -2790,7 +2726,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
 
         search = self.request.query_params.get('search')
         if search and search.strip():
-            queryset = queryset.filter(folio__icontains=search.strip())
+            queryset = queryset.filter(numero__icontains=search.strip())
 
         # Filtros de fecha
         fecha_desde = self.request.query_params.get('fecha_desde')
@@ -3034,8 +2970,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         requisicion.estado = nuevo_estado
         requisicion.fecha_autorizacion = timezone.now()
         if request.user and request.user.is_authenticated:
-            requisicion.usuario_autoriza = request.user
-        requisicion.save(update_fields=['estado', 'fecha_autorizacion', 'usuario_autoriza'])
+            requisicion.autorizador = request.user
+        requisicion.save(update_fields=['estado', 'fecha_autorizacion', 'autorizador_id'])
 
         response_data = {
             'mensaje': f'Requisicion {nuevo_estado}',
@@ -3063,9 +2999,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         if not motivo.strip():
             return Response({'error': 'Debe proporcionar un motivo de rechazo'}, status=status.HTTP_400_BAD_REQUEST)
         requisicion.estado = 'rechazada'
-        requisicion.motivo_rechazo = motivo
-        requisicion.observaciones = motivo
-        requisicion.save(update_fields=['estado', 'motivo_rechazo', 'observaciones'])
+        requisicion.notas = motivo
+        requisicion.save(update_fields=['estado', 'notas'])
         return Response({'mensaje': 'Requisicion rechazada', 'requisicion': RequisicionSerializer(requisicion).data})
 
     @action(detail=True, methods=['post'])
@@ -3081,8 +3016,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         requisicion.estado = 'cancelada'
         motivo = request.data.get('observaciones') or request.data.get('comentario')
         if motivo:
-            requisicion.observaciones = motivo
-        requisicion.save(update_fields=['estado', 'observaciones'])
+            requisicion.notas = motivo
+        requisicion.save(update_fields=['estado', 'notas'])
         return Response({'mensaje': 'Requisicion cancelada', 'requisicion': RequisicionSerializer(requisicion).data})
 
     @action(detail=True, methods=['post'])
@@ -3218,14 +3153,16 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'error': 'El lugar de entrega es requerido'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Actualizar la requisici�n
+        # Actualizar la requisicion
         requisicion.estado = 'recibida'
-        requisicion.fecha_recibido = timezone.now()
-        requisicion.usuario_recibe = user
+        requisicion.fecha_entrega = timezone.now()
         requisicion.lugar_entrega = lugar_entrega
-        requisicion.observaciones_recepcion = observaciones_recepcion
+        # Guardar observaciones en notas si hay
+        if observaciones_recepcion:
+            notas_actual = requisicion.notas or ''
+            requisicion.notas = f"{notas_actual}\n[Recepcion] {observaciones_recepcion}".strip()
         
-        # ISS-NEW: Manejar foto de firma de recepción si se incluye
+        # ISS-NEW: Manejar foto de firma de recepcion si se incluye
         foto_firma = request.FILES.get('foto_firma_recepcion') or request.FILES.get('foto_firma')
         if foto_firma:
             requisicion.foto_firma_recepcion = foto_firma
@@ -3233,11 +3170,10 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             requisicion.usuario_firma_recepcion = user
         
         update_fields = [
-            'estado', 'fecha_recibido', 'usuario_recibe', 
-            'lugar_entrega', 'observaciones_recepcion'
+            'estado', 'fecha_entrega', 'lugar_entrega', 'notas'
         ]
         if foto_firma:
-            update_fields.extend(['foto_firma_recepcion', 'fecha_firma_recepcion', 'usuario_firma_recepcion'])
+            update_fields.extend(['foto_firma_recepcion', 'fecha_firma_recepcion', 'usuario_firma_recepcion_id'])
         
         requisicion.save(update_fields=update_fields)
         
@@ -3552,7 +3488,7 @@ def dashboard_resumen(request):
             mov_centro = mov.centro
             
             if mov.tipo == 'entrada':
-                origen = mov.documento_referencia or 'Proveedor'
+                origen = mov.referencia or 'Proveedor'
                 destino = lote_centro.nombre if lote_centro else 'Farmacia Central'
             else:
                 origen = lote_centro.nombre if lote_centro else 'Farmacia Central'
@@ -3566,11 +3502,11 @@ def dashboard_resumen(request):
                 'lote__codigo_lote': lote_numero,
                 'cantidad': abs(mov.cantidad),
                 'fecha_movimiento': mov.fecha.isoformat() if mov.fecha else None,
-                'observaciones': mov.observaciones or '',
+                'observaciones': mov.motivo or '',
                 'origen': origen,
                 'destino': destino,
                 'requisicion_folio': mov.requisicion.folio if mov.requisicion else None,
-                'documento_referencia': mov.documento_referencia or None,
+                'referencia': mov.referencia or None,
                 'usuario': (mov.usuario.get_full_name() or mov.usuario.username) if mov.usuario else 'Sistema',
             })
 
@@ -3829,11 +3765,10 @@ def trazabilidad_producto(request, clave):
                 'cantidad_inicial': lote.cantidad_inicial,
                 'total_entradas': total_entradas,
                 'total_salidas': total_salidas,
-                'proveedor': lote.proveedor or 'N/A',
-                'precio_compra': str(lote.precio_compra) if lote.precio_compra else None,
+                'marca': lote.marca or 'N/A',
+                'precio_unitario': str(lote.precio_unitario) if lote.precio_unitario else None,
                 # Campos de trazabilidad de contratos (solo para ADMIN/FARMACIA)
                 'numero_contrato': (lote.numero_contrato or '') if is_farmacia_or_admin(user) else None,
-                'marca': (lote.marca or '') if is_farmacia_or_admin(user) else None,
                 'activo': getattr(lote, 'activo', True),
                 'created_at': lote.created_at.isoformat()
             })
@@ -3854,11 +3789,11 @@ def trazabilidad_producto(request, clave):
                 'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                 'cantidad': mov.cantidad,
                 'fecha_movimiento': mov.fecha.isoformat(),
-                'observaciones': mov.observaciones or ''
+                'observaciones': mov.motivo or ''
             })
 
-        stock_total = lotes.filter(estado='disponible').aggregate(total=Sum('cantidad_actual'))['total'] or 0
-        lotes_activos = lotes.filter(estado='disponible', cantidad_actual__gt=0).count()
+        stock_total = lotes.filter(activo=True).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+        lotes_activos = lotes.filter(activo=True, cantidad_actual__gt=0).count()
         total_lotes = lotes.count()
         
         # Totales de entradas/salidas filtrados por centro si aplica
@@ -3937,7 +3872,7 @@ def trazabilidad_lote(request, codigo):
         if not lote:
             return Response({'error': 'Lote no encontrado', 'codigo_buscado': codigo}, status=status.HTTP_404_NOT_FOUND)
 
-        movimientos = Movimiento.objects.select_related('centro', 'usuario').filter(lote=lote).order_by('fecha')
+        movimientos = Movimiento.objects.select_related('centro_origen', 'centro_destino', 'usuario').filter(lote=lote).order_by('fecha')
         historial = []
         saldo = 0
         for mov in movimientos:
@@ -3951,7 +3886,7 @@ def trazabilidad_lote(request, codigo):
                 'centro': mov.centro.nombre if mov.centro else 'Farmacia Central',
                 'usuario': mov.usuario.username if mov.usuario else '-',
                 'lote': mov.lote.numero_lote if mov.lote else '-',
-                'observaciones': mov.observaciones or ''
+                'observaciones': mov.motivo or ''
             })
 
         total_entradas = movimientos.filter(tipo='entrada').aggregate(total=Sum('cantidad'))['total'] or 0
@@ -3990,17 +3925,16 @@ def trazabilidad_lote(request, codigo):
                 'producto_descripcion': lote.producto.descripcion,
                 'cantidad_actual': lote.cantidad_actual,
                 'cantidad_inicial': lote.cantidad_inicial,
-                'estado': lote.estado,
+                'activo': lote.activo,
                 'fecha_caducidad': lote.fecha_caducidad.isoformat() if lote.fecha_caducidad else None,
                 'dias_para_caducar': dias_caducidad,
                 'estado_caducidad': estado_caducidad,
-                'proveedor': lote.proveedor,
+                'marca': lote.marca,
                 # ISS-FIX: Agregar centro (nombre o 'Farmacia Central' si es null)
                 'centro': lote.centro.nombre if lote.centro else 'Farmacia Central',
                 'centro_id': lote.centro.id if lote.centro else None,
                 # Campos de trazabilidad de contratos (solo para ADMIN/FARMACIA)
                 'numero_contrato': lote.numero_contrato if is_farmacia_or_admin(user) else None,
-                'marca': lote.marca if is_farmacia_or_admin(user) else None,
             },
             'estadisticas': {
                 'total_entradas': total_entradas,
@@ -4696,13 +4630,13 @@ def reporte_requisiciones(request):
         centro_param = request.query_params.get('centro') or request.query_params.get('centro_id')
         formato = request.query_params.get('formato', 'json')
         
-        requisiciones = Requisicion.objects.select_related('centro', 'usuario_solicita').all()
+        requisiciones = Requisicion.objects.select_related('centro_origen', 'centro_destino', 'solicitante').all()
         
         # Aplicar filtro de centro obligatorio para usuarios de centro
         if filtrar_por_centro and user_centro:
-            requisiciones = requisiciones.filter(centro=user_centro)
+            requisiciones = requisiciones.filter(Q(centro_origen=user_centro) | Q(centro_destino=user_centro))
         elif centro_param and is_farmacia_or_admin(user):
-            requisiciones = requisiciones.filter(centro_id=centro_param)
+            requisiciones = requisiciones.filter(Q(centro_origen_id=centro_param) | Q(centro_destino_id=centro_param))
         
         if fecha_inicio:
             requisiciones = requisiciones.filter(fecha_solicitud__gte=fecha_inicio)
