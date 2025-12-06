@@ -3070,13 +3070,6 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'codigo': 'error_interno'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    # === MÉTODO LEGACY COMENTADO - Mantener como referencia ===
-    # @action(detail=True, methods=['post'])
-    # def surtir_legacy(self, request, pk=None):
-    #     """
-    #     DEPRECADO: Método original sin transacción atómica.
-    #     Ver surtir() para la implementación correcta con ISS-011/ISS-021.
-    #     """
     @action(detail=True, methods=['post'], url_path='marcar-recibida')
     def marcar_recibida(self, request, pk=None):
         """
