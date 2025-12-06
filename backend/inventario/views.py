@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status, serializers, permissions, mixins
+﻿from rest_framework import viewsets, status, serializers, permissions, mixins
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -273,7 +273,7 @@ def is_farmacia_or_admin(user):
     if rol in ROLES_GLOBALES:
         return True
     
-    # Verificar grupos (por si el rol no est� en campo directo)
+    # Verificar grupos (por si el rol no esta en campo directo)
     group_names = {g.name.upper() for g in user.groups.all()}
     GRUPOS_GLOBALES = {'FARMACIA_ADMIN', 'FARMACEUTICO', 'VISTA_USER'}
     
@@ -605,7 +605,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
         
         Reglas:
         - No se puede desactivar un producto con stock disponible > 0
-        - Usa update() directo para evitar validaci�n de otros campos
+        - Usa update() directo para evitar validacion de otros campos
         """
         try:
             producto = self.get_object()
@@ -625,7 +625,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                         'sugerencia': 'Transfiera o agote el inventario antes de desactivar'
                     }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Usar update() directo para evitar validaci�n de otros campos
+            # Usar update() directo para evitar validacion de otros campos
             Producto.objects.filter(pk=producto.pk).update(activo=nuevo_estado)
             
             estado = 'activado' if nuevo_estado else 'desactivado'
@@ -650,7 +650,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
             from core.models import AuditoriaLog
             producto = self.get_object()
             
-            # Buscar logs de auditor�a relacionados con este producto
+            # Buscar logs de auditoria relacionados con este producto
             logs = AuditoriaLog.objects.filter(
                 Q(tabla='producto') | Q(tabla='core_producto'),
                 registro_id=str(producto.id)
@@ -1072,13 +1072,13 @@ class CentroViewSet(viewsets.ModelViewSet):
         Activa o desactiva un centro.
         POST /api/centros/{id}/toggle-activo/
         
-        Usa update() directo para evitar validaci�n de otros campos.
+        Usa update() directo para evitar validacion de otros campos.
         """
         try:
             centro = self.get_object()
             nuevo_estado = not centro.activo
             
-            # Usar update() directo para evitar validaci�n de otros campos
+            # Usar update() directo para evitar validacion de otros campos
             Centro.objects.filter(pk=centro.pk).update(activo=nuevo_estado)
             
             estado = 'activado' if nuevo_estado else 'desactivado'
@@ -1551,11 +1551,11 @@ class LoteViewSet(viewsets.ModelViewSet):
                 Q(producto__descripcion__icontains=search_term)
             )
         
-        # Filtrar por estado de caducidad seg�n especificaci�n SIFP:
-        # ?? Normal: > 6 meses (180 d�as)
-        # ?? Pr�ximo: 3-6 meses (90-180 d�as)
-        # ?? Cr�tico: < 3 meses (90 d�as)
-        # ?? Vencido: < 0 d�as
+        # Filtrar por estado de caducidad segun especificacion SIFP:
+        # Normal: > 6 meses (180 dias)
+        # Proximo: 3-6 meses (90-180 dias)
+        # Critico: < 3 meses (90 dias)
+        # Vencido: < 0 dias
         caducidad = self.request.query_params.get('caducidad')
         if caducidad:
             from datetime import date, timedelta
@@ -1564,22 +1564,22 @@ class LoteViewSet(viewsets.ModelViewSet):
             if caducidad == 'vencido':
                 queryset = queryset.filter(fecha_caducidad__lt=hoy)
             elif caducidad == 'critico':
-                # Menos de 3 meses (< 90 d�as) pero no vencido
+                # Menos de 3 meses (< 90 dias) pero no vencido
                 queryset = queryset.filter(
                     fecha_caducidad__gte=hoy,
                     fecha_caducidad__lt=hoy + timedelta(days=90)
                 )
             elif caducidad == 'proximo':
-                # Entre 3 y 6 meses (90-180 d�as)
+                # Entre 3 y 6 meses (90-180 dias)
                 queryset = queryset.filter(
                     fecha_caducidad__gte=hoy + timedelta(days=90),
                     fecha_caducidad__lt=hoy + timedelta(days=180)
                 )
             elif caducidad == 'normal':
-                # M�s de 6 meses (> 180 d�as)
+                # Mas de 6 meses (> 180 dias)
                 queryset = queryset.filter(fecha_caducidad__gte=hoy + timedelta(days=180))
         
-        # Filtrar por stock m�nimo (para cat�logo de requisiciones)
+        # Filtrar por stock minimo (para catalogo de requisiciones)
         stock_min = self.request.query_params.get('stock_min')
         if stock_min:
             try:
@@ -2178,16 +2178,16 @@ class MovimientoViewSet(
     - Centro: puede VER y CREAR movimientos en sus propios lotes (salidas/ajustes)
     - Vista: solo lectura
     
-    FILTROS (alineados con exportaci�n):
+    FILTROS (alineados con exportacin):
     - tipo: entrada/salida/ajuste
     - centro: ID del centro
     - producto: ID del producto
     - lote: ID del lote
     - fecha_inicio: YYYY-MM-DD
     - fecha_fin: YYYY-MM-DD
-    - search: b�squeda en observaciones, n�mero de lote, producto
+    - search: bsqueda en observaciones, nmero de lote, producto
     
-    Esto permite auditor�a completa de consumos en cada centro.
+    Esto permite auditora completa de consumos en cada centro.
     """
     queryset = Movimiento.objects.select_related('lote__producto', 'centro_origen', 'centro_destino', 'usuario').all()
     serializer_class = MovimientoSerializer
@@ -2199,14 +2199,14 @@ class MovimientoViewSet(
         """
         Filtra movimientos segun parametros.
         
-        Parametros (alineados con exportaci�n):
+        Parametros (alineados con exportacin):
         - tipo: entrada/salida/ajuste
         - centro: ID del centro (solo admin/farmacia/vista)
         - producto: ID del producto
         - lote: ID del lote
-        - fecha_inicio: fecha m�nima (YYYY-MM-DD)
-        - fecha_fin: fecha m�xima (YYYY-MM-DD)
-        - search: b�squeda en observaciones, lote, producto
+        - fecha_inicio: fecha mnima (YYYY-MM-DD)
+        - fecha_fin: fecha mxima (YYYY-MM-DD)
+        - search: bsqueda en observaciones, lote, producto
         
         Seguridad: Usuarios de centro solo ven movimientos de su centro.
         Admin/farmacia/vista ven todo por defecto, pueden filtrar con ?centro=.
@@ -2252,7 +2252,7 @@ class MovimientoViewSet(
         if fecha_fin:
             queryset = queryset.filter(fecha__date__lte=fecha_fin)
         
-        # B�squeda en observaciones, lote y producto
+        # Bsqueda en observaciones, lote y producto
         search = self.request.query_params.get('search')
         if search and search.strip():
             search_term = search.strip()
@@ -2272,8 +2272,8 @@ class MovimientoViewSet(
         SEGURIDAD:
         - Admin/farmacia: pueden crear cualquier movimiento en cualquier lote
         - Usuario de centro: solo pueden crear movimientos en lotes de su centro
-          y solo ciertos tipos: 'salida' (consumo), 'ajuste' (inventario f�sico)
-        - Usuario de centro NO puede crear 'entrada' (solo v�a surtido de requisici�n)
+          y solo ciertos tipos: 'salida' (consumo), 'ajuste' (inventario fsico)
+        - Usuario de centro NO puede crear 'entrada' (solo va surtido de requisicin)
         """
         user = self.request.user
         lote = serializer.validated_data.get('lote')
@@ -2290,12 +2290,12 @@ class MovimientoViewSet(
                 })
             
             # Validar tipos de movimiento permitidos para centros
-            # Centros pueden: salida (consumo), ajuste (inventario f�sico)
-            # Centros NO pueden: entrada (solo v�a surtido autom�tico)
+            # Centros pueden: salida (consumo), ajuste (inventario fsico)
+            # Centros NO pueden: entrada (solo va surtido automtico)
             tipos_permitidos_centro = ['salida', 'ajuste']
             if tipo not in tipos_permitidos_centro:
                 raise serializers.ValidationError({
-                    'tipo': f'Los centros solo pueden registrar: {", ".join(tipos_permitidos_centro)}. Las entradas se generan autom�ticamente al surtir requisiciones.'
+                    'tipo': f'Los centros solo pueden registrar: {", ".join(tipos_permitidos_centro)}. Las entradas se generan automticamente al surtir requisiciones.'
                 })
         
         movimiento, _ = registrar_movimiento_stock(
@@ -2314,7 +2314,7 @@ class MovimientoViewSet(
     def trazabilidad_pdf(self, request):
         """
         Genera PDF de trazabilidad de un producto.
-        Par�metros: ?producto_clave=XXX
+        Parmetros: ?producto_clave=XXX
         """
         from core.utils.pdf_reports import generar_reporte_trazabilidad
         
@@ -2373,8 +2373,8 @@ class MovimientoViewSet(
     @action(detail=False, methods=['get'], url_path='trazabilidad-lote-pdf')
     def trazabilidad_lote_pdf(self, request):
         """
-        Genera PDF de trazabilidad de un lote espec�fico.
-        Par�metros: ?numero_lote=XXX
+        Genera PDF de trazabilidad de un lote especfico.
+        Parmetros: ?numero_lote=XXX
         """
         from core.utils.pdf_reports import generar_reporte_trazabilidad
         
@@ -2530,7 +2530,7 @@ class MovimientoViewSet(
             ws = wb.active
             ws.title = 'Movimientos'
             
-            # T�tulo
+            # Ttulo
             ws.merge_cells('A1:H1')
             ws['A1'] = 'REPORTE DE MOVIMIENTOS'
             ws['A1'].font = Font(bold=True, size=14, color='632842')
@@ -3079,15 +3079,15 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='marcar-recibida')
     def marcar_recibida(self, request, pk=None):
         """
-        Marca una requisici�n surtida como recibida por el centro.
+        Marca una requisicin surtida como recibida por el centro.
         
         PERMISOS:
         - Solo usuarios del centro receptor pueden marcar como recibida
         - Solo requisiciones en estado 'surtida' pueden marcarse
         
         DATOS REQUERIDOS:
-        - lugar_entrega: Lugar donde se recibi�
-        - observaciones_recepcion: Observaciones de la recepci�n (opcional)
+        - lugar_entrega: Lugar donde se recibi
+        - observaciones_recepcion: Observaciones de la recepcin (opcional)
         """
         from django.utils import timezone
         
@@ -3100,13 +3100,13 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'estado_actual': requisicion.estado
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # PERMISOS: Solo usuarios del centro receptor pueden confirmar recepci�n
+        # PERMISOS: Solo usuarios del centro receptor pueden confirmar recepcin
         user = request.user
         if not user.is_superuser:
             centro_user = self._user_centro(user)
             if not centro_user or requisicion.centro_id != centro_user.id:
                 return Response({
-                    'error': 'Solo el centro receptor puede confirmar la recepci�n'
+                    'error': 'Solo el centro receptor puede confirmar la recepcin'
                 }, status=status.HTTP_403_FORBIDDEN)
         
         # Obtener datos del request
@@ -3143,7 +3143,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         requisicion.save(update_fields=update_fields)
         
         return Response({
-            'mensaje': 'Requisici�n marcada como recibida',
+            'mensaje': 'Requisicin marcada como recibida',
             'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
         })
 
@@ -3246,7 +3246,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='hoja-recoleccion')
     def hoja_recoleccion(self, request, pk=None):
         """
-        Genera y descarga el PDF de la hoja de recolecci�n para una requisici�n.
+        Genera y descarga el PDF de la hoja de recoleccin para una requisicin.
         Solo disponible para requisiciones autorizadas, parciales o surtidas.
         """
         from core.utils.pdf_generator import generar_hoja_recoleccion
@@ -3254,7 +3254,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         requisicion = self.get_object()
         estado = (requisicion.estado or '').lower()
         
-        # Validar que la requisici�n puede generar hoja
+        # Validar que la requisicin puede generar hoja
         if estado not in ['autorizada', 'parcial', 'surtida']:
             return Response({
                 'error': 'Solo se pueden generar hojas para requisiciones autorizadas, parciales o surtidas',
@@ -3278,14 +3278,14 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         except Exception as e:
             # traceback removido por seguridad (ISS-008)
             return Response({
-                'error': 'Error al generar la hoja de recolecci�n',
+                'error': 'Error al generar la hoja de recoleccin',
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['get'], url_path='pdf-rechazo')
     def pdf_rechazo(self, request, pk=None):
         """
-        Genera y descarga el PDF de rechazo para una requisici�n rechazada.
+        Genera y descarga el PDF de rechazo para una requisicin rechazada.
         """
         from core.utils.pdf_generator import generar_pdf_rechazo
         
@@ -3319,7 +3319,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def estadisticas(self, request):
-        """Estad�sticas de requisiciones filtradas por centro si aplica."""
+        """Estadsticas de requisiciones filtradas por centro si aplica."""
         try:
             # SEGURIDAD: Filtrar por centro del usuario si no es admin/farmacia
             user = request.user
@@ -3375,12 +3375,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
 @permission_classes([IsAuthenticated])
 def dashboard_resumen(request):
     """
-    Resumen del dashboard con KPIs y �ltimos movimientos.
+    Resumen del dashboard con KPIs y ltimos movimientos.
     
     SEGURIDAD:
     - Usuarios de centro: solo ven datos de su centro
     - Admin/farmacia/vista: ven datos globales por defecto
-    - Admin/farmacia/vista pueden usar ?centro=ID para filtrar por centro espec�fico
+    - Admin/farmacia/vista pueden usar ?centro=ID para filtrar por centro especfico
     """
     try:
         # SEGURIDAD: Filtrar por centro si el usuario no es admin/farmacia/vista
@@ -3388,7 +3388,7 @@ def dashboard_resumen(request):
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
-        # Admin/farmacia/vista puede filtrar por centro espec�fico
+        # Admin/farmacia/vista puede filtrar por centro especfico
         centro_param = request.query_params.get('centro')
         if centro_param and centro_param not in ['', 'null', 'undefined', 'todos']:
             if is_farmacia_or_admin(user):
@@ -3430,7 +3430,7 @@ def dashboard_resumen(request):
         # Si no hay movimientos este mes, mostrar total general como referencia
         total_movimientos = movimientos_base.count() if movimientos_mes == 0 else movimientos_mes
 
-        # === �LTIMOS MOVIMIENTOS ===
+        # === LTIMOS MOVIMIENTOS ===
         ultimos_movimientos = movimientos_base.select_related(
             'lote__producto', 'lote__centro', 'centro', 'requisicion', 'usuario'
         ).order_by('-fecha')[:10]
@@ -3503,7 +3503,7 @@ def dashboard_graficas(request):
     Retorna consumo_mensual, stock_por_centro y requisiciones_por_estado.
     
     SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
-    Admin/farmacia puede usar ?centro=ID para filtrar por centro espec�fico.
+    Admin/farmacia puede usar ?centro=ID para filtrar por centro especfico.
     """
     try:
         from dateutil.relativedelta import relativedelta
@@ -3513,7 +3513,7 @@ def dashboard_graficas(request):
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
-        # Admin/farmacia puede filtrar por centro espec�fico
+        # Admin/farmacia puede filtrar por centro especfico
         centro_param = request.query_params.get('centro')
         if centro_param and centro_param not in ['', 'null', 'undefined', 'todos']:
             if is_farmacia_or_admin(user):
@@ -3526,7 +3526,7 @@ def dashboard_graficas(request):
         hoy = timezone.now().date()
         
         # =========================================
-        # 1. CONSUMO MENSUAL (�LTIMOS 6 MESES)
+        # 1. CONSUMO MENSUAL (LTIMOS 6 MESES)
         # =========================================
         consumo_mensual = []
         
@@ -3928,7 +3928,7 @@ def reporte_inventario(request):
     SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
     Admin/farmacia puede usar ?centro=ID para filtrar.
     
-    Par�metros:
+    Parmetros:
     - centro: ID del centro o 'central' para farmacia central
     - nivel_stock: alto, bajo, normal, sin_stock
     - formato: json (default), excel, pdf
@@ -3941,7 +3941,7 @@ def reporte_inventario(request):
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
-        # Admin/farmacia puede filtrar por centro espec�fico
+        # Admin/farmacia puede filtrar por centro especfico
         centro_param = request.query_params.get('centro')
         if centro_param and is_farmacia_or_admin(user):
             if centro_param == 'central':
@@ -3991,7 +3991,7 @@ def reporte_inventario(request):
             elif stock_total < producto.stock_minimo * 1.5:
                 nivel = 'normal'
             
-            # Filtrar por nivel_stock si se especific�
+            # Filtrar por nivel_stock si se especific
             if nivel_stock_filtro and nivel != nivel_stock_filtro:
                 continue
 
@@ -4075,7 +4075,7 @@ def reporte_inventario(request):
         subtitulo.font = Font(size=10, italic=True)
 
         ws.append([])
-        headers = ['#', 'Clave', 'Descripci�n', 'Unidad', 'Stock M�n.', 'Stock Actual', 'Lotes', 'Nivel', 'Precio']
+        headers = ['#', 'Clave', 'Descripcin', 'Unidad', 'Stock Mn.', 'Stock Actual', 'Lotes', 'Nivel', 'Precio']
         ws.append(headers)
 
         header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
@@ -4104,7 +4104,7 @@ def reporte_inventario(request):
         ws[f'C{resumen_row}'] = resumen['total_productos']
         ws[f'B{resumen_row + 1}'] = 'Stock Total'
         ws[f'C{resumen_row + 1}'] = resumen['total_stock']
-        ws[f'B{resumen_row + 2}'] = 'Productos bajo m�nimo'
+        ws[f'B{resumen_row + 2}'] = 'Productos bajo mnimo'
         ws[f'C{resumen_row + 2}'] = resumen['productos_bajo_minimo']
 
         for col, width in zip(['A','B','C','D','E','F','G','H','I'], [8,14,45,10,14,14,10,12,12]):
@@ -4374,10 +4374,10 @@ def reporte_caducidades(request):
     SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
     Admin/farmacia puede usar ?centro=ID para filtrar.
     
-    Par�metros:
-    - dias: N�mero de d�as de anticipaci�n (default: 30)
+    Parmetros:
+    - dias: Nmero de das de anticipacin (default: 30)
     - centro: ID del centro o 'central' para farmacia central
-    - estado: vencido, critico, proximo (filtra por estado espec�fico)
+    - estado: vencido, critico, proximo (filtra por estado especfico)
     - formato: json (default), excel, pdf
     """
     try:
@@ -4439,7 +4439,7 @@ def reporte_caducidades(request):
                 estado = 'proximo'
                 proximos += 1
             
-            # Filtrar por estado si se especific�
+            # Filtrar por estado si se especific
             if estado_filtro and estado != estado_filtro:
                 continue
             
@@ -4515,7 +4515,7 @@ def reporte_caducidades(request):
         
         ws.append([])
         
-        headers = ['#', 'Producto', 'Lote', 'Caducidad', 'D�as Restantes', 'Stock', 'Estado']
+        headers = ['#', 'Producto', 'Lote', 'Caducidad', 'Das Restantes', 'Stock', 'Estado']
         ws.append(headers)
         
         header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
@@ -4543,9 +4543,9 @@ def reporte_caducidades(request):
         ws[f'C{resumen_row}'] = resumen['total']
         ws[f'B{resumen_row + 1}'] = 'Vencidos:'
         ws[f'C{resumen_row + 1}'] = resumen['vencidos']
-        ws[f'B{resumen_row + 2}'] = 'Cr�ticos:'
+        ws[f'B{resumen_row + 2}'] = 'Crticos:'
         ws[f'C{resumen_row + 2}'] = resumen['criticos']
-        ws[f'B{resumen_row + 3}'] = 'Pr�ximos:'
+        ws[f'B{resumen_row + 3}'] = 'Prximos:'
         ws[f'C{resumen_row + 3}'] = resumen['proximos']
         
         for col, width in zip(['A','B','C','D','E','F','G'], [8,50,20,15,15,12,12]):
@@ -4912,13 +4912,13 @@ def reportes_precarga(request):
     """
     Obtiene datos para precargar formularios de reportes.
     
-    SEGURIDAD: Filtra centros y lotes seg�n el rol del usuario.
+    SEGURIDAD: Filtra centros y lotes segn el rol del usuario.
     - Admin/farmacia: ven todos los centros
     - Usuario de centro: solo ve su centro
     
     Retorna:
     - Lista de productos activos
-    - Lista de centros activos (filtrada seg�n rol)
+    - Lista de centros activos (filtrada segn rol)
     - Tipos de movimiento disponibles
     """
     try:
@@ -5004,7 +5004,7 @@ class HojaRecoleccionViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=['get'])
     def pdf(self, request, pk=None):
-        """Genera y descarga el PDF de la hoja de recolecci�n."""
+        """Genera y descarga el PDF de la hoja de recoleccin."""
         from core.utils.pdf_generator import generar_hoja_recoleccion
         
         hoja = self.get_object()
