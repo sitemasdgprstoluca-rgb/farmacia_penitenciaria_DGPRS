@@ -273,13 +273,13 @@ class UserSerializer(serializers.ModelSerializer):
     
     def validate_username(self, value):
         """
-        Valida username: alfanumo©rico, mon 3 caracteres, oºnico
+        Valida username: alfanumorico, mon 3 caracteres, onico
         """
         if not value or len(value) < 3:
             raise serializers.ValidationError('El username debe tener al menos 3 caracteres')
         
         if not value.replace('_', '').replace('.', '').isalnum():
-            raise serializers.ValidationError('Solo se permiten letras, noºmeros, puntos y guiones bajos')
+            raise serializers.ValidationError('Solo se permiten letras, nomeros, puntos y guiones bajos')
         
         # Validar unicidad (excluyendo instancia actual en updates)
         instance_id = self.instance.id if self.instance else None
@@ -289,7 +289,7 @@ class UserSerializer(serializers.ModelSerializer):
         return value.lower()
     
     def validate_email(self, value):
-        """Valida email oºnico"""
+        """Valida email onico"""
         if value:
             instance_id = self.instance.id if self.instance else None
             if User.objects.filter(email__iexact=value).exclude(id=instance_id).exists():
@@ -299,22 +299,22 @@ class UserSerializer(serializers.ModelSerializer):
     
     def validate_password(self, value):
         """
-        Valida contraseo±a: mon 8 caracteres, mayoºscula, noºmero
+        Valida contraseoa: mon 8 caracteres, mayoscula, nomero
         """
         if value:
             if len(value) < 8:
-                raise serializers.ValidationError('La contraseo±a debe tener al menos 8 caracteres')
+                raise serializers.ValidationError('La contraseoa debe tener al menos 8 caracteres')
             
             if not any(c.isupper() for c in value):
-                raise serializers.ValidationError('La contraseo±a debe contener al menos una mayoºscula')
+                raise serializers.ValidationError('La contraseoa debe contener al menos una mayoscula')
             
             if not any(c.isdigit() for c in value):
-                raise serializers.ValidationError('La contraseo±a debe contener al menos un noºmero')
+                raise serializers.ValidationError('La contraseoa debe contener al menos un nomero')
         
         return value
     
     def create(self, validated_data):
-        """Crea usuario con contraseo±a hasheada"""
+        """Crea usuario con contraseoa hasheada"""
         password = validated_data.pop('password', None)
         user = User(**validated_data)
         
@@ -328,7 +328,7 @@ class UserSerializer(serializers.ModelSerializer):
         return user
     
     def update(self, instance, validated_data):
-        """Actualiza usuario, hashea contraseo±a si se proporciona"""
+        """Actualiza usuario, hashea contraseoa si se proporciona"""
         password = validated_data.pop('password', None)
         
         for attr, value in validated_data.items():
@@ -378,7 +378,7 @@ class CentroSerializer(serializers.ModelSerializer):
                 'La clave debe tener al menos 2 caracteres'
             )
         
-        # Normalizar a mayoºsculas
+        # Normalizar a mayosculas
         value = value.upper().strip()
         
         # Validar unicidad (excluyendo instancia actual en updates)
@@ -400,13 +400,13 @@ class CentroSerializer(serializers.ModelSerializer):
         return value.strip()
     
     def validate_telefono(self, value):
-        """Valida formato de telo©fono"""
+        """Valida formato de telofono"""
         if value:
             import re
-            # Permitir solo noºmeros, guiones, espacios, paro©ntesis y +
+            # Permitir solo nomeros, guiones, espacios, parontesis y +
             if not re.match(r'^[\d\s\-\+\(\)]+$', value):
                 raise serializers.ValidationError(
-                    'Formato de telo©fono invo¡lido. Solo noºmeros, espacios, guiones, + y paro©ntesis'
+                    'Formato de telofono involido. Solo nomeros, espacios, guiones, + y parontesis'
                 )
         
         return value
@@ -470,21 +470,21 @@ class ProductoSerializer(serializers.ModelSerializer):
     
     def validate_codigo_barras(self, value):
         """
-        Valida clave: normaliza a mayoºsculas, verifica unicidad y formato
+        Valida clave: normaliza a mayosculas, verifica unicidad y formato
         """
         if not value or len(value.strip()) < 3:
             raise serializers.ValidationError(
                 'La clave debe tener al menos 3 caracteres'
             )
         
-        # Normalizar a mayoºsculas
+        # Normalizar a mayosculas
         value = value.upper().strip()
         
-        # Validar formato alfanumo©rico con guiones y guiones bajos
+        # Validar formato alfanumorico con guiones y guiones bajos
         import re
         if not re.match(r'^[A-Z0-9\-_]+$', value):
             raise serializers.ValidationError(
-                'La clave solo puede contener letras, noºmeros, guiones y guiones bajos'
+                'La clave solo puede contener letras, nomeros, guiones y guiones bajos'
             )
         
         # Validar unicidad (excluyendo instancia actual en updates)
@@ -609,9 +609,9 @@ class ProductoSerializer(serializers.ModelSerializer):
         
         alerta = obj.alerta_caducidad()
         if alerta == 'critico':
-            return {'tipo': 'danger', 'mensaje': 'CADUCA EN 7 DoAS'}
+            return {'tipo': 'danger', 'mensaje': 'CADUCA EN 7 DoAS'}
         elif alerta == 'proximo':
-            return {'tipo': 'warning', 'mensaje': 'CADUCA EN 30 DoAS'}
+            return {'tipo': 'warning', 'mensaje': 'CADUCA EN 30 DoAS'}
         
         if obj.cantidad_actual == 0:
             return {'tipo': 'warning', 'mensaje': 'AGOTADO'}
@@ -664,7 +664,7 @@ class ProductoSerializer(serializers.ModelSerializer):
             if rol not in ['ADMIN', 'FARMACIA']:
                 data.pop('numero_contrato', None)
                 data.pop('marca', None)
-                data.pop('precio_unitario', None) # Tambio©n ocultar precio quizo¡s?
+                data.pop('precio_unitario', None) # Tambion ocultar precio quizos?
         else:
             data.pop('numero_contrato', None)
             data.pop('marca', None)
@@ -732,7 +732,7 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
         producto = data.get('producto') or (self.instance.producto if self.instance else None)
         lote = data.get('lote') or (self.instance.lote if self.instance else None)
         
-        # Validar que el producto esto© activo
+        # Validar que el producto esto activo
         if producto and not producto.activo:
             raise serializers.ValidationError({
                 'producto': f'El producto {producto.clave} esta inactivo y no puede ser solicitado'
@@ -793,7 +793,7 @@ class RequisicionSerializer(serializers.ModelSerializer):
         source='usuario_firma_recepcion.get_full_name', read_only=True, allow_null=True
     )
     
-    # Transiciones vo¡lidas de estado
+    # Transiciones volidas de estado
     TRANSICIONES_VALIDAS = {
         'borrador': ['enviada', 'cancelada'],
         'enviada': ['autorizada', 'parcial', 'rechazada', 'cancelada'],
@@ -859,7 +859,7 @@ class RequisicionSerializer(serializers.ModelSerializer):
             if value not in self.TRANSICIONES_VALIDAS.get(estado_actual, []):
                 raise serializers.ValidationError(
                     f'No se puede cambiar de {estado_actual} a {value}. '
-                    f'Transiciones vo¡lidas: {", ".join(self.TRANSICIONES_VALIDAS[estado_actual])}'
+                    f'Transiciones volidas: {", ".join(self.TRANSICIONES_VALIDAS[estado_actual])}'
                 )
         
         return value
@@ -867,7 +867,7 @@ class RequisicionSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """
         Crea requisicion con detalles.
-        NOTA: El folio se genera automo¡ticamente en el modelo Requisicion.save()
+        NOTA: El folio se genera automoticamente en el modelo Requisicion.save()
         con formato REQ-CENTRO-YYYYMMDD-NNNN para evitar duplicados.
         """
         detalles_data = validated_data.pop('detalles', [])
@@ -1061,7 +1061,7 @@ class UserMeSerializer(serializers.ModelSerializer):
         return None
 
     def get_telefono(self, obj):
-        """Obtener telo©fono del perfil si existe."""
+        """Obtener telofono del perfil si existe."""
         try:
             profile = getattr(obj, 'profile', None)
             return profile.telefono if profile else ''
