@@ -3,14 +3,6 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import User, Centro, Producto, Lote, Requisicion, DetalleRequisicion, Movimiento
 
 
-@admin.register(Centro)
-class CentroAdmin(admin.ModelAdmin):
-    """Admin para gestión de centros."""
-    list_display = ['id', 'nombre', 'activo', 'created_at']
-    list_filter = ['activo']
-    search_fields = ['nombre', 'direccion']
-    readonly_fields = ['created_at', 'updated_at']
-
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     """Admin personalizado para el modelo User."""
@@ -31,9 +23,10 @@ class UserAdmin(BaseUserAdmin):
 @admin.register(Centro)
 class CentroAdmin(admin.ModelAdmin):
     """Admin para Centros - Supabase"""
-    list_display = ['id', 'clave', 'nombre', 'tipo', 'activo']
-    list_filter = ['activo', 'tipo']
-    search_fields = ['nombre', 'clave']
+    list_display = ['id', 'nombre', 'activo', 'created_at']
+    list_filter = ['activo']
+    search_fields = ['nombre', 'direccion']
+    readonly_fields = ['created_at', 'updated_at']
 
 
 @admin.register(Producto)
