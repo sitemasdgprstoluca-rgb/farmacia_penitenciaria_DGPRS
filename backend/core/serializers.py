@@ -418,136 +418,99 @@ class CentroSerializer(serializers.ModelSerializer):
 
 class ProductoSerializer(serializers.ModelSerializer):
     """
-    Serializer robusto para Producto con validaciones completas
+    Serializer para Producto - Supabase
+    
+    Campos en Supabase: id, clave, descripcion, unidad_medida, precio_unitario,
+    stock_minimo, stock_maximo, activo, codigo_barras, imagen, created_at, updated_at
     """
-    stock_actual = serializers.SerializerMethodField(
-        help_text="Stock actual calculado de lotes disponibles"
-    )
     nivel_stock = serializers.SerializerMethodField(
         help_text="Nivel de stock: critico, bajo, normal, alto"
     )
     lotes_activos = serializers.SerializerMethodField(
         help_text="Cantidad de lotes disponibles"
     )
-    valor_inventario = serializers.SerializerMethodField(
-        help_text="Valor total del inventario (stock * precio)"
+    stock_actual = serializers.SerializerMethodField(
+        help_text="Stock total calculado de lotes disponibles"
     )
-    creado_por = serializers.SerializerMethodField(
-        help_text="Usuario que creó el producto"
-    )
+    # Alias 'nombre' para compatibilidad con frontend
+    nombre = serializers.CharField(source='descripcion', read_only=True)
     
     class Meta:
         model = Producto
         fields = [
             'id', 'clave', 'descripcion', 'unidad_medida', 'precio_unitario',
-            'stock_minimo', 'activo', 'codigo_barras_producto', 'stock_actual', 'nivel_stock',
-            'lotes_activos', 'valor_inventario', 'created_at', 'updated_at',
-            'creado_por'
+            'stock_minimo', 'stock_maximo', 'activo', 'codigo_barras', 'imagen',
+            'nivel_stock', 'lotes_activos', 'stock_actual',
+            'created_at', 'updated_at',
+            'nombre'  # Alias para compatibilidad
         ]
-        read_only_fields = ['created_at', 'updated_at', 'creado_por']
-    
-    def get_stock_actual(self, obj):
-        """Calcula stock actual de lotes disponibles"""
-        return obj.get_stock_actual()
+        read_only_fields = ['created_at', 'updated_at', 'nombre']
     
     def get_nivel_stock(self, obj):
-        """Retorna nivel de stock calculado"""
-        return obj.get_nivel_stock()
+        """Retorna nivel de stock calculado basado en stock_actual vs stock_minimo"""
+        stock = self.get_stock_actual(obj)
+        stock_min = obj.stock_minimo or 0
+        
+        if stock == 0:
+            return 'sin_stock'
+        elif stock_min > 0:
+            porcentaje = (stock / stock_min) * 100
+            if porcentaje <= 25:
+                return 'critico'
+            elif porcentaje <= 50:
+                return 'bajo'
+            elif porcentaje <= 150:
+                return 'normal'
+            else:
+                return 'alto'
+        return 'normal'
+    
+    def get_stock_actual(self, obj):
+        """Calcula stock total de lotes disponibles"""
+        return obj.get_stock_actual() if hasattr(obj, 'get_stock_actual') else 0
     
     def get_lotes_activos(self, obj):
         """Cuenta lotes en estado disponible"""
-        return obj.lotes.filter(estado='disponible', deleted_at__isnull=True).count()
-    
-    def get_valor_inventario(self, obj):
-        """Calcula valor total del inventario"""
-        stock = self.get_stock_actual(obj)
-        return float(stock * obj.precio_unitario)
-    
-    def get_creado_por(self, obj):
-        """Retorna el nombre/email del usuario que creó el producto"""
-        if obj.created_by:
-            return obj.created_by.get_full_name() or obj.created_by.username
-        return None
+        if hasattr(obj, 'lotes'):
+            return obj.lotes.filter(estado='disponible').count()
+        return 0
     
     def validate_clave(self, value):
         """
-        Valida clave: normaliza a mayúsculas, verifica unicidad y formato
+        Valida clave: normaliza, verifica unicidad y formato
         """
+        if value:
+            value = value.strip()
+            # Validar unicidad (excluyendo instancia actual en updates)
+            instance_id = self.instance.id if self.instance else None
+            if Producto.objects.filter(clave__iexact=value).exclude(id=instance_id).exists():
+                raise serializers.ValidationError(
+                    f'Ya existe un producto con la clave "{value}"'
+                )
+        return value
+    
+    def validate_descripcion(self, value):
+        """Valida que la descripción no esté vacía"""
         if not value or len(value.strip()) < 3:
             raise serializers.ValidationError(
-                'La clave debe tener al menos 3 caracteres'
+                'La descripción debe tener al menos 3 caracteres'
             )
-        
-        # Normalizar a mayúsculas
-        value = value.upper().strip()
-        
-        # Validar formato alfanumérico con guiones y guiones bajos
-        import re
-        if not re.match(r'^[A-Z0-9\-_]+$', value):
-            raise serializers.ValidationError(
-                'La clave solo puede contener letras, números, guiones y guiones bajos'
-            )
-        
-        # Validar unicidad (excluyendo instancia actual en updates)
-        instance_id = self.instance.id if self.instance else None
-        if Producto.objects.filter(clave__iexact=value).exclude(id=instance_id).exists():
-            raise serializers.ValidationError(
-                f'Ya existe un producto con la clave "{value}"'
-            )
-        
-        return value
+        return value.strip()
     
     def validate(self, data):
         """
         Validaciones cross-field complejas
         """
-        # Validar coherencia stock_minimo vs stock_actual
-        if 'stock_minimo' in data:
+        # Validar coherencia stock_minimo vs stock_maximo
+        if 'stock_minimo' in data and 'stock_maximo' in data:
             stock_min = data['stock_minimo']
-            # Si se está creando, no hay stock actual aún
-            if self.instance:
-                stock_actual = self.instance.get_stock_actual()
-                if stock_min > stock_actual and stock_actual > 0:
-                    logger.warning(
-                        f"Producto {self.instance.clave}: stock_minimo ({stock_min}) "
-                        f"mayor que stock_actual ({stock_actual})"
-                    )
-        
-        # Validar descripción no duplicada (warning, no error)
-        if 'descripcion' in data:
-            desc = data['descripcion']
-            queryset = Producto.objects.filter(descripcion__iexact=desc)
-            if self.instance:
-                queryset = queryset.exclude(pk=self.instance.pk)
-            
-            if queryset.exists():
-                logger.warning(
-                    f"Ya existe producto con descripción similar: {desc}"
+            stock_max = data['stock_maximo']
+            if stock_max > 0 and stock_min > stock_max:
+                raise serializers.ValidationError(
+                    'El stock mínimo no puede ser mayor que el stock máximo'
                 )
         
-        # Validar que no se desactive un producto con stock si se proporciona activo=False
-        if 'activo' in data and not data['activo'] and self.instance:
-            stock_actual = self.instance.get_stock_actual()
-            if stock_actual > 0:
-                raise serializers.ValidationError({
-                    'activo': f'No se puede desactivar un producto con {stock_actual} unidades en stock. Ajuste primero el inventario.'
-                })
-        
         return data
-    
-    def validate_descripcion(self, value):
-        """Valida descripción: longitud y contenido"""
-        value = value.strip()
-        
-        if len(value) < PRODUCTO_DESCRIPCION_MIN_LENGTH:
-            raise serializers.ValidationError(
-                f"La descripción debe tener al menos {PRODUCTO_DESCRIPCION_MIN_LENGTH} caracteres"
-            )
-        
-        if len(value) > PRODUCTO_DESCRIPCION_MAX_LENGTH:
-            raise serializers.ValidationError(
-                f"La descripción no puede exceder {PRODUCTO_DESCRIPCION_MAX_LENGTH} caracteres"
-            )
         
         return value
     
@@ -597,8 +560,11 @@ class ProductoSerializer(serializers.ModelSerializer):
 
 class LoteSerializer(serializers.ModelSerializer):
     """
-    Serializer para Lote con validaciones y campos calculados.
-    Incluye información de vinculación farmacia -> centro.
+    Serializer para Lote - Supabase
+    
+    Campos en Supabase: id, producto_id, centro_id, numero_lote, fecha_caducidad,
+    fecha_entrada, cantidad_inicial, cantidad_actual, precio_compra, estado,
+    ubicacion, observaciones, documento_soporte, created_at, updated_at
     """
     # Campos del producto (read-only)
     producto_clave = serializers.CharField(source='producto.clave', read_only=True)
@@ -606,48 +572,38 @@ class LoteSerializer(serializers.ModelSerializer):
     producto_unidad = serializers.CharField(source='producto.unidad_medida', read_only=True)
     
     # Campos del centro (read-only)
-    centro_id = serializers.IntegerField(source='centro.id', read_only=True, allow_null=True)
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, allow_null=True)
     centro_clave = serializers.CharField(source='centro.clave', read_only=True, allow_null=True)
     
-    # Campos de vinculación (lote_origen - trazabilidad farmacia->centro)
-    lote_origen_id = serializers.IntegerField(source='lote_origen.id', read_only=True, allow_null=True)
-    lote_origen_numero = serializers.CharField(source='lote_origen.numero_lote', read_only=True, allow_null=True)
-    es_lote_farmacia = serializers.SerializerMethodField()
-    tiene_derivados = serializers.SerializerMethodField()
-    cantidad_derivados = serializers.SerializerMethodField()
-    
-    # Campos calculados (SerializerMethodField)
+    # Campos calculados
     dias_para_caducar = serializers.SerializerMethodField()
     porcentaje_consumido = serializers.SerializerMethodField()
     alerta_caducidad = serializers.SerializerMethodField()
     esta_caducado = serializers.SerializerMethodField()
     estado_visual = serializers.SerializerMethodField()
     stock_actual = serializers.IntegerField(source='cantidad_actual', read_only=True)
-    ubicacion = serializers.SerializerMethodField()
+    es_lote_farmacia = serializers.SerializerMethodField()
     
-    # Campo de documento PDF
-    documento_url = serializers.SerializerMethodField()
+    # Alias para compatibilidad
+    precio_unitario = serializers.DecimalField(
+        source='precio_compra', max_digits=12, decimal_places=2, read_only=True
+    )
     
     class Meta:
         model = Lote
         fields = [
             'id', 'producto', 'producto_clave', 'producto_descripcion', 'producto_unidad',
-            'numero_lote', 'fecha_caducidad', 'cantidad_inicial', 'cantidad_actual', 'stock_actual',
-            'estado', 'precio_compra', 'proveedor', 'factura', 'fecha_entrada', 
-            # Campo de trazabilidad de contrato (string, no FK)
-            'numero_contrato', 'marca',
-            'observaciones', 'dias_para_caducar', 'porcentaje_consumido', 
+            'numero_lote', 'fecha_caducidad', 'fecha_entrada',
+            'cantidad_inicial', 'cantidad_actual', 'stock_actual',
+            'precio_compra', 'precio_unitario',
+            'estado', 'ubicacion', 'observaciones', 'documento_soporte',
+            'centro', 'centro_nombre', 'centro_clave',
+            'dias_para_caducar', 'porcentaje_consumido', 
             'alerta_caducidad', 'esta_caducado', 'estado_visual',
-            # Campos de ubicación y vinculación
-            'centro', 'centro_id', 'centro_nombre', 'centro_clave', 'ubicacion',
-            'lote_origen', 'lote_origen_id', 'lote_origen_numero',
-            'es_lote_farmacia', 'tiene_derivados', 'cantidad_derivados',
-            # Campos de documento adjunto
-            'documento_pdf', 'documento_nombre', 'documento_url',
+            'es_lote_farmacia',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'fecha_entrada']
+        read_only_fields = ['created_at', 'updated_at']
     
     def get_dias_para_caducar(self, obj):
         """Calcula días restantes para caducidad"""
@@ -688,36 +644,9 @@ class LoteSerializer(serializers.ModelSerializer):
         
         return {'tipo': 'success', 'mensaje': 'VIGENTE'}
     
-    def get_ubicacion(self, obj):
-        """Indica si el lote está en farmacia central o en un centro"""
-        if obj.centro:
-            return {'tipo': 'centro', 'nombre': obj.centro.nombre, 'clave': obj.centro.clave}
-        return {'tipo': 'farmacia', 'nombre': 'Farmacia Central', 'clave': 'CENTRAL'}
-    
     def get_es_lote_farmacia(self, obj):
-        """Indica si este es un lote de farmacia central (origen)"""
+        """Indica si este es un lote de farmacia central (sin centro asignado)"""
         return obj.centro is None
-    
-    def get_tiene_derivados(self, obj):
-        """Indica si este lote de farmacia tiene lotes derivados en centros"""
-        if obj.centro is None:  # Solo lotes de farmacia pueden tener derivados
-            return obj.lotes_derivados.filter(deleted_at__isnull=True).exists()
-        return False
-    
-    def get_cantidad_derivados(self, obj):
-        """Cantidad de lotes derivados en centros (solo para lotes de farmacia)"""
-        if obj.centro is None:
-            return obj.lotes_derivados.filter(deleted_at__isnull=True).count()
-        return 0
-    
-    def get_documento_url(self, obj):
-        """Retorna la URL del documento PDF si existe"""
-        if obj.documento_pdf:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.documento_pdf.url)
-            return obj.documento_pdf.url
-        return None
     
     def validate_numero_lote(self, value):
         """
@@ -772,7 +701,6 @@ class LoteSerializer(serializers.ModelSerializer):
             })
         
         # Validar unicidad de número de lote por producto Y centro
-        # La constraint es: (producto, numero_lote, centro) debe ser único
         producto = data.get('producto') or (self.instance.producto if self.instance else None)
         numero_lote = data.get('numero_lote')
         centro = data.get('centro')  # None = farmacia central
@@ -782,7 +710,7 @@ class LoteSerializer(serializers.ModelSerializer):
                 producto=producto, 
                 numero_lote__iexact=numero_lote,
                 centro=centro,  # Mismo centro (o farmacia si None)
-                deleted_at__isnull=True  # Excluir eliminados
+                estado='disponible'  # Solo disponibles
             )
             if self.instance:
                 queryset = queryset.exclude(pk=self.instance.pk)

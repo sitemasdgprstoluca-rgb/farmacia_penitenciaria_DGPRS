@@ -309,45 +309,41 @@ class Centro(models.Model):
 
 class Producto(models.Model):
     """
-    Modelo de Producto Farmacéutico
-    Adaptado a la estructura de base de datos existente
+    Modelo de Producto Farmacéutico - Supabase
     
-    Campos reales en BD: id, clave, descripcion, unidad_medida, precio_unitario, 
-    stock_minimo, activo, created_at, updated_at, created_by_id, codigo_barras_producto
+    Campos en Supabase: id, clave, descripcion, unidad_medida, precio_unitario,
+    stock_minimo, stock_maximo, activo, codigo_barras, imagen, created_at, updated_at
     """
     clave = models.CharField(max_length=50, unique=True)
-    descripcion = models.TextField(blank=True, null=True)
-    unidad_medida = models.CharField(max_length=50)
+    descripcion = models.CharField(max_length=500)
+    unidad_medida = models.CharField(max_length=20, default='pieza')
     precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     stock_minimo = models.IntegerField(default=0)
+    stock_maximo = models.IntegerField(default=0)
     activo = models.BooleanField(default=True)
-    codigo_barras_producto = models.CharField(max_length=100, blank=True, null=True)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='productos_creados')
+    codigo_barras = models.CharField(max_length=50, blank=True, null=True)
+    imagen = models.CharField(max_length=255, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'productos'
         ordering = ['clave']
-        managed = False  # La tabla ya existe en la BD
+        managed = False  # Tabla en Supabase
 
     def __str__(self):
-        return f"{self.clave} - {self.descripcion or 'Sin descripción'}"
+        return f"{self.clave} - {self.descripcion}"
     
-    # Propiedades para compatibilidad con código existente
+    # Alias para compatibilidad con código que usa 'nombre'
     @property
     def nombre(self):
-        return self.descripcion or self.clave
-    
-    @property
-    def codigo_barras(self):
-        return self.codigo_barras_producto
+        return self.descripcion
     
     def get_stock_actual(self, centro=None):
         """Calcula el stock actual sumando lotes disponibles."""
         from django.db.models import Sum
         
-        filtros = {'deleted_at__isnull': True, 'cantidad_actual__gt': 0}
+        filtros = {'estado': 'disponible', 'cantidad_actual__gt': 0}
         if centro and centro != 'todos':
             filtros['centro'] = centro
         
@@ -377,70 +373,43 @@ class Producto(models.Model):
 
 class Lote(models.Model):
     """
-    Modelo de Lote de Producto
-    Adaptado a la estructura de base de datos existente
+    Modelo de Lote de Producto - Supabase
+    
+    Campos en Supabase: id, producto_id, centro_id, numero_lote, fecha_caducidad,
+    fecha_entrada, cantidad_inicial, cantidad_actual, precio_compra, estado,
+    ubicacion, observaciones, documento_soporte, created_at, updated_at
     """
-    numero_lote = models.CharField(max_length=100)
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='lotes')
+    centro = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='lotes_centro')
+    numero_lote = models.CharField(max_length=100)
+    fecha_caducidad = models.DateField()
+    fecha_entrada = models.DateField()
     cantidad_inicial = models.IntegerField(default=0)
     cantidad_actual = models.IntegerField(default=0)
-    fecha_fabricacion = models.DateField(null=True, blank=True, db_column='fecha_entrada')
-    fecha_caducidad = models.DateField()
-    estado = models.CharField(max_length=50, default='disponible')
-    precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0, db_column='precio_compra')
-    numero_contrato = models.CharField(max_length=100, blank=True, null=True)
-    marca = models.CharField(max_length=100, blank=True, null=True)
-    proveedor = models.CharField(max_length=200, blank=True, null=True)
-    factura = models.CharField(max_length=100, blank=True, null=True)
+    precio_compra = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    estado = models.CharField(max_length=20, default='disponible')
+    ubicacion = models.CharField(max_length=100, blank=True, null=True)
     observaciones = models.TextField(blank=True, null=True)
-    codigo_barras = models.CharField(max_length=100, blank=True, null=True)
-    centro = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='lotes_centro')
-    lote_origen = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='lotes_derivados')
-    contrato = models.IntegerField(null=True, blank=True, db_column='contrato_id')  # FK a tabla contratos si existe
-    documento_nombre = models.CharField(max_length=255, blank=True, null=True)
-    documento_pdf = models.TextField(blank=True, null=True)
-    deleted_at = models.DateTimeField(null=True, blank=True)
+    documento_soporte = models.CharField(max_length=255, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='lotes_creados')
-    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='lotes_actualizados')
 
     class Meta:
         db_table = 'lotes'
         ordering = ['-created_at']
-        managed = False  # La tabla ya existe en la BD
+        managed = False  # Tabla en Supabase
 
     def __str__(self):
         return f"{self.numero_lote} - {self.producto.nombre if self.producto else 'N/A'}"
     
-    @property
-    def estado_calculado(self):
-        """Calcula el estado basado en cantidad y caducidad (alternativo al campo estado)"""
-        from django.utils import timezone
-        if self.cantidad_actual <= 0:
-            return 'agotado'
-        if self.fecha_caducidad and self.fecha_caducidad < timezone.now().date():
-            return 'caducado'
-        return 'disponible'
-    
     # Alias para compatibilidad
     @property
+    def precio_unitario(self):
+        return self.precio_compra
+    
+    @property
     def activo(self):
-        return self.deleted_at is None
-    
-    @property
-    def ubicacion(self):
-        """Alias de compatibilidad - retorna el nombre del centro"""
-        return self.centro.nombre if self.centro else None
-    
-    # Alias para serializer
-    @property
-    def precio_compra(self):
-        return self.precio_unitario
-    
-    @property
-    def fecha_entrada(self):
-        return self.fecha_fabricacion
+        return self.estado == 'disponible'
     
     def dias_para_caducar(self):
         """Calcula días restantes para caducidad"""
@@ -464,106 +433,112 @@ class Lote(models.Model):
             return 'normal'
         if dias < 0:
             return 'vencido'
-        elif dias <= 7:
+        elif dias <= 90:
             return 'critico'
-        elif dias <= 30:
+        elif dias <= 180:
             return 'proximo'
         return 'normal'
 
 
 class Movimiento(models.Model):
     """
-    Modelo de Movimiento de inventario
-    Adaptado a la estructura de base de datos existente
+    Modelo de Movimiento de inventario - Supabase
     
-    Campos reales en BD: id, tipo, cantidad, observaciones, fecha, centro_id, 
-    lote_id, requisicion_id, documento_referencia, lugar_entrega, usuario_id
+    Campos en Supabase: id, tipo, producto_id, lote_id, cantidad, centro_origen_id,
+    centro_destino_id, requisicion_id, usuario_id, motivo, referencia, fecha, created_at
     """
-    tipo = models.CharField(max_length=50)
-    lote = models.ForeignKey(Lote, on_delete=models.SET_NULL, null=True, blank=True, related_name='movimientos')
+    tipo = models.CharField(max_length=20)
+    producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='movimientos')
+    lote = models.ForeignKey(Lote, on_delete=models.PROTECT, null=True, blank=True, related_name='movimientos')
     cantidad = models.IntegerField()
-    observaciones = models.TextField(blank=True, null=True)
-    fecha = models.DateTimeField(auto_now_add=True)
-    centro = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='movimientos')
+    centro_origen = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='movimientos_origen')
+    centro_destino = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='movimientos_destino')
     requisicion = models.ForeignKey('Requisicion', on_delete=models.SET_NULL, null=True, blank=True, related_name='movimientos')
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
-    documento_referencia = models.CharField(max_length=255, blank=True, null=True)
-    lugar_entrega = models.CharField(max_length=200, blank=True, null=True)
+    motivo = models.TextField(blank=True, null=True)
+    referencia = models.CharField(max_length=100, blank=True, null=True)
+    fecha = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'movimientos'
         ordering = ['-fecha']
-        managed = False  # La tabla ya existe en la BD
+        managed = False  # Tabla en Supabase
 
     def __str__(self):
         return f"{self.tipo} - {self.cantidad} - {self.fecha}"
     
-    # Propiedades para compatibilidad con código que espera producto
+    # Alias para compatibilidad
     @property
-    def producto(self):
-        return self.lote.producto if self.lote else None
+    def centro(self):
+        return self.centro_origen or self.centro_destino
+    
+    @property
+    def observaciones(self):
+        return self.motivo
 
 
 class Requisicion(models.Model):
     """
-    Modelo de Requisicion
-    Adaptado a la estructura de base de datos existente
+    Modelo de Requisicion - Supabase
     
-    Campos reales en BD: id, folio, fecha_solicitud, estado, observaciones, 
-    fecha_autorizacion, motivo_rechazo, created_at, updated_at, centro_id, 
-    usuario_autoriza_id, usuario_solicita_id, fecha_recibido, lugar_entrega, 
-    observaciones_recepcion, usuario_recibe_id, updated_by_id
+    Campos en Supabase: id, numero, centro_origen_id, centro_destino_id, solicitante_id,
+    autorizador_id, estado, tipo, prioridad, notas, lugar_entrega, fecha_solicitud,
+    fecha_autorizacion, fecha_surtido, fecha_entrega, foto_firma_surtido, foto_firma_recepcion,
+    usuario_firma_surtido_id, usuario_firma_recepcion_id, fecha_firma_surtido, fecha_firma_recepcion,
+    created_at, updated_at
     """
-    folio = models.CharField(max_length=50, unique=True)
-    centro = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones')
-    usuario_solicita = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_solicitadas')
-    usuario_autoriza = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_autorizadas')
-    usuario_recibe = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_recibidas')
-    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_actualizadas')
-    estado = models.CharField(max_length=50, default='borrador')
-    observaciones = models.TextField(blank=True, null=True)
-    observaciones_recepcion = models.TextField(blank=True, null=True)
-    motivo_rechazo = models.TextField(blank=True, null=True)
+    numero = models.CharField(max_length=50, unique=True)
+    centro_origen = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_origen')
+    centro_destino = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_destino')
+    solicitante = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='requisiciones_solicitadas')
+    autorizador = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_autorizadas')
+    estado = models.CharField(max_length=20, default='borrador')
+    tipo = models.CharField(max_length=50, default='normal')
+    prioridad = models.CharField(max_length=20, default='normal')
+    notas = models.TextField(blank=True, null=True)
     lugar_entrega = models.CharField(max_length=200, blank=True, null=True)
-    fecha_solicitud = models.DateTimeField(auto_now_add=True)
+    fecha_solicitud = models.DateTimeField()
     fecha_autorizacion = models.DateTimeField(null=True, blank=True)
-    fecha_recibido = models.DateTimeField(null=True, blank=True)
+    fecha_surtido = models.DateTimeField(null=True, blank=True)
+    fecha_entrega = models.DateTimeField(null=True, blank=True)
+    foto_firma_surtido = models.CharField(max_length=255, blank=True, null=True)
+    foto_firma_recepcion = models.CharField(max_length=255, blank=True, null=True)
+    usuario_firma_surtido = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='firmas_surtido')
+    usuario_firma_recepcion = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='firmas_recepcion')
+    fecha_firma_surtido = models.DateTimeField(null=True, blank=True)
+    fecha_firma_recepcion = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'requisiciones'
         ordering = ['-fecha_solicitud']
-        managed = False  # La tabla ya existe en la BD
+        managed = False  # Tabla en Supabase
 
     def __str__(self):
-        return f"REQ-{self.folio}"
+        return f"REQ-{self.numero}"
     
-    # Propiedades para compatibilidad con código existente
+    # Aliases para compatibilidad con código existente
     @property
-    def numero(self):
-        return self.folio
-    
-    @property
-    def solicitante(self):
-        return self.usuario_solicita
+    def folio(self):
+        return self.numero
     
     @property
-    def autorizador(self):
-        return self.usuario_autoriza
+    def centro(self):
+        return self.centro_destino or self.centro_origen
     
     @property
-    def notas(self):
-        return self.observaciones
+    def observaciones(self):
+        return self.notas
 
 
 class DetalleRequisicion(models.Model):
     """
-    Detalle de Requisicion
-    Adaptado a la estructura de base de datos existente
+    Detalle de Requisicion - Supabase
     
-    Campos reales en BD: id, cantidad_solicitada, cantidad_autorizada, cantidad_surtida,
-    observaciones, producto_id, requisicion_id, lote_id, cantidad_reservada, fecha_reserva
+    Campos en Supabase: id, requisicion_id, producto_id, lote_id, cantidad_solicitada,
+    cantidad_autorizada, cantidad_surtida, cantidad_recibida, notas, created_at, updated_at
     """
     requisicion = models.ForeignKey(Requisicion, on_delete=models.CASCADE, related_name='detalles')
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT)
@@ -571,26 +546,24 @@ class DetalleRequisicion(models.Model):
     cantidad_solicitada = models.IntegerField()
     cantidad_autorizada = models.IntegerField(null=True, blank=True)
     cantidad_surtida = models.IntegerField(null=True, blank=True)
-    cantidad_reservada = models.IntegerField(null=True, blank=True)
-    observaciones = models.TextField(blank=True, null=True)
-    fecha_reserva = models.DateTimeField(null=True, blank=True)
+    cantidad_recibida = models.IntegerField(null=True, blank=True)
+    notas = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'detalles_requisicion'
-        managed = False  # La tabla ya existe en la BD
+        managed = False  # Tabla en Supabase
 
     def __str__(self):
-        return f"{self.requisicion.folio} - {self.producto.clave}"
-    
-    @property
-    def notas(self):
-        return self.observaciones
+        return f"{self.requisicion.numero} - {self.producto.nombre}"
 
 
 class Notificacion(models.Model):
     """
-    Modelo de Notificacion
-    Adaptado a la estructura de base de datos existente
+    Modelo de Notificacion - Supabase
+    
+    Campos en Supabase: id, usuario_id, tipo, titulo, mensaje, leida, datos, url, created_at
     """
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='notificaciones')
     tipo = models.CharField(max_length=50)
@@ -598,13 +571,13 @@ class Notificacion(models.Model):
     mensaje = models.TextField()
     leida = models.BooleanField(default=False)
     datos = models.JSONField(null=True, blank=True)
-    url = models.CharField(max_length=255, blank=True, null=True)
+    url = models.CharField(max_length=500, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'notificaciones'
         ordering = ['-created_at']
-        managed = False  # La tabla ya existe en la BD
+        managed = False  # La tabla ya existe en Supabase
 
     def __str__(self):
         return f"{self.titulo} - {self.usuario.username}"
@@ -612,71 +585,43 @@ class Notificacion(models.Model):
 
 class TemaGlobal(models.Model):
     """
-    Configuración del tema visual
-    Adaptado a la estructura de base de datos existente
+    Configuración del tema visual - Supabase
+    
+    Campos en Supabase: id, nombre, logo_url, color_primario, color_secundario,
+    color_fondo, color_texto, activo, updated_at
     """
-    nombre = models.CharField(max_length=100, default='Tema Default')
-    es_activo = models.BooleanField(default=False, db_column='es_activo')
+    nombre = models.CharField(max_length=100, default='Gobierno del Estado de México')
     logo_url = models.CharField(max_length=500, blank=True, null=True)
-    logo_width = models.IntegerField(null=True, blank=True)
-    logo_height = models.IntegerField(null=True, blank=True)
-    favicon_url = models.CharField(max_length=500, blank=True, null=True)
-    titulo_sistema = models.CharField(max_length=200, blank=True, null=True)
-    subtitulo_sistema = models.CharField(max_length=200, blank=True, null=True)
-    color_primario = models.CharField(max_length=20, blank=True, null=True)
-    color_primario_hover = models.CharField(max_length=20, blank=True, null=True)
-    color_secundario = models.CharField(max_length=20, blank=True, null=True)
-    color_secundario_hover = models.CharField(max_length=20, blank=True, null=True)
-    color_exito = models.CharField(max_length=20, blank=True, null=True)
-    color_exito_hover = models.CharField(max_length=20, blank=True, null=True)
-    color_alerta = models.CharField(max_length=20, blank=True, null=True)
-    color_alerta_hover = models.CharField(max_length=20, blank=True, null=True)
-    color_error = models.CharField(max_length=20, blank=True, null=True)
-    color_error_hover = models.CharField(max_length=20, blank=True, null=True)
-    color_info = models.CharField(max_length=20, blank=True, null=True)
-    color_info_hover = models.CharField(max_length=20, blank=True, null=True)
-    color_fondo_principal = models.CharField(max_length=20, blank=True, null=True)
-    color_fondo_sidebar = models.CharField(max_length=20, blank=True, null=True)
-    color_fondo_header = models.CharField(max_length=20, blank=True, null=True)
-    color_texto_principal = models.CharField(max_length=20, blank=True, null=True)
-    color_texto_sidebar = models.CharField(max_length=20, blank=True, null=True)
-    color_texto_header = models.CharField(max_length=20, blank=True, null=True)
-    color_texto_links = models.CharField(max_length=20, blank=True, null=True)
-    color_borde_inputs = models.CharField(max_length=20, blank=True, null=True)
-    color_borde_focus = models.CharField(max_length=20, blank=True, null=True)
-    reporte_color_encabezado = models.CharField(max_length=20, blank=True, null=True)
-    reporte_color_texto = models.CharField(max_length=20, blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    color_primario = models.CharField(max_length=7, default='#6d1a36')
+    color_secundario = models.CharField(max_length=7, default='#c9a227')
+    color_fondo = models.CharField(max_length=7, default='#faf7f2')
+    color_texto = models.CharField(max_length=7, default='#1a1a1a')
+    activo = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'tema_global'
-        managed = False  # La tabla ya existe en la BD
+        managed = False  # Tabla en Supabase
 
     def __str__(self):
         return self.nombre
-    
-    # Propiedad para compatibilidad
-    @property
-    def activo(self):
-        return self.es_activo
 
 
 class ConfiguracionSistema(models.Model):
     """
-    Configuración del sistema
-    Adaptado a la estructura de base de datos existente
+    Configuración del sistema - Supabase
+    
+    Campos en Supabase: id, clave, valor, descripcion, tipo, updated_at
     """
     clave = models.CharField(max_length=100, unique=True)
-    valor = models.TextField()
-    descripcion = models.TextField(blank=True, null=True)
-    tipo = models.CharField(max_length=50, default='texto')
-    es_publica = models.BooleanField(default=False)
+    valor = models.TextField(blank=True, null=True)
+    descripcion = models.CharField(max_length=500, blank=True, null=True)
+    tipo = models.CharField(max_length=20, default='texto')
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'configuracion_sistema'
-        managed = False  # La tabla ya existe en la BD
+        managed = False  # Tabla en Supabase
 
     def __str__(self):
         return self.clave
@@ -684,89 +629,89 @@ class ConfiguracionSistema(models.Model):
 
 class HojaRecoleccion(models.Model):
     """
-    Hoja de Recolección
-    Adaptado a la estructura de base de datos existente
+    Hoja de Recolección - Supabase
+    
+    Campos en Supabase: id, requisicion_id, folio, estado, fecha_generacion,
+    fecha_inicio, fecha_fin, usuario_recolector_id, observaciones
     """
-    numero = models.CharField(max_length=50, unique=True)
-    centro = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True)
-    responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='hojas_responsable')
-    estado = models.CharField(max_length=50, default='pendiente')
-    fecha_programada = models.DateField()
-    fecha_recoleccion = models.DateTimeField(null=True, blank=True)
-    notas = models.TextField(blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    requisicion = models.ForeignKey(Requisicion, on_delete=models.CASCADE, related_name='hojas_recoleccion')
+    folio = models.CharField(max_length=50, unique=True)
+    estado = models.CharField(max_length=20, default='pendiente')
+    fecha_generacion = models.DateTimeField()
+    fecha_inicio = models.DateTimeField(null=True, blank=True)
+    fecha_fin = models.DateTimeField(null=True, blank=True)
+    usuario_recolector = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='hojas_recolector')
+    observaciones = models.TextField(blank=True, null=True)
 
     class Meta:
         db_table = 'hojas_recoleccion'
-        managed = False  # La tabla ya existe en la BD
+        managed = False  # Tabla en Supabase
 
     def __str__(self):
-        return f"HR-{self.numero}"
-    
-    @property
-    def folio(self):
-        return self.numero
+        return f"HR-{self.folio}"
 
 
 class DetalleHojaRecoleccion(models.Model):
     """
-    Detalle de Hoja de Recolección
-    Adaptado a la estructura de base de datos existente
+    Detalle de Hoja de Recolección - Supabase
+    
+    Campos en Supabase: id, hoja_recoleccion_id, detalle_requisicion_id, lote_id,
+    cantidad_recolectada, ubicacion, recolectado, orden
     """
-    hoja = models.ForeignKey(HojaRecoleccion, on_delete=models.CASCADE, related_name='detalles', db_column='hoja_id')
-    lote = models.ForeignKey(Lote, on_delete=models.PROTECT)
-    cantidad_recolectar = models.IntegerField()
-    cantidad_recolectada = models.IntegerField(null=True, blank=True)
-    motivo = models.CharField(max_length=100)
-    observaciones = models.TextField(blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    hoja_recoleccion = models.ForeignKey(HojaRecoleccion, on_delete=models.CASCADE, related_name='detalles')
+    detalle_requisicion = models.ForeignKey(DetalleRequisicion, on_delete=models.CASCADE)
+    lote = models.ForeignKey(Lote, on_delete=models.SET_NULL, null=True, blank=True)
+    cantidad_recolectada = models.IntegerField(default=0)
+    ubicacion = models.CharField(max_length=100, blank=True, null=True)
+    recolectado = models.BooleanField(default=False)
+    orden = models.IntegerField(default=0)
 
     class Meta:
-        db_table = 'detalle_hojas_recoleccion'
-        managed = False  # La tabla ya existe en la BD
+        db_table = 'detalles_hoja_recoleccion'
+        managed = False  # Tabla en Supabase
 
 
 class ImportacionLog(models.Model):
     """
-    Log de Importaciones
-    Adaptado a la estructura de base de datos existente
+    Log de Importaciones - Supabase
+    
+    Campos en Supabase: id, usuario_id, archivo_nombre, tipo_importacion,
+    registros_procesados, registros_exitosos, registros_fallidos, errores, created_at
     """
-    archivo = models.CharField(max_length=255)
-    tipo_importacion = models.CharField(max_length=50)
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
-    registros_totales = models.IntegerField(default=0)
+    archivo_nombre = models.CharField(max_length=255)
+    tipo_importacion = models.CharField(max_length=50)
+    registros_procesados = models.IntegerField(default=0)
     registros_exitosos = models.IntegerField(default=0)
     registros_fallidos = models.IntegerField(default=0)
     errores = models.JSONField(null=True, blank=True)
-    estado = models.CharField(max_length=50, default='pendiente')
-    fecha_inicio = models.DateTimeField(auto_now_add=True)
-    fecha_fin = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = 'importacion_logs'
-        managed = False  # La tabla ya existe en la BD
+        db_table = 'importacion_log'
+        managed = False  # Tabla en Supabase
 
 
 class AuditLog(models.Model):
     """
-    Log de Auditoría
-    Adaptado a la estructura de base de datos existente
+    Log de Auditoría - Supabase
+    
+    Campos en Supabase: id, usuario_id, accion, modelo, objeto_id,
+    datos_antes, datos_despues, ip_address, user_agent, created_at
     """
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     accion = models.CharField(max_length=50)
     modelo = models.CharField(max_length=100)
     objeto_id = models.CharField(max_length=100, null=True, blank=True)
-    datos_anteriores = models.JSONField(null=True, blank=True)
-    datos_nuevos = models.JSONField(null=True, blank=True)
+    datos_antes = models.JSONField(null=True, blank=True)
+    datos_despues = models.JSONField(null=True, blank=True)
     ip_address = models.CharField(max_length=45, null=True, blank=True)
     user_agent = models.TextField(null=True, blank=True)
-    detalles = models.JSONField(null=True, blank=True)
-    timestamp = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = 'auditoria_logs'
-        managed = False  # La tabla ya existe en la BD
+        db_table = 'audit_log'
+        managed = False  # Tabla en Supabase
 
 
 # Alias para compatibilidad con código existente

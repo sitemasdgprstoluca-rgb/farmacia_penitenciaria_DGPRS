@@ -1,56 +1,94 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, Centro, Producto, Lote, Requisicion, DetalleRequisicion, Movimiento, ImportacionLog
+from .models import User, Centro, Producto, Lote, Requisicion, DetalleRequisicion, Movimiento
+
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     """Admin personalizado para el modelo User."""
     
-    # Campos a mostrar en la lista
     list_display = ['username', 'email', 'first_name', 'last_name', 'rol', 'is_staff', 'is_active']
     list_filter = ['is_staff', 'is_superuser', 'is_active', 'rol']
     search_fields = ['username', 'first_name', 'last_name', 'email']
     
-    # Agregar campos personalizados al formulario de edición
     fieldsets = BaseUserAdmin.fieldsets + (
         ('Información Adicional', {'fields': ('rol', 'centro', 'adscripcion', 'activo')}),
     )
     
-    # Agregar campos personalizados al formulario de creación
     add_fieldsets = BaseUserAdmin.add_fieldsets + (
         ('Información Adicional', {'fields': ('rol', 'centro')}),
     )
 
+
+@admin.register(Centro)
+class CentroAdmin(admin.ModelAdmin):
+    """Admin para Centros - Supabase"""
+    list_display = ['id', 'clave', 'nombre', 'tipo', 'activo']
+    list_filter = ['activo', 'tipo']
+    search_fields = ['nombre', 'clave']
+
+
+@admin.register(Producto)
+class ProductoAdmin(admin.ModelAdmin):
+    """
+    Admin para Productos - Supabase
+    
+    Campos en Supabase: id, clave, descripcion, unidad_medida, precio_unitario,
+    stock_minimo, stock_maximo, activo, codigo_barras, imagen, created_at, updated_at
+    """
+    list_display = ['id', 'clave', 'descripcion', 'unidad_medida', 'activo']
+    list_filter = ['activo', 'unidad_medida']
+    search_fields = ['clave', 'descripcion', 'codigo_barras']
+    readonly_fields = ['created_at', 'updated_at']
+    fieldsets = (
+        ('Información Básica', {
+            'fields': ('clave', 'descripcion', 'unidad_medida', 'codigo_barras', 'imagen')
+        }),
+        ('Precios y Stock', {
+            'fields': ('precio_unitario', 'stock_minimo', 'stock_maximo')
+        }),
+        ('Estado', {
+            'fields': ('activo',)
+        }),
+        ('Auditoría', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+
 @admin.register(Lote)
 class LoteAdmin(admin.ModelAdmin):
     """
-    Admin para gestión de lotes
-    Adaptado a la estructura de BD existente
+    Admin para Lotes - Supabase
+    
+    Campos en Supabase: id, producto_id, centro_id, numero_lote, fecha_caducidad,
+    fecha_entrada, cantidad_inicial, cantidad_actual, precio_compra, estado,
+    ubicacion, observaciones, documento_soporte, created_at, updated_at
     """
     list_display = [
         'id',
         'numero_lote',
         'producto',
+        'centro',
         'fecha_caducidad',
         'cantidad_actual',
         'cantidad_inicial',
         'estado',
-        'is_active',
     ]
     list_filter = [
         'estado',
         'fecha_caducidad',
-        'producto',
+        'centro',
     ]
     search_fields = [
         'numero_lote',
-        'producto__nombre',
-        'marca',
+        'producto__clave',
+        'producto__descripcion',
     ]
     readonly_fields = [
         'created_at',
         'updated_at',
-        'deleted_at',
     ]
     fieldsets = (
         ('Información Básica', {
@@ -58,7 +96,7 @@ class LoteAdmin(admin.ModelAdmin):
                 'producto',
                 'numero_lote',
                 'fecha_caducidad',
-                'fecha_fabricacion',
+                'fecha_entrada',
             )
         }),
         ('Cantidades', {
@@ -69,14 +107,12 @@ class LoteAdmin(admin.ModelAdmin):
         }),
         ('Información de Compra', {
             'fields': (
-                'precio_unitario',
-                'numero_contrato',
-                'marca',
-                'ubicacion',
+                'precio_compra',
+                'documento_soporte',
             )
         }),
-        ('Estado', {
-            'fields': ('estado', 'centro', 'deleted_at'),
+        ('Ubicación', {
+            'fields': ('estado', 'centro', 'ubicacion', 'observaciones'),
         }),
         ('Auditoría', {
             'fields': (
@@ -89,12 +125,32 @@ class LoteAdmin(admin.ModelAdmin):
     date_hierarchy = 'fecha_caducidad'
     ordering = ['-created_at', 'fecha_caducidad']
     
-    def is_active(self, obj):
-        """Muestra si el lote está activo (no eliminado)"""
-        return obj.deleted_at is None
-    is_active.boolean = True
-    is_active.short_description = "Activo"
-    
     def get_queryset(self, request):
-        """Incluye todos los lotes"""
+        """Incluye todos los lotes con relaciones"""
         return Lote.objects.select_related('producto', 'centro').all()
+
+
+@admin.register(Requisicion)
+class RequisicionAdmin(admin.ModelAdmin):
+    """Admin para Requisiciones - Supabase"""
+    list_display = ['id', 'folio', 'centro', 'estado', 'fecha_solicitud']
+    list_filter = ['estado', 'prioridad']
+    search_fields = ['folio']
+    readonly_fields = ['created_at', 'updated_at']
+
+
+@admin.register(DetalleRequisicion)
+class DetalleRequisicionAdmin(admin.ModelAdmin):
+    """Admin para Detalles de Requisicion - Supabase"""
+    list_display = ['id', 'requisicion', 'producto', 'cantidad_solicitada', 'cantidad_autorizada']
+    list_filter = []
+    search_fields = ['requisicion__folio', 'producto__clave']
+
+
+@admin.register(Movimiento)
+class MovimientoAdmin(admin.ModelAdmin):
+    """Admin para Movimientos - Supabase"""
+    list_display = ['id', 'tipo', 'lote', 'centro', 'cantidad', 'fecha']
+    list_filter = ['tipo']
+    search_fields = ['lote__numero_lote']
+    readonly_fields = ['fecha']

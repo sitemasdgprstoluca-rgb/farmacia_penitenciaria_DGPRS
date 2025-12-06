@@ -477,8 +477,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     Sum(
                         'lotes__cantidad_actual',
                         filter=Q(
-                            lotes__deleted_at__isnull=True,
-                            lotes__estado='disponible',
+                            lotes__lotes__estado='disponible',
                             lotes__cantidad_actual__gt=0
                         )
                     ),
@@ -1114,7 +1113,6 @@ class CentroViewSet(viewsets.ModelViewSet):
         lotes = Lote.objects.filter(
             Q(id__in=lote_ids) | Q(centro=centro),
             estado='disponible',
-            deleted_at__isnull=True,
             cantidad_actual__gt=0
         ).select_related('producto')
 
@@ -1498,7 +1496,7 @@ class LoteViewSet(viewsets.ModelViewSet):
         Seguridad: Usuarios de centro solo ven lotes de su centro.
         Admin/farmacia/vista ven todo por defecto, pueden filtrar con ?centro=.
         """
-        queryset = Lote.objects.select_related('producto', 'centro', 'lote_origen').filter(deleted_at__isnull=True).exclude(estado='retirado')
+        queryset = Lote.objects.select_related('producto', 'centro').exclude(estado__in=['caducado', 'retirado'])
         
         # SEGURIDAD: Filtrar por centro segun rol
         user = self.request.user
@@ -1535,12 +1533,10 @@ class LoteViewSet(viewsets.ModelViewSet):
         if producto:
             queryset = queryset.filter(producto_id=producto)
         
-        # Filtrar por estado activo
-        activo = self.request.query_params.get('activo')
-        if activo == 'true':
-            queryset = queryset.filter(deleted_at__isnull=True)
-        elif activo == 'false':
-            queryset = queryset.filter(deleted_at__isnull=False)
+        # Filtrar por estado
+        estado = self.request.query_params.get('estado')
+        if estado:
+            queryset = queryset.filter(estado=estado)
         
         # Busqueda por numero de lote, clave o descripcion producto (ISS-003)
         search = self.request.query_params.get('search')
@@ -1909,7 +1905,6 @@ class LoteViewSet(viewsets.ModelViewSet):
             fecha_limite = date.today() + timedelta(days=dias)
             
             lotes = Lote.objects.select_related('producto').filter(
-                deleted_at__isnull=True,
                 estado__in=['disponible', 'agotado', 'bloqueado'],
                 cantidad_actual__gt=0,
                 fecha_caducidad__lte=fecha_limite
@@ -1941,7 +1936,6 @@ class LoteViewSet(viewsets.ModelViewSet):
             hoy = date.today()
             fecha_limite = hoy + timedelta(days=dias)
             lotes = Lote.objects.select_related('producto').filter(
-                deleted_at__isnull=True,
                 cantidad_actual__gt=0,
                 fecha_caducidad__gt=hoy,
                 fecha_caducidad__lte=fecha_limite
@@ -1966,7 +1960,6 @@ class LoteViewSet(viewsets.ModelViewSet):
 
             hoy = date.today()
             lotes = Lote.objects.select_related('producto').filter(
-                deleted_at__isnull=True,
                 cantidad_actual__gt=0,
                 fecha_caducidad__lt=hoy
             ).order_by('fecha_caducidad')
@@ -2085,31 +2078,17 @@ class LoteViewSet(viewsets.ModelViewSet):
                     'centro': lote.centro.nombre if lote.centro else None
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Obtener lotes derivados
-            derivados = Lote.objects.filter(
-                lote_origen=lote,
-                deleted_at__isnull=True
-            ).select_related('centro', 'producto')
+            # Nota: En Supabase no hay lote_origen, se simplifica
+            # Los lotes derivados se manejan diferente
+            derivados = Lote.objects.none()
             
             # Calcular totales
             from django.db.models import Sum
-            total_derivados = derivados.count()
-            stock_total_centros = derivados.aggregate(total=Sum('cantidad_actual'))['total'] or 0
+            total_derivados = 0
+            stock_total_centros = 0
             
             derivados_data = []
-            for d in derivados:
-                derivados_data.append({
-                    'id': d.id,
-                    'centro_id': d.centro.id if d.centro else None,
-                    'centro_nombre': d.centro.nombre if d.centro else None,
-                    'centro_clave': d.centro.clave if d.centro else None,
-                    'numero_lote': d.numero_lote,
-                    'cantidad_actual': d.cantidad_actual,
-                    'cantidad_inicial': d.cantidad_inicial,
-                    'fecha_caducidad': d.fecha_caducidad,
-                    'estado': d.estado,
-                    'created_at': d.created_at
-                })
+            # Código original removido - lote_origen no existe en Supabase
             
             return Response({
                 'lote_farmacia': {
@@ -2161,29 +2140,8 @@ class LoteViewSet(viewsets.ModelViewSet):
                 'derivados': []
             }
             
-            # Si es lote de centro, mostrar origen
-            if lote.lote_origen:
-                result['origen'] = {
-                    'id': lote.lote_origen.id,
-                    'numero_lote': lote.lote_origen.numero_lote,
-                    'cantidad_actual': lote.lote_origen.cantidad_actual,
-                    'ubicacion': 'Farmacia Central'
-                }
-            
-            # Si es lote de farmacia, mostrar derivados
-            if lote.centro is None:
-                derivados = Lote.objects.filter(
-                    lote_origen=lote,
-                    deleted_at__isnull=True
-                ).select_related('centro')
-                
-                for d in derivados:
-                    result['derivados'].append({
-                        'id': d.id,
-                        'centro_nombre': d.centro.nombre if d.centro else None,
-                        'centro_clave': d.centro.clave if d.centro else None,
-                        'cantidad_actual': d.cantidad_actual
-                    })
+            # En Supabase no hay lote_origen - trazabilidad simplificada
+            # Los lotes de cada centro son independientes
             
             # Movimientos relacionados
             movimientos = Movimiento.objects.filter(
@@ -3544,8 +3502,7 @@ def dashboard_resumen(request):
         
         # === LOTES ===
         lotes_query = Lote.objects.filter(
-            estado='disponible', 
-            deleted_at__isnull=True,
+            estado='disponible',
             cantidad_actual__gt=0
         )
         
@@ -3719,7 +3676,6 @@ def dashboard_graficas(request):
             stock_farmacia = Lote.objects.filter(
                 centro__isnull=True,
                 estado='disponible',
-                deleted_at__isnull=True,
                 cantidad_actual__gt=0
             ).aggregate(
                 total=Coalesce(Sum('cantidad_actual'), 0, output_field=IntegerField())
@@ -3737,7 +3693,6 @@ def dashboard_graficas(request):
                 stock = Lote.objects.filter(
                     centro=centro,
                     estado='disponible',
-                    deleted_at__isnull=True,
                     cantidad_actual__gt=0
                 ).aggregate(
                     total=Coalesce(Sum('cantidad_actual'), 0, output_field=IntegerField())
@@ -3760,7 +3715,6 @@ def dashboard_graficas(request):
                 stock = Lote.objects.filter(
                     centro=user_centro,
                     estado='disponible',
-                    deleted_at__isnull=True,
                     cantidad_actual__gt=0
                 ).aggregate(
                     total=Coalesce(Sum('cantidad_actual'), 0, output_field=IntegerField())
@@ -3838,7 +3792,7 @@ def trazabilidad_producto(request, clave):
         if not producto:
             return Response({'error': 'Producto no encontrado', 'clave_buscada': clave}, status=status.HTTP_404_NOT_FOUND)
 
-        lotes = Lote.objects.filter(producto=producto, deleted_at__isnull=True)
+        lotes = Lote.objects.filter(producto=producto, estado__in=['disponible', 'agotado', 'cuarentena'])
         
         # Aplicar filtro de centro
         if filtrar_por_centro and user_centro:
@@ -4116,7 +4070,6 @@ def reporte_inventario(request):
         for idx, producto in enumerate(productos, 1):
             # Aplicar filtro de centro si corresponde
             lotes_query = producto.lotes.filter(
-                deleted_at__isnull=True,
                 estado='disponible'
             )
             if filtrar_por_centro:
@@ -4555,7 +4508,6 @@ def reporte_caducidades(request):
         
         # Obtener lotes proximos a vencer
         lotes = Lote.objects.filter(
-            deleted_at__isnull=True,
             cantidad_actual__gt=0,
             fecha_caducidad__lte=fecha_limite
         ).select_related('producto')
@@ -4909,7 +4861,6 @@ def reporte_medicamentos_por_caducar(request):
         hoy = date.today()
         limite = hoy + timedelta(days=dias)
         lotes = Lote.objects.filter(
-            deleted_at__isnull=True,
             cantidad_actual__gt=0,
             fecha_caducidad__gt=hoy,
             fecha_caducidad__lte=limite
@@ -4980,7 +4931,6 @@ def reporte_bajo_stock(request):
         resultados = []
         for prod in productos:
             lotes_query = prod.lotes.filter(
-                deleted_at__isnull=True,
                 estado='disponible'
             )
             # Aplicar filtro de centro
@@ -5080,7 +5030,7 @@ def reportes_precarga(request):
         
         productos = list(Producto.objects.filter(activo=True).values('id', 'clave', 'descripcion').order_by('clave'))
         
-        # Filtrar centros seg�n rol
+        # Filtrar centros segun rol
         if es_admin_farmacia:
             centros = list(Centro.objects.filter(activo=True).values('id', 'clave', 'nombre').order_by('clave'))
         elif user_centro:
@@ -5088,8 +5038,8 @@ def reportes_precarga(request):
         else:
             centros = []
         
-        # Filtrar lotes seg�n rol
-        lotes_query = Lote.objects.filter(deleted_at__isnull=True)
+        # Filtrar lotes segun rol
+        lotes_query = Lote.objects.filter(estado__in=['disponible', 'agotado', 'cuarentena'])
         if not es_admin_farmacia and user_centro:
             lotes_query = lotes_query.filter(centro=user_centro)
         lotes = list(lotes_query.values('id', 'numero_lote', 'producto_id'))

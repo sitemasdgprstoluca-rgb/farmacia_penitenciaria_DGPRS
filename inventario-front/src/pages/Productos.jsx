@@ -428,8 +428,9 @@ const Productos = () => {
   const tieneImportarProductos = permisos?.importarProductos === true;
 
   const puede = useMemo(() => ({
-    // Para ver productos: debe tener permiso Y (ser farmacia/admin O ser vista)
-    ver: tienePermisoProductos && (esFarmaciaAdmin || esVistaUser),
+    // Para ver productos: debe tener permiso Y (ser farmacia/admin O vista O centro)
+    // ISS-FIX: CENTRO users can view products (read-only) per backend permissions
+    ver: tienePermisoProductos && (esFarmaciaAdmin || esVistaUser || esCentroUser),
     // Para acciones de escritura: usar permisos granulares del backend
     // El rol solo habilita si el permiso específico está activo
     crear: tienePermisoProductos && tieneCrearProducto,
@@ -439,7 +440,8 @@ const Productos = () => {
     importar: tienePermisoProductos && tieneImportarProductos,
     // cambiarEstado usa el permiso de editar (toggle activo es edición)
     cambiarEstado: tienePermisoProductos && tieneEditarProducto,
-    verSoloActivos: esCentroUser || esVistaUser,
+    // Solo CENTRO ve solo activos; VISTA puede ver todos (según permisos backend)
+    verSoloActivos: esCentroUser,
     soloLectura: !tieneEditarProducto || !tienePermisoProductos,
     auditoria: tienePermisoProductos && esFarmaciaAdmin,
   }), [tienePermisoProductos, tieneCrearProducto, tieneEditarProducto, tieneEliminarProducto, tieneExportarProductos, tieneImportarProductos, esFarmaciaAdmin, esCentroUser, esVistaUser]);
