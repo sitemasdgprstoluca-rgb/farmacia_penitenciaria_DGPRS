@@ -15,7 +15,6 @@ from django.contrib.auth.models import Group
 from datetime import datetime, timedelta, date
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
-import random
 import os
 import logging
 from io import BytesIO
@@ -217,11 +216,6 @@ def validar_filas_excel(ws):
                 return False, f'El archivo excede el máximo de {max_rows} filas permitidas', num_filas
     
     return True, None, num_filas
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter, A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
 
 from core.models import Producto, Lote, Movimiento, Centro, Requisicion, DetalleRequisicion, HojaRecoleccion
 from core.serializers import (
@@ -1783,11 +1777,6 @@ class LoteViewSet(viewsets.ModelViewSet):
             # traceback removido por seguridad (ISS-008)
             return Response({'error': 'Error al exportar lotes', 'mensaje': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    @action(detail=False, methods=['get'], url_path='exportar-excel')
-    def exportar_excel_lotes(self, request):
-        """Alias para exportar_excel con url_path correcto."""
-        return self.exportar_excel(request)
-
     @action(detail=False, methods=['post'], url_path='importar-excel')
     def importar_excel(self, request):
         """
@@ -2168,29 +2157,6 @@ class LoteViewSet(viewsets.ModelViewSet):
                 'error': 'Error al obtener trazabilidad',
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    @action(detail=True, methods=['post'], url_path='subir-documento')
-    def subir_documento(self, request, pk=None):
-        """
-        Funcionalidad de documentos no disponible.
-        La tabla lotes de Supabase no tiene campos para documentos.
-        """
-        return Response({
-            'error': 'Funcionalidad no disponible',
-            'detalle': 'La tabla de lotes no soporta almacenamiento de documentos'
-        }, status=status.HTTP_501_NOT_IMPLEMENTED)
-
-    @action(detail=True, methods=['delete'], url_path='eliminar-documento')
-    def eliminar_documento(self, request, pk=None):
-        """
-        Funcionalidad de documentos no disponible.
-        La tabla lotes de Supabase no tiene campos para documentos.
-        """
-        return Response({
-            'error': 'Funcionalidad no disponible',
-            'detalle': 'La tabla de lotes no soporta almacenamiento de documentos'
-        }, status=status.HTTP_501_NOT_IMPLEMENTED)
-
 
 class MovimientoViewSet(
     mixins.ListModelMixin,
@@ -4382,7 +4348,7 @@ def reporte_movimientos(request):
             response['Content-Disposition'] = f'attachment; filename=Movimientos_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
             wb.save(response)
             
-            print(f" Reporte Excel generado: {movimientos.count()} movimientos")
+            logger.info(f"Reporte Excel generado: {movimientos.count()} movimientos")
             
             return response
             
@@ -4393,7 +4359,7 @@ def reporte_movimientos(request):
         }, status=status.HTTP_400_BAD_REQUEST)
             
     except Exception as e:
-        print(f" Error generando reporte: {str(e)}")
+        logger.error(f"Error generando reporte: {str(e)}")
         # traceback removido por seguridad (ISS-008)
         return Response({
             'error': 'Error al generar reporte de movimientos',
