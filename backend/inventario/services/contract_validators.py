@@ -230,7 +230,7 @@ class RequisicionContractValidator:
                 stock_farmacia = Lote.objects.filter(
                     producto=detalle.producto,
                     centro__isnull=True,  # Farmacia central
-                    estado='disponible',
+                    activo=True,
                     deleted_at__isnull=True,
                     fecha_caducidad__gte=today,
                     cantidad_actual__gt=0

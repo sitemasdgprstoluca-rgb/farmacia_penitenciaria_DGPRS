@@ -2,7 +2,7 @@
 ISS-006: Comando para actualizar estados de lotes caducados.
 
 Este comando debe ejecutarse diariamente (cron/scheduler) para:
-1. Marcar lotes vencidos como estado 'vencido'
+1. Marcar lotes vencidos como inactivos (activo=False)
 2. Alertar sobre lotes próximos a vencer
 3. Generar reporte de lotes críticos
 
@@ -60,10 +60,10 @@ class Command(BaseCommand):
         self.stdout.write(f"Modo: {'SIMULACIÓN (dry-run)' if dry_run else 'EJECUCIÓN REAL'}")
         self.stdout.write(f"Días alerta: {dias_alerta}, Días crítico: {dias_critico}\n")
         
-        # 1. Lotes ya vencidos que aún están en estado 'disponible'
+        # 1. Lotes ya vencidos que aún están activos
         lotes_vencidos = Lote.objects.filter(
             fecha_caducidad__lt=hoy,
-            estado='disponible',
+            activo=True,
             deleted_at__isnull=True
         ).select_related('producto', 'centro')
         
@@ -82,10 +82,10 @@ class Command(BaseCommand):
                     )
                     
                     if not dry_run:
-                        lote.estado = 'vencido'
-                        lote.save(update_fields=['estado', 'updated_at'])
+                        lote.activo = False
+                        lote.save(update_fields=['activo', 'updated_at'])
                         logger.warning(
-                            f"ISS-006: Lote {lote.numero_lote} marcado como vencido "
+                            f"ISS-006: Lote {lote.numero_lote} marcado como vencido (activo=False) "
                             f"(producto: {lote.producto.clave}, centro: {centro_nombre})"
                         )
         else:
@@ -95,7 +95,7 @@ class Command(BaseCommand):
         lotes_criticos = Lote.objects.filter(
             fecha_caducidad__gte=hoy,
             fecha_caducidad__lte=fecha_critico,
-            estado='disponible',
+            activo=True,
             deleted_at__isnull=True
         ).select_related('producto', 'centro').order_by('fecha_caducidad')
         
@@ -118,7 +118,7 @@ class Command(BaseCommand):
         lotes_proximos = Lote.objects.filter(
             fecha_caducidad__gt=fecha_critico,
             fecha_caducidad__lte=fecha_alerta,
-            estado='disponible',
+            activo=True,
             deleted_at__isnull=True
         ).select_related('producto', 'centro').order_by('fecha_caducidad')
         
@@ -141,12 +141,12 @@ class Command(BaseCommand):
         
         # 4. Resumen estadístico
         total_disponibles = Lote.objects.filter(
-            estado='disponible',
+            activo=True,
             deleted_at__isnull=True
         ).count()
         
         total_vencidos = Lote.objects.filter(
-            estado='vencido',
+            activo=False,
             deleted_at__isnull=True
         ).count()
         

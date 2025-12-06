@@ -105,7 +105,7 @@ for i, producto in enumerate(productos):
 # Crear algunos movimientos
 print("\n📊 Creando movimientos de ejemplo...")
 usuario = User.objects.first()
-lotes = Lote.objects.filter(estado='disponible')  # Solo lotes disponibles
+lotes = Lote.objects.filter(activo=True)  # Solo lotes activos
 
 movimiento_counter = 0
 for i, lote in enumerate(lotes):
@@ -114,11 +114,11 @@ for i, lote in enumerate(lotes):
     if lote.cantidad_actual > 50:
         Movimiento.objects.create(
             lote=lote,
-            centro=centro,
+            centro_origen=centro,
             tipo='salida',
             cantidad=-50,  # Negativo para salidas
             usuario=usuario,
-            observaciones=f'Salida a centro penitenciario'
+            motivo='Salida a centro penitenciario'
         )
         movimiento_counter += 1
         print(f"✅ Salida creada para {lote.numero_lote}: -50 unidades")
