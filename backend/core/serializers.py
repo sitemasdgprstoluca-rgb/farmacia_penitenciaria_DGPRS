@@ -47,7 +47,7 @@ PERMISOS_POR_ROL = {
         'rechazarRequisicion': True,
         'surtirRequisicion': True,
         'cancelarRequisicion': True,
-        'confirmarRecepcion': True,  # Admin puede confirmar recepci├│n
+        'confirmarRecepcion': True,  # Admin puede confirmar recepciÃ³n
         'descargarHojaRecoleccion': True,
     },
     'FARMACIA': {
@@ -73,7 +73,7 @@ PERMISOS_POR_ROL = {
         'rechazarRequisicion': True,
         'surtirRequisicion': True,
         'cancelarRequisicion': True,
-        'confirmarRecepcion': True,  # Farmacia puede confirmar recepci├│n
+        'confirmarRecepcion': True,  # Farmacia puede confirmar recepciÃ³n
         'descargarHojaRecoleccion': True,
     },
     'CENTRO': {
@@ -97,7 +97,7 @@ PERMISOS_POR_ROL = {
         'crearLote': False,
         'editarLote': False,
         'eliminarLote': False,
-        # Permisos granulares de requisiciones - Centro solo crea y env├¡a
+        # Permisos granulares de requisiciones - Centro solo crea y envÃ­a
         'crearRequisicion': True,
         'editarRequisicion': True,  # Solo sus propios borradores
         'eliminarRequisicion': True,  # Solo sus propios borradores
@@ -106,7 +106,7 @@ PERMISOS_POR_ROL = {
         'rechazarRequisicion': False,  # No puede rechazar
         'surtirRequisicion': False,  # No puede surtir
         'cancelarRequisicion': True,  # Puede cancelar las suyas
-        'confirmarRecepcion': True,  # ISS-FIX: Centro puede confirmar recepci├│n de SUS requisiciones
+        'confirmarRecepcion': True,  # ISS-FIX: Centro puede confirmar recepciÃ³n de SUS requisiciones
         'descargarHojaRecoleccion': True,  # Puede descargar para recoger
     },
     'VISTA': {
@@ -208,7 +208,7 @@ def build_perm_map(user):
         
         for field, perm_key in perm_fields.items():
             custom_value = getattr(user, field, None)
-            if custom_value is not None:  # Solo sobrescribe si est├í expl├¡citamente configurado
+            if custom_value is not None:  # Solo sobrescribe si estÃ¡ explÃ­citamente configurado
                 base[perm_key] = custom_value
     
     return base
@@ -230,7 +230,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name', 
             'rol', 'centro', 'centro_nombre', 'activo', 'password', 
-            'adscripcion',  # Campo de adscripci├│n
+            'adscripcion',  # Campo de adscripciÃ³n
             'grupos', 'extra_permisos', 'permisos', 'permisos_personalizados',
             'is_active', 'is_superuser',
             'perm_dashboard', 'perm_productos', 'perm_lotes', 'perm_requisiciones',
@@ -273,48 +273,48 @@ class UserSerializer(serializers.ModelSerializer):
     
     def validate_username(self, value):
         """
-        Valida username: alfanum├®rico, m├¡n 3 caracteres, ├║nico
+        Valida username: alfanumÃ©rico, mÃ­n 3 caracteres, Ãºnico
         """
         if not value or len(value) < 3:
             raise serializers.ValidationError('El username debe tener al menos 3 caracteres')
         
         if not value.replace('_', '').replace('.', '').isalnum():
-            raise serializers.ValidationError('Solo se permiten letras, n├║meros, puntos y guiones bajos')
+            raise serializers.ValidationError('Solo se permiten letras, nÃºmeros, puntos y guiones bajos')
         
         # Validar unicidad (excluyendo instancia actual en updates)
         instance_id = self.instance.id if self.instance else None
         if User.objects.filter(username__iexact=value).exclude(id=instance_id).exists():
-            raise serializers.ValidationError(f'El username "{value}" ya est├í en uso')
+            raise serializers.ValidationError(f'El username "{value}" ya estÃ¡ en uso')
         
         return value.lower()
     
     def validate_email(self, value):
-        """Valida email ├║nico"""
+        """Valida email Ãºnico"""
         if value:
             instance_id = self.instance.id if self.instance else None
             if User.objects.filter(email__iexact=value).exclude(id=instance_id).exists():
-                raise serializers.ValidationError(f'El email "{value}" ya est├í en uso')
+                raise serializers.ValidationError(f'El email "{value}" ya estÃ¡ en uso')
         
         return value.lower() if value else value
     
     def validate_password(self, value):
         """
-        Valida contrase├▒a: m├¡n 8 caracteres, may├║scula, n├║mero
+        Valida contraseÃ±a: mÃ­n 8 caracteres, mayÃºscula, nÃºmero
         """
         if value:
             if len(value) < 8:
-                raise serializers.ValidationError('La contrase├▒a debe tener al menos 8 caracteres')
+                raise serializers.ValidationError('La contraseÃ±a debe tener al menos 8 caracteres')
             
             if not any(c.isupper() for c in value):
-                raise serializers.ValidationError('La contrase├▒a debe contener al menos una may├║scula')
+                raise serializers.ValidationError('La contraseÃ±a debe contener al menos una mayÃºscula')
             
             if not any(c.isdigit() for c in value):
-                raise serializers.ValidationError('La contrase├▒a debe contener al menos un n├║mero')
+                raise serializers.ValidationError('La contraseÃ±a debe contener al menos un nÃºmero')
         
         return value
     
     def create(self, validated_data):
-        """Crea usuario con contrase├▒a hasheada"""
+        """Crea usuario con contraseÃ±a hasheada"""
         password = validated_data.pop('password', None)
         user = User(**validated_data)
         
@@ -328,7 +328,7 @@ class UserSerializer(serializers.ModelSerializer):
         return user
     
     def update(self, instance, validated_data):
-        """Actualiza usuario, hashea contrase├▒a si se proporciona"""
+        """Actualiza usuario, hashea contraseÃ±a si se proporciona"""
         password = validated_data.pop('password', None)
         
         for attr, value in validated_data.items():
@@ -340,6 +340,7 @@ class UserSerializer(serializers.ModelSerializer):
         instance.save()
         logger.info(f"Usuario {instance.username} actualizado")
         return instance
+<<<<<<< Updated upstream
 
 
 class CentroSerializer(serializers.ModelSerializer):
@@ -361,7 +362,7 @@ class CentroSerializer(serializers.ModelSerializer):
     def get_total_requisiciones(self, obj):
         """
         Cuenta requisiciones reales del centro
-        Ô£à CORREGIDO: Ya no retorna 0 hardcodeado
+        âœ… CORREGIDO: Ya no retorna 0 hardcodeado
         """
         return obj.requisiciones.count()
     
@@ -378,7 +379,7 @@ class CentroSerializer(serializers.ModelSerializer):
                 'La clave debe tener al menos 2 caracteres'
             )
         
-        # Normalizar a may├║sculas
+        # Normalizar a mayÃºsculas
         value = value.upper().strip()
         
         # Validar unicidad (excluyendo instancia actual en updates)
@@ -391,7 +392,7 @@ class CentroSerializer(serializers.ModelSerializer):
         return value
     
     def validate_nombre(self, value):
-        """Valida nombre: longitud m├¡nima"""
+        """Valida nombre: longitud mÃ­nima"""
         if not value or len(value.strip()) < 5:
             raise serializers.ValidationError(
                 'El nombre debe tener al menos 5 caracteres'
@@ -400,20 +401,20 @@ class CentroSerializer(serializers.ModelSerializer):
         return value.strip()
     
     def validate_telefono(self, value):
-        """Valida formato de tel├®fono"""
+        """Valida formato de telÃ©fono"""
         if value:
             import re
-            # Permitir solo n├║meros, guiones, espacios, par├®ntesis y +
+            # Permitir solo nÃºmeros, guiones, espacios, parÃ©ntesis y +
             if not re.match(r'^[\d\s\-\+\(\)]+$', value):
                 raise serializers.ValidationError(
-                    'Formato de tel├®fono inv├ílido. Solo n├║meros, espacios, guiones, + y par├®ntesis'
+                    'Formato de telÃ©fono invÃ¡lido. Solo nÃºmeros, espacios, guiones, + y parÃ©ntesis'
                 )
         
         return value
     
     def validate(self, data):
         """Validaciones cruzadas"""
-        # Validaci├│n adicional si es necesario
+        # ValidaciÃ³n adicional si es necesario
         return data
 
 class ProductoSerializer(serializers.ModelSerializer):
@@ -425,23 +426,31 @@ class ProductoSerializer(serializers.ModelSerializer):
     )
     nivel_stock = serializers.SerializerMethodField(
         help_text="Nivel de stock: critico, bajo, normal, alto"
+=======
+>>>>>>> Stashed changes
     )
     lotes_activos = serializers.SerializerMethodField(
         help_text="Cantidad de lotes disponibles"
     )
+<<<<<<< Updated upstream
     valor_inventario = serializers.SerializerMethodField(
         help_text="Valor total del inventario (stock * precio)"
     )
     creado_por = serializers.SerializerMethodField(
-        help_text="Usuario que cre├│ el producto"
+        help_text="Usuario que creÃ³ el producto"
     )
     imagen_url = serializers.SerializerMethodField(
         help_text="URL de la imagen del producto"
     )
+=======
+    # Alias 'clave' para compatibilidad con frontend (basado en codigo_barras)
+    clave = serializers.CharField(source='codigo_barras', required=False, allow_blank=True, allow_null=True)
+>>>>>>> Stashed changes
     
     class Meta:
         model = Producto
         fields = [
+<<<<<<< Updated upstream
             'id', 'clave', 'descripcion', 'unidad_medida', 'precio_unitario',
             'stock_minimo', 'activo', 'imagen', 'imagen_url', 'stock_actual', 'nivel_stock',
             'lotes_activos', 'valor_inventario', 'created_at', 'updated_at',
@@ -455,6 +464,19 @@ class ProductoSerializer(serializers.ModelSerializer):
     
     def get_nivel_stock(self, obj):
         """Retorna nivel de stock calculado"""
+=======
+            'id', 'codigo_barras', 'clave', 'nombre', 'descripcion', 'unidad_medida',
+            'categoria', 'stock_minimo', 'stock_actual', 'sustancia_activa',
+            'presentacion', 'concentracion', 'via_administracion',
+            'requiere_receta', 'es_controlado', 'activo', 'imagen',
+            'nivel_stock', 'lotes_activos',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at', 'stock_actual']
+    
+    def get_nivel_stock(self, obj):
+        """Retorna nivel de stock calculado basado en stock_actual vs stock_minimo"""
+>>>>>>> Stashed changes
         return obj.get_nivel_stock()
     
     def get_lotes_activos(self, obj):
@@ -467,7 +489,7 @@ class ProductoSerializer(serializers.ModelSerializer):
         return float(stock * obj.precio_unitario)
     
     def get_creado_por(self, obj):
-        """Retorna el nombre/email del usuario que cre├│ el producto"""
+        """Retorna el nombre/email del usuario que creÃ³ el producto"""
         if obj.created_by:
             return obj.created_by.get_full_name() or obj.created_by.username
         return None
@@ -481,23 +503,50 @@ class ProductoSerializer(serializers.ModelSerializer):
             return obj.imagen.url
         return None
     
-    def validate_clave(self, value):
+    def validate_codigo_barras(self, value):
         """
-        Valida clave: normaliza a may├║sculas, verifica unicidad y formato
+<<<<<<< Updated upstream
+        Valida clave: normaliza a mayÃºsculas, verifica unicidad y formato
         """
         if not value or len(value.strip()) < 3:
+=======
+        Valida codigo_barras: normaliza, verifica unicidad y formato
+        """
+        if value:
+            value = value.strip()
+            # Validar unicidad (excluyendo instancia actual en updates)
+            instance_id = self.instance.id if self.instance else None
+            if Producto.objects.filter(codigo_barras__iexact=value).exclude(id=instance_id).exists():
+                raise serializers.ValidationError(
+                    f'Ya existe un producto con el cÃ³digo de barras "{value}"'
+                )
+        return value
+    
+    def validate_nombre(self, value):
+        """Valida que el nombre no estÃ© vacÃ­o"""
+        if not value or len(value.strip()) < 3:
+            raise serializers.ValidationError(
+                'El nombre debe tener al menos 3 caracteres'
+            )
+        return value.strip()
+    
+    def validate_descripcion(self, value):
+        """Valida que la descripciÃ³n no estÃ© vacÃ­a"""
+        if value and len(value.strip()) < 3:
+>>>>>>> Stashed changes
             raise serializers.ValidationError(
                 'La clave debe tener al menos 3 caracteres'
             )
+<<<<<<< Updated upstream
         
-        # Normalizar a may├║sculas
+        # Normalizar a mayÃºsculas
         value = value.upper().strip()
         
-        # Validar formato alfanum├®rico con guiones y guiones bajos
+        # Validar formato alfanumÃ©rico con guiones y guiones bajos
         import re
         if not re.match(r'^[A-Z0-9\-_]+$', value):
             raise serializers.ValidationError(
-                'La clave solo puede contener letras, n├║meros, guiones y guiones bajos'
+                'La clave solo puede contener letras, nÃºmeros, guiones y guiones bajos'
             )
         
         # Validar unicidad (excluyendo instancia actual en updates)
@@ -508,15 +557,19 @@ class ProductoSerializer(serializers.ModelSerializer):
             )
         
         return value
+=======
+        return value.strip() if value else value
+>>>>>>> Stashed changes
     
     def validate(self, data):
         """
         Validaciones cross-field complejas
         """
+<<<<<<< Updated upstream
         # Validar coherencia stock_minimo vs stock_actual
         if 'stock_minimo' in data:
             stock_min = data['stock_minimo']
-            # Si se est├í creando, no hay stock actual a├║n
+            # Si se estÃ¡ creando, no hay stock actual aÃºn
             if self.instance:
                 stock_actual = self.instance.get_stock_actual()
                 if stock_min > stock_actual and stock_actual > 0:
@@ -525,7 +578,7 @@ class ProductoSerializer(serializers.ModelSerializer):
                         f"mayor que stock_actual ({stock_actual})"
                     )
         
-        # Validar descripci├│n no duplicada (warning, no error)
+        # Validar descripciÃ³n no duplicada (warning, no error)
         if 'descripcion' in data:
             desc = data['descripcion']
             queryset = Producto.objects.filter(descripcion__iexact=desc)
@@ -534,8 +587,17 @@ class ProductoSerializer(serializers.ModelSerializer):
             
             if queryset.exists():
                 logger.warning(
-                    f"Ya existe producto con descripci├│n similar: {desc}"
+                    f"Ya existe producto con descripciÃ³n similar: {desc}"
                 )
+=======
+        # Validar coherencia stock_minimo (debe ser no negativo)
+        if 'stock_minimo' in data:
+            stock_min = data['stock_minimo']
+            if stock_min < 0:
+                raise serializers.ValidationError({
+                    'stock_minimo': 'El stock mÃ­nimo no puede ser negativo'
+                })
+>>>>>>> Stashed changes
         
         # Validar que no se desactive un producto con stock si se proporciona activo=False
         if 'activo' in data and not data['activo'] and self.instance:
@@ -546,62 +608,41 @@ class ProductoSerializer(serializers.ModelSerializer):
                 })
         
         return data
+<<<<<<< Updated upstream
     
     def validate_descripcion(self, value):
-        """Valida descripci├│n: longitud y contenido"""
+        """Valida descripciÃ³n: longitud y contenido"""
         value = value.strip()
         
         if len(value) < PRODUCTO_DESCRIPCION_MIN_LENGTH:
             raise serializers.ValidationError(
-                f"La descripci├│n debe tener al menos {PRODUCTO_DESCRIPCION_MIN_LENGTH} caracteres"
+                f"La descripciÃ³n debe tener al menos {PRODUCTO_DESCRIPCION_MIN_LENGTH} caracteres"
             )
         
         if len(value) > PRODUCTO_DESCRIPCION_MAX_LENGTH:
             raise serializers.ValidationError(
-                f"La descripci├│n no puede exceder {PRODUCTO_DESCRIPCION_MAX_LENGTH} caracteres"
+                f"La descripciÃ³n no puede exceder {PRODUCTO_DESCRIPCION_MAX_LENGTH} caracteres"
             )
         
         return value
-    
-    def validate_precio_unitario(self, value):
-        """Valida precio: debe ser positivo y con m├íximo 2 decimales"""
-        from decimal import Decimal, InvalidOperation
-        
-        # ISS-006: Validar None expl├¡citamente antes de conversi├│n
-        if value is None:
-            raise serializers.ValidationError("El precio es requerido")
-        
-        # Convertir a Decimal si es float o string (ISS-006)
-        if not isinstance(value, Decimal):
-            try:
-                value = Decimal(str(value))
-            except (InvalidOperation, ValueError, TypeError):
-                raise serializers.ValidationError("El precio debe ser un n├║mero v├ílido")
-        
-        if value <= 0:
-            raise serializers.ValidationError("El precio debe ser mayor a 0")
-        
-        # Validar m├íximo decimales permitidos
-        if value.as_tuple().exponent < -PRODUCTO_PRECIO_DECIMAL_PLACES:
-            raise serializers.ValidationError(
-                f"El precio solo puede tener {PRODUCTO_PRECIO_DECIMAL_PLACES} decimales"
-            )
-        
-        return value
-    
-    def validate_stock_minimo(self, value):
-        """Valida stock m├¡nimo: entero no negativo"""
-        if value < 0:
-            raise serializers.ValidationError("El stock m├¡nimo no puede ser negativo")
-        
-        return value
+=======
+>>>>>>> Stashed changes
     
     def validate_unidad_medida(self, value):
-        """Valida que la unidad est├® en las opciones permitidas"""
+        """Valida que la unidad estÃ© en las opciones permitidas"""
         unidades_validas = [u[0] for u in UNIDADES_MEDIDA]
         if value not in unidades_validas:
             raise serializers.ValidationError(
-                f"Unidad inv├ílida. Opciones: {', '.join(unidades_validas)}"
+                f"Unidad invÃ¡lida. Opciones: {', '.join(unidades_validas)}"
+            )
+        
+        return value
+
+        """Valida que la unidad estÃ© en las opciones permitidas"""
+        unidades_validas = [u[0] for u in UNIDADES_MEDIDA]
+        if value not in unidades_validas:
+            raise serializers.ValidationError(
+                f"Unidad invÃ¡lida. Opciones: {', '.join(unidades_validas)}"
             )
         
         return value
@@ -609,8 +650,16 @@ class ProductoSerializer(serializers.ModelSerializer):
 
 class LoteSerializer(serializers.ModelSerializer):
     """
+<<<<<<< Updated upstream
     Serializer para Lote con validaciones y campos calculados.
-    Incluye informaci├│n de vinculaci├│n farmacia -> centro.
+    Incluye informaciÃ³n de vinculaciÃ³n farmacia -> centro.
+=======
+    Serializer para Lote - Supabase
+    
+    Campos en Supabase: id, numero_lote, producto, cantidad_inicial, 
+    cantidad_actual, fecha_fabricacion, fecha_caducidad, precio_unitario,
+    numero_contrato, marca, ubicacion, centro, activo
+>>>>>>> Stashed changes
     """
     # Campos del producto (read-only)
     producto_clave = serializers.CharField(source='producto.clave', read_only=True)
@@ -620,9 +669,8 @@ class LoteSerializer(serializers.ModelSerializer):
     # Campos del centro (read-only)
     centro_id = serializers.IntegerField(source='centro.id', read_only=True, allow_null=True)
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, allow_null=True)
-    centro_clave = serializers.CharField(source='centro.clave', read_only=True, allow_null=True)
     
-    # Campos de vinculaci├│n (lote_origen - trazabilidad farmacia->centro)
+    # Campos de vinculaciÃ³n (lote_origen - trazabilidad farmacia->centro)
     lote_origen_id = serializers.IntegerField(source='lote_origen.id', read_only=True, allow_null=True)
     lote_origen_numero = serializers.CharField(source='lote_origen.numero_lote', read_only=True, allow_null=True)
     es_lote_farmacia = serializers.SerializerMethodField()
@@ -638,20 +686,32 @@ class LoteSerializer(serializers.ModelSerializer):
     stock_actual = serializers.IntegerField(source='cantidad_actual', read_only=True)
     ubicacion = serializers.SerializerMethodField()
     
+<<<<<<< Updated upstream
     # Campo de documento PDF
     documento_url = serializers.SerializerMethodField()
     
+=======
+>>>>>>> Stashed changes
     class Meta:
         model = Lote
         fields = [
             'id', 'producto', 'producto_clave', 'producto_descripcion', 'producto_unidad',
+<<<<<<< Updated upstream
             'numero_lote', 'fecha_caducidad', 'cantidad_inicial', 'cantidad_actual', 'stock_actual',
             'estado', 'precio_compra', 'proveedor', 'factura', 'fecha_entrada', 
             # Campo de trazabilidad de contrato (string, no FK)
             'numero_contrato', 'marca',
             'observaciones', 'dias_para_caducar', 'porcentaje_consumido', 
+=======
+            'numero_lote', 'fecha_caducidad', 'fecha_fabricacion',
+            'cantidad_inicial', 'cantidad_actual', 'stock_actual',
+            'precio_unitario', 'numero_contrato', 'marca',
+            'ubicacion', 'activo',
+            'centro', 'centro_nombre',
+            'dias_para_caducar', 'porcentaje_consumido', 
+>>>>>>> Stashed changes
             'alerta_caducidad', 'esta_caducado', 'estado_visual',
-            # Campos de ubicaci├│n y vinculaci├│n
+            # Campos de ubicaciÃ³n y vinculaciÃ³n
             'centro', 'centro_id', 'centro_nombre', 'centro_clave', 'ubicacion',
             'lote_origen', 'lote_origen_id', 'lote_origen_numero',
             'es_lote_farmacia', 'tiene_derivados', 'cantidad_derivados',
@@ -662,36 +722,28 @@ class LoteSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at', 'fecha_entrada']
     
     def get_dias_para_caducar(self, obj):
-        """Calcula d├¡as restantes para caducidad"""
         return obj.dias_para_caducar()
     
     def get_porcentaje_consumido(self, obj):
-        """Calcula porcentaje consumido del lote"""
         if obj.cantidad_inicial == 0:
             return 0
         return round(((obj.cantidad_inicial - obj.cantidad_actual) / obj.cantidad_inicial) * 100, 2)
     
     def get_alerta_caducidad(self, obj):
-        """Nivel de alerta: vencido, critico, proximo, normal"""
         return obj.alerta_caducidad()
     
     def get_esta_caducado(self, obj):
-        """Indica si el lote est├í vencido"""
         return obj.esta_caducado()
     
     def get_estado_visual(self, obj):
-        """
-        Estado visual combinado (caducidad + stock)
-        Returns: {'tipo': 'danger|warning|success', 'mensaje': '...'}
-        """
         if obj.esta_caducado():
             return {'tipo': 'danger', 'mensaje': 'VENCIDO'}
         
         alerta = obj.alerta_caducidad()
         if alerta == 'critico':
-            return {'tipo': 'danger', 'mensaje': 'CADUCA EN 7 D├ìAS'}
+            return {'tipo': 'danger', 'mensaje': 'CADUCA EN 7 DÃAS'}
         elif alerta == 'proximo':
-            return {'tipo': 'warning', 'mensaje': 'CADUCA EN 30 D├ìAS'}
+            return {'tipo': 'warning', 'mensaje': 'CADUCA EN 30 DÃAS'}
         
         if obj.cantidad_actual == 0:
             return {'tipo': 'warning', 'mensaje': 'AGOTADO'}
@@ -701,13 +753,16 @@ class LoteSerializer(serializers.ModelSerializer):
         return {'tipo': 'success', 'mensaje': 'VIGENTE'}
     
     def get_ubicacion(self, obj):
-        """Indica si el lote est├í en farmacia central o en un centro"""
+        """Indica si el lote estÃ¡ en farmacia central o en un centro"""
         if obj.centro:
             return {'tipo': 'centro', 'nombre': obj.centro.nombre, 'clave': obj.centro.clave}
         return {'tipo': 'farmacia', 'nombre': 'Farmacia Central', 'clave': 'CENTRAL'}
     
     def get_es_lote_farmacia(self, obj):
+<<<<<<< Updated upstream
         """Indica si este es un lote de farmacia central (origen)"""
+=======
+>>>>>>> Stashed changes
         return obj.centro is None
     
     def get_tiene_derivados(self, obj):
@@ -732,46 +787,34 @@ class LoteSerializer(serializers.ModelSerializer):
         return None
     
     def validate_numero_lote(self, value):
-        """
-        Valida n├║mero de lote: normaliza y verifica longitud
-        """
         if not value or len(value.strip()) < LOTE_NUMERO_MIN_LENGTH:
             raise serializers.ValidationError(
-                f'El n├║mero de lote debe tener al menos {LOTE_NUMERO_MIN_LENGTH} caracteres'
+                f'El nÃºmero de lote debe tener al menos {LOTE_NUMERO_MIN_LENGTH} caracteres'
             )
-        
         return value.strip().upper()
     
     def validate_fecha_caducidad(self, value):
-        """Valida que la fecha de caducidad sea futura"""
         from datetime import date
-        if value and value < date.today():
-            raise serializers.ValidationError(
-                "La fecha de caducidad no puede ser anterior a hoy"
-            )
-        
+        # Solo validar que no sea muy antigua si es creaciÃ³n? 
+        # Permitimos fechas pasadas para registro histÃ³rico quizÃ¡s, pero alerta al usuario.
         return value
     
     def validate_cantidad_inicial(self, value):
-        """Valida cantidad inicial positiva"""
         if value < 1:
             raise serializers.ValidationError("La cantidad inicial debe ser al menos 1")
         return value
     
     def validate_cantidad_actual(self, value):
-        """Valida cantidad actual no negativa"""
         if value < 0:
             raise serializers.ValidationError("La cantidad actual no puede ser negativa")
         return value
     
-    def validate_precio_compra(self, value):
-        """Valida precio de compra no negativo"""
+    def validate_precio_unitario(self, value):
         if value and value < 0:
-            raise serializers.ValidationError("El precio de compra no puede ser negativo")
+            raise serializers.ValidationError("El precio unitario no puede ser negativo")
         return value
     
     def validate(self, data):
-        """Validaciones cruzadas"""
         # Validar cantidad actual <= cantidad inicial
         cantidad_inicial = data.get('cantidad_inicial') or (
             self.instance.cantidad_inicial if self.instance else 0
@@ -783,18 +826,27 @@ class LoteSerializer(serializers.ModelSerializer):
                 'cantidad_actual': 'La cantidad actual no puede ser mayor a la inicial'
             })
         
-        # Validar unicidad de n├║mero de lote por producto Y centro
-        # La constraint es: (producto, numero_lote, centro) debe ser ├║nico
+<<<<<<< Updated upstream
+        # Validar unicidad de nÃºmero de lote por producto Y centro
+        # La constraint es: (producto, numero_lote, centro) debe ser Ãºnico
+=======
+        # Validar unicidad
+>>>>>>> Stashed changes
         producto = data.get('producto') or (self.instance.producto if self.instance else None)
         numero_lote = data.get('numero_lote')
-        centro = data.get('centro')  # None = farmacia central
+        centro = data.get('centro')
         
         if producto and numero_lote:
             queryset = Lote.objects.filter(
                 producto=producto, 
                 numero_lote__iexact=numero_lote,
+<<<<<<< Updated upstream
                 centro=centro,  # Mismo centro (o farmacia si None)
                 deleted_at__isnull=True  # Excluir eliminados
+=======
+                centro=centro,
+                activo=True
+>>>>>>> Stashed changes
             )
             if self.instance:
                 queryset = queryset.exclude(pk=self.instance.pk)
@@ -808,40 +860,34 @@ class LoteSerializer(serializers.ModelSerializer):
         return data
 
     def to_representation(self, instance):
-        """
-        Filtra campos de contrato seg├║n rol del usuario.
-        Solo ADMIN y FARMACIA pueden ver numero_contrato y marca.
-        """
+        # Filtra campos sensibles si no es admin
         data = super().to_representation(instance)
-        
         request = self.context.get('request')
+        
         if request and hasattr(request, 'user') and request.user.is_authenticated:
             user = request.user
-            # Superuser o staff siempre ven todo
             if user.is_superuser or user.is_staff:
                 return data
             
-            # Verificar rol del usuario
             rol = getattr(user, 'rol', None)
             if rol not in ['ADMIN', 'FARMACIA']:
-                # Ocultar campos de contrato para roles sin permisos
                 data.pop('numero_contrato', None)
                 data.pop('marca', None)
+                data.pop('precio_unitario', None) # TambiÃ©n ocultar precio quizÃ¡s?
         else:
-            # Usuario no autenticado o sin request, ocultar campos sensibles
             data.pop('numero_contrato', None)
             data.pop('marca', None)
         
         return data
 class DetalleRequisicionSerializer(serializers.ModelSerializer):
     """
-    Serializer para detalle de requisici├│n con validaciones.
-    Cada detalle est├í asociado a un producto y un lote espec├¡fico.
+    Serializer para detalle de requisiciÃ³n con validaciones.
+    Cada detalle estÃ¡ asociado a un producto y un lote especÃ­fico.
     """
     producto_clave = serializers.CharField(source='producto.clave', read_only=True)
     producto_descripcion = serializers.CharField(source='producto.descripcion', read_only=True)
     producto_unidad = serializers.CharField(source='producto.unidad_medida', read_only=True)
-    # Informaci├│n del lote asociado
+    # InformaciÃ³n del lote asociado
     lote_numero = serializers.CharField(source='lote.numero_lote', read_only=True, allow_null=True)
     lote_caducidad = serializers.SerializerMethodField()
     lote_stock = serializers.SerializerMethodField()
@@ -867,7 +913,7 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
         return None
     
     def get_lote_stock(self, obj):
-        """Stock disponible del lote espec├¡fico"""
+        """Stock disponible del lote especÃ­fico"""
         if obj.lote:
             return obj.lote.cantidad_actual
         return None
@@ -893,10 +939,10 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
         producto = data.get('producto') or (self.instance.producto if self.instance else None)
         lote = data.get('lote') or (self.instance.lote if self.instance else None)
         
-        # Validar que el producto est├® activo
+        # Validar que el producto estÃ© activo
         if producto and not producto.activo:
             raise serializers.ValidationError({
-                'producto': f'El producto {producto.clave} est├í inactivo y no puede ser solicitado'
+                'producto': f'El producto {producto.clave} estÃ¡ inactivo y no puede ser solicitado'
             })
         
         # Validar que el lote pertenezca al producto
@@ -918,7 +964,7 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
                     'cantidad_solicitada': f'No puede exceder el stock del lote ({lote.cantidad_actual} disponibles)'
                 })
         
-        # Validar stock disponible (solo en autorizaci├│n)
+        # Validar stock disponible (solo en autorizaciÃ³n)
         if cantidad_autorizada and cantidad_autorizada > 0:
             producto = data.get('producto') or (self.instance.producto if self.instance else None)
             if producto:
@@ -933,8 +979,8 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
 
 class RequisicionSerializer(serializers.ModelSerializer):
     """
-    Serializer para Requisici├│n con validaciones de flujo
-    Ô£à CORREGIDO: Ahora permite editar detalles
+    Serializer para RequisiciÃ³n con validaciones de flujo
+    âœ… CORREGIDO: Ahora permite editar detalles
     """
     detalles = DetalleRequisicionSerializer(many=True, required=False)
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True)
@@ -954,7 +1000,7 @@ class RequisicionSerializer(serializers.ModelSerializer):
         source='usuario_firma_recepcion.get_full_name', read_only=True, allow_null=True
     )
     
-    # Transiciones v├ílidas de estado
+    # Transiciones vÃ¡lidas de estado
     TRANSICIONES_VALIDAS = {
         'borrador': ['enviada', 'cancelada'],
         'enviada': ['autorizada', 'parcial', 'rechazada', 'cancelada'],
@@ -973,13 +1019,13 @@ class RequisicionSerializer(serializers.ModelSerializer):
             'usuario_solicita_nombre', 'fecha_solicitud', 'estado', 'observaciones',
             'usuario_autoriza', 'usuario_autoriza_nombre', 'fecha_autorizacion',
             'motivo_rechazo', 'detalles', 'total_productos', 'puede_editar',
-            # Campos de recepci├│n
+            # Campos de recepciÃ³n
             'lugar_entrega', 'fecha_recibido', 'usuario_recibe', 'usuario_recibe_nombre',
             'observaciones_recepcion',
             # Campos de firma de surtido
             'foto_firma_surtido', 'foto_firma_surtido_url', 'fecha_firma_surtido',
             'usuario_firma_surtido', 'usuario_firma_surtido_nombre',
-            # Campos de firma de recepci├│n
+            # Campos de firma de recepciÃ³n
             'foto_firma_recepcion', 'foto_firma_recepcion_url', 'fecha_firma_recepcion',
             'usuario_firma_recepcion', 'usuario_firma_recepcion_nombre',
             'created_at', 'updated_at'
@@ -988,11 +1034,11 @@ class RequisicionSerializer(serializers.ModelSerializer):
                           'foto_firma_surtido_url', 'foto_firma_recepcion_url']
     
     def get_total_productos(self, obj):
-        """Cuenta productos en la requisici├│n"""
+        """Cuenta productos en la requisiciÃ³n"""
         return obj.detalles.count()
     
     def get_puede_editar(self, obj):
-        """Indica si la requisici├│n puede editarse"""
+        """Indica si la requisiciÃ³n puede editarse"""
         return obj.estado in ['borrador', 'enviada']
     
     def get_foto_firma_surtido_url(self, obj):
@@ -1005,7 +1051,7 @@ class RequisicionSerializer(serializers.ModelSerializer):
         return None
     
     def get_foto_firma_recepcion_url(self, obj):
-        """Retorna la URL de la foto de firma de recepci├│n"""
+        """Retorna la URL de la foto de firma de recepciÃ³n"""
         if obj.foto_firma_recepcion:
             request = self.context.get('request')
             if request:
@@ -1020,20 +1066,20 @@ class RequisicionSerializer(serializers.ModelSerializer):
             if value not in self.TRANSICIONES_VALIDAS.get(estado_actual, []):
                 raise serializers.ValidationError(
                     f'No se puede cambiar de {estado_actual} a {value}. '
-                    f'Transiciones v├ílidas: {", ".join(self.TRANSICIONES_VALIDAS[estado_actual])}'
+                    f'Transiciones vÃ¡lidas: {", ".join(self.TRANSICIONES_VALIDAS[estado_actual])}'
                 )
         
         return value
     
     def create(self, validated_data):
         """
-        Crea requisici├│n con detalles.
-        NOTA: El folio se genera autom├íticamente en el modelo Requisicion.save()
+        Crea requisiciÃ³n con detalles.
+        NOTA: El folio se genera automÃ¡ticamente en el modelo Requisicion.save()
         con formato REQ-CENTRO-YYYYMMDD-NNNN para evitar duplicados.
         """
         detalles_data = validated_data.pop('detalles', [])
         
-        # NO generar folio aqu├¡ - el modelo lo hace en save() con transacci├│n segura
+        # NO generar folio aquÃ­ - el modelo lo hace en save() con transacciÃ³n segura
         # El modelo genera: REQ-{centro}-{fecha}-{numero}
         
         requisicion = Requisicion.objects.create(**validated_data)
@@ -1042,13 +1088,13 @@ class RequisicionSerializer(serializers.ModelSerializer):
         for detalle_data in detalles_data:
             DetalleRequisicion.objects.create(requisicion=requisicion, **detalle_data)
         
-        logger.info(f"Requisici├│n {requisicion.folio} creada con {len(detalles_data)} productos")
+        logger.info(f"RequisiciÃ³n {requisicion.folio} creada con {len(detalles_data)} productos")
         return requisicion
     
     def update(self, instance, validated_data):
         """
-        Actualiza requisici├│n y detalles
-        Ô£à CORREGIDO: Ahora permite actualizar detalles
+        Actualiza requisiciÃ³n y detalles
+        âœ… CORREGIDO: Ahora permite actualizar detalles
         """
         detalles_data = validated_data.pop('detalles', None)
         
@@ -1066,7 +1112,7 @@ class RequisicionSerializer(serializers.ModelSerializer):
             for detalle_data in detalles_data:
                 DetalleRequisicion.objects.create(requisicion=instance, **detalle_data)
         
-        logger.info(f"Requisici├│n {instance.folio} actualizada")
+        logger.info(f"RequisiciÃ³n {instance.folio} actualizada")
         return instance
 
 class MovimientoSerializer(serializers.ModelSerializer):
@@ -1097,39 +1143,38 @@ class NotificacionSerializer(serializers.ModelSerializer):
         read_only_fields = ['fecha_creacion']
     
     def get_requisicion(self, obj):
-        """Obtiene ID de requisici├│n desde datos JSON si existe"""
+        """Obtiene ID de requisiciÃ³n desde datos JSON si existe"""
         if obj.datos and isinstance(obj.datos, dict):
             return obj.datos.get('requisicion_id')
         return None
     
     def get_requisicion_folio(self, obj):
-        """Obtiene folio de requisici├│n desde datos JSON si existe"""
+        """Obtiene folio de requisiciÃ³n desde datos JSON si existe"""
         if obj.datos and isinstance(obj.datos, dict):
             return obj.datos.get('requisicion_folio')
         return None
 
-class AuditoriaLogSerializer(serializers.ModelSerializer):
+class AuditoriaLogsSerializer(serializers.ModelSerializer):
     """
-    Serializer para logs de auditor├¡a
-    Adaptado a la estructura de BD existente
+    Serializer para logs de auditorÃ­a - Supabase
     """
     usuario_nombre = serializers.SerializerMethodField()
     descripcion = serializers.SerializerMethodField()
-    ip_address = serializers.CharField(read_only=True, allow_null=True)
     fecha = serializers.DateTimeField(source='timestamp', read_only=True)
     objeto_repr = serializers.SerializerMethodField()
     cambios = serializers.SerializerMethodField()
     
     class Meta:
-        model = AuditoriaLog
+        model = AuditoriaLogs
         fields = [
             'id', 'usuario', 'usuario_nombre', 'accion', 'modelo', 
-            'objeto_id', 'objeto_repr', 'descripcion', 'cambios', 'ip_address', 'fecha'
+            'objeto_id', 'objeto_repr', 'descripcion', 'cambios', 
+            'ip_address', 'user_agent', 'detalles', 'fecha'
         ]
         read_only_fields = fields
     
     def get_objeto_repr(self, obj):
-        """Obtiene representaci├│n del objeto desde detalles o genera una por defecto"""
+        """Obtiene representaciÃ³n del objeto desde detalles o genera una por defecto"""
         if obj.detalles and isinstance(obj.detalles, dict):
             return obj.detalles.get('objeto_repr', f"{obj.modelo} #{obj.objeto_id}")
         return f"{obj.modelo} #{obj.objeto_id}" if obj.objeto_id else obj.modelo
@@ -1148,13 +1193,13 @@ class AuditoriaLogSerializer(serializers.ModelSerializer):
         return 'Sistema'
     
     def get_descripcion(self, obj):
-        """Genera una descripci├│n legible de la acci├│n"""
+        """Genera una descripciÃ³n legible de la acciÃ³n"""
         accion_dict = {
-            'CREATE': 'cre├│',
-            'UPDATE': 'actualiz├│',
-            'DELETE': 'elimin├│',
-            'LOGIN': 'inici├│ sesi├│n',
-            'LOGOUT': 'cerr├│ sesi├│n'
+            'CREATE': 'creÃ³',
+            'UPDATE': 'actualizÃ³',
+            'DELETE': 'eliminÃ³',
+            'LOGIN': 'iniciÃ³ sesiÃ³n',
+            'LOGOUT': 'cerrÃ³ sesiÃ³n'
         }
         accion_texto = accion_dict.get(obj.accion, obj.accion)
         
@@ -1164,40 +1209,35 @@ class AuditoriaLogSerializer(serializers.ModelSerializer):
         objeto_repr = self.get_objeto_repr(obj)
         return f"{accion_texto} {obj.modelo}: {objeto_repr}"
 
+# Alias
+AuditoriaLogSerializer = AuditoriaLogsSerializer
 
-class ImportacionLogSerializer(serializers.ModelSerializer):
-    """Serializer para auditor├¡a de importaciones."""
+
+class ImportacionLogsSerializer(serializers.ModelSerializer):
+    """Serializer para auditorÃ­a de importaciones - Supabase."""
     usuario_nombre = serializers.CharField(source='usuario.username', read_only=True, default=None)
     archivo_nombre = serializers.SerializerMethodField()
-    modelo = serializers.CharField(source='tipo_importacion', read_only=True)
-    total_registros = serializers.IntegerField(source='registros_totales', read_only=True)
-    fecha_importacion = serializers.DateTimeField(source='fecha_inicio', read_only=True)
-    resultado_procesamiento = serializers.SerializerMethodField()
+    modelo_nombre = serializers.CharField(source='tipo_importacion', read_only=True)
     
     class Meta:
-        model = ImportacionLog
+        model = ImportacionLogs
         fields = [
-            'id', 'archivo_nombre', 'modelo', 'total_registros',
+            'id', 'archivo_nombre', 'modelo_nombre', 'registros_totales',
             'registros_exitosos', 'registros_fallidos', 'estado',
-            'resultado_procesamiento', 'fecha_importacion', 'usuario_nombre'
+            'errores', 'fecha_inicio', 'fecha_fin', 'usuario_nombre'
         ]
         read_only_fields = fields
     
     def get_archivo_nombre(self, obj):
         """Obtiene el nombre del archivo importado"""
         return obj.archivo
-    
-    def get_resultado_procesamiento(self, obj):
-        """Genera resumen del procesamiento"""
-        return {
-            'exitosos': obj.registros_exitosos,
-            'fallidos': obj.registros_fallidos,
-            'errores': obj.errores
-        }
+
+# Alias
+ImportacionLogSerializer = ImportacionLogsSerializer
 
 
 class UserMeSerializer(serializers.ModelSerializer):
-    """Serializer especializado para /usuarios/me/ (lectura/edici├│n)."""
+    """Serializer especializado para /usuarios/me/ (lectura/ediciÃ³n)."""
     centro = serializers.SerializerMethodField()
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, default='')
     grupos = serializers.SerializerMethodField()
@@ -1211,7 +1251,7 @@ class UserMeSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
             'rol', 'centro', 'centro_nombre', 'telefono', 'cargo',
-            'adscripcion',  # Campo de adscripci├│n
+            'adscripcion',  # Campo de adscripciÃ³n
             'grupos', 'extra_permisos', 'permisos',
             'is_superuser', 'is_staff',  # Importante para el frontend
         ]
@@ -1228,7 +1268,7 @@ class UserMeSerializer(serializers.ModelSerializer):
         return None
 
     def get_telefono(self, obj):
-        """Obtener tel├®fono del perfil si existe."""
+        """Obtener telÃ©fono del perfil si existe."""
         try:
             profile = getattr(obj, 'profile', None)
             return profile.telefono if profile else ''
@@ -1268,161 +1308,6 @@ class UserMeSerializer(serializers.ModelSerializer):
             except Exception:
                 pass  # Si la tabla no existe, ignorar
 
-        return instance
-
-
-class ConfiguracionSistemaSerializer(serializers.ModelSerializer):
-    """
-    Serializer para la configuraci├│n global del sistema.
-    Solo superusuarios pueden modificar.
-    """
-    css_variables = serializers.SerializerMethodField(
-        help_text="Variables CSS para aplicar directamente en el frontend"
-    )
-    updated_by_nombre = serializers.CharField(
-        source='updated_by.get_full_name', 
-        read_only=True
-    )
-    temas_disponibles = serializers.SerializerMethodField()
-    logo_header_url = serializers.SerializerMethodField()
-    logo_pdf_url = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = ConfiguracionSistema
-        fields = [
-            'id', 'nombre_sistema', 'logo_url', 'tema_activo',
-            # Campos de identidad institucional
-            'nombre_institucion', 'subtitulo_institucion',
-            'logo_header', 'logo_header_url', 'logo_pdf', 'logo_pdf_url',
-            # Colores principales
-            'color_primario', 'color_primario_hover', 'color_secundario', 'color_acento',
-            # Colores de fondo
-            'color_fondo', 'color_fondo_sidebar', 'color_fondo_header', 'color_fondo_card',
-            # Colores de texto
-            'color_texto', 'color_texto_secundario', 'color_texto_sidebar', 'color_texto_header',
-            # Colores de estados
-            'color_exito', 'color_advertencia', 'color_error', 'color_info',
-            # Meta
-            'css_variables', 'temas_disponibles',
-            'updated_at', 'updated_by', 'updated_by_nombre',
-        ]
-        read_only_fields = ['id', 'updated_at', 'css_variables', 'temas_disponibles', 'logo_header_url', 'logo_pdf_url']
-    
-    def get_css_variables(self, obj):
-        """Retorna las variables CSS para inyectar en el frontend"""
-        return obj.to_css_variables()
-    
-    def get_temas_disponibles(self, obj):
-        """Retorna la lista de temas predefinidos disponibles"""
-        return [
-            {'id': tema[0], 'nombre': tema[1]} 
-            for tema in ConfiguracionSistema.TEMAS_PREDEFINIDOS
-        ]
-    
-    def get_logo_header_url(self, obj):
-        """Retorna la URL del logo del header si existe"""
-        if obj.logo_header:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.logo_header.url)
-            return obj.logo_header.url
-        return None
-    
-    def get_logo_pdf_url(self, obj):
-        """Retorna la URL del logo para PDF si existe"""
-        if obj.logo_pdf:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.logo_pdf.url)
-            return obj.logo_pdf.url
-        return None
-    
-    def validate_tema_activo(self, value):
-        """Valida que el tema sea v├ílido"""
-        temas_validos = [t[0] for t in ConfiguracionSistema.TEMAS_PREDEFINIDOS]
-        if value not in temas_validos:
-            raise serializers.ValidationError(
-                f"Tema inv├ílido. Opciones: {', '.join(temas_validos)}"
-            )
-        return value
-    
-    def update(self, instance, validated_data):
-        """
-        Actualiza la configuraci├│n.
-        Si se cambia tema_activo a uno predefinido, aplica los colores del tema.
-        """
-        tema_nuevo = validated_data.get('tema_activo')
-        
-        # Si se selecciona un tema predefinido (no 'custom'), aplicar sus colores
-        if tema_nuevo and tema_nuevo != 'custom' and tema_nuevo != instance.tema_activo:
-            ConfiguracionSistema.aplicar_tema_predefinido(tema_nuevo)
-            # Recargar la instancia
-            instance.refresh_from_db()
-            # Ahora aplicar cualquier otro campo que se haya enviado
-            for attr, value in validated_data.items():
-                if attr != 'tema_activo':  # Ya aplicamos el tema
-                    setattr(instance, attr, value)
-            instance.save()
-        else:
-            # Actualizaci├│n normal
-            for attr, value in validated_data.items():
-                setattr(instance, attr, value)
-            # Si se modifican colores manualmente, cambiar a 'custom'
-            campos_color = [f for f in validated_data.keys() if f.startswith('color_')]
-            if campos_color and validated_data.get('tema_activo') != 'custom':
-                instance.tema_activo = 'custom'
-            instance.save()
-        
-        return instance
-
-
-class DetalleHojaRecoleccionSerializer(serializers.ModelSerializer):
-    """Serializer para detalle de hoja de recolecci├│n"""
-    producto_clave = serializers.CharField(source='producto.clave', read_only=True)
-    producto_descripcion = serializers.CharField(source='producto.descripcion', read_only=True)
-    producto_unidad = serializers.CharField(source='producto.unidad_medida', read_only=True)
-    lote_numero = serializers.CharField(source='lote_asignado.numero_lote', read_only=True, default=None)
-    
-    class Meta:
-        model = DetalleHojaRecoleccion
-        fields = [
-            'id', 'producto', 'producto_clave', 'producto_descripcion', 'producto_unidad',
-            'cantidad_autorizada', 'cantidad_entregada', 'lote_asignado', 'lote_numero',
-            'observaciones'
-        ]
-
-
-class HojaRecoleccionSerializer(serializers.ModelSerializer):
-    """
-    Serializer para Hoja de Recolecci├│n.
-    Incluye informaci├│n de seguridad y verificaci├│n.
-    """
-    detalles = DetalleHojaRecoleccionSerializer(many=True, read_only=True)
-    requisicion_folio = serializers.CharField(source='requisicion.folio', read_only=True)
-    centro_nombre = serializers.CharField(source='requisicion.centro.nombre', read_only=True)
-    centro_clave = serializers.CharField(source='requisicion.centro.clave', read_only=True)
-    generado_por_nombre = serializers.CharField(source='generado_por.get_full_name', read_only=True)
-    verificado_por_nombre = serializers.CharField(source='verificado_por.get_full_name', read_only=True)
-    integridad_valida = serializers.SerializerMethodField()
-    productos_resumen = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = HojaRecoleccion
-        fields = [
-            'id', 'folio_hoja', 'requisicion', 'requisicion_folio',
-            'centro_nombre', 'centro_clave', 'estado', 'hash_contenido',
-            'contenido_json', 'fecha_generacion', 'fecha_impresion', 'fecha_verificacion',
-            'generado_por', 'generado_por_nombre', 'verificado_por', 'verificado_por_nombre',
-            'veces_impresa', 'veces_descargada', 'observaciones',
-            'integridad_valida', 'productos_resumen', 'detalles'
-        ]
-        read_only_fields = [
-            'folio_hoja', 'hash_contenido', 'fecha_generacion', 
-            'veces_impresa', 'veces_descargada'
-        ]
-    
-    def get_integridad_valida(self, obj):
-        """Verifica si el contenido no ha sido alterado"""
         return obj.verificar_integridad()
     
     def get_productos_resumen(self, obj):
@@ -1459,188 +1344,73 @@ class TemaGlobalSerializer(serializers.ModelSerializer):
     class Meta:
         model = TemaGlobal
         fields = [
-            'id', 'nombre', 'descripcion', 'activo', 'es_tema_institucional',
+            'id', 'nombre', 'es_activo',
             # Logos
-            'logo_header', 'logo_header_url',
-            'logo_login', 'logo_login_url',
-            'logo_reportes', 'logo_reportes_url',
-            'favicon', 'favicon_url',
-            'imagen_fondo_login', 'imagen_fondo_login_url',
-            'imagen_fondo_reportes', 'imagen_fondo_reportes_url',
-            # Colores principales
+            'logo_url', 'logo_width', 'logo_height', 'favicon_url',
+            # Textos
+            'titulo_sistema', 'subtitulo_sistema',
+            # Colores
             'color_primario', 'color_primario_hover',
             'color_secundario', 'color_secundario_hover',
-            # Colores de estado
-            'color_exito', 'color_error', 'color_advertencia', 'color_info',
-            # Colores de fondo
-            'color_fondo_principal', 'color_fondo_tarjetas',
-            'color_fondo_sidebar', 'color_fondo_header',
-            # Colores de texto
-            'color_texto_principal', 'color_texto_secundario',
-            'color_texto_invertido', 'color_texto_links',
-            # Colores de bordes
-            'color_borde', 'color_borde_focus',
-            # Tipografia
-            'fuente_principal', 'fuente_titulos',
-            'tamano_h1', 'tamano_h2', 'tamano_h3',
-            'tamano_texto_base', 'tamano_texto_pequeno',
-            'tamano_etiquetas', 'tamano_botones',
-            'peso_titulos', 'peso_texto_normal', 'peso_botones',
-            # Reportes
-            'reporte_ano_visible', 'reporte_titulo_institucion',
-            'reporte_subtitulo', 'reporte_pie_pagina',
-            'reporte_color_encabezado', 'reporte_color_texto_encabezado',
-            'reporte_color_filas_alternas',
-            # Estilos
-            'border_radius_base', 'border_radius_botones', 'shadow_base',
+            'color_exito', 'color_exito_hover',
+            'color_alerta', 'color_alerta_hover',
+            'color_error', 'color_error_hover',
+            'color_info', 'color_info_hover',
+            'color_fondo_principal', 'color_fondo_sidebar', 'color_fondo_header',
+            'color_texto_principal', 'color_texto_sidebar', 'color_texto_header', 'color_texto_links',
+            'color_borde_inputs', 'color_borde_focus',
+            'reporte_color_encabezado', 'reporte_color_texto',
+            
             # Computed
-            'css_variables', 'config_completa',
-            # Auditoria
-            'creado_por', 'creado_por_nombre',
-            'modificado_por', 'modificado_por_nombre',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['es_tema_institucional', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
     
     def get_logo_header_url(self, obj):
-        if obj.logo_header:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.logo_header.url)
-            return obj.logo_header.url
-        return None
+        return None # Deprecated
     
     def get_logo_login_url(self, obj):
-        if obj.logo_login:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.logo_login.url)
-            return obj.logo_login.url
-        return None
+        return None # Deprecated
     
     def get_logo_reportes_url(self, obj):
-        if obj.logo_reportes:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.logo_reportes.url)
-            return obj.logo_reportes.url
-        return None
+        return None # Deprecated
     
     def get_favicon_url(self, obj):
-        if obj.favicon:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.favicon.url)
-            return obj.favicon.url
-        return None
+        return None # Deprecated
     
     def get_imagen_fondo_login_url(self, obj):
-        if obj.imagen_fondo_login:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.imagen_fondo_login.url)
-            return obj.imagen_fondo_login.url
-        return None
+        return None # Deprecated
     
     def get_imagen_fondo_reportes_url(self, obj):
-        if obj.imagen_fondo_reportes:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.imagen_fondo_reportes.url)
-            return obj.imagen_fondo_reportes.url
-        return None
+        return None # Deprecated
     
     def get_css_variables(self, obj):
         return obj.to_css_variables()
     
     def get_config_completa(self, obj):
-        return obj.to_json_config()
+        return {
+            'logo_url': obj.logo_url,
+            'titulo': obj.titulo_sistema,
+            # Add more if needed, or just return dict of fields
+        }
 
 
 class TemaGlobalPublicoSerializer(serializers.ModelSerializer):
     """
-    Serializer publico para TemaGlobal (sin campos de auditoria).
-    Usado para el endpoint publico que cualquier usuario puede consultar.
+    Serializer publico para TemaGlobal - Supabase
     """
-    logo_header_url = serializers.SerializerMethodField()
-    logo_login_url = serializers.SerializerMethodField()
-    logo_reportes_url = serializers.SerializerMethodField()
-    favicon_url = serializers.SerializerMethodField()
-    imagen_fondo_login_url = serializers.SerializerMethodField()
-    
-    css_variables = serializers.SerializerMethodField()
-    
     class Meta:
         model = TemaGlobal
         fields = [
-            'id', 'nombre',
-            # URLs de imagenes
-            'logo_header_url', 'logo_login_url', 'logo_reportes_url',
-            'favicon_url', 'imagen_fondo_login_url',
-            # Colores
+            'id', 'nombre', 
+            'logo_url', 'logo_width', 'logo_height', 'favicon_url',
+            'titulo_sistema', 'subtitulo_sistema',
             'color_primario', 'color_primario_hover',
             'color_secundario', 'color_secundario_hover',
-            'color_exito', 'color_error', 'color_advertencia', 'color_info',
-            'color_fondo_principal', 'color_fondo_tarjetas',
-            'color_fondo_sidebar', 'color_fondo_header',
-            'color_texto_principal', 'color_texto_secundario',
-            'color_texto_invertido', 'color_texto_links',
-            'color_borde', 'color_borde_focus',
-            # Tipografia
-            'fuente_principal', 'fuente_titulos',
-            'tamano_h1', 'tamano_h2', 'tamano_h3',
-            'tamano_texto_base', 'tamano_texto_pequeno',
-            'tamano_etiquetas', 'tamano_botones',
-            'peso_titulos', 'peso_texto_normal', 'peso_botones',
-            # Reportes (solo lo necesario para UI)
-            'reporte_ano_visible', 'reporte_titulo_institucion',
-            # Estilos
-            'border_radius_base', 'border_radius_botones', 'shadow_base',
-            # CSS variables
-            'css_variables',
+            'color_exito', 'color_error', 'color_alerta', 'color_info',
+            'color_fondo_principal', 'color_fondo_sidebar', 'color_fondo_header',
+            'color_texto_principal', 'color_texto_sidebar', 'color_texto_header',
             'updated_at',
         ]
-    
-    def get_logo_header_url(self, obj):
-        if obj.logo_header:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.logo_header.url)
-            return obj.logo_header.url
-        return None
-    
-    def get_logo_login_url(self, obj):
-        if obj.logo_login:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.logo_login.url)
-            return obj.logo_login.url
-        return None
-    
-    def get_logo_reportes_url(self, obj):
-        if obj.logo_reportes:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.logo_reportes.url)
-            return obj.logo_reportes.url
-        return None
-    
-    def get_favicon_url(self, obj):
-        if obj.favicon:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.favicon.url)
-            return obj.favicon.url
-        return None
-    
-    def get_imagen_fondo_login_url(self, obj):
-        if obj.imagen_fondo_login:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.imagen_fondo_login.url)
-            return obj.imagen_fondo_login.url
-        return None
-    
-    def get_css_variables(self, obj):
-        return obj.to_css_variables()
+
 

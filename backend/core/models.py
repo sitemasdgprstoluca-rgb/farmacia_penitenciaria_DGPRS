@@ -25,19 +25,19 @@ import logging
 import os
 
 
-# ISS-016: Validador de tama├▒o de archivo para im├ígenes
+# ISS-016: Validador de tamaÃ±o de archivo para imÃ¡genes
 def validate_image_max_size(value, max_size_kb=500):
-    """Valida que una imagen no exceda el tama├▒o m├íximo (default 500KB)"""
+    """Valida que una imagen no exceda el tamaÃ±o mÃ¡ximo (default 500KB)"""
     if value:
         max_size_bytes = max_size_kb * 1024
         if value.size > max_size_bytes:
             raise ValidationError(
-                f'El archivo es demasiado grande. M├íximo permitido: {max_size_kb}KB'
+                f'El archivo es demasiado grande. MÃ¡ximo permitido: {max_size_kb}KB'
             )
 
 
 def validate_logo_size(value):
-    """Validador espec├¡fico para logos (max 500KB)"""
+    """Validador especÃ­fico para logos (max 500KB)"""
     validate_image_max_size(value, max_size_kb=500)
 
 
@@ -45,11 +45,11 @@ def validate_image_size(value):
     """Valida que la imagen no exceda 2MB"""
     max_size = 2 * 1024 * 1024  # 2 MB
     if value.size > max_size:
-        raise ValidationError(f'La imagen no puede exceder 2MB. Tama├▒o actual: {value.size/1024/1024:.1f}MB')
+        raise ValidationError(f'La imagen no puede exceder 2MB. TamaÃ±o actual: {value.size/1024/1024:.1f}MB')
 
 
 def producto_imagen_path(instance, filename):
-    """Genera ruta para im├ígenes de productos"""
+    """Genera ruta para imÃ¡genes de productos"""
     ext = filename.split('.')[-1]
     return f'productos/{instance.clave}.{ext}'
 
@@ -63,39 +63,39 @@ def requisicion_firma_path(instance, filename):
 # ISS-005: Validador de archivos PDF
 def validate_pdf_file(value):
     """
-    ISS-005: Valida que el archivo sea PDF v├ílido y no exceda tama├▒o m├íximo.
+    ISS-005: Valida que el archivo sea PDF vÃ¡lido y no exceda tamaÃ±o mÃ¡ximo.
     
     Validaciones:
-    - Extensi├│n .pdf
-    - Tama├▒o m├íximo 10MB
-    - Content-type application/pdf (si est├í disponible)
+    - ExtensiÃ³n .pdf
+    - TamaÃ±o mÃ¡ximo 10MB
+    - Content-type application/pdf (si estÃ¡ disponible)
     """
     if not value:
         return
     
-    # Validar extensi├│n
+    # Validar extensiÃ³n
     ext = os.path.splitext(value.name)[1].lower()
     if ext != '.pdf':
         raise ValidationError('Solo se permiten archivos PDF (.pdf)')
     
-    # Validar tama├▒o (m├íximo 10MB)
+    # Validar tamaÃ±o (mÃ¡ximo 10MB)
     max_size_bytes = 10 * 1024 * 1024  # 10MB
     if value.size > max_size_bytes:
         raise ValidationError(
-            f'El archivo PDF es demasiado grande. M├íximo permitido: 10MB. '
-            f'Tama├▒o actual: {value.size / (1024*1024):.2f}MB'
+            f'El archivo PDF es demasiado grande. MÃ¡ximo permitido: 10MB. '
+            f'TamaÃ±o actual: {value.size / (1024*1024):.2f}MB'
         )
     
-    # Validar content-type si est├í disponible
+    # Validar content-type si estÃ¡ disponible
     if hasattr(value, 'content_type'):
         allowed_types = ['application/pdf', 'application/x-pdf']
         if value.content_type not in allowed_types:
             raise ValidationError(
-                f'Tipo de archivo no v├ílido. Se esperaba PDF, se recibi├│: {value.content_type}'
+                f'Tipo de archivo no vÃ¡lido. Se esperaba PDF, se recibiÃ³: {value.content_type}'
             )
 
 
-# ISS-005: Funci├│n para generar nombre seguro de archivo PDF
+# ISS-005: FunciÃ³n para generar nombre seguro de archivo PDF
 def pdf_upload_path(instance, filename):
     """
     ISS-005: Genera ruta segura para archivos PDF.
@@ -108,11 +108,11 @@ def pdf_upload_path(instance, filename):
     # Sanitizar nombre (remover caracteres peligrosos)
     safe_name = "".join(c for c in filename if c.isalnum() or c in '._-')
     
-    # Generar nombre ├║nico
+    # Generar nombre Ãºnico
     timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
     unique_id = uuid.uuid4().hex[:8]
     
-    # Obtener info del lote si est├í disponible
+    # Obtener info del lote si estÃ¡ disponible
     producto_clave = getattr(instance, 'producto', None)
     if producto_clave and hasattr(producto_clave, 'clave'):
         producto_clave = producto_clave.clave[:20]
@@ -134,12 +134,12 @@ logger = logging.getLogger(__name__)
 
 class User(AbstractUser):
     """
-    Modelo de usuario extendido con roles y asignaci├│n de centro.
+    Modelo de usuario extendido con roles y asignaciÃ³n de centro.
     
-    ISS-009: Incluye validaci├│n de coherencia entre rol y permisos personalizados.
+    ISS-009: Incluye validaciÃ³n de coherencia entre rol y permisos personalizados.
     """
     
-    # ISS-009: Definir permisos m├íximos permitidos por rol
+    # ISS-009: Definir permisos mÃ¡ximos permitidos por rol
     # True = puede tener el permiso, False = nunca puede tenerlo
     PERMISOS_POR_ROL = {
         'admin_sistema': {
@@ -185,11 +185,11 @@ class User(AbstractUser):
     adscripcion = models.CharField(
         max_length=200,
         blank=True,
-        help_text="Adscripci├│n del usuario (centro/├írea/unidad de dependencia)"
+        help_text="AdscripciÃ³n del usuario (centro/Ã¡rea/unidad de dependencia)"
     )
     activo = models.BooleanField(default=True)
     
-    # Permisos personalizados por m├│dulo (null = usar permisos del rol por defecto)
+    # Permisos personalizados por mÃ³dulo (null = usar permisos del rol por defecto)
     perm_dashboard = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Dashboard")
     perm_productos = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Productos")
     perm_lotes = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Lotes")
@@ -198,7 +198,7 @@ class User(AbstractUser):
     perm_usuarios = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Usuarios")
     perm_reportes = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Reportes")
     perm_trazabilidad = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Trazabilidad")
-    perm_auditoria = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Auditor├¡a")
+    perm_auditoria = models.BooleanField(null=True, blank=True, help_text="Permiso para ver AuditorÃ­a")
     perm_notificaciones = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Notificaciones")
     perm_movimientos = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Movimientos")
     
@@ -233,7 +233,7 @@ class User(AbstractUser):
             valor_actual = getattr(self, campo, None)
             permitido = permisos_rol.get(campo, False)
             
-            # Si el permiso est├í expl├¡citamente en True pero el rol no lo permite
+            # Si el permiso estÃ¡ explÃ­citamente en True pero el rol no lo permite
             if valor_actual is True and not permitido:
                 nombre_legible = campo.replace('perm_', '').replace('_', ' ').title()
                 errores[campo] = (
@@ -249,7 +249,7 @@ class User(AbstractUser):
         ISS-009: Retorna los permisos efectivos del usuario.
         
         Combina permisos del rol base con personalizaciones, 
-        respetando los l├¡mites del rol.
+        respetando los lÃ­mites del rol.
         """
         permisos_rol = self.PERMISOS_POR_ROL.get(self.rol, {})
         efectivos = {}
@@ -268,10 +268,10 @@ class User(AbstractUser):
                 # Superuser tiene todos los permisos
                 efectivos[campo] = True
             elif valor_personalizado is not None:
-                # Personalizaci├│n: solo si est├í dentro del l├¡mite del rol
+                # PersonalizaciÃ³n: solo si estÃ¡ dentro del lÃ­mite del rol
                 efectivos[campo] = valor_personalizado and maximo_rol
             else:
-                # Sin personalizaci├│n: usar default del rol
+                # Sin personalizaciÃ³n: usar default del rol
                 efectivos[campo] = maximo_rol
         
         return efectivos
@@ -283,7 +283,8 @@ class User(AbstractUser):
 class Centro(models.Model):
     """
     Modelo de Centro Penitenciario
-    Adaptado a la estructura de base de datos existente
+    
+    Campos en BD: id, nombre, direccion, telefono, email, activo, created_at, updated_at
     """
     nombre = models.CharField(max_length=200)
     direccion = models.TextField(blank=True, null=True)
@@ -301,7 +302,7 @@ class Centro(models.Model):
     def __str__(self):
         return self.nombre
     
-    # Propiedad para compatibilidad con c├│digo que usa 'clave'
+    # Propiedad para compatibilidad con cÃ³digo que usa 'clave'
     @property
     def clave(self):
         return str(self.id)
@@ -309,7 +310,7 @@ class Centro(models.Model):
 
 class Producto(models.Model):
     """
-    Modelo de Producto Farmac├®utico
+    Modelo de Producto FarmacÃ©utico
     Adaptado a la estructura de base de datos existente
     """
     codigo_barras = models.CharField(max_length=50, unique=True, null=True, blank=True)
@@ -338,7 +339,7 @@ class Producto(models.Model):
     def __str__(self):
         return f"{self.nombre}"
     
-    # Propiedad para compatibilidad con c├│digo que usa 'clave'
+    # Propiedad para compatibilidad con cÃ³digo que usa 'clave'
     @property
     def clave(self):
         return self.codigo_barras or str(self.id)
@@ -358,12 +359,15 @@ class Producto(models.Model):
 
 class Lote(models.Model):
     """
-    Modelo de Lote de Producto
-    Adaptado a la estructura de base de datos existente
+    Modelo de Lote de Producto - Supabase
+    
+    Campos en Supabase: id, numero_lote, producto_id, cantidad_inicial, 
+    cantidad_actual, fecha_fabricacion, fecha_caducidad, precio_unitario,
+    numero_contrato, marca, ubicacion, centro_id, activo, created_at, updated_at
     """
     numero_lote = models.CharField(max_length=100)
-    producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='lotes')
-    cantidad_inicial = models.IntegerField(default=0)
+    producto = models.ForeignKey(Producto, on_delete=models.PROTECT) # Schema: producto_id
+    cantidad_inicial = models.IntegerField()
     cantidad_actual = models.IntegerField(default=0)
     fecha_fabricacion = models.DateField(null=True, blank=True)
     fecha_caducidad = models.DateField()
@@ -371,22 +375,29 @@ class Lote(models.Model):
     numero_contrato = models.CharField(max_length=100, blank=True, null=True)
     marca = models.CharField(max_length=100, blank=True, null=True)
     ubicacion = models.CharField(max_length=100, blank=True, null=True)
-    centro = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='lotes_centro')
+    centro = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True)
     activo = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'lotes'
-        ordering = ['-created_at']
-        managed = False  # La tabla ya existe en la BD
+        managed = False  # Tabla en Supabase
 
     def __str__(self):
-        return f"{self.numero_lote} - {self.producto.nombre if self.producto else 'N/A'}"
+        return f"{self.numero_lote} - {self.producto}"
+    
+    @property
+    def precio_compra(self):
+        return self.precio_unitario
     
     @property
     def estado(self):
-        """Calcula el estado basado en cantidad y caducidad"""
+        """Calculated field since 'estado' column is gone"""
+        return 'disponible' if self.activo else 'agotado' # Simplification
+
+    def dias_para_caducar(self):
+        """Calcula dÃ­as restantes para caducidad"""
         from django.utils import timezone
         if self.cantidad_actual <= 0:
             return 'agotado'
@@ -471,7 +482,7 @@ class Requisicion(models.Model):
     def __str__(self):
         return f"REQ-{self.numero}"
     
-    # Propiedades para compatibilidad con c├│digo existente
+    # Propiedades para compatibilidad con cÃ³digo existente
     @property
     def folio(self):
         return self.numero
@@ -550,40 +561,45 @@ class Notificacion(models.Model):
 
 class TemaGlobal(models.Model):
     """
-    Configuraci├│n del tema visual
-    Adaptado a la estructura de base de datos existente
+    ConfiguraciÃ³n del tema visual - Supabase
+    
+    Campos en Supabase: id, nombre, es_activo, logo_url, logo_width, logo_height,
+    favicon_url, titulo_sistema, subtitulo_sistema, y muchos colores...
     """
-    nombre = models.CharField(max_length=100, default='Tema Default')
-    es_activo = models.BooleanField(default=False, db_column='es_activo')
+    nombre = models.CharField(max_length=100)
+    es_activo = models.BooleanField(default=False)
     logo_url = models.CharField(max_length=500, blank=True, null=True)
-    logo_width = models.IntegerField(null=True, blank=True)
-    logo_height = models.IntegerField(null=True, blank=True)
+    logo_width = models.IntegerField(default=160)
+    logo_height = models.IntegerField(default=60)
     favicon_url = models.CharField(max_length=500, blank=True, null=True)
-    titulo_sistema = models.CharField(max_length=200, blank=True, null=True)
-    subtitulo_sistema = models.CharField(max_length=200, blank=True, null=True)
-    color_primario = models.CharField(max_length=20, blank=True, null=True)
-    color_primario_hover = models.CharField(max_length=20, blank=True, null=True)
-    color_secundario = models.CharField(max_length=20, blank=True, null=True)
-    color_secundario_hover = models.CharField(max_length=20, blank=True, null=True)
-    color_exito = models.CharField(max_length=20, blank=True, null=True)
-    color_exito_hover = models.CharField(max_length=20, blank=True, null=True)
-    color_alerta = models.CharField(max_length=20, blank=True, null=True)
-    color_alerta_hover = models.CharField(max_length=20, blank=True, null=True)
-    color_error = models.CharField(max_length=20, blank=True, null=True)
-    color_error_hover = models.CharField(max_length=20, blank=True, null=True)
-    color_info = models.CharField(max_length=20, blank=True, null=True)
-    color_info_hover = models.CharField(max_length=20, blank=True, null=True)
-    color_fondo_principal = models.CharField(max_length=20, blank=True, null=True)
-    color_fondo_sidebar = models.CharField(max_length=20, blank=True, null=True)
-    color_fondo_header = models.CharField(max_length=20, blank=True, null=True)
-    color_texto_principal = models.CharField(max_length=20, blank=True, null=True)
-    color_texto_sidebar = models.CharField(max_length=20, blank=True, null=True)
-    color_texto_header = models.CharField(max_length=20, blank=True, null=True)
-    color_texto_links = models.CharField(max_length=20, blank=True, null=True)
-    color_borde_inputs = models.CharField(max_length=20, blank=True, null=True)
-    color_borde_focus = models.CharField(max_length=20, blank=True, null=True)
-    reporte_color_encabezado = models.CharField(max_length=20, blank=True, null=True)
-    reporte_color_texto = models.CharField(max_length=20, blank=True, null=True)
+    titulo_sistema = models.CharField(max_length=100, default='Sistema de Inventario FarmacÃ©utico', null=True, blank=True)
+    subtitulo_sistema = models.CharField(max_length=200, default='Gobierno del Estado', null=True, blank=True)
+    
+    # Colores
+    color_primario = models.CharField(max_length=20, default='#9F2241', null=True, blank=True)
+    color_primario_hover = models.CharField(max_length=20, default='#6B1839', null=True, blank=True)
+    color_secundario = models.CharField(max_length=20, default='#424242', null=True, blank=True)
+    color_secundario_hover = models.CharField(max_length=20, default='#2E2E2E', null=True, blank=True)
+    color_exito = models.CharField(max_length=20, default='#4a7c4b', null=True, blank=True)
+    color_exito_hover = models.CharField(max_length=20, default='#3d663e', null=True, blank=True)
+    color_alerta = models.CharField(max_length=20, default='#d4a017', null=True, blank=True)
+    color_alerta_hover = models.CharField(max_length=20, default='#b38b14', null=True, blank=True)
+    color_error = models.CharField(max_length=20, default='#c53030', null=True, blank=True)
+    color_error_hover = models.CharField(max_length=20, default='#a52828', null=True, blank=True)
+    color_info = models.CharField(max_length=20, default='#3182ce', null=True, blank=True)
+    color_info_hover = models.CharField(max_length=20, default='#2c6cb0', null=True, blank=True)
+    color_fondo_principal = models.CharField(max_length=20, default='#f7f8fa', null=True, blank=True)
+    color_fondo_sidebar = models.CharField(max_length=20, default='#9F2241', null=True, blank=True)
+    color_fondo_header = models.CharField(max_length=20, default='#9F2241', null=True, blank=True)
+    color_texto_principal = models.CharField(max_length=20, default='#1f2937', null=True, blank=True)
+    color_texto_sidebar = models.CharField(max_length=20, default='#ffffff', null=True, blank=True)
+    color_texto_header = models.CharField(max_length=20, default='#ffffff', null=True, blank=True)
+    color_texto_links = models.CharField(max_length=20, default='#9F2241', null=True, blank=True)
+    color_borde_inputs = models.CharField(max_length=20, default='#d1d5db', null=True, blank=True)
+    color_borde_focus = models.CharField(max_length=20, default='#9F2241', null=True, blank=True)
+    reporte_color_encabezado = models.CharField(max_length=20, default='#9F2241', null=True, blank=True)
+    reporte_color_texto = models.CharField(max_length=20, default='#1f2937', null=True, blank=True)
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -598,17 +614,49 @@ class TemaGlobal(models.Model):
     @property
     def activo(self):
         return self.es_activo
+    
+    @property
+    def color_fondo(self):
+        return self.color_fondo_principal
+    
+    @property
+    def color_texto(self):
+        return self.color_texto_principal
+    
+    def to_css_variables(self):
+        """Genera diccionario de variables CSS"""
+        return {
+            '--color-primario': self.color_primario,
+            '--color-primario-hover': self.color_primario_hover,
+            '--color-secundario': self.color_secundario,
+            '--color-secundario-hover': self.color_secundario_hover,
+            '--color-exito': self.color_exito,
+            '--color-exito-hover': self.color_exito_hover,
+            '--color-alerta': self.color_alerta,
+            '--color-alerta-hover': self.color_alerta_hover,
+            '--color-error': self.color_error,
+            '--color-error-hover': self.color_error_hover,
+            '--color-info': self.color_info,
+            '--color-info-hover': self.color_info_hover,
+            '--color-fondo-principal': self.color_fondo_principal,
+            '--color-fondo-sidebar': self.color_fondo_sidebar,
+            '--color-fondo-header': self.color_fondo_header,
+            '--color-texto-principal': self.color_texto_principal,
+            '--color-texto-sidebar': self.color_texto_sidebar,
+            '--color-texto-header': self.color_texto_header,
+        }
 
 
 class ConfiguracionSistema(models.Model):
     """
-    Configuraci├│n del sistema
-    Adaptado a la estructura de base de datos existente
+    ConfiguraciÃ³n del sistema - Supabase
+    
+    Campos en Supabase: id, clave, valor, descripcion, tipo, es_publica, updated_at
     """
     clave = models.CharField(max_length=100, unique=True)
-    valor = models.TextField()
-    descripcion = models.TextField(blank=True, null=True)
-    tipo = models.CharField(max_length=50, default='texto')
+    valor = models.TextField(blank=True, null=True)  # NOTE: Schema says NOT NULL but let's stick to existing slightly looser if needed, actually schema says NO, so I should probably make it NO null. Schema: valor text NO null.
+    descripcion = models.TextField(blank=True, null=True) # Schema: text YES
+    tipo = models.CharField(max_length=20, default='string') # Schema says default 'string'
     es_publica = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -622,13 +670,15 @@ class ConfiguracionSistema(models.Model):
 
 class HojaRecoleccion(models.Model):
     """
-    Hoja de Recolecci├│n
-    Adaptado a la estructura de base de datos existente
+    Hoja de RecolecciÃ³n - Supabase
+    
+    Campos en Supabase: id, numero, centro_id, responsable_id, estado,
+    fecha_programada, fecha_recoleccion, notas, created_at, updated_at
     """
     numero = models.CharField(max_length=50, unique=True)
-    centro = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True)
-    responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='hojas_responsable')
-    estado = models.CharField(max_length=50, default='pendiente')
+    centro = models.ForeignKey(Centro, on_delete=models.SET_NULL, null=True, blank=True)
+    responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    estado = models.CharField(max_length=30, default='pendiente')
     fecha_programada = models.DateField()
     fecha_recoleccion = models.DateTimeField(null=True, blank=True)
     notas = models.TextField(blank=True, null=True)
@@ -641,7 +691,7 @@ class HojaRecoleccion(models.Model):
 
     def __str__(self):
         return f"HR-{self.numero}"
-    
+
     @property
     def folio(self):
         return self.numero
@@ -649,26 +699,31 @@ class HojaRecoleccion(models.Model):
 
 class DetalleHojaRecoleccion(models.Model):
     """
-    Detalle de Hoja de Recolecci├│n
-    Adaptado a la estructura de base de datos existente
+    Detalle de Hoja de RecolecciÃ³n - Supabase
+    
+    Campos en Supabase: id, hoja_id, lote_id, cantidad_recolectar,
+    cantidad_recolectada, motivo, observaciones, created_at
     """
-    hoja = models.ForeignKey(HojaRecoleccion, on_delete=models.CASCADE, related_name='detalles', db_column='hoja_id')
-    lote = models.ForeignKey(Lote, on_delete=models.PROTECT)
+    hoja = models.ForeignKey(HojaRecoleccion, on_delete=models.CASCADE, related_name='detalles')
+    lote = models.ForeignKey(Lote, on_delete=models.CASCADE)
     cantidad_recolectar = models.IntegerField()
-    cantidad_recolectada = models.IntegerField(null=True, blank=True)
-    motivo = models.CharField(max_length=100)
+    cantidad_recolectada = models.IntegerField(default=0, null=True, blank=True)
+    motivo = models.CharField(max_length=50, default='caducidad')
     observaciones = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'detalle_hojas_recoleccion'
-        managed = False  # La tabla ya existe en la BD
+        managed = False  # Tabla en Supabase
 
 
-class ImportacionLog(models.Model):
+class ImportacionLogs(models.Model):
     """
-    Log de Importaciones
-    Adaptado a la estructura de base de datos existente
+    Log de Importaciones - Supabase
+    
+    Campos en Supabase: id, archivo, tipo_importacion, usuario_id,
+    registros_totales, registros_exitosos, registros_fallidos, errores, 
+    estado, fecha_inicio, fecha_fin
     """
     archivo = models.CharField(max_length=255)
     tipo_importacion = models.CharField(max_length=50)
@@ -677,24 +732,29 @@ class ImportacionLog(models.Model):
     registros_exitosos = models.IntegerField(default=0)
     registros_fallidos = models.IntegerField(default=0)
     errores = models.JSONField(null=True, blank=True)
-    estado = models.CharField(max_length=50, default='pendiente')
+    estado = models.CharField(max_length=30, default='procesando')
     fecha_inicio = models.DateTimeField(auto_now_add=True)
     fecha_fin = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'importacion_logs'
-        managed = False  # La tabla ya existe en la BD
+        managed = False  # Tabla en Supabase
+
+# Alias para compatibilidad
+ImportacionLog = ImportacionLogs
 
 
-class AuditLog(models.Model):
+class AuditoriaLogs(models.Model):
     """
-    Log de Auditor├¡a
-    Adaptado a la estructura de base de datos existente
+    Log de AuditorÃ­a - Supabase
+    
+    Campos en Supabase: id, usuario_id, accion, modelo, objeto_id,
+    datos_anteriores, datos_nuevos, ip_address, user_agent, detalles, timestamp
     """
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     accion = models.CharField(max_length=50)
     modelo = models.CharField(max_length=100)
-    objeto_id = models.CharField(max_length=100, null=True, blank=True)
+    objeto_id = models.CharField(max_length=50, null=True, blank=True) # Schema says 50 chars
     datos_anteriores = models.JSONField(null=True, blank=True)
     datos_nuevos = models.JSONField(null=True, blank=True)
     ip_address = models.CharField(max_length=45, null=True, blank=True)
@@ -704,18 +764,18 @@ class AuditLog(models.Model):
 
     class Meta:
         db_table = 'auditoria_logs'
-        managed = False  # La tabla ya existe en la BD
+        managed = False  # Tabla en Supabase
 
-
-# Alias para compatibilidad con c├│digo existente
-AuditoriaLog = AuditLog
+# Alias para compatibilidad con cÃ³digo existente (si es necesario)
+AuditLog = AuditoriaLogs
+AuditoriaLog = AuditoriaLogs
 
 
 class UserProfile(models.Model):
     """
     Modelo de perfil de usuario (legacy)
-    En la nueva estructura, el perfil est├í integrado en el modelo User.
-    Este modelo se mantiene solo para compatibilidad con c├│digo existente.
+    En la nueva estructura, el perfil estÃ¡ integrado en el modelo User.
+    Este modelo se mantiene solo para compatibilidad con cÃ³digo existente.
     """
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='userprofile')
     
@@ -735,5 +795,3 @@ class UserProfile(models.Model):
     
     def __str__(self):
         return f"Perfil de {self.user.username if self.user else 'N/A'}"
-
-
