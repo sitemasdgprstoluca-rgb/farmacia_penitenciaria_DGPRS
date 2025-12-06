@@ -387,16 +387,18 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
             lote_ref.activo = True
         lote_ref.save(update_fields=update_fields)
 
+        # Crear movimiento con campos correctos de la BD
         movimiento = Movimiento(
             tipo=tipo_normalizado,
             lote=lote_ref,
-            centro=centro,
+            centro_destino=centro if tipo_normalizado == 'entrada' else None,
+            centro_origen=centro if tipo_normalizado != 'entrada' else None,
             requisicion=requisicion,
             usuario=usuario if usuario and getattr(usuario, 'is_authenticated', False) else None,
             cantidad=delta,
-            observaciones=observaciones or ''
+            motivo=observaciones or ''
         )
-        # Guardar stock previo para evitar fallos de validaci?n al crear el movimiento
+        # Guardar stock previo para evitar fallos de validacion al crear el movimiento
         movimiento._stock_pre_movimiento = stock_disponible
         movimiento.save()
 
@@ -471,7 +473,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     Sum(
                         'lotes__cantidad_actual',
                         filter=Q(
-                            lotes__lotes__estado='disponible',
+                            lotes__activo=True,
                             lotes__cantidad_actual__gt=0
                         )
                     ),
@@ -612,7 +614,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
             # Si se va a desactivar, verificar que no tenga stock disponible
             if not nuevo_estado:  # Desactivando
                 stock_disponible = producto.lotes.filter(
-                    estado='disponible',
+                    activo=True,
                     cantidad_actual__gt=0
                 ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
                 
@@ -1103,10 +1105,12 @@ class CentroViewSet(viewsets.ModelViewSet):
                 return Response({'error': 'Solo puedes ver inventario de tu centro'}, status=status.HTTP_403_FORBIDDEN)
 
         # Lotes que han tenido movimientos en este centro
-        lote_ids = Movimiento.objects.filter(centro=centro).values_list('lote_id', flat=True)
+        lote_ids = Movimiento.objects.filter(
+            Q(centro_origen=centro) | Q(centro_destino=centro)
+        ).values_list('lote_id', flat=True)
         lotes = Lote.objects.filter(
             Q(id__in=lote_ids) | Q(centro=centro),
-            estado='disponible',
+            activo=True,
             cantidad_actual__gt=0
         ).select_related('producto')
 
@@ -1128,10 +1132,12 @@ class CentroViewSet(viewsets.ModelViewSet):
                     item['lote_proximo_caducar'] = lote.numero_lote
                     item['fecha_caducidad'] = lote.fecha_caducidad
 
-        # Si no hay lotes asociados, caer al agregado por movimientos para no dejar vac�o
+        # Si no hay lotes asociados, caer al agregado por movimientos para no dejar vacio
         inventario = list(inventario_dict.values())
         if not inventario:
-            movimientos = Movimiento.objects.filter(centro=centro)
+            movimientos = Movimiento.objects.filter(
+                Q(centro_origen=centro) | Q(centro_destino=centro)
+            )
             agregados = movimientos.values('lote__producto').annotate(cantidad=Coalesce(Sum('cantidad'), 0))
             for item in agregados:
                 producto = Producto.objects.filter(id=item['lote__producto']).first()
@@ -1588,12 +1594,12 @@ class LoteViewSet(viewsets.ModelViewSet):
         elif con_stock == 'sin_stock':
             queryset = queryset.filter(cantidad_actual=0)
         
-        # Filtrar solo lotes disponibles (no vencidos) para el cat�logo
+        # Filtrar solo lotes disponibles (no vencidos) para el catalogo
         solo_disponibles = self.request.query_params.get('solo_disponibles')
         if solo_disponibles == 'true':
             from datetime import date
             queryset = queryset.filter(
-                estado='disponible',
+                activo=True,
                 fecha_caducidad__gt=date.today()
             )
         
@@ -1897,7 +1903,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             fecha_limite = date.today() + timedelta(days=dias)
             
             lotes = Lote.objects.select_related('producto').filter(
-                estado__in=['disponible', 'agotado', 'bloqueado'],
+                activo=True,
                 cantidad_actual__gt=0,
                 fecha_caducidad__lte=fecha_limite
             ).order_by('fecha_caducidad')
@@ -2333,7 +2339,7 @@ class MovimientoViewSet(
                     'tipo': mov.tipo.upper(),
                     'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                     'cantidad': mov.cantidad,
-                    'centro': mov.centro.nombre if mov.centro else 'Farmacia Central',
+                    'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
                     'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
                     'observaciones': mov.motivo or ''
                 })
@@ -2393,7 +2399,7 @@ class MovimientoViewSet(
                     'tipo': mov.tipo.upper(),
                     'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                     'cantidad': mov.cantidad,
-                    'centro': mov.centro.nombre if mov.centro else 'Farmacia Central',
+                    'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
                     'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
                     'observaciones': mov.motivo or ''
                 })
@@ -2459,7 +2465,7 @@ class MovimientoViewSet(
                     'producto': mov.lote.producto.clave if mov.lote and mov.lote.producto else 'N/A',
                     'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                     'cantidad': mov.cantidad,
-                    'centro': mov.centro.nombre if mov.centro else 'Farmacia Central',
+                    'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
                     'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
                 })
             
@@ -2556,7 +2562,7 @@ class MovimientoViewSet(
                     mov.lote.producto.descripcion[:50] if mov.lote and mov.lote.producto else 'N/A',
                     mov.lote.numero_lote if mov.lote else 'N/A',
                     mov.cantidad,
-                    mov.centro.nombre if mov.centro else (mov.lote.centro.nombre if mov.lote and mov.lote.centro else 'Farmacia Central'),
+                    mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
                     mov.usuario.get_full_name() or mov.usuario.username if mov.usuario else 'Sistema',
                 ])
             
@@ -3322,7 +3328,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             if not is_farmacia_or_admin(user):
                 user_centro = get_user_centro(user)
                 if user_centro:
-                    base_queryset = base_queryset.filter(centro=user_centro)
+                    base_queryset = base_queryset.filter(centro_destino=user_centro)
                 else:
                     base_queryset = Requisicion.objects.none()
             
@@ -3352,7 +3358,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             if not is_farmacia_or_admin(user):
                 user_centro = get_user_centro(user)
                 if user_centro:
-                    base_queryset = base_queryset.filter(centro=user_centro)
+                    base_queryset = base_queryset.filter(centro_destino=user_centro)
                 else:
                     base_queryset = Requisicion.objects.none()
             
@@ -3397,7 +3403,7 @@ def dashboard_resumen(request):
         
         # === LOTES ===
         lotes_query = Lote.objects.filter(
-            estado='disponible',
+            activo=True,
             cantidad_actual__gt=0
         )
         
@@ -3444,7 +3450,7 @@ def dashboard_resumen(request):
             
             # Determinar origen/destino
             lote_centro = lote.centro if lote else None
-            mov_centro = mov.centro
+            mov_centro = mov.centro_destino
             
             if mov.tipo == 'entrada':
                 origen = mov.referencia or 'Proveedor'
@@ -3570,7 +3576,7 @@ def dashboard_graficas(request):
             # Farmacia Central (lotes sin centro asignado)
             stock_farmacia = Lote.objects.filter(
                 centro__isnull=True,
-                estado='disponible',
+                activo=True,
                 cantidad_actual__gt=0
             ).aggregate(
                 total=Coalesce(Sum('cantidad_actual'), 0, output_field=IntegerField())
@@ -3587,7 +3593,7 @@ def dashboard_graficas(request):
             for centro in Centro.objects.filter(activo=True).order_by('nombre'):
                 stock = Lote.objects.filter(
                     centro=centro,
-                    estado='disponible',
+                    activo=True,
                     cantidad_actual__gt=0
                 ).aggregate(
                     total=Coalesce(Sum('cantidad_actual'), 0, output_field=IntegerField())
@@ -3609,7 +3615,7 @@ def dashboard_graficas(request):
             if user_centro:
                 stock = Lote.objects.filter(
                     centro=user_centro,
-                    estado='disponible',
+                    activo=True,
                     cantidad_actual__gt=0
                 ).aggregate(
                     total=Coalesce(Sum('cantidad_actual'), 0, output_field=IntegerField())
@@ -3625,7 +3631,7 @@ def dashboard_graficas(request):
         # =========================================
         requisiciones_qs = Requisicion.objects.all()
         if filtrar_por_centro and user_centro:
-            requisiciones_qs = requisiciones_qs.filter(centro=user_centro)
+            requisiciones_qs = requisiciones_qs.filter(centro_destino=user_centro)
         
         estados_agg = requisiciones_qs.values('estado').annotate(
             cantidad=Count('id')
@@ -3687,7 +3693,7 @@ def trazabilidad_producto(request, clave):
         if not producto:
             return Response({'error': 'Producto no encontrado', 'clave_buscada': clave}, status=status.HTTP_404_NOT_FOUND)
 
-        lotes = Lote.objects.filter(producto=producto, estado__in=['disponible', 'agotado', 'cuarentena'])
+        lotes = Lote.objects.filter(producto=producto, activo=True)
         
         # Aplicar filtro de centro
         if filtrar_por_centro and user_centro:
@@ -3842,7 +3848,7 @@ def trazabilidad_lote(request, codigo):
                 'tipo': mov.tipo.upper(),
                 'cantidad': mov.cantidad,
                 'saldo': saldo,
-                'centro': mov.centro.nombre if mov.centro else 'Farmacia Central',
+                'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
                 'usuario': mov.usuario.username if mov.usuario else '-',
                 'lote': mov.lote.numero_lote if mov.lote else '-',
                 'observaciones': mov.motivo or ''
@@ -3963,7 +3969,7 @@ def reporte_inventario(request):
         for idx, producto in enumerate(productos, 1):
             # Aplicar filtro de centro si corresponde
             lotes_query = producto.lotes.filter(
-                estado='disponible'
+                activo=True
             )
             if filtrar_por_centro:
                 if user_centro:
@@ -4824,7 +4830,7 @@ def reporte_bajo_stock(request):
         resultados = []
         for prod in productos:
             lotes_query = prod.lotes.filter(
-                estado='disponible'
+                activo=True
             )
             # Aplicar filtro de centro
             if filtrar_por_centro and user_centro:
@@ -4932,7 +4938,7 @@ def reportes_precarga(request):
             centros = []
         
         # Filtrar lotes segun rol
-        lotes_query = Lote.objects.filter(estado__in=['disponible', 'agotado', 'cuarentena'])
+        lotes_query = Lote.objects.filter(activo=True)
         if not es_admin_farmacia and user_centro:
             lotes_query = lotes_query.filter(centro=user_centro)
         lotes = list(lotes_query.values('id', 'numero_lote', 'producto_id'))
@@ -4978,7 +4984,7 @@ class HojaRecoleccionViewSet(viewsets.ReadOnlyModelViewSet):
         # Filtrar por centro del usuario
         user_centro = getattr(user, 'centro', None)
         if user_centro:
-            return queryset.filter(requisicion__centro=user_centro)
+            return queryset.filter(requisicion__centro_destino=user_centro)
         return HojaRecoleccion.objects.none()
 
     @action(detail=True, methods=['get'])
