@@ -150,7 +150,6 @@ def importar_productos_desde_excel(archivo, usuario):
                         'precio_unitario': precio_unitario,
                         'stock_minimo': stock_minimo,
                         'activo': activo_bool,
-                        'created_by': usuario if getattr(usuario, 'is_authenticated', False) else None,
                     }
                 )
                 resultado.agregar_exito()
@@ -260,15 +259,15 @@ def importar_lotes_desde_excel(archivo, usuario):
                         resultado.agregar_error(fila_num, 'precio_compra', exc)
                         continue
 
+                from django.utils import timezone
                 Lote.objects.create(
                     producto=producto,
                     numero_lote=numero_lote,
                     fecha_caducidad=fecha_caducidad,
+                    fecha_entrada=timezone.now().date(),
                     cantidad_inicial=cantidad_inicial,
                     cantidad_actual=cantidad_actual,
-                    precio_compra=precio_compra,
-                    proveedor=proveedor,
-                    created_by=usuario if getattr(usuario, 'is_authenticated', False) else None,
+                    precio_compra=precio_compra or 0,
                 )
                 resultado.agregar_exito()
             except Exception as exc:  # pragma: no cover

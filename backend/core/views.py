@@ -1160,7 +1160,7 @@ class ReportesViewSet(viewsets.ViewSet):
         
         formato = request.query_params.get('formato', 'json')
 
-        queryset = Producto.objects.select_related('created_by').prefetch_related('lotes')
+        queryset = Producto.objects.prefetch_related('lotes')
 
         datos = []
         for producto in queryset:

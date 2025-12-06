@@ -430,7 +430,7 @@ class CustomPagination(PageNumberPagination):
 # NOTA: UserViewSet está en core/views.py - importar desde allí
 
 class ProductoViewSet(viewsets.ModelViewSet):
-    queryset = Producto.objects.select_related('created_by').all()
+    queryset = Producto.objects.all()
     serializer_class = ProductoSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = CustomPagination
@@ -451,7 +451,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     def get_queryset(self):
-        queryset = Producto.objects.select_related('created_by').all()
+        queryset = Producto.objects.all()
         
         activo = self.request.query_params.get('activo')
         if activo == 'true':

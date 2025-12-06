@@ -311,55 +311,50 @@ class Producto(models.Model):
     """
     Modelo de Producto Farmacéutico - Supabase
     
-    Campos en Supabase: id, clave, descripcion, unidad_medida, precio_unitario,
-    stock_minimo, stock_maximo, activo, codigo_barras, imagen, created_at, updated_at
+    Campos en Supabase: id, codigo_barras, nombre, descripcion, unidad_medida, categoria,
+    stock_minimo, stock_actual, sustancia_activa, presentacion, concentracion,
+    via_administracion, requiere_receta, es_controlado, activo, imagen, created_at, updated_at
     """
-    clave = models.CharField(max_length=50, unique=True)
-    descripcion = models.CharField(max_length=500)
-    unidad_medida = models.CharField(max_length=20, default='pieza')
-    precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    codigo_barras = models.CharField(max_length=100, unique=True, blank=True, null=True)
+    nombre = models.CharField(max_length=255)
+    descripcion = models.TextField(blank=True, null=True)
+    unidad_medida = models.CharField(max_length=50)
+    categoria = models.CharField(max_length=100, blank=True, null=True)
     stock_minimo = models.IntegerField(default=0)
-    stock_maximo = models.IntegerField(default=0)
+    stock_actual = models.IntegerField(default=0)
+    sustancia_activa = models.CharField(max_length=255, blank=True, null=True)
+    presentacion = models.CharField(max_length=255, blank=True, null=True)
+    concentracion = models.CharField(max_length=100, blank=True, null=True)
+    via_administracion = models.CharField(max_length=100, blank=True, null=True)
+    requiere_receta = models.BooleanField(default=False)
+    es_controlado = models.BooleanField(default=False)
     activo = models.BooleanField(default=True)
-    codigo_barras = models.CharField(max_length=50, blank=True, null=True)
-    imagen = models.CharField(max_length=255, blank=True, null=True)
+    imagen = models.CharField(max_length=500, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'productos'
-        ordering = ['clave']
+        ordering = ['nombre']
         managed = False  # Tabla en Supabase
 
     def __str__(self):
-        return f"{self.clave} - {self.descripcion}"
+        return f"{self.codigo_barras or 'N/A'} - {self.nombre}"
     
-    # Alias para compatibilidad con código que usa 'nombre'
+    # Alias para compatibilidad con código que usa 'clave'
     @property
-    def nombre(self):
-        return self.descripcion
-    
-    def get_stock_actual(self, centro=None):
-        """Calcula el stock actual sumando lotes disponibles."""
-        from django.db.models import Sum
-        
-        filtros = {'estado': 'disponible', 'cantidad_actual__gt': 0}
-        if centro and centro != 'todos':
-            filtros['centro'] = centro
-        
-        return self.lotes.filter(**filtros).aggregate(
-            total=Sum('cantidad_actual')
-        )['total'] or 0
+    def clave(self):
+        return self.codigo_barras or str(self.id)
     
     def get_nivel_stock(self):
         """Retorna el nivel de stock basado en stock actual vs stock mínimo."""
-        stock_actual = self.get_stock_actual()
+        stock = self.stock_actual or 0
         stock_minimo = self.stock_minimo or 0
         
-        if stock_actual == 0:
+        if stock == 0:
             return 'sin_stock'
         elif stock_minimo > 0:
-            porcentaje = (stock_actual / stock_minimo) * 100
+            porcentaje = (stock / stock_minimo) * 100
             if porcentaje <= 25:
                 return 'critico'
             elif porcentaje <= 50:

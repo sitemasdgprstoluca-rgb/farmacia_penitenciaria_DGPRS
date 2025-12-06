@@ -33,19 +33,23 @@ class ProductoAdmin(admin.ModelAdmin):
     """
     Admin para Productos - Supabase
     
-    Campos en Supabase: id, clave, descripcion, unidad_medida, precio_unitario,
-    stock_minimo, stock_maximo, activo, codigo_barras, imagen, created_at, updated_at
+    Campos en Supabase: id, codigo_barras, nombre, descripcion, unidad_medida, categoria,
+    stock_minimo, stock_actual, sustancia_activa, presentacion, concentracion,
+    via_administracion, requiere_receta, es_controlado, activo, imagen, created_at, updated_at
     """
-    list_display = ['id', 'clave', 'descripcion', 'unidad_medida', 'activo']
-    list_filter = ['activo', 'unidad_medida']
-    search_fields = ['clave', 'descripcion', 'codigo_barras']
+    list_display = ['id', 'nombre', 'codigo_barras', 'unidad_medida', 'stock_actual', 'activo']
+    list_filter = ['activo', 'unidad_medida', 'categoria', 'requiere_receta', 'es_controlado']
+    search_fields = ['nombre', 'codigo_barras', 'descripcion', 'sustancia_activa']
     readonly_fields = ['created_at', 'updated_at']
     fieldsets = (
         ('Información Básica', {
-            'fields': ('clave', 'descripcion', 'unidad_medida', 'codigo_barras', 'imagen')
+            'fields': ('nombre', 'descripcion', 'codigo_barras', 'unidad_medida', 'categoria', 'imagen')
         }),
-        ('Precios y Stock', {
-            'fields': ('precio_unitario', 'stock_minimo', 'stock_maximo')
+        ('Información Farmacéutica', {
+            'fields': ('sustancia_activa', 'presentacion', 'concentracion', 'via_administracion', 'requiere_receta', 'es_controlado')
+        }),
+        ('Stock', {
+            'fields': ('stock_minimo', 'stock_actual')
         }),
         ('Estado', {
             'fields': ('activo',)
