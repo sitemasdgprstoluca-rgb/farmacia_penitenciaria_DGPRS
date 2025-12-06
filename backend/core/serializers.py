@@ -4,7 +4,7 @@ from django.db.models import Sum
 from django.utils import timezone
 from .models import (
     User, Centro, Producto, Lote, Requisicion, DetalleRequisicion, 
-    Movimiento, AuditoriaLog, ImportacionLog, Notificacion
+    Movimiento, AuditoriaLog, ImportacionLog, Notificacion, ConfiguracionSistema
 )
 from .constants import EXTRA_PERMISSIONS
 import logging
@@ -249,14 +249,18 @@ class CentroSerializer(serializers.ModelSerializer):
     class Meta:
         model = Centro
         fields = [
-            'id', 'nombre', 'direccion', 'telefono', 
+            'id', 'nombre', 'direccion', 'telefono', 'email',
             'activo', 'total_requisiciones', 'total_usuarios',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
     
     def get_total_requisiciones(self, obj):
-        return obj.requisiciones.count()
+        # Centro puede ser origen o destino de requisiciones
+        from django.db.models import Q
+        return Requisicion.objects.filter(
+            Q(centro_origen=obj) | Q(centro_destino=obj)
+        ).count()
     
     def get_total_usuarios(self, obj):
         return obj.usuarios.filter(activo=True).count()
@@ -285,7 +289,8 @@ class ProductoSerializer(serializers.ModelSerializer):
         return getattr(obj, 'stock_actual', 0) or 0
     
     def get_lotes_activos(self, obj):
-        return obj.lotes.filter(estado='disponible').count()
+        # Filtrar por activo=True, no por estado (que es propiedad calculada)
+        return obj.lotes.filter(activo=True, cantidad_actual__gt=0).count()
 
 
 # =============================================================================
@@ -296,23 +301,32 @@ class LoteSerializer(serializers.ModelSerializer):
     producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, allow_null=True)
     dias_para_caducar = serializers.SerializerMethodField()
+    estado = serializers.SerializerMethodField()
     
     class Meta:
         model = Lote
         fields = [
             'id', 'producto', 'producto_nombre', 'centro', 'centro_nombre',
-            'numero_lote', 'fecha_caducidad', 'fecha_entrada',
-            'cantidad_inicial', 'cantidad_actual', 'precio_compra',
-            'estado', 'ubicacion', 'observaciones', 'documento_soporte',
+            'numero_lote', 'fecha_caducidad', 'fecha_fabricacion',
+            'cantidad_inicial', 'cantidad_actual', 'precio_unitario',
+            'numero_contrato', 'marca', 'ubicacion', 'activo', 'estado',
             'dias_para_caducar', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'fecha_entrada']
+        read_only_fields = ['created_at', 'updated_at', 'estado']
     
     def get_dias_para_caducar(self, obj):
         if obj.fecha_caducidad:
             delta = obj.fecha_caducidad - timezone.now().date()
             return delta.days
         return None
+    
+    def get_estado(self, obj):
+        # Propiedad calculada basada en cantidad y fecha
+        if obj.cantidad_actual <= 0:
+            return 'agotado'
+        if obj.fecha_caducidad and obj.fecha_caducidad < timezone.now().date():
+            return 'caducado'
+        return 'disponible'
 
 
 # =============================================================================
@@ -329,7 +343,7 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'producto', 'lote', 'producto_nombre', 'producto_unidad',
             'lote_numero', 'cantidad_solicitada', 'cantidad_autorizada', 
-            'cantidad_surtida', 'observaciones'
+            'cantidad_surtida', 'cantidad_recibida', 'notas'
         ]
     
     def validate_cantidad_solicitada(self, value):
@@ -344,23 +358,36 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
 
 class RequisicionSerializer(serializers.ModelSerializer):
     detalles = DetalleRequisicionSerializer(many=True, required=False)
-    centro_nombre = serializers.CharField(source='centro.nombre', read_only=True)
-    usuario_solicita_nombre = serializers.SerializerMethodField()
+    # Usar campos reales de la BD
+    centro_origen_nombre = serializers.CharField(source='centro_origen.nombre', read_only=True, allow_null=True)
+    centro_destino_nombre = serializers.CharField(source='centro_destino.nombre', read_only=True, allow_null=True)
+    solicitante_nombre = serializers.SerializerMethodField()
+    autorizador_nombre = serializers.SerializerMethodField()
     total_productos = serializers.SerializerMethodField()
     
     class Meta:
         model = Requisicion
         fields = [
-            'id', 'folio', 'centro', 'centro_nombre', 'usuario_solicita', 
-            'usuario_solicita_nombre', 'fecha_solicitud', 'estado', 'observaciones',
-            'usuario_autoriza', 'fecha_autorizacion', 'motivo_rechazo', 
+            'id', 'numero', 'centro_origen', 'centro_origen_nombre', 
+            'centro_destino', 'centro_destino_nombre',
+            'solicitante', 'solicitante_nombre', 'autorizador', 'autorizador_nombre',
+            'fecha_solicitud', 'fecha_autorizacion', 'fecha_surtido', 'fecha_entrega',
+            'estado', 'tipo', 'prioridad', 'notas', 'lugar_entrega',
+            'foto_firma_surtido', 'foto_firma_recepcion',
+            'usuario_firma_surtido', 'usuario_firma_recepcion',
+            'fecha_firma_surtido', 'fecha_firma_recepcion',
             'detalles', 'total_productos', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['folio', 'fecha_solicitud', 'created_at', 'updated_at']
+        read_only_fields = ['numero', 'fecha_solicitud', 'created_at', 'updated_at']
     
-    def get_usuario_solicita_nombre(self, obj):
-        if obj.usuario_solicita:
-            return obj.usuario_solicita.get_full_name() or obj.usuario_solicita.username
+    def get_solicitante_nombre(self, obj):
+        if obj.solicitante:
+            return obj.solicitante.get_full_name() or obj.solicitante.username
+        return None
+    
+    def get_autorizador_nombre(self, obj):
+        if obj.autorizador:
+            return obj.autorizador.get_full_name() or obj.autorizador.username
         return None
     
     def get_total_productos(self, obj):
@@ -368,6 +395,11 @@ class RequisicionSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         detalles_data = validated_data.pop('detalles', [])
+        # Generar numero automatico si no viene
+        if 'numero' not in validated_data or not validated_data.get('numero'):
+            from django.utils import timezone
+            import random
+            validated_data['numero'] = f"REQ-{timezone.now().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
         requisicion = Requisicion.objects.create(**validated_data)
         for detalle_data in detalles_data:
             DetalleRequisicion.objects.create(requisicion=requisicion, **detalle_data)
@@ -390,18 +422,33 @@ class RequisicionSerializer(serializers.ModelSerializer):
 # =============================================================================
 
 class MovimientoSerializer(serializers.ModelSerializer):
-    lote_numero = serializers.CharField(source='lote.numero_lote', read_only=True)
-    producto_nombre = serializers.CharField(source='lote.producto.nombre', read_only=True)
-    centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, allow_null=True)
+    lote_numero = serializers.CharField(source='lote.numero_lote', read_only=True, allow_null=True)
+    producto_nombre = serializers.SerializerMethodField()
+    centro_origen_nombre = serializers.CharField(source='centro_origen.nombre', read_only=True, allow_null=True)
+    centro_destino_nombre = serializers.CharField(source='centro_destino.nombre', read_only=True, allow_null=True)
+    usuario_nombre = serializers.SerializerMethodField()
     
     class Meta:
         model = Movimiento
         fields = [
-            'id', 'tipo', 'lote', 'lote_numero', 'producto_nombre',
-            'centro', 'centro_nombre', 'cantidad', 'usuario',
-            'requisicion', 'documento_referencia', 'observaciones', 'fecha'
+            'id', 'tipo', 'producto', 'producto_nombre', 'lote', 'lote_numero',
+            'centro_origen', 'centro_origen_nombre', 'centro_destino', 'centro_destino_nombre',
+            'cantidad', 'usuario', 'usuario_nombre', 'requisicion', 
+            'motivo', 'referencia', 'fecha', 'created_at'
         ]
-        read_only_fields = ['fecha']
+        read_only_fields = ['fecha', 'created_at']
+    
+    def get_producto_nombre(self, obj):
+        if obj.producto:
+            return obj.producto.nombre
+        if obj.lote and obj.lote.producto:
+            return obj.lote.producto.nombre
+        return None
+    
+    def get_usuario_nombre(self, obj):
+        if obj.usuario:
+            return obj.usuario.get_full_name() or obj.usuario.username
+        return None
 
 
 # =============================================================================
@@ -481,5 +528,16 @@ class UserMeSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
         return instance
+
+
+# =============================================================================
+# CONFIGURACION SISTEMA SERIALIZER
+# =============================================================================
+
+class ConfiguracionSistemaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ConfiguracionSistema
+        fields = ['id', 'clave', 'valor', 'descripcion', 'tipo', 'es_publica', 'updated_at']
+        read_only_fields = ['updated_at']
 
 
