@@ -284,6 +284,11 @@ class Centro(models.Model):
     """
     Modelo de Centro Penitenciario
     Adaptado a la estructura de base de datos existente
+<<<<<<< Updated upstream
+=======
+    
+    Campos en BD: id, nombre, direccion, telefono, email, activo, created_at, updated_at
+>>>>>>> Stashed changes
     """
     nombre = models.CharField(max_length=200)
     direccion = models.TextField(blank=True, null=True)
@@ -358,12 +363,24 @@ class Producto(models.Model):
 
 class Lote(models.Model):
     """
+<<<<<<< Updated upstream
     Modelo de Lote de Producto
     Adaptado a la estructura de base de datos existente
     """
     numero_lote = models.CharField(max_length=100)
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='lotes')
     cantidad_inicial = models.IntegerField(default=0)
+=======
+    Modelo de Lote de Producto - Supabase
+    
+    Campos en Supabase: id, numero_lote, producto_id, cantidad_inicial, 
+    cantidad_actual, fecha_fabricacion, fecha_caducidad, precio_unitario,
+    numero_contrato, marca, ubicacion, centro_id, activo, created_at, updated_at
+    """
+    numero_lote = models.CharField(max_length=100)
+    producto = models.ForeignKey(Producto, on_delete=models.PROTECT) # Schema: producto_id
+    cantidad_inicial = models.IntegerField()
+>>>>>>> Stashed changes
     cantidad_actual = models.IntegerField(default=0)
     fecha_fabricacion = models.DateField(null=True, blank=True)
     fecha_caducidad = models.DateField()
@@ -371,22 +388,43 @@ class Lote(models.Model):
     numero_contrato = models.CharField(max_length=100, blank=True, null=True)
     marca = models.CharField(max_length=100, blank=True, null=True)
     ubicacion = models.CharField(max_length=100, blank=True, null=True)
+<<<<<<< Updated upstream
     centro = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='lotes_centro')
+=======
+    centro = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True)
+>>>>>>> Stashed changes
     activo = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'lotes'
+<<<<<<< Updated upstream
         ordering = ['-created_at']
         managed = False  # La tabla ya existe en la BD
+=======
+        managed = False  # Tabla en Supabase
+>>>>>>> Stashed changes
 
     def __str__(self):
-        return f"{self.numero_lote} - {self.producto.nombre if self.producto else 'N/A'}"
+        return f"{self.numero_lote} - {self.producto}"
+    
+    @property
+<<<<<<< Updated upstream
+    def estado(self):
+        """Calcula el estado basado en cantidad y caducidad"""
+=======
+    def precio_compra(self):
+        return self.precio_unitario
     
     @property
     def estado(self):
-        """Calcula el estado basado en cantidad y caducidad"""
+        """Calculated field since 'estado' column is gone"""
+        return 'disponible' if self.activo else 'agotado' # Simplification
+
+    def dias_para_caducar(self):
+        """Calcula días restantes para caducidad"""
+>>>>>>> Stashed changes
         from django.utils import timezone
         if self.cantidad_actual <= 0:
             return 'agotado'
@@ -550,6 +588,7 @@ class Notificacion(models.Model):
 
 class TemaGlobal(models.Model):
     """
+<<<<<<< Updated upstream
     Configuración del tema visual
     Adaptado a la estructura de base de datos existente
     """
@@ -584,6 +623,47 @@ class TemaGlobal(models.Model):
     color_borde_focus = models.CharField(max_length=20, blank=True, null=True)
     reporte_color_encabezado = models.CharField(max_length=20, blank=True, null=True)
     reporte_color_texto = models.CharField(max_length=20, blank=True, null=True)
+=======
+    Configuración del tema visual - Supabase
+    
+    Campos en Supabase: id, nombre, es_activo, logo_url, logo_width, logo_height,
+    favicon_url, titulo_sistema, subtitulo_sistema, y muchos colores...
+    """
+    nombre = models.CharField(max_length=100)
+    es_activo = models.BooleanField(default=False)
+    logo_url = models.CharField(max_length=500, blank=True, null=True)
+    logo_width = models.IntegerField(default=160)
+    logo_height = models.IntegerField(default=60)
+    favicon_url = models.CharField(max_length=500, blank=True, null=True)
+    titulo_sistema = models.CharField(max_length=100, default='Sistema de Inventario Farmacéutico', null=True, blank=True)
+    subtitulo_sistema = models.CharField(max_length=200, default='Gobierno del Estado', null=True, blank=True)
+    
+    # Colores
+    color_primario = models.CharField(max_length=20, default='#9F2241', null=True, blank=True)
+    color_primario_hover = models.CharField(max_length=20, default='#6B1839', null=True, blank=True)
+    color_secundario = models.CharField(max_length=20, default='#424242', null=True, blank=True)
+    color_secundario_hover = models.CharField(max_length=20, default='#2E2E2E', null=True, blank=True)
+    color_exito = models.CharField(max_length=20, default='#4a7c4b', null=True, blank=True)
+    color_exito_hover = models.CharField(max_length=20, default='#3d663e', null=True, blank=True)
+    color_alerta = models.CharField(max_length=20, default='#d4a017', null=True, blank=True)
+    color_alerta_hover = models.CharField(max_length=20, default='#b38b14', null=True, blank=True)
+    color_error = models.CharField(max_length=20, default='#c53030', null=True, blank=True)
+    color_error_hover = models.CharField(max_length=20, default='#a52828', null=True, blank=True)
+    color_info = models.CharField(max_length=20, default='#3182ce', null=True, blank=True)
+    color_info_hover = models.CharField(max_length=20, default='#2c6cb0', null=True, blank=True)
+    color_fondo_principal = models.CharField(max_length=20, default='#f7f8fa', null=True, blank=True)
+    color_fondo_sidebar = models.CharField(max_length=20, default='#9F2241', null=True, blank=True)
+    color_fondo_header = models.CharField(max_length=20, default='#9F2241', null=True, blank=True)
+    color_texto_principal = models.CharField(max_length=20, default='#1f2937', null=True, blank=True)
+    color_texto_sidebar = models.CharField(max_length=20, default='#ffffff', null=True, blank=True)
+    color_texto_header = models.CharField(max_length=20, default='#ffffff', null=True, blank=True)
+    color_texto_links = models.CharField(max_length=20, default='#9F2241', null=True, blank=True)
+    color_borde_inputs = models.CharField(max_length=20, default='#d1d5db', null=True, blank=True)
+    color_borde_focus = models.CharField(max_length=20, default='#9F2241', null=True, blank=True)
+    reporte_color_encabezado = models.CharField(max_length=20, default='#9F2241', null=True, blank=True)
+    reporte_color_texto = models.CharField(max_length=20, default='#1f2937', null=True, blank=True)
+    
+>>>>>>> Stashed changes
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -599,9 +679,47 @@ class TemaGlobal(models.Model):
     def activo(self):
         return self.es_activo
 
+    # Compatibilidad
+    @property
+    def activo(self):
+        return self.es_activo
+    
+    @property
+    def color_fondo(self):
+        return self.color_fondo_principal
+    
+    @property
+    def color_texto(self):
+        return self.color_texto_principal
+    
+    def to_css_variables(self):
+        """Genera diccionario de variables CSS"""
+        return {
+            '--color-primario': self.color_primario,
+            '--color-primario-hover': self.color_primario_hover,
+            '--color-secundario': self.color_secundario,
+            '--color-secundario-hover': self.color_secundario_hover,
+            '--color-exito': self.color_exito,
+            '--color-exito-hover': self.color_exito_hover,
+            '--color-alerta': self.color_alerta,
+            '--color-alerta-hover': self.color_alerta_hover,
+            '--color-error': self.color_error,
+            '--color-error-hover': self.color_error_hover,
+            '--color-info': self.color_info,
+            '--color-info-hover': self.color_info_hover,
+            '--color-fondo-principal': self.color_fondo_principal,
+            '--color-fondo-sidebar': self.color_fondo_sidebar,
+            '--color-fondo-header': self.color_fondo_header,
+            '--color-texto-principal': self.color_texto_principal,
+            '--color-texto-sidebar': self.color_texto_sidebar,
+            '--color-texto-header': self.color_texto_header,
+        }
+
+
 
 class ConfiguracionSistema(models.Model):
     """
+<<<<<<< Updated upstream
     Configuración del sistema
     Adaptado a la estructura de base de datos existente
     """
@@ -609,6 +727,16 @@ class ConfiguracionSistema(models.Model):
     valor = models.TextField()
     descripcion = models.TextField(blank=True, null=True)
     tipo = models.CharField(max_length=50, default='texto')
+=======
+    Configuración del sistema - Supabase
+    
+    Campos en Supabase: id, clave, valor, descripcion, tipo, es_publica, updated_at
+    """
+    clave = models.CharField(max_length=100, unique=True)
+    valor = models.TextField(blank=True, null=True)  # NOTE: Schema says NOT NULL but let's stick to existing slightly looser if needed, actually schema says NO, so I should probably make it NO null. Schema: valor text NO null.
+    descripcion = models.TextField(blank=True, null=True) # Schema: text YES
+    tipo = models.CharField(max_length=20, default='string') # Schema says default 'string'
+>>>>>>> Stashed changes
     es_publica = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -622,6 +750,7 @@ class ConfiguracionSistema(models.Model):
 
 class HojaRecoleccion(models.Model):
     """
+<<<<<<< Updated upstream
     Hoja de Recolección
     Adaptado a la estructura de base de datos existente
     """
@@ -629,6 +758,17 @@ class HojaRecoleccion(models.Model):
     centro = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True)
     responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='hojas_responsable')
     estado = models.CharField(max_length=50, default='pendiente')
+=======
+    Hoja de Recolección - Supabase
+    
+    Campos en Supabase: id, numero, centro_id, responsable_id, estado,
+    fecha_programada, fecha_recoleccion, notas, created_at, updated_at
+    """
+    numero = models.CharField(max_length=50, unique=True)
+    centro = models.ForeignKey(Centro, on_delete=models.SET_NULL, null=True, blank=True)
+    responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    estado = models.CharField(max_length=30, default='pendiente')
+>>>>>>> Stashed changes
     fecha_programada = models.DateField()
     fecha_recoleccion = models.DateTimeField(null=True, blank=True)
     notas = models.TextField(blank=True, null=True)
@@ -641,7 +781,11 @@ class HojaRecoleccion(models.Model):
 
     def __str__(self):
         return f"HR-{self.numero}"
+<<<<<<< Updated upstream
     
+=======
+
+>>>>>>> Stashed changes
     @property
     def folio(self):
         return self.numero
@@ -649,6 +793,7 @@ class HojaRecoleccion(models.Model):
 
 class DetalleHojaRecoleccion(models.Model):
     """
+<<<<<<< Updated upstream
     Detalle de Hoja de Recolección
     Adaptado a la estructura de base de datos existente
     """
@@ -684,17 +829,73 @@ class ImportacionLog(models.Model):
     class Meta:
         db_table = 'importacion_logs'
         managed = False  # La tabla ya existe en la BD
-
-
-class AuditLog(models.Model):
+=======
+    Detalle de Hoja de Recolección - Supabase
+    
+    Campos en Supabase: id, hoja_id, lote_id, cantidad_recolectar,
+    cantidad_recolectada, motivo, observaciones, created_at
     """
+    hoja = models.ForeignKey(HojaRecoleccion, on_delete=models.CASCADE, related_name='detalles')
+    lote = models.ForeignKey(Lote, on_delete=models.CASCADE)
+    cantidad_recolectar = models.IntegerField()
+    cantidad_recolectada = models.IntegerField(default=0, null=True, blank=True)
+    motivo = models.CharField(max_length=50, default='caducidad')
+    observaciones = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'detalle_hojas_recoleccion'
+        managed = False  # Tabla en Supabase
+>>>>>>> Stashed changes
+
+
+class ImportacionLogs(models.Model):
+    """
+    Log de Importaciones - Supabase
+    
+    Campos en Supabase: id, archivo, tipo_importacion, usuario_id,
+    registros_totales, registros_exitosos, registros_fallidos, errores, 
+    estado, fecha_inicio, fecha_fin
+    """
+    archivo = models.CharField(max_length=255)
+    tipo_importacion = models.CharField(max_length=50)
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    registros_totales = models.IntegerField(default=0)
+    registros_exitosos = models.IntegerField(default=0)
+    registros_fallidos = models.IntegerField(default=0)
+    errores = models.JSONField(null=True, blank=True)
+    estado = models.CharField(max_length=30, default='procesando')
+    fecha_inicio = models.DateTimeField(auto_now_add=True)
+    fecha_fin = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'importacion_logs'
+        managed = False  # Tabla en Supabase
+
+# Alias para compatibilidad
+ImportacionLog = ImportacionLogs
+
+
+class AuditoriaLogs(models.Model):
+    """
+<<<<<<< Updated upstream
     Log de Auditoría
     Adaptado a la estructura de base de datos existente
+=======
+    Log de Auditoría - Supabase
+    
+    Campos en Supabase: id, usuario_id, accion, modelo, objeto_id,
+    datos_anteriores, datos_nuevos, ip_address, user_agent, detalles, timestamp
+>>>>>>> Stashed changes
     """
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     accion = models.CharField(max_length=50)
     modelo = models.CharField(max_length=100)
+<<<<<<< Updated upstream
     objeto_id = models.CharField(max_length=100, null=True, blank=True)
+=======
+    objeto_id = models.CharField(max_length=50, null=True, blank=True) # Schema says 50 chars
+>>>>>>> Stashed changes
     datos_anteriores = models.JSONField(null=True, blank=True)
     datos_nuevos = models.JSONField(null=True, blank=True)
     ip_address = models.CharField(max_length=45, null=True, blank=True)
@@ -704,11 +905,15 @@ class AuditLog(models.Model):
 
     class Meta:
         db_table = 'auditoria_logs'
+<<<<<<< Updated upstream
         managed = False  # La tabla ya existe en la BD
+=======
+        managed = False  # Tabla en Supabase
+>>>>>>> Stashed changes
 
-
-# Alias para compatibilidad con código existente
-AuditoriaLog = AuditLog
+# Alias para compatibilidad con código existente (si es necesario)
+AuditLog = AuditoriaLogs
+AuditoriaLog = AuditoriaLogs
 
 
 class UserProfile(models.Model):
