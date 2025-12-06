@@ -25,19 +25,19 @@ import logging
 import os
 
 
-# ISS-016: Validador de tamaño de archivo para imágenes
+# ISS-016: Validador de tamaÃ±o de archivo para imÃ¡genes
 def validate_image_max_size(value, max_size_kb=500):
-    """Valida que una imagen no exceda el tamaño máximo (default 500KB)"""
+    """Valida que una imagen no exceda el tamaÃ±o mÃ¡ximo (default 500KB)"""
     if value:
         max_size_bytes = max_size_kb * 1024
         if value.size > max_size_bytes:
             raise ValidationError(
-                f'El archivo es demasiado grande. Máximo permitido: {max_size_kb}KB'
+                f'El archivo es demasiado grande. MÃ¡ximo permitido: {max_size_kb}KB'
             )
 
 
 def validate_logo_size(value):
-    """Validador específico para logos (max 500KB)"""
+    """Validador especÃ­fico para logos (max 500KB)"""
     validate_image_max_size(value, max_size_kb=500)
 
 
@@ -45,11 +45,11 @@ def validate_image_size(value):
     """Valida que la imagen no exceda 2MB"""
     max_size = 2 * 1024 * 1024  # 2 MB
     if value.size > max_size:
-        raise ValidationError(f'La imagen no puede exceder 2MB. Tamaño actual: {value.size/1024/1024:.1f}MB')
+        raise ValidationError(f'La imagen no puede exceder 2MB. TamaÃ±o actual: {value.size/1024/1024:.1f}MB')
 
 
 def producto_imagen_path(instance, filename):
-    """Genera ruta para imágenes de productos"""
+    """Genera ruta para imÃ¡genes de productos"""
     ext = filename.split('.')[-1]
     return f'productos/{instance.clave}.{ext}'
 
@@ -63,39 +63,39 @@ def requisicion_firma_path(instance, filename):
 # ISS-005: Validador de archivos PDF
 def validate_pdf_file(value):
     """
-    ISS-005: Valida que el archivo sea PDF válido y no exceda tamaño máximo.
+    ISS-005: Valida que el archivo sea PDF vÃ¡lido y no exceda tamaÃ±o mÃ¡ximo.
     
     Validaciones:
-    - Extensión .pdf
-    - Tamaño máximo 10MB
-    - Content-type application/pdf (si está disponible)
+    - ExtensiÃ³n .pdf
+    - TamaÃ±o mÃ¡ximo 10MB
+    - Content-type application/pdf (si estÃ¡ disponible)
     """
     if not value:
         return
     
-    # Validar extensión
+    # Validar extensiÃ³n
     ext = os.path.splitext(value.name)[1].lower()
     if ext != '.pdf':
         raise ValidationError('Solo se permiten archivos PDF (.pdf)')
     
-    # Validar tamaño (máximo 10MB)
+    # Validar tamaÃ±o (mÃ¡ximo 10MB)
     max_size_bytes = 10 * 1024 * 1024  # 10MB
     if value.size > max_size_bytes:
         raise ValidationError(
-            f'El archivo PDF es demasiado grande. Máximo permitido: 10MB. '
-            f'Tamaño actual: {value.size / (1024*1024):.2f}MB'
+            f'El archivo PDF es demasiado grande. MÃ¡ximo permitido: 10MB. '
+            f'TamaÃ±o actual: {value.size / (1024*1024):.2f}MB'
         )
     
-    # Validar content-type si está disponible
+    # Validar content-type si estÃ¡ disponible
     if hasattr(value, 'content_type'):
         allowed_types = ['application/pdf', 'application/x-pdf']
         if value.content_type not in allowed_types:
             raise ValidationError(
-                f'Tipo de archivo no válido. Se esperaba PDF, se recibió: {value.content_type}'
+                f'Tipo de archivo no vÃ¡lido. Se esperaba PDF, se recibiÃ³: {value.content_type}'
             )
 
 
-# ISS-005: Función para generar nombre seguro de archivo PDF
+# ISS-005: FunciÃ³n para generar nombre seguro de archivo PDF
 def pdf_upload_path(instance, filename):
     """
     ISS-005: Genera ruta segura para archivos PDF.
@@ -108,11 +108,11 @@ def pdf_upload_path(instance, filename):
     # Sanitizar nombre (remover caracteres peligrosos)
     safe_name = "".join(c for c in filename if c.isalnum() or c in '._-')
     
-    # Generar nombre único
+    # Generar nombre Ãºnico
     timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
     unique_id = uuid.uuid4().hex[:8]
     
-    # Obtener info del lote si está disponible
+    # Obtener info del lote si estÃ¡ disponible
     producto_clave = getattr(instance, 'producto', None)
     if producto_clave and hasattr(producto_clave, 'clave'):
         producto_clave = producto_clave.clave[:20]
@@ -134,12 +134,12 @@ logger = logging.getLogger(__name__)
 
 class User(AbstractUser):
     """
-    Modelo de usuario extendido con roles y asignación de centro.
+    Modelo de usuario extendido con roles y asignaciÃ³n de centro.
     
-    ISS-009: Incluye validación de coherencia entre rol y permisos personalizados.
+    ISS-009: Incluye validaciÃ³n de coherencia entre rol y permisos personalizados.
     """
     
-    # ISS-009: Definir permisos máximos permitidos por rol
+    # ISS-009: Definir permisos mÃ¡ximos permitidos por rol
     # True = puede tener el permiso, False = nunca puede tenerlo
     PERMISOS_POR_ROL = {
         'admin_sistema': {
@@ -185,11 +185,11 @@ class User(AbstractUser):
     adscripcion = models.CharField(
         max_length=200,
         blank=True,
-        help_text="Adscripción del usuario (centro/área/unidad de dependencia)"
+        help_text="AdscripciÃ³n del usuario (centro/Ã¡rea/unidad de dependencia)"
     )
     activo = models.BooleanField(default=True)
     
-    # Permisos personalizados por módulo (null = usar permisos del rol por defecto)
+    # Permisos personalizados por mÃ³dulo (null = usar permisos del rol por defecto)
     perm_dashboard = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Dashboard")
     perm_productos = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Productos")
     perm_lotes = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Lotes")
@@ -198,7 +198,7 @@ class User(AbstractUser):
     perm_usuarios = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Usuarios")
     perm_reportes = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Reportes")
     perm_trazabilidad = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Trazabilidad")
-    perm_auditoria = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Auditoría")
+    perm_auditoria = models.BooleanField(null=True, blank=True, help_text="Permiso para ver AuditorÃ­a")
     perm_notificaciones = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Notificaciones")
     perm_movimientos = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Movimientos")
     
@@ -233,7 +233,7 @@ class User(AbstractUser):
             valor_actual = getattr(self, campo, None)
             permitido = permisos_rol.get(campo, False)
             
-            # Si el permiso está explícitamente en True pero el rol no lo permite
+            # Si el permiso estÃ¡ explÃ­citamente en True pero el rol no lo permite
             if valor_actual is True and not permitido:
                 nombre_legible = campo.replace('perm_', '').replace('_', ' ').title()
                 errores[campo] = (
@@ -249,7 +249,7 @@ class User(AbstractUser):
         ISS-009: Retorna los permisos efectivos del usuario.
         
         Combina permisos del rol base con personalizaciones, 
-        respetando los límites del rol.
+        respetando los lÃ­mites del rol.
         """
         permisos_rol = self.PERMISOS_POR_ROL.get(self.rol, {})
         efectivos = {}
@@ -268,10 +268,10 @@ class User(AbstractUser):
                 # Superuser tiene todos los permisos
                 efectivos[campo] = True
             elif valor_personalizado is not None:
-                # Personalización: solo si está dentro del límite del rol
+                # PersonalizaciÃ³n: solo si estÃ¡ dentro del lÃ­mite del rol
                 efectivos[campo] = valor_personalizado and maximo_rol
             else:
-                # Sin personalización: usar default del rol
+                # Sin personalizaciÃ³n: usar default del rol
                 efectivos[campo] = maximo_rol
         
         return efectivos
@@ -302,7 +302,7 @@ class Centro(models.Model):
     def __str__(self):
         return self.nombre
     
-    # Propiedad para compatibilidad con código que usa 'clave'
+    # Propiedad para compatibilidad con cÃ³digo que usa 'clave'
     @property
     def clave(self):
         return str(self.id)
@@ -310,7 +310,7 @@ class Centro(models.Model):
 
 class Producto(models.Model):
     """
-    Modelo de Producto Farmacéutico
+    Modelo de Producto FarmacÃ©utico
     Adaptado a la estructura de base de datos existente
     """
     codigo_barras = models.CharField(max_length=50, unique=True, null=True, blank=True)
@@ -339,7 +339,7 @@ class Producto(models.Model):
     def __str__(self):
         return f"{self.nombre}"
     
-    # Propiedad para compatibilidad con código que usa 'clave'
+    # Propiedad para compatibilidad con cÃ³digo que usa 'clave'
     @property
     def clave(self):
         return self.codigo_barras or str(self.id)
@@ -397,7 +397,7 @@ class Lote(models.Model):
         return 'disponible' if self.activo else 'agotado' # Simplification
 
     def dias_para_caducar(self):
-        """Calcula días restantes para caducidad"""
+        """Calcula dÃ­as restantes para caducidad"""
         from django.utils import timezone
         if self.cantidad_actual <= 0:
             return 'agotado'
@@ -482,7 +482,7 @@ class Requisicion(models.Model):
     def __str__(self):
         return f"REQ-{self.numero}"
     
-    # Propiedades para compatibilidad con código existente
+    # Propiedades para compatibilidad con cÃ³digo existente
     @property
     def folio(self):
         return self.numero
@@ -561,7 +561,7 @@ class Notificacion(models.Model):
 
 class TemaGlobal(models.Model):
     """
-    Configuración del tema visual - Supabase
+    ConfiguraciÃ³n del tema visual - Supabase
     
     Campos en Supabase: id, nombre, es_activo, logo_url, logo_width, logo_height,
     favicon_url, titulo_sistema, subtitulo_sistema, y muchos colores...
@@ -572,7 +572,7 @@ class TemaGlobal(models.Model):
     logo_width = models.IntegerField(default=160)
     logo_height = models.IntegerField(default=60)
     favicon_url = models.CharField(max_length=500, blank=True, null=True)
-    titulo_sistema = models.CharField(max_length=100, default='Sistema de Inventario Farmacéutico', null=True, blank=True)
+    titulo_sistema = models.CharField(max_length=100, default='Sistema de Inventario FarmacÃ©utico', null=True, blank=True)
     subtitulo_sistema = models.CharField(max_length=200, default='Gobierno del Estado', null=True, blank=True)
     
     # Colores
@@ -649,7 +649,7 @@ class TemaGlobal(models.Model):
 
 class ConfiguracionSistema(models.Model):
     """
-    Configuración del sistema - Supabase
+    ConfiguraciÃ³n del sistema - Supabase
     
     Campos en Supabase: id, clave, valor, descripcion, tipo, es_publica, updated_at
     """
@@ -670,7 +670,7 @@ class ConfiguracionSistema(models.Model):
 
 class HojaRecoleccion(models.Model):
     """
-    Hoja de Recolección - Supabase
+    Hoja de RecolecciÃ³n - Supabase
     
     Campos en Supabase: id, numero, centro_id, responsable_id, estado,
     fecha_programada, fecha_recoleccion, notas, created_at, updated_at
@@ -699,7 +699,7 @@ class HojaRecoleccion(models.Model):
 
 class DetalleHojaRecoleccion(models.Model):
     """
-    Detalle de Hoja de Recolección - Supabase
+    Detalle de Hoja de RecolecciÃ³n - Supabase
     
     Campos en Supabase: id, hoja_id, lote_id, cantidad_recolectar,
     cantidad_recolectada, motivo, observaciones, created_at
@@ -746,7 +746,7 @@ ImportacionLog = ImportacionLogs
 
 class AuditoriaLogs(models.Model):
     """
-    Log de Auditoría - Supabase
+    Log de AuditorÃ­a - Supabase
     
     Campos en Supabase: id, usuario_id, accion, modelo, objeto_id,
     datos_anteriores, datos_nuevos, ip_address, user_agent, detalles, timestamp
@@ -766,7 +766,7 @@ class AuditoriaLogs(models.Model):
         db_table = 'auditoria_logs'
         managed = False  # Tabla en Supabase
 
-# Alias para compatibilidad con código existente (si es necesario)
+# Alias para compatibilidad con cÃ³digo existente (si es necesario)
 AuditLog = AuditoriaLogs
 AuditoriaLog = AuditoriaLogs
 
@@ -774,8 +774,8 @@ AuditoriaLog = AuditoriaLogs
 class UserProfile(models.Model):
     """
     Modelo de perfil de usuario (legacy)
-    En la nueva estructura, el perfil está integrado en el modelo User.
-    Este modelo se mantiene solo para compatibilidad con código existente.
+    En la nueva estructura, el perfil estÃ¡ integrado en el modelo User.
+    Este modelo se mantiene solo para compatibilidad con cÃ³digo existente.
     """
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='userprofile')
     

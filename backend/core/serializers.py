@@ -47,7 +47,7 @@ PERMISOS_POR_ROL = {
         'rechazarRequisicion': True,
         'surtirRequisicion': True,
         'cancelarRequisicion': True,
-        'confirmarRecepcion': True,  # Admin puede confirmar recepción
+        'confirmarRecepcion': True,  # Admin puede confirmar recepciÃ³n
         'descargarHojaRecoleccion': True,
     },
     'FARMACIA': {
@@ -73,7 +73,7 @@ PERMISOS_POR_ROL = {
         'rechazarRequisicion': True,
         'surtirRequisicion': True,
         'cancelarRequisicion': True,
-        'confirmarRecepcion': True,  # Farmacia puede confirmar recepción
+        'confirmarRecepcion': True,  # Farmacia puede confirmar recepciÃ³n
         'descargarHojaRecoleccion': True,
     },
     'CENTRO': {
@@ -97,7 +97,7 @@ PERMISOS_POR_ROL = {
         'crearLote': False,
         'editarLote': False,
         'eliminarLote': False,
-        # Permisos granulares de requisiciones - Centro solo crea y envía
+        # Permisos granulares de requisiciones - Centro solo crea y envÃ­a
         'crearRequisicion': True,
         'editarRequisicion': True,  # Solo sus propios borradores
         'eliminarRequisicion': True,  # Solo sus propios borradores
@@ -106,7 +106,7 @@ PERMISOS_POR_ROL = {
         'rechazarRequisicion': False,  # No puede rechazar
         'surtirRequisicion': False,  # No puede surtir
         'cancelarRequisicion': True,  # Puede cancelar las suyas
-        'confirmarRecepcion': True,  # ISS-FIX: Centro puede confirmar recepción de SUS requisiciones
+        'confirmarRecepcion': True,  # ISS-FIX: Centro puede confirmar recepciÃ³n de SUS requisiciones
         'descargarHojaRecoleccion': True,  # Puede descargar para recoger
     },
     'VISTA': {
@@ -208,7 +208,7 @@ def build_perm_map(user):
         
         for field, perm_key in perm_fields.items():
             custom_value = getattr(user, field, None)
-            if custom_value is not None:  # Solo sobrescribe si está explícitamente configurado
+            if custom_value is not None:  # Solo sobrescribe si estÃ¡ explÃ­citamente configurado
                 base[perm_key] = custom_value
     
     return base
@@ -230,7 +230,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name', 
             'rol', 'centro', 'centro_nombre', 'activo', 'password', 
-            'adscripcion',  # Campo de adscripción
+            'adscripcion',  # Campo de adscripciÃ³n
             'grupos', 'extra_permisos', 'permisos', 'permisos_personalizados',
             'is_active', 'is_superuser',
             'perm_dashboard', 'perm_productos', 'perm_lotes', 'perm_requisiciones',
@@ -273,48 +273,48 @@ class UserSerializer(serializers.ModelSerializer):
     
     def validate_username(self, value):
         """
-        Valida username: alfanumérico, mín 3 caracteres, único
+        Valida username: alfanumÃ©rico, mÃ­n 3 caracteres, Ãºnico
         """
         if not value or len(value) < 3:
             raise serializers.ValidationError('El username debe tener al menos 3 caracteres')
         
         if not value.replace('_', '').replace('.', '').isalnum():
-            raise serializers.ValidationError('Solo se permiten letras, números, puntos y guiones bajos')
+            raise serializers.ValidationError('Solo se permiten letras, nÃºmeros, puntos y guiones bajos')
         
         # Validar unicidad (excluyendo instancia actual en updates)
         instance_id = self.instance.id if self.instance else None
         if User.objects.filter(username__iexact=value).exclude(id=instance_id).exists():
-            raise serializers.ValidationError(f'El username "{value}" ya está en uso')
+            raise serializers.ValidationError(f'El username "{value}" ya estÃ¡ en uso')
         
         return value.lower()
     
     def validate_email(self, value):
-        """Valida email único"""
+        """Valida email Ãºnico"""
         if value:
             instance_id = self.instance.id if self.instance else None
             if User.objects.filter(email__iexact=value).exclude(id=instance_id).exists():
-                raise serializers.ValidationError(f'El email "{value}" ya está en uso')
+                raise serializers.ValidationError(f'El email "{value}" ya estÃ¡ en uso')
         
         return value.lower() if value else value
     
     def validate_password(self, value):
         """
-        Valida contraseña: mín 8 caracteres, mayúscula, número
+        Valida contraseÃ±a: mÃ­n 8 caracteres, mayÃºscula, nÃºmero
         """
         if value:
             if len(value) < 8:
-                raise serializers.ValidationError('La contraseña debe tener al menos 8 caracteres')
+                raise serializers.ValidationError('La contraseÃ±a debe tener al menos 8 caracteres')
             
             if not any(c.isupper() for c in value):
-                raise serializers.ValidationError('La contraseña debe contener al menos una mayúscula')
+                raise serializers.ValidationError('La contraseÃ±a debe contener al menos una mayÃºscula')
             
             if not any(c.isdigit() for c in value):
-                raise serializers.ValidationError('La contraseña debe contener al menos un número')
+                raise serializers.ValidationError('La contraseÃ±a debe contener al menos un nÃºmero')
         
         return value
     
     def create(self, validated_data):
-        """Crea usuario con contraseña hasheada"""
+        """Crea usuario con contraseÃ±a hasheada"""
         password = validated_data.pop('password', None)
         user = User(**validated_data)
         
@@ -328,7 +328,7 @@ class UserSerializer(serializers.ModelSerializer):
         return user
     
     def update(self, instance, validated_data):
-        """Actualiza usuario, hashea contraseña si se proporciona"""
+        """Actualiza usuario, hashea contraseÃ±a si se proporciona"""
         password = validated_data.pop('password', None)
         
         for attr, value in validated_data.items():
@@ -362,7 +362,7 @@ class CentroSerializer(serializers.ModelSerializer):
     def get_total_requisiciones(self, obj):
         """
         Cuenta requisiciones reales del centro
-        ✅ CORREGIDO: Ya no retorna 0 hardcodeado
+        âœ… CORREGIDO: Ya no retorna 0 hardcodeado
         """
         return obj.requisiciones.count()
     
@@ -379,7 +379,7 @@ class CentroSerializer(serializers.ModelSerializer):
                 'La clave debe tener al menos 2 caracteres'
             )
         
-        # Normalizar a mayúsculas
+        # Normalizar a mayÃºsculas
         value = value.upper().strip()
         
         # Validar unicidad (excluyendo instancia actual en updates)
@@ -392,7 +392,7 @@ class CentroSerializer(serializers.ModelSerializer):
         return value
     
     def validate_nombre(self, value):
-        """Valida nombre: longitud mínima"""
+        """Valida nombre: longitud mÃ­nima"""
         if not value or len(value.strip()) < 5:
             raise serializers.ValidationError(
                 'El nombre debe tener al menos 5 caracteres'
@@ -401,20 +401,20 @@ class CentroSerializer(serializers.ModelSerializer):
         return value.strip()
     
     def validate_telefono(self, value):
-        """Valida formato de teléfono"""
+        """Valida formato de telÃ©fono"""
         if value:
             import re
-            # Permitir solo números, guiones, espacios, paréntesis y +
+            # Permitir solo nÃºmeros, guiones, espacios, parÃ©ntesis y +
             if not re.match(r'^[\d\s\-\+\(\)]+$', value):
                 raise serializers.ValidationError(
-                    'Formato de teléfono inválido. Solo números, espacios, guiones, + y paréntesis'
+                    'Formato de telÃ©fono invÃ¡lido. Solo nÃºmeros, espacios, guiones, + y parÃ©ntesis'
                 )
         
         return value
     
     def validate(self, data):
         """Validaciones cruzadas"""
-        # Validación adicional si es necesario
+        # ValidaciÃ³n adicional si es necesario
         return data
 
 class ProductoSerializer(serializers.ModelSerializer):
@@ -437,7 +437,7 @@ class ProductoSerializer(serializers.ModelSerializer):
         help_text="Valor total del inventario (stock * precio)"
     )
     creado_por = serializers.SerializerMethodField(
-        help_text="Usuario que creó el producto"
+        help_text="Usuario que creÃ³ el producto"
     )
     imagen_url = serializers.SerializerMethodField(
         help_text="URL de la imagen del producto"
@@ -489,7 +489,7 @@ class ProductoSerializer(serializers.ModelSerializer):
         return float(stock * obj.precio_unitario)
     
     def get_creado_por(self, obj):
-        """Retorna el nombre/email del usuario que creó el producto"""
+        """Retorna el nombre/email del usuario que creÃ³ el producto"""
         if obj.created_by:
             return obj.created_by.get_full_name() or obj.created_by.username
         return None
@@ -506,7 +506,7 @@ class ProductoSerializer(serializers.ModelSerializer):
     def validate_codigo_barras(self, value):
         """
 <<<<<<< Updated upstream
-        Valida clave: normaliza a mayúsculas, verifica unicidad y formato
+        Valida clave: normaliza a mayÃºsculas, verifica unicidad y formato
         """
         if not value or len(value.strip()) < 3:
 =======
@@ -518,12 +518,12 @@ class ProductoSerializer(serializers.ModelSerializer):
             instance_id = self.instance.id if self.instance else None
             if Producto.objects.filter(codigo_barras__iexact=value).exclude(id=instance_id).exists():
                 raise serializers.ValidationError(
-                    f'Ya existe un producto con el código de barras "{value}"'
+                    f'Ya existe un producto con el cÃ³digo de barras "{value}"'
                 )
         return value
     
     def validate_nombre(self, value):
-        """Valida que el nombre no esté vacío"""
+        """Valida que el nombre no estÃ© vacÃ­o"""
         if not value or len(value.strip()) < 3:
             raise serializers.ValidationError(
                 'El nombre debe tener al menos 3 caracteres'
@@ -531,7 +531,7 @@ class ProductoSerializer(serializers.ModelSerializer):
         return value.strip()
     
     def validate_descripcion(self, value):
-        """Valida que la descripción no esté vacía"""
+        """Valida que la descripciÃ³n no estÃ© vacÃ­a"""
         if value and len(value.strip()) < 3:
 >>>>>>> Stashed changes
             raise serializers.ValidationError(
@@ -539,14 +539,14 @@ class ProductoSerializer(serializers.ModelSerializer):
             )
 <<<<<<< Updated upstream
         
-        # Normalizar a mayúsculas
+        # Normalizar a mayÃºsculas
         value = value.upper().strip()
         
-        # Validar formato alfanumérico con guiones y guiones bajos
+        # Validar formato alfanumÃ©rico con guiones y guiones bajos
         import re
         if not re.match(r'^[A-Z0-9\-_]+$', value):
             raise serializers.ValidationError(
-                'La clave solo puede contener letras, números, guiones y guiones bajos'
+                'La clave solo puede contener letras, nÃºmeros, guiones y guiones bajos'
             )
         
         # Validar unicidad (excluyendo instancia actual en updates)
@@ -569,7 +569,7 @@ class ProductoSerializer(serializers.ModelSerializer):
         # Validar coherencia stock_minimo vs stock_actual
         if 'stock_minimo' in data:
             stock_min = data['stock_minimo']
-            # Si se está creando, no hay stock actual aún
+            # Si se estÃ¡ creando, no hay stock actual aÃºn
             if self.instance:
                 stock_actual = self.instance.get_stock_actual()
                 if stock_min > stock_actual and stock_actual > 0:
@@ -578,7 +578,7 @@ class ProductoSerializer(serializers.ModelSerializer):
                         f"mayor que stock_actual ({stock_actual})"
                     )
         
-        # Validar descripción no duplicada (warning, no error)
+        # Validar descripciÃ³n no duplicada (warning, no error)
         if 'descripcion' in data:
             desc = data['descripcion']
             queryset = Producto.objects.filter(descripcion__iexact=desc)
@@ -587,7 +587,7 @@ class ProductoSerializer(serializers.ModelSerializer):
             
             if queryset.exists():
                 logger.warning(
-                    f"Ya existe producto con descripción similar: {desc}"
+                    f"Ya existe producto con descripciÃ³n similar: {desc}"
                 )
 =======
         # Validar coherencia stock_minimo (debe ser no negativo)
@@ -595,7 +595,7 @@ class ProductoSerializer(serializers.ModelSerializer):
             stock_min = data['stock_minimo']
             if stock_min < 0:
                 raise serializers.ValidationError({
-                    'stock_minimo': 'El stock mínimo no puede ser negativo'
+                    'stock_minimo': 'El stock mÃ­nimo no puede ser negativo'
                 })
 >>>>>>> Stashed changes
         
@@ -611,17 +611,17 @@ class ProductoSerializer(serializers.ModelSerializer):
 <<<<<<< Updated upstream
     
     def validate_descripcion(self, value):
-        """Valida descripción: longitud y contenido"""
+        """Valida descripciÃ³n: longitud y contenido"""
         value = value.strip()
         
         if len(value) < PRODUCTO_DESCRIPCION_MIN_LENGTH:
             raise serializers.ValidationError(
-                f"La descripción debe tener al menos {PRODUCTO_DESCRIPCION_MIN_LENGTH} caracteres"
+                f"La descripciÃ³n debe tener al menos {PRODUCTO_DESCRIPCION_MIN_LENGTH} caracteres"
             )
         
         if len(value) > PRODUCTO_DESCRIPCION_MAX_LENGTH:
             raise serializers.ValidationError(
-                f"La descripción no puede exceder {PRODUCTO_DESCRIPCION_MAX_LENGTH} caracteres"
+                f"La descripciÃ³n no puede exceder {PRODUCTO_DESCRIPCION_MAX_LENGTH} caracteres"
             )
         
         return value
@@ -629,20 +629,20 @@ class ProductoSerializer(serializers.ModelSerializer):
 >>>>>>> Stashed changes
     
     def validate_unidad_medida(self, value):
-        """Valida que la unidad esté en las opciones permitidas"""
+        """Valida que la unidad estÃ© en las opciones permitidas"""
         unidades_validas = [u[0] for u in UNIDADES_MEDIDA]
         if value not in unidades_validas:
             raise serializers.ValidationError(
-                f"Unidad inválida. Opciones: {', '.join(unidades_validas)}"
+                f"Unidad invÃ¡lida. Opciones: {', '.join(unidades_validas)}"
             )
         
         return value
 
-        """Valida que la unidad esté en las opciones permitidas"""
+        """Valida que la unidad estÃ© en las opciones permitidas"""
         unidades_validas = [u[0] for u in UNIDADES_MEDIDA]
         if value not in unidades_validas:
             raise serializers.ValidationError(
-                f"Unidad inválida. Opciones: {', '.join(unidades_validas)}"
+                f"Unidad invÃ¡lida. Opciones: {', '.join(unidades_validas)}"
             )
         
         return value
@@ -652,7 +652,7 @@ class LoteSerializer(serializers.ModelSerializer):
     """
 <<<<<<< Updated upstream
     Serializer para Lote con validaciones y campos calculados.
-    Incluye información de vinculación farmacia -> centro.
+    Incluye informaciÃ³n de vinculaciÃ³n farmacia -> centro.
 =======
     Serializer para Lote - Supabase
     
@@ -670,7 +670,7 @@ class LoteSerializer(serializers.ModelSerializer):
     centro_id = serializers.IntegerField(source='centro.id', read_only=True, allow_null=True)
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, allow_null=True)
     
-    # Campos de vinculación (lote_origen - trazabilidad farmacia->centro)
+    # Campos de vinculaciÃ³n (lote_origen - trazabilidad farmacia->centro)
     lote_origen_id = serializers.IntegerField(source='lote_origen.id', read_only=True, allow_null=True)
     lote_origen_numero = serializers.CharField(source='lote_origen.numero_lote', read_only=True, allow_null=True)
     es_lote_farmacia = serializers.SerializerMethodField()
@@ -711,7 +711,7 @@ class LoteSerializer(serializers.ModelSerializer):
             'dias_para_caducar', 'porcentaje_consumido', 
 >>>>>>> Stashed changes
             'alerta_caducidad', 'esta_caducado', 'estado_visual',
-            # Campos de ubicación y vinculación
+            # Campos de ubicaciÃ³n y vinculaciÃ³n
             'centro', 'centro_id', 'centro_nombre', 'centro_clave', 'ubicacion',
             'lote_origen', 'lote_origen_id', 'lote_origen_numero',
             'es_lote_farmacia', 'tiene_derivados', 'cantidad_derivados',
@@ -741,9 +741,9 @@ class LoteSerializer(serializers.ModelSerializer):
         
         alerta = obj.alerta_caducidad()
         if alerta == 'critico':
-            return {'tipo': 'danger', 'mensaje': 'CADUCA EN 7 DÍAS'}
+            return {'tipo': 'danger', 'mensaje': 'CADUCA EN 7 DÃAS'}
         elif alerta == 'proximo':
-            return {'tipo': 'warning', 'mensaje': 'CADUCA EN 30 DÍAS'}
+            return {'tipo': 'warning', 'mensaje': 'CADUCA EN 30 DÃAS'}
         
         if obj.cantidad_actual == 0:
             return {'tipo': 'warning', 'mensaje': 'AGOTADO'}
@@ -753,7 +753,7 @@ class LoteSerializer(serializers.ModelSerializer):
         return {'tipo': 'success', 'mensaje': 'VIGENTE'}
     
     def get_ubicacion(self, obj):
-        """Indica si el lote está en farmacia central o en un centro"""
+        """Indica si el lote estÃ¡ en farmacia central o en un centro"""
         if obj.centro:
             return {'tipo': 'centro', 'nombre': obj.centro.nombre, 'clave': obj.centro.clave}
         return {'tipo': 'farmacia', 'nombre': 'Farmacia Central', 'clave': 'CENTRAL'}
@@ -789,14 +789,14 @@ class LoteSerializer(serializers.ModelSerializer):
     def validate_numero_lote(self, value):
         if not value or len(value.strip()) < LOTE_NUMERO_MIN_LENGTH:
             raise serializers.ValidationError(
-                f'El número de lote debe tener al menos {LOTE_NUMERO_MIN_LENGTH} caracteres'
+                f'El nÃºmero de lote debe tener al menos {LOTE_NUMERO_MIN_LENGTH} caracteres'
             )
         return value.strip().upper()
     
     def validate_fecha_caducidad(self, value):
         from datetime import date
-        # Solo validar que no sea muy antigua si es creación? 
-        # Permitimos fechas pasadas para registro histórico quizás, pero alerta al usuario.
+        # Solo validar que no sea muy antigua si es creaciÃ³n? 
+        # Permitimos fechas pasadas para registro histÃ³rico quizÃ¡s, pero alerta al usuario.
         return value
     
     def validate_cantidad_inicial(self, value):
@@ -827,8 +827,8 @@ class LoteSerializer(serializers.ModelSerializer):
             })
         
 <<<<<<< Updated upstream
-        # Validar unicidad de número de lote por producto Y centro
-        # La constraint es: (producto, numero_lote, centro) debe ser único
+        # Validar unicidad de nÃºmero de lote por producto Y centro
+        # La constraint es: (producto, numero_lote, centro) debe ser Ãºnico
 =======
         # Validar unicidad
 >>>>>>> Stashed changes
@@ -873,7 +873,7 @@ class LoteSerializer(serializers.ModelSerializer):
             if rol not in ['ADMIN', 'FARMACIA']:
                 data.pop('numero_contrato', None)
                 data.pop('marca', None)
-                data.pop('precio_unitario', None) # También ocultar precio quizás?
+                data.pop('precio_unitario', None) # TambiÃ©n ocultar precio quizÃ¡s?
         else:
             data.pop('numero_contrato', None)
             data.pop('marca', None)
@@ -881,13 +881,13 @@ class LoteSerializer(serializers.ModelSerializer):
         return data
 class DetalleRequisicionSerializer(serializers.ModelSerializer):
     """
-    Serializer para detalle de requisición con validaciones.
-    Cada detalle está asociado a un producto y un lote específico.
+    Serializer para detalle de requisiciÃ³n con validaciones.
+    Cada detalle estÃ¡ asociado a un producto y un lote especÃ­fico.
     """
     producto_clave = serializers.CharField(source='producto.clave', read_only=True)
     producto_descripcion = serializers.CharField(source='producto.descripcion', read_only=True)
     producto_unidad = serializers.CharField(source='producto.unidad_medida', read_only=True)
-    # Información del lote asociado
+    # InformaciÃ³n del lote asociado
     lote_numero = serializers.CharField(source='lote.numero_lote', read_only=True, allow_null=True)
     lote_caducidad = serializers.SerializerMethodField()
     lote_stock = serializers.SerializerMethodField()
@@ -913,7 +913,7 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
         return None
     
     def get_lote_stock(self, obj):
-        """Stock disponible del lote específico"""
+        """Stock disponible del lote especÃ­fico"""
         if obj.lote:
             return obj.lote.cantidad_actual
         return None
@@ -939,10 +939,10 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
         producto = data.get('producto') or (self.instance.producto if self.instance else None)
         lote = data.get('lote') or (self.instance.lote if self.instance else None)
         
-        # Validar que el producto esté activo
+        # Validar que el producto estÃ© activo
         if producto and not producto.activo:
             raise serializers.ValidationError({
-                'producto': f'El producto {producto.clave} está inactivo y no puede ser solicitado'
+                'producto': f'El producto {producto.clave} estÃ¡ inactivo y no puede ser solicitado'
             })
         
         # Validar que el lote pertenezca al producto
@@ -964,7 +964,7 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
                     'cantidad_solicitada': f'No puede exceder el stock del lote ({lote.cantidad_actual} disponibles)'
                 })
         
-        # Validar stock disponible (solo en autorización)
+        # Validar stock disponible (solo en autorizaciÃ³n)
         if cantidad_autorizada and cantidad_autorizada > 0:
             producto = data.get('producto') or (self.instance.producto if self.instance else None)
             if producto:
@@ -979,8 +979,8 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
 
 class RequisicionSerializer(serializers.ModelSerializer):
     """
-    Serializer para Requisición con validaciones de flujo
-    ✅ CORREGIDO: Ahora permite editar detalles
+    Serializer para RequisiciÃ³n con validaciones de flujo
+    âœ… CORREGIDO: Ahora permite editar detalles
     """
     detalles = DetalleRequisicionSerializer(many=True, required=False)
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True)
@@ -1000,7 +1000,7 @@ class RequisicionSerializer(serializers.ModelSerializer):
         source='usuario_firma_recepcion.get_full_name', read_only=True, allow_null=True
     )
     
-    # Transiciones válidas de estado
+    # Transiciones vÃ¡lidas de estado
     TRANSICIONES_VALIDAS = {
         'borrador': ['enviada', 'cancelada'],
         'enviada': ['autorizada', 'parcial', 'rechazada', 'cancelada'],
@@ -1019,13 +1019,13 @@ class RequisicionSerializer(serializers.ModelSerializer):
             'usuario_solicita_nombre', 'fecha_solicitud', 'estado', 'observaciones',
             'usuario_autoriza', 'usuario_autoriza_nombre', 'fecha_autorizacion',
             'motivo_rechazo', 'detalles', 'total_productos', 'puede_editar',
-            # Campos de recepción
+            # Campos de recepciÃ³n
             'lugar_entrega', 'fecha_recibido', 'usuario_recibe', 'usuario_recibe_nombre',
             'observaciones_recepcion',
             # Campos de firma de surtido
             'foto_firma_surtido', 'foto_firma_surtido_url', 'fecha_firma_surtido',
             'usuario_firma_surtido', 'usuario_firma_surtido_nombre',
-            # Campos de firma de recepción
+            # Campos de firma de recepciÃ³n
             'foto_firma_recepcion', 'foto_firma_recepcion_url', 'fecha_firma_recepcion',
             'usuario_firma_recepcion', 'usuario_firma_recepcion_nombre',
             'created_at', 'updated_at'
@@ -1034,11 +1034,11 @@ class RequisicionSerializer(serializers.ModelSerializer):
                           'foto_firma_surtido_url', 'foto_firma_recepcion_url']
     
     def get_total_productos(self, obj):
-        """Cuenta productos en la requisición"""
+        """Cuenta productos en la requisiciÃ³n"""
         return obj.detalles.count()
     
     def get_puede_editar(self, obj):
-        """Indica si la requisición puede editarse"""
+        """Indica si la requisiciÃ³n puede editarse"""
         return obj.estado in ['borrador', 'enviada']
     
     def get_foto_firma_surtido_url(self, obj):
@@ -1051,7 +1051,7 @@ class RequisicionSerializer(serializers.ModelSerializer):
         return None
     
     def get_foto_firma_recepcion_url(self, obj):
-        """Retorna la URL de la foto de firma de recepción"""
+        """Retorna la URL de la foto de firma de recepciÃ³n"""
         if obj.foto_firma_recepcion:
             request = self.context.get('request')
             if request:
@@ -1066,20 +1066,20 @@ class RequisicionSerializer(serializers.ModelSerializer):
             if value not in self.TRANSICIONES_VALIDAS.get(estado_actual, []):
                 raise serializers.ValidationError(
                     f'No se puede cambiar de {estado_actual} a {value}. '
-                    f'Transiciones válidas: {", ".join(self.TRANSICIONES_VALIDAS[estado_actual])}'
+                    f'Transiciones vÃ¡lidas: {", ".join(self.TRANSICIONES_VALIDAS[estado_actual])}'
                 )
         
         return value
     
     def create(self, validated_data):
         """
-        Crea requisición con detalles.
-        NOTA: El folio se genera automáticamente en el modelo Requisicion.save()
+        Crea requisiciÃ³n con detalles.
+        NOTA: El folio se genera automÃ¡ticamente en el modelo Requisicion.save()
         con formato REQ-CENTRO-YYYYMMDD-NNNN para evitar duplicados.
         """
         detalles_data = validated_data.pop('detalles', [])
         
-        # NO generar folio aquí - el modelo lo hace en save() con transacción segura
+        # NO generar folio aquÃ­ - el modelo lo hace en save() con transacciÃ³n segura
         # El modelo genera: REQ-{centro}-{fecha}-{numero}
         
         requisicion = Requisicion.objects.create(**validated_data)
@@ -1088,13 +1088,13 @@ class RequisicionSerializer(serializers.ModelSerializer):
         for detalle_data in detalles_data:
             DetalleRequisicion.objects.create(requisicion=requisicion, **detalle_data)
         
-        logger.info(f"Requisición {requisicion.folio} creada con {len(detalles_data)} productos")
+        logger.info(f"RequisiciÃ³n {requisicion.folio} creada con {len(detalles_data)} productos")
         return requisicion
     
     def update(self, instance, validated_data):
         """
-        Actualiza requisición y detalles
-        ✅ CORREGIDO: Ahora permite actualizar detalles
+        Actualiza requisiciÃ³n y detalles
+        âœ… CORREGIDO: Ahora permite actualizar detalles
         """
         detalles_data = validated_data.pop('detalles', None)
         
@@ -1112,7 +1112,7 @@ class RequisicionSerializer(serializers.ModelSerializer):
             for detalle_data in detalles_data:
                 DetalleRequisicion.objects.create(requisicion=instance, **detalle_data)
         
-        logger.info(f"Requisición {instance.folio} actualizada")
+        logger.info(f"RequisiciÃ³n {instance.folio} actualizada")
         return instance
 
 class MovimientoSerializer(serializers.ModelSerializer):
@@ -1143,20 +1143,20 @@ class NotificacionSerializer(serializers.ModelSerializer):
         read_only_fields = ['fecha_creacion']
     
     def get_requisicion(self, obj):
-        """Obtiene ID de requisición desde datos JSON si existe"""
+        """Obtiene ID de requisiciÃ³n desde datos JSON si existe"""
         if obj.datos and isinstance(obj.datos, dict):
             return obj.datos.get('requisicion_id')
         return None
     
     def get_requisicion_folio(self, obj):
-        """Obtiene folio de requisición desde datos JSON si existe"""
+        """Obtiene folio de requisiciÃ³n desde datos JSON si existe"""
         if obj.datos and isinstance(obj.datos, dict):
             return obj.datos.get('requisicion_folio')
         return None
 
 class AuditoriaLogsSerializer(serializers.ModelSerializer):
     """
-    Serializer para logs de auditoría - Supabase
+    Serializer para logs de auditorÃ­a - Supabase
     """
     usuario_nombre = serializers.SerializerMethodField()
     descripcion = serializers.SerializerMethodField()
@@ -1174,7 +1174,7 @@ class AuditoriaLogsSerializer(serializers.ModelSerializer):
         read_only_fields = fields
     
     def get_objeto_repr(self, obj):
-        """Obtiene representación del objeto desde detalles o genera una por defecto"""
+        """Obtiene representaciÃ³n del objeto desde detalles o genera una por defecto"""
         if obj.detalles and isinstance(obj.detalles, dict):
             return obj.detalles.get('objeto_repr', f"{obj.modelo} #{obj.objeto_id}")
         return f"{obj.modelo} #{obj.objeto_id}" if obj.objeto_id else obj.modelo
@@ -1193,13 +1193,13 @@ class AuditoriaLogsSerializer(serializers.ModelSerializer):
         return 'Sistema'
     
     def get_descripcion(self, obj):
-        """Genera una descripción legible de la acción"""
+        """Genera una descripciÃ³n legible de la acciÃ³n"""
         accion_dict = {
-            'CREATE': 'creó',
-            'UPDATE': 'actualizó',
-            'DELETE': 'eliminó',
-            'LOGIN': 'inició sesión',
-            'LOGOUT': 'cerró sesión'
+            'CREATE': 'creÃ³',
+            'UPDATE': 'actualizÃ³',
+            'DELETE': 'eliminÃ³',
+            'LOGIN': 'iniciÃ³ sesiÃ³n',
+            'LOGOUT': 'cerrÃ³ sesiÃ³n'
         }
         accion_texto = accion_dict.get(obj.accion, obj.accion)
         
@@ -1214,7 +1214,7 @@ AuditoriaLogSerializer = AuditoriaLogsSerializer
 
 
 class ImportacionLogsSerializer(serializers.ModelSerializer):
-    """Serializer para auditoría de importaciones - Supabase."""
+    """Serializer para auditorÃ­a de importaciones - Supabase."""
     usuario_nombre = serializers.CharField(source='usuario.username', read_only=True, default=None)
     archivo_nombre = serializers.SerializerMethodField()
     modelo_nombre = serializers.CharField(source='tipo_importacion', read_only=True)
@@ -1237,7 +1237,7 @@ ImportacionLogSerializer = ImportacionLogsSerializer
 
 
 class UserMeSerializer(serializers.ModelSerializer):
-    """Serializer especializado para /usuarios/me/ (lectura/edición)."""
+    """Serializer especializado para /usuarios/me/ (lectura/ediciÃ³n)."""
     centro = serializers.SerializerMethodField()
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, default='')
     grupos = serializers.SerializerMethodField()
@@ -1251,7 +1251,7 @@ class UserMeSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
             'rol', 'centro', 'centro_nombre', 'telefono', 'cargo',
-            'adscripcion',  # Campo de adscripción
+            'adscripcion',  # Campo de adscripciÃ³n
             'grupos', 'extra_permisos', 'permisos',
             'is_superuser', 'is_staff',  # Importante para el frontend
         ]
@@ -1268,7 +1268,7 @@ class UserMeSerializer(serializers.ModelSerializer):
         return None
 
     def get_telefono(self, obj):
-        """Obtener teléfono del perfil si existe."""
+        """Obtener telÃ©fono del perfil si existe."""
         try:
             profile = getattr(obj, 'profile', None)
             return profile.telefono if profile else ''
