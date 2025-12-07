@@ -421,13 +421,33 @@ class Lote(models.Model):
         return 'disponible' if self.activo else 'agotado' # Simplification
 
     def dias_para_caducar(self):
-        """Calcula dÃ­as restantes para caducidad"""
+        """Calcula días restantes para caducidad (número entero)"""
         from django.utils import timezone
-        if self.cantidad_actual <= 0:
-            return 'agotado'
-        if self.fecha_caducidad and self.fecha_caducidad < timezone.now().date():
-            return 'caducado'
-        return 'disponible'
+        if not self.fecha_caducidad:
+            return 999  # Sin fecha de caducidad
+        hoy = timezone.now().date()
+        delta = (self.fecha_caducidad - hoy).days
+        return delta
+    
+    def alerta_caducidad(self):
+        """
+        Clasifica el lote según su proximidad a caducar.
+        
+        Retorna:
+            - 'vencido': Ya caducó
+            - 'critico': Caduca en 30 días o menos
+            - 'proximo': Caduca en 90 días o menos
+            - 'normal': Más de 90 días para caducar
+        """
+        dias = self.dias_para_caducar()
+        if dias < 0:
+            return 'vencido'
+        elif dias <= 30:
+            return 'critico'
+        elif dias <= 90:
+            return 'proximo'
+        else:
+            return 'normal'
 
 
 class Movimiento(models.Model):
@@ -548,6 +568,34 @@ class Requisicion(models.Model):
     @motivo_rechazo.setter
     def motivo_rechazo(self, value):
         self.notas = value
+    
+    # Alias para campos de recepcion (compatibilidad con codigo existente)
+    @property
+    def usuario_recibe(self):
+        """Alias para usuario_firma_recepcion"""
+        return self.usuario_firma_recepcion
+    
+    @usuario_recibe.setter
+    def usuario_recibe(self, value):
+        self.usuario_firma_recepcion = value
+    
+    @property
+    def fecha_recibido(self):
+        """Alias para fecha_firma_recepcion"""
+        return self.fecha_firma_recepcion
+    
+    @fecha_recibido.setter
+    def fecha_recibido(self, value):
+        self.fecha_firma_recepcion = value
+    
+    # updated_by no existe en la BD, se ignora silenciosamente
+    @property
+    def updated_by(self):
+        return None
+    
+    @updated_by.setter
+    def updated_by(self, value):
+        pass  # Campo no existe en BD, se ignora
 
 
 class DetalleRequisicion(models.Model):
