@@ -62,8 +62,8 @@ urlpatterns = [
     
     # Configuración del Sistema (tema/colores) - accesible públicamente para GET
     path('configuracion/tema/', ConfiguracionSistemaViewSet.as_view({
-        'get': 'retrieve',
-        'put': 'update',
+        'get': 'list',
+        'put': 'bulk_update',
     }), name='configuracion-tema'),
     path('configuracion/tema/aplicar-tema/', ConfiguracionSistemaViewSet.as_view({
         'post': 'aplicar_tema'

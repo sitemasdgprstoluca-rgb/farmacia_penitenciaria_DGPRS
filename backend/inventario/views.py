@@ -3579,7 +3579,7 @@ def dashboard_resumen(request):
             movimientos_base = Movimiento.objects.all()
             if filtrar_por_centro and user_centro:
                 movimientos_base = movimientos_base.filter(
-                    Q(centro=user_centro) | Q(lote__centro=user_centro)
+                    Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
                 )
             
             # Contar movimientos del mes actual
@@ -3603,11 +3603,11 @@ def dashboard_resumen(request):
         movimientos_base = Movimiento.objects.all()
         if filtrar_por_centro and user_centro:
             movimientos_base = movimientos_base.filter(
-                Q(centro=user_centro) | Q(lote__centro=user_centro)
+                Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
             )
         
         ultimos_movimientos = movimientos_base.select_related(
-            'lote__producto', 'lote__centro', 'centro', 'requisicion', 'usuario'
+            'lote__producto', 'lote__centro', 'centro_origen', 'centro_destino', 'requisicion', 'usuario'
         ).order_by('-fecha')[:10]
         
         movimientos_data = []
@@ -3728,7 +3728,7 @@ def dashboard_graficas(request):
             
             if filtrar_por_centro and user_centro:
                 mov_mes = mov_mes.filter(
-                    Q(centro=user_centro) | Q(lote__centro=user_centro)
+                    Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
                 )
             
             # Calcular entradas y salidas
