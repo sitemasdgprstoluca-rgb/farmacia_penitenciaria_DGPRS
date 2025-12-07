@@ -455,7 +455,7 @@ class Movimiento(models.Model):
     Modelo de Movimiento de inventario
     Adaptado a la estructura de base de datos existente
     """
-    tipo = models.CharField(max_length=50)
+    tipo = models.CharField(max_length=30)
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='movimientos')
     lote = models.ForeignKey(Lote, on_delete=models.SET_NULL, null=True, blank=True, related_name='movimientos')
     cantidad = models.IntegerField()
@@ -500,11 +500,11 @@ class Requisicion(models.Model):
     centro_destino = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_destino', db_column='centro_destino_id')
     solicitante = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_solicitadas', db_column='solicitante_id')
     autorizador = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_autorizadas', db_column='autorizador_id')
-    estado = models.CharField(max_length=50, default='borrador')
-    tipo = models.CharField(max_length=50, default='normal')
+    estado = models.CharField(max_length=30, default='borrador')
+    tipo = models.CharField(max_length=30, default='normal')
     prioridad = models.CharField(max_length=20, default='normal')
     notas = models.TextField(blank=True, null=True)
-    lugar_entrega = models.CharField(max_length=200, blank=True, null=True)
+    lugar_entrega = models.CharField(max_length=255, blank=True, null=True)
     fecha_solicitud = models.DateTimeField(auto_now_add=True)
     fecha_autorizacion = models.DateTimeField(null=True, blank=True)
     fecha_surtido = models.DateTimeField(null=True, blank=True)
