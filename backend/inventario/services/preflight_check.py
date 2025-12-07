@@ -191,8 +191,8 @@ class PreflightStockCheck:
         errors = []
         
         # Verificar estado del lote
-        if lote.deleted_at:
-            errors.append(f"El lote {lote.numero_lote} ha sido eliminado")
+        if not lote.activo:
+            errors.append(f"El lote {lote.numero_lote} está inactivo/eliminado")
             nivel = NivelAlerta.CRITICAL
         elif lote.estado == 'vencido':
             errors.append(f"El lote {lote.numero_lote} está vencido")
