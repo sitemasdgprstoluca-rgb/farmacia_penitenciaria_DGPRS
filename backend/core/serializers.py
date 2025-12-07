@@ -322,6 +322,13 @@ class ProductoSerializer(serializers.ModelSerializer):
         if 'clave' in data and 'codigo_barras' not in data:
             data['codigo_barras'] = data.pop('clave')
         
+        # ISS-DB-003: Convertir cadenas vacías a None para codigo_barras
+        # La BD tiene UNIQUE constraint que falla con "" duplicados pero permite múltiples NULL
+        if 'codigo_barras' in data and data['codigo_barras'] == '':
+            data['codigo_barras'] = None
+        if 'clave' in data and data['clave'] == '':
+            data['clave'] = None
+        
         # Si no viene 'nombre', generarlo desde descripcion o codigo_barras
         if 'nombre' not in data or not data.get('nombre'):
             nombre_candidato = data.get('descripcion') or data.get('codigo_barras') or 'Producto sin nombre'
@@ -329,11 +336,22 @@ class ProductoSerializer(serializers.ModelSerializer):
         
         return super().to_internal_value(data)
     
+    def validate_codigo_barras(self, value):
+        """ISS-DB-003: Convertir cadenas vacías a None para evitar duplicados."""
+        if value == '' or value is None:
+            return None
+        return value.strip()
+    
     def validate(self, attrs):
         # Asegurar que nombre tenga valor
         if not attrs.get('nombre'):
             descripcion = attrs.get('descripcion') or attrs.get('codigo_barras') or 'Producto sin nombre'
             attrs['nombre'] = str(descripcion)[:255]
+        
+        # ISS-DB-003: Asegurar que codigo_barras vacío sea None
+        if 'codigo_barras' in attrs and attrs['codigo_barras'] == '':
+            attrs['codigo_barras'] = None
+            
         return attrs
 
 
@@ -350,6 +368,8 @@ class LoteSerializer(serializers.ModelSerializer):
     precio_unitario = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, default=0)
     # Campo 'precio_compra' para compatibilidad con frontend (alias de precio_unitario)
     precio_compra = serializers.DecimalField(source='precio_unitario', max_digits=12, decimal_places=2, required=False, allow_null=True)
+    # ISS-DB-004: fecha_caducidad es NOT NULL en BD, hacerlo explícitamente obligatorio
+    fecha_caducidad = serializers.DateField(required=True, help_text='Obligatorio. Usar 2099-12-31 para insumos sin caducidad.')
     
     class Meta:
         model = Lote
@@ -374,6 +394,14 @@ class LoteSerializer(serializers.ModelSerializer):
             data = data.copy()
             data['precio_unitario'] = data.pop('precio_compra')
         return super().to_internal_value(data)
+    
+    def validate_fecha_caducidad(self, value):
+        """ISS-DB-004: Validar que fecha_caducidad esté presente (NOT NULL en BD)."""
+        if value is None:
+            raise serializers.ValidationError(
+                'La fecha de caducidad es obligatoria. Use 2099-12-31 para insumos sin caducidad.'
+            )
+        return value
     
     def get_dias_para_caducar(self, obj):
         if obj.fecha_caducidad:
@@ -400,13 +428,15 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
     lote_numero = serializers.CharField(source='lote.numero_lote', read_only=True, allow_null=True)
     # cantidad_surtida tiene default 0 en BD
     cantidad_surtida = serializers.IntegerField(required=False, default=0, allow_null=True)
+    # MEJORA FLUJO 3: Campo para explicar ajustes de cantidad
+    motivo_ajuste = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=255)
     
     class Meta:
         model = DetalleRequisicion
         fields = [
             'id', 'producto', 'lote', 'producto_nombre', 'producto_unidad',
             'lote_numero', 'cantidad_solicitada', 'cantidad_autorizada', 
-            'cantidad_surtida', 'cantidad_recibida', 'notas',
+            'cantidad_surtida', 'cantidad_recibida', 'notas', 'motivo_ajuste',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
@@ -420,6 +450,25 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
         if value <= 0:
             raise serializers.ValidationError('La cantidad debe ser mayor a 0')
         return value
+    
+    def validate(self, data):
+        """
+        MEJORA FLUJO 3: Si cantidad_autorizada < cantidad_solicitada,
+        se requiere motivo_ajuste obligatorio.
+        """
+        cantidad_solicitada = data.get('cantidad_solicitada') or (self.instance.cantidad_solicitada if self.instance else None)
+        cantidad_autorizada = data.get('cantidad_autorizada')
+        motivo_ajuste = data.get('motivo_ajuste', '').strip() if data.get('motivo_ajuste') else ''
+        
+        # Solo validar si se está autorizando menos de lo solicitado
+        if cantidad_autorizada is not None and cantidad_solicitada is not None:
+            if cantidad_autorizada < cantidad_solicitada:
+                if not motivo_ajuste or len(motivo_ajuste) < 10:
+                    raise serializers.ValidationError({
+                        'motivo_ajuste': 'Debe indicar el motivo del ajuste (mínimo 10 caracteres) cuando autoriza menos cantidad de la solicitada.'
+                    })
+        
+        return data
 
 
 # =============================================================================
@@ -511,12 +560,18 @@ class RequisicionSerializer(serializers.ModelSerializer):
 # MOVIMIENTO SERIALIZER
 # =============================================================================
 
+# Subtipos válidos para salidas (MEJORA FLUJO 5)
+SUBTIPOS_SALIDA_VALIDOS = ['receta', 'consumo_interno', 'merma', 'caducidad', 'transferencia', 'otro']
+
 class MovimientoSerializer(serializers.ModelSerializer):
     lote_numero = serializers.CharField(source='lote.numero_lote', read_only=True, allow_null=True)
     producto_nombre = serializers.SerializerMethodField()
     centro_origen_nombre = serializers.CharField(source='centro_origen.nombre', read_only=True, allow_null=True)
     centro_destino_nombre = serializers.CharField(source='centro_destino.nombre', read_only=True, allow_null=True)
     usuario_nombre = serializers.SerializerMethodField()
+    # MEJORA FLUJO 5: Nuevos campos para trazabilidad de pacientes
+    subtipo_salida = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=30)
+    numero_expediente = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=50)
     
     class Meta:
         model = Movimiento
@@ -524,7 +579,8 @@ class MovimientoSerializer(serializers.ModelSerializer):
             'id', 'tipo', 'producto', 'producto_nombre', 'lote', 'lote_numero',
             'centro_origen', 'centro_origen_nombre', 'centro_destino', 'centro_destino_nombre',
             'cantidad', 'usuario', 'usuario_nombre', 'requisicion', 
-            'motivo', 'referencia', 'fecha', 'created_at'
+            'motivo', 'referencia', 'subtipo_salida', 'numero_expediente',
+            'fecha', 'created_at'
         ]
         read_only_fields = ['fecha', 'created_at']
         extra_kwargs = {
@@ -548,6 +604,44 @@ class MovimientoSerializer(serializers.ModelSerializer):
         if obj.usuario:
             return obj.usuario.get_full_name() or obj.usuario.username
         return None
+    
+    def validate_subtipo_salida(self, value):
+        """Validar que el subtipo de salida sea válido."""
+        if value and value.lower() not in SUBTIPOS_SALIDA_VALIDOS:
+            raise serializers.ValidationError(
+                f'Subtipo de salida inválido. Valores permitidos: {", ".join(SUBTIPOS_SALIDA_VALIDOS)}'
+            )
+        return value.lower() if value else None
+    
+    def validate(self, data):
+        """
+        MEJORA FLUJO 5: Si el tipo es 'salida' y subtipo_salida es 'receta',
+        el numero_expediente es obligatorio para trazabilidad médica.
+        """
+        tipo = (data.get('tipo') or '').lower()
+        subtipo = (data.get('subtipo_salida') or '').lower()
+        expediente = (data.get('numero_expediente') or '').strip()
+        
+        if tipo == 'salida' and subtipo == 'receta':
+            if not expediente:
+                raise serializers.ValidationError({
+                    'numero_expediente': 'El número de expediente es obligatorio para salidas por receta médica.'
+                })
+            # Validar formato básico del expediente (alfanumérico, mínimo 3 caracteres)
+            if len(expediente) < 3:
+                raise serializers.ValidationError({
+                    'numero_expediente': 'El número de expediente debe tener al menos 3 caracteres.'
+                })
+        else:
+            # ISS-DB-003: Si no es receta, asegurar que numero_expediente sea NULL, no ""
+            if 'numero_expediente' in data and not data['numero_expediente']:
+                data['numero_expediente'] = None
+        
+        # ISS-DB-003: Limpiar subtipo_salida vacío
+        if 'subtipo_salida' in data and not data['subtipo_salida']:
+            data['subtipo_salida'] = None
+        
+        return data
 
 
 # =============================================================================

@@ -56,23 +56,26 @@ class RequisicionService:
     """
     
     # Transiciones de estado válidas para requisiciones
-    # Basado en el flujo: borrador → enviada → autorizada → (surtida|parcial) → recibida
-    #                                        ↘ rechazada
-    #                     cualquier estado → cancelada
+    # ISS-DB-002: Alineado con BD Supabase CHECK constraint
+    # BD permite: borrador, enviada, autorizada, rechazada, en_surtido, surtida, parcial, cancelada, entregada
+    # Flujo: borrador → enviada → autorizada → en_surtido → (surtida|parcial) → entregada
+    #                           → rechazada
+    #        cualquier estado → cancelada
     TRANSICIONES_VALIDAS_DEFAULT = {
         'borrador': ['enviada', 'cancelada'],
         'enviada': ['autorizada', 'rechazada', 'cancelada'],
-        'autorizada': ['surtida', 'parcial', 'cancelada'],
-        'parcial': ['surtida', 'recibida', 'cancelada'],
-        'surtida': ['recibida'],
+        'autorizada': ['en_surtido', 'surtida', 'parcial', 'cancelada'],
+        'en_surtido': ['surtida', 'parcial', 'cancelada'],
+        'parcial': ['en_surtido', 'surtida', 'entregada', 'cancelada'],
+        'surtida': ['entregada'],
         'rechazada': [],
-        'recibida': [],
+        'entregada': [],
         'cancelada': [],
     }
     
     @property
     def ESTADOS_SURTIBLES(self):
-        """ISS-002: Obtener estados surtibles del modelo."""
+        """ISS-002/ISS-DB-002: Obtener estados surtibles del modelo."""
         from core.models import Requisicion
         return getattr(Requisicion, 'ESTADOS_SURTIBLES', ['autorizada', 'parcial'])
     
@@ -217,7 +220,8 @@ class RequisicionService:
         from django.db.models import Sum
         from core.models import DetalleRequisicion
         
-        ESTADOS_COMPROMETIDOS = ['autorizada', 'parcial', 'surtida']
+        # ISS-DB-002: Estados que comprometen stock
+        ESTADOS_COMPROMETIDOS = ['autorizada', 'en_surtido', 'parcial', 'surtida']
         
         comprometido = DetalleRequisicion.objects.filter(
             requisicion__estado__in=ESTADOS_COMPROMETIDOS,
@@ -423,6 +427,7 @@ class RequisicionService:
             for d in detalles_actualizados
         )
         
+        # ISS-DB-002: Usar parcial para surtido incompleto
         nuevo_estado = 'surtida' if completada else 'parcial'
         self.requisicion.estado = nuevo_estado
         self.requisicion.fecha_surtido = timezone.now()
@@ -640,16 +645,16 @@ class RequisicionService:
     @transaction.atomic
     def confirmar_recepcion(self, observaciones=''):
         """
-        ISS-004 FIX: Confirma la recepción de una requisición surtida.
+        ISS-004 FIX / ISS-DB-002: Confirma la recepción de una requisición surtida.
         
-        Este método marca la requisición como recibida de forma transaccional,
+        Este método marca la requisición como entregada de forma transaccional,
         registrando el usuario receptor y validando que el estado sea correcto.
         
         La conciliación de inventario (descuento farmacia → entrada centro) ya
         se realizó en el surtido, por lo que este método solo:
         1. Valida estado 'surtida' o 'parcial'
         2. Registra usuario receptor y fecha
-        3. Cambia estado a 'recibida' o mantiene 'parcial'
+        3. Cambia estado a 'entregada' o mantiene 'parcial'
         
         Args:
             observaciones: Observaciones adicionales de recepción
@@ -666,7 +671,7 @@ class RequisicionService:
         # Bloquear requisición
         requisicion = RequisicionModel.objects.select_for_update().get(pk=self.requisicion.pk)
         
-        # Validar estado
+        # Validar estado - ISS-DB-002: usar parcial
         estado_actual = (requisicion.estado or '').lower()
         estados_recibibles = ['surtida', 'parcial']
         
@@ -695,8 +700,9 @@ class RequisicionService:
         requisicion.fecha_entrega = timezone.now()
         
         # Determinar nuevo estado
-        # Si todo fue surtido completamente → recibida
-        # Si fue parcial y no hay más por surtir → recibida
+        # ISS-DB-002: Usar entregada, parcial
+        # Si todo fue surtido completamente → entregada
+        # Si fue parcial y no hay más por surtir → entregada
         detalles = requisicion.detalles.all()
         todo_surtido = all(
             (d.cantidad_autorizada or d.cantidad_solicitada) <= (d.cantidad_surtida or 0)
@@ -704,7 +710,7 @@ class RequisicionService:
         )
         
         if todo_surtido or estado_actual == 'surtida':
-            nuevo_estado = 'recibida'
+            nuevo_estado = 'entregada'
         else:
             # Mantener parcial si aún hay pendientes
             nuevo_estado = 'parcial'

@@ -195,8 +195,9 @@ def auditar_cambios_requisicion(sender, instance, created, **kwargs):
                       f'Su requisición {instance.numero} ha sido rechazada. Motivo: {instance.notas or "No especificado"}'),
         'surtida': ('success', 'Requisición SURTIDA', 
                     f'Su requisición {instance.numero} ha sido surtida y está lista para recoger.'),
-        'recibida': ('success', 'Requisición RECIBIDA', 
-                     f'La requisición {instance.numero} ha sido marcada como recibida.'),
+        # ISS-DB-002: Usar 'entregada' en lugar de 'recibida'
+        'entregada': ('success', 'Requisición ENTREGADA', 
+                     f'La requisición {instance.numero} ha sido entregada al centro.'),
         'cancelada': ('warning', 'Requisición CANCELADA', 
                       f'Su requisición {instance.numero} ha sido cancelada.'),
     }

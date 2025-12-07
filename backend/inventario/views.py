@@ -285,12 +285,39 @@ def get_user_centro(user):
     return getattr(user, 'centro', None) or getattr(getattr(user, 'profile', None), 'centro', None)
 
 
+def invalidar_cache_dashboard(centro_id=None):
+    """
+    ISS-005: Invalida el caché del dashboard cuando hay cambios en datos.
+    
+    Se llama automáticamente al registrar movimientos, crear requisiciones, etc.
+    
+    Args:
+        centro_id: ID del centro afectado (opcional). Si es None, invalida solo el global.
+                   Si se pasa, invalida tanto el del centro como el global.
+    """
+    try:
+        # Siempre invalidar el global
+        cache.delete('dashboard_resumen_global')
+        cache.delete('dashboard_graficas_global')
+        
+        # Si hay un centro específico, invalidar también ese
+        if centro_id:
+            cache.delete(f'dashboard_resumen_{centro_id}')
+            cache.delete(f'dashboard_graficas_{centro_id}')
+    except Exception as e:
+        # No fallar si hay problemas con el caché
+        logger.warning(f'Error al invalidar caché del dashboard: {e}')
+
+
 def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=None, requisicion=None, observaciones='', skip_centro_check=False):
     """
     Helper central para registrar un movimiento y actualizar cantidad_actual del lote.
     
     ISS-002: Incluye validación de pertenencia de centro para prevenir manipulación
     de inventario entre centros.
+    
+    ISS-003 FIX: Los ajustes negativos requieren observaciones obligatorias con
+    longitud mínima para auditoría y prevención de robo hormiga.
     
     Args:
         lote: Instancia del Lote a modificar
@@ -299,7 +326,7 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         usuario: Usuario que realiza la operación (opcional)
         centro: Centro donde se registra el movimiento (opcional)
         requisicion: Requisición asociada (opcional)
-        observaciones: Texto descriptivo (opcional)
+        observaciones: Texto descriptivo (obligatorio para ajustes negativos)
         skip_centro_check: Si True, omite validación de pertenencia (solo para operaciones
                           de sistema/admin que ya validaron permisos)
     
@@ -318,6 +345,21 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         cantidad_int = int(cantidad)
     except (TypeError, ValueError):
         raise serializers.ValidationError({'cantidad': 'La cantidad debe ser un numero entero'})
+
+    # =========================================================================
+    # ISS-003 FIX: Validación de observaciones para ajustes negativos
+    # =========================================================================
+    # Los ajustes que reducen stock (negativos) requieren justificación obligatoria
+    # para prevenir robo hormiga y asegurar trazabilidad de pérdidas
+    LONGITUD_MINIMA_OBSERVACION = 10
+    es_ajuste_negativo = tipo_normalizado == 'ajuste' and cantidad_int < 0
+    
+    if es_ajuste_negativo:
+        if not observaciones or len(observaciones.strip()) < LONGITUD_MINIMA_OBSERVACION:
+            raise serializers.ValidationError({
+                'observaciones': f'Los ajustes negativos requieren una justificación de al menos {LONGITUD_MINIMA_OBSERVACION} caracteres. '
+                                 f'Explique el motivo del ajuste (merma, caducidad, rotura, etc.)'
+            })
 
     # =========================================================================
     # ISS-002: Validación de pertenencia de centro
@@ -402,6 +444,10 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         # Guardar stock previo para evitar fallos de validacion al crear el movimiento
         movimiento._stock_pre_movimiento = stock_disponible
         movimiento.save()
+        
+        # ISS-005: Invalidar caché del dashboard al registrar movimientos
+        centro_afectado = centro.id if centro else (lote_ref.centro.id if lote_ref.centro else None)
+        invalidar_cache_dashboard(centro_afectado)
 
     return movimiento, lote_ref
 
@@ -2920,6 +2966,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 return Response({'error': 'No puedes enviar requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
         if not requisicion.detalles.exists():
             return Response({'error': 'La requisicion debe tener al menos un producto'}, status=status.HTTP_400_BAD_REQUEST)
+        # ISS-DB-002: Usar 'enviada' (valor en BD Supabase)
         requisicion.estado = 'enviada'
         requisicion.save(update_fields=['estado'])
         return Response({'mensaje': 'Requisicion enviada', 'requisicion': RequisicionSerializer(requisicion).data})
@@ -2927,6 +2974,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def autorizar(self, request, pk=None):
         requisicion = self.get_object()
+        # ISS-DB-002: Usar 'enviada' (valor en BD Supabase)
         if (requisicion.estado or '').lower() != 'enviada':
             return Response({'error': 'Solo se pueden autorizar requisiciones en estado ENVIADA', 'estado_actual': requisicion.estado}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -2983,6 +3031,21 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                         })
             
             item.cantidad_autorizada = cant_autorizada
+            
+            # MEJORA FLUJO 3: Guardar motivo_ajuste si se autoriza menos de lo solicitado
+            if cant_autorizada < item.cantidad_solicitada:
+                motivo_ajuste = (item_data.get('motivo_ajuste') or '').strip()
+                if len(motivo_ajuste) < 10:
+                    return Response({
+                        'error': f'Debe indicar el motivo del ajuste (mínimo 10 caracteres) para {item.producto.clave}',
+                        'producto': item.producto.clave,
+                        'cantidad_solicitada': item.cantidad_solicitada,
+                        'cantidad_autorizada': cant_autorizada
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                item.motivo_ajuste = motivo_ajuste
+            else:
+                item.motivo_ajuste = None
+            
             item.save()
         
         # ISS-003: Si hay productos sin stock, rechazar autorización o advertir
@@ -3014,6 +3077,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'total_autorizado': total_autorizado
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        # ISS-DB-002: Usar 'parcial' para autorización parcial (valor en BD Supabase)
         nuevo_estado = 'autorizada' if total_autorizado >= total_solicitado else 'parcial'
         
         requisicion.estado = nuevo_estado
@@ -3037,6 +3101,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def rechazar(self, request, pk=None):
         requisicion = self.get_object()
+        # ISS-DB-002: Usar 'enviada' (valor en BD Supabase)
         if (requisicion.estado or '').lower() != 'enviada':
             return Response({'error': 'Solo se pueden rechazar requisiciones en estado ENVIADA', 'estado_actual': requisicion.estado}, status=status.HTTP_400_BAD_REQUEST)
         centro_user = self._user_centro(request.user)
@@ -3195,8 +3260,9 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'error': 'El lugar de entrega es requerido'
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        # ISS-DB-002: 'recibida' -> 'entregada' para alinearse con BD Supabase
         # Actualizar la requisicion
-        requisicion.estado = 'recibida'
+        requisicion.estado = 'entregada'
         requisicion.fecha_entrega = timezone.now()
         requisicion.lugar_entrega = lugar_entrega
         # Guardar observaciones en notas si hay
@@ -3228,7 +3294,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     def subir_firma_surtido(self, request, pk=None):
         """
         Sube la foto de firma de surtido para una requisición.
-        Solo disponible para requisiciones en estado 'surtida' o 'recibida'.
+        ISS-DB-002: 'recibida' -> 'entregada' para alinearse con BD Supabase.
+        Solo disponible para requisiciones en estado 'surtida' o 'entregada'.
         Solo usuarios de farmacia/admin pueden subir esta firma.
         """
         from django.utils import timezone
@@ -3236,9 +3303,10 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         requisicion = self.get_object()
         estado_actual = (requisicion.estado or '').lower()
         
-        if estado_actual not in ['surtida', 'recibida']:
+        # ISS-DB-002: 'recibida' -> 'entregada'
+        if estado_actual not in ['surtida', 'entregada']:
             return Response({
-                'error': 'Solo se puede subir firma de surtido para requisiciones surtidas o recibidas',
+                'error': 'Solo se puede subir firma de surtido para requisiciones surtidas o entregadas',
                 'estado_actual': requisicion.estado
             }, status=status.HTTP_400_BAD_REQUEST)
         
@@ -3275,7 +3343,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     def subir_firma_recepcion(self, request, pk=None):
         """
         Sube la foto de firma de recepción para una requisición.
-        Solo disponible para requisiciones en estado 'recibida'.
+        ISS-DB-002: 'recibida' -> 'entregada' para alinearse con BD Supabase.
+        Solo disponible para requisiciones en estado 'entregada'.
         Solo usuarios del centro receptor pueden subir esta firma.
         """
         from django.utils import timezone
@@ -3283,9 +3352,10 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         requisicion = self.get_object()
         estado_actual = (requisicion.estado or '').lower()
         
-        if estado_actual != 'recibida':
+        # ISS-DB-002: 'recibida' -> 'entregada'
+        if estado_actual != 'entregada':
             return Response({
-                'error': 'Solo se puede subir firma de recepción para requisiciones recibidas',
+                'error': 'Solo se puede subir firma de recepción para requisiciones entregadas',
                 'estado_actual': requisicion.estado
             }, status=status.HTTP_400_BAD_REQUEST)
         
@@ -3324,17 +3394,18 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     def hoja_recoleccion(self, request, pk=None):
         """
         Genera y descarga el PDF de la hoja de recoleccin para una requisicin.
-        Solo disponible para requisiciones autorizadas, parciales o surtidas.
+        ISS-DB-002: Estados alineados con BD Supabase.
+        Solo disponible para requisiciones autorizadas, en_surtido, parcial o surtidas.
         """
         from core.utils.pdf_generator import generar_hoja_recoleccion
         
         requisicion = self.get_object()
         estado = (requisicion.estado or '').lower()
         
-        # Validar que la requisicin puede generar hoja
-        if estado not in ['autorizada', 'parcial', 'surtida']:
+        # ISS-DB-002: Validar estados de BD Supabase
+        if estado not in ['autorizada', 'en_surtido', 'parcial', 'surtida']:
             return Response({
-                'error': 'Solo se pueden generar hojas para requisiciones autorizadas, parciales o surtidas',
+                'error': 'Solo se pueden generar hojas para requisiciones autorizadas, en surtido, parciales o surtidas',
                 'estado_actual': requisicion.estado
             }, status=status.HTTP_400_BAD_REQUEST)
         
@@ -3453,12 +3524,13 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
 @permission_classes([IsAuthenticated])
 def dashboard_resumen(request):
     """
-    Resumen del dashboard con KPIs y ltimos movimientos.
+    ISS-005: Resumen del dashboard con KPIs y últimos movimientos.
+    Implementa caché para mejorar rendimiento.
     
     SEGURIDAD:
     - Usuarios de centro: solo ven datos de su centro
     - Admin/farmacia/vista: ven datos globales por defecto
-    - Admin/farmacia/vista pueden usar ?centro=ID para filtrar por centro especfico
+    - Admin/farmacia/vista pueden usar ?centro=ID para filtrar por centro específico
     """
     try:
         # SEGURIDAD: Filtrar por centro si el usuario no es admin/farmacia/vista
@@ -3476,39 +3548,64 @@ def dashboard_resumen(request):
                 except (Centro.DoesNotExist, ValueError, TypeError):
                     pass
         
-        # === PRODUCTOS ===
-        total_productos = Producto.objects.filter(activo=True).count()
+        # ISS-005: Generar clave de caché única por usuario/centro
+        centro_id = user_centro.id if user_centro else 'global'
+        cache_key = f'dashboard_resumen_{centro_id}'
         
-        # === LOTES ===
-        lotes_query = Lote.objects.filter(
-            activo=True,
-            cantidad_actual__gt=0
-        )
+        # ISS-005: Intentar obtener del caché (excepto últimos movimientos que son dinámicos)
+        cached_kpi = cache.get(cache_key)
         
-        if filtrar_por_centro and user_centro:
-            lotes_query = lotes_query.filter(centro=user_centro)
-        
-        stock_total = lotes_query.aggregate(
-            total=Coalesce(Sum('cantidad_actual'), 0, output_field=IntegerField())
-        )['total']
-        lotes_activos = lotes_query.count()
+        if cached_kpi is None:
+            # === PRODUCTOS ===
+            total_productos = Producto.objects.filter(activo=True).count()
+            
+            # === LOTES ===
+            lotes_query = Lote.objects.filter(
+                activo=True,
+                cantidad_actual__gt=0
+            )
+            
+            if filtrar_por_centro and user_centro:
+                lotes_query = lotes_query.filter(centro=user_centro)
+            
+            stock_total = lotes_query.aggregate(
+                total=Coalesce(Sum('cantidad_actual'), 0, output_field=IntegerField())
+            )['total']
+            lotes_activos = lotes_query.count()
 
-        # === MOVIMIENTOS DEL MES ===
-        inicio_mes = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            # === MOVIMIENTOS DEL MES ===
+            inicio_mes = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            
+            movimientos_base = Movimiento.objects.all()
+            if filtrar_por_centro and user_centro:
+                movimientos_base = movimientos_base.filter(
+                    Q(centro=user_centro) | Q(lote__centro=user_centro)
+                )
+            
+            # Contar movimientos del mes actual
+            movimientos_mes = movimientos_base.filter(fecha__gte=inicio_mes).count()
+            
+            # Si no hay movimientos este mes, mostrar total general como referencia
+            total_movimientos = movimientos_base.count() if movimientos_mes == 0 else movimientos_mes
+            
+            cached_kpi = {
+                'total_productos': total_productos,
+                'stock_total': max(0, stock_total),
+                'lotes_activos': lotes_activos,
+                'movimientos_mes': total_movimientos
+            }
+            
+            # ISS-005: Guardar en caché con TTL configurable
+            cache_ttl = getattr(settings, 'CACHE_TTL_DASHBOARD', 60)
+            cache.set(cache_key, cached_kpi, cache_ttl)
         
+        # === ÚLTIMOS MOVIMIENTOS (siempre frescos, no cacheados) ===
         movimientos_base = Movimiento.objects.all()
         if filtrar_por_centro and user_centro:
             movimientos_base = movimientos_base.filter(
                 Q(centro=user_centro) | Q(lote__centro=user_centro)
             )
         
-        # Contar movimientos del mes actual
-        movimientos_mes = movimientos_base.filter(fecha__gte=inicio_mes).count()
-        
-        # Si no hay movimientos este mes, mostrar total general como referencia
-        total_movimientos = movimientos_base.count() if movimientos_mes == 0 else movimientos_mes
-
-        # === LTIMOS MOVIMIENTOS ===
         ultimos_movimientos = movimientos_base.select_related(
             'lote__producto', 'lote__centro', 'centro', 'requisicion', 'usuario'
         ).order_by('-fecha')[:10]
@@ -3554,12 +3651,7 @@ def dashboard_resumen(request):
             })
 
         return Response({
-            'kpi': {
-                'total_productos': total_productos,
-                'stock_total': max(0, stock_total),
-                'lotes_activos': lotes_activos,
-                'movimientos_mes': total_movimientos  # Usa total si no hay del mes actual
-            },
+            'kpi': cached_kpi,
             'ultimos_movimientos': movimientos_data
         })
         
@@ -3577,11 +3669,11 @@ def dashboard_resumen(request):
 @permission_classes([IsAuthenticated])
 def dashboard_graficas(request):
     """
-    Datos para graficas del dashboard.
+    ISS-005: Datos para gráficas del dashboard con caché.
     Retorna consumo_mensual, stock_por_centro y requisiciones_por_estado.
     
     SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
-    Admin/farmacia puede usar ?centro=ID para filtrar por centro especfico.
+    Admin/farmacia puede usar ?centro=ID para filtrar por centro específico.
     """
     try:
         from dateutil.relativedelta import relativedelta
@@ -3591,7 +3683,7 @@ def dashboard_graficas(request):
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
-        # Admin/farmacia puede filtrar por centro especfico
+        # Admin/farmacia puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
         if centro_param and centro_param not in ['', 'null', 'undefined', 'todos']:
             if is_farmacia_or_admin(user):
@@ -3600,6 +3692,15 @@ def dashboard_graficas(request):
                     filtrar_por_centro = True
                 except (Centro.DoesNotExist, ValueError, TypeError):
                     pass
+        
+        # ISS-005: Generar clave de caché única por centro
+        centro_id = user_centro.id if user_centro else 'global'
+        cache_key = f'dashboard_graficas_{centro_id}'
+        
+        # ISS-005: Intentar obtener del caché
+        cached_data = cache.get(cache_key)
+        if cached_data is not None:
+            return Response(cached_data)
         
         hoy = timezone.now().date()
         
@@ -3723,11 +3824,18 @@ def dashboard_graficas(request):
                     'cantidad': item['cantidad']
                 })
         
-        return Response({
+        # ISS-005: Preparar respuesta y guardar en caché
+        response_data = {
             'consumo_mensual': consumo_mensual,
             'stock_por_centro': stock_por_centro,
             'requisiciones_por_estado': requisiciones_por_estado
-        })
+        }
+        
+        # Guardar en caché con TTL de estadísticas (5 minutos por defecto)
+        cache_ttl = getattr(settings, 'CACHE_TTL_ESTADISTICAS', 300)
+        cache.set(cache_key, response_data, cache_ttl)
+        
+        return Response(response_data)
         
     except Exception as exc:
         # traceback removido por seguridad (ISS-008)

@@ -11,7 +11,8 @@ import {
   FaClipboardList,
   FaExclamationTriangle,
   FaTimesCircle,
-  FaDatabase
+  FaDatabase,
+  FaSpinner
 } from "react-icons/fa";
 import { reportesAPI, centrosAPI, descargarArchivo } from "../services/api";
 import PageHeader from "../components/PageHeader";
@@ -82,10 +83,15 @@ const getEstadoColor = (estado) => {
   if (e === 'critico') return { bg: '#FFEDD5', text: '#9A3412' };
   if (e === 'proximo') return { bg: '#FEF3C7', text: '#92400E' };
   if (e === 'borrador') return { bg: '#E5E7EB', text: '#374151' };
+  // ISS-DB-002: Estados alineados con BD Supabase
   if (e === 'enviada') return { bg: '#DBEAFE', text: '#1E40AF' };
   if (e === 'autorizada') return { bg: '#D1FAE5', text: '#065F46' };
+  if (e === 'en_surtido') return { bg: '#FFEDD5', text: '#9A3412' };
+  if (e === 'parcial') return { bg: '#FEF3C7', text: '#92400E' };
   if (e === 'rechazada') return { bg: '#FEE2E2', text: '#991B1B' };
   if (e === 'surtida') return { bg: '#D1FAE5', text: '#065F46' };
+  if (e === 'entregada') return { bg: '#DBEAFE', text: '#1E40AF' };
+  if (e === 'cancelada') return { bg: '#E5E7EB', text: '#6B7280' };
   return { bg: '#F3F4F6', text: '#374151' };
 };
 
@@ -490,12 +496,17 @@ const Reportes = () => {
                   onChange={(e) => handleFiltro("estado", e.target.value)}
                   className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
                 >
+                  {/* ISS-DB-002: Estados alineados con BD Supabase */}
                   <option value="">Todos los estados</option>
                   <option value="borrador">📝 Borrador</option>
                   <option value="enviada">📤 Enviada</option>
                   <option value="autorizada">✅ Autorizada</option>
+                  <option value="en_surtido">🔄 En Surtido</option>
+                  <option value="parcial">⏳ Parcialmente Surtida</option>
                   <option value="rechazada">❌ Rechazada</option>
                   <option value="surtida">✔️ Surtida</option>
+                  <option value="entregada">📦 Entregada</option>
+                  <option value="cancelada">🚫 Cancelada</option>
                 </select>
               </div>
               <div className="space-y-1">
@@ -579,7 +590,7 @@ const Reportes = () => {
           >
             {loading ? (
               <>
-                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                <FaSpinner className="animate-spin" />
                 Cargando...
               </>
             ) : (
@@ -603,7 +614,7 @@ const Reportes = () => {
           >
             {exporting ? (
               <>
-                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                <FaSpinner className="animate-spin" />
                 Exportando...
               </>
             ) : (
@@ -621,7 +632,7 @@ const Reportes = () => {
           >
             {exporting ? (
               <>
-                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                <FaSpinner className="animate-spin" />
                 Exportando...
               </>
             ) : (
@@ -663,7 +674,7 @@ const Reportes = () => {
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="text-center">
-                <div className="animate-spin rounded-full h-10 w-10 border-4 border-t-transparent spinner-institucional mx-auto mb-4"></div>
+                <FaSpinner className="animate-spin text-4xl mx-auto mb-4 text-theme-primary" />
                 <p className="text-gray-600 font-semibold">Cargando reporte...</p>
               </div>
             </div>

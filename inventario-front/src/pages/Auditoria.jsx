@@ -8,7 +8,7 @@ import Pagination from "../components/Pagination";
 import PageHeader from "../components/PageHeader";
 import { auditoriaAPI, usuariosAPI, descargarArchivo } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
-import { FaFilter, FaFileExcel, FaFilePdf, FaSearch, FaHistory, FaUser, FaDatabase, FaCalendarAlt, FaEye } from "react-icons/fa";
+import { FaFilter, FaFileExcel, FaFilePdf, FaSearch, FaHistory, FaUser, FaDatabase, FaCalendarAlt, FaEye, FaSpinner } from "react-icons/fa";
 
 const PAGE_SIZE = 25;
 
@@ -420,7 +420,7 @@ const Auditoria = () => {
                 disabled={exporting === 'excel'}
                 className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
               >
-                <FaFileExcel />
+                {exporting === 'excel' ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
                 {exporting === 'excel' ? 'Exportando...' : 'Excel'}
               </button>
             )}
@@ -432,7 +432,7 @@ const Auditoria = () => {
                 disabled={exporting === 'pdf'}
                 className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
-                <FaFilePdf />
+                {exporting === 'pdf' ? <FaSpinner className="animate-spin" /> : <FaFilePdf />}
                 {exporting === 'pdf' ? 'Exportando...' : 'PDF'}
               </button>
             )}
@@ -444,7 +444,7 @@ const Auditoria = () => {
       <div className="bg-white rounded-lg shadow overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-4 border-guinda-600 border-t-transparent"></div>
+            <FaSpinner className="animate-spin h-12 w-12 text-guinda-600" />
           </div>
         ) : logs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-gray-500">

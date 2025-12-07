@@ -463,6 +463,9 @@ class Movimiento(models.Model):
     Campos en BD: id, tipo, producto_id (NOT NULL), lote_id, cantidad, 
     centro_origen_id, centro_destino_id, requisicion_id, usuario_id, 
     motivo, referencia, fecha, created_at
+    
+    MEJORA FLUJO 5: Campos subtipo_salida y numero_expediente para
+    trazabilidad de pacientes en salidas por receta médica.
     """
     tipo = models.CharField(max_length=30)
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='movimientos', db_column='producto_id')
@@ -474,6 +477,10 @@ class Movimiento(models.Model):
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='movimientos', db_column='usuario_id')
     motivo = models.TextField(blank=True, null=True)
     referencia = models.CharField(max_length=100, blank=True, null=True)
+    # MEJORA FLUJO 5: Subtipo de salida (receta, consumo_interno, merma, etc.)
+    subtipo_salida = models.CharField(max_length=30, blank=True, null=True, db_column='subtipo_salida')
+    # MEJORA FLUJO 5: Número de expediente del paciente (obligatorio si subtipo='receta')
+    numero_expediente = models.CharField(max_length=50, blank=True, null=True, db_column='numero_expediente')
     fecha = models.DateTimeField(auto_now_add=True)  # BD default: now()
     created_at = models.DateTimeField(auto_now_add=True)  # BD default: now()
 
@@ -621,6 +628,9 @@ class DetalleRequisicion(models.Model):
     """
     Detalle de Requisicion
     Adaptado a la estructura de base de datos existente
+    
+    MEJORA FLUJO 3: Campo motivo_ajuste para comunicar al Centro
+    por qué Farmacia autorizó menos cantidad de la solicitada.
     """
     requisicion = models.ForeignKey(Requisicion, on_delete=models.CASCADE, related_name='detalles', db_column='requisicion_id')
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='detalles_requisicion', db_column='producto_id')
@@ -630,6 +640,8 @@ class DetalleRequisicion(models.Model):
     cantidad_surtida = models.IntegerField(default=0, null=True, blank=True)
     cantidad_recibida = models.IntegerField(null=True, blank=True)
     notas = models.TextField(blank=True, null=True)
+    # MEJORA FLUJO 3: Motivo obligatorio si cantidad_autorizada < cantidad_solicitada
+    motivo_ajuste = models.CharField(max_length=255, blank=True, null=True, db_column='motivo_ajuste')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

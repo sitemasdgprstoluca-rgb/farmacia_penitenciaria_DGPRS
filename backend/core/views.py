@@ -178,13 +178,14 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def _validate_role_hierarchy(self, requesting_user, target_role, target_user=None):
         """
-        ISS-013: Valida que el usuario que hace la petición tenga suficientes
+        ISS-013 + ISS-004 FIX: Valida que el usuario que hace la petición tenga suficientes
         privilegios para asignar el rol objetivo.
         
         Reglas:
         - Superusuarios pueden hacer cualquier cosa
         - Un usuario no puede asignar un rol de mayor o igual privilegio que el suyo
         - Un usuario no puede modificar a otro de mayor o igual privilegio
+        - ISS-004 FIX: Un usuario NO puede modificar a otro del MISMO rol (excepto superusuarios)
         """
         from rest_framework.exceptions import PermissionDenied
         
@@ -201,11 +202,23 @@ class UserViewSet(viewsets.ModelViewSet):
         # Si estamos modificando un usuario existente, verificar que tengamos privilegio sobre él
         if target_user:
             target_user_level = get_role_level(target_user)
+            
+            # ISS-004 FIX: No permitir modificar usuarios del mismo nivel o superior
+            # Excepto para superusuarios que pueden modificar a cualquiera
             if target_user_level <= requesting_level and not requesting_user.is_superuser:
                 raise PermissionDenied(
                     f'No puede modificar a este usuario. '
                     f'Solo usuarios con mayor privilegio pueden modificarlo.'
                 )
+            
+            # ISS-004 FIX: Prevenir que un usuario se modifique a sí mismo con privilegios elevados
+            # (excepto superusuarios)
+            if target_user.pk == requesting_user.pk and not requesting_user.is_superuser:
+                # Solo permitir modificar campos básicos, no el rol
+                if target_role and target_role.lower() != requesting_user.rol.lower():
+                    raise PermissionDenied(
+                        'No puede cambiar su propio rol. Contacte a un administrador.'
+                    )
 
     def perform_create(self, serializer):
         """

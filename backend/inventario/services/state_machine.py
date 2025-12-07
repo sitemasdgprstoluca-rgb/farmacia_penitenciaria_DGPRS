@@ -21,24 +21,39 @@ logger = logging.getLogger(__name__)
 
 
 class EstadoRequisicion(str, Enum):
-    """Estados posibles de una requisición."""
+    """
+    Estados posibles de una requisición.
+    ISS-DB-002: Alineados con CHECK constraint de BD Supabase.
+    BD permite: borrador, enviada, autorizada, rechazada, en_surtido, surtida, parcial, cancelada, entregada
+    """
     BORRADOR = 'borrador'
-    ENVIADA = 'enviada'
+    ENVIADA = 'enviada'          # Requisición enviada para autorización
     AUTORIZADA = 'autorizada'
-    PARCIAL = 'parcial'
+    EN_SURTIDO = 'en_surtido'    # En proceso de surtido
+    PARCIAL = 'parcial'          # Surtida parcialmente
     RECHAZADA = 'rechazada'
     SURTIDA = 'surtida'
-    RECIBIDA = 'recibida'
+    ENTREGADA = 'entregada'
     CANCELADA = 'cancelada'
     
     @classmethod
     def choices(cls):
-        return [(e.value, e.value.title()) for e in cls]
+        return [
+            ('borrador', 'Borrador'),
+            ('enviada', 'Enviada'),
+            ('autorizada', 'Autorizada'),
+            ('en_surtido', 'En Surtido'),
+            ('parcial', 'Parcialmente Surtida'),
+            ('rechazada', 'Rechazada'),
+            ('surtida', 'Surtida'),
+            ('entregada', 'Entregada'),
+            ('cancelada', 'Cancelada'),
+        ]
     
     @classmethod
     def terminales(cls):
         """Estados que no permiten más transiciones."""
-        return [cls.RECIBIDA, cls.CANCELADA]
+        return [cls.ENTREGADA, cls.CANCELADA]
     
     @classmethod
     def editables(cls):
@@ -84,11 +99,11 @@ class RequisicionStateMachine:
     """
     ISS-012: Máquina de estados para requisiciones.
     
-    Define el flujo completo:
+    Define el flujo completo (alineado con BD Supabase):
     
     BORRADOR → ENVIADA → AUTORIZADA/PARCIAL/RECHAZADA
-                         ↓
-                      SURTIDA → RECIBIDA
+                            ↓
+                         EN_SURTIDO → SURTIDA → ENTREGADA
                          
     Cualquier estado (excepto terminales) → CANCELADA
     """
@@ -97,6 +112,7 @@ class RequisicionStateMachine:
     TRANSICIONES: Dict[str, TransicionEstado] = {}
     
     # Matriz de transiciones: origen → [destinos posibles]
+    # ISS-DB-002: Alineado con estados de BD Supabase
     MATRIZ_TRANSICIONES = {
         EstadoRequisicion.BORRADOR: [
             EstadoRequisicion.ENVIADA,
@@ -109,21 +125,28 @@ class RequisicionStateMachine:
             EstadoRequisicion.CANCELADA
         ],
         EstadoRequisicion.AUTORIZADA: [
+            EstadoRequisicion.EN_SURTIDO,
             EstadoRequisicion.SURTIDA,
             EstadoRequisicion.CANCELADA
         ],
         EstadoRequisicion.PARCIAL: [
+            EstadoRequisicion.EN_SURTIDO,
             EstadoRequisicion.SURTIDA,
             EstadoRequisicion.AUTORIZADA,  # Re-autorizar completo
+            EstadoRequisicion.CANCELADA
+        ],
+        EstadoRequisicion.EN_SURTIDO: [
+            EstadoRequisicion.SURTIDA,
+            EstadoRequisicion.PARCIAL,
             EstadoRequisicion.CANCELADA
         ],
         EstadoRequisicion.RECHAZADA: [
             EstadoRequisicion.CANCELADA
         ],
         EstadoRequisicion.SURTIDA: [
-            EstadoRequisicion.RECIBIDA
+            EstadoRequisicion.ENTREGADA
         ],
-        EstadoRequisicion.RECIBIDA: [],  # Estado terminal
+        EstadoRequisicion.ENTREGADA: [],  # Estado terminal
         EstadoRequisicion.CANCELADA: []  # Estado terminal
     }
     
@@ -298,6 +321,7 @@ class RequisicionStateMachine:
             ]
         
         # Validar precondiciones según destino
+        # ISS-DB-002: Usar nombres de estados alineados con BD
         if destino_enum == EstadoRequisicion.ENVIADA:
             errores.extend(self._validar_precondiciones_enviar())
         
@@ -307,7 +331,7 @@ class RequisicionStateMachine:
         elif destino_enum == EstadoRequisicion.SURTIDA:
             errores.extend(self._validar_precondiciones_surtir())
         
-        elif destino_enum == EstadoRequisicion.RECIBIDA:
+        elif destino_enum == EstadoRequisicion.ENTREGADA:
             errores.extend(self._validar_precondiciones_recibir())
         
         elif destino_enum == EstadoRequisicion.RECHAZADA:
@@ -367,12 +391,14 @@ class RequisicionStateMachine:
         if destino_enum == EstadoRequisicion.RECHAZADA:
             self.requisicion.motivo_rechazo = motivo
         
+        # ISS-DB-002: Estados que registran autorización
         if destino_enum in [EstadoRequisicion.AUTORIZADA, EstadoRequisicion.PARCIAL]:
             self.requisicion.fecha_autorizacion = timezone.now()
             if usuario:
                 self.requisicion.autorizador = usuario
         
-        if destino_enum == EstadoRequisicion.RECIBIDA:
+        # ISS-DB-002: Estado de entrega
+        if destino_enum == EstadoRequisicion.ENTREGADA:
             self.requisicion.fecha_firma_recepcion = timezone.now()
             if usuario:
                 self.requisicion.usuario_firma_recepcion = usuario

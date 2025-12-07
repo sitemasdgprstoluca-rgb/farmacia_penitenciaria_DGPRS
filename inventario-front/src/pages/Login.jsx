@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { FaUser, FaLock, FaSignInAlt } from 'react-icons/fa';
+import { FaUser, FaLock, FaSignInAlt, FaSpinner } from 'react-icons/fa';
 import { authAPI } from '../services/api';
 import { usePermissions } from '../hooks/usePermissions';
 import { useTheme } from '../hooks/useTheme';
@@ -157,7 +157,7 @@ function Login() {
             >
               {loading ? (
                 <>
-                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
+                  <FaSpinner className="animate-spin" />
                   Iniciando sesión...
                 </>
               ) : (

@@ -506,29 +506,34 @@ const Requisiciones = () => {
   };
 
   const getEstadoBadge = (estado) => {
+    // ISS-DB-002: Mapeo de estados alineados con BD Supabase
+    // BD permite: borrador, enviada, autorizada, rechazada, en_surtido, surtida, parcial, cancelada, entregada
     const badges = {
       borrador: 'bg-gray-100 text-gray-700 border border-gray-300',
-      enviada: 'bg-amber-50 text-amber-700 border border-amber-300',
+      enviada: 'bg-amber-50 text-amber-700 border border-amber-300',       // BD: 'enviada'
       autorizada: 'bg-green-50 text-green-700 border border-green-300',
-      parcial: 'bg-green-50 text-green-700 border border-green-300', // Tratamos parcial como autorizada
+      en_surtido: 'bg-orange-50 text-orange-700 border border-orange-300', // BD: 'en_surtido'
+      parcial: 'bg-purple-50 text-purple-700 border border-purple-300',    // BD: 'parcial'
       rechazada: 'bg-red-50 text-red-700 border border-red-300',
-      surtida: 'bg-purple-50 text-purple-700 border border-purple-300',
-      recibida: 'bg-blue-50 text-blue-700 border border-blue-300',
+      surtida: 'bg-indigo-50 text-indigo-700 border border-indigo-300',
+      entregada: 'bg-blue-50 text-blue-700 border border-blue-300',        // BD: 'entregada'
       cancelada: 'bg-gray-50 text-gray-500 border border-gray-200',
     };
     return badges[estado] || 'bg-gray-100 text-gray-700 border border-gray-300';
   };
 
   // Labels amigables para los estados
+  // ISS-DB-002: Mapeo de estados alineados con BD Supabase
   const getEstadoLabel = (estado) => {
     const labels = {
       borrador: 'BORRADOR',
-      enviada: 'PENDIENTE',
+      enviada: 'ENVIADA',                // BD: 'enviada'
       autorizada: 'AUTORIZADA',
-      parcial: 'AUTORIZADA',  // Simplificamos parcial como autorizada
+      en_surtido: 'EN SURTIDO',          // BD: 'en_surtido'
+      parcial: 'PARCIAL',                // BD: 'parcial'
       rechazada: 'RECHAZADA',
       surtida: 'SURTIDA',
-      recibida: 'RECIBIDA',
+      entregada: 'ENTREGADA',            // BD: 'entregada'
       cancelada: 'CANCELADA',
     };
     return labels[estado] || estado?.toUpperCase();
@@ -846,6 +851,54 @@ const Requisiciones = () => {
     });
   };
 
+  // ISS-008: Verificar stock actualizado antes de enviar requisición
+  // Detecta si el stock cambió mientras el usuario armaba el carrito
+  const verificarStockActualizado = async () => {
+    if (!form.items.length) return { ok: true, items: [] };
+    
+    const itemsConProblema = [];
+    
+    try {
+      // Consultar stock actual de cada lote en paralelo
+      const verificaciones = await Promise.all(
+        form.items.map(async (item) => {
+          try {
+            const resp = await lotesAPI.get(item.lote);
+            const stockActual = resp.data?.cantidad_actual ?? resp.data?.stock_actual ?? 0;
+            return {
+              ...item,
+              stock_actual: stockActual,
+              stock_cambio: stockActual !== item.stock_disponible,
+              stock_insuficiente: item.cantidad_solicitada > stockActual,
+            };
+          } catch {
+            return { ...item, stock_actual: 0, stock_cambio: true, stock_insuficiente: true };
+          }
+        })
+      );
+      
+      // Actualizar los items con el stock fresco
+      setForm((prev) => ({
+        ...prev,
+        items: prev.items.map((item) => {
+          const verificado = verificaciones.find((v) => v.lote === item.lote);
+          if (verificado) {
+            return { ...item, stock_disponible: verificado.stock_actual };
+          }
+          return item;
+        }),
+      }));
+      
+      // Identificar problemas
+      const conProblemas = verificaciones.filter((v) => v.stock_insuficiente);
+      
+      return { ok: conProblemas.length === 0, items: conProblemas };
+    } catch (error) {
+      console.error('Error verificando stock:', error);
+      return { ok: true, items: [] }; // En caso de error, dejar que el backend valide
+    }
+  };
+
   const guardarRequisicion = async (enviar = false) => {
     if (isSubmitting) return; // Prevenir doble envío
     
@@ -862,6 +915,24 @@ const Requisiciones = () => {
     if (enviar && !permisos?.enviarRequisicion) {
       toast.error('No tienes permisos para enviar requisiciones');
       return;
+    }
+    
+    // ISS-008: Verificar stock antes de enviar
+    if (enviar) {
+      setIsSubmitting(true);
+      const { ok, items: itemsProblema } = await verificarStockActualizado();
+      setIsSubmitting(false);
+      
+      if (!ok) {
+        const mensajes = itemsProblema.map((i) => 
+          `• ${i.producto_clave}: pediste ${i.cantidad_solicitada}, disponible ${i.stock_actual}`
+        );
+        toast.error(
+          `Stock insuficiente para algunos productos:\n${mensajes.join('\n')}\n\nAjusta las cantidades e intenta de nuevo.`,
+          { duration: 6000 }
+        );
+        return;
+      }
     }
     
     // VALIDACIÓN OBLIGATORIA: Centro debe estar definido
@@ -1188,12 +1259,17 @@ const Requisiciones = () => {
                   onChange={(e) => setFiltroEstado(e.target.value)}
                   className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                 >
+                  {/* ISS-DB-002: Estados alineados con BD Supabase */}
                   <option value="">Todos los estados</option>
                   <option value="borrador">Borrador</option>
-                  <option value="enviada">Pendiente</option>
+                  <option value="enviada">Enviada</option>
                   <option value="autorizada">Autorizada</option>
+                  <option value="en_surtido">En Surtido</option>
+                  <option value="parcial">Parcialmente Surtida</option>
                   <option value="rechazada">Rechazada</option>
                   <option value="surtida">Surtida</option>
+                  <option value="entregada">Entregada</option>
+                  <option value="cancelada">Cancelada</option>
                 </select>
               </div>
               {/* Solo mostrar filtro de centro para farmacia/admin */}
@@ -1432,6 +1508,7 @@ const Requisiciones = () => {
                   )}
 
                   {/* Botón para Revisar y Ajustar - SOLO farmacia/admin con permiso */}
+                  {/* ISS-DB-002: Usar 'enviada' */}
                   {req.estado === 'enviada' && esAdminOFarmacia && permisos.autorizarRequisicion && (
                     <button
                       onClick={() => {
@@ -1446,6 +1523,7 @@ const Requisiciones = () => {
                     </button>
                   )}
 
+                  {/* ISS-DB-002: Usar 'enviada' */}
                   {req.estado === 'enviada' && esAdminOFarmacia && permisos.rechazarRequisicion && (
                     <button
                       onClick={() => handleRechazar(req.id, req.folio)}
@@ -1474,7 +1552,8 @@ const Requisiciones = () => {
                     </button>
                   )}
 
-                  {['autorizada', 'parcial', 'surtida'].includes(req.estado) &&
+                  {/* ISS-DB-002: Usar 'parcial' y 'en_surtido' */}
+                  {['autorizada', 'en_surtido', 'parcial', 'surtida'].includes(req.estado) &&
                     puedeDescargarPDF(req) && (
                       <button
                         onClick={() => handleDescargarPDF(req.id, 'aceptacion', req.folio)}

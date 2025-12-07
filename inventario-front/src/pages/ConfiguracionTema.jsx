@@ -18,7 +18,8 @@ import {
   FaFont,
   FaFileAlt,
   FaGlobe,
-  FaRedo
+  FaRedo,
+  FaSpinner
 } from 'react-icons/fa';
 import './ConfiguracionTema.css';
 
@@ -712,7 +713,7 @@ const ConfiguracionTema = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 spinner-institucional mx-auto mb-4"></div>
+          <FaSpinner className="animate-spin text-4xl mx-auto mb-4 text-theme-primary" />
           <p className="text-gray-600">
             {!permisosResueltos ? 'Verificando permisos...' : 'Cargando configuración...'}
           </p>
@@ -775,7 +776,7 @@ const ConfiguracionTema = () => {
       {hayOperacionEnCurso && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+            <FaSpinner className="animate-spin text-blue-500" />
             <span className="text-blue-700">Procesando...</span>
           </div>
           <button
@@ -853,7 +854,7 @@ const ConfiguracionTema = () => {
                     )}
                     {operacionEnCurso.aplicandoTema && temaSeleccionado !== tema.id && (
                       <div className="absolute inset-0 bg-white/50 rounded-xl flex items-center justify-center">
-                        <div className="animate-spin h-6 w-6 border-2 border-gray-400 border-t-transparent rounded-full"></div>
+                        <FaSpinner className="animate-spin text-2xl text-gray-400" />
                       </div>
                     )}
                   </button>
@@ -898,7 +899,7 @@ const ConfiguracionTema = () => {
                     className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                   >
                     {operacionEnCurso.restableciendo ? (
-                      <div className="animate-spin h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full"></div>
+                      <FaSpinner className="animate-spin" />
                     ) : (
                       <FaUndo />
                     )}
@@ -912,7 +913,7 @@ const ConfiguracionTema = () => {
                   >
                     {operacionEnCurso.guardandoColores ? (
                       <>
-                        <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                        <FaSpinner className="animate-spin" />
                         Guardando...
                       </>
                     ) : (
@@ -1059,7 +1060,7 @@ const ConfiguracionTema = () => {
                     className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
                   >
                     {operacionEnCurso.restablecerInstitucional ? (
-                      <div className="animate-spin h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full"></div>
+                      <FaSpinner className="animate-spin text-red-500" />
                     ) : (
                       <FaRedo />
                     )}
@@ -1093,12 +1094,12 @@ const ConfiguracionTema = () => {
                   <div className="flex gap-2">
                     <input type="file" ref={logoHeaderRef} onChange={handleSubirLogoHeader} accept="image/png,image/jpeg,image/jpg,image/webp" className="hidden" disabled={hayOperacionLogoEnCurso} />
                     <button onClick={() => logoHeaderRef.current?.click()} disabled={hayOperacionLogoEnCurso} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-white text-sm disabled:opacity-50 bg-theme-gradient">
-                      {operacionEnCurso.subiendoLogoHeader ? <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div> : <FaUpload />}
+                      {operacionEnCurso.subiendoLogoHeader ? <FaSpinner className="animate-spin" /> : <FaUpload />}
                       {logoUrls.header ? 'Cambiar' : 'Subir'}
                     </button>
                     {logoUrls.header && (
                       <button onClick={handleEliminarLogoHeader} disabled={hayOperacionLogoEnCurso} className="px-3 py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50">
-                        {operacionEnCurso.eliminandoLogoHeader ? <div className="animate-spin h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full"></div> : <FaTrash />}
+                        {operacionEnCurso.eliminandoLogoHeader ? <FaSpinner className="animate-spin text-red-500" /> : <FaTrash />}
                       </button>
                     )}
                   </div>
@@ -1129,12 +1130,12 @@ const ConfiguracionTema = () => {
                   <div className="flex gap-2">
                     <input type="file" ref={logoLoginRef} onChange={handleSubirLogoLogin} accept="image/png,image/jpeg,image/jpg,image/webp" className="hidden" disabled={hayOperacionLogoEnCurso} />
                     <button onClick={() => logoLoginRef.current?.click()} disabled={hayOperacionLogoEnCurso} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)' }}>
-                      {operacionEnCurso.subiendoLogoLogin ? <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div> : <FaUpload />}
+                      {operacionEnCurso.subiendoLogoLogin ? <FaSpinner className="animate-spin" /> : <FaUpload />}
                       {logoUrls.login ? 'Cambiar' : 'Subir'}
                     </button>
                     {logoUrls.login && (
                       <button onClick={handleEliminarLogoLogin} disabled={hayOperacionLogoEnCurso} className="px-3 py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50">
-                        {operacionEnCurso.eliminandoLogoLogin ? <div className="animate-spin h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full"></div> : <FaTrash />}
+                        {operacionEnCurso.eliminandoLogoLogin ? <FaSpinner className="animate-spin text-red-500" /> : <FaTrash />}
                       </button>
                     )}
                   </div>
@@ -1165,12 +1166,12 @@ const ConfiguracionTema = () => {
                   <div className="flex gap-2">
                     <input type="file" ref={logoPdfRef} onChange={handleSubirLogoPdf} accept="image/png,image/jpeg,image/jpg" className="hidden" disabled={hayOperacionLogoEnCurso} />
                     <button onClick={() => logoPdfRef.current?.click()} disabled={hayOperacionLogoEnCurso} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' }}>
-                      {operacionEnCurso.subiendoLogoPdf ? <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div> : <FaUpload />}
+                      {operacionEnCurso.subiendoLogoPdf ? <FaSpinner className="animate-spin" /> : <FaUpload />}
                       {logoUrls.reportes ? 'Cambiar' : 'Subir'}
                     </button>
                     {logoUrls.reportes && (
                       <button onClick={handleEliminarLogoPdf} disabled={hayOperacionLogoEnCurso} className="px-3 py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50">
-                        {operacionEnCurso.eliminandoLogoPdf ? <div className="animate-spin h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full"></div> : <FaTrash />}
+                        {operacionEnCurso.eliminandoLogoPdf ? <FaSpinner className="animate-spin text-red-500" /> : <FaTrash />}
                       </button>
                     )}
                   </div>
@@ -1201,12 +1202,12 @@ const ConfiguracionTema = () => {
                   <div className="flex gap-2">
                     <input type="file" ref={faviconRef} onChange={handleSubirFavicon} accept="image/png,image/x-icon,image/ico" className="hidden" disabled={hayOperacionLogoEnCurso} />
                     <button onClick={() => faviconRef.current?.click()} disabled={hayOperacionLogoEnCurso} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)' }}>
-                      {operacionEnCurso.subiendoFavicon ? <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div> : <FaUpload />}
+                      {operacionEnCurso.subiendoFavicon ? <FaSpinner className="animate-spin" /> : <FaUpload />}
                       {logoUrls.favicon ? 'Cambiar' : 'Subir'}
                     </button>
                     {logoUrls.favicon && (
                       <button onClick={handleEliminarFavicon} disabled={hayOperacionLogoEnCurso} className="px-3 py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50">
-                        {operacionEnCurso.eliminandoFavicon ? <div className="animate-spin h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full"></div> : <FaTrash />}
+                        {operacionEnCurso.eliminandoFavicon ? <FaSpinner className="animate-spin text-red-500" /> : <FaTrash />}
                       </button>
                     )}
                   </div>
@@ -1237,12 +1238,12 @@ const ConfiguracionTema = () => {
                   <div className="flex gap-2">
                     <input type="file" ref={fondoLoginRef} onChange={handleSubirFondoLogin} accept="image/png,image/jpeg,image/jpg,image/webp" className="hidden" disabled={hayOperacionLogoEnCurso} />
                     <button onClick={() => fondoLoginRef.current?.click()} disabled={hayOperacionLogoEnCurso} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #14B8A6 0%, #0D9488 100%)' }}>
-                      {operacionEnCurso.subiendoFondoLogin ? <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div> : <FaUpload />}
+                      {operacionEnCurso.subiendoFondoLogin ? <FaSpinner className="animate-spin" /> : <FaUpload />}
                       {logoUrls.fondoLogin ? 'Cambiar' : 'Subir'}
                     </button>
                     {logoUrls.fondoLogin && (
                       <button onClick={handleEliminarFondoLogin} disabled={hayOperacionLogoEnCurso} className="px-3 py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50">
-                        {operacionEnCurso.eliminandoFondoLogin ? <div className="animate-spin h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full"></div> : <FaTrash />}
+                        {operacionEnCurso.eliminandoFondoLogin ? <FaSpinner className="animate-spin text-red-500" /> : <FaTrash />}
                       </button>
                     )}
                   </div>
@@ -1273,12 +1274,12 @@ const ConfiguracionTema = () => {
                   <div className="flex gap-2">
                     <input type="file" ref={fondoReportesRef} onChange={handleSubirFondoReportes} accept="image/png,image/jpeg,image/jpg" className="hidden" disabled={hayOperacionLogoEnCurso} />
                     <button onClick={() => fondoReportesRef.current?.click()} disabled={hayOperacionLogoEnCurso} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #F97316 0%, #EA580C 100%)' }}>
-                      {operacionEnCurso.subiendoFondoReportes ? <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div> : <FaUpload />}
+                      {operacionEnCurso.subiendoFondoReportes ? <FaSpinner className="animate-spin" /> : <FaUpload />}
                       {logoUrls.fondoReportes ? 'Cambiar' : 'Subir'}
                     </button>
                     {logoUrls.fondoReportes && (
                       <button onClick={handleEliminarFondoReportes} disabled={hayOperacionLogoEnCurso} className="px-3 py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50">
-                        {operacionEnCurso.eliminandoFondoReportes ? <div className="animate-spin h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full"></div> : <FaTrash />}
+                        {operacionEnCurso.eliminandoFondoReportes ? <FaSpinner className="animate-spin text-red-500" /> : <FaTrash />}
                       </button>
                     )}
                   </div>
@@ -1300,7 +1301,7 @@ const ConfiguracionTema = () => {
                 >
                   {operacionEnCurso.guardandoReportes ? (
                     <>
-                      <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                      <FaSpinner className="animate-spin" />
                       Guardando...
                     </>
                   ) : (
@@ -1441,7 +1442,7 @@ const ConfiguracionTema = () => {
                 >
                   {operacionEnCurso.guardandoIdentidad ? (
                     <>
-                      <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                      <FaSpinner className="animate-spin" />
                       Guardando...
                     </>
                   ) : (

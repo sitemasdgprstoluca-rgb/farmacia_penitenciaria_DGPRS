@@ -128,9 +128,10 @@ class RequisicionContractValidator:
     """
     
     ESTADOS_EDITABLES = {'borrador'}
+    # ISS-DB-002: Alineado con BD Supabase
     ESTADOS_AUTORIZABLES = {'enviada'}
     ESTADOS_SURTIBLES = {'autorizada', 'parcial'}
-    ESTADOS_CANCELABLES = {'borrador', 'enviada', 'autorizada', 'parcial'}
+    ESTADOS_CANCELABLES = {'borrador', 'enviada', 'autorizada', 'parcial', 'en_surtido'}
     
     def __init__(self, requisicion):
         """
@@ -278,7 +279,7 @@ class RequisicionContractValidator:
         """
         self.contrato = ContratoValidacion()
         
-        # Debe estar en enviada
+        # ISS-DB-002: Debe estar en 'enviada'
         if self.requisicion.estado != 'enviada':
             self.contrato.agregar_error(
                 'estado',
@@ -337,7 +338,7 @@ class RequisicionContractValidator:
         """
         self.contrato = ContratoValidacion()
         
-        # Debe estar en enviada
+        # ISS-DB-002: Debe estar en 'enviada'
         if self.requisicion.estado != 'enviada':
             self.contrato.agregar_error(
                 'estado',

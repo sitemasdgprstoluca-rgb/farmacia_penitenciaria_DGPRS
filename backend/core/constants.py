@@ -26,22 +26,27 @@ ESTADOS_LOTE = [
 ]
 
 # Estados de requisición
+# ISS-DB-002: Alineado con CHECK constraint de BD Supabase
+# BD permite: borrador, enviada, autorizada, rechazada, en_surtido, surtida, parcial, cancelada, entregada
 ESTADOS_REQUISICION = [
     ('borrador', 'Borrador'),
-    ('enviada', 'Enviada'),
-    ('autorizada', 'Autorizada'),
-    ('parcial', 'Parcialmente Autorizada'),
+    ('enviada', 'Enviada'),              # Requisición enviada para autorización
+    ('autorizada', 'Autorizada'),        # Completamente autorizada
     ('rechazada', 'Rechazada'),
-    ('surtida', 'Surtida'),
-    ('recibida', 'Recibida por Centro'),
+    ('en_surtido', 'En Surtido'),        # En proceso de surtido
+    ('surtida', 'Surtida'),              # Completamente surtida
+    ('parcial', 'Parcialmente Surtida'), # Surtida parcialmente
+    ('entregada', 'Entregada'),          # Entregada al centro
     ('cancelada', 'Cancelada'),
 ]
 
 # Grupos lógicos de estados de requisición para filtros y resúmenes
+# ISS-DB-002: Alineado con BD Supabase
 REQUISICION_GRUPOS_ESTADO = {
     'pendientes': ['borrador', 'enviada'],
-    'aceptadas_parciales': ['autorizada', 'parcial'],
+    'en_proceso': ['autorizada', 'en_surtido', 'parcial'],
     'surtidas': ['surtida'],
+    'entregadas': ['entregada'],
     'rechazadas_canceladas': ['rechazada', 'cancelada'],
 }
 
@@ -56,12 +61,27 @@ EXTRA_PERMISSIONS = [
 ]
 
 # Tipos de movimiento
+# ISS-DB-001: Alineado con CHECK constraint valid_tipo_movimiento de BD Supabase
+# BD permite: entrada, salida, transferencia, ajuste_positivo, ajuste_negativo, devolucion, merma, caducidad
 TIPOS_MOVIMIENTO = [
     ('entrada', 'Entrada'),
     ('salida', 'Salida'),
-    ('ajuste', 'Ajuste'),
-    ('requisicion', 'Requisición'),
+    ('transferencia', 'Transferencia'),
+    ('ajuste_positivo', 'Ajuste Positivo'),
+    ('ajuste_negativo', 'Ajuste Negativo'),
+    ('devolucion', 'Devolución'),
+    ('merma', 'Merma'),
+    ('caducidad', 'Caducidad'),
 ]
+
+# Helper: Mapeo de tipo genérico a tipo BD según signo de cantidad
+def get_tipo_ajuste_bd(cantidad):
+    """Devuelve 'ajuste_positivo' o 'ajuste_negativo' según el signo de la cantidad."""
+    return 'ajuste_positivo' if cantidad > 0 else 'ajuste_negativo'
+
+# Tipos que restan stock (para validaciones)
+TIPOS_RESTA_STOCK = ['salida', 'ajuste_negativo', 'merma', 'caducidad']
+TIPOS_SUMA_STOCK = ['entrada', 'ajuste_positivo', 'devolucion']
 
 # Roles de usuario
 ROLES_USUARIO = [
@@ -121,12 +141,13 @@ ACCIONES_AUDITORIA = [
     ('actualizar', 'Actualizar'),
     ('eliminar', 'Eliminar'),
     
-    # Acciones de Requisiciones
-    ('cambiar_estado_enviada', 'Enviar requisición'),
+    # Acciones de Requisiciones (ISS-DB-002: nombres alineados con BD)
+    ('cambiar_estado_pendiente', 'Enviar requisición'),
     ('cambiar_estado_autorizada', 'Autorizar requisición'),
-    ('cambiar_estado_parcial', 'Autorizar parcialmente'),
+    ('cambiar_estado_en_proceso', 'Requisición en proceso'),
     ('cambiar_estado_rechazada', 'Rechazar requisición'),
     ('cambiar_estado_surtida', 'Surtir requisición'),
+    ('cambiar_estado_entregada', 'Entregar requisición'),
     ('cambiar_estado_cancelada', 'Cancelar requisición'),
     
     # Acciones de Movimientos

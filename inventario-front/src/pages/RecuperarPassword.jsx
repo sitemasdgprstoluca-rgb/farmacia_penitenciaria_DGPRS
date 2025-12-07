@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { FaEnvelope, FaArrowLeft, FaPaperPlane } from 'react-icons/fa';
+import { FaEnvelope, FaArrowLeft, FaPaperPlane, FaSpinner } from 'react-icons/fa';
 import { passwordResetAPI } from '../services/api';
 import { useTheme } from '../hooks/useTheme';
 
@@ -98,9 +98,9 @@ function RecuperarPassword() {
                 className="w-full text-white py-4 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-bold shadow-xl transition-all transform hover:scale-105 hover:shadow-2xl active:scale-95"
                 style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%)' }}
               >
-                {loading ? (
+                              {loading ? (
                   <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
+                    <FaSpinner className="animate-spin" />
                     Enviando...
                   </>
                 ) : (

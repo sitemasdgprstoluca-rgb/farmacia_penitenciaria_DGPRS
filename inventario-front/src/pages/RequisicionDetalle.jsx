@@ -72,11 +72,13 @@ const RequisicionDetalle = () => {
       const detalles = data.detalles || [];
       setDetallesEditables(detalles.map(d => ({
         ...d,
-        cantidad_autorizada: d.cantidad_autorizada || d.cantidad_solicitada
+        cantidad_autorizada: d.cantidad_autorizada || d.cantidad_solicitada,
+        motivo_ajuste: d.motivo_ajuste || ''  // MEJORA FLUJO 3: Inicializar motivo_ajuste
       })));
       
       // Cargar hoja de recolección si existe
-      if (['autorizada', 'parcial', 'surtida'].includes(data.estado)) {
+      // ISS-DB-002: Estados que permiten ver hoja de recolección
+      if (['autorizada', 'en_surtido', 'parcial', 'surtida'].includes(data.estado)) {
         cargarHojaRecoleccion();
       }
     } catch (error) {
@@ -108,13 +110,16 @@ const RequisicionDetalle = () => {
   }, [id, cargarRequisicion]);
 
   const getEstadoBadge = (estado) => {
+    // ISS-DB-002: Mapeo de estados alineados con BD Supabase
+    // BD permite: borrador, enviada, autorizada, rechazada, en_surtido, surtida, parcial, cancelada, entregada
     const badges = {
       borrador: 'bg-gray-200 text-gray-700',
-      enviada: 'bg-amber-100 text-amber-700',  // Pendiente - más visible
+      enviada: 'bg-amber-100 text-amber-700',      // BD: 'enviada'
       autorizada: 'bg-green-100 text-green-700',
-      parcial: 'bg-yellow-100 text-yellow-700',
-      surtida: 'bg-purple-100 text-purple-700',
-      recibida: 'bg-blue-100 text-blue-700',
+      en_surtido: 'bg-orange-100 text-orange-700', // BD: 'en_surtido'
+      parcial: 'bg-purple-100 text-purple-700',    // BD: 'parcial'
+      surtida: 'bg-indigo-100 text-indigo-700',
+      entregada: 'bg-blue-100 text-blue-700',      // BD: 'entregada'
       rechazada: 'bg-red-100 text-red-600',
       cancelada: 'bg-gray-100 text-gray-600',
     };
@@ -122,14 +127,17 @@ const RequisicionDetalle = () => {
   };
 
   // Labels amigables para los estados
+  // ISS-DB-002: Mapeo de estados alineados con BD Supabase
   const getEstadoLabel = (estado) => {
     const labels = {
       borrador: 'BORRADOR',
-      enviada: 'PENDIENTE',
+      enviada: 'ENVIADA',               // BD: 'enviada'
       autorizada: 'ACEPTADA',
-      parcial: 'PARCIAL',
+      en_surtido: 'EN SURTIDO',         // BD: 'en_surtido'
+      parcial: 'PARCIAL',               // BD: 'parcial'
       rechazada: 'RECHAZADA',
       surtida: 'SURTIDA',
+      entregada: 'ENTREGADA',           // BD: 'entregada'
       cancelada: 'CANCELADA',
     };
     return labels[estado] || estado?.toUpperCase();
@@ -186,11 +194,12 @@ const RequisicionDetalle = () => {
 
   const cancelarAutorizacion = () => {
     setModoAutorizar(false);
-    // Resetear cantidades
+    // Resetear cantidades y motivos
     const detalles = requisicion.detalles || [];
     setDetallesEditables(detalles.map(d => ({
       ...d,
-      cantidad_autorizada: d.cantidad_autorizada || d.cantidad_solicitada
+      cantidad_autorizada: d.cantidad_autorizada || d.cantidad_solicitada,
+      motivo_ajuste: d.motivo_ajuste || ''  // MEJORA FLUJO 3
     })));
   };
 
@@ -204,6 +213,15 @@ const RequisicionDetalle = () => {
     setDetallesEditables(prev => {
       const nuevo = [...prev];
       nuevo[idx] = { ...nuevo[idx], cantidad_autorizada: cantidad };
+      return nuevo;
+    });
+  };
+
+  // MEJORA FLUJO 3: Función para actualizar motivo_ajuste por item
+  const actualizarMotivoAjuste = (idx, motivo) => {
+    setDetallesEditables(prev => {
+      const nuevo = [...prev];
+      nuevo[idx] = { ...nuevo[idx], motivo_ajuste: motivo };
       return nuevo;
     });
   };
@@ -242,9 +260,11 @@ const RequisicionDetalle = () => {
     try {
       setProcesando(true);
       setShowAutorizarModal(false);
+      // MEJORA FLUJO 3: Incluir motivo_ajuste por cada item
       const items = detallesEditables.map(d => ({
         id: d.id,
-        cantidad_autorizada: d.cantidad_autorizada
+        cantidad_autorizada: d.cantidad_autorizada,
+        motivo_ajuste: d.cantidad_autorizada < d.cantidad_solicitada ? d.motivo_ajuste : null
       }));
       await requisicionesAPI.autorizar(id, { items, observaciones: '' });
       toast.success('Requisición autorizada');
@@ -258,21 +278,27 @@ const RequisicionDetalle = () => {
   };
   
   // Ejecutar autorización parcial con observaciones
-  const ejecutarAutorizacionParcial = async (observaciones) => {
-    const obsTrimmed = (observaciones || '').trim();
-    if (obsTrimmed.length < 10) {
-      toast.error('Para autorizaciones parciales, debe indicar el motivo (mínimo 10 caracteres)');
+  const ejecutarAutorizacionParcial = async () => {
+    // MEJORA FLUJO 3: Validar que todos los items con cantidad reducida tengan motivo
+    const itemsSinMotivo = detallesEditables.filter(d => 
+      d.cantidad_autorizada < d.cantidad_solicitada && (!d.motivo_ajuste || d.motivo_ajuste.trim().length < 10)
+    );
+    
+    if (itemsSinMotivo.length > 0) {
+      toast.error(`Debe indicar el motivo del ajuste (mín. 10 caracteres) para: ${itemsSinMotivo.map(i => i.producto_clave || i.producto?.clave).join(', ')}`);
       return;
     }
     
     try {
       setProcesando(true);
       setShowAutorizarParcialModal(false);
+      // MEJORA FLUJO 3: Incluir motivo_ajuste por cada item
       const items = detallesEditables.map(d => ({
         id: d.id,
-        cantidad_autorizada: d.cantidad_autorizada
+        cantidad_autorizada: d.cantidad_autorizada,
+        motivo_ajuste: d.cantidad_autorizada < d.cantidad_solicitada ? d.motivo_ajuste : null
       }));
-      await requisicionesAPI.autorizar(id, { items, observaciones: obsTrimmed });
+      await requisicionesAPI.autorizar(id, { items });
       toast.success('Requisición autorizada parcialmente');
       setModoAutorizar(false);
       cargarRequisicion();
@@ -552,6 +578,7 @@ const RequisicionDetalle = () => {
     tieneAccesoPorCentro;
     
   // Validar AMBOS: rol de farmacia Y permiso fino correspondiente
+  // ISS-DB-002: Estados alineados con BD Supabase
   const puedeAutorizar = requisicion?.estado === 'enviada' && esFarmacia && permisos?.autorizarRequisicion;
   const puedeRechazar = requisicion?.estado === 'enviada' && esFarmacia && permisos?.rechazarRequisicion;
   const puedeSurtir = (requisicion?.estado === 'autorizada' || requisicion?.estado === 'parcial') && esFarmacia && permisos?.surtirRequisicion;
@@ -563,12 +590,14 @@ const RequisicionDetalle = () => {
     permisos?.confirmarRecepcion === true; // Debe tener permiso específico de confirmar recepción
   
   // Cancelar: validar centro para usuarios no privilegiados
-  const puedeCancelar = !['surtida', 'cancelada', 'rechazada', 'recibida'].includes(requisicion?.estado) && 
+  // ISS-DB-002: Estados terminales
+  const puedeCancelar = !['surtida', 'cancelada', 'rechazada', 'entregada'].includes(requisicion?.estado) && 
     permisos?.cancelarRequisicion &&
     tieneAccesoPorCentro; // Usuarios de centro solo pueden cancelar las suyas
     
   // Descargas: validar centro para usuarios no privilegiados (aislamiento de datos)
-  const puedeDescargarHoja = ['autorizada', 'parcial', 'surtida', 'recibida'].includes(requisicion?.estado) && 
+  // ISS-DB-002: Estados que permiten descarga
+  const puedeDescargarHoja = ['autorizada', 'en_surtido', 'parcial', 'surtida', 'entregada'].includes(requisicion?.estado) && 
     permisos?.descargarHojaRecoleccion &&
     tieneAccesoPorCentro; // Usuarios de centro solo descargan hojas de su centro
     
@@ -743,6 +772,12 @@ const RequisicionDetalle = () => {
                   <th className={`px-3 py-3 text-center text-sm font-semibold ${modoAutorizar ? 'bg-gray-100 text-theme-primary' : 'text-gray-700'}`}>
                     Autorizado
                   </th>
+                  {/* MEJORA FLUJO 3: Columna para motivo de ajuste */}
+                  {modoAutorizar && (
+                    <th className="px-3 py-3 text-left text-sm font-semibold bg-amber-50 text-amber-700 min-w-[200px]">
+                      Motivo Ajuste
+                    </th>
+                  )}
                   <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Surtido</th>
                   {esFarmacia && (
                     <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Stock Lote</th>
@@ -792,6 +827,26 @@ const RequisicionDetalle = () => {
                         </span>
                       )}
                     </td>
+                    {/* MEJORA FLUJO 3: Input de motivo de ajuste cuando se reduce cantidad */}
+                    {modoAutorizar && (
+                      <td className="px-3 py-3 bg-amber-50">
+                        {detalle.cantidad_autorizada < detalle.cantidad_solicitada ? (
+                          <input
+                            type="text"
+                            placeholder="Motivo del ajuste (mín. 10 chars)..."
+                            value={detalle.motivo_ajuste || ''}
+                            onChange={(e) => actualizarMotivoAjuste(idx, e.target.value)}
+                            className={`w-full px-2 py-1 text-sm border rounded focus:ring-2 focus:outline-none ${
+                              detalle.motivo_ajuste && detalle.motivo_ajuste.length >= 10
+                                ? 'border-green-300 ring-green-200'
+                                : 'border-amber-300 ring-amber-200'
+                            }`}
+                          />
+                        ) : (
+                          <span className="text-gray-400 text-sm italic">-</span>
+                        )}
+                      </td>
+                    )}
                     <td className="px-3 py-3 text-center">
                       <span className={detalle.cantidad_surtida > 0 ? 'font-semibold text-gray-800' : 'text-gray-400'}>
                         {detalle.cantidad_surtida ?? '-'}
@@ -1062,18 +1117,17 @@ const RequisicionDetalle = () => {
         tone="info"
       />
 
-      {/* Modal de input para autorización parcial */}
-      <InputModal
+      {/* Modal de confirmación para autorización parcial */}
+      {/* MEJORA FLUJO 3: El motivo ahora se captura por item en la tabla */}
+      <ConfirmModal
         open={showAutorizarParcialModal}
         onCancel={() => setShowAutorizarParcialModal(false)}
         onConfirm={ejecutarAutorizacionParcial}
-        title="Autorización parcial"
-        message="Indique las modificaciones realizadas a las cantidades"
-        placeholder="Ej: ajuste de cantidades por disponibilidad en inventario"
-        minLength={10}
-        confirmText="Autorizar"
-        cancelText="Cancelar"
-        tone="info"
+        title="Confirmar autorización parcial"
+        message="Ha reducido las cantidades de algunos productos. Verifique que ha indicado el motivo de cada ajuste en la columna correspondiente."
+        confirmText="Confirmar Autorización"
+        cancelText="Revisar"
+        tone="warning"
       />
 
       {/* Modal de input para rechazar */}

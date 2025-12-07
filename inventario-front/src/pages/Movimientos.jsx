@@ -72,6 +72,9 @@ const Movimientos = () => {
     cantidad: "",
     centro: "",
     observaciones: "",
+    // MEJORA FLUJO 5: Campos para trazabilidad de pacientes
+    subtipo_salida: "",
+    numero_expediente: "",
   });
   const [productoFiltro, setProductoFiltro] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -215,7 +218,21 @@ const Movimientos = () => {
   }, [productoFiltro, lotes]);
 
   const handleFormChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData(prev => {
+      const newState = { ...prev, [field]: value };
+      
+      // MEJORA FLUJO 5: Limpiar campos de salida cuando cambie el tipo
+      if (field === "tipo" && value !== "salida") {
+        newState.subtipo_salida = "";
+        newState.numero_expediente = "";
+      }
+      // Si cambia subtipo y ya no es receta, limpiar expediente
+      if (field === "subtipo_salida" && value !== "receta") {
+        newState.numero_expediente = "";
+      }
+      
+      return newState;
+    });
   };
 
   const getLoteLabel = (lote) => {
@@ -240,6 +257,14 @@ const Movimientos = () => {
       return;
     }
 
+    // MEJORA FLUJO 5: Validar numero_expediente si es salida por receta
+    if (formData.tipo === "salida" && formData.subtipo_salida === "receta") {
+      if (!formData.numero_expediente || formData.numero_expediente.trim().length < 3) {
+        toast.error("El número de expediente es obligatorio para salidas por receta (mínimo 3 caracteres)");
+        return;
+      }
+    }
+
     // ISS-FIX: Forzar centro del usuario si no tiene permisos globales
     const centroFinal = !puedeVerTodosCentros && centroUsuario 
       ? parseInt(centroUsuario) 
@@ -247,13 +272,23 @@ const Movimientos = () => {
 
     setSubmitting(true);
     try {
-      await movimientosAPI.create({
+      const payload = {
         lote: parseInt(formData.lote),
         tipo: formData.tipo,
         cantidad: Number(formData.cantidad),
         centro: centroFinal,
         observaciones: formData.observaciones,
-      });
+      };
+      
+      // MEJORA FLUJO 5: Incluir campos de trazabilidad si es salida
+      if (formData.tipo === "salida" && formData.subtipo_salida) {
+        payload.subtipo_salida = formData.subtipo_salida;
+        if (formData.subtipo_salida === "receta") {
+          payload.numero_expediente = formData.numero_expediente.trim();
+        }
+      }
+      
+      await movimientosAPI.create(payload);
       toast.success("Movimiento registrado exitosamente");
       setFormData({
         lote: "",
@@ -261,6 +296,8 @@ const Movimientos = () => {
         cantidad: "",
         centro: "",
         observaciones: "",
+        subtipo_salida: "",
+        numero_expediente: "",
       });
       setProductoFiltro("");
       cargarMovimientos();
@@ -518,6 +555,45 @@ const Movimientos = () => {
                   <p className="text-xs text-gray-500">Las entradas solo se realizan desde Farmacia Central.</p>
                 )}
               </div>
+
+              {/* MEJORA FLUJO 5: Subtipo de salida y número de expediente */}
+              {formData.tipo === "salida" && (
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700">Subtipo de salida</label>
+                  <select
+                    value={formData.subtipo_salida}
+                    onChange={(e) => handleFormChange("subtipo_salida", e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- Seleccionar subtipo --</option>
+                    <option value="receta">Receta médica</option>
+                    <option value="consumo_interno">Consumo interno</option>
+                    <option value="merma">Merma</option>
+                    <option value="caducidad">Caducidad</option>
+                    <option value="transferencia">Transferencia</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                </div>
+              )}
+
+              {/* MEJORA FLUJO 5: Número de expediente (obligatorio para receta) */}
+              {formData.tipo === "salida" && formData.subtipo_salida === "receta" && (
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700">
+                    Número de expediente *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.numero_expediente}
+                    onChange={(e) => handleFormChange("numero_expediente", e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Ej: EXP-2024-001234"
+                  />
+                  <p className="text-xs text-gray-500">
+                    Obligatorio para salidas por receta médica (mín. 3 caracteres).
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-700">Cantidad *</label>

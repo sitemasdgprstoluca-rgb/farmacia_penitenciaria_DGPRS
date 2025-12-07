@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
+import { FaSpinner } from "react-icons/fa";
 import ConfirmModal from "../components/ConfirmModal";
 import { notificacionesAPI } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
@@ -216,18 +217,20 @@ function Notificaciones() {
           <ProtectedButton
             permission="gestionarNotificaciones"
             onClick={marcarTodas}
-            className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm hover:bg-primary-700 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm hover:bg-primary-700 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
             disabled={loading || marcandoTodas || !puedeMarcarTodas}
             title={filtroEsLeidas ? 'No aplica cuando filtra por "Leídas"' : undefined}
           >
+            {marcandoTodas && <FaSpinner className="animate-spin" />}
             {marcandoTodas ? 'Marcando...' : 'Marcar todas como leídas'}
           </ProtectedButton>
           <ProtectedButton
             permission="verNotificaciones"
             onClick={() => fetchData(page)}
-            className="px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             disabled={loading}
           >
+            {loading && <FaSpinner className="animate-spin" />}
             Refrescar
           </ProtectedButton>
         </div>
@@ -372,8 +375,9 @@ function Notificaciones() {
                           permission="verNotificaciones"
                           onClick={() => marcarLeida(notif.id)}
                           disabled={marcandoId === notif.id}
-                          className="px-3 py-1 rounded-lg border border-primary-100 text-primary-600 hover:bg-primary-50 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-3 py-1 rounded-lg border border-primary-100 text-primary-600 hover:bg-primary-50 text-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                         >
+                          {marcandoId === notif.id && <FaSpinner className="animate-spin" />}
                           {marcandoId === notif.id ? 'Marcando...' : 'Marcar leída'}
                         </ProtectedButton>
                       )}
@@ -381,8 +385,9 @@ function Notificaciones() {
                         permission="gestionarNotificaciones"
                         onClick={() => setDeleteId(notif.id)}
                         disabled={eliminandoId === notif.id}
-                        className="px-3 py-1 rounded-lg border border-red-100 text-red-600 hover:bg-red-50 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-3 py-1 rounded-lg border border-red-100 text-red-600 hover:bg-red-50 text-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                       >
+                        {eliminandoId === notif.id && <FaSpinner className="animate-spin" />}
                         {eliminandoId === notif.id ? 'Eliminando...' : 'Eliminar'}
                       </ProtectedButton>
                     </td>

@@ -3,6 +3,9 @@ ISS-035: Exportaciones streaming.
 
 Sistema de exportación eficiente para grandes volúmenes de datos
 usando streaming para evitar problemas de memoria.
+
+ISS-CSV-INJECTION: Incluye sanitización de fórmulas para prevenir
+ataques de inyección CSV/Excel.
 """
 import csv
 import io
@@ -16,6 +19,35 @@ from django.http import StreamingHttpResponse, HttpResponse
 from django.db.models import QuerySet
 
 logger = logging.getLogger(__name__)
+
+
+# ISS-CSV-INJECTION: Caracteres que pueden iniciar una fórmula en Excel/LibreOffice
+FORMULA_PREFIXES = ('=', '+', '-', '@', '\t', '\r', '\n')
+
+
+def sanitize_csv_value(value: str) -> str:
+    """
+    ISS-CSV-INJECTION: Sanitiza un valor de texto para prevenir inyección de fórmulas.
+    
+    Excel y LibreOffice interpretan celdas que empiezan con =, +, -, @, etc.
+    como fórmulas. Esto puede ser explotado para ejecutar comandos maliciosos.
+    
+    Esta función agrega un prefijo de comilla simple (') a valores peligrosos,
+    lo cual hace que Excel lo interprete como texto literal.
+    
+    Args:
+        value: Valor a sanitizar
+        
+    Returns:
+        Valor sanitizado
+    """
+    if not isinstance(value, str):
+        return value
+    
+    if value and value[0] in FORMULA_PREFIXES:
+        return f"'{value}"
+    
+    return value
 
 
 class Echo:
@@ -226,7 +258,12 @@ class StreamingExporter:
     
     @classmethod
     def _format_csv_value(cls, value: Any) -> str:
-        """Formatea valor para CSV."""
+        """
+        Formatea valor para CSV con sanitización de inyección.
+        
+        ISS-CSV-INJECTION: Aplica sanitize_csv_value para prevenir
+        ataques de inyección de fórmulas en Excel/LibreOffice.
+        """
         if value is None:
             return ""
         if isinstance(value, bool):
@@ -237,17 +274,27 @@ class StreamingExporter:
             return value.strftime('%Y-%m-%d')
         if isinstance(value, Decimal):
             return str(value)
-        return str(value)
+        # ISS-CSV-INJECTION: Sanitizar strings para prevenir fórmulas maliciosas
+        result = str(value)
+        return sanitize_csv_value(result)
     
     @classmethod
     def _format_excel_value(cls, value: Any) -> Any:
-        """Formatea valor para Excel."""
+        """
+        Formatea valor para Excel con sanitización de inyección.
+        
+        ISS-CSV-INJECTION: Los archivos Excel también son vulnerables
+        a fórmulas maliciosas, por lo que sanitizamos strings.
+        """
         if value is None:
             return ""
         if isinstance(value, Decimal):
             return float(value)
         if isinstance(value, bool):
             return "Sí" if value else "No"
+        # ISS-CSV-INJECTION: Sanitizar strings para prevenir fórmulas maliciosas
+        if isinstance(value, str):
+            return sanitize_csv_value(value)
         return value
     
     @classmethod

@@ -491,12 +491,13 @@ class ReportGenerator:
         ).order_by('estado')
         
         # Resumen por centro destino
+        # ISS-DB-002: Usar 'entregada' en lugar de 'recibida'
         resumen_centro = requisiciones.values(
             'centro_destino__nombre'
         ).annotate(
             count=Count('id'),
             pendientes=Count('id', filter=Q(estado__in=['borrador', 'enviada'])),
-            completadas=Count('id', filter=Q(estado='recibida'))
+            completadas=Count('id', filter=Q(estado='entregada'))
         ).order_by('centro_destino__nombre')
         
         return {

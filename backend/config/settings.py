@@ -147,6 +147,17 @@ SECURE_CONTENT_TYPE_NOSNIFF = True  # X-Content-Type-Options: nosniff
 # vulnerabilidades XS-Leak. Los navegadores modernos lo ignoran.
 # La protección contra XSS debe manejarse con CSP (Content-Security-Policy).
 
+# ═══════════════════════════════════════════════════════════
+# RATE LIMITING (ISS-015)
+# ═══════════════════════════════════════════════════════════
+# Protección contra ataques de fuerza bruta y DDoS
+RATE_LIMIT_ENABLED = config('RATE_LIMIT_ENABLED', default=not DEBUG, cast=bool)
+RATE_LIMIT_REQUESTS = config('RATE_LIMIT_REQUESTS', default=100, cast=int)  # Requests por ventana
+RATE_LIMIT_WINDOW = config('RATE_LIMIT_WINDOW', default=60, cast=int)  # Segundos
+# Límites más estrictos para endpoints de autenticación
+RATE_LIMIT_LOGIN_REQUESTS = config('RATE_LIMIT_LOGIN_REQUESTS', default=5, cast=int)
+RATE_LIMIT_LOGIN_WINDOW = config('RATE_LIMIT_LOGIN_WINDOW', default=300, cast=int)  # 5 minutos
+
 # INSTALLED APPS
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -172,6 +183,7 @@ INSTALLED_APPS = [
 
 # MIDDLEWARE
 MIDDLEWARE = [
+    'core.middleware.RateLimitMiddleware',  # Rate limiting (primero para bloquear rápido)
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',

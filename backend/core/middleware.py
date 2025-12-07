@@ -64,3 +64,110 @@ class SecurityHeadersMiddleware:
         response['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
         
         return response
+
+
+class RateLimitMiddleware:
+    """
+    Middleware de Rate Limiting para proteger contra ataques de fuerza bruta.
+    
+    Configuración en settings.py:
+        RATE_LIMIT_ENABLED = True  # Activar/desactivar
+        RATE_LIMIT_REQUESTS = 100  # Requests por ventana
+        RATE_LIMIT_WINDOW = 60     # Ventana en segundos
+        RATE_LIMIT_LOGIN_REQUESTS = 5   # Límite especial para login
+        RATE_LIMIT_LOGIN_WINDOW = 300   # Ventana para login (5 min)
+    """
+    
+    def __init__(self, get_response):
+        self.get_response = get_response
+        # Almacenamiento en memoria simple (en producción usar Redis/Memcached)
+        self._request_counts = {}
+    
+    def __call__(self, request):
+        if not getattr(settings, 'RATE_LIMIT_ENABLED', False):
+            return self.get_response(request)
+        
+        # Obtener IP del cliente
+        client_ip = self._get_client_ip(request)
+        path = request.path
+        
+        # Verificar rate limit
+        is_blocked, retry_after = self._check_rate_limit(client_ip, path)
+        
+        if is_blocked:
+            from django.http import JsonResponse
+            return JsonResponse(
+                {
+                    'error': 'Demasiadas solicitudes. Por favor, espera antes de intentar de nuevo.',
+                    'retry_after': retry_after
+                },
+                status=429
+            )
+        
+        response = self.get_response(request)
+        return response
+    
+    def _get_client_ip(self, request):
+        """Obtiene la IP real del cliente considerando proxies"""
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0].strip()
+        else:
+            ip = request.META.get('REMOTE_ADDR', 'unknown')
+        return ip
+    
+    def _check_rate_limit(self, client_ip, path):
+        """
+        Verifica si el cliente ha excedido el límite.
+        Retorna (is_blocked, retry_after_seconds)
+        """
+        import time
+        
+        now = time.time()
+        
+        # Configuración diferente para endpoints de auth
+        is_auth_endpoint = '/auth/' in path or '/token/' in path or '/login/' in path
+        
+        if is_auth_endpoint:
+            max_requests = getattr(settings, 'RATE_LIMIT_LOGIN_REQUESTS', 5)
+            window = getattr(settings, 'RATE_LIMIT_LOGIN_WINDOW', 300)
+            key = f"auth:{client_ip}"
+        else:
+            max_requests = getattr(settings, 'RATE_LIMIT_REQUESTS', 100)
+            window = getattr(settings, 'RATE_LIMIT_WINDOW', 60)
+            key = f"api:{client_ip}"
+        
+        # Limpiar entradas antiguas
+        self._cleanup_old_entries(now, window)
+        
+        # Obtener o crear registro
+        if key not in self._request_counts:
+            self._request_counts[key] = {'count': 0, 'window_start': now}
+        
+        record = self._request_counts[key]
+        
+        # Si la ventana expiró, reiniciar
+        if now - record['window_start'] > window:
+            record['count'] = 0
+            record['window_start'] = now
+        
+        # Incrementar contador
+        record['count'] += 1
+        
+        # Verificar límite
+        if record['count'] > max_requests:
+            retry_after = int(window - (now - record['window_start']))
+            return True, max(1, retry_after)
+        
+        return False, 0
+    
+    def _cleanup_old_entries(self, now, window):
+        """Limpia entradas antiguas para evitar memory leak"""
+        # Cada 100 requests, limpiar
+        if len(self._request_counts) > 1000:
+            expired_keys = [
+                k for k, v in self._request_counts.items()
+                if now - v['window_start'] > window * 2
+            ]
+            for k in expired_keys:
+                del self._request_counts[k]

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { FaLock, FaCheck, FaArrowLeft, FaExclamationTriangle } from 'react-icons/fa';
+import { FaLock, FaCheck, FaArrowLeft, FaExclamationTriangle, FaSpinner } from 'react-icons/fa';
 import { passwordResetAPI } from '../services/api';
 import { useTheme } from '../hooks/useTheme';
 
@@ -87,8 +87,8 @@ function RestablecerPassword() {
     return (
       <div className="min-h-screen flex items-center justify-center" 
            style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 50%, #4a0f26 100%)' }}>
-        <div className="text-center text-white">
-          <div className="animate-spin rounded-full h-10 w-10 border-4 border-white/30 border-t-white mx-auto mb-4" />
+                <div className="text-center text-white">
+          <FaSpinner className="animate-spin h-10 w-10 mx-auto mb-4" />
           <p>Verificando enlace...</p>
         </div>
       </div>
@@ -200,9 +200,9 @@ function RestablecerPassword() {
                 className="w-full text-white py-4 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-bold shadow-xl transition-all transform hover:scale-105 hover:shadow-2xl active:scale-95"
                 style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%)' }}
               >
-                {submitting ? (
+                              {submitting ? (
                   <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
+                    <FaSpinner className="animate-spin" />
                     Guardando...
                   </>
                 ) : (

@@ -135,11 +135,14 @@ export function useSessionExpiration() {
 
 /**
  * ISS-022: Configuración de polling por tipo de recurso.
+ * ISS-DB-002: Estados alineados con BD Supabase
+ * BD permite: borrador, enviada, autorizada, rechazada, en_surtido, surtida, parcial, cancelada, entregada
  */
 const POLLING_CONFIG = {
   requisiciones: {
     interval: 30000,      // 30 segundos
-    enabledStates: ['enviada', 'autorizada', 'surtida'], // Estados que requieren polling
+    // ISS-DB-002: Estados activos que requieren polling
+    enabledStates: ['enviada', 'autorizada', 'en_surtido', 'parcial', 'surtida'],
   },
   notificaciones: {
     interval: 60000,      // 1 minuto

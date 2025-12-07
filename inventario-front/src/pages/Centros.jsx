@@ -7,7 +7,7 @@ import Pagination from '../components/Pagination';
 import { 
   FaPlus, FaEdit, FaTrash, FaToggleOn, FaToggleOff, 
   FaSearch, FaFileExcel, FaFileUpload, FaDownload, FaFilter,
-  FaBuilding, FaChevronDown, FaTimes
+  FaBuilding, FaChevronDown, FaTimes, FaSpinner
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { COLORS, SECONDARY_GRADIENT } from '../constants/theme';
@@ -325,7 +325,8 @@ const Centros = () => {
             border: '1px solid rgba(255,255,255,0.4)'
           }}
         >
-          <FaDownload /> {exportLoading ? 'Descargando...' : 'Plantilla'}
+          {exportLoading ? <FaSpinner className="animate-spin" /> : <FaDownload />} 
+          {exportLoading ? 'Descargando...' : 'Plantilla'}
         </button>
       )}
       {puedeExportar && (
@@ -335,7 +336,8 @@ const Centros = () => {
           disabled={exportLoading}
           className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 bg-theme-gradient"
         >
-          <FaFileExcel /> {exportLoading ? 'Exportando...' : 'Exportar'}
+          {exportLoading ? <FaSpinner className="animate-spin" /> : <FaFileExcel />} 
+          {exportLoading ? 'Exportando...' : 'Exportar'}
         </button>
       )}
       {puedeImportar && (
@@ -349,7 +351,8 @@ const Centros = () => {
             border: '1px solid rgba(255,255,255,0.4)'
           }}
         >
-          <FaFileUpload /> Importar
+          {importLoading ? <FaSpinner className="animate-spin" /> : <FaFileUpload />} 
+          {importLoading ? 'Importando...' : 'Importar'}
         </button>
       )}
       {puedeCrear && (
@@ -742,9 +745,9 @@ const Centros = () => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-4 py-2 bg-theme-gradient text-white rounded-lg hover:opacity-90 disabled:opacity-50"
+                  className="px-4 py-2 bg-theme-gradient text-white rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
                 >
-                  {loading ? 'Guardando...' : 'Guardar'}
+                  {loading ? <><FaSpinner className="animate-spin" /> Guardando...</> : 'Guardar'}
                 </button>
               </div>
             </form>
@@ -797,7 +800,7 @@ const Centros = () => {
               
               {importLoading && (
                 <div className="mb-4 text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-4 spinner-institucional mx-auto"></div>
+                  <FaSpinner className="animate-spin h-8 w-8 mx-auto text-theme-primary" />
                   <p className="text-sm text-gray-600 mt-2">Procesando archivo...</p>
                 </div>
               )}
