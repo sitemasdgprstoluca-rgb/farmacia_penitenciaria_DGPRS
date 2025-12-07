@@ -392,7 +392,7 @@ class RequisicionService:
             detalle.save(update_fields=['cantidad_surtida'])
             
             items_surtidos.append({
-                'producto': detalle.producto.clave,
+                'producto': detalle.producto.codigo_barras or detalle.producto.nombre,
                 'cantidad_surtida': cantidad_surtida_item,
                 'lotes_usados': lotes_usados
             })
@@ -771,6 +771,7 @@ class RequisicionService:
                 # Registrar movimiento de ajuste
                 Movimiento.objects.create(
                     tipo='entrada',
+                    producto=mov.lote.producto,
                     lote=mov.lote,
                     centro_origen=mov.centro_origen,
                     requisicion=requisicion,
@@ -800,6 +801,7 @@ class RequisicionService:
                 # Registrar movimiento de ajuste
                 Movimiento.objects.create(
                     tipo='salida',
+                    producto=mov.lote.producto,
                     lote=mov.lote,
                     centro_origen=mov.centro_destino,
                     requisicion=requisicion,

@@ -31,11 +31,8 @@ print(f"   - Lotes: {Lote.objects.count()}")
 if Centro.objects.count() == 0:
     print("\n🔧 Creando centro de prueba...")
     Centro.objects.create(
-        clave='CENTRO-NORTE',
         nombre='Centro Penitenciario Norte',
-        tipo='PREVENCION',
         direccion='Av. Principal #123',
-        responsable='Director General',
         activo=True
     )
     print("✅ Centro creado")
@@ -43,18 +40,20 @@ if Centro.objects.count() == 0:
 if Producto.objects.count() == 0:
     print("\n🔧 Creando productos de prueba...")
     Producto.objects.create(
-        clave='PARACET500',
-        descripcion='Paracetamol 500mg',
-        unidad_medida='TABLETA',
-        precio_unitario=5.50,
+        codigo_barras='PARACET500',
+        nombre='Paracetamol 500mg',
+        descripcion='Paracetamol tabletas 500mg',
+        unidad_medida='pieza',
+        categoria='medicamento',
         stock_minimo=100,
         activo=True
     )
     Producto.objects.create(
-        clave='IBUPRO400',
-        descripcion='Ibuprofeno 400mg',
-        unidad_medida='TABLETA',
-        precio_unitario=8.00,
+        codigo_barras='IBUPRO400',
+        nombre='Ibuprofeno 400mg',
+        descripcion='Ibuprofeno tabletas 400mg',
+        unidad_medida='pieza',
+        categoria='medicamento',
         stock_minimo=100,
         activo=True
     )

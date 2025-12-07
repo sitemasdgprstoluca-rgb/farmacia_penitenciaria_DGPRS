@@ -390,6 +390,7 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         # Crear movimiento con campos correctos de la BD
         movimiento = Movimiento(
             tipo=tipo_normalizado,
+            producto=lote_ref.producto,
             lote=lote_ref,
             centro_destino=centro if tipo_normalizado == 'entrada' else None,
             centro_origen=centro if tipo_normalizado != 'entrada' else None,

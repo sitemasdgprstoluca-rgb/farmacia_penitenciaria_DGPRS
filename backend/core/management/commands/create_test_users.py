@@ -15,20 +15,18 @@ class Command(BaseCommand):
         
         # Crear centros de prueba
         centro_norte, _ = Centro.objects.get_or_create(
-            clave='CP-NORTE',
+            nombre='Centro Penitenciario Norte',
             defaults={
-                'nombre': 'Centro Penitenciario Norte',
-                'tipo': 'CERESO',
-                'responsable': 'Lic. Juan López'
+                'direccion': 'Av. Norte #123',
+                'activo': True
             }
         )
         
         centro_sur, _ = Centro.objects.get_or_create(
-            clave='CP-SUR',
+            nombre='Centro Penitenciario Sur',
             defaults={
-                'nombre': 'Centro Penitenciario Sur',
-                'tipo': 'CERESO',
-                'responsable': 'Dra. Ana Martínez'
+                'direccion': 'Av. Sur #456',
+                'activo': True
             }
         )
         

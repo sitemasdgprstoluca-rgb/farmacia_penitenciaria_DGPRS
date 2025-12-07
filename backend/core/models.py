@@ -314,16 +314,16 @@ class Producto(models.Model):
     Adaptado a la estructura de base de datos existente
     """
     codigo_barras = models.CharField(max_length=50, unique=True, null=True, blank=True)
-    nombre = models.CharField(max_length=200)
+    nombre = models.CharField(max_length=255)
     descripcion = models.TextField(blank=True, null=True)
     unidad_medida = models.CharField(max_length=50)
     categoria = models.CharField(max_length=100)
     stock_minimo = models.IntegerField(default=0)
     stock_actual = models.IntegerField(default=0)
-    sustancia_activa = models.CharField(max_length=200, blank=True, null=True)
-    presentacion = models.CharField(max_length=200, blank=True, null=True)
-    concentracion = models.CharField(max_length=100, blank=True, null=True)
-    via_administracion = models.CharField(max_length=100, blank=True, null=True)
+    sustancia_activa = models.CharField(max_length=255, blank=True, null=True)
+    presentacion = models.CharField(max_length=100, blank=True, null=True)
+    concentracion = models.CharField(max_length=50, blank=True, null=True)
+    via_administracion = models.CharField(max_length=50, blank=True, null=True)
     requiere_receta = models.BooleanField(default=False)
     es_controlado = models.BooleanField(default=False)
     activo = models.BooleanField(default=True)
@@ -637,7 +637,7 @@ class Notificacion(models.Model):
     mensaje = models.TextField()
     leida = models.BooleanField(default=False)
     datos = models.JSONField(null=True, blank=True)
-    url = models.CharField(max_length=255, blank=True, null=True)
+    url = models.CharField(max_length=500, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

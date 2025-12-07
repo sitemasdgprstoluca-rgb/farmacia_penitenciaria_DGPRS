@@ -146,8 +146,7 @@ class QueryOptimizer:
         
         return queryset.select_related(
             'producto',
-            'centro',
-            'lote_origen'
+            'centro'
         )
 
 

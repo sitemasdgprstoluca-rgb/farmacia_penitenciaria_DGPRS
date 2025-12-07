@@ -26,16 +26,16 @@ else:
 # Crear Centros Penitenciarios
 print("\n🏢 Creando centros penitenciarios...")
 centros_data = [
-    {'clave': 'CP-001', 'nombre': 'Centro Penitenciario Norte', 'direccion': 'Av. Norte #123, Col. Centro', 'telefono': '555-1111'},
-    {'clave': 'CP-002', 'nombre': 'Centro Penitenciario Sur', 'direccion': 'Av. Sur #456, Col. Reforma', 'telefono': '555-2222'},
-    {'clave': 'CP-003', 'nombre': 'Centro Penitenciario Este', 'direccion': 'Av. Este #789, Col. Industrial', 'telefono': '555-3333'},
-    {'clave': 'CP-004', 'nombre': 'Centro Penitenciario Oeste', 'direccion': 'Av. Oeste #321, Col. Moderna', 'telefono': '555-4444'},
-    {'clave': 'CP-005', 'nombre': 'Centro Penitenciario Central', 'direccion': 'Calle Central #555, Centro Histórico', 'telefono': '555-5555'},
+    {'nombre': 'Centro Penitenciario Norte', 'direccion': 'Av. Norte #123, Col. Centro', 'telefono': '555-1111'},
+    {'nombre': 'Centro Penitenciario Sur', 'direccion': 'Av. Sur #456, Col. Reforma', 'telefono': '555-2222'},
+    {'nombre': 'Centro Penitenciario Este', 'direccion': 'Av. Este #789, Col. Industrial', 'telefono': '555-3333'},
+    {'nombre': 'Centro Penitenciario Oeste', 'direccion': 'Av. Oeste #321, Col. Moderna', 'telefono': '555-4444'},
+    {'nombre': 'Centro Penitenciario Central', 'direccion': 'Calle Central #555, Centro Histórico', 'telefono': '555-5555'},
 ]
 
 for centro_data in centros_data:
     centro, created = Centro.objects.get_or_create(
-        clave=centro_data['clave'],
+        nombre=centro_data['nombre'],
         defaults=centro_data
     )
     if created:
@@ -46,27 +46,27 @@ for centro_data in centros_data:
 # Crear Productos
 print("\n💊 Creando productos...")
 productos_data = [
-    {'clave': 'MED-001', 'descripcion': 'Paracetamol 500mg', 'unidad_medida': 'TABLETA', 'precio_unitario': Decimal('2.50'), 'stock_minimo': 100},
-    {'clave': 'MED-002', 'descripcion': 'Ibuprofeno 400mg', 'unidad_medida': 'CAPSULA', 'precio_unitario': Decimal('3.00'), 'stock_minimo': 80},
-    {'clave': 'MED-003', 'descripcion': 'Amoxicilina 500mg', 'unidad_medida': 'CAPSULA', 'precio_unitario': Decimal('5.00'), 'stock_minimo': 60},
-    {'clave': 'MED-004', 'descripcion': 'Omeprazol 20mg', 'unidad_medida': 'CAPSULA', 'precio_unitario': Decimal('4.50'), 'stock_minimo': 50},
-    {'clave': 'MED-005', 'descripcion': 'Loratadina 10mg', 'unidad_medida': 'TABLETA', 'precio_unitario': Decimal('3.50'), 'stock_minimo': 40},
-    {'clave': 'MED-006', 'descripcion': 'Metformina 850mg', 'unidad_medida': 'TABLETA', 'precio_unitario': Decimal('4.00'), 'stock_minimo': 70},
-    {'clave': 'MED-007', 'descripcion': 'Atorvastatina 20mg', 'unidad_medida': 'TABLETA', 'precio_unitario': Decimal('6.50'), 'stock_minimo': 50},
-    {'clave': 'MED-008', 'descripcion': 'Losartán 50mg', 'unidad_medida': 'TABLETA', 'precio_unitario': Decimal('5.50'), 'stock_minimo': 60},
-    {'clave': 'MED-009', 'descripcion': 'Clonazepam 2mg', 'unidad_medida': 'TABLETA', 'precio_unitario': Decimal('7.00'), 'stock_minimo': 30},
-    {'clave': 'MED-010', 'descripcion': 'Ranitidina 150mg', 'unidad_medida': 'TABLETA', 'precio_unitario': Decimal('3.80'), 'stock_minimo': 55},
+    {'codigo_barras': 'MED-001', 'nombre': 'Paracetamol 500mg', 'descripcion': 'Tabletas analgésicas', 'unidad_medida': 'pieza', 'categoria': 'medicamento', 'stock_minimo': 100},
+    {'codigo_barras': 'MED-002', 'nombre': 'Ibuprofeno 400mg', 'descripcion': 'Cápsulas antiinflamatorias', 'unidad_medida': 'pieza', 'categoria': 'medicamento', 'stock_minimo': 80},
+    {'codigo_barras': 'MED-003', 'nombre': 'Amoxicilina 500mg', 'descripcion': 'Antibiótico de amplio espectro', 'unidad_medida': 'pieza', 'categoria': 'medicamento', 'stock_minimo': 60},
+    {'codigo_barras': 'MED-004', 'nombre': 'Omeprazol 20mg', 'descripcion': 'Inhibidor de bomba de protones', 'unidad_medida': 'pieza', 'categoria': 'medicamento', 'stock_minimo': 50},
+    {'codigo_barras': 'MED-005', 'nombre': 'Loratadina 10mg', 'descripcion': 'Antihistamínico', 'unidad_medida': 'pieza', 'categoria': 'medicamento', 'stock_minimo': 40},
+    {'codigo_barras': 'MED-006', 'nombre': 'Metformina 850mg', 'descripcion': 'Antidiabético oral', 'unidad_medida': 'pieza', 'categoria': 'medicamento', 'stock_minimo': 70},
+    {'codigo_barras': 'MED-007', 'nombre': 'Atorvastatina 20mg', 'descripcion': 'Reductor de colesterol', 'unidad_medida': 'pieza', 'categoria': 'medicamento', 'stock_minimo': 50},
+    {'codigo_barras': 'MED-008', 'nombre': 'Losartán 50mg', 'descripcion': 'Antihipertensivo', 'unidad_medida': 'pieza', 'categoria': 'medicamento', 'stock_minimo': 60},
+    {'codigo_barras': 'MED-009', 'nombre': 'Clonazepam 2mg', 'descripcion': 'Ansiolítico controlado', 'unidad_medida': 'pieza', 'categoria': 'medicamento', 'stock_minimo': 30, 'es_controlado': True, 'requiere_receta': True},
+    {'codigo_barras': 'MED-010', 'nombre': 'Ranitidina 150mg', 'descripcion': 'Antiácido', 'unidad_medida': 'pieza', 'categoria': 'medicamento', 'stock_minimo': 55},
 ]
 
 for prod_data in productos_data:
     producto, created = Producto.objects.get_or_create(
-        clave=prod_data['clave'],
+        codigo_barras=prod_data['codigo_barras'],
         defaults=prod_data
     )
     if created:
-        print(f"✅ Producto creado: {producto.descripcion}")
+        print(f"✅ Producto creado: {producto.nombre}")
     else:
-        print(f"ℹ️  Producto existente: {producto.descripcion}")
+        print(f"ℹ️  Producto existente: {producto.nombre}")
 
 # Crear Lotes con diferentes estados de caducidad
 print("\n📦 Creando lotes...")
@@ -80,12 +80,16 @@ estados_caducidad = [
 
 lote_counter = 1
 centros = Centro.objects.all()
+precios_base = [Decimal('2.50'), Decimal('3.00'), Decimal('5.00'), Decimal('4.50'), Decimal('3.50'),
+                Decimal('4.00'), Decimal('6.50'), Decimal('5.50'), Decimal('7.00'), Decimal('3.80')]
+
 for i, producto in enumerate(productos):
     # Crear 2 lotes por producto con diferentes estados
     for j, (estado, dias) in enumerate(estados_caducidad[:2]):
         cantidad = 150 + (j * 100)
         centro = centros[i % len(centros)] if centros.exists() else None
-        precio = round(float(producto.precio_unitario) * 0.7, 2)
+        precio_base = precios_base[i % len(precios_base)]
+        precio = round(float(precio_base) * 0.7, 2)
         lote, created = Lote.objects.get_or_create(
             numero_lote=f'LOTE-2025-{lote_counter:03d}',
             producto=producto,
@@ -99,7 +103,7 @@ for i, producto in enumerate(productos):
             }
         )
         if created:
-            print(f"✅ Lote {estado}: {lote.numero_lote} - {producto.clave}")
+            print(f"✅ Lote {estado}: {lote.numero_lote} - {producto.codigo_barras or producto.nombre}")
         lote_counter += 1
 
 # Crear algunos movimientos
@@ -113,6 +117,7 @@ for i, lote in enumerate(lotes):
     # Crear SALIDA (cantidad negativa)
     if lote.cantidad_actual > 50:
         Movimiento.objects.create(
+            producto=lote.producto,
             lote=lote,
             centro_origen=centro,
             tipo='salida',
