@@ -32,17 +32,32 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { getRolPrincipal, permisos, user } = usePermissions();
   const rolPrincipal = getRolPrincipal();
-  const esVistaUser = rolPrincipal === 'VISTA_USER' || rolPrincipal === 'VISTA';
   
-  // Detectar si el usuario tiene acceso global o está restringido a un centro
-  // NOTA: El backend solo acepta filtro por centro para ADMIN/FARMACIA, no para VISTA
-  const puedeVerGlobal = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
-  // Solo ADMIN/FARMACIA pueden filtrar por centro en el backend
-  const puedeFiltrarPorCentro = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
+  // Detectar tipo de usuario para control de acceso
+  const esAdmin = rolPrincipal === 'ADMIN';
+  const esFarmacia = rolPrincipal === 'FARMACIA';
+  const esVista = rolPrincipal === 'VISTA' || rolPrincipal === 'VISTA_USER';
+  const esCentro = rolPrincipal === 'CENTRO';
+  
+  // Usuarios con acceso global (pueden ver todos los centros)
+  const puedeVerGlobal = esAdmin || esFarmacia || esVista || permisos?.isSuperuser;
+  
+  // Solo ADMIN y FARMACIA pueden usar el selector de centros para filtrar
+  // VISTA puede ver todo pero NO cambiar el filtro (ve global por defecto)
+  const puedeFiltrarPorCentro = (esAdmin || esFarmacia) && !esCentro;
+  
+  // Centro del usuario (para usuarios de CENTRO restringidos a su centro)
   const centroUsuario = user?.centro?.id || user?.centro;
-  // VISTA_USER también debe estar restringido a su centro asignado (no excluir con !esVistaUser)
-  const esCentroUser = rolPrincipal === 'CENTRO' || rolPrincipal === 'VISTA' || rolPrincipal === 'VISTA_USER' || 
-                       (!puedeVerGlobal && centroUsuario);
+  
+  // Usuario restringido a un centro específico (CENTRO users)
+  const esCentroRestringido = esCentro || (!puedeVerGlobal && centroUsuario);
+  
+  // Permisos de gráficas:
+  // - ADMIN y FARMACIA: Ven todas las gráficas incluyendo requisiciones por estado
+  const puedeVerGraficasCompletas = esAdmin || esFarmacia || permisos?.isSuperuser;
+  // - VISTA, CENTRO y usuarios con permisos: Ven gráficas básicas (consumo y stock)
+  // - CENTRO ve solo datos de su centro (filtrado en loadDashboard)
+  const puedeVerGraficasBasicas = puedeVerGraficasCompletas || esVista || esCentro;
 
   const [kpis, setKpis] = useState({
     total_productos: 0,
@@ -60,8 +75,8 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [movimientosCollapsed, setMovimientosCollapsed] = useState(true); // Colapsado por defecto
-  // Para usuarios de centro o VISTA, forzar su centro asignado; para globales (ADMIN/FARMACIA), null (todos)
-  const [selectedCentro, setSelectedCentro] = useState(esCentroUser ? centroUsuario : null);
+  // Para usuarios restringidos a centro, forzar su centro; para globales (ADMIN/FARMACIA/VISTA), null (todos)
+  const [selectedCentro, setSelectedCentro] = useState(esCentroRestringido ? centroUsuario : null);
   const [centroNombre, setCentroNombre] = useState('');
 
   // eslint-disable-next-line no-unused-vars
@@ -106,9 +121,9 @@ const Dashboard = () => {
         throw new Error('Sesión no encontrada');
       }
 
-      // Para usuarios de centro, SIEMPRE forzar su centro asignado
+      // Para usuarios restringidos a centro, SIEMPRE forzar su centro asignado
       // Esto asegura aislamiento de datos aunque el backend también lo valide
-      const centroEfectivo = esCentroUser ? centroUsuario : centroId;
+      const centroEfectivo = esCentroRestringido ? centroUsuario : centroId;
       
       // Parámetros con filtro de centro
       const params = centroEfectivo ? { centro: centroEfectivo } : {};
@@ -123,20 +138,15 @@ const Dashboard = () => {
         movimientos_mes: 0,
       };
 
-      setKpis(
-        esVistaUser
-          ? {
-              lotes_activos: nextKpis.lotes_activos,
-              stock_total: nextKpis.stock_total,
-            }
-          : nextKpis,
-      );
+      // Usuarios de CENTRO o VISTA ven todos los KPIs
+      // Ya no limitamos KPIs para esVista - todos los roles ven los 4 KPIs
+      setKpis(nextKpis);
 
       // Filtrar movimientos para Vista: solo los que tengan producto__clave
       // El backend ya debería filtrar por centro, pero añadimos filtro local por seguridad
       const movimientosData = response.data.ultimos_movimientos || [];
       setMovimientos(
-        esVistaUser ? movimientosData.filter((mov) => mov.producto__clave) : movimientosData,
+        esVista ? movimientosData.filter((mov) => mov.producto__clave) : movimientosData,
       );
 
       // Cargar datos de gráficas
@@ -167,7 +177,7 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [esVistaUser, esCentroUser, centroUsuario]);
+  }, [esVista, esCentroRestringido, centroUsuario]);
 
   useEffect(() => {
     // No cargar si no tiene permiso de dashboard o no hay token
@@ -184,8 +194,8 @@ const Dashboard = () => {
   }, [loadDashboard, selectedCentro, permisos?.verDashboard]);
 
   const handleCentroChange = (centroId, nombreCentro = '') => {
-    // Los usuarios de centro no pueden cambiar su centro
-    if (esCentroUser) return;
+    // Los usuarios restringidos a centro no pueden cambiar su centro
+    if (esCentroRestringido) return;
     
     setSelectedCentro(centroId);
     setCentroNombre(nombreCentro);
@@ -336,8 +346,8 @@ const Dashboard = () => {
         </div>
       )}
       
-      {/* Indicador de centro fijo para usuarios de centro (no pueden cambiar) */}
-      {esCentroUser && centroUsuario && (
+      {/* Indicador de centro fijo para usuarios restringidos a centro (no pueden cambiar) */}
+      {esCentroRestringido && centroUsuario && (
         <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2">
           <span className="text-blue-600 font-medium">📍 Mostrando datos de tu centro asignado</span>
         </div>
@@ -419,8 +429,8 @@ const Dashboard = () => {
           })}
       </div>
 
-      {/* Gráficas Analíticas */}
-      {!esVistaUser && (
+      {/* Gráficas Analíticas - Visible para todos excepto usuarios sin graficas basicas */}
+      {puedeVerGraficasBasicas && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
           {/* Gráfica 1: Consumo Mensual */}
           <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
@@ -485,8 +495,8 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* Gráfica 3: Requisiciones por Estado - Solo si hay datos */}
-      {!esVistaUser && graficas.requisiciones_por_estado.length > 0 && (
+      {/* Gráfica 3: Requisiciones por Estado - Solo si tiene permiso y hay datos */}
+      {puedeVerGraficasCompletas && graficas.requisiciones_por_estado.length > 0 && (
         <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200 mt-6">
           <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: 'var(--color-primary-hover, #6B1839)' }}>
             <FaBox /> Requisiciones por Estado
@@ -514,7 +524,7 @@ const Dashboard = () => {
       )}
 
       {/* Últimos Movimientos - Solo si tiene permiso de ver movimientos */}
-      {!esVistaUser && permisos?.verMovimientos && movimientos.length > 0 && (
+      {puedeVerGraficasBasicas && permisos?.verMovimientos && movimientos.length > 0 && (
         <div className="dashboard-section mt-6">
           <div className="section-header" style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => setMovimientosCollapsed(!movimientosCollapsed)}>
             <h3>

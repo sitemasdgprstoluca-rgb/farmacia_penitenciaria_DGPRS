@@ -123,10 +123,12 @@ class QueryOptimizer:
             queryset = Movimiento.objects.all()
         
         return queryset.select_related(
+            'producto',
             'lote',
             'lote__producto',
             'lote__centro',
-            'centro',
+            'centro_origen',
+            'centro_destino',
             'usuario',
             'requisicion'
         )
@@ -250,8 +252,12 @@ class ReportPermissionFilter:
         # ISS-033: Optimizar queryset
         queryset = QueryOptimizer.requisiciones_optimizadas(queryset)
         
-        # ISS-017: Aplicar filtro de centro
-        queryset = self.aplicar_filtro_centro(queryset)
+        # ISS-017: Aplicar filtro de centro (Requisicion usa centro_destino o centro_origen)
+        if not self.es_admin and not self.es_vista and self.centro_usuario:
+            queryset = queryset.filter(
+                Q(centro_destino_id=self.centro_usuario) | 
+                Q(centro_origen_id=self.centro_usuario)
+            )
         
         # Aplicar filtros adicionales
         if filtros:
@@ -286,10 +292,11 @@ class ReportPermissionFilter:
         queryset = QueryOptimizer.movimientos_optimizados(queryset)
         
         # ISS-017: Aplicar filtro de centro
-        # Movimientos pueden estar en lote.centro o en campo centro
+        # Movimientos pueden estar en centro_origen, centro_destino o lote.centro
         if not self.es_admin and not self.es_vista and self.centro_usuario:
             queryset = queryset.filter(
-                Q(centro_id=self.centro_usuario) | 
+                Q(centro_origen_id=self.centro_usuario) | 
+                Q(centro_destino_id=self.centro_usuario) |
                 Q(lote__centro_id=self.centro_usuario)
             )
         
@@ -305,7 +312,8 @@ class ReportPermissionFilter:
                 queryset = queryset.filter(lote__producto_id=filtros.producto_id)
             if filtros.centro_id:
                 queryset = queryset.filter(
-                    Q(centro_id=filtros.centro_id) | 
+                    Q(centro_origen_id=filtros.centro_id) | 
+                    Q(centro_destino_id=filtros.centro_id) |
                     Q(lote__centro_id=filtros.centro_id)
                 )
         
@@ -387,12 +395,12 @@ class ReportGenerator:
         # Agrupar por centro y producto
         resumen = lotes.values(
             'centro__nombre',
-            'producto__clave',
-            'producto__descripcion'
+            'producto__codigo_barras',
+            'producto__nombre'
         ).annotate(
             cantidad_total=Sum('cantidad_actual'),
             lotes_count=Count('id')
-        ).order_by('centro__nombre', 'producto__descripcion')
+        ).order_by('centro__nombre', 'producto__nombre')
         
         return {
             'tipo': 'inventario_por_centro',
@@ -482,14 +490,14 @@ class ReportGenerator:
             count=Count('id')
         ).order_by('estado')
         
-        # Resumen por centro
+        # Resumen por centro destino
         resumen_centro = requisiciones.values(
-            'centro__nombre'
+            'centro_destino__nombre'
         ).annotate(
             count=Count('id'),
             pendientes=Count('id', filter=Q(estado__in=['borrador', 'enviada'])),
             completadas=Count('id', filter=Q(estado='recibida'))
-        ).order_by('centro__nombre')
+        ).order_by('centro_destino__nombre')
         
         return {
             'tipo': 'requisiciones_estado',

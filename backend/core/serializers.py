@@ -285,17 +285,24 @@ class CentroSerializer(serializers.ModelSerializer):
 class ProductoSerializer(serializers.ModelSerializer):
     stock_actual = serializers.SerializerMethodField()
     lotes_activos = serializers.SerializerMethodField()
+    # Campo 'clave' para compatibilidad con frontend (mapea a codigo_barras)
+    clave = serializers.CharField(source='codigo_barras', required=False, allow_null=True, allow_blank=True)
     
     class Meta:
         model = Producto
         fields = [
-            'id', 'codigo_barras', 'nombre', 'descripcion', 'unidad_medida',
+            'id', 'clave', 'codigo_barras', 'nombre', 'descripcion', 'unidad_medida',
             'categoria', 'stock_minimo', 'stock_actual', 'sustancia_activa',
             'presentacion', 'concentracion', 'via_administracion',
             'requiere_receta', 'es_controlado', 'activo', 'imagen',
             'lotes_activos', 'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at', 'stock_actual']
+        extra_kwargs = {
+            'codigo_barras': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'nombre': {'required': False},  # Se puede generar desde descripcion
+            'descripcion': {'required': False, 'allow_null': True, 'allow_blank': True},
+        }
     
     def get_stock_actual(self, obj):
         return getattr(obj, 'stock_actual', 0) or 0
@@ -303,6 +310,31 @@ class ProductoSerializer(serializers.ModelSerializer):
     def get_lotes_activos(self, obj):
         # Filtrar por activo=True, no por estado (que es propiedad calculada)
         return obj.lotes.filter(activo=True, cantidad_actual__gt=0).count()
+    
+    def to_internal_value(self, data):
+        # Copiar datos para no mutar el original
+        if hasattr(data, 'copy'):
+            data = data.copy()
+        else:
+            data = dict(data)
+        
+        # Si viene 'clave' pero no 'codigo_barras', mapear automáticamente
+        if 'clave' in data and 'codigo_barras' not in data:
+            data['codigo_barras'] = data.pop('clave')
+        
+        # Si no viene 'nombre', generarlo desde descripcion o codigo_barras
+        if 'nombre' not in data or not data.get('nombre'):
+            nombre_candidato = data.get('descripcion') or data.get('codigo_barras') or 'Producto sin nombre'
+            data['nombre'] = str(nombre_candidato)[:255]
+        
+        return super().to_internal_value(data)
+    
+    def validate(self, attrs):
+        # Asegurar que nombre tenga valor
+        if not attrs.get('nombre'):
+            descripcion = attrs.get('descripcion') or attrs.get('codigo_barras') or 'Producto sin nombre'
+            attrs['nombre'] = str(descripcion)[:255]
+        return attrs
 
 
 # =============================================================================
@@ -316,13 +348,15 @@ class LoteSerializer(serializers.ModelSerializer):
     estado = serializers.SerializerMethodField()
     # precio_unitario tiene precision 12, default 0 en BD
     precio_unitario = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, default=0)
+    # Campo 'precio_compra' para compatibilidad con frontend (alias de precio_unitario)
+    precio_compra = serializers.DecimalField(source='precio_unitario', max_digits=12, decimal_places=2, required=False, allow_null=True)
     
     class Meta:
         model = Lote
         fields = [
             'id', 'producto', 'producto_nombre', 'centro', 'centro_nombre',
             'numero_lote', 'fecha_caducidad', 'fecha_fabricacion',
-            'cantidad_inicial', 'cantidad_actual', 'precio_unitario',
+            'cantidad_inicial', 'cantidad_actual', 'precio_unitario', 'precio_compra',
             'numero_contrato', 'marca', 'ubicacion', 'activo', 'estado',
             'dias_para_caducar', 'created_at', 'updated_at'
         ]
@@ -333,6 +367,13 @@ class LoteSerializer(serializers.ModelSerializer):
             'marca': {'required': False, 'allow_null': True, 'allow_blank': True},
             'ubicacion': {'required': False, 'allow_null': True, 'allow_blank': True},
         }
+    
+    def to_internal_value(self, data):
+        # Si viene 'precio_compra' pero no 'precio_unitario', mapear automáticamente
+        if 'precio_compra' in data and 'precio_unitario' not in data:
+            data = data.copy()
+            data['precio_unitario'] = data.pop('precio_compra')
+        return super().to_internal_value(data)
     
     def get_dias_para_caducar(self, obj):
         if obj.fecha_caducidad:
@@ -393,11 +434,18 @@ class RequisicionSerializer(serializers.ModelSerializer):
     solicitante_nombre = serializers.SerializerMethodField()
     autorizador_nombre = serializers.SerializerMethodField()
     total_productos = serializers.SerializerMethodField()
+    # Campo 'centro' para compatibilidad con frontend (alias de centro_destino)
+    centro = serializers.PrimaryKeyRelatedField(
+        source='centro_destino', queryset=Centro.objects.all(), 
+        required=False, allow_null=True, write_only=True
+    )
+    # Campo 'comentario' para compatibilidad con frontend (alias de notas)
+    comentario = serializers.CharField(source='notas', required=False, allow_blank=True, allow_null=True, write_only=True)
     
     class Meta:
         model = Requisicion
         fields = [
-            'id', 'numero', 'centro_origen', 'centro_origen_nombre', 
+            'id', 'numero', 'centro', 'comentario', 'centro_origen', 'centro_origen_nombre', 
             'centro_destino', 'centro_destino_nombre',
             'solicitante', 'solicitante_nombre', 'autorizador', 'autorizador_nombre',
             'fecha_solicitud', 'fecha_autorizacion', 'fecha_surtido', 'fecha_entrega',

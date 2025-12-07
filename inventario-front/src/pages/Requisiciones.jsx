@@ -33,10 +33,45 @@ import {
   FaChevronDown,
   FaCamera,
   FaFileUpload,
+  FaSpinner,
 } from 'react-icons/fa';
 import { COLORS } from '../constants/theme';
 
 const PAGE_SIZE = 10;
+
+// Componente para previsualizar foto de firma sin memory leak
+const FotoFirmaSurtidoPreview = ({ archivo, onRemove }) => {
+  const [previewUrl, setPreviewUrl] = useState(null);
+  
+  useEffect(() => {
+    if (!archivo) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(archivo);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [archivo]);
+  
+  if (!previewUrl) return null;
+  
+  return (
+    <div className="relative">
+      <img
+        src={previewUrl}
+        alt="Firma"
+        className="h-16 w-16 rounded-lg object-cover border"
+      />
+      <button
+        type="button"
+        onClick={onRemove}
+        className="absolute -top-2 -right-2 rounded-full bg-red-500 text-white p-1 text-xs hover:bg-red-600"
+      >
+        ✕
+      </button>
+    </div>
+  );
+};
 
 const Requisiciones = () => {
   const navigate = useNavigate();
@@ -1388,7 +1423,11 @@ const Requisiciones = () => {
                       disabled={isSubmitting || actionLoading === req.id}
                       className="bg-gray-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-gray-800 disabled:opacity-50"
                     >
-                      <FaPaperPlane /> Enviar
+                      {actionLoading === req.id ? (
+                        <FaSpinner className="animate-spin" />
+                      ) : (
+                        <FaPaperPlane />
+                      )} Enviar
                     </button>
                   )}
 
@@ -1413,7 +1452,11 @@ const Requisiciones = () => {
                       disabled={isSubmitting || actionLoading === req.id}
                       className="bg-red-100 text-red-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-red-200 border border-red-300 disabled:opacity-50"
                     >
-                      <FaTimes /> Rechazar
+                      {actionLoading === req.id ? (
+                        <FaSpinner className="animate-spin" />
+                      ) : (
+                        <FaTimes />
+                      )} Rechazar
                     </button>
                   )}
 
@@ -1423,7 +1466,11 @@ const Requisiciones = () => {
                       disabled={isSubmitting || actionLoading === req.id}
                       className="text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:opacity-90 disabled:opacity-50 bg-theme-primary"
                     >
-                      <FaBoxOpen /> Surtir
+                      {actionLoading === req.id ? (
+                        <FaSpinner className="animate-spin" />
+                      ) : (
+                        <FaBoxOpen />
+                      )} Surtir
                     </button>
                   )}
 
@@ -1462,7 +1509,11 @@ const Requisiciones = () => {
                       disabled={isSubmitting || actionLoading === req.id}
                       className="bg-gray-100 text-gray-600 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-gray-200 border border-gray-300 disabled:opacity-50"
                     >
-                      <FaBan /> Cancelar
+                      {actionLoading === req.id ? (
+                        <FaSpinner className="animate-spin" />
+                      ) : (
+                        <FaBan />
+                      )} Cancelar
                     </button>
                   )}
 
@@ -1472,7 +1523,11 @@ const Requisiciones = () => {
                       disabled={isSubmitting || actionLoading === req.id}
                       className="border border-red-300 text-red-600 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-red-50 transition-colors disabled:opacity-50"
                     >
-                      <FaTrash /> Eliminar
+                      {actionLoading === req.id ? (
+                        <FaSpinner className="animate-spin" />
+                      ) : (
+                        <FaTrash />
+                      )} Eliminar
                     </button>
                   )}
                 </div>
@@ -1901,6 +1956,7 @@ const Requisiciones = () => {
                   }
                   className="px-5 py-2 rounded-lg border-2 font-semibold hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 border-theme-primary text-theme-primary"
                 >
+                  {isSubmitting && <FaSpinner className="animate-spin" />}
                   {isSubmitting ? 'Guardando...' : 'Guardar borrador'}
                 </button>
                 {/* Botón guardar y enviar - requiere permiso crear/editar + enviar + centro */}
@@ -1925,7 +1981,7 @@ const Requisiciones = () => {
                   }
                   className="px-5 py-2 rounded-lg text-white font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 bg-theme-primary"
                 >
-                  <FaPaperPlane />
+                  {isSubmitting ? <FaSpinner className="animate-spin" /> : <FaPaperPlane />}
                   {isSubmitting ? 'Enviando...' : 'Guardar y enviar'}
                 </button>
               </div>
@@ -1983,20 +2039,10 @@ const Requisiciones = () => {
                 </p>
                 <div className="flex items-center gap-3">
                   {fotoFirmaSurtido && (
-                    <div className="relative">
-                      <img
-                        src={URL.createObjectURL(fotoFirmaSurtido)}
-                        alt="Firma"
-                        className="h-16 w-16 rounded-lg object-cover border"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setFotoFirmaSurtido(null)}
-                        className="absolute -top-2 -right-2 rounded-full bg-red-500 text-white p-1 text-xs hover:bg-red-600"
-                      >
-                        ✕
-                      </button>
-                    </div>
+                    <FotoFirmaSurtidoPreview 
+                      archivo={fotoFirmaSurtido} 
+                      onRemove={() => setFotoFirmaSurtido(null)} 
+                    />
                   )}
                   <label className="cursor-pointer flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 hover:bg-gray-100">
                     <FaFileUpload className="text-gray-500" />

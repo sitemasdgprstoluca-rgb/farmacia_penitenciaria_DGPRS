@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { trazabilidadAPI, productosAPI, lotesAPI, centrosAPI, descargarArchivo } from '../services/api';
 import { toast } from 'react-hot-toast';
-import { FaSearch, FaBox, FaWarehouse, FaHistory, FaExclamationTriangle, FaFilePdf, FaBuilding, FaLock } from 'react-icons/fa';
+import { FaSearch, FaBox, FaWarehouse, FaHistory, FaExclamationTriangle, FaFilePdf, FaBuilding, FaLock, FaSpinner, FaInfoCircle } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import AutocompleteInput from '../components/AutocompleteInput';
 import { usePermissions } from '../hooks/usePermissions';
@@ -122,13 +122,18 @@ const normalizeLoteResponse = (data) => {
 // ============================================
 
 const Trazabilidad = () => {
-  const { getRolPrincipal, permisos } = usePermissions();
+  const { getRolPrincipal, permisos, user } = usePermissions();
   const rolPrincipal = getRolPrincipal();
   
   // PERMISOS: Solo ADMIN y FARMACIA pueden buscar por lote y ver contratos
   const esAdminOFarmacia = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
   const puedeVerContrato = esAdminOFarmacia;
   const puedeBuscarPorLote = esAdminOFarmacia;
+  const esCentroUser = rolPrincipal === 'CENTRO';
+  
+  // ISS-FIX: Obtener centro del usuario desde el hook en lugar de localStorage
+  const centroUsuarioId = user?.centro?.id || user?.centro || user?.centro_id;
+  const centroUsuarioNombre = user?.centro?.nombre || user?.centro_nombre || null;
 
   // Estados principales
   const [tipoBusqueda, setTipoBusqueda] = useState('producto');
@@ -138,31 +143,19 @@ const Trazabilidad = () => {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [resultados, setResultados] = useState(null);
   
-  // Filtro de centro
+  // Filtro de centro (solo para admin/farmacia)
   const [centros, setCentros] = useState([]);
   const [centroFiltro, setCentroFiltro] = useState('');
-  const [centroUsuario, setCentroUsuario] = useState(null);
   
   // Control de debounce para evitar múltiples llamadas
   const debounceRef = useRef(null);
-  const lastSearchRef = useRef({ tipo: '', codigo: '' });
+  const lastSearchRef = useRef({ tipo: '', codigo: '', centro: '' });
 
   // Cargar centros al montar (solo para admin/farmacia)
   useEffect(() => {
     const cargarCentros = async () => {
       if (!esAdminOFarmacia) {
-        // Usuario de centro: obtener su centro desde el perfil
-        try {
-          const userStr = localStorage.getItem('user');
-          if (userStr) {
-            const user = JSON.parse(userStr);
-            if (user.centro_nombre || user.centro) {
-              setCentroUsuario(user.centro_nombre || `Centro ${user.centro}`);
-            }
-          }
-        } catch (e) {
-          console.warn('No se pudo obtener centro del usuario:', e);
-        }
+        // Usuario de centro: el centro se obtiene del hook usePermissions
         return;
       }
       
@@ -263,6 +256,7 @@ const Trazabilidad = () => {
     // Evitar búsquedas duplicadas
     if (lastSearchRef.current.tipo === tipoBusqueda && 
         lastSearchRef.current.codigo === codigoTrimmed &&
+        lastSearchRef.current.centro === centroFiltro &&
         resultados) {
       toast('Ya tienes estos resultados cargados', { icon: 'ℹ️' });
       return;
@@ -271,15 +265,18 @@ const Trazabilidad = () => {
     setLoading(true);
     try {
       const normalizer = tipoBusqueda === 'producto' ? normalizeProductoResponse : normalizeLoteResponse;
+      
+      // Preparar parámetros con filtro de centro opcional (solo para admin/farmacia)
+      const params = centroFiltro ? { centro: centroFiltro } : {};
 
       const response = tipoBusqueda === 'producto'
-        ? await trazabilidadAPI.producto(codigoTrimmed)
-        : await trazabilidadAPI.lote(codigoTrimmed);
+        ? await trazabilidadAPI.producto(codigoTrimmed, params)
+        : await trazabilidadAPI.lote(codigoTrimmed, params);
 
       const datosNormalizados = normalizer(response.data);
       setResultados(datosNormalizados);
       setCodigoResultados(codigoTrimmed); // Sincronizar código con resultados
-      lastSearchRef.current = { tipo: tipoBusqueda, codigo: codigoTrimmed };
+      lastSearchRef.current = { tipo: tipoBusqueda, codigo: codigoTrimmed, centro: centroFiltro };
       
       toast.success('Trazabilidad cargada correctamente');
     } catch (error) {
@@ -312,7 +309,7 @@ const Trazabilidad = () => {
     setResultados(null);
     setTipoBusqueda('producto'); // Restablecer a producto (siempre permitido)
     setCentroFiltro('');
-    lastSearchRef.current = { tipo: '', codigo: '' };
+    lastSearchRef.current = { tipo: '', codigo: '', centro: '' };
     
     // Limpiar debounce pendiente
     if (debounceRef.current) {
@@ -449,11 +446,11 @@ const Trazabilidad = () => {
     return 'bg-emerald-100 text-emerald-700';
   };
 
-  // Badge de contexto para el header
-  const badgeContent = centroUsuario ? (
+  // Badge de contexto para el header - muestra rol y centro si aplica
+  const badgeContent = esCentroUser && centroUsuarioNombre ? (
     <span className="flex items-center gap-2 rounded-full bg-white/20 px-4 py-1 text-sm font-semibold">
       <FaBuilding />
-      {centroUsuario}
+      {centroUsuarioNombre}
     </span>
   ) : null;
 
@@ -462,9 +459,26 @@ const Trazabilidad = () => {
       <PageHeader
         icon={FaHistory}
         title="Trazabilidad"
-        subtitle="Consulta el historial completo de productos y lotes"
+        subtitle={`Consulta el historial completo de productos y lotes | Rol: ${rolPrincipal}`}
         badge={badgeContent}
       />
+
+      {/* ISS-FIX: Banner para usuarios CENTRO indicando filtro automático */}
+      {esCentroUser && centroUsuarioNombre && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-3">
+          <div className="bg-blue-100 p-2 rounded-lg">
+            <FaInfoCircle className="text-blue-600" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-blue-800">
+              Trazabilidad de: {centroUsuarioNombre}
+            </p>
+            <p className="text-xs text-blue-600">
+              Los resultados se filtran automáticamente por tu centro asignado.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white p-6 rounded-lg shadow">
         <form onSubmit={handleBuscar} className="space-y-4">
@@ -551,7 +565,7 @@ const Trazabilidad = () => {
               >
                 {loading ? (
                   <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                    <FaSpinner className="animate-spin" />
                     Buscando...
                   </>
                 ) : (
@@ -642,7 +656,7 @@ const Trazabilidad = () => {
               >
                 {exportingPdf ? (
                   <>
-                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                    <FaSpinner className="animate-spin" />
                     Generando...
                   </>
                 ) : (

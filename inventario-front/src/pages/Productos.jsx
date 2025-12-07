@@ -20,7 +20,9 @@ import {
 
   FaDownload,
 
-  FaBoxOpen
+  FaBoxOpen,
+
+  FaHistory
 
 } from 'react-icons/fa';
 
@@ -418,6 +420,9 @@ const Productos = () => {
   const esCentroUser = rolPrincipal === 'CENTRO';
   const esVistaUser = rolPrincipal === 'VISTA';
   
+  // ISS-FIX: Obtener nombre del centro para usuarios CENTRO
+  const centroNombre = user?.centro?.nombre || user?.centro_nombre || null;
+  
   // Verificar permisos granulares del backend para productos
   // Estos flags específicos tienen prioridad sobre el rol genérico
   const tienePermisoProductos = permisos?.verProductos === true;
@@ -444,6 +449,8 @@ const Productos = () => {
     verSoloActivos: esCentroUser,
     soloLectura: !tieneEditarProducto || !tienePermisoProductos,
     auditoria: tienePermisoProductos && esFarmaciaAdmin,
+    // Indica si debe mostrar la columna de acciones (al menos un permiso de acción)
+    tieneAcciones: tieneEditarProducto || tieneEliminarProducto || (tienePermisoProductos && esFarmaciaAdmin),
   }), [tienePermisoProductos, tieneCrearProducto, tieneEditarProducto, tieneEliminarProducto, tieneExportarProductos, tieneImportarProductos, esFarmaciaAdmin, esCentroUser, esVistaUser]);
 
 
@@ -1007,8 +1014,44 @@ const Productos = () => {
     } catch (err) {
 
       console.error('Error al guardar producto', err);
-
-      toast.error(err.response?.data?.error || 'Error al guardar producto');
+      
+      // Mapear errores del backend a campos del formulario
+      const backendErrors = err.response?.data;
+      if (backendErrors && typeof backendErrors === 'object') {
+        const newFormErrors = {};
+        // Mapear campos de error del backend
+        const fieldMap = {
+          'codigo_barras': 'clave',
+          'clave': 'clave',
+          'nombre': 'descripcion',
+          'descripcion': 'descripcion',
+          'unidad_medida': 'unidad_medida',
+          'stock_minimo': 'stock_minimo',
+          'precio_unitario': 'precio_unitario',
+        };
+        
+        let hasFieldErrors = false;
+        for (const [backendField, messages] of Object.entries(backendErrors)) {
+          if (Array.isArray(messages) && messages.length > 0) {
+            const frontendField = fieldMap[backendField] || backendField;
+            newFormErrors[frontendField] = messages[0];
+            hasFieldErrors = true;
+          }
+        }
+        
+        if (hasFieldErrors) {
+          setFormErrors(newFormErrors);
+          toast.error('Por favor corrige los errores del formulario');
+        } else if (backendErrors.error) {
+          toast.error(backendErrors.error);
+        } else if (backendErrors.detail) {
+          toast.error(backendErrors.detail);
+        } else {
+          toast.error('Error al guardar producto');
+        }
+      } else {
+        toast.error(err.response?.data?.error || 'Error al guardar producto');
+      }
 
     } finally {
 
@@ -1332,8 +1375,6 @@ const Productos = () => {
 
 
 
-
-  // eslint-disable-next-line no-unused-vars
   const verAuditoriaProducto = async (producto) => {
 
     if (!puede.auditoria) return;
@@ -1500,7 +1541,7 @@ const Productos = () => {
 
                 'Creado por',
 
-                'Acciones',
+                ...(puede.tieneAcciones ? ['Acciones'] : []),
 
               ].map((col) => (
 
@@ -1556,6 +1597,7 @@ const Productos = () => {
 
                 <td className="px-4 py-3 text-sm">{producto.creado_por || '-'}</td>
 
+                {puede.tieneAcciones && (
                 <td className="px-4 py-3 text-sm">
 
                   <div className="flex items-center gap-3">
@@ -1632,9 +1674,30 @@ const Productos = () => {
 
                     )}
 
+                    {puede.auditoria && (
+
+                      <button
+
+                        type="button"
+
+                        title="Ver historial de cambios"
+
+                        onClick={() => verAuditoriaProducto(producto)}
+
+                        className="text-purple-600 hover:text-purple-800"
+
+                      >
+
+                        <FaHistory />
+
+                      </button>
+
+                    )}
+
                   </div>
 
                 </td>
+                )}
 
               </tr>
 
@@ -1746,7 +1809,22 @@ const Productos = () => {
 
       </div>
 
-
+      {/* ISS-FIX: Banner para usuarios CENTRO indicando que ven su inventario local */}
+      {esCentroUser && centroNombre && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-3">
+          <div className="bg-blue-100 p-2 rounded-lg">
+            <FaBoxOpen className="text-blue-600" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-blue-800">
+              Inventario de: {centroNombre}
+            </p>
+            <p className="text-xs text-blue-600">
+              Estás viendo el inventario de productos surtidos a tu centro.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="mb-4 flex justify-end">
 

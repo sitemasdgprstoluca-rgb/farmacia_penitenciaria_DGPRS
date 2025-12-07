@@ -4,7 +4,7 @@ import { toast } from "react-hot-toast";
 import Pagination from "../components/Pagination";
 import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, descargarArchivo } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
-import { FaFilter, FaChevronDown, FaExchangeAlt, FaFileExcel, FaFilePdf } from "react-icons/fa";
+import { FaFilter, FaChevronDown, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle } from "react-icons/fa";
 import { COLORS } from "../constants/theme";
 
 const PAGE_SIZE = 25;
@@ -19,6 +19,8 @@ const Movimientos = () => {
   const rolPrincipal = getRolPrincipal();
   const puedeVerTodosCentros = ['ADMIN', 'FARMACIA', 'VISTA'].includes(rolPrincipal);
   const centroUsuario = user?.centro?.id || user?.centro || user?.centro_id;
+  const centroNombre = user?.centro?.nombre || user?.centro_nombre || null;
+  const esCentroUser = rolPrincipal === 'CENTRO';
   
   // Permisos específicos para acciones (usando permisos granulares)
   const puedeRegistrarMovimiento = permisos?.crearMovimiento === true;
@@ -62,9 +64,11 @@ const Movimientos = () => {
   const [lotesDisponibles, setLotesDisponibles] = useState([]);
 
   // Formulario de registro
+  // ISS-FIX: Tipo por defecto según rol - CENTRO solo puede salida/ajuste
+  const tipoDefault = puedeVerTodosCentros ? "entrada" : "salida";
   const [formData, setFormData] = useState({
     lote: "",
-    tipo: "entrada",
+    tipo: tipoDefault,
     cantidad: "",
     centro: "",
     observaciones: "",
@@ -236,19 +240,24 @@ const Movimientos = () => {
       return;
     }
 
+    // ISS-FIX: Forzar centro del usuario si no tiene permisos globales
+    const centroFinal = !puedeVerTodosCentros && centroUsuario 
+      ? parseInt(centroUsuario) 
+      : (formData.centro ? parseInt(formData.centro) : null);
+
     setSubmitting(true);
     try {
       await movimientosAPI.create({
         lote: parseInt(formData.lote),
         tipo: formData.tipo,
         cantidad: Number(formData.cantidad),
-        centro: formData.centro ? parseInt(formData.centro) : null,
+        centro: centroFinal,
         observaciones: formData.observaciones,
       });
       toast.success("Movimiento registrado exitosamente");
       setFormData({
         lote: "",
-        tipo: "entrada",
+        tipo: tipoDefault, // ISS-FIX: Usar tipo correcto según rol
         cantidad: "",
         centro: "",
         observaciones: "",
@@ -408,7 +417,7 @@ const Movimientos = () => {
                   }}
                   title={hayFiltrosPendientes ? "Aplica los filtros primero" : "Exportar a PDF"}
                 >
-                  <FaFilePdf />
+                  {exporting === 'pdf' ? <FaSpinner className="animate-spin" /> : <FaFilePdf />}
                   {exporting === 'pdf' ? 'Generando...' : 'PDF'}
                 </button>
                 <button
@@ -421,7 +430,7 @@ const Movimientos = () => {
                   }}
                   title={hayFiltrosPendientes ? "Aplica los filtros primero" : "Exportar a Excel"}
                 >
-                  <FaFileExcel />
+                  {exporting === 'excel' ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
                   {exporting === 'excel' ? 'Generando...' : 'Excel'}
                 </button>
               </>
@@ -429,6 +438,23 @@ const Movimientos = () => {
           </div>
         </div>
       </div>
+
+      {/* ISS-FIX: Banner para usuarios CENTRO indicando que solo ven movimientos de su centro */}
+      {esCentroUser && centroNombre && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-3">
+          <div className="bg-blue-100 p-2 rounded-lg">
+            <FaInfoCircle className="text-blue-600" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-blue-800">
+              Movimientos de: {centroNombre}
+            </p>
+            <p className="text-xs text-blue-600">
+              Estás viendo solo los movimientos relacionados a tu centro.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
@@ -483,10 +509,14 @@ const Movimientos = () => {
                   onChange={(e) => handleFormChange("tipo", e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="entrada">Entrada</option>
+                  {/* ISS-FIX: CENTRO solo puede hacer salidas y ajustes, no entradas */}
+                  {puedeVerTodosCentros && <option value="entrada">Entrada</option>}
                   <option value="salida">Salida</option>
                   <option value="ajuste">Ajuste</option>
                 </select>
+                {!puedeVerTodosCentros && (
+                  <p className="text-xs text-gray-500">Las entradas solo se realizan desde Farmacia Central.</p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -501,21 +531,26 @@ const Movimientos = () => {
                 />
               </div>
 
-              {/* Centro opcional */}
+              {/* Centro opcional - bloqueado para usuarios de centro */}
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-700">Centro</label>
                 <select
-                  value={formData.centro}
+                  value={!puedeVerTodosCentros && centroUsuario ? centroUsuario.toString() : formData.centro}
                   onChange={(e) => handleFormChange("centro", e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  disabled={!puedeVerTodosCentros}
+                  title={!puedeVerTodosCentros ? "Solo puedes registrar movimientos en tu centro" : ""}
                 >
-                  <option value="">-- Sin centro --</option>
+                  {puedeVerTodosCentros && <option value="">-- Sin centro --</option>}
                   {centros.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.nombre}
                     </option>
                   ))}
                 </select>
+                {!puedeVerTodosCentros && (
+                  <p className="text-xs text-gray-500">Movimientos limitados a tu centro asignado.</p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -532,8 +567,9 @@ const Movimientos = () => {
               <button
                 onClick={registrarMovimiento}
                 disabled={submitting}
-                className="w-full px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition disabled:opacity-50"
+                className="w-full px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition disabled:opacity-50 flex items-center justify-center gap-2"
               >
+                {submitting && <FaSpinner className="animate-spin" />}
                 {submitting ? "Registrando..." : "Registrar movimiento"}
               </button>
             </div>

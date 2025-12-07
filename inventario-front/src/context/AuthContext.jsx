@@ -128,8 +128,43 @@ export function AuthProvider({ children }) {
     return roles.some(r => r.toLowerCase() === userRole);
   };
 
+  /**
+   * Verifica si el usuario tiene acceso a un módulo específico.
+   * Usa los permisos booleanos del backend: perm_dashboard, perm_productos, etc.
+   * 
+   * @param {string} modulo - Nombre del módulo (dashboard, productos, lotes, etc.)
+   * @returns {boolean} - true si tiene permiso
+   */
+  const canAccess = (modulo) => {
+    if (!user) return false;
+    // Superusuarios tienen acceso a todo
+    if (user.is_superuser) return true;
+    
+    // Mapear nombre de módulo a campo perm_*
+    const permisoField = `perm_${modulo.toLowerCase()}`;
+    
+    // Si el campo existe y es explícitamente true/false, usar ese valor
+    if (permisoField in user && user[permisoField] !== null) {
+      return user[permisoField] === true;
+    }
+    
+    // Si hay permisos calculados del backend, usar esos
+    if (user.permisos && typeof user.permisos === 'object') {
+      const permisoKey = `ver${modulo.charAt(0).toUpperCase() + modulo.slice(1).toLowerCase()}`;
+      if (permisoKey in user.permisos) {
+        return user.permisos[permisoKey] === true;
+      }
+    }
+    
+    // Fallback: admins tienen acceso a todo
+    const userRole = (user.rol || '').toLowerCase();
+    if (ADMIN_ROLES.includes(userRole)) return true;
+    
+    return false;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, checkAuth, hasRole, hasAnyRole }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, checkAuth, hasRole, hasAnyRole, canAccess }}>
       {children}
     </AuthContext.Provider>
   );

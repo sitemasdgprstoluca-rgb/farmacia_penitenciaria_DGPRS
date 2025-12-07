@@ -91,7 +91,11 @@ const Lotes = () => {
   const [lotes, setLotes] = useState([]);
   const [productos, setProductos] = useState([]);
   const [centros, setCentros] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // Solo para carga de tabla
+  const [savingLote, setSavingLote] = useState(false); // Para guardar en modal
+  const [exportLoading, setExportLoading] = useState(false); // Para exportar
+  const [importLoading, setImportLoading] = useState(false); // Para importar
+  const [actionLoading, setActionLoading] = useState(null); // ID del lote en acción (delete/doc)
   const [showModal, setShowModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showDocModal, setShowDocModal] = useState(false);
@@ -319,7 +323,7 @@ const Lotes = () => {
       return;
     }
     
-    setLoading(true);
+    setSavingLote(true);
     
     try {
       const dataToSend = {
@@ -363,7 +367,7 @@ const Lotes = () => {
       toast.error(errorMsg);
       console.error(error);
     } finally {
-      setLoading(false);
+      setSavingLote(false);
     }
   };
 
@@ -390,7 +394,7 @@ const Lotes = () => {
       return;
     }
     
-    if (loading) return; // Evitar múltiples clics
+    if (actionLoading === id) return; // Evitar múltiples clics
     
     const confirmMsg = `¿Está seguro de DESACTIVAR el lote ${lote?.numero_lote || id}?\n\n` +
       `⚠️ El lote quedará marcado como eliminado (soft delete).\n` +
@@ -399,7 +403,7 @@ const Lotes = () => {
     if (!window.confirm(confirmMsg)) return;
     
     try {
-      setLoading(true);
+      setActionLoading(id);
       await lotesAPI.delete(id);
       toast.success('Lote desactivado correctamente');
       cargarLotes();
@@ -413,7 +417,7 @@ const Lotes = () => {
       }
       toast.error(errorMsg);
     } finally {
-      setLoading(false);
+      setActionLoading(null);
     }
   };
 
@@ -425,6 +429,11 @@ const Lotes = () => {
   const handleSubirDocumento = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    
+    if (!puede.subirDocumento) {
+      toast.error('No tiene permisos para subir documentos');
+      return;
+    }
     
     if (!file.name.toLowerCase().endsWith('.pdf')) {
       toast.error('Solo se permiten archivos PDF');
@@ -441,7 +450,7 @@ const Lotes = () => {
     formData.append('nombre', file.name);
     
     try {
-      setLoading(true);
+      setActionLoading(selectedLoteDoc.id);
       await lotesAPI.subirDocumento(selectedLoteDoc.id, formData);
       toast.success('Documento subido correctamente');
       setShowDocModal(false);
@@ -449,15 +458,20 @@ const Lotes = () => {
     } catch (error) {
       toast.error(error.response?.data?.error || 'Error al subir documento');
     } finally {
-      setLoading(false);
+      setActionLoading(null);
     }
   };
 
   const handleEliminarDocumento = async () => {
+    if (!puede.subirDocumento) {
+      toast.error('No tiene permisos para eliminar documentos');
+      return;
+    }
+    
     if (!window.confirm('¿Está seguro de eliminar el documento?')) return;
     
     try {
-      setLoading(true);
+      setActionLoading(selectedLoteDoc.id);
       await lotesAPI.eliminarDocumento(selectedLoteDoc.id);
       toast.success('Documento eliminado');
       setShowDocModal(false);
@@ -465,7 +479,7 @@ const Lotes = () => {
     } catch (error) {
       toast.error(error.response?.data?.error || 'Error al eliminar documento');
     } finally {
-      setLoading(false);
+      setActionLoading(null);
     }
   };
 
@@ -506,8 +520,10 @@ const Lotes = () => {
       return;
     }
     
+    if (exportLoading) return; // Evitar múltiples clics
+    
     try {
-      setLoading(true);
+      setExportLoading(true);
       // Enviar TODOS los filtros activos para que el Excel coincida con la vista
       const params = {};
       if (searchTerm) params.search = searchTerm;
@@ -528,12 +544,14 @@ const Lotes = () => {
       document.body.appendChild(link);
       link.click();
       link.remove();
+      // Liberar recursos del ObjectURL para evitar memory leaks
+      window.URL.revokeObjectURL(url);
       
       toast.success('Lotes exportados correctamente');
     } catch (error) {
       toast.error('Error al exportar lotes');
     } finally {
-      setLoading(false);
+      setExportLoading(false);
     }
   };
 
@@ -578,7 +596,7 @@ const handleImportar = async (e) => {
   }
   
   try {
-    setLoading(true);
+    setImportLoading(true);
     const response = await lotesAPI.importar(formData);
     const resumen = response.data?.resumen || {};
     const errores = response.data?.errores || [];
@@ -605,7 +623,7 @@ const handleImportar = async (e) => {
   } catch (error) {
     toast.error(error.response?.data?.error || 'Error al importar lotes');
   } finally {
-    setLoading(false);
+    setImportLoading(false);
     e.target.value = '';
     }
   };
@@ -641,32 +659,42 @@ const handleImportar = async (e) => {
         <button
           type="button"
           onClick={handleExportar}
-          disabled={loading}
-          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 bg-theme-gradient"
+          disabled={exportLoading}
+          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
         >
-          <FaFileExcel /> Exportar
+          {exportLoading ? (
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+          ) : (
+            <FaFileExcel />
+          )}
+          {exportLoading ? 'Exportando...' : 'Exportar'}
         </button>
       )}
       {puede.importar && (
         <button
           type="button"
           onClick={() => setShowImportModal(true)}
-          disabled={loading}
-          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50"
+          disabled={importLoading}
+          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
           style={{
             background: SECONDARY_GRADIENT,
             border: '1px solid rgba(255,255,255,0.4)'
           }}
         >
-          <FaFileUpload /> Importar
+          {importLoading ? (
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+          ) : (
+            <FaFileUpload />
+          )}
+          {importLoading ? 'Importando...' : 'Importar'}
         </button>
       )}
       {puede.crear && (
         <button
           type="button"
           onClick={() => setShowModal(true)}
-          disabled={loading}
-          className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white disabled:opacity-50 text-theme-primary"
+          disabled={savingLote}
+          className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed text-theme-primary"
         >
           <FaPlus /> Nuevo Lote
         </button>
@@ -706,6 +734,13 @@ const handleImportar = async (e) => {
         badge={filtrosActivos ? `${filtrosActivos} filtros activos` : null}
         actions={headerActions}
       />
+
+      {/* Indicador de centro forzado para usuarios sin permisos globales */}
+      {!puedeVerGlobal && centroUsuario && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2">
+          <span className="text-blue-600 font-medium">📍 Mostrando lotes de tu centro asignado</span>
+        </div>
+      )}
 
       {/* Botón toggle filtros */}
       <div className="mb-4 flex justify-end">
@@ -794,7 +829,7 @@ const handleImportar = async (e) => {
                 </select>
               </div>
               {/* Selector de Centro - solo para admin/farmacia/vista */}
-              {puedeVerGlobal ? (
+              {puedeVerGlobal && (
                 <div>
                   <label className="text-xs font-semibold text-theme-primary-hover">Centro</label>
                   <select
@@ -811,28 +846,16 @@ const handleImportar = async (e) => {
                     ))}
                   </select>
                 </div>
-              ) : (
-                <div className="flex items-end">
-                  <button
-                    type="button"
-                    onClick={limpiarFiltros}
-                    className="w-full rounded-lg border px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
-                  >
-                    Limpiar
-                  </button>
-                </div>
               )}
-              {puedeVerGlobal && (
-                <div className="flex items-end">
-                  <button
-                    type="button"
-                    onClick={limpiarFiltros}
-                    className="w-full rounded-lg border px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
-                  >
-                    Limpiar
-                  </button>
-                </div>
-              )}
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={limpiarFiltros}
+                  className="w-full rounded-lg border px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                >
+                  Limpiar
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -916,17 +939,21 @@ const handleImportar = async (e) => {
                         {/* Botón PDF - visible para todos, subir solo farmacia */}
                         <button
                           onClick={() => handleDocumentoModal(lote)}
-                          disabled={loading}
+                          disabled={actionLoading === lote.id}
                           className={`disabled:opacity-50 disabled:cursor-not-allowed ${lote.documento_url ? 'text-green-600 hover:text-green-800' : 'text-gray-400 hover:text-gray-600'}`}
                           title={lote.documento_url ? `Ver: ${lote.documento_nombre || 'documento.pdf'}` : (puede.subirDocumento ? 'Subir documento PDF' : 'Sin documento')}
                         >
-                          <FaFilePdf />
+                          {actionLoading === lote.id ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent" />
+                          ) : (
+                            <FaFilePdf />
+                          )}
                         </button>
                         {/* Botón Editar - solo farmacia/admin */}
                         {puede.editar && (
                           <button
                             onClick={() => handleEdit(lote)}
-                            disabled={loading}
+                            disabled={actionLoading === lote.id}
                             className="text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Editar"
                           >
@@ -937,11 +964,15 @@ const handleImportar = async (e) => {
                         {puede.eliminar && (
                           <button
                             onClick={() => handleDelete(lote.id, lote)}
-                            disabled={loading}
+                            disabled={actionLoading === lote.id}
                             className="text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Desactivar lote"
                           >
-                            <FaTrash />
+                            {actionLoading === lote.id ? (
+                              <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent" />
+                            ) : (
+                              <FaTrash />
+                            )}
                           </button>
                         )}
                       </div>
@@ -1240,21 +1271,24 @@ const handleImportar = async (e) => {
                 <button
                   type="button"
                   onClick={() => { setShowModal(false); resetForm(); }}
-                  className="px-6 py-3 rounded-xl font-bold transition-all transform hover:scale-105"
+                  className="px-6 py-3 rounded-xl font-bold transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{ 
                     background: 'linear-gradient(135deg, #6B7280 0%, #4B5563 100%)',
                     color: 'white'
                   }}
-                  disabled={loading}
+                  disabled={savingLote}
                 >
                   CANCELAR
                 </button>
                 <button
                   type="submit"
-                  disabled={loading}
-                  className="px-8 py-3 rounded-xl font-bold transition-all transform hover:scale-105 shadow-lg disabled:opacity-50 text-white bg-theme-gradient"
+                  disabled={savingLote}
+                  className="px-8 py-3 rounded-xl font-bold transition-all transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed text-white bg-theme-gradient flex items-center gap-2"
                 >
-                  {loading ? 'GUARDANDO...' : 'GUARDAR LOTE'}
+                  {savingLote && (
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                  )}
+                  {savingLote ? 'GUARDANDO...' : 'GUARDAR LOTE'}
                 </button>
               </div>
             </form>
@@ -1299,12 +1333,12 @@ const handleImportar = async (e) => {
                   type="file"
                   accept=".xlsx,.xls"
                   onChange={handleImportar}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-theme-primary"
-                  disabled={loading}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-theme-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={importLoading}
                 />
               </div>
               
-              {loading && (
+              {importLoading && (
                 <div className="mb-4 text-center">
                   <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent spinner-institucional mx-auto"></div>
                   <p className="text-sm text-gray-600 mt-2">Procesando archivo...</p>
@@ -1314,8 +1348,8 @@ const handleImportar = async (e) => {
               <div className="flex justify-end gap-2">
                 <button
                   onClick={() => setShowImportModal(false)}
-                  className="px-4 py-2 border rounded-lg hover:bg-gray-100"
-                  disabled={loading}
+                  className="px-4 py-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={importLoading}
                 >
                   Cerrar
                 </button>
@@ -1363,13 +1397,20 @@ const handleImportar = async (e) => {
                     >
                       <FaDownload /> Ver documento
                     </a>
-                    <button
-                      onClick={handleEliminarDocumento}
-                      disabled={loading}
-                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
-                    >
-                      <FaTrash />
-                    </button>
+                    {puede.subirDocumento && (
+                      <button
+                        onClick={handleEliminarDocumento}
+                        disabled={actionLoading === selectedLoteDoc.id}
+                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Eliminar documento"
+                      >
+                        {actionLoading === selectedLoteDoc.id ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                        ) : (
+                          <FaTrash />
+                        )}
+                      </button>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -1378,19 +1419,22 @@ const handleImportar = async (e) => {
                 </div>
               )}
               
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  {selectedLoteDoc.documento_url ? 'Reemplazar documento' : 'Subir documento'}
-                </label>
-                <input
-                  type="file"
-                  accept=".pdf"
-                  onChange={handleSubirDocumento}
-                  disabled={loading}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                />
-                <p className="text-xs text-gray-500 mt-1">Solo archivos PDF, máximo 10MB</p>
-              </div>
+              {/* Input de subida - solo visible si tiene permiso */}
+              {puede.subirDocumento && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    {selectedLoteDoc.documento_url ? 'Reemplazar documento' : 'Subir documento'}
+                  </label>
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    onChange={handleSubirDocumento}
+                    disabled={actionLoading === selectedLoteDoc.id}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Solo archivos PDF, máximo 10MB</p>
+                </div>
+              )}
             </div>
             
             <div className="px-6 py-4 border-t bg-gray-50 flex justify-end">

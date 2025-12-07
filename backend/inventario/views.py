@@ -449,6 +449,84 @@ class ProductoViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Producto.objects.all()
+        user = self.request.user
+        
+        # ISS-FIX: Determinar el centro para filtrar stock
+        # Usuarios CENTRO solo ven stock de SU centro (lo que farmacia les ha surtido)
+        # Admin/Farmacia/Vista ven stock de farmacia central por defecto
+        centro_param = self.request.query_params.get('centro')
+        
+        if not is_farmacia_or_admin(user) and not user.is_superuser:
+            # Usuario de centro - filtrar stock solo por su centro
+            user_centro = get_user_centro(user)
+            if user_centro:
+                # Anotar stock_actual basado SOLO en lotes de su centro
+                queryset = queryset.annotate(
+                    stock_actual=Coalesce(
+                        Sum(
+                            'lotes__cantidad_actual',
+                            filter=Q(
+                                lotes__activo=True,
+                                lotes__cantidad_actual__gt=0,
+                                lotes__centro=user_centro
+                            )
+                        ),
+                        0
+                    )
+                )
+            else:
+                # Usuario sin centro asignado - stock = 0
+                queryset = queryset.annotate(
+                    stock_actual=Coalesce(Sum('lotes__cantidad_actual', filter=Q(pk__isnull=True)), 0)
+                )
+        else:
+            # Admin/Farmacia/Vista - pueden ver stock global o por centro específico
+            if centro_param:
+                if centro_param == 'central':
+                    # Solo stock de farmacia central (centro=NULL)
+                    queryset = queryset.annotate(
+                        stock_actual=Coalesce(
+                            Sum(
+                                'lotes__cantidad_actual',
+                                filter=Q(
+                                    lotes__activo=True,
+                                    lotes__cantidad_actual__gt=0,
+                                    lotes__centro__isnull=True
+                                )
+                            ),
+                            0
+                        )
+                    )
+                else:
+                    # Stock de un centro específico
+                    queryset = queryset.annotate(
+                        stock_actual=Coalesce(
+                            Sum(
+                                'lotes__cantidad_actual',
+                                filter=Q(
+                                    lotes__activo=True,
+                                    lotes__cantidad_actual__gt=0,
+                                    lotes__centro_id=centro_param
+                                )
+                            ),
+                            0
+                        )
+                    )
+            else:
+                # Por defecto: stock de farmacia central (donde está el inventario principal)
+                queryset = queryset.annotate(
+                    stock_actual=Coalesce(
+                        Sum(
+                            'lotes__cantidad_actual',
+                            filter=Q(
+                                lotes__activo=True,
+                                lotes__cantidad_actual__gt=0,
+                                lotes__centro__isnull=True
+                            )
+                        ),
+                        0
+                    )
+                )
         
         activo = self.request.query_params.get('activo')
         if activo == 'true':
@@ -470,59 +548,49 @@ class ProductoViewSet(viewsets.ModelViewSet):
 
         stock_status = self.request.query_params.get('stock_status')
         if stock_status:
-            queryset = queryset.annotate(
-                stock_total_calc=Coalesce(
-                    Sum(
-                        'lotes__cantidad_actual',
-                        filter=Q(
-                            lotes__activo=True,
-                            lotes__cantidad_actual__gt=0
-                        )
-                    ),
-                    0
-                )
-            )
+            # ISS-FIX: Usar stock_actual ya anotado (respeta el centro del usuario)
+            # Ya no es necesario crear stock_total_calc separado
             status_val = stock_status.lower()
             if status_val == 'sin_stock':
-                queryset = queryset.filter(stock_total_calc__lte=0)
+                queryset = queryset.filter(stock_actual__lte=0)
             elif status_val == 'critico':
                 queryset = queryset.filter(
-                    stock_total_calc__gt=0,
+                    stock_actual__gt=0,
                     stock_minimo__gt=0,
-                    stock_total_calc__lt=F('stock_minimo') * 0.5
+                    stock_actual__lt=F('stock_minimo') * 0.5
                 )
             elif status_val == 'bajo':
                 queryset = queryset.filter(
                     Q(
                         stock_minimo__gt=0,
-                        stock_total_calc__gte=F('stock_minimo') * 0.5,
-                        stock_total_calc__lt=F('stock_minimo')
+                        stock_actual__gte=F('stock_minimo') * 0.5,
+                        stock_actual__lt=F('stock_minimo')
                     ) | Q(
                         stock_minimo__lte=0,
-                        stock_total_calc__gt=0,
-                        stock_total_calc__lt=25
+                        stock_actual__gt=0,
+                        stock_actual__lt=25
                     )
                 )
             elif status_val == 'normal':
                 queryset = queryset.filter(
                     Q(
                         stock_minimo__gt=0,
-                        stock_total_calc__gte=F('stock_minimo'),
-                        stock_total_calc__lte=F('stock_minimo') * 2
+                        stock_actual__gte=F('stock_minimo'),
+                        stock_actual__lte=F('stock_minimo') * 2
                     ) | Q(
                         stock_minimo__lte=0,
-                        stock_total_calc__gte=25,
-                        stock_total_calc__lt=100
+                        stock_actual__gte=25,
+                        stock_actual__lt=100
                     )
                 )
             elif status_val == 'alto':
                 queryset = queryset.filter(
                     Q(
                         stock_minimo__gt=0,
-                        stock_total_calc__gt=F('stock_minimo') * 2
+                        stock_actual__gt=F('stock_minimo') * 2
                     ) | Q(
                         stock_minimo__lte=0,
-                        stock_total_calc__gte=100
+                        stock_actual__gte=100
                     )
                 )
         
@@ -1024,10 +1092,10 @@ class CentroViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         
         try:
-            # Verificar requisiciones
-            if hasattr(instance, 'requisiciones') and instance.requisiciones.exists():
-                total_requisiciones = instance.requisiciones.count()
-                requisiciones_activas = instance.requisiciones.exclude(
+            # Verificar requisiciones (como destino)
+            if hasattr(instance, 'requisiciones_destino') and instance.requisiciones_destino.exists():
+                total_requisiciones = instance.requisiciones_destino.count()
+                requisiciones_activas = instance.requisiciones_destino.exclude(
                     estado__in=['CANCELADA', 'SURTIDA']
                 ).count()
                 
@@ -1212,8 +1280,8 @@ class CentroViewSet(viewsets.ModelViewSet):
             for idx, centro in enumerate(centros, start=1):
                 # Calcular total de requisiciones si existe la relacion
                 total_requisiciones = 0
-                if hasattr(centro, 'requisiciones'):
-                    total_requisiciones = centro.requisiciones.count()
+                if hasattr(centro, 'requisiciones_destino'):
+                    total_requisiciones = centro.requisiciones_destino.count()
                 
                 ws.append([
                     idx,
@@ -1409,7 +1477,7 @@ class CentroViewSet(viewsets.ModelViewSet):
                     'mensaje': 'No hay requisiciones disponibles'
                 })
             
-            requisiciones = centro.requisiciones.all().order_by('-fecha_solicitud')
+            requisiciones = centro.requisiciones_destino.all().order_by('-fecha_solicitud')
             
             # Agrupar por estado
             por_estado = {}
@@ -3347,7 +3415,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             # Top centros solo para admin/farmacia
             por_centro = []
             if is_farmacia_or_admin(user):
-                centros = Centro.objects.annotate(total_requisiciones=Count('requisiciones')).filter(total_requisiciones__gt=0).order_by('-total_requisiciones')[:10]
+                # Usar requisiciones_destino (related_name correcto del FK centro_destino)
+                centros = Centro.objects.annotate(total_requisiciones=Count('requisiciones_destino')).filter(total_requisiciones__gt=0).order_by('-total_requisiciones')[:10]
                 for centro in centros:
                     por_centro.append({'centro': centro.nombre, 'total': centro.total_requisiciones})
             
@@ -3968,7 +4037,7 @@ def reporte_inventario(request):
         
         formato = request.query_params.get('formato', 'json')
         nivel_stock_filtro = request.query_params.get('nivel_stock', '').lower().strip()
-        productos = Producto.objects.filter(activo=True).order_by('clave')
+        productos = Producto.objects.filter(activo=True).order_by('codigo_barras')
         
         # Construir datos
         datos = []
@@ -4938,11 +5007,17 @@ def reportes_precarga(request):
         es_admin_farmacia = is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if not es_admin_farmacia else None
         
-        productos = list(Producto.objects.filter(activo=True).values('id', 'clave', 'descripcion').order_by('clave'))
+        # Usar codigo_barras en BD pero devolver como 'clave' para compatibilidad con frontend
+        productos_qs = Producto.objects.filter(activo=True).values('id', 'codigo_barras', 'descripcion').order_by('codigo_barras')
+        productos = [{'id': p['id'], 'clave': p['codigo_barras'], 'descripcion': p['descripcion']} for p in productos_qs]
         
         # Filtrar centros segun rol
         if es_admin_farmacia:
-            centros = list(Centro.objects.filter(activo=True).values('id', 'clave', 'nombre').order_by('clave'))
+            # Centro no tiene campo 'clave', usar id como identificador
+            centros = list(Centro.objects.filter(activo=True).values('id', 'nombre').order_by('nombre'))
+            # Agregar 'clave' basado en id para compatibilidad con frontend
+            for c in centros:
+                c['clave'] = str(c['id'])
         elif user_centro:
             centros = [{'id': user_centro.id, 'clave': user_centro.clave, 'nombre': user_centro.nombre}]
         else:

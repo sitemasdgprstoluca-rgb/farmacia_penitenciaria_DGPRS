@@ -55,6 +55,21 @@ class RequisicionService:
     ISS-002: Usa máquina de estados del modelo Requisicion (fuente única de verdad).
     """
     
+    # Transiciones de estado válidas para requisiciones
+    # Basado en el flujo: borrador → enviada → autorizada → (surtida|parcial) → recibida
+    #                                        ↘ rechazada
+    #                     cualquier estado → cancelada
+    TRANSICIONES_VALIDAS_DEFAULT = {
+        'borrador': ['enviada', 'cancelada'],
+        'enviada': ['autorizada', 'rechazada', 'cancelada'],
+        'autorizada': ['surtida', 'parcial', 'cancelada'],
+        'parcial': ['surtida', 'recibida', 'cancelada'],
+        'surtida': ['recibida'],
+        'rechazada': [],
+        'recibida': [],
+        'cancelada': [],
+    }
+    
     @property
     def ESTADOS_SURTIBLES(self):
         """ISS-002: Obtener estados surtibles del modelo."""
@@ -65,7 +80,7 @@ class RequisicionService:
     def TRANSICIONES_VALIDAS(self):
         """ISS-002: Obtener transiciones del modelo (fuente única de verdad)."""
         from core.models import Requisicion
-        return Requisicion.TRANSICIONES_VALIDAS
+        return getattr(Requisicion, 'TRANSICIONES_VALIDAS', self.TRANSICIONES_VALIDAS_DEFAULT)
     
     def __init__(self, requisicion, usuario):
         """
@@ -171,7 +186,7 @@ class RequisicionService:
             if disponible < requerido:
                 errores_stock.append({
                     'producto': detalle.producto.clave,
-                    'producto_descripcion': detalle.producto.descripcion[:50],
+                    'producto_nombre': (detalle.producto.nombre or '')[:50],
                     'requerido': requerido,
                     'disponible': disponible,
                     'stock_farmacia': stock_farmacia,
@@ -410,7 +425,10 @@ class RequisicionService:
         
         nuevo_estado = 'surtida' if completada else 'parcial'
         self.requisicion.estado = nuevo_estado
-        self.requisicion.save(update_fields=['estado'])
+        self.requisicion.fecha_surtido = timezone.now()
+        self.requisicion.usuario_firma_surtido = self.usuario
+        self.requisicion.fecha_firma_surtido = timezone.now()
+        self.requisicion.save(update_fields=['estado', 'fecha_surtido', 'usuario_firma_surtido', 'fecha_firma_surtido', 'updated_at'])
         
         logger.info(
             f"Requisición {self.requisicion.folio} surtida exitosamente por {self.usuario.username}. "
@@ -479,7 +497,7 @@ class RequisicionService:
             'stock_nuevo': lote.cantidad_actual
         }
     
-    def _crear_movimiento(self, lote, tipo, cantidad, centro, observaciones, stock_previo=None):
+    def _crear_movimiento(self, lote, tipo, cantidad, centro, observaciones, stock_previo=None, producto=None):
         """
         Crea un movimiento de inventario.
         
@@ -490,6 +508,7 @@ class RequisicionService:
             centro: Centro del movimiento
             observaciones: Texto descriptivo
             stock_previo: Stock antes del movimiento (para validación)
+            producto: Producto asociado (si no se pasa, se toma del lote)
             
         Returns:
             Movimiento: Instancia creada
@@ -498,8 +517,12 @@ class RequisicionService:
         centro_origen = centro if tipo == 'salida' else None
         centro_destino = centro if tipo == 'entrada' else None
         
+        # Producto es requerido en la BD
+        producto_movimiento = producto or (lote.producto if lote else None)
+        
         movimiento = Movimiento(
             tipo=tipo,
+            producto=producto_movimiento,
             lote=lote,
             centro_origen=centro_origen,
             centro_destino=centro_destino,
@@ -667,8 +690,9 @@ class RequisicionService:
             )
         
         # Actualizar campos de recepción
-        requisicion.usuario_recibe = self.usuario
-        requisicion.fecha_recibido = timezone.now()
+        requisicion.usuario_firma_recepcion = self.usuario
+        requisicion.fecha_firma_recepcion = timezone.now()
+        requisicion.fecha_entrega = timezone.now()
         
         # Determinar nuevo estado
         # Si todo fue surtido completamente → recibida
@@ -688,10 +712,10 @@ class RequisicionService:
         requisicion.estado = nuevo_estado
         
         if observaciones:
-            requisicion.observaciones = (requisicion.observaciones or '') + f'\n[Recepción] {observaciones}'
+            requisicion.notas = (requisicion.notas or '') + f'\n[Recepción] {observaciones}'
         
         requisicion.save(update_fields=[
-            'estado', 'usuario_firma_recepcion', 'fecha_firma_recepcion', 'notas', 'updated_at'
+            'estado', 'usuario_firma_recepcion', 'fecha_firma_recepcion', 'fecha_entrega', 'notas', 'updated_at'
         ])
         
         logger.info(
@@ -704,7 +728,7 @@ class RequisicionService:
             'folio': requisicion.folio,
             'estado': nuevo_estado,
             'usuario_recibe': self.usuario.username,
-            'fecha_recibido': requisicion.fecha_recibido.isoformat(),
+            'fecha_recibido': requisicion.fecha_firma_recepcion.isoformat() if requisicion.fecha_firma_recepcion else None,
             'observaciones': observaciones
         }
     
@@ -768,12 +792,12 @@ class RequisicionService:
                     updated_at=timezone.now()
                 )
                 
-                # Registrar movimiento de ajuste
+                # Registrar movimiento de ajuste (entrada para restaurar stock)
                 Movimiento.objects.create(
                     tipo='entrada',
                     producto=mov.lote.producto,
                     lote=mov.lote,
-                    centro_origen=mov.centro_origen,
+                    centro_destino=mov.centro_origen,  # La entrada va al centro origen del mov de salida
                     requisicion=requisicion,
                     usuario=self.usuario,
                     cantidad=cantidad_restaurar,
@@ -798,12 +822,12 @@ class RequisicionService:
                     updated_at=timezone.now()
                 )
                 
-                # Registrar movimiento de ajuste
+                # Registrar movimiento de ajuste (salida para descontar del centro)
                 Movimiento.objects.create(
                     tipo='salida',
                     producto=mov.lote.producto,
                     lote=mov.lote,
-                    centro_origen=mov.centro_destino,
+                    centro_origen=mov.centro_destino,  # La salida viene del centro destino del mov de entrada
                     requisicion=requisicion,
                     usuario=self.usuario,
                     cantidad=-mov.cantidad,
@@ -815,9 +839,8 @@ class RequisicionService:
         
         # Actualizar estado a cancelada
         requisicion.estado = 'cancelada'
-        requisicion.motivo_rechazo = motivo
-        requisicion.observaciones = (requisicion.observaciones or '') + f'\n[Cancelación] {motivo}'
-        requisicion.updated_by = self.usuario
+        # Guardar motivo y observaciones en notas (único campo de texto en BD)
+        requisicion.notas = (requisicion.notas or '') + f'\n[Cancelación] {motivo}'
         requisicion.save(update_fields=[
             'estado', 'notas', 'updated_at'
         ])

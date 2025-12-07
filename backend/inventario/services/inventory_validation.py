@@ -282,8 +282,8 @@ class CentroInventoryValidator:
         if lote.estado != 'disponible':
             return False, f"El lote no está disponible (estado: {lote.estado})"
         
-        # Validar que no esté vencido
-        if lote.esta_caducado():
+        # Validar que no esté vencido (alerta_caducidad retorna 'vencido' si ya caducó)
+        if lote.alerta_caducidad() == 'vencido':
             return False, "No se puede operar con lotes vencidos"
         
         return True, ""
@@ -509,6 +509,7 @@ class InventoryReconciliationService:
         # Crear movimiento de ajuste
         movimiento = Movimiento(
             tipo='ajuste',
+            producto=lote_locked.producto,  # Campo requerido en BD
             lote=lote_locked,
             centro_origen=lote_locked.centro,
             cantidad=diferencia,

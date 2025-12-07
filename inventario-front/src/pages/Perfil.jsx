@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
+import { FaSpinner, FaSignOutAlt, FaSave, FaKey } from "react-icons/fa";
 import { usuariosAPI, authAPI } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
 import { clearTokens } from "../services/tokenManager";
@@ -158,6 +159,10 @@ function Perfil() {
       toast.error("La contraseña debe tener al menos una mayúscula");
       return;
     }
+    if (!/[a-z]/.test(passForm.new_password)) {
+      toast.error("La contraseña debe tener al menos una minúscula");
+      return;
+    }
     if (!/[0-9]/.test(passForm.new_password)) {
       toast.error("La contraseña debe tener al menos un número");
       return;
@@ -235,9 +240,19 @@ function Perfil() {
           <button
             onClick={logout}
             disabled={loggingOut}
-            className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60"
+            className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60 flex items-center gap-2"
           >
-            {loggingOut ? "Cerrando..." : "Cerrar sesión"}
+            {loggingOut ? (
+              <>
+                <FaSpinner className="animate-spin" />
+                Cerrando...
+              </>
+            ) : (
+              <>
+                <FaSignOutAlt />
+                Cerrar sesión
+              </>
+            )}
           </button>
         </div>
         <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
@@ -264,9 +279,19 @@ function Perfil() {
         <button
           onClick={logout}
           disabled={loggingOut}
-          className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60"
+          className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60 flex items-center gap-2"
         >
-          {loggingOut ? "Cerrando..." : "Cerrar sesión"}
+          {loggingOut ? (
+            <>
+              <FaSpinner className="animate-spin" />
+              Cerrando...
+            </>
+          ) : (
+            <>
+              <FaSignOutAlt />
+              Cerrar sesión
+            </>
+          )}
         </button>
       </div>
 
@@ -352,11 +377,26 @@ function Perfil() {
             <div className="flex justify-end">
               <button
                 type="submit"
-                className="px-5 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-60"
+                className="px-5 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-60 flex items-center gap-2"
                 disabled={savingPerfil || loadingPerfil || !perfil}
                 title={!perfil ? "Carga el perfil primero" : ""}
               >
-                {savingPerfil ? "Guardando..." : loadingPerfil ? "Cargando..." : "Guardar cambios"}
+                {savingPerfil ? (
+                  <>
+                    <FaSpinner className="animate-spin" />
+                    Guardando...
+                  </>
+                ) : loadingPerfil ? (
+                  <>
+                    <FaSpinner className="animate-spin" />
+                    Cargando...
+                  </>
+                ) : (
+                  <>
+                    <FaSave />
+                    Guardar cambios
+                  </>
+                )}
               </button>
             </div>
           </form>
@@ -392,6 +432,9 @@ function Perfil() {
                 <p className={`text-xs flex items-center gap-1 ${/[A-Z]/.test(passForm.new_password) ? 'text-green-600' : 'text-gray-400'}`}>
                   {/[A-Z]/.test(passForm.new_password) ? '✓' : '○'} Al menos una mayúscula
                 </p>
+                <p className={`text-xs flex items-center gap-1 ${/[a-z]/.test(passForm.new_password) ? 'text-green-600' : 'text-gray-400'}`}>
+                  {/[a-z]/.test(passForm.new_password) ? '✓' : '○'} Al menos una minúscula
+                </p>
                 <p className={`text-xs flex items-center gap-1 ${/[0-9]/.test(passForm.new_password) ? 'text-green-600' : 'text-gray-400'}`}>
                   {/[0-9]/.test(passForm.new_password) ? '✓' : '○'} Al menos un número
                 </p>
@@ -414,10 +457,20 @@ function Perfil() {
             </div>
             <button
               type="submit"
-              className="w-full px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-60"
+              className="w-full px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-60 flex items-center justify-center gap-2"
               disabled={passwordLoading}
             >
-              {passwordLoading ? "Actualizando..." : "Actualizar contraseña"}
+              {passwordLoading ? (
+                <>
+                  <FaSpinner className="animate-spin" />
+                  Actualizando...
+                </>
+              ) : (
+                <>
+                  <FaKey />
+                  Actualizar contraseña
+                </>
+              )}
             </button>
           </form>
         </div>

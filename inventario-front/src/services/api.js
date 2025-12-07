@@ -477,8 +477,8 @@ export const movimientosAPI = {
 
 // Trazabilidad -  NUEVO
 export const trazabilidadAPI = {
-  producto: (clave) => apiClient.get(`/trazabilidad/producto/${clave}/`),
-  lote: (numeroLote) => apiClient.get(`/trazabilidad/lote/${numeroLote}/`),
+  producto: (clave, params = {}) => apiClient.get(`/trazabilidad/producto/${clave}/`, { params }),
+  lote: (numeroLote, params = {}) => apiClient.get(`/trazabilidad/lote/${numeroLote}/`, { params }),
   exportarPdf: (clave) => apiClient.get(`/movimientos/trazabilidad-pdf/`, { 
     params: { producto_clave: clave }, 
     responseType: 'blob' 

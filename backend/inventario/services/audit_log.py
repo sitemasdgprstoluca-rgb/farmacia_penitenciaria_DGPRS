@@ -246,22 +246,28 @@ class AuditLogger:
             from core.models import AuditoriaLogs
             
             # Mapear campos al modelo AuditoriaLogs existente
+            # El campo 'accion' tiene max 50 chars, truncar si es necesario
+            accion_str = f"{entry.action.value}:{entry.severity.value}"[:50]
+            
+            # objeto_id tiene max 50 chars en la BD
+            objeto_id_str = str(entry.objeto_id)[:50] if entry.objeto_id is not None else None
+            
             AuditoriaLogs.objects.create(
-                usuario_id=entry.usuario_id,
-                accion=f"{entry.action.value}:{entry.severity.value}",
-                modelo=entry.modelo,
-                objeto_id=str(entry.objeto_id) if entry.objeto_id else None,
+                usuario_id=entry.usuario_id,  # FK acepta _id para asignar por ID
+                accion=accion_str,
+                modelo=entry.modelo[:100],  # max 100 chars
+                objeto_id=objeto_id_str,
                 datos_anteriores=entry.datos_anteriores,
                 datos_nuevos=entry.datos_nuevos,
                 detalles={
-                    'descripcion': entry.descripcion,
-                    'objeto_repr': entry.objeto_repr,
+                    'descripcion': entry.descripcion[:500] if entry.descripcion else None,
+                    'objeto_repr': entry.objeto_repr[:200] if entry.objeto_repr else None,
                     'metadata': entry.metadata,
                     'duracion_ms': entry.duracion_ms,
                     'request_id': entry.request_id,
                 },
-                ip_address=entry.ip_address,
-                user_agent=entry.user_agent or '',
+                ip_address=entry.ip_address[:45] if entry.ip_address else None,  # max 45 chars
+                user_agent=entry.user_agent,  # text field, puede ser None
             )
         except Exception as e:
             # No fallar por errores de auditoría

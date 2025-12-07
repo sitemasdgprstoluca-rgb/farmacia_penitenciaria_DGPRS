@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { usuariosAPI, centrosAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
-import { FaPlus, FaEdit, FaTrash, FaKey, FaUsers, FaTimes, FaDownload, FaFileUpload, FaSearch, FaFilter, FaShieldAlt } from 'react-icons/fa';
+import { FaPlus, FaEdit, FaTrash, FaKey, FaUsers, FaTimes, FaDownload, FaFileUpload, FaSearch, FaFilter, FaShieldAlt, FaSpinner, FaToggleOn, FaToggleOff } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { COLORS } from '../constants/theme';
 import { usePermissions } from '../hooks/usePermissions';
@@ -39,6 +39,7 @@ function Usuarios() {
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
+  const [savingUser, setSavingUser] = useState(false); // Guardando en modal
   const [actionLoading, setActionLoading] = useState(null); // ID del usuario en acción
   const [showModal, setShowModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -356,6 +357,7 @@ function Usuarios() {
       }
     }
     
+    setSavingUser(true);
     try {
       const payload = {
         username: formData.username,
@@ -404,6 +406,8 @@ function Usuarios() {
         || Object.values(error.response?.data || {}).flat().join(', ')
         || 'Error al guardar usuario';
       toast.error(errorMsg);
+    } finally {
+      setSavingUser(false);
     }
   };
   
@@ -443,6 +447,36 @@ function Usuarios() {
       const errorMsg = error.response?.data?.error ||
                        error.response?.data?.detail ||
                        'Error al eliminar usuario';
+      toast.error(errorMsg);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Toggle activar/desactivar usuario rápidamente
+  const handleToggleActivo = async (usuario) => {
+    // Prevenir auto-desactivación
+    if (usuario.id === currentUserId) {
+      toast.error('No puede desactivarse a sí mismo');
+      return;
+    }
+
+    const nuevoEstado = !usuario.is_active;
+    const accion = nuevoEstado ? 'activar' : 'desactivar';
+    
+    if (!window.confirm(`¿Está seguro de ${accion} al usuario "${usuario.username}"?`)) {
+      return;
+    }
+
+    setActionLoading(usuario.id);
+    try {
+      await usuariosAPI.update(usuario.id, { is_active: nuevoEstado });
+      toast.success(`Usuario ${nuevoEstado ? 'activado' : 'desactivado'} correctamente`);
+      cargarUsuarios();
+    } catch (error) {
+      const errorMsg = error.response?.data?.error ||
+                       error.response?.data?.detail ||
+                       `Error al ${accion} usuario`;
       toast.error(errorMsg);
     } finally {
       setActionLoading(null);
@@ -603,7 +637,16 @@ function Usuarios() {
           disabled={exportLoading || importLoading}
           className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
         >
-          <FaDownload /> {exportLoading ? 'Exportando...' : 'Exportar'}
+          {exportLoading ? (
+            <>
+              <FaSpinner className="animate-spin" />
+              Exportando...
+            </>
+          ) : (
+            <>
+              <FaDownload /> Exportar
+            </>
+          )}
         </button>
       )}
       {puede.importar && (
@@ -614,7 +657,16 @@ function Usuarios() {
             disabled={exportLoading || importLoading}
             className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
           >
-            <FaFileUpload /> {importLoading ? 'Importando...' : 'Importar'}
+            {importLoading ? (
+              <>
+                <FaSpinner className="animate-spin" />
+                Importando...
+              </>
+            ) : (
+              <>
+                <FaFileUpload /> Importar
+              </>
+            )}
           </button>
           <input
             ref={fileInputRef}
@@ -795,6 +847,21 @@ function Usuarios() {
                             <FaKey />
                           </button>
                         )}
+                        {/* Toggle activar/desactivar */}
+                        {puede.editar && usuario.id !== currentUserId && (
+                          <button 
+                            onClick={() => handleToggleActivo(usuario)}
+                            disabled={actionLoading === usuario.id}
+                            className={`transition disabled:opacity-50 ${
+                              usuario.is_active 
+                                ? 'text-amber-600 hover:text-amber-800' 
+                                : 'text-emerald-600 hover:text-emerald-800'
+                            }`}
+                            title={usuario.is_active ? "Desactivar usuario" : "Activar usuario"}
+                          >
+                            {usuario.is_active ? <FaToggleOn size={18} /> : <FaToggleOff size={18} />}
+                          </button>
+                        )}
                         {puede.eliminar && usuario.id !== currentUserId && (
                           <button 
                             onClick={() => handleDelete(usuario)}
@@ -803,7 +870,7 @@ function Usuarios() {
                             title={!currentUserId ? "Cargando sesión..." : "Eliminar"}
                           >
                             {actionLoading === usuario.id ? (
-                              <div className="animate-spin rounded-full h-4 w-4 border-2 border-red-600 border-t-transparent inline-block" />
+                              <FaSpinner className="animate-spin" />
                             ) : (
                               <FaTrash />
                             )}
@@ -1034,37 +1101,37 @@ function Usuarios() {
                 </div>
               </div>
               
-              {/* Seccin de Permisos Avanzados - Visible para Admin y Farmacia */}
+              {/* Sección de Permisos Avanzados - Visible para Admin y Farmacia */}
               {(esAdmin || esFarmacia || esSuperusuario) && (
                 <div className="border-t pt-4 mt-4">
                   <button
                     type="button"
                     onClick={() => setShowPermisosAvanzados(!showPermisosAvanzados)}
-                    className="flex items-center gap-2 text-sm font-semibold mb-3 text-theme-primary"
+                    className="flex items-center gap-2 text-sm font-semibold mb-3 text-theme-primary hover:opacity-80 transition"
                   >
                     <FaShieldAlt />
-                    {showPermisosAvanzados ? '' : ''} Configurar Permisos Personalizados
+                    <span>{showPermisosAvanzados ? '▼' : '▶'} Configurar Permisos Personalizados</span>
                   </button>
                   
                   {showPermisosAvanzados && (
                     <div className="bg-gray-50 rounded-lg p-5 space-y-4">
                       <p className="text-xs text-gray-600">
-                        Configure permisos especficos para este usuario. Dejar en &quot;Por defecto&quot; usa los permisos del rol asignado.
+                        Configure permisos específicos para este usuario. Dejar en &quot;Por defecto&quot; usa los permisos del rol asignado.
                       </p>
                       
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         {[
-                          { key: 'perm_dashboard', label: 'Dashboard', icon: '' },
-                          { key: 'perm_productos', label: 'Productos', icon: '' },
-                          { key: 'perm_lotes', label: 'Lotes', icon: '' },
-                          { key: 'perm_requisiciones', label: 'Requisiciones', icon: '' },
-                          { key: 'perm_movimientos', label: 'Movimientos', icon: '' },
-                          { key: 'perm_centros', label: 'Centros', icon: '' },
-                          { key: 'perm_usuarios', label: 'Usuarios', icon: '' },
-                          { key: 'perm_reportes', label: 'Reportes', icon: '' },
-                          { key: 'perm_trazabilidad', label: 'Trazabilidad', icon: '' },
-                          { key: 'perm_auditoria', label: 'Auditora', icon: '' },
-                          { key: 'perm_notificaciones', label: 'Notificaciones', icon: '' },
+                          { key: 'perm_dashboard', label: 'Dashboard', icon: '📊' },
+                          { key: 'perm_productos', label: 'Productos', icon: '📦' },
+                          { key: 'perm_lotes', label: 'Lotes', icon: '🏷️' },
+                          { key: 'perm_requisiciones', label: 'Requisiciones', icon: '📋' },
+                          { key: 'perm_movimientos', label: 'Movimientos', icon: '🔄' },
+                          { key: 'perm_centros', label: 'Centros', icon: '🏢' },
+                          { key: 'perm_usuarios', label: 'Usuarios', icon: '👥' },
+                          { key: 'perm_reportes', label: 'Reportes', icon: '📈' },
+                          { key: 'perm_trazabilidad', label: 'Trazabilidad', icon: '🔍' },
+                          { key: 'perm_auditoria', label: 'Auditoría', icon: '🛡️' },
+                          { key: 'perm_notificaciones', label: 'Notificaciones', icon: '🔔' },
                         ].map(({ key, label, icon }) => (
                           <div key={key} className="flex items-center gap-3 bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
                             <span>{icon}</span>
@@ -1112,15 +1179,26 @@ function Usuarios() {
                 <button
                   type="button"
                   onClick={handleCloseModal}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-semibold transition"
+                  disabled={savingUser}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-semibold transition disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 text-white rounded-lg font-semibold transition hover:opacity-90 bg-theme-gradient"
+                  disabled={savingUser}
+                  className="flex-1 px-4 py-2 text-white rounded-lg font-semibold transition hover:opacity-90 bg-theme-gradient disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  {editingUsuario ? 'Actualizar' : 'Crear'} Usuario
+                  {savingUser ? (
+                    <>
+                      <FaSpinner className="animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      {editingUsuario ? 'Actualizar' : 'Crear'} Usuario
+                    </>
+                  )}
                 </button>
               </div>
             </form>
@@ -1219,9 +1297,16 @@ function Usuarios() {
                 <button
                   type="submit"
                   disabled={actionLoading || !PASSWORD_REGEX.test(passwordData.new_password) || passwordData.new_password !== passwordData.confirm_password}
-                  className="flex-1 px-4 py-2 text-white rounded-lg font-semibold transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
+                  className="flex-1 px-4 py-2 text-white rounded-lg font-semibold transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient flex items-center justify-center gap-2"
                 >
-                  {actionLoading ? 'Cambiando...' : 'Cambiar Contraseña'}
+                  {actionLoading ? (
+                    <>
+                      <FaSpinner className="animate-spin" />
+                      Cambiando...
+                    </>
+                  ) : (
+                    'Cambiar Contraseña'
+                  )}
                 </button>
               </div>
             </form>

@@ -288,7 +288,7 @@ class Centro(models.Model):
     
     Campos en BD: id, nombre, direccion, telefono, email, activo, created_at, updated_at
     """
-    nombre = models.CharField(max_length=200)
+    nombre = models.CharField(max_length=200, unique=True)
     direccion = models.TextField(blank=True, null=True)
     telefono = models.CharField(max_length=20, blank=True, null=True)
     email = models.CharField(max_length=254, blank=True, null=True)
@@ -390,6 +390,8 @@ class Lote(models.Model):
     Campos en Supabase: id, numero_lote, producto_id, cantidad_inicial, 
     cantidad_actual, fecha_fabricacion, fecha_caducidad, precio_unitario,
     numero_contrato, marca, ubicacion, centro_id, activo, created_at, updated_at
+    
+    Constraints: lote_producto_unique (numero_lote, producto_id)
     """
     numero_lote = models.CharField(max_length=100)
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='lotes', db_column='producto_id')
@@ -409,6 +411,7 @@ class Lote(models.Model):
     class Meta:
         db_table = 'lotes'
         managed = False  # Tabla en Supabase
+        unique_together = [['numero_lote', 'producto']]  # lote_producto_unique constraint
 
     def __str__(self):
         return f"{self.numero_lote} - {self.producto}"
@@ -456,6 +459,10 @@ class Movimiento(models.Model):
     """
     Modelo de Movimiento de inventario
     Adaptado a la estructura de base de datos existente
+    
+    Campos en BD: id, tipo, producto_id (NOT NULL), lote_id, cantidad, 
+    centro_origen_id, centro_destino_id, requisicion_id, usuario_id, 
+    motivo, referencia, fecha, created_at
     """
     tipo = models.CharField(max_length=30)
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='movimientos', db_column='producto_id')
@@ -464,7 +471,7 @@ class Movimiento(models.Model):
     centro_origen = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='movimientos_salida', db_column='centro_origen_id')
     centro_destino = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='movimientos_entrada', db_column='centro_destino_id')
     requisicion = models.ForeignKey('Requisicion', on_delete=models.SET_NULL, null=True, blank=True, related_name='movimientos', db_column='requisicion_id')
-    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, db_column='usuario_id')
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='movimientos', db_column='usuario_id')
     motivo = models.TextField(blank=True, null=True)
     referencia = models.CharField(max_length=100, blank=True, null=True)
     fecha = models.DateTimeField(auto_now_add=True)  # BD default: now()
@@ -616,8 +623,8 @@ class DetalleRequisicion(models.Model):
     Adaptado a la estructura de base de datos existente
     """
     requisicion = models.ForeignKey(Requisicion, on_delete=models.CASCADE, related_name='detalles', db_column='requisicion_id')
-    producto = models.ForeignKey(Producto, on_delete=models.PROTECT, db_column='producto_id')
-    lote = models.ForeignKey(Lote, on_delete=models.SET_NULL, null=True, blank=True, db_column='lote_id')
+    producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='detalles_requisicion', db_column='producto_id')
+    lote = models.ForeignKey(Lote, on_delete=models.SET_NULL, null=True, blank=True, related_name='detalles_requisicion', db_column='lote_id')
     cantidad_solicitada = models.IntegerField()
     cantidad_autorizada = models.IntegerField(null=True, blank=True)
     cantidad_surtida = models.IntegerField(default=0, null=True, blank=True)
@@ -668,7 +675,7 @@ class TemaGlobal(models.Model):
     Campos en Supabase: id, nombre, es_activo, logo_url, logo_width, logo_height,
     favicon_url, titulo_sistema, subtitulo_sistema, y muchos colores...
     """
-    nombre = models.CharField(max_length=100)
+    nombre = models.CharField(max_length=100, unique=True)
     es_activo = models.BooleanField(default=False)
     logo_url = models.CharField(max_length=500, blank=True, null=True)
     logo_width = models.IntegerField(default=160)
@@ -778,8 +785,8 @@ class HojaRecoleccion(models.Model):
     fecha_programada, fecha_recoleccion, notas, created_at, updated_at
     """
     numero = models.CharField(max_length=50, unique=True)
-    centro = models.ForeignKey(Centro, on_delete=models.SET_NULL, null=True, blank=True, db_column='centro_id')
-    responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, db_column='responsable_id')
+    centro = models.ForeignKey(Centro, on_delete=models.SET_NULL, null=True, blank=True, related_name='hojas_recoleccion', db_column='centro_id')
+    responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='hojas_recoleccion_responsable', db_column='responsable_id')
     estado = models.CharField(max_length=30, default='pendiente')
     fecha_programada = models.DateField()
     fecha_recoleccion = models.DateTimeField(null=True, blank=True)
@@ -801,13 +808,13 @@ class HojaRecoleccion(models.Model):
 
 class DetalleHojaRecoleccion(models.Model):
     """
-    Detalle de Hoja de RecolecciÃ³n - Supabase
+    Detalle de Hoja de Recolección - Supabase
     
     Campos en Supabase: id, hoja_id, lote_id, cantidad_recolectar,
     cantidad_recolectada, motivo, observaciones, created_at
     """
     hoja = models.ForeignKey(HojaRecoleccion, on_delete=models.CASCADE, related_name='detalles', db_column='hoja_id')
-    lote = models.ForeignKey(Lote, on_delete=models.CASCADE, db_column='lote_id')
+    lote = models.ForeignKey(Lote, on_delete=models.CASCADE, related_name='detalles_recoleccion', db_column='lote_id')
     cantidad_recolectar = models.IntegerField()
     cantidad_recolectada = models.IntegerField(default=0, null=True, blank=True)  # BD: YES nulos, default 0
     motivo = models.CharField(max_length=50, default='caducidad')  # BD: NOT NULL, default 'caducidad'
@@ -829,7 +836,7 @@ class ImportacionLogs(models.Model):
     """
     archivo = models.CharField(max_length=255)
     tipo_importacion = models.CharField(max_length=50)
-    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, db_column='usuario_id')
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='importaciones', db_column='usuario_id')
     registros_totales = models.IntegerField(default=0)
     registros_exitosos = models.IntegerField(default=0)
     registros_fallidos = models.IntegerField(default=0)
@@ -853,10 +860,10 @@ class AuditoriaLogs(models.Model):
     Campos en Supabase: id, usuario_id, accion, modelo, objeto_id,
     datos_anteriores, datos_nuevos, ip_address, user_agent, detalles, timestamp
     """
-    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, db_column='usuario_id')
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='auditoria_logs', db_column='usuario_id')
     accion = models.CharField(max_length=50)
     modelo = models.CharField(max_length=100)
-    objeto_id = models.CharField(max_length=50, null=True, blank=True) # Schema says 50 chars
+    objeto_id = models.CharField(max_length=50, null=True, blank=True)  # Schema says 50 chars
     datos_anteriores = models.JSONField(null=True, blank=True)
     datos_nuevos = models.JSONField(null=True, blank=True)
     ip_address = models.CharField(max_length=45, null=True, blank=True)
@@ -881,7 +888,7 @@ class UserProfile(models.Model):
     """
     rol = models.CharField(max_length=30, default='visualizador')
     telefono = models.CharField(max_length=20, blank=True, null=True)
-    centro = models.ForeignKey(Centro, on_delete=models.SET_NULL, null=True, blank=True, db_column='centro_id')
+    centro = models.ForeignKey(Centro, on_delete=models.SET_NULL, null=True, blank=True, related_name='perfiles_usuario', db_column='centro_id')
     usuario = models.OneToOneField(
         settings.AUTH_USER_MODEL, 
         on_delete=models.CASCADE, 
