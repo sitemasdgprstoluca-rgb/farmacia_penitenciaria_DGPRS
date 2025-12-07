@@ -84,7 +84,8 @@ class RequisicionSerializerTestExhaustivo(TestCase):
         )
 
     def test_serializar_requisicion_con_detalles(self):
-        req = Requisicion.objects.create(usuario_solicita=self.usuario, centro=self.centro)
+        # Usar campos reales: numero, solicitante, centro_destino
+        req = Requisicion.objects.create(numero='TEST-SER-001', solicitante=self.usuario, centro_destino=self.centro)
         DetalleRequisicion.objects.create(requisicion=req, producto=self.producto, cantidad_solicitada=5)
         data = RequisicionSerializer(req).data
         self.assertEqual(len(data['detalles']), 1)

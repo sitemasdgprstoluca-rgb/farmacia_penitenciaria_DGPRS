@@ -649,24 +649,24 @@ class ProductoViewSet(viewsets.ModelViewSet):
         GET /api/productos/{id}/auditoria/
         """
         try:
-            from core.models import AuditoriaLog
+            from core.models import AuditoriaLogs
             producto = self.get_object()
             
             # Buscar logs de auditoria relacionados con este producto
-            logs = AuditoriaLog.objects.filter(
-                Q(tabla='producto') | Q(tabla='core_producto'),
-                registro_id=str(producto.id)
-            ).order_by('-fecha')[:50]
+            logs = AuditoriaLogs.objects.filter(
+                Q(modelo='producto') | Q(modelo='core_producto') | Q(modelo='Producto'),
+                objeto_id=str(producto.id)
+            ).order_by('-timestamp')[:50]
             
             historial = []
             for log in logs:
                 historial.append({
                     'id': log.id,
-                    'fecha': log.fecha.isoformat() if log.fecha else None,
+                    'fecha': log.timestamp.isoformat() if log.timestamp else None,
                     'usuario': log.usuario.get_full_name() or log.usuario.username if log.usuario else 'Sistema',
                     'accion': log.accion,
-                    'cambios': log.cambios if hasattr(log, 'cambios') else None,
-                    'ip': log.ip if hasattr(log, 'ip') else None,
+                    'cambios': log.datos_nuevos if log.datos_nuevos else None,
+                    'ip': log.ip_address if log.ip_address else None,
                 })
             
             return Response({

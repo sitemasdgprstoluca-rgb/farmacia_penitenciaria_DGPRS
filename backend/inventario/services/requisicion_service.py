@@ -691,7 +691,7 @@ class RequisicionService:
             requisicion.observaciones = (requisicion.observaciones or '') + f'\n[Recepción] {observaciones}'
         
         requisicion.save(update_fields=[
-            'estado', 'usuario_recibe', 'fecha_recibido', 'observaciones', 'updated_at'
+            'estado', 'usuario_firma_recepcion', 'fecha_firma_recepcion', 'notas', 'updated_at'
         ])
         
         logger.info(
@@ -819,7 +819,7 @@ class RequisicionService:
         requisicion.observaciones = (requisicion.observaciones or '') + f'\n[Cancelación] {motivo}'
         requisicion.updated_by = self.usuario
         requisicion.save(update_fields=[
-            'estado', 'motivo_rechazo', 'observaciones', 'updated_by', 'updated_at'
+            'estado', 'notas', 'updated_at'
         ])
         
         logger.info(

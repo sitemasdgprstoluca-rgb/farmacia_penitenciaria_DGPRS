@@ -16,7 +16,12 @@ class NotificacionModelTest(TestCase):
     def setUp(self):
         self.usuario = User.objects.create_user(username='testuser', password='test123')
         self.centro = Centro.objects.create(clave='CTR001', nombre='Centro Test')
-        self.requisicion = Requisicion.objects.create(usuario_solicita=self.usuario, centro=self.centro)
+        # Usar campos reales de la BD: solicitante, centro_destino
+        self.requisicion = Requisicion.objects.create(
+            numero='TEST-001',
+            solicitante=self.usuario, 
+            centro_destino=self.centro
+        )
 
     def test_crear_notificacion(self):
         notif = Notificacion.objects.create(
@@ -28,15 +33,16 @@ class NotificacionModelTest(TestCase):
         self.assertEqual(notif.usuario, self.usuario)
         self.assertFalse(notif.leida)
 
-    def test_notificacion_con_requisicion(self):
+    def test_notificacion_con_datos_requisicion(self):
+        """Test notificación con datos de requisición en campo JSON 'datos'."""
         notif = Notificacion.objects.create(
             usuario=self.usuario,
             titulo='Requisicion aprobada',
             mensaje='Tu requisicion fue aprobada',
-            requisicion=self.requisicion,
+            datos={'requisicion_id': self.requisicion.id},
             tipo='success'
         )
-        self.assertEqual(notif.requisicion, self.requisicion)
+        self.assertEqual(notif.datos.get('requisicion_id'), self.requisicion.id)
 
     def test_marcar_leida(self):
         notif = Notificacion.objects.create(

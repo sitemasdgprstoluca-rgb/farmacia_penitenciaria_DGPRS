@@ -7,7 +7,7 @@ import os
 import sys
 from django.db.models.signals import post_save, pre_save, post_delete
 from django.dispatch import receiver
-from .models import Movimiento, Lote, Requisicion, Producto, AuditoriaLog, Notificacion
+from .models import Movimiento, Lote, Requisicion, Producto, AuditoriaLogs, Notificacion
 from .middleware import get_current_request, get_current_user
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ def registrar_auditoria(modelo, objeto, accion, cambios=None):
         user_agent = request.META.get('HTTP_USER_AGENT', '')[:500]
 
     try:
-        AuditoriaLog.objects.create(
+        AuditoriaLogs.objects.create(
             usuario=usuario,
             accion=accion,
             modelo=modelo,
@@ -73,11 +73,23 @@ def auditar_movimiento(sender, instance, created, **kwargs):
     """Audita creación de movimientos de inventario."""
     if created:
         lote = instance.lote
+        producto = instance.producto
+        
         # Log informativo
-        logger.info(
-            f"Signal disparado - Movimiento {instance.tipo} en Lote {lote.numero_lote}: "
-            f"Cantidad: {instance.cantidad}, Stock actual: {lote.cantidad_actual}"
-        )
+        if lote:
+            logger.info(
+                f"Signal disparado - Movimiento {instance.tipo} en Lote {lote.numero_lote}: "
+                f"Cantidad: {instance.cantidad}, Stock actual: {lote.cantidad_actual}"
+            )
+        else:
+            logger.info(
+                f"Signal disparado - Movimiento {instance.tipo} de Producto {producto.nombre}: "
+                f"Cantidad: {instance.cantidad}"
+            )
+        
+        # Determinar centro (puede ser origen o destino)
+        centro = instance.centro_destino or instance.centro_origen
+        
         # Auditoría formal
         registrar_auditoria(
             modelo='Movimiento',
@@ -85,14 +97,15 @@ def auditar_movimiento(sender, instance, created, **kwargs):
             accion=f'movimiento_{instance.tipo}',
             cambios={
                 'tipo': instance.tipo,
-                'lote': lote.numero_lote,
-                'producto': lote.producto.clave,
+                'lote': lote.numero_lote if lote else None,
+                'producto': producto.nombre,
+                'producto_codigo': producto.codigo_barras,
                 'cantidad': instance.cantidad,
-                'stock_resultante': lote.cantidad_actual,
-                'centro': instance.centro.nombre if instance.centro else None,
+                'stock_resultante': lote.cantidad_actual if lote else None,
+                'centro': centro.nombre if centro else None,
                 'usuario': instance.usuario.username if instance.usuario else 'Sistema',
-                'observaciones': instance.observaciones or '',
-                'documento_referencia': instance.documento_referencia or ''
+                'motivo': instance.motivo or '',
+                'referencia': instance.referencia or ''
             }
         )
 
@@ -132,8 +145,9 @@ def auditar_cambios_requisicion(sender, instance, created, **kwargs):
             objeto=instance,
             accion='crear',
             cambios={
-                'folio': instance.folio,
-                'centro': instance.centro.nombre,
+                'numero': instance.numero,
+                'centro_destino': instance.centro_destino.nombre if instance.centro_destino else None,
+                'centro_origen': instance.centro_origen.nombre if instance.centro_origen else None,
                 'estado': instance.estado,
                 'total_productos': instance.detalles.count()
             }
@@ -149,11 +163,11 @@ def auditar_cambios_requisicion(sender, instance, created, **kwargs):
         'estado_nuevo': instance.estado,
     }
 
-    if instance.estado in ['autorizada', 'rechazada'] and instance.usuario_autoriza:
-        cambios['usuario_autoriza'] = instance.usuario_autoriza.username
+    if instance.estado in ['autorizada', 'rechazada'] and instance.autorizador:
+        cambios['autorizador'] = instance.autorizador.username
 
-    if instance.estado == 'rechazada' and instance.motivo_rechazo:
-        cambios['motivo_rechazo'] = instance.motivo_rechazo
+    if instance.estado == 'rechazada' and instance.notas:
+        cambios['motivo_rechazo'] = instance.notas
 
     registrar_auditoria(
         modelo='Requisicion',
@@ -162,26 +176,100 @@ def auditar_cambios_requisicion(sender, instance, created, **kwargs):
         cambios=cambios
     )
 
-    mensajes = {
-        'autorizada': ('success', 'Su requisicion ha sido AUTORIZADA', f'Requisicion {instance.folio} aprobada por farmacia'),
-        'rechazada': ('warning', 'Su requisicion ha sido RECHAZADA', f"Requisicion {instance.folio} rechazada. Motivo: {instance.motivo_rechazo or 'No especificado'}"),
-        'surtida': ('success', 'Su requisicion ha sido SURTIDA', f'Requisicion {instance.folio} lista para recoger'),
-        'cancelada': ('warning', 'Su requisicion ha sido CANCELADA', f'Requisicion {instance.folio} cancelada'),
+    # =========================================================================
+    # SISTEMA DE NOTIFICACIONES BIDIRECCIONAL
+    # =========================================================================
+    
+    # Caso 1: Centro ENVÍA requisición → Notificar a usuarios de Farmacia
+    if instance.estado == 'enviada':
+        _notificar_farmacia_nueva_requisicion(instance)
+        return
+    
+    # Caso 2: Farmacia PROCESA requisición → Notificar al solicitante (Centro)
+    mensajes_para_solicitante = {
+        'autorizada': ('success', 'Requisición AUTORIZADA', 
+                       f'Su requisición {instance.numero} ha sido autorizada por Farmacia.'),
+        'parcial': ('info', 'Requisición PARCIALMENTE AUTORIZADA', 
+                    f'Su requisición {instance.numero} ha sido parcialmente autorizada.'),
+        'rechazada': ('warning', 'Requisición RECHAZADA', 
+                      f'Su requisición {instance.numero} ha sido rechazada. Motivo: {instance.notas or "No especificado"}'),
+        'surtida': ('success', 'Requisición SURTIDA', 
+                    f'Su requisición {instance.numero} ha sido surtida y está lista para recoger.'),
+        'recibida': ('success', 'Requisición RECIBIDA', 
+                     f'La requisición {instance.numero} ha sido marcada como recibida.'),
+        'cancelada': ('warning', 'Requisición CANCELADA', 
+                      f'Su requisición {instance.numero} ha sido cancelada.'),
     }
 
-    if instance.estado in mensajes:
-        tipo, titulo, mensaje = mensajes[instance.estado]
+    if instance.estado in mensajes_para_solicitante:
+        tipo, titulo, mensaje = mensajes_para_solicitante[instance.estado]
+        _notificar_solicitante(instance, tipo, titulo, mensaje)
+
+
+def _notificar_farmacia_nueva_requisicion(requisicion):
+    """
+    Notifica a todos los usuarios de Farmacia cuando un Centro envía una requisición.
+    """
+    from .models import User
+    
+    # Obtener usuarios de farmacia y admin que deben recibir notificaciones
+    usuarios_farmacia = User.objects.filter(
+        rol__in=['farmacia', 'admin_sistema', 'admin_farmacia', 'superusuario'],
+        activo=True,
+        is_active=True
+    )
+    
+    centro_nombre = requisicion.centro_origen.nombre if requisicion.centro_origen else 'Centro desconocido'
+    
+    for usuario in usuarios_farmacia:
         try:
             Notificacion.objects.create(
-                usuario=instance.usuario_solicita,
-                titulo=titulo,
-                mensaje=mensaje,
-                tipo=tipo,
-                requisicion=instance
+                usuario=usuario,
+                tipo='info',
+                titulo='Nueva Requisición Recibida',
+                mensaje=f'El {centro_nombre} ha enviado la requisición {requisicion.numero}. Requiere su atención.',
+                datos={
+                    'requisicion_id': requisicion.pk,
+                    'numero': requisicion.numero,
+                    'centro_origen_id': requisicion.centro_origen_id,
+                    'centro_origen': centro_nombre,
+                    'solicitante': requisicion.solicitante.username if requisicion.solicitante else None,
+                    'prioridad': requisicion.prioridad
+                },
+                url=f'/requisiciones/{requisicion.pk}'
             )
-            logger.info(f"Notificación creada para {instance.usuario_solicita.username}: {titulo}")
-        except Exception as exc:  # pragma: no cover
-            logger.error(f"Error creando notificación: {exc}")
+            logger.debug(f"Notificación enviada a {usuario.username}: Nueva requisición {requisicion.numero}")
+        except Exception as exc:
+            logger.error(f"Error creando notificación para {usuario.username}: {exc}")
+    
+    logger.info(f"Notificaciones enviadas a {usuarios_farmacia.count()} usuarios de Farmacia para requisición {requisicion.numero}")
+
+
+def _notificar_solicitante(requisicion, tipo, titulo, mensaje):
+    """
+    Notifica al solicitante (usuario del Centro) sobre el estado de su requisición.
+    """
+    if not requisicion.solicitante:
+        logger.warning(f"No se puede notificar: requisición {requisicion.numero} sin solicitante")
+        return
+    
+    try:
+        Notificacion.objects.create(
+            usuario=requisicion.solicitante,
+            tipo=tipo,
+            titulo=titulo,
+            mensaje=mensaje,
+            datos={
+                'requisicion_id': requisicion.pk,
+                'numero': requisicion.numero,
+                'estado': requisicion.estado,
+                'autorizador': requisicion.autorizador.username if requisicion.autorizador else None
+            },
+            url=f'/requisiciones/{requisicion.pk}'
+        )
+        logger.info(f"Notificación enviada a {requisicion.solicitante.username}: {titulo}")
+    except Exception as exc:
+        logger.error(f"Error creando notificación para solicitante: {exc}")
 
 
 @receiver(pre_save, sender=Producto)
@@ -206,10 +294,11 @@ def auditar_cambios_producto(sender, instance, created, **kwargs):
             objeto=instance,
             accion='crear',
             cambios={
-                'clave': instance.clave,
+                'nombre': instance.nombre,
+                'codigo_barras': instance.codigo_barras,
                 'descripcion': instance.descripcion,
                 'unidad_medida': instance.unidad_medida,
-                'precio_unitario': str(instance.precio_unitario),
+                'categoria': instance.categoria,
                 'stock_minimo': instance.stock_minimo,
                 'activo': instance.activo
             }
@@ -251,10 +340,12 @@ def auditar_lote(sender, instance, created, **kwargs):
         accion=accion,
         cambios={
             'numero_lote': instance.numero_lote,
-            'producto': instance.producto.clave,
+            'producto': instance.producto.nombre,
+            'producto_id': instance.producto_id,
             'cantidad_actual': instance.cantidad_actual,
-            'estado': instance.estado,
-            'fecha_caducidad': instance.fecha_caducidad.isoformat()
+            'activo': instance.activo,
+            'fecha_caducidad': instance.fecha_caducidad.isoformat() if instance.fecha_caducidad else None,
+            'centro': instance.centro.nombre if instance.centro else None
         }
     )
 
@@ -266,7 +357,11 @@ def auditar_eliminacion_producto(sender, instance, **kwargs):
         modelo='Producto',
         objeto=instance,
         accion='eliminar',
-        cambios={'clave': instance.clave, 'razon': 'Producto eliminado'}
+        cambios={
+            'nombre': instance.nombre,
+            'codigo_barras': instance.codigo_barras,
+            'razon': 'Producto eliminado'
+        }
     )
 
 
@@ -371,7 +466,7 @@ def auditar_centro(sender, instance, created, **kwargs):
             objeto=instance,
             accion='crear',
             cambios={
-                'clave': instance.clave,
+                'id': instance.id,
                 'nombre': instance.nombre,
                 'activo': instance.activo
             }
@@ -406,5 +501,5 @@ def auditar_eliminacion_centro(sender, instance, **kwargs):
         modelo='Centro',
         objeto=instance,
         accion='eliminar',
-        cambios={'clave': instance.clave, 'nombre': instance.nombre}
+        cambios={'id': instance.id, 'nombre': instance.nombre}
     )

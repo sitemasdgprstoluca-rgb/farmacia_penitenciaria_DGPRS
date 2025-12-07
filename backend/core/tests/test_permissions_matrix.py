@@ -24,13 +24,14 @@ class PermissionsMatrixTest(APITestCase):
         self.client = APIClient()
 
     def test_user_no_ve_requisicion_de_otro_centro(self):
-        req = Requisicion.objects.create(usuario_solicita=self.user_centro2, centro=self.centro_2)
+        # Usar campos reales: numero, solicitante, centro_destino
+        req = Requisicion.objects.create(numero='PERM-001', solicitante=self.user_centro2, centro_destino=self.centro_2)
         self.client.force_authenticate(user=self.user_centro1)
         resp = self.client.get(f'/api/requisiciones/{req.id}/')
         self.assertNotEqual(resp.status_code, status.HTTP_200_OK)
 
     def test_superuser_si_ve_requisicion_ajena(self):
-        req = Requisicion.objects.create(usuario_solicita=self.user_centro2, centro=self.centro_2)
+        req = Requisicion.objects.create(numero='PERM-002', solicitante=self.user_centro2, centro_destino=self.centro_2)
         self.client.force_authenticate(user=self.superuser)
         resp = self.client.get(f'/api/requisiciones/{req.id}/')
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
@@ -45,8 +46,9 @@ class PermissionsMatrixTest(APITestCase):
         )
         
         req = Requisicion.objects.create(
-            usuario_solicita=self.user_centro1,
-            centro=self.centro_1,
+            numero='PERM-003',
+            solicitante=self.user_centro1,
+            centro_destino=self.centro_1,
             estado='enviada'
         )
         

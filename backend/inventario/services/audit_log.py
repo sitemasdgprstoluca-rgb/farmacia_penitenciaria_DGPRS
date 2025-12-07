@@ -241,21 +241,21 @@ class AuditLogger:
         logger.log(level, message, extra={'audit_data': log_data})
     
     def _log_to_db(self, entry: AuditEntry):
-        """Log a base de datos usando AuditoriaLog."""
+        """Log a base de datos usando AuditoriaLogs."""
         try:
-            from core.models import AuditoriaLog
+            from core.models import AuditoriaLogs
             
-            # Mapear campos al modelo AuditoriaLog existente
-            AuditoriaLog.objects.create(
+            # Mapear campos al modelo AuditoriaLogs existente
+            AuditoriaLogs.objects.create(
                 usuario_id=entry.usuario_id,
                 accion=f"{entry.action.value}:{entry.severity.value}",
                 modelo=entry.modelo,
-                objeto_id=entry.objeto_id,
-                objeto_repr=entry.objeto_repr,
-                cambios={
+                objeto_id=str(entry.objeto_id) if entry.objeto_id else None,
+                datos_anteriores=entry.datos_anteriores,
+                datos_nuevos=entry.datos_nuevos,
+                detalles={
                     'descripcion': entry.descripcion,
-                    'datos_anteriores': entry.datos_anteriores,
-                    'datos_nuevos': entry.datos_nuevos,
+                    'objeto_repr': entry.objeto_repr,
                     'metadata': entry.metadata,
                     'duracion_ms': entry.duracion_ms,
                     'request_id': entry.request_id,

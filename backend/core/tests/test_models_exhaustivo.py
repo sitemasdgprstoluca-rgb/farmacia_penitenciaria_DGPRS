@@ -145,16 +145,21 @@ class RequisicionModelTestExhaustivo(TestCase):
         )
 
     def test_requisicion_estado_inicial(self):
-        req = Requisicion.objects.create(usuario_solicita=self.usuario, centro=self.centro)
+        # Usar campos reales: solicitante, centro_destino, numero
+        req = Requisicion.objects.create(
+            numero='TEST-001',
+            solicitante=self.usuario, 
+            centro_destino=self.centro
+        )
         self.assertEqual(req.estado, 'borrador')
 
     def test_folio_unico(self):
-        r1 = Requisicion.objects.create(usuario_solicita=self.usuario, centro=self.centro)
-        r2 = Requisicion.objects.create(usuario_solicita=self.usuario, centro=self.centro)
+        r1 = Requisicion.objects.create(numero='TEST-002', solicitante=self.usuario, centro_destino=self.centro)
+        r2 = Requisicion.objects.create(numero='TEST-003', solicitante=self.usuario, centro_destino=self.centro)
         self.assertNotEqual(r1.folio, r2.folio)
 
     def test_detalles_requisicion(self):
-        req = Requisicion.objects.create(usuario_solicita=self.usuario, centro=self.centro)
+        req = Requisicion.objects.create(numero='TEST-004', solicitante=self.usuario, centro_destino=self.centro)
         DetalleRequisicion.objects.create(requisicion=req, producto=self.producto, cantidad_solicitada=2)
         self.assertEqual(req.detalles.count(), 1)
 
@@ -254,18 +259,18 @@ class RequisicionRelacionesTest(TestCase):
         )
 
     def test_requisicion_sin_detalles_invalida(self):
-        req = Requisicion.objects.create(usuario_solicita=self.usuario, centro=self.centro)
+        req = Requisicion.objects.create(numero='TEST-REL-001', solicitante=self.usuario, centro_destino=self.centro)
         # Una requisición sin detalles no debería poder enviarse
         self.assertEqual(req.detalles.count(), 0)
 
     def test_detalle_cantidad_positiva(self):
-        req = Requisicion.objects.create(usuario_solicita=self.usuario, centro=self.centro)
+        req = Requisicion.objects.create(numero='TEST-REL-002', solicitante=self.usuario, centro_destino=self.centro)
         detalle = DetalleRequisicion(requisicion=req, producto=self.producto, cantidad_solicitada=0)
         with self.assertRaises(ValidationError):
             detalle.full_clean()
 
     def test_delete_producto_protege_detalles(self):
-        req = Requisicion.objects.create(usuario_solicita=self.usuario, centro=self.centro)
+        req = Requisicion.objects.create(numero='TEST-REL-003', solicitante=self.usuario, centro_destino=self.centro)
         DetalleRequisicion.objects.create(requisicion=req, producto=self.producto, cantidad_solicitada=5)
         
         # Intentar borrar producto con detalles asociados debería fallar o proteger

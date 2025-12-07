@@ -4,7 +4,8 @@ from django.db.models import Sum
 from django.utils import timezone
 from .models import (
     User, Centro, Producto, Lote, Requisicion, DetalleRequisicion, 
-    Movimiento, AuditoriaLog, ImportacionLog, Notificacion, ConfiguracionSistema
+    Movimiento, AuditoriaLogs, ImportacionLogs, Notificacion, ConfiguracionSistema,
+    TemaGlobal, HojaRecoleccion, DetalleHojaRecoleccion, UserProfile
 )
 from .constants import EXTRA_PERMISSIONS
 import logging
@@ -192,8 +193,8 @@ def build_perm_map(user):
 # =============================================================================
 
 class UserSerializer(serializers.ModelSerializer):
-    centro_nombre = serializers.CharField(source='centro.nombre', read_only=True)
-    password = serializers.CharField(write_only=True, required=False)
+    centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, allow_null=True)
+    password = serializers.CharField(write_only=True, required=False, allow_blank=True)
     permisos = serializers.SerializerMethodField()
     
     class Meta:
@@ -202,10 +203,21 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'first_name', 'last_name', 
             'rol', 'centro', 'centro_nombre', 'activo', 'password', 
             'adscripcion', 'permisos', 'is_active', 'is_superuser',
-            'date_joined', 'last_login'
+            'date_joined', 'last_login',
+            # Permisos personalizados
+            'perm_dashboard', 'perm_productos', 'perm_lotes',
+            'perm_requisiciones', 'perm_centros', 'perm_usuarios',
+            'perm_reportes', 'perm_trazabilidad', 'perm_auditoria',
+            'perm_notificaciones', 'perm_movimientos'
         ]
         read_only_fields = ['date_joined', 'last_login']
-        extra_kwargs = {'password': {'write_only': True, 'required': False}}
+        extra_kwargs = {
+            'password': {'write_only': True, 'required': False},
+            'email': {'required': False, 'allow_blank': True},
+            'first_name': {'required': False, 'allow_blank': True},
+            'last_name': {'required': False, 'allow_blank': True},
+            'adscripcion': {'required': False, 'allow_blank': True},
+        }
 
     def get_permisos(self, obj):
         return build_perm_map(obj)
@@ -302,6 +314,8 @@ class LoteSerializer(serializers.ModelSerializer):
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, allow_null=True)
     dias_para_caducar = serializers.SerializerMethodField()
     estado = serializers.SerializerMethodField()
+    # precio_unitario tiene precision 12, default 0 en BD
+    precio_unitario = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, default=0)
     
     class Meta:
         model = Lote
@@ -313,6 +327,12 @@ class LoteSerializer(serializers.ModelSerializer):
             'dias_para_caducar', 'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at', 'estado']
+        extra_kwargs = {
+            'cantidad_actual': {'required': False, 'default': 0},
+            'numero_contrato': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'marca': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'ubicacion': {'required': False, 'allow_null': True, 'allow_blank': True},
+        }
     
     def get_dias_para_caducar(self, obj):
         if obj.fecha_caducidad:
@@ -337,14 +357,23 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
     producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
     producto_unidad = serializers.CharField(source='producto.unidad_medida', read_only=True)
     lote_numero = serializers.CharField(source='lote.numero_lote', read_only=True, allow_null=True)
+    # cantidad_surtida tiene default 0 en BD
+    cantidad_surtida = serializers.IntegerField(required=False, default=0, allow_null=True)
     
     class Meta:
         model = DetalleRequisicion
         fields = [
             'id', 'producto', 'lote', 'producto_nombre', 'producto_unidad',
             'lote_numero', 'cantidad_solicitada', 'cantidad_autorizada', 
-            'cantidad_surtida', 'cantidad_recibida', 'notas'
+            'cantidad_surtida', 'cantidad_recibida', 'notas',
+            'created_at', 'updated_at'
         ]
+        read_only_fields = ['created_at', 'updated_at']
+        extra_kwargs = {
+            'notas': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'cantidad_autorizada': {'required': False, 'allow_null': True},
+            'cantidad_recibida': {'required': False, 'allow_null': True},
+        }
     
     def validate_cantidad_solicitada(self, value):
         if value <= 0:
@@ -379,6 +408,19 @@ class RequisicionSerializer(serializers.ModelSerializer):
             'detalles', 'total_productos', 'created_at', 'updated_at'
         ]
         read_only_fields = ['numero', 'fecha_solicitud', 'created_at', 'updated_at']
+        extra_kwargs = {
+            # Campos con defaults en BD
+            'estado': {'required': False, 'default': 'borrador'},
+            'tipo': {'required': False, 'default': 'normal'},
+            'prioridad': {'required': False, 'default': 'normal'},
+            # Campos nullable
+            'notas': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'lugar_entrega': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'centro_origen': {'required': False, 'allow_null': True},
+            'centro_destino': {'required': False, 'allow_null': True},
+            'solicitante': {'required': False, 'allow_null': True},
+            'autorizador': {'required': False, 'allow_null': True},
+        }
     
     def get_solicitante_nombre(self, obj):
         if obj.solicitante:
@@ -437,6 +479,15 @@ class MovimientoSerializer(serializers.ModelSerializer):
             'motivo', 'referencia', 'fecha', 'created_at'
         ]
         read_only_fields = ['fecha', 'created_at']
+        extra_kwargs = {
+            'motivo': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'referencia': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'lote': {'required': False, 'allow_null': True},
+            'centro_origen': {'required': False, 'allow_null': True},
+            'centro_destino': {'required': False, 'allow_null': True},
+            'requisicion': {'required': False, 'allow_null': True},
+            'usuario': {'required': False, 'allow_null': True},
+        }
     
     def get_producto_nombre(self, obj):
         if obj.producto:
@@ -473,7 +524,7 @@ class AuditoriaLogSerializer(serializers.ModelSerializer):
     fecha = serializers.DateTimeField(source='timestamp', read_only=True)
     
     class Meta:
-        model = AuditoriaLog
+        model = AuditoriaLogs
         fields = [
             'id', 'usuario', 'usuario_nombre', 'accion', 'modelo', 
             'objeto_id', 'ip_address', 'user_agent', 'detalles', 'fecha'
@@ -494,7 +545,7 @@ class ImportacionLogSerializer(serializers.ModelSerializer):
     usuario_nombre = serializers.CharField(source='usuario.username', read_only=True, default=None)
     
     class Meta:
-        model = ImportacionLog
+        model = ImportacionLogs
         fields = [
             'id', 'archivo', 'tipo_importacion', 'registros_totales',
             'registros_exitosos', 'registros_fallidos', 'estado',
@@ -539,5 +590,150 @@ class ConfiguracionSistemaSerializer(serializers.ModelSerializer):
         model = ConfiguracionSistema
         fields = ['id', 'clave', 'valor', 'descripcion', 'tipo', 'es_publica', 'updated_at']
         read_only_fields = ['updated_at']
+        extra_kwargs = {
+            'tipo': {'required': False, 'default': 'string'},
+            'es_publica': {'required': False, 'default': False},
+            'descripcion': {'required': False, 'allow_null': True, 'allow_blank': True},
+        }
 
+
+# =============================================================================
+# TEMA GLOBAL SERIALIZER
+# =============================================================================
+
+class TemaGlobalSerializer(serializers.ModelSerializer):
+    """
+    Serializer para TemaGlobal - Configuración del tema visual.
+    Todos los campos de color son opcionales con defaults en BD.
+    """
+    class Meta:
+        model = TemaGlobal
+        fields = [
+            'id', 'nombre', 'es_activo', 
+            'logo_url', 'logo_width', 'logo_height', 'favicon_url',
+            'titulo_sistema', 'subtitulo_sistema',
+            'color_primario', 'color_primario_hover',
+            'color_secundario', 'color_secundario_hover',
+            'color_exito', 'color_exito_hover',
+            'color_alerta', 'color_alerta_hover',
+            'color_error', 'color_error_hover',
+            'color_info', 'color_info_hover',
+            'color_fondo_principal', 'color_fondo_sidebar', 'color_fondo_header',
+            'color_texto_principal', 'color_texto_sidebar', 'color_texto_header',
+            'color_texto_links', 'color_borde_inputs', 'color_borde_focus',
+            'reporte_color_encabezado', 'reporte_color_texto',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+        extra_kwargs = {
+            'es_activo': {'required': False, 'default': False},
+            'logo_url': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'logo_width': {'required': False, 'default': 160},
+            'logo_height': {'required': False, 'default': 60},
+            'favicon_url': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'titulo_sistema': {'required': False, 'allow_null': True},
+            'subtitulo_sistema': {'required': False, 'allow_null': True},
+        }
+
+
+class TemaGlobalPublicoSerializer(serializers.ModelSerializer):
+    """
+    Serializer público para TemaGlobal - Solo campos necesarios para el frontend.
+    Usado en endpoints públicos como login.
+    """
+    class Meta:
+        model = TemaGlobal
+        fields = [
+            'id', 'nombre', 'logo_url', 'logo_width', 'logo_height', 'favicon_url',
+            'titulo_sistema', 'subtitulo_sistema',
+            'color_primario', 'color_primario_hover',
+            'color_secundario', 'color_secundario_hover',
+            'color_exito', 'color_alerta', 'color_error', 'color_info',
+            'color_fondo_principal', 'color_fondo_sidebar', 'color_fondo_header',
+            'color_texto_principal', 'color_texto_sidebar', 'color_texto_header',
+            'color_texto_links', 'color_borde_inputs', 'color_borde_focus',
+        ]
+        read_only_fields = fields
+
+
+# =============================================================================
+# HOJA RECOLECCION SERIALIZER
+# =============================================================================
+
+class DetalleHojaRecoleccionSerializer(serializers.ModelSerializer):
+    """
+    Serializer para DetalleHojaRecoleccion.
+    """
+    lote_numero = serializers.CharField(source='lote.numero_lote', read_only=True)
+    producto_nombre = serializers.CharField(source='lote.producto.nombre', read_only=True)
+    
+    class Meta:
+        model = DetalleHojaRecoleccion
+        fields = [
+            'id', 'lote', 'lote_numero', 'producto_nombre',
+            'cantidad_recolectar', 'cantidad_recolectada',
+            'motivo', 'observaciones', 'created_at'
+        ]
+        read_only_fields = ['created_at']
+        extra_kwargs = {
+            'cantidad_recolectada': {'required': False, 'default': 0, 'allow_null': True},
+            'motivo': {'required': False, 'default': 'caducidad'},
+            'observaciones': {'required': False, 'allow_null': True, 'allow_blank': True},
+        }
+
+
+class HojaRecoleccionSerializer(serializers.ModelSerializer):
+    """
+    Serializer para HojaRecoleccion.
+    """
+    detalles = DetalleHojaRecoleccionSerializer(many=True, required=False)
+    centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, allow_null=True)
+    responsable_nombre = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = HojaRecoleccion
+        fields = [
+            'id', 'numero', 'centro', 'centro_nombre', 
+            'responsable', 'responsable_nombre',
+            'estado', 'fecha_programada', 'fecha_recoleccion',
+            'notas', 'detalles', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+        extra_kwargs = {
+            'estado': {'required': False, 'default': 'pendiente'},
+            'notas': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'centro': {'required': False, 'allow_null': True},
+            'responsable': {'required': False, 'allow_null': True},
+            'fecha_recoleccion': {'required': False, 'allow_null': True},
+        }
+    
+    def get_responsable_nombre(self, obj):
+        if obj.responsable:
+            return obj.responsable.get_full_name() or obj.responsable.username
+        return None
+
+
+# =============================================================================
+# USER PROFILE SERIALIZER
+# =============================================================================
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    """
+    Serializer para UserProfile - Perfil de usuario adicional.
+    """
+    usuario_username = serializers.CharField(source='usuario.username', read_only=True)
+    centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = UserProfile
+        fields = [
+            'id', 'usuario', 'usuario_username', 'rol', 'telefono',
+            'centro', 'centro_nombre', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+        extra_kwargs = {
+            'rol': {'required': False, 'default': 'visualizador'},
+            'telefono': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'centro': {'required': False, 'allow_null': True},
+        }
 

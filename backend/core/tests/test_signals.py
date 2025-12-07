@@ -14,24 +14,36 @@ class SignalsTest(TestCase):
         self.centro = Centro.objects.create(clave='CTR001', nombre='Centro Test')
 
     def test_notificacion_creada_al_autorizar(self):
-        req = Requisicion.objects.create(usuario_solicita=self.usuario, centro=self.centro, estado='enviada')
+        # Usar campos reales de la BD: solicitante, centro_destino, numero
+        req = Requisicion.objects.create(
+            numero='TEST-001',
+            solicitante=self.usuario, 
+            centro_destino=self.centro, 
+            estado='enviada'
+        )
 
         req.estado = 'autorizada'
-        req.usuario_autoriza = self.usuario
+        req.autorizador = self.usuario
         req.save()
 
-        notif = Notificacion.objects.filter(usuario=self.usuario, requisicion=req).first()
+        # Notificacion usa campo datos={requisicion_id: ...} en vez de requisicion=
+        notif = Notificacion.objects.filter(usuario=self.usuario, datos__requisicion_id=req.id).first()
         self.assertIsNotNone(notif)
         self.assertEqual(notif.tipo, 'success')
 
     def test_notificacion_creada_al_rechazar(self):
-        req = Requisicion.objects.create(usuario_solicita=self.usuario, centro=self.centro, estado='enviada')
+        req = Requisicion.objects.create(
+            numero='TEST-002',
+            solicitante=self.usuario, 
+            centro_destino=self.centro, 
+            estado='enviada'
+        )
 
         req.estado = 'rechazada'
-        req.motivo_rechazo = 'Stock insuficiente'
-        req.usuario_autoriza = self.usuario
+        req.notas = 'Stock insuficiente'  # Campo real es 'notas'
+        req.autorizador = self.usuario
         req.save()
 
-        notif = Notificacion.objects.filter(usuario=self.usuario, requisicion=req).first()
+        notif = Notificacion.objects.filter(usuario=self.usuario, datos__requisicion_id=req.id).first()
         self.assertIsNotNone(notif)
         self.assertEqual(notif.tipo, 'warning')

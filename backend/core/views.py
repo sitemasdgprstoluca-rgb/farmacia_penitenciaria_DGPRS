@@ -310,7 +310,7 @@ class UserViewSet(viewsets.ModelViewSet):
             profile = getattr(request.user, 'profile', None)
             if profile:
                 old_data['telefono'] = profile.telefono
-                old_data['cargo'] = profile.cargo
+                old_data['rol'] = profile.rol
             
             serializer = UserMeSerializer(request.user, data=request.data, partial=True)
             serializer.is_valid(raise_exception=True)
@@ -325,7 +325,7 @@ class UserViewSet(viewsets.ModelViewSet):
             profile = getattr(request.user, 'profile', None)
             if profile:
                 new_data['telefono'] = profile.telefono
-                new_data['cargo'] = profile.cargo
+                new_data['rol'] = profile.rol
             
             cambios = {k: (old_data.get(k), new_data.get(k)) 
                       for k in new_data if old_data.get(k) != new_data.get(k)}
@@ -676,10 +676,14 @@ class UserViewSet(viewsets.ModelViewSet):
                         })
                         continue
                     
-                    # Buscar centro si se proporcionó
+                    # Buscar centro si se proporcionó (por nombre o ID)
                     centro = None
                     if centro_clave:
-                        centro = Centro.objects.filter(clave__iexact=centro_clave, activo=True).first()
+                        # Intentar buscar por ID primero, luego por nombre
+                        if centro_clave.isdigit():
+                            centro = Centro.objects.filter(id=int(centro_clave), activo=True).first()
+                        if not centro:
+                            centro = Centro.objects.filter(nombre__iexact=centro_clave, activo=True).first()
                         if not centro:
                             errores.append({
                                 'fila': row_idx,
@@ -1483,20 +1487,41 @@ class ConfiguracionSistemaViewSet(viewsets.ViewSet):
             return [AllowAny()]
         return [IsAuthenticated()]
     
+    def list(self, request):
+        """
+        GET /api/configuracion/
+        Retorna la configuración actual del sistema.
+        Público para que el frontend pueda cargar configuraciones al iniciar.
+        """
+        # ConfiguracionSistema es un modelo clave-valor, retornar todas las configuraciones públicas
+        configs = ConfiguracionSistema.objects.filter(es_publica=True)
+        serializer = ConfiguracionSistemaSerializer(configs, many=True)
+        return Response(serializer.data)
+    
     def retrieve(self, request, pk=None):
         """
-        GET /api/configuracion/tema/
-        Retorna la configuración actual del sistema.
-        Público para que el frontend pueda cargar los colores al iniciar.
+        GET /api/configuracion/{clave}/
+        Retorna una configuración específica por clave.
         """
-        config = ConfiguracionSistema.get_config()
-        serializer = ConfiguracionSistemaSerializer(config)
-        return Response(serializer.data)
+        try:
+            config = ConfiguracionSistema.objects.get(clave=pk)
+            if not config.es_publica and not request.user.is_superuser:
+                return Response(
+                    {'error': 'Configuración no accesible'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            serializer = ConfiguracionSistemaSerializer(config)
+            return Response(serializer.data)
+        except ConfiguracionSistema.DoesNotExist:
+            return Response(
+                {'error': 'Configuración no encontrada'},
+                status=status.HTTP_404_NOT_FOUND
+            )
     
     def update(self, request, pk=None):
         """
-        PUT /api/configuracion/tema/
-        Actualiza la configuración del sistema.
+        PUT /api/configuracion/{clave}/
+        Actualiza una configuración del sistema.
         Solo superusuarios pueden modificar.
         """
         if not request.user.is_superuser:
@@ -1505,239 +1530,61 @@ class ConfiguracionSistemaViewSet(viewsets.ViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        config = ConfiguracionSistema.get_config()
+        try:
+            config = ConfiguracionSistema.objects.get(clave=pk)
+        except ConfiguracionSistema.DoesNotExist:
+            return Response(
+                {'error': 'Configuración no encontrada'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
         serializer = ConfiguracionSistemaSerializer(config, data=request.data, partial=True)
         
         if serializer.is_valid():
-            serializer.save(updated_by=request.user)
-            logger.info(f"Configuración del sistema actualizada por {request.user.username}")
+            serializer.save()
+            logger.info(f"Configuración '{pk}' actualizada por {request.user.username}")
             return Response(serializer.data)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    @action(detail=False, methods=['post'], url_path='aplicar-tema')
-    def aplicar_tema(self, request):
+    @action(detail=False, methods=['post'], url_path='bulk-update')
+    def bulk_update(self, request):
         """
-        POST /api/configuracion/tema/aplicar-tema/
-        Aplica un tema predefinido (default, dark, green, purple).
-        Body: { "tema": "dark" }
-        """
-        if not request.user.is_superuser:
-            return Response(
-                {'error': 'Solo superusuarios pueden cambiar el tema'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        tema = request.data.get('tema')
-        if not tema:
-            return Response(
-                {'error': 'Debe especificar el tema a aplicar'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        temas_validos = [t[0] for t in ConfiguracionSistema.TEMAS_PREDEFINIDOS if t[0] != 'custom']
-        if tema not in temas_validos:
-            return Response(
-                {'error': f'Tema inválido. Opciones: {", ".join(temas_validos)}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        if ConfiguracionSistema.aplicar_tema_predefinido(tema):
-            config = ConfiguracionSistema.get_config()
-            config.updated_by = request.user
-            config.save()
-            serializer = ConfiguracionSistemaSerializer(config)
-            logger.info(f"Tema '{tema}' aplicado por {request.user.username}")
-            return Response({
-                'mensaje': f'Tema "{tema}" aplicado correctamente',
-                'configuracion': serializer.data
-            })
-        
-        return Response(
-            {'error': 'No se pudo aplicar el tema'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-    
-    @action(detail=False, methods=['post'], url_path='restablecer')
-    def restablecer(self, request):
-        """
-        POST /api/configuracion/tema/restablecer/
-        Restablece la configuración al tema por defecto.
+        POST /api/configuracion/bulk-update/
+        Actualiza múltiples configuraciones.
+        Body: { "configuraciones": [{"clave": "...", "valor": "..."}, ...] }
         """
         if not request.user.is_superuser:
             return Response(
-                {'error': 'Solo superusuarios pueden restablecer la configuración'},
+                {'error': 'Solo superusuarios pueden modificar la configuración'},
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        ConfiguracionSistema.aplicar_tema_predefinido('default')
-        config = ConfiguracionSistema.get_config()
-        config.updated_by = request.user
-        config.save()
+        configuraciones = request.data.get('configuraciones', [])
+        actualizadas = 0
+        errores = []
         
-        serializer = ConfiguracionSistemaSerializer(config)
-        logger.info(f"Configuración restablecida a valores por defecto por {request.user.username}")
+        for cfg in configuraciones:
+            clave = cfg.get('clave')
+            valor = cfg.get('valor')
+            if not clave:
+                continue
+            try:
+                config, created = ConfiguracionSistema.objects.update_or_create(
+                    clave=clave,
+                    defaults={'valor': str(valor) if valor is not None else ''}
+                )
+                actualizadas += 1
+            except Exception as e:
+                errores.append({'clave': clave, 'error': str(e)})
         
+        logger.info(f"{actualizadas} configuraciones actualizadas por {request.user.username}")
         return Response({
-            'mensaje': 'Configuración restablecida a valores por defecto',
-            'configuracion': serializer.data
+            'mensaje': f'{actualizadas} configuraciones actualizadas',
+            'errores': errores
         })
     
-    @action(detail=False, methods=['post'], url_path='subir-logo-header')
-    def subir_logo_header(self, request):
-        """
-        POST /api/configuracion/tema/subir-logo-header/
-        Sube el logo para el header de la interfaz.
-        Acepta multipart/form-data con campo 'logo'.
-        """
-        if not request.user.is_superuser:
-            return Response(
-                {'error': 'Solo superusuarios pueden subir logos'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        logo = request.FILES.get('logo')
-        if not logo:
-            return Response(
-                {'error': 'Debe enviar un archivo en el campo "logo"'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Validar tipo de archivo
-        allowed_types = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
-        if logo.content_type not in allowed_types:
-            return Response(
-                {'error': 'Formato no válido. Use PNG, JPG o WebP'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Validar tamaño (max 500KB)
-        if logo.size > 500 * 1024:
-            return Response(
-                {'error': 'El archivo no puede superar 500KB'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        config = ConfiguracionSistema.get_config()
-        # Eliminar logo anterior si existe
-        if config.logo_header:
-            config.logo_header.delete(save=False)
-        
-        config.logo_header = logo
-        config.updated_by = request.user
-        config.save()
-        
-        serializer = ConfiguracionSistemaSerializer(config, context={'request': request})
-        logger.info(f"Logo header actualizado por {request.user.username}")
-        
-        return Response({
-            'mensaje': 'Logo del header actualizado correctamente',
-            'configuracion': serializer.data
-        })
-    
-    @action(detail=False, methods=['post'], url_path='subir-logo-pdf')
-    def subir_logo_pdf(self, request):
-        """
-        POST /api/configuracion/tema/subir-logo-pdf/
-        Sube el logo/fondo institucional para reportes PDF.
-        Acepta multipart/form-data con campo 'logo'.
-        """
-        if not request.user.is_superuser:
-            return Response(
-                {'error': 'Solo superusuarios pueden subir logos'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        logo = request.FILES.get('logo')
-        if not logo:
-            return Response(
-                {'error': 'Debe enviar un archivo en el campo "logo"'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Validar tipo de archivo
-        allowed_types = ['image/png', 'image/jpeg', 'image/jpg']
-        if logo.content_type not in allowed_types:
-            return Response(
-                {'error': 'Formato no válido. Use PNG o JPG'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Validar tamaño (max 2MB para PDFs)
-        if logo.size > 2 * 1024 * 1024:
-            return Response(
-                {'error': 'El archivo no puede superar 2MB'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        config = ConfiguracionSistema.get_config()
-        # Eliminar logo anterior si existe
-        if config.logo_pdf:
-            config.logo_pdf.delete(save=False)
-        
-        config.logo_pdf = logo
-        config.updated_by = request.user
-        config.save()
-        
-        serializer = ConfiguracionSistemaSerializer(config, context={'request': request})
-        logger.info(f"Logo PDF actualizado por {request.user.username}")
-        
-        return Response({
-            'mensaje': 'Logo para PDFs actualizado correctamente',
-            'configuracion': serializer.data
-        })
-    
-    @action(detail=False, methods=['delete'], url_path='eliminar-logo-header')
-    def eliminar_logo_header(self, request):
-        """
-        DELETE /api/configuracion/tema/eliminar-logo-header/
-        Elimina el logo del header.
-        """
-        if not request.user.is_superuser:
-            return Response(
-                {'error': 'Solo superusuarios pueden eliminar logos'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        config = ConfiguracionSistema.get_config()
-        if config.logo_header:
-            config.logo_header.delete(save=False)
-            config.logo_header = None
-            config.updated_by = request.user
-            config.save()
-            logger.info(f"Logo header eliminado por {request.user.username}")
-        
-        serializer = ConfiguracionSistemaSerializer(config)
-        return Response({
-            'mensaje': 'Logo del header eliminado',
-            'configuracion': serializer.data
-        })
-    
-    @action(detail=False, methods=['delete'], url_path='eliminar-logo-pdf')
-    def eliminar_logo_pdf(self, request):
-        """
-        DELETE /api/configuracion/tema/eliminar-logo-pdf/
-        Elimina el logo para PDFs.
-        """
-        if not request.user.is_superuser:
-            return Response(
-                {'error': 'Solo superusuarios pueden eliminar logos'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        config = ConfiguracionSistema.get_config()
-        if config.logo_pdf:
-            config.logo_pdf.delete(save=False)
-            config.logo_pdf = None
-            config.updated_by = request.user
-            config.save()
-            logger.info(f"Logo PDF eliminado por {request.user.username}")
-        
-        serializer = ConfiguracionSistemaSerializer(config)
-        return Response({
-            'mensaje': 'Logo para PDFs eliminado',
-            'configuracion': serializer.data
-        })
+    # End of ConfiguracionSistemaViewSet
 
 
 # ============================================================================
@@ -1749,75 +1596,48 @@ from core.serializers import TemaGlobalSerializer, TemaGlobalPublicoSerializer
 
 
 class TemaGlobalViewSet(viewsets.ViewSet):
-    """
-    ViewSet para gestionar el tema global del sistema.
-    
-    Endpoints:
-    - GET /api/tema/activo/ - Obtener tema activo (público)
-    - GET /api/tema/ - Obtener tema para administración
-    - PUT /api/tema/ - Actualizar tema (solo admin)
-    - POST /api/tema/restablecer/ - Restablecer tema institucional (solo admin)
-    - DELETE /api/tema/eliminar-logo/<tipo>/ - Eliminar logo específico (solo admin)
-    """
-    
+    """Gestión del tema global acorde al esquema actual (campos simples)."""
+
     def get_permissions(self):
-        """Permisos según la acción"""
         if self.action in ['tema_activo']:
             return [AllowAny()]
         return [IsAuthenticated()]
-    
+
+    def _get_tema_activo(self):
+        tema = TemaGlobal.objects.filter(es_activo=True).first()
+        if tema:
+            return tema
+        return TemaGlobal.objects.first()
+
     @action(detail=False, methods=['get'], url_path='activo')
     def tema_activo(self, request):
-        """
-        GET /api/tema/activo/
-        Endpoint público para obtener el tema activo.
-        Puede ser consultado sin autenticación (para login, etc).
-        """
-        tema = TemaGlobal.get_tema_activo()
+        tema = self._get_tema_activo()
+        if not tema:
+            return Response({'error': 'No hay tema configurado'}, status=status.HTTP_404_NOT_FOUND)
         serializer = TemaGlobalPublicoSerializer(tema, context={'request': request})
         return Response(serializer.data)
-    
+
     def list(self, request):
-        """
-        GET /api/tema/
-        Obtener el tema activo con información completa (admin).
-        """
-        tema = TemaGlobal.get_tema_activo()
+        tema = self._get_tema_activo()
+        if not tema:
+            return Response({'error': 'No hay tema configurado'}, status=status.HTTP_404_NOT_FOUND)
         serializer = TemaGlobalSerializer(tema, context={'request': request})
         return Response(serializer.data)
-    
+
     def update(self, request, pk=None):
-        """
-        PUT /api/tema/
-        Actualizar el tema global. Solo administradores.
-        """
         if not request.user.is_superuser:
             return Response(
                 {'error': 'Solo superusuarios pueden modificar el tema global'},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
-        tema = TemaGlobal.get_tema_activo()
-        
-        # No permitir modificar tema institucional base
-        if tema.es_tema_institucional:
-            # Si intentan modificar el institucional, crear uno nuevo basado en él
-            tema.pk = None
-            tema.nombre = 'Tema Personalizado'
-            tema.es_tema_institucional = False
-        
+
+        tema = self._get_tema_activo()
+        if not tema:
+            tema = TemaGlobal.objects.create(nombre='Tema Sistema', es_activo=True)
+
         serializer = TemaGlobalSerializer(tema, data=request.data, partial=True, context={'request': request})
-        
         if serializer.is_valid():
-            # Guardar con auditoría
             tema_guardado = serializer.save()
-            if tema.pk is None:
-                # Es un tema nuevo
-                tema_guardado.creado_por = request.user
-            tema_guardado.modificado_por = request.user
-            tema_guardado.save()
-            
-            # Registrar en auditoría
             AuditoriaLog.objects.create(
                 usuario=request.user,
                 accion='UPDATE',
@@ -1826,185 +1646,13 @@ class TemaGlobalViewSet(viewsets.ViewSet):
                 datos_nuevos=serializer.data,
                 detalles={'objeto_repr': f'Tema global: {tema_guardado.nombre}'}
             )
-            
             logger.info(f"Tema global actualizado por {request.user.username}")
-            
             return Response({
                 'mensaje': 'Tema actualizado correctamente',
                 'tema': TemaGlobalSerializer(tema_guardado, context={'request': request}).data
             })
-        
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    @action(detail=False, methods=['post'], url_path='restablecer')
-    def restablecer_institucional(self, request):
-        """
-        POST /api/tema/restablecer/
-        Restablecer al tema institucional por defecto.
-        """
-        if not request.user.is_superuser:
-            return Response(
-                {'error': 'Solo superusuarios pueden restablecer el tema'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        # Desactivar todos los temas actuales
-        TemaGlobal.objects.update(activo=False)
-        
-        # Buscar o crear el tema institucional
-        tema_institucional = TemaGlobal.objects.filter(es_tema_institucional=True).first()
-        
-        if tema_institucional:
-            tema_institucional.activo = True
-            tema_institucional.save()
-        else:
-            # Crear tema institucional por defecto
-            tema_institucional = TemaGlobal.crear_tema_institucional()
-        
-        # Registrar en auditoría
-        AuditoriaLog.objects.create(
-            usuario=request.user,
-            accion='UPDATE',
-            modelo='TemaGlobal',
-            objeto_id=str(tema_institucional.id),
-            detalles={'objeto_repr': 'Tema restablecido a institucional'}
-        )
-        
-        logger.info(f"Tema restablecido a institucional por {request.user.username}")
-        
-        serializer = TemaGlobalSerializer(tema_institucional, context={'request': request})
-        return Response({
-            'mensaje': 'Tema restablecido al institucional',
-            'tema': serializer.data
-        })
-    
-    @action(detail=False, methods=['delete'], url_path='eliminar-logo/(?P<tipo>\\w+)')
-    def eliminar_logo(self, request, tipo=None):
-        """
-        DELETE /api/tema/eliminar-logo/<tipo>/
-        Elimina un logo específico del tema.
-        
-        Tipos válidos: header, login, reportes, favicon, fondo_login, fondo_reportes
-        """
-        if not request.user.is_superuser:
-            return Response(
-                {'error': 'Solo superusuarios pueden eliminar logos'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        campos_logo = {
-            'header': 'logo_header',
-            'login': 'logo_login',
-            'reportes': 'logo_reportes',
-            'favicon': 'favicon',
-            'fondo_login': 'imagen_fondo_login',
-            'fondo_reportes': 'imagen_fondo_reportes',
-        }
-        
-        if tipo not in campos_logo:
-            return Response(
-                {'error': f'Tipo de logo no válido. Opciones: {list(campos_logo.keys())}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        tema = TemaGlobal.get_tema_activo()
-        campo = campos_logo[tipo]
-        archivo = getattr(tema, campo)
-        
-        if archivo:
-            archivo.delete(save=False)
-            setattr(tema, campo, None)
-            tema.modificado_por = request.user
-            tema.save()
-            
-            logger.info(f"Logo {tipo} eliminado del tema por {request.user.username}")
-            
-            return Response({
-                'mensaje': f'Logo {tipo} eliminado correctamente',
-                'tema': TemaGlobalSerializer(tema, context={'request': request}).data
-            })
-        
-        return Response({
-            'mensaje': f'El logo {tipo} no estaba configurado',
-            'tema': TemaGlobalSerializer(tema, context={'request': request}).data
-        })
-    
-    @action(detail=False, methods=['post'], url_path='subir-logo/(?P<tipo>\\w+)')
-    def subir_logo(self, request, tipo=None):
-        """
-        POST /api/tema/subir-logo/<tipo>/
-        Sube un logo específico al tema.
-        
-        Tipos válidos: header, login, reportes, favicon, fondo_login, fondo_reportes
-        """
-        if not request.user.is_superuser:
-            return Response(
-                {'error': 'Solo superusuarios pueden subir logos'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        campos_logo = {
-            'header': 'logo_header',
-            'login': 'logo_login',
-            'reportes': 'logo_reportes',
-            'favicon': 'favicon',
-            'fondo_login': 'imagen_fondo_login',
-            'fondo_reportes': 'imagen_fondo_reportes',
-        }
-        
-        if tipo not in campos_logo:
-            return Response(
-                {'error': f'Tipo de logo no válido. Opciones: {list(campos_logo.keys())}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        if 'archivo' not in request.FILES:
-            return Response(
-                {'error': 'No se proporcionó ningún archivo'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        archivo = request.FILES['archivo']
-        
-        # Validar tipo de archivo
-        tipos_permitidos = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml']
-        if tipo == 'favicon':
-            tipos_permitidos.append('image/x-icon')
-        
-        if archivo.content_type not in tipos_permitidos:
-            return Response(
-                {'error': f'Tipo de archivo no permitido. Tipos válidos: {tipos_permitidos}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Validar tamaño (max 5MB para imágenes, 500KB para favicon)
-        max_size = 500 * 1024 if tipo == 'favicon' else 5 * 1024 * 1024
-        if archivo.size > max_size:
-            max_mb = max_size / (1024 * 1024)
-            return Response(
-                {'error': f'El archivo excede el tamaño máximo permitido ({max_mb}MB)'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        tema = TemaGlobal.get_tema_activo()
-        campo = campos_logo[tipo]
-        
-        # Eliminar archivo anterior si existe
-        archivo_anterior = getattr(tema, campo)
-        if archivo_anterior:
-            archivo_anterior.delete(save=False)
-        
-        # Guardar nuevo archivo
-        setattr(tema, campo, archivo)
-        tema.modificado_por = request.user
-        tema.save()
-        
-        logger.info(f"Logo {tipo} actualizado en el tema por {request.user.username}")
-        
-        return Response({
-            'mensaje': f'Logo {tipo} actualizado correctamente',
-            'tema': TemaGlobalSerializer(tema, context={'request': request}).data
-        })
 
 
 

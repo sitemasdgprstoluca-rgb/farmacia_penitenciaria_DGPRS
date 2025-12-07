@@ -136,9 +136,17 @@ class IsCentroUser(permissions.BasePermission):
         if hasattr(obj, 'centro') and obj.centro:
             return obj.centro == user_centro
         
-        # ISS-012: Validar por usuario_solicita (para requisiciones)
-        if hasattr(obj, 'usuario_solicita'):
-            solicita_centro = getattr(obj.usuario_solicita, 'centro', None)
+        # ISS-012: Validar por centro_destino (para requisiciones)
+        if hasattr(obj, 'centro_destino') and obj.centro_destino:
+            return obj.centro_destino == user_centro
+        
+        # ISS-012: Validar por centro_origen (para requisiciones)
+        if hasattr(obj, 'centro_origen') and obj.centro_origen:
+            return obj.centro_origen == user_centro
+        
+        # ISS-012: Validar por solicitante (para requisiciones)
+        if hasattr(obj, 'solicitante') and obj.solicitante:
+            solicita_centro = getattr(obj.solicitante, 'centro', None)
             return solicita_centro == user_centro
         
         return False  # ISS-012: Por defecto denegar si no hay forma de validar

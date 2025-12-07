@@ -574,3 +574,136 @@ class TransicionEstadoTests(TestCase):
         
         req.estado = 'autorizada'
         self.assertFalse(req.es_estado_terminal())
+
+class RequisicionServiceCancellationTests(TransactionTestCase):
+    """
+    ISS-003: Tests para cancelación de requisiciones y confirmación de recepción.
+    """
+    
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            username='admin_cancel',
+            email='admin@cancel.test',
+            password='Admin@123',
+            rol='admin'
+        )
+        
+        self.centro = Centro.objects.create(
+            clave='CENT-CANC',
+            nombre='Centro Cancelacion',
+            direccion='Dir',
+            telefono='555-0005',
+            activo=True
+        )
+        
+        self.producto = Producto.objects.create(
+            clave='PROD-CANC-001',
+            descripcion='Producto cancelacion',
+            unidad_medida='PIEZA',
+            precio_unitario=Decimal('10.00'),
+            stock_minimo=10,
+            activo=True
+        )
+        
+        self.lote_farmacia = Lote.objects.create(
+            producto=self.producto,
+            centro=None,
+            numero_lote='LOTE-CANC-001',
+            fecha_caducidad=date.today() + timedelta(days=365),
+            cantidad_inicial=100,
+            cantidad_actual=100, # Inicialmente 100
+            estado='disponible'
+        )
+        
+        # Requisición que será surtida y luego recibida/cancelada
+        self.requisicion = Requisicion.objects.create(
+            folio='REQ-CANC-001',
+            centro=self.centro,
+            usuario_solicita=self.admin,
+            estado='autorizada'
+        )
+        
+        self.detalle = DetalleRequisicion.objects.create(
+            requisicion=self.requisicion,
+            producto=self.producto,
+            cantidad_solicitada=20,
+            cantidad_autorizada=20,
+            cantidad_surtida=0
+        )
+
+    def test_cancelar_requisicion_revierte_movimientos(self):
+        """ISS-003: Cancelar requisición surtida debe revertir movimientos y stock"""
+        
+        # 1. Surtir primero (esto crea movimientos y descuenta stock)
+        service = RequisicionService(self.requisicion, self.admin)
+        service.surtir(
+            is_farmacia_or_admin_fn=is_farmacia_or_admin_mock,
+            get_user_centro_fn=get_user_centro_mock
+        )
+        
+        # Verificar estado intermedio
+        self.lote_farmacia.refresh_from_db()
+        self.assertEqual(self.lote_farmacia.cantidad_actual, 80) # 100 - 20
+        self.requisicion.refresh_from_db()
+        self.assertEqual(self.requisicion.estado, 'surtida')
+        
+        # 2. Cancelar
+        resultado = service.cancelar_requisicion(motivo="Error en pedido")
+        
+        self.assertTrue(resultado['exito'])
+        self.assertEqual(resultado['estado'], 'cancelada')
+        
+        # Verificar estado final de requisición
+        self.requisicion.refresh_from_db()
+        self.assertEqual(self.requisicion.estado, 'cancelada')
+        self.assertIn("Error en pedido", self.requisicion.notas)
+        
+        # Verificar reversión de stock en farmacia
+        self.lote_farmacia.refresh_from_db()
+        self.assertEqual(self.lote_farmacia.cantidad_actual, 100) # Restaurado a 100
+        
+        # Verificar que se crearon movimientos de reversión (tipo entrada en farmacia)
+        # Nota: REVERSO por cancelación...
+        mov_reverso = Movimiento.objects.filter(
+            lote=self.lote_farmacia,
+            tipo='entrada', # Es ENTRADA porque regresa a farmacia
+            requisicion=self.requisicion
+        ).last()
+        self.assertIsNotNone(mov_reverso)
+        self.assertIn('REVERSO', mov_reverso.motivo)
+        
+        # Verificar descuento del lote en centro (debe bajar de 20 a 0)
+        lote_centro = Lote.objects.filter(centro=self.centro, producto=self.producto).first()
+        self.assertEqual(lote_centro.cantidad_actual, 0)
+
+    def test_confirmar_recepcion_actualiza_estado(self):
+        """ISS-004: Confirmar recepción actualiza estado y campos de auditoría"""
+        
+        # 1. Surtir primero
+        service = RequisicionService(self.requisicion, self.admin)
+        service.surtir(
+            is_farmacia_or_admin_fn=is_farmacia_or_admin_mock,
+            get_user_centro_fn=get_user_centro_mock
+        )
+        
+        # 2. Confirmar recepción por usuario del centro
+        usuario_receptor = User.objects.create_user(
+            username='receptor',
+            email='receptor@test.com',
+            password='User@123',
+            rol='centro',
+            centro=self.centro
+        )
+        
+        service_receptor = RequisicionService(self.requisicion, usuario_receptor)
+        resultado = service_receptor.confirmar_recepcion(observaciones="Todo ok")
+        
+        self.assertTrue(resultado['exito'])
+        self.assertEqual(resultado['estado'], 'recibida')
+        
+        # Verificar actualización en DB
+        self.requisicion.refresh_from_db()
+        self.assertEqual(self.requisicion.estado, 'recibida')
+        self.assertEqual(self.requisicion.usuario_firma_recepcion, usuario_receptor)
+        self.assertIsNotNone(self.requisicion.fecha_firma_recepcion)
+        self.assertIn("Todo ok", self.requisicion.notas)

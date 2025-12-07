@@ -226,7 +226,8 @@ class E2ESeguridad(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
 
     def test_usuario_no_ve_requisicion_de_otro_centro(self):
-        req = Requisicion.objects.create(usuario_solicita=self.user1, centro=self.centro1)
+        # Usar campos reales: numero, solicitante, centro_destino
+        req = Requisicion.objects.create(numero='E2E-001', solicitante=self.user1, centro_destino=self.centro1)
         DetalleRequisicion.objects.create(requisicion=req, producto=Producto.objects.create(
             clave="SEG001",
             descripcion="Prod Seg",
