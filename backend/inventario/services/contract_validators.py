@@ -231,7 +231,6 @@ class RequisicionContractValidator:
                     producto=detalle.producto,
                     centro__isnull=True,  # Farmacia central
                     activo=True,
-                    deleted_at__isnull=True,
                     fecha_caducidad__gte=today,
                     cantidad_actual__gt=0
                 ).aggregate(total=models.Sum('cantidad_actual'))['total'] or 0

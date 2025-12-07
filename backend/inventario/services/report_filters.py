@@ -325,7 +325,7 @@ class ReportPermissionFilter:
         from core.models import Lote
         
         if queryset is None:
-            queryset = Lote.objects.filter(deleted_at__isnull=True)
+            queryset = Lote.objects.filter(activo=True)
         
         # ISS-033: Optimizar queryset
         queryset = QueryOptimizer.lotes_optimizados(queryset)

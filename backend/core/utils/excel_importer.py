@@ -216,7 +216,7 @@ def importar_lotes_desde_excel(archivo, usuario):
                 if not numero_lote or len(numero_lote) < 3:
                     resultado.agregar_error(fila_num, 'numero_lote', 'Numero de lote: minimo 3 caracteres')
                     continue
-                if Lote.objects.filter(producto=producto, numero_lote__iexact=numero_lote, deleted_at__isnull=True).exists():
+                if Lote.objects.filter(producto=producto, numero_lote__iexact=numero_lote, activo=True).exists():
                     resultado.agregar_error(fila_num, 'numero_lote', f'Lote "{numero_lote}" ya existe')
                     continue
 

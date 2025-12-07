@@ -221,7 +221,7 @@ def generar_hoja_recoleccion(requisicion):
     for idx, detalle in enumerate(requisicion.detalles.all(), start=1):
         # Buscar lote con stock disponible para este producto
         lote_asignado = detalle.producto.lotes.filter(
-            estado='disponible',
+            activo=True,
             cantidad_actual__gt=0
         ).order_by('fecha_caducidad').first()
         

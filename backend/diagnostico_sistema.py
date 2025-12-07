@@ -47,7 +47,7 @@ def check_database():
         productos = Producto.objects.filter(activo=True).count()
         print(f"✅ Productos activos: {productos}")
         
-        lotes = Lote.objects.filter(deleted_at__isnull=True).count()
+        lotes = Lote.objects.filter(activo=True).count()
         print(f"✅ Lotes activos: {lotes}")
         
         centros = Centro.objects.filter(activo=True).count()

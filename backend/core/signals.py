@@ -99,13 +99,13 @@ def auditar_movimiento(sender, instance, created, **kwargs):
 
 @receiver(pre_save, sender=Lote)
 def validar_caducidad_lote(sender, instance, **kwargs):
-    """Marca automáticamente lotes vencidos antes de guardar."""
+    """Marca automáticamente lotes vencidos como inactivos antes de guardar."""
     from datetime import date
 
-    if instance.fecha_caducidad < date.today() and instance.estado != 'vencido':
-        instance.estado = 'vencido'
+    if instance.fecha_caducidad < date.today() and instance.activo:
+        instance.activo = False
         logger.warning(
-            f"Lote {instance.numero_lote} marcado automáticamente como VENCIDO "
+            f"Lote {instance.numero_lote} marcado automáticamente como INACTIVO (vencido) "
             f"(caducidad: {instance.fecha_caducidad})"
         )
 

@@ -90,8 +90,7 @@ class StockValidationService:
         # Construir filtro de lotes disponibles
         filtro = Q(
             producto=producto,
-            estado='disponible',
-            deleted_at__isnull=True,
+            activo=True,
             cantidad_actual__gt=0
         )
         
@@ -302,8 +301,7 @@ class CentroInventoryValidator:
         from core.models import Lote
         
         filtro = Q(
-            estado='disponible',
-            deleted_at__isnull=True,
+            activo=True,
             cantidad_actual__gt=0
         )
         
@@ -413,9 +411,9 @@ class InventoryReconciliationService:
         from core.models import Lote
         
         if centro:
-            lotes = Lote.objects.filter(centro=centro, deleted_at__isnull=True)
+            lotes = Lote.objects.filter(centro=centro, activo=True)
         else:
-            lotes = Lote.objects.filter(centro__isnull=True, deleted_at__isnull=True)
+            lotes = Lote.objects.filter(centro__isnull=True, activo=True)
         
         resultados = []
         for lote in lotes.select_related('producto'):
@@ -512,10 +510,10 @@ class InventoryReconciliationService:
         movimiento = Movimiento(
             tipo='ajuste',
             lote=lote_locked,
-            centro=lote_locked.centro,
+            centro_origen=lote_locked.centro,
             cantidad=diferencia,
             usuario=usuario,
-            observaciones=f"ISS-026 Reconciliación: {motivo}. Stock anterior: {stock_anterior}"
+            motivo=f"ISS-026 Reconciliación: {motivo}. Stock anterior: {stock_anterior}"
         )
         movimiento._stock_pre_movimiento = stock_anterior
         movimiento.save()
@@ -523,10 +521,10 @@ class InventoryReconciliationService:
         # Actualizar stock
         lote_locked.cantidad_actual = nuevo_stock
         if nuevo_stock == 0:
-            lote_locked.estado = 'agotado'
-        elif lote_locked.estado == 'agotado' and nuevo_stock > 0:
-            lote_locked.estado = 'disponible'
-        lote_locked.save(update_fields=['cantidad_actual', 'estado', 'updated_at'])
+            lote_locked.activo = False
+        elif not lote_locked.activo and nuevo_stock > 0:
+            lote_locked.activo = True
+        lote_locked.save(update_fields=['cantidad_actual', 'activo', 'updated_at'])
         
         logger.info(
             f"ISS-026: Discrepancia corregida en lote {lote.numero_lote}. "

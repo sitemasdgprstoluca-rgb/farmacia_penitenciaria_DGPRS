@@ -158,8 +158,7 @@ class RequisicionService:
             stock_farmacia = Lote.objects.filter(
                 centro__isnull=True,  # Solo farmacia central
                 producto=detalle.producto,
-                estado='disponible',
-                deleted_at__isnull=True,
+                activo=True,
                 cantidad_actual__gt=0,
                 fecha_caducidad__gte=hoy,  # ISS-002 FIX: Solo lotes vigentes
             ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
@@ -328,8 +327,7 @@ class RequisicionService:
             lotes = Lote.objects.select_for_update().filter(
                 centro__isnull=True,  # Solo farmacia central
                 producto=detalle.producto,
-                estado='disponible',
-                deleted_at__isnull=True,
+                activo=True,
                 cantidad_actual__gt=0,
                 fecha_caducidad__gte=hoy,  # ISS-002 FIX: Solo lotes vigentes
             ).order_by('fecha_caducidad', 'id')  # FEFO + ID para evitar deadlocks
@@ -496,14 +494,19 @@ class RequisicionService:
         Returns:
             Movimiento: Instancia creada
         """
+        # Determinar centro_origen/centro_destino según tipo
+        centro_origen = centro if tipo == 'salida' else None
+        centro_destino = centro if tipo == 'entrada' else None
+        
         movimiento = Movimiento(
             tipo=tipo,
             lote=lote,
-            centro=centro,
+            centro_origen=centro_origen,
+            centro_destino=centro_destino,
             requisicion=self.requisicion,
             usuario=self.usuario if self.usuario.is_authenticated else None,
             cantidad=cantidad,
-            observaciones=observaciones
+            motivo=observaciones
         )
         # Pasar stock previo para evitar re-validación (ya descontamos)
         if stock_previo is not None:
@@ -564,37 +567,50 @@ class RequisicionService:
             producto=lote_origen.producto,
             numero_lote=lote_origen.numero_lote,
             centro=centro_destino,
-            deleted_at__isnull=True
+            activo=True
         ).first()
         
         if lote_destino:
-            # Reactivar si estaba agotado
-            if lote_destino.estado == 'agotado':
-                lote_destino.estado = 'disponible'
-            
-            # Actualizar cantidad
+            # Actualizar cantidad (ya está activo)
             Lote.objects.filter(pk=lote_destino.pk).update(
                 cantidad_actual=F('cantidad_actual') + cantidad,
                 cantidad_inicial=F('cantidad_inicial') + cantidad,
-                estado='disponible',
+                activo=True,
                 updated_at=timezone.now()
             )
             lote_destino.refresh_from_db()
         else:
-            # Crear nuevo lote: COPIA FIEL del lote de farmacia
-            lote_destino = Lote.objects.create(
+            # Buscar lote inactivo que podamos reactivar
+            lote_destino = Lote.objects.select_for_update().filter(
                 producto=lote_origen.producto,
                 numero_lote=lote_origen.numero_lote,
                 centro=centro_destino,
-                fecha_caducidad=lote_origen.fecha_caducidad,
-                cantidad_inicial=cantidad,
-                cantidad_actual=cantidad,
-                estado='disponible',
-                precio_compra=lote_origen.precio_compra,
-                proveedor=lote_origen.proveedor,
-                lote_origen=lote_origen,
-                observaciones=f'Transferido de farmacia central via requisición {self.requisicion.folio}'
-            )
+                activo=False
+            ).first()
+            
+            if lote_destino:
+                # Reactivar lote existente
+                Lote.objects.filter(pk=lote_destino.pk).update(
+                    cantidad_actual=F('cantidad_actual') + cantidad,
+                    cantidad_inicial=F('cantidad_inicial') + cantidad,
+                    activo=True,
+                    updated_at=timezone.now()
+                )
+                lote_destino.refresh_from_db()
+            else:
+                # Crear nuevo lote: COPIA FIEL del lote de farmacia
+                lote_destino = Lote.objects.create(
+                    producto=lote_origen.producto,
+                    numero_lote=lote_origen.numero_lote,
+                    centro=centro_destino,
+                    fecha_caducidad=lote_origen.fecha_caducidad,
+                    cantidad_inicial=cantidad,
+                    cantidad_actual=cantidad,
+                    activo=True,
+                    precio_unitario=lote_origen.precio_unitario,
+                    marca=lote_origen.marca,
+                    ubicacion=f'Transferido via REQ-{self.requisicion.numero}'
+                )
         
         return lote_destino
     
@@ -748,7 +764,7 @@ class RequisicionService:
                 
                 Lote.objects.filter(pk=mov.lote.pk).update(
                     cantidad_actual=F('cantidad_actual') + cantidad_restaurar,
-                    estado='disponible',
+                    activo=True,
                     updated_at=timezone.now()
                 )
                 
@@ -756,11 +772,11 @@ class RequisicionService:
                 Movimiento.objects.create(
                     tipo='entrada',
                     lote=mov.lote,
-                    centro=mov.centro,
+                    centro_origen=mov.centro_origen,
                     requisicion=requisicion,
                     usuario=self.usuario,
                     cantidad=cantidad_restaurar,
-                    observaciones=f'REVERSO por cancelación de requisición {requisicion.folio}'
+                    motivo=f'REVERSO por cancelación de requisición {requisicion.numero}'
                 )
                 
                 movimientos_revertidos.append({
@@ -785,11 +801,11 @@ class RequisicionService:
                 Movimiento.objects.create(
                     tipo='salida',
                     lote=mov.lote,
-                    centro=mov.centro,
+                    centro_origen=mov.centro_destino,
                     requisicion=requisicion,
                     usuario=self.usuario,
                     cantidad=-mov.cantidad,
-                    observaciones=f'REVERSO por cancelación de requisición {requisicion.folio}'
+                    motivo=f'REVERSO por cancelación de requisición {requisicion.numero}'
                 )
             
             # Resetear cantidades surtidas en detalles

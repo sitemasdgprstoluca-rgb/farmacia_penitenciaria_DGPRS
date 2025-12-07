@@ -322,8 +322,7 @@ class PreflightStockCheck:
         # Construir filtro base
         filtro = Q(
             producto=producto,
-            estado='disponible',
-            deleted_at__isnull=True,
+            activo=True,
             cantidad_actual__gt=0
         )
         

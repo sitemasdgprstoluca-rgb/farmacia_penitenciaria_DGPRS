@@ -247,8 +247,7 @@ class RequisicionStateMachine:
             stock_disponible = Lote.objects.filter(
                 centro__isnull=True,  # Solo farmacia central
                 producto=detalle.producto,
-                estado='disponible',
-                deleted_at__isnull=True,
+                activo=True,
                 cantidad_actual__gt=0,
                 fecha_caducidad__gte=hoy,  # ISS-002 FIX: Solo lotes vigentes
             ).aggregate(total=Sum('cantidad_actual'))['total'] or 0

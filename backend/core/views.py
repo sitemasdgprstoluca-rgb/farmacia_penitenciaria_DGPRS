@@ -1258,8 +1258,7 @@ class ReportesViewSet(viewsets.ViewSet):
 
         lotes = Lote.objects.filter(
             fecha_caducidad__lte=fecha_limite,
-            estado__in=['disponible', 'critico', 'proximo'],
-            deleted_at__isnull=True
+            activo=True
         ).select_related('producto').order_by('fecha_caducidad')
 
         datos = []
@@ -1274,7 +1273,7 @@ class ReportesViewSet(viewsets.ViewSet):
                 'dias_restantes': dias_restantes,
                 'alerta': lote.alerta_caducidad(),
                 'cantidad_actual': lote.cantidad_actual,
-                'proveedor': lote.proveedor
+                'marca': lote.marca
             })
 
         resumen = {

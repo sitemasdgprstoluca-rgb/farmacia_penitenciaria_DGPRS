@@ -63,8 +63,7 @@ class Command(BaseCommand):
         # 1. Lotes ya vencidos que aún están activos
         lotes_vencidos = Lote.objects.filter(
             fecha_caducidad__lt=hoy,
-            activo=True,
-            deleted_at__isnull=True
+            activo=True
         ).select_related('producto', 'centro')
         
         self.stdout.write(self.style.ERROR(f"\n📛 LOTES VENCIDOS ({lotes_vencidos.count()}):"))
@@ -95,8 +94,7 @@ class Command(BaseCommand):
         lotes_criticos = Lote.objects.filter(
             fecha_caducidad__gte=hoy,
             fecha_caducidad__lte=fecha_critico,
-            activo=True,
-            deleted_at__isnull=True
+            activo=True
         ).select_related('producto', 'centro').order_by('fecha_caducidad')
         
         self.stdout.write(self.style.WARNING(f"\n⚠️  LOTES CRÍTICOS - Vencen en {dias_critico} días o menos ({lotes_criticos.count()}):"))
@@ -118,8 +116,7 @@ class Command(BaseCommand):
         lotes_proximos = Lote.objects.filter(
             fecha_caducidad__gt=fecha_critico,
             fecha_caducidad__lte=fecha_alerta,
-            activo=True,
-            deleted_at__isnull=True
+            activo=True
         ).select_related('producto', 'centro').order_by('fecha_caducidad')
         
         self.stdout.write(self.style.NOTICE(f"\n📅 LOTES PRÓXIMOS A VENCER - Vencen en {dias_alerta} días o menos ({lotes_proximos.count()}):"))
@@ -141,13 +138,11 @@ class Command(BaseCommand):
         
         # 4. Resumen estadístico
         total_disponibles = Lote.objects.filter(
-            activo=True,
-            deleted_at__isnull=True
+            activo=True
         ).count()
         
         total_vencidos = Lote.objects.filter(
-            activo=False,
-            deleted_at__isnull=True
+            activo=False
         ).count()
         
         self.stdout.write(f"\n{'='*60}")
