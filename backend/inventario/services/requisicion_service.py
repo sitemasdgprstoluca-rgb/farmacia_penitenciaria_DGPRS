@@ -458,7 +458,7 @@ class RequisicionService:
         # Actualizar con F() para atomicidad adicional
         Lote.objects.filter(pk=lote.pk).update(
             cantidad_actual=F('cantidad_actual') - cantidad,
-            estado='agotado' if nuevo_stock == 0 else 'disponible',
+            activo=(nuevo_stock > 0),
             updated_at=timezone.now()
         )
         
