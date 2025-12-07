@@ -284,7 +284,7 @@ def auditar_y_crear_perfil_usuario(sender, instance, created, **kwargs):
     if created:
         # Crear perfil
         try:
-            UserProfile.objects.get_or_create(user=instance)
+            UserProfile.objects.get_or_create(usuario=instance)
             logger.debug(f"UserProfile creado para usuario: {instance.username}")
         except Exception as e:
             logger.error(f"Error al crear UserProfile para {instance.username}: {e}")

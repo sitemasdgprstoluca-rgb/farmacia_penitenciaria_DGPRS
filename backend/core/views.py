@@ -295,7 +295,7 @@ class UserViewSet(viewsets.ModelViewSet):
     def me(self, request):
         """GET/PATCH /api/usuarios/me/ - Perfil del usuario autenticado"""
         try:
-            UserProfile.objects.get_or_create(user=request.user)
+            UserProfile.objects.get_or_create(usuario=request.user)
         except Exception as e:
             # Si la tabla user_profiles no existe, continuar sin profile
             logger.warning(f"No se pudo crear UserProfile para {request.user}: {e}")

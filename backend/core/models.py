@@ -863,25 +863,25 @@ AuditoriaLog = AuditoriaLogs
 
 class UserProfile(models.Model):
     """
-    Modelo de perfil de usuario (legacy)
-    En la nueva estructura, el perfil estÃ¡ integrado en el modelo User.
-    Este modelo se mantiene solo para compatibilidad con cÃ³digo existente.
+    Modelo de perfil de usuario - Supabase
+    
+    Campos en BD: id, rol, telefono, centro_id, usuario_id, created_at, updated_at
     """
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='userprofile')
+    rol = models.CharField(max_length=30, default='visualizador')
+    telefono = models.CharField(max_length=20, blank=True, null=True)
+    centro = models.ForeignKey(Centro, on_delete=models.SET_NULL, null=True, blank=True)
+    usuario = models.OneToOneField(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE, 
+        related_name='profile',
+        db_column='usuario_id'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
         db_table = 'user_profiles'
-        managed = False  # Tabla legacy
-    
-    @property
-    def rol(self):
-        """Obtiene el rol del usuario asociado"""
-        return self.user.rol if self.user else None
-    
-    @property
-    def centro(self):
-        """Obtiene el centro del usuario asociado"""
-        return self.user.centro if self.user else None
+        managed = False  # Tabla en Supabase
     
     def __str__(self):
-        return f"Perfil de {self.user.username if self.user else 'N/A'}"
+        return f"Perfil de {self.usuario.username if self.usuario else 'N/A'}"

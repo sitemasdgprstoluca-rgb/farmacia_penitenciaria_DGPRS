@@ -132,13 +132,13 @@ def check_admin_user():
     
     try:
         admin_users = User.objects.filter(
-            userprofile__rol='admin_sistema'
-        ).select_related('userprofile')
+            profile__rol='admin_sistema'
+        ).select_related('profile')
         
         if admin_users.exists():
-            print(f"✅ Se encontraron {admin_users.count()} administradores:")
+            print(f"\u2705 Se encontraron {admin_users.count()} administradores:")
             for admin in admin_users:
-                print(f"   - {admin.username} ({admin.email}) - Rol: {admin.userprofile.rol}")
+                print(f"   - {admin.username} ({admin.email}) - Rol: {admin.profile.rol}")
         else:
             print("❌ No se encontraron usuarios administradores")
             
@@ -147,8 +147,8 @@ def check_admin_user():
             if staff_users.exists():
                 print("\n⚠️  Usuarios con privilegios staff/superuser (pueden necesitar perfil):")
                 for user in staff_users:
-                    has_profile = hasattr(user, 'userprofile')
-                    rol = user.userprofile.rol if has_profile else "SIN PERFIL"
+                    has_profile = hasattr(user, 'profile')
+                    rol = user.profile.rol if has_profile else "SIN PERFIL"
                     print(f"   - {user.username} ({user.email}) - Rol: {rol}")
             
             return False
@@ -183,7 +183,7 @@ def test_api_endpoints():
     # Crear un usuario de prueba
     try:
         admin_user = User.objects.filter(
-            userprofile__rol='admin_sistema'
+            profile__rol='admin_sistema'
         ).first()
         
         if not admin_user:

@@ -462,7 +462,8 @@ class ProductoViewSet(viewsets.ModelViewSet):
         search = self.request.query_params.get('search')
         if search and search.strip():
             queryset = queryset.filter(
-                Q(clave__icontains=search) | 
+                Q(codigo_barras__icontains=search) | 
+                Q(nombre__icontains=search) |
                 Q(descripcion__icontains=search)
             )
 
@@ -942,7 +943,6 @@ class CentroViewSet(viewsets.ModelViewSet):
         search = self.request.query_params.get('search')
         if search and search.strip():
             queryset = queryset.filter(
-                Q(clave__icontains=search) | 
                 Q(nombre__icontains=search) | 
                 Q(direccion__icontains=search)
             )
@@ -1547,7 +1547,8 @@ class LoteViewSet(viewsets.ModelViewSet):
             search_term = search.strip()
             queryset = queryset.filter(
                 Q(numero_lote__icontains=search_term) |
-                Q(producto__clave__icontains=search_term) |
+                Q(producto__codigo_barras__icontains=search_term) |
+                Q(producto__nombre__icontains=search_term) |
                 Q(producto__descripcion__icontains=search_term)
             )
         
@@ -1834,7 +1835,10 @@ class LoteViewSet(viewsets.ModelViewSet):
                         errores.append({'fila': row_idx, 'error': 'Producto y numero de lote son obligatorios'})
                         continue
 
-                    producto = Producto.objects.filter(clave__iexact=str(producto_clave).strip()).first()
+                    producto = Producto.objects.filter(
+                        Q(codigo_barras__iexact=str(producto_clave).strip()) |
+                        Q(nombre__iexact=str(producto_clave).strip())
+                    ).first()
                     if not producto:
                         errores.append({'fila': row_idx, 'error': f'Producto no encontrado: {producto_clave}'})
                         continue
@@ -2252,14 +2256,15 @@ class MovimientoViewSet(
         if fecha_fin:
             queryset = queryset.filter(fecha__date__lte=fecha_fin)
         
-        # Bsqueda en observaciones, lote y producto
+        # Busqueda en motivo, lote y producto
         search = self.request.query_params.get('search')
         if search and search.strip():
             search_term = search.strip()
             queryset = queryset.filter(
-                Q(observaciones__icontains=search_term) |
+                Q(motivo__icontains=search_term) |
                 Q(lote__numero_lote__icontains=search_term) |
-                Q(lote__producto__clave__icontains=search_term) |
+                Q(lote__producto__codigo_barras__icontains=search_term) |
+                Q(lote__producto__nombre__icontains=search_term) |
                 Q(lote__producto__descripcion__icontains=search_term)
             )
         
@@ -2322,7 +2327,9 @@ class MovimientoViewSet(
         if not clave:
             return Response({'error': 'Se requiere producto_clave'}, status=status.HTTP_400_BAD_REQUEST)
         
-        producto = Producto.objects.filter(clave__iexact=clave).first()
+        producto = Producto.objects.filter(
+            Q(codigo_barras__iexact=clave) | Q(nombre__iexact=clave)
+        ).first()
         if not producto:
             return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
         
@@ -2519,8 +2526,9 @@ class MovimientoViewSet(
             if search:
                 queryset = queryset.filter(
                     Q(lote__numero_lote__icontains=search) |
+                    Q(lote__producto__nombre__icontains=search) |
                     Q(lote__producto__descripcion__icontains=search) |
-                    Q(observaciones__icontains=search)
+                    Q(motivo__icontains=search)
                 )
             
             movimientos = queryset[:1000]  # Limitar para Excel
@@ -3689,7 +3697,9 @@ def trazabilidad_producto(request, clave):
             except Centro.DoesNotExist:
                 pass
         
-        producto = Producto.objects.filter(clave__iexact=clave).first()
+        producto = Producto.objects.filter(
+            Q(codigo_barras__iexact=clave) | Q(nombre__iexact=clave)
+        ).first()
         if not producto:
             return Response({'error': 'Producto no encontrado', 'clave_buscada': clave}, status=status.HTTP_404_NOT_FOUND)
 
