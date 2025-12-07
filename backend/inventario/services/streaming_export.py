@@ -343,12 +343,12 @@ class ReportExporter:
         
         if formato == 'csv':
             return StreamingExporter.export_csv_streaming(
-                queryset.select_related('lote__producto', 'usuario', 'centro'),
+                queryset.select_related('lote__producto', 'usuario', 'centro_origen', 'centro_destino'),
                 columns, f"{filename}.csv"
             )
         elif formato == 'excel':
             return StreamingExporter.export_excel_streaming(
-                queryset.select_related('lote__producto', 'usuario', 'centro'),
+                queryset.select_related('lote__producto', 'usuario', 'centro_origen', 'centro_destino'),
                 columns, f"{filename}.xlsx"
             )
         else:
@@ -358,26 +358,26 @@ class ReportExporter:
     def export_requisiciones(queryset, formato: str = 'csv') -> HttpResponse:
         """Exporta requisiciones."""
         columns = [
-            {'field': 'folio', 'header': 'Folio'},
-            {'field': 'centro.nombre', 'header': 'Centro'},
+            {'field': 'numero', 'header': 'Folio'},
+            {'field': 'centro_destino.nombre', 'header': 'Centro'},
             {'field': 'estado', 'header': 'Estado'},
-            {'field': 'usuario_solicita.username', 'header': 'Solicitante'},
+            {'field': 'solicitante.username', 'header': 'Solicitante'},
             {'field': 'fecha_solicitud', 'header': 'Fecha Solicitud'},
             {'field': 'fecha_autorizacion', 'header': 'Fecha Autorización'},
             {'field': 'fecha_surtido', 'header': 'Fecha Surtido'},
-            {'field': 'observaciones', 'header': 'Observaciones'},
+            {'field': 'notas', 'header': 'Observaciones'},
         ]
         
         filename = f"requisiciones_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
         if formato == 'csv':
             return StreamingExporter.export_csv_streaming(
-                queryset.select_related('centro', 'usuario_solicita'),
+                queryset.select_related('centro_destino', 'solicitante'),
                 columns, f"{filename}.csv"
             )
         elif formato == 'excel':
             return StreamingExporter.export_excel_streaming(
-                queryset.select_related('centro', 'usuario_solicita'),
+                queryset.select_related('centro_destino', 'solicitante'),
                 columns, f"{filename}.xlsx"
             )
         else:

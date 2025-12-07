@@ -62,7 +62,7 @@ for item in requisiciones_por_estado:
     print(f"  {item['estado']:15}: {item['total']:3} requisiciones")
 req_sin_detalles = Requisicion.objects.annotate(num_detalles=Count("detalles")).filter(num_detalles=0).count()
 print(f"Requisiciones sin detalles: {req_sin_detalles}")
-req_autorizadas_sin_autorizador = Requisicion.objects.filter(estado="autorizada", usuario_autoriza__isnull=True).count()
+req_autorizadas_sin_autorizador = Requisicion.objects.filter(estado="autorizada", autorizador__isnull=True).count()
 print(f"Requisiciones autorizadas sin autorizador: {req_autorizadas_sin_autorizador}")
 
 print("\nINTEGRIDAD DE MOVIMIENTOS")

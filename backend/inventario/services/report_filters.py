@@ -33,11 +33,11 @@ class QueryOptimizer:
     
     # Configuración de relaciones por modelo
     RELACIONES_SELECT = {
-        'Requisicion': ['centro', 'usuario_solicita', 'usuario_autoriza', 'usuario_recibe'],
+        'Requisicion': ['centro_destino', 'centro_origen', 'solicitante', 'autorizador', 'usuario_firma_recepcion'],
         'DetalleRequisicion': ['requisicion', 'producto', 'lote'],
-        'Movimiento': ['lote', 'centro', 'usuario', 'requisicion', 'lote__producto'],
-        'Lote': ['producto', 'centro', 'lote_origen'],
-        'Producto': ['created_by'],
+        'Movimiento': ['lote', 'centro_origen', 'centro_destino', 'usuario', 'requisicion', 'lote__producto'],
+        'Lote': ['producto', 'centro'],
+        'Producto': [],
         'User': ['centro'],
     }
     
@@ -97,10 +97,11 @@ class QueryOptimizer:
             queryset = Requisicion.objects.all()
         
         return queryset.select_related(
-            'centro',
-            'usuario_solicita',
-            'usuario_autoriza',
-            'usuario_recibe'
+            'centro_destino',
+            'centro_origen',
+            'solicitante',
+            'autorizador',
+            'usuario_firma_recepcion'
         ).prefetch_related(
             Prefetch(
                 'detalles',

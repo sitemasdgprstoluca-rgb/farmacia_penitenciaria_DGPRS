@@ -2724,31 +2724,31 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         try:
             data = request.data.copy()
             fecha = timezone.now()
-            folio = f"REQ-{fecha.strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
-            while Requisicion.objects.filter(folio=folio).exists():
-                folio = f"REQ-{fecha.strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
+            numero = f"REQ-{fecha.strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
+            while Requisicion.objects.filter(numero=numero).exists():
+                numero = f"REQ-{fecha.strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
 
             data.setdefault('estado', 'borrador')
             data['estado'] = str(data.get('estado')).lower()
-            data['folio'] = folio
+            data['numero'] = numero
 
             solicitante = request.user if request.user.is_authenticated else None
             es_privilegiado = False
             if solicitante:
-                data['usuario_solicita'] = getattr(solicitante, 'id', None)
+                data['solicitante'] = getattr(solicitante, 'id', None)
                 centro_user = self._user_centro(solicitante)
                 es_privilegiado = is_farmacia_or_admin(solicitante)
                 if centro_user and not es_privilegiado:
-                    if data.get('centro') and int(data.get('centro')) != centro_user.id and not solicitante.is_superuser:
+                    if data.get('centro_destino') and int(data.get('centro_destino')) != centro_user.id and not solicitante.is_superuser:
                         return Response({'error': 'No puedes crear requisiciones para otro centro'}, status=status.HTTP_403_FORBIDDEN)
-                    data['centro'] = centro_user.id
+                    data['centro_destino'] = centro_user.id
                 elif not centro_user and not es_privilegiado and not solicitante.is_superuser:
                     return Response({'error': 'El usuario no tiene centro asignado'}, status=status.HTTP_403_FORBIDDEN)
-                elif not data.get('centro') and centro_user:
-                    data['centro'] = centro_user.id
+                elif not data.get('centro_destino') and centro_user:
+                    data['centro_destino'] = centro_user.id
 
             items_data = request.data.get('items', []) or request.data.get('detalles', []) or []
-            centro = Centro.objects.filter(id=data.get('centro')).first() if data.get('centro') else None
+            centro = Centro.objects.filter(id=data.get('centro_destino')).first() if data.get('centro_destino') else None
             if not centro and solicitante and not solicitante.is_superuser:
                 return Response({'error': 'No se encontro el centro para validar stock'}, status=status.HTTP_400_BAD_REQUEST)
             
@@ -5006,7 +5006,7 @@ class HojaRecoleccionViewSet(viewsets.ReadOnlyModelViewSet):
         contenido = json.dumps(hoja.contenido_json, sort_keys=True, ensure_ascii=False)
         hash_calculado = hashlib.sha256(contenido.encode('utf-8')).hexdigest()
         return Response({
-            'folio': hoja.folio_hoja,
+            'folio': hoja.numero,
             'hash_almacenado': hoja.hash_contenido,
             'hash_calculado': hash_calculado,
             'integridad_ok': hash_calculado == hoja.hash_contenido
@@ -5027,7 +5027,7 @@ class HojaRecoleccionViewSet(viewsets.ReadOnlyModelViewSet):
                 pdf_buffer.getvalue(),
                 content_type='application/pdf'
             )
-            folio_safe = (hoja.folio_hoja or f'HOJA-{hoja.id}').replace('/', '-')
+            folio_safe = (hoja.numero or f'HOJA-{hoja.id}').replace('/', '-')
             response['Content-Disposition'] = f'attachment; filename="Hoja_Recoleccion_{folio_safe}.pdf"'
             
             return response

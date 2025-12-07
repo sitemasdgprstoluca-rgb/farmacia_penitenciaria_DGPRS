@@ -9,6 +9,7 @@ from decimal import Decimal
 
 import openpyxl
 from django.db import transaction
+from django.db.models import Q
 
 from core.models import Producto, Lote, Centro, ImportacionLog
 
@@ -165,13 +166,13 @@ def importar_lotes_desde_excel(archivo, usuario):
     Importa lotes desde Excel.
 
     Columnas esperadas:
-    - producto_clave
+    - producto_clave (código de barras o nombre del producto)
     - numero_lote
     - fecha_caducidad (YYYY-MM-DD, futura)
     - cantidad_inicial (int > 0)
     - cantidad_actual (int >= 0 y <= inicial)
-    - precio_compra (opcional, decimal >= 0)
-    - proveedor (opcional)
+    - precio_unitario (opcional, decimal >= 0)
+    - marca (opcional)
     """
     resultado = ResultadoImportacion('Lote')
     workbook, _, valido = cargar_excel(archivo)
@@ -201,14 +202,16 @@ def importar_lotes_desde_excel(archivo, usuario):
                 fecha_raw = fila[col_map['fecha_caducidad']].value
                 cant_inicial_raw = fila[col_map['cantidad_inicial']].value
                 cant_actual_raw = fila[col_map['cantidad_actual']].value
-                precio_compra_raw = fila[col_map.get('precio_compra', -1)].value if col_map.get('precio_compra', -1) is not None and col_map.get('precio_compra', -1) >= 0 else None
-                proveedor = str(fila[col_map.get('proveedor', -1)].value).strip() if col_map.get('proveedor', -1) is not None and col_map.get('proveedor', -1) >= 0 and fila[col_map.get('proveedor', -1)].value else ''
+                precio_unitario_raw = fila[col_map.get('precio_unitario', -1)].value if col_map.get('precio_unitario', -1) is not None and col_map.get('precio_unitario', -1) >= 0 else None
+                marca = str(fila[col_map.get('marca', -1)].value).strip() if col_map.get('marca', -1) is not None and col_map.get('marca', -1) >= 0 and fila[col_map.get('marca', -1)].value else ''
 
                 if not producto_clave:
                     resultado.agregar_error(fila_num, 'producto_clave', 'Clave de producto requerida')
                     continue
                 try:
-                    producto = Producto.objects.get(clave=producto_clave)
+                    producto = Producto.objects.get(
+                        Q(codigo_barras__iexact=producto_clave) | Q(nombre__iexact=producto_clave)
+                    )
                 except Producto.DoesNotExist:
                     resultado.agregar_error(fila_num, 'producto_clave', f'Producto "{producto_clave}" no existe')
                     continue
@@ -249,14 +252,14 @@ def importar_lotes_desde_excel(archivo, usuario):
                     resultado.agregar_error(fila_num, 'cantidad_actual', exc)
                     continue
 
-                precio_compra = None
-                if precio_compra_raw not in [None, '']:
+                precio_unitario = None
+                if precio_unitario_raw not in [None, '']:
                     try:
-                        precio_compra = Decimal(str(precio_compra_raw).strip())
-                        if precio_compra < 0:
+                        precio_unitario = Decimal(str(precio_unitario_raw).strip())
+                        if precio_unitario < 0:
                             raise ValueError('Precio no puede ser negativo')
                     except Exception as exc:
-                        resultado.agregar_error(fila_num, 'precio_compra', exc)
+                        resultado.agregar_error(fila_num, 'precio_unitario', exc)
                         continue
 
                 from django.utils import timezone
@@ -264,10 +267,10 @@ def importar_lotes_desde_excel(archivo, usuario):
                     producto=producto,
                     numero_lote=numero_lote,
                     fecha_caducidad=fecha_caducidad,
-                    fecha_entrada=timezone.now().date(),
                     cantidad_inicial=cantidad_inicial,
                     cantidad_actual=cantidad_actual,
-                    precio_compra=precio_compra or 0,
+                    precio_unitario=precio_unitario or 0,
+                    marca=marca or None,
                 )
                 resultado.agregar_exito()
             except Exception as exc:  # pragma: no cover

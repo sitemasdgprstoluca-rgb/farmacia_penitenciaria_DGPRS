@@ -370,14 +370,14 @@ class RequisicionStateMachine:
         if destino_enum in [EstadoRequisicion.AUTORIZADA, EstadoRequisicion.PARCIAL]:
             self.requisicion.fecha_autorizacion = timezone.now()
             if usuario:
-                self.requisicion.usuario_autoriza = usuario
+                self.requisicion.autorizador = usuario
         
         if destino_enum == EstadoRequisicion.RECIBIDA:
-            self.requisicion.fecha_recibido = timezone.now()
+            self.requisicion.fecha_firma_recepcion = timezone.now()
             if usuario:
-                self.requisicion.usuario_recibe = usuario
+                self.requisicion.usuario_firma_recepcion = usuario
             if observaciones:
-                self.requisicion.observaciones_recepcion = observaciones
+                self.requisicion.notas = (self.requisicion.notas or '') + f'\n[Recepción] {observaciones}'
         
         # Guardar cambios
         self.requisicion.save()

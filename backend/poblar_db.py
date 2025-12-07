@@ -93,8 +93,8 @@ for i, producto in enumerate(productos):
                 'cantidad_inicial': cantidad,
                 'cantidad_actual': cantidad,
                 'fecha_caducidad': date.today() + timedelta(days=dias + (i * 10)),
-                'proveedor': f'Proveedor Farmacéutico {(i % 3) + 1}',
-                'precio_compra': Decimal(str(precio)),
+                'marca': f'Laboratorio Farmacéutico {(i % 3) + 1}',
+                'precio_unitario': Decimal(str(precio)),
                 'centro': centro,
             }
         )
