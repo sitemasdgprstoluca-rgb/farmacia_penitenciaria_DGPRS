@@ -2092,20 +2092,12 @@ const Productos = () => {
               {/* Checkbox: activo */}
               <div className="flex items-center gap-2 rounded-lg border px-4 py-3 border-theme-primary">
                 <input
-
-                    type="checkbox"
-
-                    checked={formData.activo}
-
-                    onChange={(e) => setFormData({ ...formData, activo: e.target.checked })}
-
-                    className="h-4 w-4"
-
-                  />
-
-                  <span className="text-sm font-semibold text-gray-700">Producto Activo</span>
-
-                </div>
+                  type="checkbox"
+                  checked={formData.activo}
+                  onChange={(e) => setFormData({ ...formData, activo: e.target.checked })}
+                  className="h-4 w-4"
+                />
+                <span className="text-sm font-semibold text-gray-700">Producto Activo</span>
               </div>
 
               {/* Campo de imagen del producto */}
