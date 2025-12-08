@@ -238,7 +238,7 @@ const Movimientos = () => {
   const getLoteLabel = (lote) => {
     const producto = productos.find(p => p.id === lote.producto);
     const fechaCad = lote.fecha_caducidad ? new Date(lote.fecha_caducidad).toLocaleDateString() : 'S/F';
-    return `${lote.numero_lote} - ${producto?.descripcion?.substring(0, 25) || 'Producto'} (${lote.cantidad_actual} uds, Cad: ${fechaCad})`;
+    return `${lote.numero_lote} - ${producto?.nombre?.substring(0, 25) || 'Producto'} (${lote.cantidad_actual} uds, Cad: ${fechaCad})`;
   };
 
   const registrarMovimiento = async () => {
@@ -512,7 +512,7 @@ const Movimientos = () => {
                   <option value="">-- Todos --</option>
                   {productos.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.clave} - {p.descripcion}
+                      {p.clave} - {p.nombre}
                     </option>
                   ))}
                 </select>
@@ -731,7 +731,7 @@ const Movimientos = () => {
                     <option value="">Todos</option>
                     {productos.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.clave} - {p.descripcion}
+                        {p.clave} - {p.nombre}
                       </option>
                     ))}
                   </select>
@@ -840,7 +840,7 @@ const Movimientos = () => {
                           onClick={() => setExpandedId(expandedId === mov.id ? null : mov.id)}
                         >
                           <td className="px-4 py-3 text-sm">
-                            <div className="font-semibold text-gray-800">{mov.producto_descripcion || mov.producto_nombre || mov.producto || ""}</div>
+                            <div className="font-semibold text-gray-800">{mov.producto_nombre || mov.producto || ""}</div>
                             <div className="text-xs text-gray-500">Lote: {mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
                           </td>
                           <td className="px-4 py-3">
@@ -887,7 +887,7 @@ const Movimientos = () => {
                                 </div>
                                 <div>
                                   <span className="font-semibold text-gray-600">Producto:</span>
-                                  <p className="text-gray-800">{mov.producto_clave || 'N/A'} - {mov.producto_descripcion || mov.producto_nombre || ''}</p>
+                                  <p className="text-gray-800">{mov.producto_clave || 'N/A'} - {mov.producto_nombre || ''}</p>
                                 </div>
                                 <div>
                                   <span className="font-semibold text-gray-600">Lote:</span>

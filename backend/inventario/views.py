@@ -595,9 +595,8 @@ class ProductoViewSet(viewsets.ModelViewSet):
         search = self.request.query_params.get('search')
         if search and search.strip():
             queryset = queryset.filter(
-                Q(codigo_barras__icontains=search) | 
-                Q(nombre__icontains=search) |
-                Q(descripcion__icontains=search)
+                Q(clave__icontains=search) | 
+                Q(nombre__icontains=search)
             )
 
         stock_status = self.request.query_params.get('stock_status')
@@ -795,7 +794,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 'producto': {
                     'id': producto.id,
                     'clave': producto.clave,
-                    'descripcion': producto.descripcion,
+                    'nombre': producto.nombre,
                 },
                 'historial': historial,
                 'total': len(historial)
@@ -846,18 +845,18 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 
                 ws.append([
                     idx,
-                    producto.codigo_barras or '',
+                    producto.clave or '',
                     producto.nombre,
-                    producto.categoria,
+                    '',  # categoria removed from schema
                     producto.unidad_medida,
                     producto.stock_minimo,
                     stock_actual,
-                    producto.sustancia_activa or '',
-                    producto.presentacion or '',
-                    producto.concentracion or '',
-                    producto.via_administracion or '',
-                    'Sí' if producto.requiere_receta else 'No',
-                    'Sí' if producto.es_controlado else 'No',
+                    '',  # sustancia_activa removed
+                    '',  # presentacion removed
+                    '',  # concentracion removed
+                    '',  # via_administracion removed
+                    'No',  # requiere_receta removed
+                    'No',  # es_controlado removed,
                     lotes_activos,
                     'Activo' if producto.activo else 'Inactivo'
                 ])
@@ -958,26 +957,21 @@ class ProductoViewSet(viewsets.ModelViewSet):
             with transaction.atomic():
                 # Procesar cada fila (empezando desde la fila 2)
                 # Formato esperado: Codigo Barras | Nombre | Categoria | Unidad | Stock Minimo | 
-                #                   Sustancia Activa | Presentacion | Concentracion | Via Admin |
-                #                   Requiere Receta | Controlado | Estado
+                #                   Clave | Nombre | Unidad Medida | Stock Minimo | Estado
                 for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                     try:
-                        # Extraer valores (asegurarse de tener al menos 12 columnas)
-                        valores = list(row) + [None] * 12
-                        codigo_barras = valores[0]
+                        # Extraer valores (asegurarse de tener al menos 5 columnas)
+                        valores = list(row) + [None] * 5
+                        clave = valores[0]
                         nombre = valores[1]
-                        categoria = valores[2]
-                        unidad_medida = valores[3]
-                        stock_minimo = valores[4]
-                        sustancia_activa = valores[5]
-                        presentacion = valores[6]
-                        concentracion = valores[7]
-                        via_administracion = valores[8]
-                        requiere_receta = valores[9]
-                        es_controlado = valores[10]
-                        estado = valores[11]
+                        unidad_medida = valores[2]
+                        stock_minimo = valores[3]
+                        estado = valores[4]
                         
-                        # Validar campo requerido: nombre
+                        # Validar campo requerido: clave y nombre
+                        if not clave:
+                            errores.append({'fila': row_idx, 'error': 'Clave es obligatoria'})
+                            continue
                         if not nombre:
                             errores.append({'fila': row_idx, 'error': 'Nombre es obligatorio'})
                             continue
@@ -987,12 +981,6 @@ class ProductoViewSet(viewsets.ModelViewSet):
                         if unidad_limpia not in dict(UNIDADES_MEDIDA):
                             errores.append({'fila': row_idx, 'error': f'Unidad no valida: {unidad_limpia}'})
                             continue
-                        
-                        # Validar categoria
-                        categoria_limpia = str(categoria).strip().lower() if categoria else 'medicamento'
-                        categorias_validas = ['medicamento', 'insumo', 'material_curacion', 'reactivo', 'otro']
-                        if categoria_limpia not in categorias_validas:
-                            categoria_limpia = 'medicamento'
 
                         try:
                             stock_min = int(stock_minimo) if stock_minimo not in [None, ''] else 10
@@ -1002,52 +990,27 @@ class ProductoViewSet(viewsets.ModelViewSet):
                             errores.append({'fila': row_idx, 'error': 'Stock minimo invalido'})
                             continue
 
-                        # Parsear booleanos
-                        def parse_bool(val):
-                            if val is None or val == '':
-                                return False
-                            return str(val).lower() in ['sí', 'si', 'true', '1', 'yes', 's', 'x']
-
                         # Limpiar y preparar datos alineados con schema real
                         datos = {
-                            'nombre': str(nombre).strip()[:255],
-                            'descripcion': '',  # Se puede agregar como columna adicional
-                            'categoria': categoria_limpia,
+                            'nombre': str(nombre).strip()[:500],
                             'unidad_medida': unidad_limpia,
                             'stock_minimo': stock_min,
-                            'sustancia_activa': str(sustancia_activa).strip()[:255] if sustancia_activa else None,
-                            'presentacion': str(presentacion).strip()[:100] if presentacion else None,
-                            'concentracion': str(concentracion).strip()[:50] if concentracion else None,
-                            'via_administracion': str(via_administracion).strip()[:50] if via_administracion else None,
-                            'requiere_receta': parse_bool(requiere_receta),
-                            'es_controlado': parse_bool(es_controlado),
                             'activo': str(estado).lower() in ['activo', 'sí', 'si', 'true', '1', 'yes', 's'] if estado else True
                         }
                         
-                        # Crear o actualizar producto usando nombre como identificador
-                        # Si codigo_barras está presente, usarlo como lookup
-                        codigo_limpio = str(codigo_barras).strip()[:50] if codigo_barras else None
-                        if codigo_limpio == '' or codigo_limpio == 'None':
-                            codigo_limpio = None
+                        # Crear o actualizar producto usando clave como identificador
+                        clave_limpia = str(clave).strip()[:50]
                         
-                        if codigo_limpio:
-                            # Buscar por codigo_barras
-                            producto, created = Producto.objects.update_or_create(
-                                codigo_barras=codigo_limpio,
-                                defaults=datos
-                            )
-                        else:
-                            # Buscar por nombre exacto
-                            producto, created = Producto.objects.update_or_create(
-                                nombre=datos['nombre'],
-                                defaults={**datos, 'codigo_barras': None}
-                            )
+                        producto, created = Producto.objects.update_or_create(
+                            clave=clave_limpia,
+                            defaults=datos
+                        )
                         
                         if created:
                             creados += 1
                         else:
                             actualizados += 1
-                        exitos.append({'fila': row_idx, 'producto_id': producto.id, 'nombre': producto.nombre})
+                        exitos.append({'fila': row_idx, 'producto_id': producto.id, 'clave': producto.clave})
                             
                     except Exception as e:
                         errores.append({'fila': row_idx, 'error': str(e)})
@@ -1290,7 +1253,7 @@ class CentroViewSet(viewsets.ModelViewSet):
             item = inventario_dict.setdefault(prod.id, {
                 'producto_id': prod.id,
                 'clave': prod.clave,
-                'producto': prod.descripcion,
+                'producto': prod.nombre,
                 'cantidad_disponible': 0,
                 'lote_proximo_caducar': None,
                 'fecha_caducidad': None,
@@ -1316,7 +1279,7 @@ class CentroViewSet(viewsets.ModelViewSet):
                 inventario.append({
                     'producto_id': producto.id,
                     'clave': producto.clave,
-                    'producto': producto.descripcion,
+                    'producto': producto.nombre,
                     'cantidad_disponible': max(0, item['cantidad']),
                     'lote_proximo_caducar': None,
                     'fecha_caducidad': None,
@@ -1745,15 +1708,14 @@ class LoteViewSet(viewsets.ModelViewSet):
             elif activo.lower() in ['false', '0', 'no']:
                 queryset = queryset.filter(activo=False)
         
-        # Busqueda por numero de lote, clave o descripcion producto (ISS-003)
+        # Busqueda por numero de lote, clave o nombre producto (ISS-003)
         search = self.request.query_params.get('search')
         if search and search.strip():
             search_term = search.strip()
             queryset = queryset.filter(
                 Q(numero_lote__icontains=search_term) |
-                Q(producto__codigo_barras__icontains=search_term) |
-                Q(producto__nombre__icontains=search_term) |
-                Q(producto__descripcion__icontains=search_term)
+                Q(producto__clave__icontains=search_term) |
+                Q(producto__nombre__icontains=search_term)
             )
         
         # Filtrar por estado de caducidad segun especificacion SIFP:
@@ -1947,7 +1909,7 @@ class LoteViewSet(viewsets.ModelViewSet):
         Exporta lotes aplicando los mismos filtros de listado.
         
         ISS-DB: Incluye todos los campos de la tabla lotes de Supabase:
-        - codigo_barras (de producto)
+        - clave (de producto)
         - numero_lote, fecha_fabricacion, fecha_caducidad
         - cantidad_inicial, cantidad_actual
         - precio_unitario, numero_contrato, marca, ubicacion
@@ -1984,7 +1946,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             for idx, lote in enumerate(lotes, 1):
                 ws.append([
                     idx,
-                    getattr(lote.producto, 'codigo_barras', '') or '',
+                    getattr(lote.producto, 'clave', '') or '',
                     getattr(lote.producto, 'nombre', '') or '',
                     lote.numero_lote or '',
                     lote.fecha_fabricacion.strftime('%Y-%m-%d') if lote.fecha_fabricacion else '',
@@ -2018,7 +1980,7 @@ class LoteViewSet(viewsets.ModelViewSet):
         Importa lotes desde Excel con validaciones.
         
         Columnas esperadas (en orden):
-        1. Producto (codigo_barras o nombre) - Requerido
+        1. Producto (clave o descripcion) - Requerido
         2. Numero Lote - Requerido
         3. Fecha Caducidad (YYYY-MM-DD) - Requerido
         4. Cantidad Inicial - Requerido
@@ -2072,7 +2034,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                         continue
 
                     producto = Producto.objects.filter(
-                        Q(codigo_barras__iexact=str(producto_clave).strip()) |
+                        Q(clave__iexact=str(producto_clave).strip()) |
                         Q(nombre__iexact=str(producto_clave).strip())
                     ).first()
                     if not producto:
@@ -2333,7 +2295,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                     'id': lote.id,
                     'numero_lote': lote.numero_lote,
                     'producto_clave': lote.producto.clave,
-                    'producto_descripcion': lote.producto.descripcion,
+                    'producto_nombre': lote.producto.nombre,
                     'cantidad_actual': lote.cantidad_actual,
                     'fecha_caducidad': lote.fecha_caducidad
                 },
@@ -2504,8 +2466,7 @@ class MovimientoViewSet(
             queryset = queryset.filter(
                 Q(motivo__icontains=search_term) |
                 Q(lote__numero_lote__icontains=search_term) |
-                Q(lote__producto__codigo_barras__icontains=search_term) |
-                Q(lote__producto__nombre__icontains=search_term) |
+                Q(lote__producto__clave__icontains=search_term) |
                 Q(lote__producto__descripcion__icontains=search_term)
             )
         
@@ -2582,7 +2543,7 @@ class MovimientoViewSet(
             return Response({'error': 'Se requiere producto_clave'}, status=status.HTTP_400_BAD_REQUEST)
         
         producto = Producto.objects.filter(
-            Q(codigo_barras__iexact=clave) | Q(nombre__iexact=clave)
+            Q(clave__iexact=clave) | Q(descripcion__iexact=clave)
         ).first()
         if not producto:
             return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
@@ -4032,7 +3993,7 @@ def trazabilidad_producto(request, clave):
                 pass
         
         producto = Producto.objects.filter(
-            Q(codigo_barras__iexact=clave) | Q(nombre__iexact=clave)
+            Q(clave__iexact=clave) | Q(descripcion__iexact=clave)
         ).first()
         if not producto:
             return Response({'error': 'Producto no encontrado', 'clave_buscada': clave}, status=status.HTTP_404_NOT_FOUND)
@@ -4303,7 +4264,7 @@ def reporte_inventario(request):
         
         formato = request.query_params.get('formato', 'json')
         nivel_stock_filtro = request.query_params.get('nivel_stock', '').lower().strip()
-        productos = Producto.objects.filter(activo=True).order_by('codigo_barras')
+        productos = Producto.objects.filter(activo=True).order_by('clave')
         
         # Construir datos
         datos = []
@@ -5285,9 +5246,9 @@ def reportes_precarga(request):
         es_admin_farmacia = is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if not es_admin_farmacia else None
         
-        # Usar codigo_barras en BD pero devolver como 'clave' para compatibilidad con frontend
-        productos_qs = Producto.objects.filter(activo=True).values('id', 'codigo_barras', 'descripcion').order_by('codigo_barras')
-        productos = [{'id': p['id'], 'clave': p['codigo_barras'], 'descripcion': p['descripcion']} for p in productos_qs]
+        # Usar clave como identificador principal del producto
+        productos_qs = Producto.objects.filter(activo=True).values('id', 'clave', 'descripcion').order_by('clave')
+        productos = [{'id': p['id'], 'clave': p['clave'], 'descripcion': p['descripcion']} for p in productos_qs]
         
         # Filtrar centros segun rol
         if es_admin_farmacia:

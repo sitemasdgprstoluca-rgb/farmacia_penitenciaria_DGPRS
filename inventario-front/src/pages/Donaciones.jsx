@@ -245,7 +245,7 @@ const Donaciones = () => {
       tempId: Date.now(),
       producto: parseInt(detalleForm.producto),
       producto_clave: producto?.clave || '',
-      producto_descripcion: producto?.descripcion || '',
+      producto_nombre: producto?.nombre || '',
       numero_lote: detalleForm.numero_lote,
       cantidad: parseInt(detalleForm.cantidad),
       fecha_caducidad: detalleForm.fecha_caducidad || null,
@@ -838,7 +838,7 @@ const Donaciones = () => {
                         <option value="">Seleccionar producto</option>
                         {productos.map((p) => (
                           <option key={p.id} value={p.id}>
-                            {p.clave} - {p.descripcion}
+                            {p.clave} - {p.nombre}
                           </option>
                         ))}
                       </select>
@@ -904,7 +904,7 @@ const Donaciones = () => {
                           <tr key={d.tempId || d.id || idx} className="hover:bg-gray-50">
                             <td className="px-3 py-2">
                               <span className="font-medium">{d.producto_clave}</span>
-                              <span className="block text-xs text-gray-500">{d.producto_descripcion}</span>
+                              <span className="block text-xs text-gray-500">{d.producto_nombre}</span>
                             </td>
                             <td className="px-3 py-2 text-gray-600">{d.numero_lote || '-'}</td>
                             <td className="px-3 py-2 text-center font-medium">{d.cantidad}</td>
@@ -1046,7 +1046,7 @@ const Donaciones = () => {
                           <tr key={d.id || idx}>
                             <td className="px-4 py-2">
                               <span className="font-medium">{d.producto_clave}</span>
-                              <span className="block text-xs text-gray-500">{d.producto_descripcion}</span>
+                              <span className="block text-xs text-gray-500">{d.producto_nombre}</span>
                             </td>
                             <td className="px-4 py-2 text-gray-600">{d.numero_lote || '-'}</td>
                             <td className="px-4 py-2 text-center font-medium">{d.cantidad}</td>

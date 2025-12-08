@@ -68,19 +68,11 @@ export const createMockUser = (overrides = {}) => ({
  */
 export const createMockProduct = (overrides = {}) => ({
     id: 1,
-    codigo_barras: '7501234567890',
-    nombre: 'Producto de Prueba',
-    descripcion: 'Descripción del producto',
-    principio_activo: 'Principio Activo Test',
-    presentacion: 'Tabletas',
-    laboratorio: 'Laboratorio Test',
-    categoria: 'ANALGESICO',
-    tipo: 'MEDICAMENTO',
+    clave: 'MED-001',
+    descripcion: 'Producto de Prueba',
+    unidad_medida: 'CAJA',
     stock_minimo: 10,
     stock_actual: 100,
-    ubicacion: 'A-1-1',
-    requiere_receta: false,
-    controlado: false,
     activo: true,
     ...overrides
 });

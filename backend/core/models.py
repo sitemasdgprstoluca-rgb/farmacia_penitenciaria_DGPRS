@@ -313,19 +313,26 @@ class Centro(models.Model):
 
 class Producto(models.Model):
     """
-    Modelo de Producto FarmacÃ©utico
-    Adaptado a la estructura de base de datos existente
+    Modelo de Producto Farmacéutico
+    Adaptado a la estructura de base de datos existente.
+    
+    Columnas en BD:
+    - clave (antes codigo_barras) - identificador único del producto
+    - nombre - nombre del producto  
+    - descripcion - descripción adicional (opcional)
+    - categoria, sustancia_activa, presentacion, concentracion, via_administracion, etc.
     """
-    codigo_barras = models.CharField(max_length=50, unique=True, null=True, blank=True)
-    nombre = models.CharField(max_length=255)
+    # Campo principal: clave (mapea a columna 'clave' después del rename de codigo_barras)
+    clave = models.CharField(max_length=50, unique=True, db_column='clave')
+    nombre = models.CharField(max_length=500, db_column='nombre')
     descripcion = models.TextField(blank=True, null=True)
-    unidad_medida = models.CharField(max_length=50, default='pieza')
+    unidad_medida = models.CharField(max_length=20, default='pieza')
     categoria = models.CharField(max_length=50, default='medicamento')
-    stock_minimo = models.IntegerField(default=10)
+    stock_minimo = models.IntegerField(default=0)
     stock_actual = models.IntegerField(default=0)
-    sustancia_activa = models.CharField(max_length=255, blank=True, null=True)
-    presentacion = models.CharField(max_length=100, blank=True, null=True)
-    concentracion = models.CharField(max_length=50, blank=True, null=True)
+    sustancia_activa = models.CharField(max_length=200, blank=True, null=True)
+    presentacion = models.CharField(max_length=200, blank=True, null=True)
+    concentracion = models.CharField(max_length=100, blank=True, null=True)
     via_administracion = models.CharField(max_length=50, blank=True, null=True)
     requiere_receta = models.BooleanField(default=False)
     es_controlado = models.BooleanField(default=False)
@@ -340,12 +347,7 @@ class Producto(models.Model):
         managed = False  # La tabla ya existe en la BD
 
     def __str__(self):
-        return f"{self.nombre}"
-    
-    # Propiedad para compatibilidad con cÃ³digo que usa 'clave'
-    @property
-    def clave(self):
-        return self.codigo_barras or str(self.id)
+        return f"{self.clave} - {self.nombre}"
     
     def get_stock_actual(self, centro=None):
         """Calcula el stock actual sumando lotes disponibles."""
@@ -373,15 +375,6 @@ class Producto(models.Model):
             if ratio > 2:
                 return 'alto'
         return 'normal'
-    
-    @property
-    def precio_unitario(self):
-        """Precio promedio de los lotes activos"""
-        from django.db.models import Avg
-        avg = self.lotes.filter(activo=True).aggregate(
-            promedio=Avg('precio_unitario')
-        )['promedio']
-        return avg or 0
 
 
 class Lote(models.Model):

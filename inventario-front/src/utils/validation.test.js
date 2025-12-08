@@ -214,8 +214,8 @@ describe('validateForm', () => {
 describe('validateSchema', () => {
     it('debe validar usando un schema predefinido', () => {
         const values = {
-            nombre: '',
-            codigo_barras: '123'
+            clave: '',
+            descripcion: 'Test'
         };
         
         // validateSchema retorna un objeto con los errores por campo

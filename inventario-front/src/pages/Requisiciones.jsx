@@ -587,7 +587,7 @@ const Requisiciones = () => {
     const items = (req.detalles || req.items || []).map((d) => ({
       producto: d.producto || d.producto_id,
       producto_clave: d.producto_clave || d.producto?.clave,
-      descripcion: d.producto_descripcion || d.descripcion || d.producto_nombre,
+      nombre: d.producto_nombre || d.nombre || d.descripcion,
       cantidad_solicitada: d.cantidad_solicitada || d.cantidad || 1,
       lote: d.lote || d.lote_id || null,
       lote_numero: d.lote_numero || d.lote?.numero_lote || null,
@@ -680,7 +680,7 @@ const Requisiciones = () => {
         {
           producto: productoSeleccionado.id,
           producto_clave: productoSeleccionado.clave,
-          descripcion: productoSeleccionado.descripcion,
+          nombre: productoSeleccionado.nombre,
           lote: lote.id,
           lote_numero: lote.numero_lote,
           lote_caducidad: lote.fecha_caducidad,
@@ -721,7 +721,7 @@ const Requisiciones = () => {
         {
           producto: lote.producto || lote.producto_id,
           producto_clave: lote.producto_clave,
-          descripcion: lote.producto_descripcion || lote.producto_nombre,
+          nombre: lote.producto_nombre,
           lote: lote.id,
           lote_numero: lote.numero_lote,
           lote_caducidad: lote.fecha_caducidad,
@@ -809,7 +809,7 @@ const Requisiciones = () => {
         grupos[key] = {
           producto_id: key,
           producto_clave: lote.producto_clave,
-          producto_descripcion: lote.producto_descripcion || lote.producto_nombre,
+          producto_nombre: lote.producto_nombre,
           lotes: [],
         };
       }
@@ -1177,7 +1177,7 @@ const Requisiciones = () => {
 
   // eslint-disable-next-line no-unused-vars
   const productosFiltrados = productos.filter((p) =>
-    p.descripcion?.toLowerCase().includes(productoBusqueda.toLowerCase()) ||
+    p.nombre?.toLowerCase().includes(productoBusqueda.toLowerCase()) ||
     p.clave?.toLowerCase().includes(productoBusqueda.toLowerCase())
   );
 
@@ -1803,7 +1803,7 @@ const Requisiciones = () => {
                                         className="px-4 py-3 align-top"
                                         rowSpan={grupo.lotes.length}
                                       >
-                                        <span className="line-clamp-2">{grupo.producto_descripcion}</span>
+                                        <span className="line-clamp-2">{grupo.producto_nombre}</span>
                                       </td>
                                     </>
                                   ) : null}
@@ -1918,7 +1918,7 @@ const Requisiciones = () => {
                                     <span className="font-bold text-sm text-theme-primary">
                                       {item.producto_clave}
                                     </span>
-                                    <p className="text-sm text-gray-600 line-clamp-1">{item.descripcion}</p>
+                                    <p className="text-sm text-gray-600 line-clamp-1">{item.nombre}</p>
                                   </div>
                                 </td>
                                 <td className="px-4 py-3">

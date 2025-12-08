@@ -43,7 +43,7 @@ const normalizeProductoResponse = (data) => {
   if (data.codigo) {
     return {
       codigo: data.codigo,
-      descripcion: data.descripcion,
+      nombre: data.nombre,
       unidad_medida: data.unidad_medida,
       stock_actual: data.stock_actual ?? data.estadisticas?.stock_total ?? 0,
       stock_minimo: data.stock_minimo ?? data.estadisticas?.stock_minimo ?? null,
@@ -58,7 +58,7 @@ const normalizeProductoResponse = (data) => {
     const producto = data.producto;
     return {
       codigo: producto.clave || producto.codigo,
-      descripcion: producto.descripcion,
+      nombre: producto.nombre,
       unidad_medida: producto.unidad_medida,
       stock_actual: data.estadisticas?.stock_total ?? producto.stock_actual ?? 0,
       stock_minimo: producto.stock_minimo ?? null,
@@ -98,7 +98,7 @@ const normalizeLoteResponse = (data) => {
       numero_lote: data.lote.numero_lote,
       producto: {
         codigo: data.lote.producto,
-        descripcion: data.lote.producto_descripcion,
+        nombre: data.lote.producto_nombre,
       },
       fecha_caducidad: data.lote.fecha_caducidad,
       cantidad_actual: data.lote.cantidad_actual,
@@ -358,8 +358,8 @@ const Trazabilidad = () => {
         <p className="font-semibold">{resultados.codigo}</p>
       </div>
       <div className="md:col-span-2">
-        <p className="text-xs text-gray-500">Descripción</p>
-        <p className="font-semibold">{resultados.descripcion}</p>
+        <p className="text-xs text-gray-500">Nombre</p>
+        <p className="font-semibold">{resultados.nombre}</p>
       </div>
       <div>
         <p className="text-xs text-gray-500">Unidad</p>
@@ -384,7 +384,7 @@ const Trazabilidad = () => {
       <div className="md:col-span-2">
         <p className="text-xs text-gray-500">Producto</p>
         <p className="font-semibold">
-          {resultados.producto?.codigo} - {resultados.producto?.descripcion}
+          {resultados.producto?.codigo} - {resultados.producto?.nombre}
         </p>
       </div>
       <div>

@@ -98,8 +98,8 @@ def auditar_movimiento(sender, instance, created, **kwargs):
             cambios={
                 'tipo': instance.tipo,
                 'lote': lote.numero_lote if lote else None,
-                'producto': producto.nombre,
-                'producto_codigo': producto.codigo_barras,
+                'producto': producto.descripcion,
+                'producto_clave': producto.clave,
                 'cantidad': instance.cantidad,
                 'stock_resultante': lote.cantidad_actual if lote else None,
                 'centro': centro.nombre if centro else None,
@@ -295,11 +295,9 @@ def auditar_cambios_producto(sender, instance, created, **kwargs):
             objeto=instance,
             accion='crear',
             cambios={
-                'nombre': instance.nombre,
-                'codigo_barras': instance.codigo_barras,
+                'clave': instance.clave,
                 'descripcion': instance.descripcion,
                 'unidad_medida': instance.unidad_medida,
-                'categoria': instance.categoria,
                 'stock_minimo': instance.stock_minimo,
                 'activo': instance.activo
             }
@@ -359,8 +357,8 @@ def auditar_eliminacion_producto(sender, instance, **kwargs):
         objeto=instance,
         accion='eliminar',
         cambios={
-            'nombre': instance.nombre,
-            'codigo_barras': instance.codigo_barras,
+            'clave': instance.clave,
+            'descripcion': instance.descripcion,
             'razon': 'Producto eliminado'
         }
     )

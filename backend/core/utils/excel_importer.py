@@ -210,7 +210,7 @@ def importar_lotes_desde_excel(archivo, usuario):
                     continue
                 try:
                     producto = Producto.objects.get(
-                        Q(codigo_barras__iexact=producto_clave) | Q(nombre__iexact=producto_clave)
+                        Q(clave__iexact=producto_clave) | Q(descripcion__iexact=producto_clave)
                     )
                 except Producto.DoesNotExist:
                     resultado.agregar_error(fila_num, 'producto_clave', f'Producto "{producto_clave}" no existe')

@@ -333,74 +333,44 @@ class CentroSerializer(serializers.ModelSerializer):
 class ProductoSerializer(serializers.ModelSerializer):
     stock_actual = serializers.SerializerMethodField()
     lotes_activos = serializers.SerializerMethodField()
-    # Campo 'clave' para compatibilidad con frontend (mapea a codigo_barras)
-    clave = serializers.CharField(source='codigo_barras', required=False, allow_null=True, allow_blank=True)
     
     class Meta:
         model = Producto
         fields = [
-            'id', 'clave', 'codigo_barras', 'nombre', 'descripcion', 'unidad_medida',
-            'categoria', 'stock_minimo', 'stock_actual', 'sustancia_activa',
-            'presentacion', 'concentracion', 'via_administracion',
-            'requiere_receta', 'es_controlado', 'activo', 'imagen',
+            'id', 'clave', 'nombre', 'descripcion', 'unidad_medida',
+            'categoria', 'sustancia_activa', 'presentacion', 'concentracion',
+            'via_administracion', 'requiere_receta', 'es_controlado',
+            'stock_minimo', 'stock_actual', 'activo', 'imagen',
             'lotes_activos', 'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at', 'stock_actual']
         extra_kwargs = {
-            'codigo_barras': {'required': False, 'allow_null': True, 'allow_blank': True},
-            'nombre': {'required': False},  # Se puede generar desde descripcion
+            'clave': {'required': True},
+            'nombre': {'required': True},
             'descripcion': {'required': False, 'allow_null': True, 'allow_blank': True},
         }
     
     def get_stock_actual(self, obj):
-        # Priorizar stock_calculado (anotación) sobre stock_actual (campo del modelo)
-        return getattr(obj, 'stock_calculado', None) or getattr(obj, 'stock_actual', 0) or 0
+        # Priorizar stock_calculado (anotación) sobre el campo
+        return getattr(obj, 'stock_calculado', None) or obj.stock_actual or 0
     
     def get_lotes_activos(self, obj):
-        # Filtrar por activo=True, no por estado (que es propiedad calculada)
+        # Filtrar por activo=True
         return obj.lotes.filter(activo=True, cantidad_actual__gt=0).count()
     
-    def to_internal_value(self, data):
-        # Copiar datos para no mutar el original
-        if hasattr(data, 'copy'):
-            data = data.copy()
-        else:
-            data = dict(data)
-        
-        # Si viene 'clave' pero no 'codigo_barras', mapear automáticamente
-        if 'clave' in data and 'codigo_barras' not in data:
-            data['codigo_barras'] = data.pop('clave')
-        
-        # ISS-DB-003: Convertir cadenas vacías a None para codigo_barras
-        # La BD tiene UNIQUE constraint que falla con "" duplicados pero permite múltiples NULL
-        if 'codigo_barras' in data and data['codigo_barras'] == '':
-            data['codigo_barras'] = None
-        if 'clave' in data and data['clave'] == '':
-            data['clave'] = None
-        
-        # Si no viene 'nombre', generarlo desde descripcion o codigo_barras
-        if 'nombre' not in data or not data.get('nombre'):
-            nombre_candidato = data.get('descripcion') or data.get('codigo_barras') or 'Producto sin nombre'
-            data['nombre'] = str(nombre_candidato)[:255]
-        
-        return super().to_internal_value(data)
+    def validate_clave(self, value):
+        """Clave es requerida y única."""
+        if not value or value.strip() == '':
+            raise serializers.ValidationError('La clave es requerida')
+        return value.strip().upper()
     
-    def validate_codigo_barras(self, value):
-        """ISS-DB-003: Convertir cadenas vacías a None para evitar duplicados."""
-        if value == '' or value is None:
-            return None
+    def validate_nombre(self, value):
+        """Nombre es requerido."""
+        if not value or value.strip() == '':
+            raise serializers.ValidationError('El nombre es requerido')
         return value.strip()
     
     def validate(self, attrs):
-        # Asegurar que nombre tenga valor
-        if not attrs.get('nombre'):
-            descripcion = attrs.get('descripcion') or attrs.get('codigo_barras') or 'Producto sin nombre'
-            attrs['nombre'] = str(descripcion)[:255]
-        
-        # ISS-DB-003: Asegurar que codigo_barras vacío sea None
-        if 'codigo_barras' in attrs and attrs['codigo_barras'] == '':
-            attrs['codigo_barras'] = None
-            
         return attrs
 
 
@@ -409,9 +379,9 @@ class ProductoSerializer(serializers.ModelSerializer):
 # =============================================================================
 
 class LoteSerializer(serializers.ModelSerializer):
-    # ISS-DB: Campos alineados con schema de productos (codigo_barras, nombre)
+    # ISS-DB: Campos alineados con schema de productos (clave, nombre)
     producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
-    producto_clave = serializers.CharField(source='producto.codigo_barras', read_only=True)  # Alias para compatibilidad
+    producto_clave = serializers.CharField(source='producto.clave', read_only=True)
     producto_descripcion = serializers.CharField(source='producto.nombre', read_only=True)  # Alias para compatibilidad
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, allow_null=True)
     dias_para_caducar = serializers.SerializerMethodField()
@@ -510,7 +480,7 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
     producto_unidad = serializers.CharField(source='producto.unidad_medida', read_only=True)
     lote_numero = serializers.CharField(source='lote.numero_lote', read_only=True, allow_null=True)
     # ISS-DB: Alias para compatibilidad con frontend
-    producto_clave = serializers.CharField(source='producto.codigo_barras', read_only=True, allow_null=True)
+    producto_clave = serializers.CharField(source='producto.clave', read_only=True, allow_null=True)
     producto_descripcion = serializers.CharField(source='producto.nombre', read_only=True)  # Alias de producto_nombre
     lote_caducidad = serializers.DateField(source='lote.fecha_caducidad', read_only=True, allow_null=True)
     lote_stock = serializers.IntegerField(source='lote.cantidad_actual', read_only=True, allow_null=True)
@@ -732,7 +702,7 @@ class MovimientoSerializer(serializers.ModelSerializer):
     numero_lote = serializers.CharField(source='lote.numero_lote', read_only=True, allow_null=True)  # Alias para frontend
     lote_codigo = serializers.CharField(source='lote.numero_lote', read_only=True, allow_null=True)  # Alias para frontend
     producto_nombre = serializers.SerializerMethodField()
-    producto_clave = serializers.CharField(source='lote.producto.codigo_barras', read_only=True, allow_null=True)  # Campo para frontend
+    producto_clave = serializers.CharField(source='lote.producto.clave', read_only=True, allow_null=True)  # Campo para frontend
     producto_descripcion = serializers.CharField(source='lote.producto.nombre', read_only=True, allow_null=True)  # Campo para frontend
     centro_origen_nombre = serializers.CharField(source='centro_origen.nombre', read_only=True, allow_null=True)
     centro_destino_nombre = serializers.CharField(source='centro_destino.nombre', read_only=True, allow_null=True)
@@ -1233,7 +1203,7 @@ class DetalleDonacionSerializer(serializers.ModelSerializer):
     Las donaciones no afectan el inventario principal ni generan movimientos auditados.
     """
     producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
-    producto_codigo = serializers.CharField(source='producto.codigo_barras', read_only=True)
+    producto_codigo = serializers.CharField(source='producto.clave', read_only=True)
     estado_producto_display = serializers.CharField(source='get_estado_producto_display', read_only=True)
     
     class Meta:

@@ -402,7 +402,7 @@ export function ConfirmacionLoteVencido({
           <div className="bg-gray-50 rounded-lg p-3 mb-4">
             <dl className="grid grid-cols-2 gap-2 text-sm">
               <dt className="text-gray-500">Producto:</dt>
-              <dd className="font-medium">{lote.producto?.descripcion || lote.producto?.clave}</dd>
+              <dd className="font-medium">{lote.producto?.nombre || lote.producto?.clave}</dd>
               <dt className="text-gray-500">Fecha caducidad:</dt>
               <dd className="font-medium">{new Date(lote.fecha_caducidad).toLocaleDateString('es-MX')}</dd>
               <dt className="text-gray-500">Cantidad actual:</dt>

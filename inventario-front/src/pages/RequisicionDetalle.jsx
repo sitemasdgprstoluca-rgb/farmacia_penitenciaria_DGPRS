@@ -791,7 +791,7 @@ const RequisicionDetalle = () => {
                       {detalle.producto_clave || detalle.producto?.clave || '-'}
                     </td>
                     <td className="px-3 py-3 text-sm text-gray-800">
-                      {detalle.producto_descripcion || detalle.producto?.descripcion || detalle.descripcion || '-'}
+                      {detalle.producto_nombre || detalle.producto?.nombre || detalle.nombre || '-'}
                     </td>
                     <td className="px-3 py-3 text-center">
                       {detalle.lote_numero ? (

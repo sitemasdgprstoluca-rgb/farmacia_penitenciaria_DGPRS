@@ -25,7 +25,7 @@ import { usePermissions } from '../hooks/usePermissions';
 const MOCK_PRODUCTOS = Array.from({ length: 40 }).map((_, index) => ({
   id: index + 1,
   clave: `MED-${String(index + 1).padStart(3, '0')}`,
-  descripcion: `Producto simulado ${index + 1}`,
+  nombre: `Producto simulado ${index + 1}`,
 }));
 
 const createMockLote = (index) => {
@@ -46,7 +46,7 @@ const createMockLote = (index) => {
     id: index + 1,
     producto: producto.id,
     producto_clave: producto.clave,
-    producto_descripcion: producto.descripcion,
+    producto_nombre: producto.nombre,
     numero_lote: `L-${202300 + index}`,
     fecha_caducidad: fecha.toISOString(),
     dias_para_caducar: diasParaCaducar,
@@ -212,7 +212,7 @@ const Lotes = () => {
         (lote) =>
           lote.numero_lote.toLowerCase().includes(term) ||
           lote.producto_clave.toLowerCase().includes(term) ||
-          lote.producto_descripcion.toLowerCase().includes(term)
+          lote.producto_nombre.toLowerCase().includes(term)
       );
     }
     if (filtroProducto) data = data.filter((lote) => String(lote.producto) === String(filtroProducto));
@@ -802,7 +802,7 @@ const handleImportar = async (e) => {
                   <option value="">Todos los productos</option>
                   {productos.map(p => (
                     <option key={p.id} value={p.id}>
-                      {p.codigo_barras || p.clave} - {(p.nombre || p.descripcion)?.substring(0, 30)}
+                      {p.clave} - {p.nombre?.substring(0, 30)}
                     </option>
                   ))}
                 </select>
@@ -903,13 +903,13 @@ const handleImportar = async (e) => {
                       <div className="font-semibold text-gray-800">{lote.producto_clave}</div>
                       <div 
                         className="text-gray-500 text-xs cursor-help relative group"
-                        title={lote.producto_descripcion}
+                        title={lote.producto_nombre}
                       >
-                        {lote.producto_descripcion?.substring(0, 40)}{lote.producto_descripcion?.length > 40 ? '...' : ''}
+                        {lote.producto_nombre?.substring(0, 40)}{lote.producto_nombre?.length > 40 ? '...' : ''}
                         {/* Tooltip on hover */}
                         <div className="absolute z-50 hidden group-hover:block bg-gray-900 text-white text-xs rounded-lg py-2 px-3 -top-2 left-0 transform -translate-y-full w-64 shadow-lg">
-                          <p className="font-semibold mb-1">Descripción completa:</p>
-                          <p>{lote.producto_descripcion}</p>
+                          <p className="font-semibold mb-1">Nombre completo:</p>
+                          <p>{lote.producto_nombre}</p>
                           <div className="absolute bottom-0 left-4 transform translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900"></div>
                         </div>
                       </div>
@@ -1044,7 +1044,7 @@ const handleImportar = async (e) => {
                     <option value="">Seleccione un producto</option>
                     {productos.map(p => (
                       <option key={p.id} value={p.id}>
-                        {p.codigo_barras || p.clave} - {p.nombre || p.descripcion}
+                        {p.clave} - {p.nombre}
                       </option>
                     ))}
                   </select>
@@ -1406,7 +1406,7 @@ const handleImportar = async (e) => {
             <div className="p-6 space-y-4">
               <div className="text-sm text-gray-600">
                 <p><strong>Lote:</strong> {selectedLoteDoc.numero_lote}</p>
-                <p><strong>Producto:</strong> {selectedLoteDoc.producto_descripcion}</p>
+                <p><strong>Producto:</strong> {selectedLoteDoc.producto_nombre}</p>
               </div>
               
               {selectedLoteDoc.documento_url ? (
