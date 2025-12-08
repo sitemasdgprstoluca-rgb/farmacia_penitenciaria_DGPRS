@@ -394,7 +394,7 @@ def auditar_y_crear_perfil_usuario(sender, instance, created, **kwargs):
                 'username': instance.username,
                 'rol': instance.rol,
                 'centro': instance.centro.nombre if instance.centro else None,
-                'activo': instance.activo,
+                'is_active': instance.is_active,
                 'is_superuser': instance.is_superuser
             }
         )
@@ -425,8 +425,8 @@ def auditar_cambios_usuario(sender, instance, created, **kwargs):
     cambios = {}
     if anterior.rol != instance.rol:
         cambios['rol'] = (anterior.rol, instance.rol)
-    if anterior.activo != instance.activo:
-        cambios['activo'] = (anterior.activo, instance.activo)
+    if anterior.is_active != instance.is_active:
+        cambios['is_active'] = (anterior.is_active, instance.is_active)
     if getattr(anterior, 'centro_id', None) != getattr(instance, 'centro_id', None):
         centro_ant = anterior.centro.nombre if anterior.centro else None
         centro_new = instance.centro.nombre if instance.centro else None
