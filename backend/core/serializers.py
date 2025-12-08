@@ -208,14 +208,8 @@ class CentroNestedSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     # Para lectura: devuelve objeto {id, nombre}
     centro = CentroNestedSerializer(read_only=True)
-    # Para escritura: acepta ID numérico
-    centro_id = serializers.PrimaryKeyRelatedField(
-        queryset=Centro.objects.all(), 
-        source='centro', 
-        write_only=True, 
-        required=False,
-        allow_null=True
-    )
+    # Para escritura: acepta ID numérico y lo guarda directamente en centro_id
+    centro_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, allow_null=True)
     password = serializers.CharField(write_only=True, required=False, allow_blank=True)
     permisos = serializers.SerializerMethodField()
@@ -253,11 +247,25 @@ class UserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('El username ya esta en uso')
         return value.lower()
     
+    def validate_centro_id(self, value):
+        """Valida que el centro_id exista si se proporciona"""
+        if value is not None:
+            if not Centro.objects.filter(id=value).exists():
+                raise serializers.ValidationError(f'Centro con ID {value} no existe')
+        return value
+    
     def create(self, validated_data):
         password = validated_data.pop('password', None)
-        # DEBUG: Log para verificar datos
-        logger.info(f"UserSerializer.create - validated_data: {validated_data}")
+        # Extraer centro_id y asignarlo al campo centro
+        centro_id = validated_data.pop('centro_id', None)
+        
+        logger.info(f"UserSerializer.create - validated_data: {validated_data}, centro_id: {centro_id}")
+        
         user = User(**validated_data)
+        # Asignar centro directamente usando el ID
+        if centro_id is not None:
+            user.centro_id = centro_id
+        
         if password:
             user.set_password(password)
         else:
@@ -268,13 +276,23 @@ class UserSerializer(serializers.ModelSerializer):
     
     def update(self, instance, validated_data):
         password = validated_data.pop('password', None)
-        # DEBUG: Log para verificar datos
-        logger.info(f"UserSerializer.update - validated_data: {validated_data}")
-        logger.info(f"UserSerializer.update - centro in validated_data: {validated_data.get('centro')}")
+        # Extraer centro_id
+        centro_id = validated_data.pop('centro_id', None)
+        
+        logger.info(f"UserSerializer.update - validated_data: {validated_data}, centro_id: {centro_id}")
+        
+        # Actualizar campos normales
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+        
+        # Asignar centro_id explícitamente (incluso si es None para quitar asignación)
+        if 'centro_id' in self.initial_data:
+            instance.centro_id = centro_id
+            logger.info(f"UserSerializer.update - Setting centro_id to: {centro_id}")
+        
         if password:
             instance.set_password(password)
+        
         instance.save()
         logger.info(f"UserSerializer.update - User saved: id={instance.id}, centro_id={instance.centro_id}")
         return instance
