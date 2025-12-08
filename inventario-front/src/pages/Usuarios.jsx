@@ -367,8 +367,8 @@ function Usuarios() {
         adscripcion: formData.adscripcion,
         rol: formData.rol,
         is_active: formData.is_active,
-        // Siempre enviar centro (como número o null para quitar asignación)
-        centro: formData.centro ? parseInt(formData.centro, 10) : null
+        // Usar centro_id para escritura (el serializer lo espera así)
+        centro_id: formData.centro ? parseInt(formData.centro, 10) : null
       };
       
       if (!editingUsuario && formData.password) {

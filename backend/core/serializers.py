@@ -198,7 +198,24 @@ def build_perm_map(user):
 # USER SERIALIZER
 # =============================================================================
 
+class CentroNestedSerializer(serializers.ModelSerializer):
+    """Serializer anidado para mostrar centro en usuarios"""
+    class Meta:
+        model = Centro
+        fields = ['id', 'nombre']
+
+
 class UserSerializer(serializers.ModelSerializer):
+    # Para lectura: devuelve objeto {id, nombre}
+    centro = CentroNestedSerializer(read_only=True)
+    # Para escritura: acepta ID numérico
+    centro_id = serializers.PrimaryKeyRelatedField(
+        queryset=Centro.objects.all(), 
+        source='centro', 
+        write_only=True, 
+        required=False,
+        allow_null=True
+    )
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, allow_null=True)
     password = serializers.CharField(write_only=True, required=False, allow_blank=True)
     permisos = serializers.SerializerMethodField()
@@ -207,7 +224,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name', 
-            'rol', 'centro', 'centro_nombre', 'password', 
+            'rol', 'centro', 'centro_id', 'centro_nombre', 'password', 
             'adscripcion', 'permisos', 'is_active', 'is_superuser',
             'date_joined', 'last_login',
             # Permisos personalizados
@@ -223,7 +240,6 @@ class UserSerializer(serializers.ModelSerializer):
             'first_name': {'required': False, 'allow_blank': True},
             'last_name': {'required': False, 'allow_blank': True},
             'adscripcion': {'required': False, 'allow_blank': True},
-            'centro': {'required': False, 'allow_null': True},
         }
 
     def get_permisos(self, obj):
