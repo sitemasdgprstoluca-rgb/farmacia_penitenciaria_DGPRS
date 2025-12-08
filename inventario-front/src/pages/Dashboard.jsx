@@ -256,8 +256,6 @@ const Dashboard = () => {
       icon: FaBox,
       gradient: 'linear-gradient(135deg, #9F2241 0%, #7D1B35 100%)',
       iconBg: '#9F2241',
-      badge: '↑ 12%',
-      badgeColor: '#10B981',
       show: permisos?.verDashboard && permisos?.verProductos,
     },
     {
@@ -268,8 +266,6 @@ const Dashboard = () => {
       icon: FaChartLine,
       gradient: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
       iconBg: '#10B981',
-      badge: '↑ 6%',
-      badgeColor: '#10B981',
       show: permisos?.verDashboard, // KPI básico del dashboard
     },
     {
@@ -280,8 +276,6 @@ const Dashboard = () => {
       icon: FaWarehouse,
       gradient: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)',
       iconBg: '#06B6D4',
-      badge: '≈ 0%',
-      badgeColor: '#6B7280',
       show: permisos?.verDashboard && permisos?.verLotes,
     },
     {
@@ -292,8 +286,6 @@ const Dashboard = () => {
       icon: FaExchangeAlt,
       gradient: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
       iconBg: '#F59E0B',
-      badge: '↑ 15%',
-      badgeColor: '#10B981',
       show: permisos?.verDashboard && permisos?.verMovimientos,
     },
   ];
@@ -414,14 +406,11 @@ const Dashboard = () => {
                 <div className="flex items-end justify-between">
                   <div>
                     <p className="text-4xl font-bold" style={{ color: '#1F2937' }}>
-                      {card.value}
+                      {card.value.toLocaleString('es-MX')}
                     </p>
                     <p className="text-sm font-medium mt-1" style={{ color: '#6B7280' }}>
                       {card.subtext}
                     </p>
-                  </div>
-                  <div className="px-3 py-1 rounded-full text-xs font-bold text-white" style={{ backgroundColor: card.badgeColor }}>
-                    {card.badge}
                   </div>
                 </div>
               </div>
