@@ -20,12 +20,10 @@ const IMPORT_MAX_FILE_SIZE_MB = 10;
 
 const MOCK_CENTROS = Array.from({ length: 15 }).map((_, index) => ({
   id: index + 1,
-  clave: `CP-${String(index + 1).padStart(3, '0')}`,
   nombre: `Centro Penitenciario Simulado ${index + 1}`,
-  tipo: index % 2 === 0 ? 'CERESO' : 'CEPRE',
   direccion: `Dirección ${index + 1}, Municipio Simulado`,
-  telefono: `722000${String(100 + index)}`,
-  responsable: `Director ${index + 1}`,
+  telefono: `(555) 000-00${String(index).padStart(2, '0')}`,
+  email: `centro${index + 1}@ejemplo.gob.mx`,
   activo: index % 4 !== 0,
   total_requisiciones: 5 + index,
   total_usuarios: 10 + index * 2,
@@ -60,12 +58,10 @@ const Centros = () => {
   const puedeExportar = puedeEditar || permisos.isVista;
   
   const [formData, setFormData] = useState({
-    clave: '',
     nombre: '',
-    tipo: '',
     direccion: '',
     telefono: '',
-    responsable: '',
+    email: '',
     activo: true
   });
 
@@ -76,9 +72,9 @@ const Centros = () => {
       const term = searchTerm.toLowerCase();
       data = data.filter(
         (centro) =>
-          centro.clave.toLowerCase().includes(term) ||
           centro.nombre.toLowerCase().includes(term) ||
-          centro.direccion.toLowerCase().includes(term)
+          (centro.direccion && centro.direccion.toLowerCase().includes(term)) ||
+          (centro.email && centro.email.toLowerCase().includes(term))
       );
     }
     if (filtroEstado) {
@@ -164,12 +160,10 @@ const Centros = () => {
   const handleEdit = (centro) => {
     setEditingCentro(centro);
     setFormData({
-      clave: centro.clave,
-      nombre: centro.nombre,
-      tipo: centro.tipo,
-      direccion: centro.direccion,
-      telefono: centro.telefono,
-      responsable: centro.responsable,
+      nombre: centro.nombre || '',
+      direccion: centro.direccion || '',
+      telefono: centro.telefono || '',
+      email: centro.email || '',
       activo: centro.activo
     });
     setShowModal(true);
@@ -241,12 +235,10 @@ const Centros = () => {
 
   const resetForm = () => {
     setFormData({
-      clave: '',
       nombre: '',
-      tipo: '',
       direccion: '',
       telefono: '',
-      responsable: '',
+      email: '',
       activo: true
     });
     setEditingCentro(null);
@@ -518,7 +510,7 @@ const Centros = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="thead-theme">
               <tr>
-                {['#', 'Clave', 'Nombre', 'Tipo', 'Responsable', 'Requisiciones', 'Usuarios', 'Estado', 'Acciones'].map((col) => (
+                {['#', 'Nombre', 'Dirección', 'Teléfono', 'Email', 'Requisiciones', 'Usuarios', 'Estado', 'Acciones'].map((col) => (
                   <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
                     {col}
                   </th>
@@ -545,12 +537,10 @@ const Centros = () => {
                 centros.map((centro, index) => (
                   <tr key={centro.id} className={`transition ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100`}>
                     <td className="px-4 py-3 text-sm font-semibold text-gray-500">{(currentPage - 1) * PAGE_SIZE + index + 1}</td>
-                    <td className="px-4 py-3 text-sm font-semibold text-gray-800">
-                      {centro.clave}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{centro.nombre}</td>
-                    <td className="px-4 py-3 text-sm">{centro.tipo || '-'}</td>
-                    <td className="px-4 py-3 text-sm">{centro.responsable || '-'}</td>
+                    <td className="px-4 py-3 text-sm font-semibold text-gray-800">{centro.nombre}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{centro.direccion || '-'}</td>
+                    <td className="px-4 py-3 text-sm">{centro.telefono || '-'}</td>
+                    <td className="px-4 py-3 text-sm">{centro.email || '-'}</td>
                     <td className="px-4 py-3 text-sm text-center">
                       <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-semibold">
                         {centro.total_requisiciones || 0}
@@ -646,34 +636,6 @@ const Centros = () => {
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
             
             <form onSubmit={handleSubmit}>
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Clave *</label>
-                  <input
-                    type="text"
-                    value={formData.clave}
-                    onChange={(e) => setFormData({...formData, clave: e.target.value.toUpperCase()})}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                    required
-                    disabled={editingCentro}
-                    minLength={2}
-                    maxLength={50}
-                  />
-                  <p className="text-xs text-gray-500 mt-1">2-50 caracteres (se convierte a mayúsculas)</p>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-1">Tipo</label>
-                  <input
-                    type="text"
-                    value={formData.tipo}
-                    onChange={(e) => setFormData({...formData, tipo: e.target.value})}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                    placeholder="CERESO, CEFERESO, etc."
-                  />
-                </div>
-              </div>
-              
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-1">Nombre *</label>
                 <input
@@ -682,10 +644,11 @@ const Centros = () => {
                   onChange={(e) => setFormData({...formData, nombre: e.target.value})}
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                   required
-                  minLength={5}
+                  minLength={3}
                   maxLength={200}
+                  placeholder="Nombre del centro penitenciario"
                 />
-                <p className="text-xs text-gray-500 mt-1">5-200 caracteres</p>
+                <p className="text-xs text-gray-500 mt-1">3-200 caracteres (debe ser único)</p>
               </div>
               
               <div className="mb-4">
@@ -695,6 +658,7 @@ const Centros = () => {
                   onChange={(e) => setFormData({...formData, direccion: e.target.value})}
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                   rows="2"
+                  placeholder="Dirección completa del centro"
                 />
               </div>
               
@@ -706,17 +670,20 @@ const Centros = () => {
                     value={formData.telefono}
                     onChange={(e) => setFormData({...formData, telefono: e.target.value})}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                    placeholder="5551234567"
+                    placeholder="(555) 123-4567"
+                    maxLength={20}
                   />
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Responsable</label>
+                  <label className="block text-sm font-medium mb-1">Email</label>
                   <input
-                    type="text"
-                    value={formData.responsable}
-                    onChange={(e) => setFormData({...formData, responsable: e.target.value})}
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({...formData, email: e.target.value})}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="centro@ejemplo.gob.mx"
+                    maxLength={254}
                   />
                 </div>
               </div>
@@ -773,12 +740,11 @@ const Centros = () => {
                   El archivo debe contener las siguientes columnas:
                 </p>
                 <ul className="text-sm text-gray-600 list-disc list-inside">
-                  <li>Clave (requerido, único)</li>
-                  <li>Nombre (requerido, mín 5 caracteres)</li>
-                  <li>Tipo (opcional)</li>
+                  <li><strong>Nombre</strong> (requerido, único)</li>
                   <li>Dirección (opcional)</li>
                   <li>Teléfono (opcional)</li>
-                  <li>Responsable (opcional)</li>
+                  <li>Email (opcional)</li>
+                  <li>Estado (opcional: Activo/Inactivo)</li>
                 </ul>
                 <p className="text-sm text-theme-primary mt-2">
                   Descarga la plantilla para ver el formato correcto

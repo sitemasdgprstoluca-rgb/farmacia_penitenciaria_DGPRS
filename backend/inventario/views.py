@@ -1279,8 +1279,8 @@ class CentroViewSet(viewsets.ModelViewSet):
         """
         Exporta todos los centros a Excel con formato profesional.
         
-        Columnas:
-        - #, Clave, Nombre, Direccion, Telefono, Total Requisiciones, Estado
+        Columnas (alineadas con BD):
+        - #, Nombre, Direccion, Telefono, Email, Total Requisiciones, Estado
         """
         try:
             centros = self.get_queryset()
@@ -1308,8 +1308,8 @@ class CentroViewSet(viewsets.ModelViewSet):
             # Espacio
             ws.append([])
             
-            # Encabezados
-            headers = ['#', 'Clave', 'Nombre', 'Direccion', 'Telefono', 'Total Requisiciones', 'Estado']
+            # Encabezados (sin Clave - campo no existe en BD)
+            headers = ['#', 'Nombre', 'Direccion', 'Telefono', 'Email', 'Total Requisiciones', 'Estado']
             ws.append(headers)
             
             # Estilo de encabezados
@@ -1331,10 +1331,10 @@ class CentroViewSet(viewsets.ModelViewSet):
                 
                 ws.append([
                     idx,
-                    centro.clave,
                     centro.nombre,
-                    centro.direccion or 'Sin direccion',
-                    centro.telefono or 'Sin telefono',
+                    centro.direccion or '',
+                    centro.telefono or '',
+                    getattr(centro, 'email', '') or '',
                     total_requisiciones,
                     'Activo' if centro.activo else 'Inactivo'
                 ])
@@ -1355,9 +1355,9 @@ class CentroViewSet(viewsets.ModelViewSet):
             
             # Ajustar anchos de columna
             ws.column_dimensions['A'].width = 8
-            ws.column_dimensions['B'].width = 20
-            ws.column_dimensions['C'].width = 50
-            ws.column_dimensions['D'].width = 40
+            ws.column_dimensions['B'].width = 50
+            ws.column_dimensions['C'].width = 40
+            ws.column_dimensions['D'].width = 18
             ws.column_dimensions['E'].width = 15
             ws.column_dimensions['F'].width = 20
             ws.column_dimensions['G'].width = 12
