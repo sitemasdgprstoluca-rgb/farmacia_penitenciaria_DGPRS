@@ -1405,17 +1405,19 @@ class CentroViewSet(viewsets.ModelViewSet):
         """
         Importa centros desde Excel.
         
-        Formato esperado:
-        - Clave (requerido)
-        - Nombre (requerido)
-        - Direccion (opcional)
-        - Telefono (opcional)
-        - Estado (Activo/Inactivo)
+        Formato esperado (columnas en orden):
+        1. Nombre (REQUERIDO, único) - Nombre del centro penitenciario
+        2. Direccion (opcional) - Dirección física
+        3. Telefono (opcional) - Número de teléfono
+        4. Email (opcional) - Correo electrónico
+        5. Estado (opcional, default: Activo) - 'Activo' o 'Inactivo'
         
         Limites de seguridad:
         - Tamano maximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
         - Filas maximas: configurado en IMPORT_MAX_ROWS (default 5000)
         - Extensiones: .xlsx, .xls
+        
+        Nota: Si el nombre ya existe, se actualizan los demás campos.
         """
         file = request.FILES.get('file')
         
@@ -1454,25 +1456,36 @@ class CentroViewSet(viewsets.ModelViewSet):
             # Procesar filas
             for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                 try:
-                    # Extraer datos
-                    clave, nombre, direccion, telefono, estado = row[:5]
+                    # Saltar filas vacías
+                    if not row or all(cell is None or str(cell).strip() == '' for cell in row):
+                        continue
+                    
+                    # Extraer datos - Formato: Nombre, Direccion, Telefono, Email, Estado
+                    # (mínimo 1 columna: nombre)
+                    nombre = row[0] if len(row) > 0 else None
+                    direccion = row[1] if len(row) > 1 else None
+                    telefono = row[2] if len(row) > 2 else None
+                    email = row[3] if len(row) > 3 else None
+                    estado = row[4] if len(row) > 4 else 'Activo'
                     
                     # Validar requeridos
-                    if not clave or not nombre:
-                        errores.append(f'Fila {row_idx}: Clave y nombre son requeridos')
+                    if not nombre or str(nombre).strip() == '':
+                        errores.append({'fila': row_idx, 'error': 'Nombre es requerido'})
                         continue
+                    
+                    nombre_limpio = str(nombre).strip()
                     
                     # Preparar datos
                     datos = {
-                        'nombre': str(nombre).strip(),
                         'direccion': str(direccion).strip() if direccion else '',
                         'telefono': str(telefono).strip() if telefono else '',
-                        'activo': str(estado).lower() in ['activo', 'si', 'si', 'true', '1'] if estado else True
+                        'email': str(email).strip() if email else '',
+                        'activo': str(estado).lower() in ['activo', 'si', 'sí', 'true', '1', 'yes'] if estado else True
                     }
                     
-                    # Crear o actualizar
+                    # Crear o actualizar usando nombre como identificador único
                     centro, created = Centro.objects.update_or_create(
-                        clave=str(clave).upper().strip(),
+                        nombre=nombre_limpio,
                         defaults=datos
                     )
                     
@@ -1499,10 +1512,11 @@ class CentroViewSet(viewsets.ModelViewSet):
             
         except Exception as e:
             # traceback removido por seguridad (ISS-008)
+            logger.exception(f'Error en importacion de centros: {str(e)}')
             return Response({
                 'error': 'Error al procesar el archivo',
                 'mensaje': str(e),
-                'sugerencia': 'Verifique que el archivo tenga el formato correcto (Clave, Nombre, Direccion, Telefono, Estado)'
+                'sugerencia': 'Verifique que el archivo tenga el formato correcto: Nombre, Direccion, Telefono, Email, Estado'
             }, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=True, methods=['get'])
@@ -1565,13 +1579,33 @@ class CentroViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'], url_path='plantilla')
     def plantilla_centros(self, request):
-        """Descarga plantilla de Excel para importaci?n de centros."""
+        """Descarga plantilla de Excel para importación de centros."""
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = 'Centros'
-        headers = ['Clave', 'Nombre', 'Direccion', 'Telefono', 'Estado']
+        
+        # Headers que coinciden con el modelo Centro
+        headers = ['Nombre', 'Direccion', 'Telefono', 'Email', 'Estado']
         ws.append(headers)
-        ws.append(['CENTRO-001', 'Centro Ejemplo', 'Direccion de ejemplo', '555-0000', 'Activo'])
+        
+        # Fila de ejemplo
+        ws.append(['CENTRO PENITENCIARIO EJEMPLO', 'Av. Principal 123, Ciudad', '(555) 123-4567', 'centro@ejemplo.gob.mx', 'Activo'])
+        
+        # Aplicar formato a headers
+        from openpyxl.styles import Font, PatternFill
+        header_font = Font(bold=True, color='FFFFFF')
+        header_fill = PatternFill(start_color='9F2241', end_color='9F2241', fill_type='solid')
+        for col in range(1, 6):
+            cell = ws.cell(row=1, column=col)
+            cell.font = header_font
+            cell.fill = header_fill
+        
+        # Ajustar ancho de columnas
+        ws.column_dimensions['A'].width = 45  # Nombre
+        ws.column_dimensions['B'].width = 40  # Direccion
+        ws.column_dimensions['C'].width = 18  # Telefono
+        ws.column_dimensions['D'].width = 30  # Email
+        ws.column_dimensions['E'].width = 12  # Estado
         
         response = HttpResponse(
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
