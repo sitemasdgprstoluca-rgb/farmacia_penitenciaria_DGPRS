@@ -327,75 +327,65 @@ const renderStockBadge = (nivel) => {
 
 
 
+const CATEGORIAS = ['medicamento', 'insumo', 'material_curacion', 'reactivo', 'otro'];
+const VIAS_ADMIN = ['oral', 'intravenosa', 'intramuscular', 'topica', 'sublingual', 'inhalatoria', ''];
+
 const DEFAULT_FORM = {
-
-  clave: '',
-
+  codigo_barras: '',
+  nombre: '',
   descripcion: '',
-
   unidad_medida: 'PIEZA',
-
-  precio_unitario: '',
-
+  categoria: 'medicamento',
   stock_minimo: '10',
-
+  sustancia_activa: '',
+  presentacion: '',
+  concentracion: '',
+  via_administracion: '',
+  requiere_receta: false,
+  es_controlado: false,
   activo: true,
-
   imagen: null,
-
   imagenPreview: null,
-
 };
 
 
 
 const MOCK_PRODUCTS = Array.from({ length: 124 }).map((_, index) => {
-
   const id = index + 1;
-
   const baseNames = [
-
     'Paracetamol 500mg tabletas',
-
     'Ibuprofeno 400mg cápsulas',
-
     'Amoxicilina 875mg',
-
     'Alcohol etílico 70%',
-
     'Clonazepam 2mg',
-
     'Diclofenaco sódico 75mg',
-
     'Omeprazol 20mg',
-
     'Metformina 850mg',
-
     'Metamizol sódico 500mg',
-
     'Ranitidina 150mg',
-
   ];
-
   const alertas = ['critico', 'bajo', 'normal', 'alto'];
-
   return {
-
     id,
-
-    clave: `MED-${String(id).padStart(3, '0')}`,
-
-    descripcion: baseNames[id % baseNames.length],
-
+    codigo_barras: `MED-${String(id).padStart(3, '0')}`,
+    nombre: baseNames[id % baseNames.length],
+    descripcion: `Descripción de ${baseNames[id % baseNames.length]}`,
     unidad_medida: UNIDADES[id % UNIDADES.length],
-
-    precio_unitario: (10 + id * 0.75).toFixed(2),
-
-    stock_minimo: String(25 + (id % 6) * 5),
-
+    categoria: CATEGORIAS[id % CATEGORIAS.length],
+    stock_minimo: 25 + (id % 6) * 5,
     stock_actual: 120 + (id % 8) * 15,
-
+    sustancia_activa: baseNames[id % baseNames.length].split(' ')[0],
+    presentacion: UNIDADES[id % UNIDADES.length],
+    concentracion: `${100 + id * 5}mg`,
+    via_administracion: VIAS_ADMIN[id % VIAS_ADMIN.length],
+    requiere_receta: id % 3 === 0,
+    es_controlado: id % 7 === 0,
     activo: id % 9 !== 0,
+    alerta_stock: alertas[id % alertas.length],
+    creado_por: 'admin@edomex.gob.mx',
+    created_at: new Date(Date.now() - id * 86400000).toISOString(),
+  };
+});
 
     alerta_stock: alertas[id % alertas.length],
 
@@ -541,11 +531,13 @@ const Productos = () => {
 
       data = data.filter((producto) => {
 
-        const clave = normalizeText(producto.clave);
+        const codigo = normalizeText(producto.codigo_barras);
+
+        const nombre = normalizeText(producto.nombre);
 
         const descripcion = normalizeText(producto.descripcion);
 
-        return clave.includes(term) || descripcion.includes(term);
+        return codigo.includes(term) || nombre.includes(term) || descripcion.includes(term);
 
       });
 
@@ -759,85 +751,66 @@ const Productos = () => {
 
 
   const validarFormulario = (data) => {
-
     const errors = {};
-
-    // Validar clave: 3-50 caracteres, solo alfanumérico con guiones y guiones bajos
-    const claveRegex = /^[A-Za-z0-9\-_]+$/;
-    if (!data.clave || data.clave.length < 3 || data.clave.length > 50) {
-      errors.clave = 'La clave debe tener entre 3 y 50 caracteres';
-    } else if (!claveRegex.test(data.clave)) {
-      errors.clave = 'La clave solo puede contener letras, números, guiones y guiones bajos';
+    
+    // Nombre es obligatorio
+    if (!data.nombre || data.nombre.trim().length < 3 || data.nombre.length > 255) {
+      errors.nombre = 'El nombre debe tener entre 3 y 255 caracteres';
     }
 
-    if (!data.descripcion || data.descripcion.length < 5 || data.descripcion.length > 300) {
-
-      errors.descripcion = 'La descripción debe tener entre 5 y 300 caracteres';
-
+    // Código de barras es opcional pero si existe, validar formato
+    if (data.codigo_barras && data.codigo_barras.length > 50) {
+      errors.codigo_barras = 'El código de barras no puede exceder 50 caracteres';
     }
 
-    if (!data.precio_unitario || Number(data.precio_unitario) < 0.01) {
-
-      errors.precio_unitario = 'El precio debe ser mayor o igual a 0.01';
-
+    // Descripción es opcional
+    if (data.descripcion && data.descripcion.length > 500) {
+      errors.descripcion = 'La descripción no puede exceder 500 caracteres';
     }
 
     if (data.stock_minimo === '' || Number(data.stock_minimo) < 0) {
-
-      errors.stock_minimo = 'El inventario mínimo no puede ser negativo';
-
+      errors.stock_minimo = 'El stock mínimo no puede ser negativo';
     }
 
     if (!UNIDADES.includes(data.unidad_medida)) {
-
       errors.unidad_medida = 'Seleccione una unidad válida';
+    }
 
+    if (!CATEGORIAS.includes(data.categoria)) {
+      errors.categoria = 'Seleccione una categoría válida';
     }
 
     return errors;
-
   };
 
 
 
   const openModal = (producto = null) => {
-
     if (producto) {
-
       setEditingProduct(producto);
-
       setFormData({
-
-        clave: producto.clave,
-
-        descripcion: producto.descripcion,
-
-        unidad_medida: producto.unidad_medida,
-
-        precio_unitario: producto.precio_unitario,
-
-        stock_minimo: producto.stock_minimo,
-
-        activo: producto.activo,
-
+        codigo_barras: producto.codigo_barras || producto.clave || '',
+        nombre: producto.nombre || '',
+        descripcion: producto.descripcion || '',
+        unidad_medida: producto.unidad_medida || 'PIEZA',
+        categoria: producto.categoria || 'medicamento',
+        stock_minimo: producto.stock_minimo ?? 10,
+        sustancia_activa: producto.sustancia_activa || '',
+        presentacion: producto.presentacion || '',
+        concentracion: producto.concentracion || '',
+        via_administracion: producto.via_administracion || '',
+        requiere_receta: producto.requiere_receta ?? false,
+        es_controlado: producto.es_controlado ?? false,
+        activo: producto.activo ?? true,
         imagen: null,
-
-        imagenPreview: producto.imagen_url || null,
-
+        imagenPreview: producto.imagen || null,
       });
-
     } else {
-
       setEditingProduct(null);
-
       setFormData(DEFAULT_FORM);
-
     }
-
     setFormErrors({});
-
     setShowModal(true);
-
   };
 
 
@@ -967,28 +940,40 @@ const Productos = () => {
       }
 
       // Preparar datos para enviar al backend
-      const precioVal = parseFloat(formData.precio_unitario);
-      
       // Usar FormData si hay imagen, de lo contrario JSON normal
       let dataToSend;
       let hasImage = formData.imagen instanceof File;
       
       if (hasImage) {
         dataToSend = new FormData();
-        dataToSend.append('clave', formData.clave);
-        dataToSend.append('descripcion', formData.descripcion);
+        dataToSend.append('codigo_barras', formData.codigo_barras || '');
+        dataToSend.append('nombre', formData.nombre);
+        dataToSend.append('descripcion', formData.descripcion || '');
         dataToSend.append('unidad_medida', formData.unidad_medida);
-        dataToSend.append('precio_unitario', isNaN(precioVal) || precioVal < 0.01 ? 0.01 : precioVal);
+        dataToSend.append('categoria', formData.categoria);
         dataToSend.append('stock_minimo', parseInt(formData.stock_minimo, 10) || 0);
+        dataToSend.append('sustancia_activa', formData.sustancia_activa || '');
+        dataToSend.append('presentacion', formData.presentacion || '');
+        dataToSend.append('concentracion', formData.concentracion || '');
+        dataToSend.append('via_administracion', formData.via_administracion || '');
+        dataToSend.append('requiere_receta', formData.requiere_receta);
+        dataToSend.append('es_controlado', formData.es_controlado);
         dataToSend.append('activo', formData.activo);
         dataToSend.append('imagen', formData.imagen);
       } else {
         dataToSend = {
-          clave: formData.clave,
-          descripcion: formData.descripcion,
+          codigo_barras: formData.codigo_barras || null,
+          nombre: formData.nombre,
+          descripcion: formData.descripcion || '',
           unidad_medida: formData.unidad_medida,
-          precio_unitario: isNaN(precioVal) || precioVal < 0.01 ? 0.01 : precioVal,
+          categoria: formData.categoria,
           stock_minimo: parseInt(formData.stock_minimo, 10) || 0,
+          sustancia_activa: formData.sustancia_activa || null,
+          presentacion: formData.presentacion || null,
+          concentracion: formData.concentracion || null,
+          via_administracion: formData.via_administracion || null,
+          requiere_receta: formData.requiere_receta,
+          es_controlado: formData.es_controlado,
           activo: formData.activo,
         };
       }
@@ -1019,15 +1004,18 @@ const Productos = () => {
       const backendErrors = err.response?.data;
       if (backendErrors && typeof backendErrors === 'object') {
         const newFormErrors = {};
-        // Mapear campos de error del backend
+        // Mapear campos de error del backend a campos del frontend
         const fieldMap = {
-          'codigo_barras': 'clave',
-          'clave': 'clave',
-          'nombre': 'descripcion',
+          'codigo_barras': 'codigo_barras',
+          'nombre': 'nombre',
           'descripcion': 'descripcion',
           'unidad_medida': 'unidad_medida',
+          'categoria': 'categoria',
           'stock_minimo': 'stock_minimo',
-          'precio_unitario': 'precio_unitario',
+          'sustancia_activa': 'sustancia_activa',
+          'presentacion': 'presentacion',
+          'concentracion': 'concentracion',
+          'via_administracion': 'via_administracion',
         };
         
         let hasFieldErrors = false;
@@ -1195,17 +1183,25 @@ const Productos = () => {
 
             { header: '#', value: (_, idx) => idx + 1, width: 6 },
 
-            { header: 'Clave', key: 'clave', width: 14 },
+            { header: 'Código', key: 'codigo_barras', width: 14 },
 
-            { header: 'Descripción', key: 'descripcion', width: 40 },
+            { header: 'Nombre', key: 'nombre', width: 30 },
+
+            { header: 'Categoría', key: 'categoria', width: 16 },
 
             { header: 'Unidad', key: 'unidad_medida', width: 12 },
 
-            { header: 'Precio', value: (row) => Number(row.precio_unitario).toFixed(2), width: 12 },
+            { header: 'Inventario', value: (row) => getInventarioDisponible(row), width: 14 },
 
-            { header: 'Inventario', value: (row) => getInventarioDisponible(row), width: 16 },
+            { header: 'Stock Mínimo', key: 'stock_minimo', width: 14 },
 
-            { header: 'Inv. Mínimo', key: 'stock_minimo', width: 16 },
+            { header: 'Sustancia Activa', key: 'sustancia_activa', width: 20 },
+
+            { header: 'Presentación', key: 'presentacion', width: 14 },
+
+            { header: 'Requiere Receta', value: (row) => row.requiere_receta ? 'Sí' : 'No', width: 14 },
+
+            { header: 'Controlado', value: (row) => row.es_controlado ? 'Sí' : 'No', width: 12 },
 
             { header: 'Estado', value: (row) => determinarEstadoProducto(row).label, width: 14 },
 
@@ -1523,13 +1519,13 @@ const Productos = () => {
 
                 '#',
 
-                'Clave',
+                'Código',
 
-                'Descripción',
+                'Nombre',
+
+                'Categoría',
 
                 'Unidad',
-
-                'Precio',
 
                 'Inventario',
 
@@ -1538,8 +1534,6 @@ const Productos = () => {
                 'Estado',
 
                 'Nivel Inv.',
-
-                'Creado por',
 
                 ...(puede.tieneAcciones ? ['Acciones'] : []),
 
@@ -1579,13 +1573,13 @@ const Productos = () => {
 
                 <td className="px-3 py-3 text-sm font-semibold text-gray-500">{consecutivo}</td>
 
-                <td className="px-4 py-3 text-sm font-semibold text-gray-800">{producto.clave}</td>
+                <td className="px-4 py-3 text-sm font-semibold text-gray-800">{producto.codigo_barras || producto.clave || '-'}</td>
 
-                <td className="px-4 py-3 text-sm text-gray-600">{producto.descripcion}</td>
+                <td className="px-4 py-3 text-sm text-gray-600">{producto.nombre}</td>
+
+                <td className="px-4 py-3 text-sm">{producto.categoria}</td>
 
                 <td className="px-4 py-3 text-sm">{producto.unidad_medida}</td>
-
-                <td className="px-4 py-3 text-sm font-semibold">${Number(producto.precio_unitario).toFixed(2)}</td>
 
                 <td className="px-4 py-3 text-sm">{formatInventario(producto)}</td>
 
@@ -1594,8 +1588,6 @@ const Productos = () => {
                 <td className="px-4 py-3 text-sm">{renderEstadoBadge(estadoInventario.label, estadoInventario.activo)}</td>
 
                 <td className="px-4 py-3 text-sm">{renderStockBadge(nivelStock)}</td>
-
-                <td className="px-4 py-3 text-sm">{producto.creado_por || '-'}</td>
 
                 {puede.tieneAcciones && (
                 <td className="px-4 py-3 text-sm">
@@ -2052,11 +2044,11 @@ const Productos = () => {
 
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
 
-          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
 
             <div
 
-              className="flex items-center justify-between rounded-t-2xl px-6 py-4 text-white bg-theme-gradient"
+              className="flex items-center justify-between rounded-t-2xl px-6 py-4 text-white bg-theme-gradient sticky top-0"
 
             >
 
@@ -2064,43 +2056,103 @@ const Productos = () => {
 
                 <h2 className="text-xl font-bold">{editingProduct ? 'Editar producto' : 'Nuevo producto'}</h2>
 
-                <p className="text-sm text-white/80">Complete los campos obligatorios</p>
+                <p className="text-sm text-white/80">Complete los campos obligatorios (*)</p>
 
               </div>
 
-              <span className="text-sm font-semibold">{editingProduct ? editingProduct.clave : 'Nuevo'}</span>
+              <span className="text-sm font-semibold">{editingProduct ? (editingProduct.codigo_barras || editingProduct.nombre) : 'Nuevo'}</span>
 
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4 px-6 py-6">
 
+              {/* Nombre y Código */}
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 
                 <div>
 
-                  <label className="text-xs font-semibold text-theme-primary-hover">Clave *</label>
+                  <label className="text-xs font-semibold text-theme-primary-hover">Nombre *</label>
 
                   <input
 
                     type="text"
 
-                    value={formData.clave}
+                    value={formData.nombre}
 
-                    onChange={(e) => setFormData({ ...formData, clave: e.target.value.toUpperCase() })}
+                    onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
 
-                    maxLength={50}
+                    maxLength={255}
 
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.clave ? 'border-red-500' : 'border-theme-primary'}`}
+                    placeholder="Ej: Paracetamol 500mg"
+
+                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.nombre ? 'border-red-500' : 'border-theme-primary'}`}
 
                   />
 
-                  {formErrors.clave && <p className="text-xs text-red-600">{formErrors.clave}</p>}
+                  {formErrors.nombre && <p className="text-xs text-red-600">{formErrors.nombre}</p>}
 
                 </div>
 
                 <div>
 
-                  <label className="text-xs font-semibold text-theme-primary-hover">Unidad *</label>
+                  <label className="text-xs font-semibold text-theme-primary-hover">Código de barras</label>
+
+                  <input
+
+                    type="text"
+
+                    value={formData.codigo_barras}
+
+                    onChange={(e) => setFormData({ ...formData, codigo_barras: e.target.value.toUpperCase() })}
+
+                    maxLength={50}
+
+                    placeholder="Opcional"
+
+                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.codigo_barras ? 'border-red-500' : 'border-theme-primary'}`}
+
+                  />
+
+                  {formErrors.codigo_barras && <p className="text-xs text-red-600">{formErrors.codigo_barras}</p>}
+
+                </div>
+
+              </div>
+
+              {/* Categoría y Unidad */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+
+                  <label className="text-xs font-semibold text-theme-primary-hover">Categoría *</label>
+
+                  <select
+
+                    value={formData.categoria}
+
+                    onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
+
+                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.categoria ? 'border-red-500' : 'border-theme-primary'}`}
+
+                  >
+
+                    {CATEGORIAS.map((cat) => (
+
+                      <option key={cat} value={cat}>
+
+                        {cat.replace('_', ' ').toUpperCase()}
+
+                      </option>
+
+                    ))}
+
+                  </select>
+
+                  {formErrors.categoria && <p className="text-xs text-red-600">{formErrors.categoria}</p>}
+
+                </div>
+                <div>
+
+                  <label className="text-xs font-semibold text-theme-primary-hover">Unidad de medida *</label>
 
                   <select
 
@@ -2130,9 +2182,10 @@ const Productos = () => {
 
               </div>
 
+              {/* Descripción */}
               <div>
 
-                <label className="text-xs font-semibold text-theme-primary-hover">Descripción *</label>
+                <label className="text-xs font-semibold text-theme-primary-hover">Descripción</label>
 
                 <textarea
 
@@ -2140,9 +2193,11 @@ const Productos = () => {
 
                   onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
 
-                  rows={3}
+                  rows={2}
 
-                  maxLength={300}
+                  maxLength={500}
+
+                  placeholder="Descripción adicional del producto"
 
                   className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.descripcion ? 'border-red-500' : 'border-theme-primary'}`}
 
@@ -2152,41 +2207,69 @@ const Productos = () => {
 
                   <span>{formErrors.descripcion || ''}</span>
 
-                  <span>{formData.descripcion.length}/300</span>
+                  <span>{formData.descripcion?.length || 0}/500</span>
 
                 </div>
 
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-
+              {/* Sustancia activa, Presentación, Concentración */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div>
-
-                  <label className="text-xs font-semibold text-theme-primary-hover">Precio unitario *</label>
-
+                  <label className="text-xs font-semibold text-theme-primary-hover">Sustancia activa</label>
                   <input
-
-                    type="number"
-
-                    min="0.01"
-
-                    step="0.01"
-
-                    value={formData.precio_unitario}
-
-                    onChange={(e) => setFormData({ ...formData, precio_unitario: e.target.value })}
-
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.precio_unitario ? 'border-red-500' : 'border-theme-primary'}`}
-
+                    type="text"
+                    value={formData.sustancia_activa}
+                    onChange={(e) => setFormData({ ...formData, sustancia_activa: e.target.value })}
+                    maxLength={255}
+                    placeholder="Ej: Paracetamol"
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                   />
-
-                  {formErrors.precio_unitario && <p className="text-xs text-red-600">{formErrors.precio_unitario}</p>}
-
                 </div>
+                <div>
+                  <label className="text-xs font-semibold text-theme-primary-hover">Presentación</label>
+                  <input
+                    type="text"
+                    value={formData.presentacion}
+                    onChange={(e) => setFormData({ ...formData, presentacion: e.target.value })}
+                    maxLength={100}
+                    placeholder="Ej: Tabletas, Jarabe"
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-theme-primary-hover">Concentración</label>
+                  <input
+                    type="text"
+                    value={formData.concentracion}
+                    onChange={(e) => setFormData({ ...formData, concentracion: e.target.value })}
+                    maxLength={50}
+                    placeholder="Ej: 500mg"
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                  />
+                </div>
+              </div>
 
+              {/* Vía administración y Stock mínimo */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="text-xs font-semibold text-theme-primary-hover">Vía de administración</label>
+                  <select
+                    value={formData.via_administracion}
+                    onChange={(e) => setFormData({ ...formData, via_administracion: e.target.value })}
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                  >
+                    <option value="">Sin especificar</option>
+                    {VIAS_ADMIN.filter(v => v).map((via) => (
+                      <option key={via} value={via}>
+                        {via.charAt(0).toUpperCase() + via.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div>
 
-                  <label className="text-xs font-semibold text-theme-primary-hover">Inventario mínimo *</label>
+                  <label className="text-xs font-semibold text-theme-primary-hover">Stock mínimo *</label>
 
                   <input
 
@@ -2208,6 +2291,44 @@ const Productos = () => {
 
                 </div>
 
+              </div>
+
+              {/* Checkboxes: requiere_receta, es_controlado, activo */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="flex items-center gap-2 rounded-lg border px-4 py-3 border-theme-primary">
+                  <input
+                    type="checkbox"
+                    checked={formData.requiere_receta}
+                    onChange={(e) => setFormData({ ...formData, requiere_receta: e.target.checked })}
+                    className="h-4 w-4"
+                  />
+                  <span className="text-sm font-semibold text-gray-700">Requiere receta</span>
+                </div>
+                <div className="flex items-center gap-2 rounded-lg border px-4 py-3 border-theme-primary">
+                  <input
+                    type="checkbox"
+                    checked={formData.es_controlado}
+                    onChange={(e) => setFormData({ ...formData, es_controlado: e.target.checked })}
+                    className="h-4 w-4"
+                  />
+                  <span className="text-sm font-semibold text-gray-700">Es controlado</span>
+                </div>
+                <div className="flex items-center gap-2 rounded-lg border px-4 py-3 border-theme-primary">
+                  <input
+
+                    type="checkbox"
+
+                    checked={formData.activo}
+
+                    onChange={(e) => setFormData({ ...formData, activo: e.target.checked })}
+
+                    className="h-4 w-4"
+
+                  />
+
+                  <span className="text-sm font-semibold text-gray-700">Producto Activo</span>
+
+                </div>
               </div>
 
               {/* Campo de imagen del producto */}
@@ -2295,24 +2416,6 @@ const Productos = () => {
                 </div>
 
                 <p className="text-xs text-gray-500 mt-1">JPG, PNG o WebP. Máximo 2MB.</p>
-
-              </div>
-
-              <div className="flex items-center gap-2 rounded-lg border px-4 py-3 border-theme-primary">
-
-                <input
-
-                  type="checkbox"
-
-                  checked={formData.activo}
-
-                  onChange={(e) => setFormData({ ...formData, activo: e.target.checked })}
-
-                  className="h-4 w-4"
-
-                />
-
-                <span className="text-sm font-semibold text-gray-700">Producto Activo</span>
 
               </div>
 

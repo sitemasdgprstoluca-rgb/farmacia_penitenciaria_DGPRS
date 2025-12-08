@@ -803,8 +803,9 @@ class ProductoViewSet(viewsets.ModelViewSet):
         """
         Exporta todos los productos a un archivo Excel.
         
-        Columnas:
-        - #, Clave, Descripcion, Unidad, Precio, Stock Minimo, Stock Actual, Lotes, Estado
+        Columnas alineadas con schema real de productos:
+        - #, Codigo Barras, Nombre, Categoria, Unidad, Stock Minimo, Stock Actual, 
+          Sustancia Activa, Presentacion, Requiere Receta, Controlado, Lotes, Estado
         """
         try:
             productos = self.get_queryset()
@@ -814,8 +815,11 @@ class ProductoViewSet(viewsets.ModelViewSet):
             ws = wb.active
             ws.title = 'Productos'
             
-            # Encabezados
-            headers = ['#', 'Clave', 'Descripcion', 'Unidad Medida', 'Precio Unitario', 'Stock Minimo', 'Stock Actual', 'Lotes Activos', 'Estado']
+            # Encabezados alineados con schema de Supabase
+            headers = ['#', 'Codigo Barras', 'Nombre', 'Categoria', 'Unidad Medida', 
+                       'Stock Minimo', 'Stock Actual', 'Sustancia Activa', 'Presentacion',
+                       'Concentracion', 'Via Admin', 'Requiere Receta', 'Controlado', 
+                       'Lotes Activos', 'Estado']
             ws.append(headers)
             
             # Estilo de encabezados
@@ -834,19 +838,25 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 
                 ws.append([
                     idx,
-                    producto.clave,
-                    producto.descripcion,
+                    producto.codigo_barras or '',
+                    producto.nombre,
+                    producto.categoria,
                     producto.unidad_medida,
-                    float(producto.precio_unitario) if producto.precio_unitario else 0,
                     producto.stock_minimo,
                     stock_actual,
+                    producto.sustancia_activa or '',
+                    producto.presentacion or '',
+                    producto.concentracion or '',
+                    producto.via_administracion or '',
+                    'Sí' if producto.requiere_receta else 'No',
+                    'Sí' if producto.es_controlado else 'No',
                     lotes_activos,
                     'Activo' if producto.activo else 'Inactivo'
                 ])
                 
                 # Colorear fila si el stock esta por debajo del minimo
                 if stock_actual < producto.stock_minimo:
-                    for col in range(1, 10):
+                    for col in range(1, 16):
                         ws.cell(row=idx+1, column=col).fill = PatternFill(
                             start_color='FFF4E6', 
                             end_color='FFF4E6', 
@@ -854,15 +864,21 @@ class ProductoViewSet(viewsets.ModelViewSet):
                         )
             
             # Ajustar anchos de columna
-            ws.column_dimensions['A'].width = 8
-            ws.column_dimensions['B'].width = 15
-            ws.column_dimensions['C'].width = 50
-            ws.column_dimensions['D'].width = 15
-            ws.column_dimensions['E'].width = 15
-            ws.column_dimensions['F'].width = 15
-            ws.column_dimensions['G'].width = 15
-            ws.column_dimensions['H'].width = 15
-            ws.column_dimensions['I'].width = 12
+            ws.column_dimensions['A'].width = 6
+            ws.column_dimensions['B'].width = 18
+            ws.column_dimensions['C'].width = 40
+            ws.column_dimensions['D'].width = 18
+            ws.column_dimensions['E'].width = 14
+            ws.column_dimensions['F'].width = 12
+            ws.column_dimensions['G'].width = 12
+            ws.column_dimensions['H'].width = 20
+            ws.column_dimensions['I'].width = 14
+            ws.column_dimensions['J'].width = 14
+            ws.column_dimensions['K'].width = 14
+            ws.column_dimensions['L'].width = 14
+            ws.column_dimensions['M'].width = 12
+            ws.column_dimensions['N'].width = 12
+            ws.column_dimensions['O'].width = 10
             
             # Generar respuesta
             response = HttpResponse(
@@ -933,20 +949,29 @@ class ProductoViewSet(viewsets.ModelViewSet):
             # Si hay errores críticos, se hace rollback automático
             with transaction.atomic():
                 # Procesar cada fila (empezando desde la fila 2)
+                # Formato esperado: Codigo Barras | Nombre | Categoria | Unidad | Stock Minimo | 
+                #                   Sustancia Activa | Presentacion | Concentracion | Via Admin |
+                #                   Requiere Receta | Controlado | Estado
                 for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                     try:
-                        # Extraer valores (asegurarse de tener al menos 6 columnas)
-                        valores = list(row) + [None] * 6
-                        clave = valores[0]
-                        descripcion = valores[1]
-                        unidad_medida = valores[2]
-                        precio_unitario = valores[3]
+                        # Extraer valores (asegurarse de tener al menos 12 columnas)
+                        valores = list(row) + [None] * 12
+                        codigo_barras = valores[0]
+                        nombre = valores[1]
+                        categoria = valores[2]
+                        unidad_medida = valores[3]
                         stock_minimo = valores[4]
-                        estado = valores[5]
+                        sustancia_activa = valores[5]
+                        presentacion = valores[6]
+                        concentracion = valores[7]
+                        via_administracion = valores[8]
+                        requiere_receta = valores[9]
+                        es_controlado = valores[10]
+                        estado = valores[11]
                         
-                        # Validar campos requeridos
-                        if not clave or not descripcion:
-                            errores.append({'fila': row_idx, 'error': 'Clave y descripcion son obligatorios'})
+                        # Validar campo requerido: nombre
+                        if not nombre:
+                            errores.append({'fila': row_idx, 'error': 'Nombre es obligatorio'})
                             continue
                         
                         # Validar unidad
@@ -954,15 +979,12 @@ class ProductoViewSet(viewsets.ModelViewSet):
                         if unidad_limpia not in dict(UNIDADES_MEDIDA):
                             errores.append({'fila': row_idx, 'error': f'Unidad no valida: {unidad_limpia}'})
                             continue
-
-                        # Validar precio y stock
-                        try:
-                            precio_val = float(precio_unitario) if precio_unitario not in [None, ''] else 0.0
-                            if precio_val < 0:
-                                raise ValueError
-                        except Exception:
-                            errores.append({'fila': row_idx, 'error': 'Precio invalido'})
-                            continue
+                        
+                        # Validar categoria
+                        categoria_limpia = str(categoria).strip().lower() if categoria else 'medicamento'
+                        categorias_validas = ['medicamento', 'insumo', 'material_curacion', 'reactivo', 'otro']
+                        if categoria_limpia not in categorias_validas:
+                            categoria_limpia = 'medicamento'
 
                         try:
                             stock_min = int(stock_minimo) if stock_minimo not in [None, ''] else 10
@@ -972,27 +994,52 @@ class ProductoViewSet(viewsets.ModelViewSet):
                             errores.append({'fila': row_idx, 'error': 'Stock minimo invalido'})
                             continue
 
-                        # Limpiar y preparar datos
+                        # Parsear booleanos
+                        def parse_bool(val):
+                            if val is None or val == '':
+                                return False
+                            return str(val).lower() in ['sí', 'si', 'true', '1', 'yes', 's', 'x']
+
+                        # Limpiar y preparar datos alineados con schema real
                         datos = {
-                            'descripcion': str(descripcion).strip(),
+                            'nombre': str(nombre).strip()[:255],
+                            'descripcion': '',  # Se puede agregar como columna adicional
+                            'categoria': categoria_limpia,
                             'unidad_medida': unidad_limpia,
-                            'precio_unitario': precio_val,
                             'stock_minimo': stock_min,
-                            # ISS-032 FIX: Valores booleanos válidos corregidos
+                            'sustancia_activa': str(sustancia_activa).strip()[:255] if sustancia_activa else None,
+                            'presentacion': str(presentacion).strip()[:100] if presentacion else None,
+                            'concentracion': str(concentracion).strip()[:50] if concentracion else None,
+                            'via_administracion': str(via_administracion).strip()[:50] if via_administracion else None,
+                            'requiere_receta': parse_bool(requiere_receta),
+                            'es_controlado': parse_bool(es_controlado),
                             'activo': str(estado).lower() in ['activo', 'sí', 'si', 'true', '1', 'yes', 's'] if estado else True
                         }
                         
-                        # Crear o actualizar producto
-                        producto, created = Producto.objects.update_or_create(
-                            clave=str(clave).upper().strip(),
-                            defaults=datos
-                        )
+                        # Crear o actualizar producto usando nombre como identificador
+                        # Si codigo_barras está presente, usarlo como lookup
+                        codigo_limpio = str(codigo_barras).strip()[:50] if codigo_barras else None
+                        if codigo_limpio == '' or codigo_limpio == 'None':
+                            codigo_limpio = None
+                        
+                        if codigo_limpio:
+                            # Buscar por codigo_barras
+                            producto, created = Producto.objects.update_or_create(
+                                codigo_barras=codigo_limpio,
+                                defaults=datos
+                            )
+                        else:
+                            # Buscar por nombre exacto
+                            producto, created = Producto.objects.update_or_create(
+                                nombre=datos['nombre'],
+                                defaults={**datos, 'codigo_barras': None}
+                            )
                         
                         if created:
                             creados += 1
                         else:
                             actualizados += 1
-                        exitos.append({'fila': row_idx, 'producto_id': producto.id, 'clave': producto.clave})
+                        exitos.append({'fila': row_idx, 'producto_id': producto.id, 'nombre': producto.nombre})
                             
                     except Exception as e:
                         errores.append({'fila': row_idx, 'error': str(e)})
@@ -1016,7 +1063,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
             return Response({
                 'error': 'Error al procesar archivo',
                 'mensaje': str(e),
-                'sugerencia': 'Verifique que el archivo tenga el formato correcto: Clave, Descripcion, Unidad, Precio, Stock Minimo, Estado'
+                'sugerencia': 'Verifique que el archivo tenga el formato correcto: Codigo Barras, Nombre, Categoria, Unidad, Stock Minimo, Sustancia Activa, Presentacion, Concentracion, Via Admin, Requiere Receta, Controlado, Estado'
             }, status=status.HTTP_400_BAD_REQUEST)
 
 
