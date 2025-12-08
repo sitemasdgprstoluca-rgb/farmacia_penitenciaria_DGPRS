@@ -32,6 +32,7 @@ const Movimientos = lazy(() => import('./pages/Movimientos'));
 const Notificaciones = lazy(() => import('./pages/Notificaciones'));
 const Perfil = lazy(() => import('./pages/Perfil'));
 const ConfiguracionTema = lazy(() => import('./pages/ConfiguracionTema'));
+const Donaciones = lazy(() => import('./pages/Donaciones'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const ServerError = lazy(() => import('./pages/ServerError'));
 
@@ -191,6 +192,11 @@ function App() {
             <Route path="configuracion-tema" element={
               <PermissionsGuard requiredPermission="configurarTema">
                 <ConfiguracionTema />
+              </PermissionsGuard>
+            } />
+            <Route path="donaciones" element={
+              <PermissionsGuard requiredPermission="verDonaciones">
+                <Donaciones />
               </PermissionsGuard>
             } />
           </Route>

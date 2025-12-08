@@ -30,7 +30,7 @@ ESTADOS_LOTE = [
 # BD permite: borrador, enviada, autorizada, rechazada, en_surtido, surtida, parcial, cancelada, entregada
 ESTADOS_REQUISICION = [
     ('borrador', 'Borrador'),
-    ('enviada', 'Enviada'),              # Requisición enviada para autorización
+    ('enviada', 'Enviada'),              # Requisicion enviada para autorizacion
     ('autorizada', 'Autorizada'),        # Completamente autorizada
     ('rechazada', 'Rechazada'),
     ('en_surtido', 'En Surtido'),        # En proceso de surtido
@@ -63,13 +63,15 @@ EXTRA_PERMISSIONS = [
 # Tipos de movimiento
 # ISS-DB-001: Alineado con CHECK constraint valid_tipo_movimiento de BD Supabase
 # BD permite: entrada, salida, transferencia, ajuste_positivo, ajuste_negativo, devolucion, merma, caducidad
+# NOTA: 'donacion' NO está aquí porque donaciones funciona como almacén SEPARADO
+#       y no afecta el inventario principal ni genera movimientos auditados
 TIPOS_MOVIMIENTO = [
     ('entrada', 'Entrada'),
     ('salida', 'Salida'),
     ('transferencia', 'Transferencia'),
     ('ajuste_positivo', 'Ajuste Positivo'),
     ('ajuste_negativo', 'Ajuste Negativo'),
-    ('devolucion', 'Devolución'),
+    ('devolucion', 'Devolucion'),
     ('merma', 'Merma'),
     ('caducidad', 'Caducidad'),
 ]

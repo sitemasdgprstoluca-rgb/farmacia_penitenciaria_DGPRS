@@ -10,7 +10,9 @@ from core.views import (
     LogoutView,
     UserViewSet, ImportacionLogViewSet, AuditoriaLogViewSet, DevAutoLoginView,
     DetalleRequisicionViewSet, NotificacionViewSet, ConfiguracionSistemaViewSet,
-    TemaGlobalViewSet
+    TemaGlobalViewSet,
+    ProductoImagenViewSet, LoteDocumentoViewSet, DonacionViewSet, DetalleDonacionViewSet,
+    SalidaDonacionViewSet
 )
 # JWT Views seguros (cookies HttpOnly para refresh token)
 from core.serializers_jwt import (
@@ -48,6 +50,13 @@ router.register(r'requisiciones', RequisicionViewSet, basename='requisicion')
 router.register(r'detalles-requisicion', DetalleRequisicionViewSet, basename='detalle-requisicion')
 router.register(r'movimientos', MovimientoViewSet, basename='movimiento')
 router.register(r'hojas-recoleccion', HojaRecoleccionViewSet, basename='hoja-recoleccion')
+
+# Nuevos endpoints
+router.register(r'producto-imagenes', ProductoImagenViewSet, basename='producto-imagen')
+router.register(r'lote-documentos', LoteDocumentoViewSet, basename='lote-documento')
+router.register(r'donaciones', DonacionViewSet, basename='donacion')
+router.register(r'detalle-donaciones', DetalleDonacionViewSet, basename='detalle-donacion')
+router.register(r'salidas-donaciones', SalidaDonacionViewSet, basename='salida-donacion')
 
 urlpatterns = [
     # Autenticación segura (refresh token en HttpOnly cookie)

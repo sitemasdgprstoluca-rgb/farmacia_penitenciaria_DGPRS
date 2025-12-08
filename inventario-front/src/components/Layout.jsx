@@ -23,6 +23,7 @@ import {
   FaBell,
   FaIdBadge,
   FaPalette,
+  FaGift,
 } from "react-icons/fa";
 
 function Layout() {
@@ -85,6 +86,7 @@ function Layout() {
     { path: "/productos", icon: FaBox, label: "Productos", permission: "verProductos" },
     { path: "/lotes", icon: FaWarehouse, label: "Lotes", permission: "verLotes" },
     { path: "/requisiciones", icon: FaClipboardList, label: "Requisiciones", permission: "verRequisiciones" },
+    { path: "/donaciones", icon: FaGift, label: "Donaciones", permission: "verDonaciones" },
     { path: "/movimientos", icon: FaExchangeAlt, label: "Movimientos", permission: "verMovimientos" },
     { path: "/centros", icon: FaBuilding, label: "Centros", permission: "verCentros" },
     { path: "/usuarios", icon: FaUsers, label: "Usuarios", permission: "verUsuarios" },

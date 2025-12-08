@@ -619,4 +619,74 @@ export const hojasRecoleccionAPI = {
   porRequisicion: (requisicionId) => apiClient.get(`/hojas-recoleccion/por-requisicion/${requisicionId}/`),
 };
 
+// Donaciones - Módulo de gestión de donaciones
+export const donacionesAPI = {
+  // CRUD básico
+  getAll: (params) => apiClient.get('/donaciones/', { params }),
+  getById: (id) => apiClient.get(`/donaciones/${id}/`),
+  create: (data) => apiClient.post('/donaciones/', data),
+  update: (id, data) => apiClient.put(`/donaciones/${id}/`, data),
+  delete: (id) => apiClient.delete(`/donaciones/${id}/`),
+  // Procesar donación (genera movimientos de entrada)
+  procesar: (id) => apiClient.post(`/donaciones/${id}/procesar/`),
+  // Exportar
+  exportar: (params) => apiClient.get('/donaciones/exportar/', { 
+    params, 
+    responseType: 'blob' 
+  }),
+};
+
+// Detalles de Donación
+export const detallesDonacionAPI = {
+  getAll: (params) => apiClient.get('/detalle-donaciones/', { params }),
+  getById: (id) => apiClient.get(`/detalle-donaciones/${id}/`),
+  create: (data) => apiClient.post('/detalle-donaciones/', data),
+  update: (id, data) => apiClient.put(`/detalle-donaciones/${id}/`, data),
+  delete: (id) => apiClient.delete(`/detalle-donaciones/${id}/`),
+  // Obtener solo con stock disponible
+  conStock: (params) => apiClient.get('/detalle-donaciones/', { 
+    params: { ...params, disponible: 'true' } 
+  }),
+};
+
+// Salidas de Donaciones - Control de entregas del almacén de donaciones
+export const salidasDonacionesAPI = {
+  getAll: (params) => apiClient.get('/salidas-donaciones/', { params }),
+  getById: (id) => apiClient.get(`/salidas-donaciones/${id}/`),
+  create: (data) => apiClient.post('/salidas-donaciones/', data),
+  // Solo lectura - no permite editar ni eliminar entregas
+};
+
+// Imágenes de Productos - Múltiples fotos por producto
+export const productosImagenesAPI = {
+  getAll: (params) => apiClient.get('/productos-imagenes/', { params }),
+  getById: (id) => apiClient.get(`/productos-imagenes/${id}/`),
+  create: (formData) => apiClient.post('/productos-imagenes/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  update: (id, data) => apiClient.put(`/productos-imagenes/${id}/`, data),
+  delete: (id) => apiClient.delete(`/productos-imagenes/${id}/`),
+  // Establecer imagen como principal
+  setPrincipal: (id) => apiClient.post(`/productos-imagenes/${id}/set_principal/`),
+  // Obtener imágenes por producto
+  porProducto: (productoId) => apiClient.get('/productos-imagenes/', { 
+    params: { producto: productoId } 
+  }),
+};
+
+// Documentos de Lotes - Facturas y contratos por lote
+export const lotesDocumentosAPI = {
+  getAll: (params) => apiClient.get('/lotes-documentos/', { params }),
+  getById: (id) => apiClient.get(`/lotes-documentos/${id}/`),
+  create: (formData) => apiClient.post('/lotes-documentos/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  update: (id, data) => apiClient.put(`/lotes-documentos/${id}/`, data),
+  delete: (id) => apiClient.delete(`/lotes-documentos/${id}/`),
+  // Obtener documentos por lote
+  porLote: (loteId) => apiClient.get('/lotes-documentos/', { 
+    params: { lote: loteId } 
+  }),
+};
+
 export default apiClient;

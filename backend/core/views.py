@@ -1927,7 +1927,354 @@ class TemaGlobalViewSet(viewsets.ViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+# =============================================================================
+# PRODUCTO IMAGEN VIEWSET
+# =============================================================================
+
+class ProductoImagenViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestionar imagenes de productos.
+    """
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+    
+    def get_queryset(self):
+        from core.models import ProductoImagen
+        queryset = ProductoImagen.objects.select_related('producto').all()
+        
+        # Filtrar por producto si se especifica
+        producto_id = self.request.query_params.get('producto')
+        if producto_id:
+            queryset = queryset.filter(producto_id=producto_id)
+        
+        return queryset.order_by('orden', '-es_principal')
+    
+    def get_serializer_class(self):
+        from core.serializers import ProductoImagenSerializer
+        return ProductoImagenSerializer
+    
+    def perform_create(self, serializer):
+        serializer.save()
+        logger.info(f"Imagen de producto creada por {self.request.user.username}")
+    
+    @action(detail=True, methods=['post'], url_path='set-principal')
+    def set_principal(self, request, pk=None):
+        """Establecer una imagen como principal."""
+        from core.models import ProductoImagen
+        imagen = self.get_object()
+        
+        # Quitar es_principal de otras imagenes del mismo producto
+        ProductoImagen.objects.filter(
+            producto_id=imagen.producto_id
+        ).update(es_principal=False)
+        
+        # Establecer esta como principal
+        imagen.es_principal = True
+        imagen.save()
+        
+        return Response({'mensaje': 'Imagen establecida como principal'})
 
 
+# =============================================================================
+# LOTE DOCUMENTO VIEWSET
+# =============================================================================
+
+class LoteDocumentoViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestionar documentos de lotes (facturas, contratos).
+    """
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+    
+    def get_queryset(self):
+        from core.models import LoteDocumento
+        queryset = LoteDocumento.objects.select_related('lote', 'lote__producto', 'created_by').all()
+        
+        # Filtrar por lote si se especifica
+        lote_id = self.request.query_params.get('lote')
+        if lote_id:
+            queryset = queryset.filter(lote_id=lote_id)
+        
+        # Filtrar por tipo de documento
+        tipo = self.request.query_params.get('tipo_documento')
+        if tipo:
+            queryset = queryset.filter(tipo_documento=tipo)
+        
+        return queryset.order_by('-created_at')
+    
+    def get_serializer_class(self):
+        from core.serializers import LoteDocumentoSerializer
+        return LoteDocumentoSerializer
+    
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+        logger.info(f"Documento de lote creado por {self.request.user.username}")
+
+
+# =============================================================================
+# DONACION VIEWSET
+# =============================================================================
+
+class DonacionViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestionar donaciones de medicamentos.
+    """
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['numero', 'donante_nombre', 'donante_rfc']
+    ordering_fields = ['fecha_donacion', 'fecha_recepcion', 'created_at']
+    ordering = ['-fecha_recepcion']
+    
+    def get_queryset(self):
+        from core.models import Donacion
+        queryset = Donacion.objects.select_related(
+            'centro_destino', 'recibido_por'
+        ).prefetch_related('detalles', 'detalles__producto').all()
+        
+        # Filtros
+        estado = self.request.query_params.get('estado')
+        if estado:
+            queryset = queryset.filter(estado=estado)
+        
+        centro = self.request.query_params.get('centro')
+        if centro:
+            queryset = queryset.filter(centro_destino_id=centro)
+        
+        donante_tipo = self.request.query_params.get('donante_tipo')
+        if donante_tipo:
+            queryset = queryset.filter(donante_tipo=donante_tipo)
+        
+        # Filtro por rango de fechas
+        fecha_desde = self.request.query_params.get('fecha_desde')
+        fecha_hasta = self.request.query_params.get('fecha_hasta')
+        if fecha_desde:
+            queryset = queryset.filter(fecha_donacion__gte=fecha_desde)
+        if fecha_hasta:
+            queryset = queryset.filter(fecha_donacion__lte=fecha_hasta)
+        
+        return queryset
+    
+    def get_serializer_class(self):
+        from core.serializers import DonacionSerializer
+        return DonacionSerializer
+    
+    def perform_create(self, serializer):
+        donacion = serializer.save(recibido_por=self.request.user)
+        logger.info(f"Donacion {donacion.numero} creada por {self.request.user.username}")
+    
+    @action(detail=True, methods=['post'], url_path='recibir')
+    def recibir(self, request, pk=None):
+        """Marcar una donacion como recibida."""
+        donacion = self.get_object()
+        
+        if donacion.estado != 'pendiente':
+            return Response(
+                {'error': 'Solo se pueden recibir donaciones pendientes'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        donacion.estado = 'recibida'
+        donacion.recibido_por = request.user
+        donacion.fecha_recepcion = timezone.now()
+        donacion.save()
+        
+        logger.info(f"Donacion {donacion.numero} recibida por {request.user.username}")
+        
+        from core.serializers import DonacionSerializer
+        return Response(DonacionSerializer(donacion).data)
+    
+    @action(detail=True, methods=['post'], url_path='procesar')
+    def procesar(self, request, pk=None):
+        """
+        Procesar una donacion - crear lotes y movimientos de entrada.
+        """
+        donacion = self.get_object()
+        
+        if donacion.estado not in ['pendiente', 'recibida']:
+            return Response(
+                {'error': 'Solo se pueden procesar donaciones pendientes o recibidas'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            with transaction.atomic():
+                from core.models import Lote, Movimiento
+                
+                for detalle in donacion.detalles.all():
+                    # Crear o actualizar lote
+                    if detalle.lote:
+                        # Si ya tiene lote asignado, actualizar cantidad
+                        lote = detalle.lote
+                        lote.cantidad_actual += detalle.cantidad
+                        lote.save()
+                    elif detalle.numero_lote:
+                        # Buscar lote existente o crear nuevo
+                        lote, created = Lote.objects.get_or_create(
+                            numero_lote=detalle.numero_lote,
+                            producto=detalle.producto,
+                            defaults={
+                                'cantidad_inicial': detalle.cantidad,
+                                'cantidad_actual': detalle.cantidad,
+                                'fecha_caducidad': detalle.fecha_caducidad or (date.today() + timedelta(days=365)),
+                                'centro': donacion.centro_destino,
+                                'activo': True,
+                            }
+                        )
+                        if not created:
+                            lote.cantidad_actual += detalle.cantidad
+                            lote.save()
+                        detalle.lote = lote
+                        detalle.save()
+                    else:
+                        # Crear lote nuevo
+                        import random
+                        lote = Lote.objects.create(
+                            numero_lote=f"DON-{donacion.numero}-{random.randint(1000, 9999)}",
+                            producto=detalle.producto,
+                            cantidad_inicial=detalle.cantidad,
+                            cantidad_actual=detalle.cantidad,
+                            fecha_caducidad=detalle.fecha_caducidad or (date.today() + timedelta(days=365)),
+                            centro=donacion.centro_destino,
+                            activo=True,
+                        )
+                        detalle.lote = lote
+                        detalle.save()
+                    
+                    # Crear movimiento de entrada por donacion
+                    Movimiento.objects.create(
+                        tipo='donacion',
+                        producto=detalle.producto,
+                        lote=lote,
+                        cantidad=detalle.cantidad,
+                        centro_destino=donacion.centro_destino,
+                        usuario=request.user,
+                        motivo=f"Donacion {donacion.numero} de {donacion.donante_nombre}",
+                        referencia=donacion.numero,
+                    )
+                
+                donacion.estado = 'procesada'
+                donacion.save()
+                
+                logger.info(f"Donacion {donacion.numero} procesada por {request.user.username}")
+                
+                from core.serializers import DonacionSerializer
+                return Response({
+                    'mensaje': 'Donacion procesada correctamente',
+                    'donacion': DonacionSerializer(donacion).data
+                })
+        
+        except Exception as e:
+            logger.error(f"Error procesando donacion {donacion.numero}: {str(e)}")
+            return Response(
+                {'error': f'Error procesando donacion: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['post'], url_path='rechazar')
+    def rechazar(self, request, pk=None):
+        """Rechazar una donacion."""
+        donacion = self.get_object()
+        
+        if donacion.estado == 'procesada':
+            return Response(
+                {'error': 'No se puede rechazar una donacion ya procesada'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        motivo = request.data.get('motivo', '')
+        donacion.estado = 'rechazada'
+        donacion.notas = f"{donacion.notas or ''}\n\nRechazada: {motivo}".strip()
+        donacion.save()
+        
+        logger.info(f"Donacion {donacion.numero} rechazada por {request.user.username}")
+        
+        from core.serializers import DonacionSerializer
+        return Response(DonacionSerializer(donacion).data)
+
+
+# =============================================================================
+# DETALLE DONACION VIEWSET
+# =============================================================================
+
+class DetalleDonacionViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestionar detalles de donaciones.
+    """
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+    
+    def get_queryset(self):
+        from core.models import DetalleDonacion
+        queryset = DetalleDonacion.objects.select_related(
+            'donacion', 'producto'
+        ).all()
+        
+        # Filtrar por donacion si se especifica
+        donacion_id = self.request.query_params.get('donacion')
+        if donacion_id:
+            queryset = queryset.filter(donacion_id=donacion_id)
+        
+        # Filtrar solo con stock disponible
+        solo_disponible = self.request.query_params.get('disponible')
+        if solo_disponible == 'true':
+            queryset = queryset.filter(cantidad_disponible__gt=0)
+        
+        return queryset.order_by('-created_at')
+    
+    def get_serializer_class(self):
+        from core.serializers import DetalleDonacionSerializer
+        return DetalleDonacionSerializer
+
+
+# =============================================================================
+# SALIDA DONACION VIEWSET (Control de entregas del almacen donaciones)
+# =============================================================================
+
+class SalidaDonacionViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestionar salidas/entregas del almacen de donaciones.
+    Control interno sin afectar movimientos principales.
+    """
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+    http_method_names = ['get', 'post', 'head', 'options']  # No permite editar ni eliminar
+    
+    def get_queryset(self):
+        from core.models import SalidaDonacion
+        queryset = SalidaDonacion.objects.select_related(
+            'detalle_donacion', 'detalle_donacion__producto', 
+            'detalle_donacion__donacion', 'entregado_por'
+        ).all()
+        
+        # Filtrar por detalle de donacion
+        detalle_id = self.request.query_params.get('detalle_donacion')
+        if detalle_id:
+            queryset = queryset.filter(detalle_donacion_id=detalle_id)
+        
+        # Filtrar por donacion
+        donacion_id = self.request.query_params.get('donacion')
+        if donacion_id:
+            queryset = queryset.filter(detalle_donacion__donacion_id=donacion_id)
+        
+        # Filtrar por destinatario
+        destinatario = self.request.query_params.get('destinatario')
+        if destinatario:
+            queryset = queryset.filter(destinatario__icontains=destinatario)
+        
+        # Filtrar por fecha
+        fecha_desde = self.request.query_params.get('fecha_desde')
+        if fecha_desde:
+            queryset = queryset.filter(fecha_entrega__date__gte=fecha_desde)
+        
+        fecha_hasta = self.request.query_params.get('fecha_hasta')
+        if fecha_hasta:
+            queryset = queryset.filter(fecha_entrega__date__lte=fecha_hasta)
+        
+        return queryset.order_by('-fecha_entrega')
+    
+    def get_serializer_class(self):
+        from core.serializers import SalidaDonacionSerializer
+        return SalidaDonacionSerializer
 
 

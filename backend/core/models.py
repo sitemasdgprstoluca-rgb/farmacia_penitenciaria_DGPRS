@@ -146,25 +146,25 @@ class User(AbstractUser):
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': True,
             'perm_requisiciones': True, 'perm_centros': True, 'perm_usuarios': True,
             'perm_reportes': True, 'perm_trazabilidad': True, 'perm_auditoria': True,
-            'perm_notificaciones': True, 'perm_movimientos': True,
+            'perm_notificaciones': True, 'perm_movimientos': True, 'perm_donaciones': True,
         },
         'farmacia': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': True,
             'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
             'perm_reportes': True, 'perm_trazabilidad': True, 'perm_auditoria': False,
-            'perm_notificaciones': True, 'perm_movimientos': True,
+            'perm_notificaciones': True, 'perm_movimientos': True, 'perm_donaciones': True,
         },
         'usuario_centro': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': True,
             'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
             'perm_reportes': True, 'perm_trazabilidad': True, 'perm_auditoria': False,
-            'perm_notificaciones': True, 'perm_movimientos': True,
+            'perm_notificaciones': True, 'perm_movimientos': True, 'perm_donaciones': True,
         },
         'usuario_normal': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': False,
             'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
             'perm_reportes': False, 'perm_trazabilidad': False, 'perm_auditoria': False,
-            'perm_notificaciones': True, 'perm_movimientos': False,
+            'perm_notificaciones': True, 'perm_movimientos': False, 'perm_donaciones': False,
         },
     }
     
@@ -203,6 +203,7 @@ class User(AbstractUser):
     perm_auditoria = models.BooleanField(null=True, blank=True, help_text="Permiso para ver AuditorÃ­a")
     perm_notificaciones = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Notificaciones")
     perm_movimientos = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Movimientos")
+    perm_donaciones = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Donaciones (almacen separado)")
     
     class Meta:
         db_table = 'usuarios'
@@ -227,7 +228,7 @@ class User(AbstractUser):
         campos_permisos = [
             'perm_dashboard', 'perm_productos', 'perm_lotes', 'perm_requisiciones',
             'perm_centros', 'perm_usuarios', 'perm_reportes', 'perm_trazabilidad',
-            'perm_auditoria', 'perm_notificaciones', 'perm_movimientos'
+            'perm_auditoria', 'perm_notificaciones', 'perm_movimientos', 'perm_donaciones'
         ]
         
         errores = {}
@@ -259,7 +260,7 @@ class User(AbstractUser):
         campos_permisos = [
             'perm_dashboard', 'perm_productos', 'perm_lotes', 'perm_requisiciones',
             'perm_centros', 'perm_usuarios', 'perm_reportes', 'perm_trazabilidad',
-            'perm_auditoria', 'perm_notificaciones', 'perm_movimientos'
+            'perm_auditoria', 'perm_notificaciones', 'perm_movimientos', 'perm_donaciones'
         ]
         
         for campo in campos_permisos:
@@ -510,6 +511,9 @@ class Requisicion(models.Model):
     """
     Modelo de Requisicion
     Adaptado a la estructura de base de datos existente
+    
+    MEJORA: Campos adicionales para formato de requisicion del centro (firmas)
+    MEJORA: Fecha de entrega solicitada y urgencia
     """
     numero = models.CharField(max_length=50, unique=True, db_column='numero')
     centro_origen = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_origen', db_column='centro_origen_id')
@@ -533,6 +537,24 @@ class Requisicion(models.Model):
     fecha_firma_recepcion = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    # ========== CAMPOS PARA FORMATO DE REQUISICION DEL CENTRO (FIRMAS) ==========
+    # Estos campos son solo para el PDF/formato impreso de la requisicion del centro
+    # No afectan el flujo del sistema
+    firma_solicitante = models.CharField(max_length=255, blank=True, null=True, db_column='firma_solicitante')
+    nombre_solicitante = models.CharField(max_length=255, blank=True, null=True, db_column='nombre_solicitante')
+    cargo_solicitante = models.CharField(max_length=100, blank=True, null=True, db_column='cargo_solicitante')
+    firma_jefe_area = models.CharField(max_length=255, blank=True, null=True, db_column='firma_jefe_area')
+    nombre_jefe_area = models.CharField(max_length=255, blank=True, null=True, db_column='nombre_jefe_area')
+    cargo_jefe_area = models.CharField(max_length=100, blank=True, null=True, db_column='cargo_jefe_area')
+    firma_director = models.CharField(max_length=255, blank=True, null=True, db_column='firma_director')
+    nombre_director = models.CharField(max_length=255, blank=True, null=True, db_column='nombre_director')
+    cargo_director = models.CharField(max_length=100, blank=True, null=True, db_column='cargo_director')
+    
+    # ========== CAMPOS URGENCIA Y FECHA ENTREGA SOLICITADA ==========
+    fecha_entrega_solicitada = models.DateField(null=True, blank=True, db_column='fecha_entrega_solicitada')
+    es_urgente = models.BooleanField(default=False, db_column='es_urgente')
+    motivo_urgencia = models.TextField(blank=True, null=True, db_column='motivo_urgencia')
 
     class Meta:
         db_table = 'requisiciones'
@@ -916,3 +938,293 @@ class UserProfile(models.Model):
     
     def __str__(self):
         return f"Perfil de {self.usuario.username if self.usuario else 'N/A'}"
+
+
+# ============================================================================
+# MODELOS PARA MULTIPLES IMAGENES DE PRODUCTO
+# ============================================================================
+def producto_imagen_upload_path(instance, filename):
+    """Genera ruta para imagenes de productos: productos/imagenes/{producto_id}/{filename}"""
+    import uuid
+    ext = filename.split('.')[-1].lower()
+    unique_name = f"{uuid.uuid4().hex[:8]}.{ext}"
+    return f"productos/imagenes/{instance.producto_id}/{unique_name}"
+
+
+class ProductoImagen(models.Model):
+    """
+    Imagenes multiples para productos.
+    Permite galeria de fotos por producto.
+    """
+    producto = models.ForeignKey(
+        Producto, 
+        on_delete=models.CASCADE, 
+        related_name='imagenes',
+        db_column='producto_id'
+    )
+    imagen = models.CharField(max_length=255)  # URL o path de la imagen
+    es_principal = models.BooleanField(default=False)
+    orden = models.IntegerField(default=0)
+    descripcion = models.CharField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'producto_imagenes'
+        managed = False  # Tabla en Supabase
+        ordering = ['orden', '-es_principal']
+
+    def __str__(self):
+        return f"Imagen {self.id} - Producto {self.producto_id}"
+    
+    def save(self, *args, **kwargs):
+        # Si esta imagen es principal, quitar es_principal de las demas
+        if self.es_principal:
+            ProductoImagen.objects.filter(
+                producto_id=self.producto_id, 
+                es_principal=True
+            ).exclude(pk=self.pk).update(es_principal=False)
+        super().save(*args, **kwargs)
+
+
+# ============================================================================
+# MODELOS PARA DOCUMENTOS DE LOTE (FACTURAS, CONTRATOS)
+# ============================================================================
+TIPOS_DOCUMENTO_LOTE = [
+    ('factura', 'Factura'),
+    ('contrato', 'Contrato'),
+    ('remision', 'Remision'),
+    ('otro', 'Otro'),
+]
+
+
+def lote_documento_upload_path(instance, filename):
+    """Genera ruta para documentos de lote: lotes/documentos/{lote_id}/{filename}"""
+    import uuid
+    from django.utils import timezone
+    ext = filename.split('.')[-1].lower()
+    timestamp = timezone.now().strftime('%Y%m%d')
+    unique_name = f"{instance.tipo_documento}_{timestamp}_{uuid.uuid4().hex[:8]}.{ext}"
+    return f"lotes/documentos/{instance.lote_id}/{unique_name}"
+
+
+class LoteDocumento(models.Model):
+    """
+    Documentos asociados a lotes (facturas, contratos, remisiones).
+    Permite adjuntar PDFs e imagenes de documentacion.
+    """
+    lote = models.ForeignKey(
+        Lote, 
+        on_delete=models.CASCADE, 
+        related_name='documentos',
+        db_column='lote_id'
+    )
+    tipo_documento = models.CharField(
+        max_length=50, 
+        choices=TIPOS_DOCUMENTO_LOTE,
+        default='otro'
+    )
+    numero_documento = models.CharField(max_length=100, blank=True, null=True)
+    archivo = models.CharField(max_length=255)  # URL o path del archivo
+    nombre_archivo = models.CharField(max_length=255, blank=True, null=True)
+    fecha_documento = models.DateField(blank=True, null=True)
+    notas = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='documentos_lote_creados',
+        db_column='created_by'
+    )
+
+    class Meta:
+        db_table = 'lote_documentos'
+        managed = False  # Tabla en Supabase
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.get_tipo_documento_display()} - Lote {self.lote_id}"
+
+
+# ============================================================================
+# MODELOS PARA DONACIONES
+# ============================================================================
+TIPOS_DONANTE = [
+    ('empresa', 'Empresa'),
+    ('gobierno', 'Gobierno'),
+    ('ong', 'ONG'),
+    ('particular', 'Particular'),
+    ('otro', 'Otro'),
+]
+
+ESTADOS_DONACION = [
+    ('pendiente', 'Pendiente'),
+    ('recibida', 'Recibida'),
+    ('procesada', 'Procesada'),
+    ('rechazada', 'Rechazada'),
+]
+
+ESTADOS_PRODUCTO_DONACION = [
+    ('bueno', 'Bueno'),
+    ('regular', 'Regular'),
+    ('malo', 'Malo'),
+]
+
+
+class Donacion(models.Model):
+    """
+    Registro de donaciones de medicamentos.
+    Permite registrar entradas de inventario por donacion.
+    """
+    numero = models.CharField(max_length=50, unique=True)
+    donante_nombre = models.CharField(max_length=255)
+    donante_tipo = models.CharField(
+        max_length=50, 
+        choices=TIPOS_DONANTE,
+        default='otro'
+    )
+    donante_rfc = models.CharField(max_length=20, blank=True, null=True)
+    donante_direccion = models.TextField(blank=True, null=True)
+    donante_contacto = models.CharField(max_length=100, blank=True, null=True)
+    fecha_donacion = models.DateField()
+    fecha_recepcion = models.DateTimeField(auto_now_add=True)
+    centro_destino = models.ForeignKey(
+        Centro,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='donaciones',
+        db_column='centro_destino_id'
+    )
+    recibido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='donaciones_recibidas',
+        db_column='recibido_por_id'
+    )
+    estado = models.CharField(
+        max_length=30, 
+        choices=ESTADOS_DONACION,
+        default='pendiente'
+    )
+    notas = models.TextField(blank=True, null=True)
+    documento_donacion = models.CharField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'donaciones'
+        managed = False  # Tabla en Supabase
+        ordering = ['-fecha_recepcion']
+
+    def __str__(self):
+        return f"DON-{self.numero} - {self.donante_nombre}"
+    
+    @property
+    def folio(self):
+        return f"DON-{self.numero}"
+    
+    def get_total_productos(self):
+        """Retorna el total de productos en la donacion"""
+        return self.detalles.count()
+    
+    def get_total_unidades(self):
+        """Retorna el total de unidades donadas"""
+        from django.db.models import Sum
+        return self.detalles.aggregate(total=Sum('cantidad'))['total'] or 0
+
+
+class DetalleDonacion(models.Model):
+    """
+    Detalle de productos en una donacion - ALMACEN SEPARADO.
+    Cada linea representa un producto donado con su propio stock independiente.
+    NO afecta el inventario principal ni genera movimientos auditados.
+    """
+    donacion = models.ForeignKey(
+        Donacion, 
+        on_delete=models.CASCADE, 
+        related_name='detalles',
+        db_column='donacion_id'
+    )
+    producto = models.ForeignKey(
+        Producto, 
+        on_delete=models.PROTECT, 
+        related_name='detalles_donacion',
+        db_column='producto_id'
+    )
+    # NO usa lote del inventario principal - tiene su propio numero de lote
+    numero_lote = models.CharField(max_length=100, blank=True, null=True)
+    cantidad = models.IntegerField()  # Cantidad recibida originalmente
+    cantidad_disponible = models.IntegerField(default=0)  # Stock actual en almacen donaciones
+    fecha_caducidad = models.DateField(blank=True, null=True)
+    estado_producto = models.CharField(
+        max_length=50, 
+        choices=ESTADOS_PRODUCTO_DONACION,
+        default='bueno'
+    )
+    notas = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'detalle_donaciones'
+        managed = False  # Tabla en Supabase
+
+    def __str__(self):
+        return f"{self.donacion.numero} - {self.producto.nombre} x {self.cantidad}"
+    
+    def save(self, *args, **kwargs):
+        # Si es nuevo registro, cantidad_disponible = cantidad
+        if not self.pk and not self.cantidad_disponible:
+            self.cantidad_disponible = self.cantidad
+        super().save(*args, **kwargs)
+
+
+class SalidaDonacion(models.Model):
+    """
+    Registro de entregas/salidas del almacen de donaciones.
+    Permite control interno sin afectar movimientos principales.
+    """
+    detalle_donacion = models.ForeignKey(
+        DetalleDonacion, 
+        on_delete=models.PROTECT, 
+        related_name='salidas',
+        db_column='detalle_donacion_id'
+    )
+    cantidad = models.IntegerField()
+    destinatario = models.CharField(max_length=255)  # Nombre del interno/paciente o area
+    motivo = models.TextField(blank=True, null=True)
+    entregado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='entregas_donaciones',
+        db_column='entregado_por_id'
+    )
+    fecha_entrega = models.DateTimeField(auto_now_add=True)
+    notas = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'salidas_donaciones'
+        managed = False  # Tabla en Supabase
+        ordering = ['-fecha_entrega']
+
+    def __str__(self):
+        return f"Salida {self.id} - {self.destinatario} x {self.cantidad}"
+    
+    def save(self, *args, **kwargs):
+        # Validar que hay stock disponible
+        if self.pk is None:  # Solo en creacion
+            if self.cantidad > self.detalle_donacion.cantidad_disponible:
+                raise ValueError(
+                    f"Stock insuficiente. Disponible: {self.detalle_donacion.cantidad_disponible}, "
+                    f"Solicitado: {self.cantidad}"
+                )
+            # Descontar del stock disponible
+            self.detalle_donacion.cantidad_disponible -= self.cantidad
+            self.detalle_donacion.save()
+        super().save(*args, **kwargs)

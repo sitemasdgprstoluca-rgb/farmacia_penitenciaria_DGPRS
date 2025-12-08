@@ -5,7 +5,8 @@ from django.utils import timezone
 from .models import (
     User, Centro, Producto, Lote, Requisicion, DetalleRequisicion, 
     Movimiento, AuditoriaLogs, ImportacionLogs, Notificacion, ConfiguracionSistema,
-    TemaGlobal, HojaRecoleccion, DetalleHojaRecoleccion, UserProfile
+    TemaGlobal, HojaRecoleccion, DetalleHojaRecoleccion, UserProfile,
+    ProductoImagen, LoteDocumento, Donacion, DetalleDonacion, SalidaDonacion
 )
 from .constants import EXTRA_PERMISSIONS
 import logging
@@ -23,6 +24,7 @@ PERMISOS_POR_ROL = {
         'verProductos': True,
         'verLotes': True,
         'verRequisiciones': True,
+        'verDonaciones': True,
         'verCentros': True,
         'verUsuarios': True,
         'verReportes': True,
@@ -48,6 +50,7 @@ PERMISOS_POR_ROL = {
         'verProductos': True,
         'verLotes': True,
         'verRequisiciones': True,
+        'verDonaciones': True,
         'verCentros': True,
         'verUsuarios': True,
         'verReportes': True,
@@ -73,6 +76,7 @@ PERMISOS_POR_ROL = {
         'verProductos': True,
         'verLotes': True,
         'verRequisiciones': True,
+        'verDonaciones': False,
         'verCentros': False,
         'verUsuarios': False,
         'verReportes': True,
@@ -98,6 +102,7 @@ PERMISOS_POR_ROL = {
         'verProductos': True,
         'verLotes': True,
         'verRequisiciones': True,
+        'verDonaciones': True,
         'verCentros': True,
         'verUsuarios': True,
         'verReportes': True,
@@ -122,6 +127,7 @@ PERMISOS_POR_ROL = {
         'verProductos': False,
         'verLotes': False,
         'verRequisiciones': False,
+        'verDonaciones': False,
         'verCentros': False,
         'verUsuarios': False,
         'verReportes': False,
@@ -208,7 +214,7 @@ class UserSerializer(serializers.ModelSerializer):
             'perm_dashboard', 'perm_productos', 'perm_lotes',
             'perm_requisiciones', 'perm_centros', 'perm_usuarios',
             'perm_reportes', 'perm_trazabilidad', 'perm_auditoria',
-            'perm_notificaciones', 'perm_movimientos'
+            'perm_notificaciones', 'perm_movimientos', 'perm_donaciones'
         ]
         read_only_fields = ['date_joined', 'last_login']
         extra_kwargs = {
@@ -217,6 +223,7 @@ class UserSerializer(serializers.ModelSerializer):
             'first_name': {'required': False, 'allow_blank': True},
             'last_name': {'required': False, 'allow_blank': True},
             'adscripcion': {'required': False, 'allow_blank': True},
+            'centro': {'required': False, 'allow_null': True},
         }
 
     def get_permisos(self, obj):
@@ -232,21 +239,28 @@ class UserSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         password = validated_data.pop('password', None)
+        # DEBUG: Log para verificar datos
+        logger.info(f"UserSerializer.create - validated_data: {validated_data}")
         user = User(**validated_data)
         if password:
             user.set_password(password)
         else:
             user.set_unusable_password()
         user.save()
+        logger.info(f"UserSerializer.create - User saved: id={user.id}, centro_id={user.centro_id}")
         return user
     
     def update(self, instance, validated_data):
         password = validated_data.pop('password', None)
+        # DEBUG: Log para verificar datos
+        logger.info(f"UserSerializer.update - validated_data: {validated_data}")
+        logger.info(f"UserSerializer.update - centro in validated_data: {validated_data.get('centro')}")
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         if password:
             instance.set_password(password)
         instance.save()
+        logger.info(f"UserSerializer.update - User saved: id={instance.id}, centro_id={instance.centro_id}")
         return instance
 
 
@@ -543,6 +557,11 @@ class RequisicionSerializer(serializers.ModelSerializer):
     # Campo 'comentario' para compatibilidad con frontend (alias de notas)
     comentario = serializers.CharField(source='notas', required=False, allow_blank=True, allow_null=True, write_only=True)
     
+    # ========== CAMPOS URGENCIA ==========
+    fecha_entrega_solicitada = serializers.DateField(required=False, allow_null=True)
+    es_urgente = serializers.BooleanField(required=False, default=False)
+    motivo_urgencia = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    
     class Meta:
         model = Requisicion
         fields = [
@@ -556,6 +575,12 @@ class RequisicionSerializer(serializers.ModelSerializer):
             'foto_firma_surtido', 'foto_firma_recepcion',
             'usuario_firma_surtido', 'usuario_firma_recepcion',
             'fecha_firma_surtido', 'fecha_firma_recepcion',
+            # Campos para formato de requisicion del centro (firmas)
+            'firma_solicitante', 'nombre_solicitante', 'cargo_solicitante',
+            'firma_jefe_area', 'nombre_jefe_area', 'cargo_jefe_area',
+            'firma_director', 'nombre_director', 'cargo_director',
+            # Campos urgencia
+            'fecha_entrega_solicitada', 'es_urgente', 'motivo_urgencia',
             'detalles', 'total_productos', 'total_items', 'created_at', 'updated_at'
         ]
         read_only_fields = ['numero', 'folio', 'fecha_solicitud', 'created_at', 'updated_at']
@@ -571,6 +596,16 @@ class RequisicionSerializer(serializers.ModelSerializer):
             'centro_destino': {'required': False, 'allow_null': True},
             'solicitante': {'required': False, 'allow_null': True},
             'autorizador': {'required': False, 'allow_null': True},
+            # Campos de firmas para formato (todos opcionales)
+            'firma_solicitante': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'nombre_solicitante': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'cargo_solicitante': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'firma_jefe_area': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'nombre_jefe_area': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'cargo_jefe_area': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'firma_director': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'nombre_director': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'cargo_director': {'required': False, 'allow_null': True, 'allow_blank': True},
         }
     
     def get_solicitante_nombre(self, obj):
@@ -593,6 +628,39 @@ class RequisicionSerializer(serializers.ModelSerializer):
     def get_total_items(self, obj):
         """Alias de total_productos para compatibilidad con frontend."""
         return self.get_total_productos(obj)
+    
+    def validate(self, data):
+        """Validaciones de requisicion con campos de urgencia."""
+        # Validar que notas/observaciones no esten vacias al enviar
+        estado = data.get('estado', getattr(self.instance, 'estado', 'borrador') if self.instance else 'borrador')
+        notas = data.get('notas', getattr(self.instance, 'notas', None) if self.instance else None)
+        
+        # Si esta enviando la requisicion (cambiando de borrador a enviada)
+        if estado == 'enviada' and not notas:
+            raise serializers.ValidationError({
+                'notas': 'Las observaciones son obligatorias al enviar una requisicion.'
+            })
+        
+        # Validar urgencia
+        es_urgente = data.get('es_urgente', False)
+        motivo_urgencia = data.get('motivo_urgencia', '')
+        fecha_entrega_solicitada = data.get('fecha_entrega_solicitada')
+        
+        if es_urgente and not motivo_urgencia:
+            raise serializers.ValidationError({
+                'motivo_urgencia': 'El motivo de urgencia es obligatorio cuando se marca como urgente.'
+            })
+        
+        # Auto-marcar como urgente si fecha_entrega_solicitada < hoy + 2 dias
+        if fecha_entrega_solicitada:
+            from datetime import date, timedelta
+            limite_urgencia = date.today() + timedelta(days=2)
+            if fecha_entrega_solicitada < limite_urgencia:
+                data['es_urgente'] = True
+                if not data.get('motivo_urgencia'):
+                    data['motivo_urgencia'] = 'Fecha de entrega proxima (menos de 2 dias)'
+        
+        return data
     
     def create(self, validated_data):
         detalles_data = validated_data.pop('detalles', [])
@@ -1048,3 +1116,278 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'centro': {'required': False, 'allow_null': True},
         }
 
+
+# =============================================================================
+# PRODUCTO IMAGEN SERIALIZER
+# =============================================================================
+
+class ProductoImagenSerializer(serializers.ModelSerializer):
+    """
+    Serializer para imagenes de productos.
+    Permite gestionar galeria de fotos por producto.
+    """
+    producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
+    
+    class Meta:
+        model = ProductoImagen
+        fields = [
+            'id', 'producto', 'producto_nombre', 'imagen', 
+            'es_principal', 'orden', 'descripcion', 'created_at'
+        ]
+        read_only_fields = ['created_at']
+        extra_kwargs = {
+            'es_principal': {'required': False, 'default': False},
+            'orden': {'required': False, 'default': 0},
+            'descripcion': {'required': False, 'allow_null': True, 'allow_blank': True},
+        }
+
+
+# =============================================================================
+# LOTE DOCUMENTO SERIALIZER
+# =============================================================================
+
+class LoteDocumentoSerializer(serializers.ModelSerializer):
+    """
+    Serializer para documentos de lotes (facturas, contratos).
+    """
+    lote_numero = serializers.CharField(source='lote.numero_lote', read_only=True)
+    producto_nombre = serializers.CharField(source='lote.producto.nombre', read_only=True)
+    created_by_nombre = serializers.SerializerMethodField()
+    tipo_documento_display = serializers.CharField(source='get_tipo_documento_display', read_only=True)
+    
+    class Meta:
+        model = LoteDocumento
+        fields = [
+            'id', 'lote', 'lote_numero', 'producto_nombre',
+            'tipo_documento', 'tipo_documento_display', 'numero_documento',
+            'archivo', 'nombre_archivo', 'fecha_documento', 'notas',
+            'created_at', 'created_by', 'created_by_nombre'
+        ]
+        read_only_fields = ['created_at']
+        extra_kwargs = {
+            'tipo_documento': {'required': True},
+            'archivo': {'required': True},
+            'numero_documento': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'nombre_archivo': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'fecha_documento': {'required': False, 'allow_null': True},
+            'notas': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'created_by': {'required': False, 'allow_null': True},
+        }
+    
+    def get_created_by_nombre(self, obj):
+        if obj.created_by:
+            return obj.created_by.get_full_name() or obj.created_by.username
+        return None
+    
+    def validate_tipo_documento(self, value):
+        """Validar que el tipo de documento sea valido."""
+        tipos_validos = ['factura', 'contrato', 'remision', 'otro']
+        if value not in tipos_validos:
+            raise serializers.ValidationError(
+                f"Tipo de documento invalido. Valores permitidos: {', '.join(tipos_validos)}"
+            )
+        return value
+
+
+# =============================================================================
+# DONACION SERIALIZERS (ALMACEN SEPARADO - NO AFECTA INVENTARIO PRINCIPAL)
+# =============================================================================
+
+class DetalleDonacionSerializer(serializers.ModelSerializer):
+    """
+    Serializer para detalle de donaciones - ALMACEN SEPARADO.
+    Las donaciones no afectan el inventario principal ni generan movimientos auditados.
+    """
+    producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
+    producto_codigo = serializers.CharField(source='producto.codigo_barras', read_only=True)
+    estado_producto_display = serializers.CharField(source='get_estado_producto_display', read_only=True)
+    
+    class Meta:
+        model = DetalleDonacion
+        fields = [
+            'id', 'donacion', 'producto', 'producto_nombre', 'producto_codigo',
+            'numero_lote', 'cantidad', 'cantidad_disponible',
+            'fecha_caducidad', 'estado_producto', 'estado_producto_display',
+            'notas', 'created_at'
+        ]
+        read_only_fields = ['created_at', 'cantidad_disponible']
+        extra_kwargs = {
+            'donacion': {'required': False},  # Se asigna al crear desde DonacionSerializer
+            'producto': {'required': True},
+            'cantidad': {'required': True},
+            'numero_lote': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'fecha_caducidad': {'required': False, 'allow_null': True},
+            'estado_producto': {'required': False, 'default': 'bueno'},
+            'notas': {'required': False, 'allow_null': True, 'allow_blank': True},
+        }
+    
+    def validate_cantidad(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("La cantidad debe ser mayor a 0.")
+        return value
+
+
+class DonacionSerializer(serializers.ModelSerializer):
+    """
+    Serializer para donaciones.
+    """
+    detalles = DetalleDonacionSerializer(many=True, required=False)
+    centro_destino_nombre = serializers.CharField(source='centro_destino.nombre', read_only=True, allow_null=True)
+    recibido_por_nombre = serializers.SerializerMethodField()
+    estado_display = serializers.CharField(source='get_estado_display', read_only=True)
+    donante_tipo_display = serializers.CharField(source='get_donante_tipo_display', read_only=True)
+    total_productos = serializers.SerializerMethodField()
+    total_unidades = serializers.SerializerMethodField()
+    folio = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Donacion
+        fields = [
+            'id', 'numero', 'folio',
+            'donante_nombre', 'donante_tipo', 'donante_tipo_display',
+            'donante_rfc', 'donante_direccion', 'donante_contacto',
+            'fecha_donacion', 'fecha_recepcion',
+            'centro_destino', 'centro_destino_nombre',
+            'recibido_por', 'recibido_por_nombre',
+            'estado', 'estado_display', 'notas', 'documento_donacion',
+            'detalles', 'total_productos', 'total_unidades',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['numero', 'folio', 'fecha_recepcion', 'created_at', 'updated_at']
+        extra_kwargs = {
+            'donante_nombre': {'required': True},
+            'fecha_donacion': {'required': True},
+            'donante_tipo': {'required': False, 'default': 'otro'},
+            'donante_rfc': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'donante_direccion': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'donante_contacto': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'centro_destino': {'required': False, 'allow_null': True},
+            'recibido_por': {'required': False, 'allow_null': True},
+            'estado': {'required': False, 'default': 'pendiente'},
+            'notas': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'documento_donacion': {'required': False, 'allow_null': True, 'allow_blank': True},
+        }
+    
+    def get_recibido_por_nombre(self, obj):
+        if obj.recibido_por:
+            return obj.recibido_por.get_full_name() or obj.recibido_por.username
+        return None
+    
+    def get_total_productos(self, obj):
+        return obj.detalles.count()
+    
+    def get_total_unidades(self, obj):
+        total = obj.detalles.aggregate(total=Sum('cantidad'))['total']
+        return total or 0
+    
+    def get_folio(self, obj):
+        return f"DON-{obj.numero}"
+    
+    def create(self, validated_data):
+        detalles_data = validated_data.pop('detalles', [])
+        
+        # Generar numero automatico
+        if 'numero' not in validated_data or not validated_data.get('numero'):
+            import random
+            validated_data['numero'] = f"{timezone.now().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
+        
+        donacion = Donacion.objects.create(**validated_data)
+        
+        for detalle_data in detalles_data:
+            DetalleDonacion.objects.create(donacion=donacion, **detalle_data)
+        
+        return donacion
+    
+    def update(self, instance, validated_data):
+        detalles_data = validated_data.pop('detalles', None)
+        
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        if detalles_data is not None:
+            # Eliminar detalles existentes y crear nuevos
+            instance.detalles.all().delete()
+            for detalle_data in detalles_data:
+                DetalleDonacion.objects.create(donacion=instance, **detalle_data)
+        
+        return instance
+
+
+class SalidaDonacionSerializer(serializers.ModelSerializer):
+    """
+    Serializer para salidas/entregas del almacen de donaciones.
+    Control interno sin afectar movimientos principales.
+    """
+    detalle_donacion_info = serializers.SerializerMethodField()
+    entregado_por_nombre = serializers.SerializerMethodField()
+    producto_nombre = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = SalidaDonacion
+        fields = [
+            'id', 'detalle_donacion', 'detalle_donacion_info',
+            'cantidad', 'destinatario', 'motivo',
+            'entregado_por', 'entregado_por_nombre',
+            'producto_nombre',
+            'fecha_entrega', 'notas', 'created_at'
+        ]
+        read_only_fields = ['created_at', 'fecha_entrega', 'entregado_por']
+        extra_kwargs = {
+            'detalle_donacion': {'required': True},
+            'cantidad': {'required': True},
+            'destinatario': {'required': True},
+            'motivo': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'notas': {'required': False, 'allow_null': True, 'allow_blank': True},
+        }
+    
+    def get_detalle_donacion_info(self, obj):
+        if obj.detalle_donacion:
+            return {
+                'id': obj.detalle_donacion.id,
+                'donacion_numero': obj.detalle_donacion.donacion.numero,
+                'cantidad_original': obj.detalle_donacion.cantidad,
+                'cantidad_disponible': obj.detalle_donacion.cantidad_disponible,
+            }
+        return None
+    
+    def get_entregado_por_nombre(self, obj):
+        if obj.entregado_por:
+            return f"{obj.entregado_por.first_name} {obj.entregado_por.last_name}".strip() or obj.entregado_por.username
+        return None
+    
+    def get_producto_nombre(self, obj):
+        if obj.detalle_donacion and obj.detalle_donacion.producto:
+            return obj.detalle_donacion.producto.nombre
+        return None
+    
+    def validate_cantidad(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("La cantidad debe ser mayor a 0.")
+        return value
+    
+    def validate(self, attrs):
+        detalle = attrs.get('detalle_donacion')
+        cantidad = attrs.get('cantidad')
+        
+        if detalle and cantidad:
+            if cantidad > detalle.cantidad_disponible:
+                raise serializers.ValidationError({
+                    'cantidad': f"Stock insuficiente. Disponible: {detalle.cantidad_disponible}"
+                })
+        
+        return attrs
+    
+    def create(self, validated_data):
+        # Asignar usuario actual
+        request = self.context.get('request')
+        if request and request.user:
+            validated_data['entregado_por'] = request.user
+        
+        # Descontar stock
+        detalle = validated_data['detalle_donacion']
+        cantidad = validated_data['cantidad']
+        detalle.cantidad_disponible -= cantidad
+        detalle.save()
+        
+        return super().create(validated_data)
