@@ -394,7 +394,8 @@ const ConfiguracionTema = () => {
 
   /**
    * Guarda los colores personalizados usando TemaGlobal API
-   * IMPORTANTE: Sincroniza color_primario con color_fondo_sidebar para coherencia visual
+   * NOTA: Los colores se guardan de forma independiente, sin sincronización forzada
+   * El usuario tiene control total sobre cada color individual
    */
   const handleGuardar = async () => {
     if (!validarColoresAntesDeGuardar()) {
@@ -402,26 +403,32 @@ const ConfiguracionTema = () => {
       return;
     }
 
-    // Preparar datos para TemaGlobal
-    // Sincronizar colores primarios con sidebar/header para coherencia visual
+    // Preparar datos para TemaGlobal - mapeo directo a columnas de BD
+    // SIN sincronización forzada: el usuario controla cada color
     const datosActualizacion = {
-      // Colores principales - sincronizados con sidebar para bg-theme-gradient
-      color_primario: formData.color_fondo_sidebar || formData.color_primario,
-      color_primario_hover: formData.color_fondo_header || formData.color_primario_hover,
+      // Colores principales (columnas: color_primario, color_primario_hover, color_secundario, color_secundario_hover)
+      color_primario: formData.color_primario,
+      color_primario_hover: formData.color_primario_hover,
       color_secundario: formData.color_secundario,
-      // Colores de fondo
+      color_secundario_hover: formData.color_secundario, // Usar mismo color como fallback
+      // Colores de fondo (columnas: color_fondo_principal, color_fondo_sidebar, color_fondo_header)
       color_fondo_principal: formData.color_fondo,
       color_fondo_sidebar: formData.color_fondo_sidebar,
       color_fondo_header: formData.color_fondo_header,
-      // Colores de texto (usar nombres de BD)
+      // Colores de texto (columnas: color_texto_principal, color_texto_sidebar, color_texto_header, color_texto_links)
       color_texto_principal: formData.color_texto,
       color_texto_sidebar: formData.color_texto_sidebar,
       color_texto_header: formData.color_texto_header,
-      // Colores de estado (mapear color_advertencia -> color_alerta)
+      color_texto_links: formData.color_primario, // Links usan color primario
+      // Colores de estado (columnas: color_exito, color_alerta, color_error, color_info)
+      // IMPORTANTE: BD usa "color_alerta", UI usa "color_advertencia"
       color_exito: formData.color_exito,
       color_alerta: formData.color_advertencia,
       color_error: formData.color_error,
       color_info: formData.color_info,
+      // Bordes (columnas: color_borde_inputs, color_borde_focus)
+      color_borde_inputs: '#E0E0E0',
+      color_borde_focus: formData.color_primario,
     };
 
     const resultado = await ejecutarOperacion(
@@ -1307,6 +1314,15 @@ const ConfiguracionTema = () => {
                 </button>
               </div>
 
+              {/* Aviso sobre campos persistentes */}
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-3">
+                <FaExclamationTriangle className="text-amber-500 mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-amber-700">
+                  <strong>Nota:</strong> Solo los colores de encabezado y texto se guardan en la base de datos. 
+                  Las opciones de "Filas Alternas", "Pie de Página" y "Año Visible" aplican solo durante esta sesión.
+                </div>
+              </div>
+
               <div className="grid md:grid-cols-2 gap-6">
                 {/* Colores de Reportes */}
                 <div className="bg-gray-50 p-5 rounded-xl">
@@ -1330,7 +1346,7 @@ const ConfiguracionTema = () => {
                       disabled={hayOperacionReportesEnCurso} 
                     />
                     <ColorInput 
-                      label="Color Filas Alternas" 
+                      label="Color Filas Alternas (solo vista previa)" 
                       name="reporte_color_filas_alternas" 
                       value={formData.reporte_color_filas_alternas} 
                       onChange={handleColorChange} 

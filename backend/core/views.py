@@ -1926,6 +1926,238 @@ class TemaGlobalViewSet(viewsets.ViewSet):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=False, methods=['post'], url_path='restablecer')
+    def restablecer_institucional(self, request):
+        """
+        POST /api/tema/restablecer/
+        Restablece el tema global a valores institucionales por defecto.
+        Solo superusuarios pueden ejecutar esta acción.
+        """
+        if not request.user.is_superuser:
+            return Response(
+                {'error': 'Solo superusuarios pueden restablecer el tema'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            tema = self._get_tema_activo()
+            if not tema:
+                tema = TemaGlobal.objects.create(nombre='Tema Institucional', es_activo=True)
+
+            # Valores institucionales por defecto (guinda)
+            valores_institucionales = {
+                'nombre': 'Tema Institucional',
+                'color_primario': '#9F2241',
+                'color_primario_hover': '#6B1839',
+                'color_secundario': '#424242',
+                'color_secundario_hover': '#212121',
+                'color_exito': '#4CAF50',
+                'color_exito_hover': '#388E3C',
+                'color_alerta': '#FF9800',
+                'color_alerta_hover': '#F57C00',
+                'color_error': '#F44336',
+                'color_error_hover': '#D32F2F',
+                'color_info': '#2196F3',
+                'color_info_hover': '#1976D2',
+                'color_fondo_principal': '#F5F5F5',
+                'color_fondo_sidebar': '#9F2241',
+                'color_fondo_header': '#9F2241',
+                'color_texto_principal': '#212121',
+                'color_texto_sidebar': '#FFFFFF',
+                'color_texto_header': '#FFFFFF',
+                'color_texto_links': '#9F2241',
+                'color_borde_inputs': '#E0E0E0',
+                'color_borde_focus': '#9F2241',
+                'reporte_color_encabezado': '#9F2241',
+                'reporte_color_texto': '#FFFFFF',
+            }
+
+            for campo, valor in valores_institucionales.items():
+                setattr(tema, campo, valor)
+            tema.save()
+
+            # Registrar en auditoría
+            AuditoriaLog.objects.create(
+                usuario=request.user,
+                accion='UPDATE',
+                modelo='TemaGlobal',
+                objeto_id=str(tema.id),
+                datos_nuevos=valores_institucionales,
+                detalles={'objeto_repr': 'Tema restablecido a institucional'}
+            )
+
+            logger.info(f"Tema restablecido a institucional por {request.user.username}")
+
+            return Response({
+                'mensaje': 'Tema restablecido a valores institucionales',
+                'tema': TemaGlobalSerializer(tema, context={'request': request}).data
+            })
+
+        except Exception as e:
+            logger.error(f"Error al restablecer tema: {str(e)}")
+            return Response(
+                {'error': f'Error interno: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'], url_path='subir-logo/(?P<tipo>[^/.]+)')
+    def subir_logo(self, request, tipo=None):
+        """
+        POST /api/tema/subir-logo/{tipo}/
+        Sube un logo para el tema global.
+        Tipos válidos: header, login, reportes, favicon
+        Solo superusuarios pueden ejecutar esta acción.
+        """
+        if not request.user.is_superuser:
+            return Response(
+                {'error': 'Solo superusuarios pueden modificar logos'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        tipos_validos = ['header', 'login', 'reportes', 'favicon']
+        if tipo not in tipos_validos:
+            return Response(
+                {'error': f'Tipo de logo inválido. Opciones: {tipos_validos}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        archivo = request.FILES.get('archivo') or request.FILES.get('logo')
+        if not archivo:
+            return Response(
+                {'error': 'No se proporcionó archivo. Enviar como "archivo" o "logo".'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validar tipo de archivo
+        tipos_permitidos = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/x-icon', 'image/vnd.microsoft.icon']
+        if archivo.content_type not in tipos_permitidos:
+            return Response(
+                {'error': f'Tipo de archivo no permitido: {archivo.content_type}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validar tamaño (2MB máximo)
+        if archivo.size > 2 * 1024 * 1024:
+            return Response(
+                {'error': 'El archivo no puede superar 2MB'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            import os
+            from django.conf import settings
+            from django.core.files.storage import default_storage
+
+            tema = self._get_tema_activo()
+            if not tema:
+                tema = TemaGlobal.objects.create(nombre='Tema Sistema', es_activo=True)
+
+            # Guardar archivo
+            extension = archivo.name.split('.')[-1]
+            nombre_archivo = f'tema/logos/{tipo}_{tema.id}.{extension}'
+            
+            # Eliminar archivo anterior si existe
+            campo_url = f'logo_url' if tipo == 'header' else f'favicon_url' if tipo == 'favicon' else None
+            if campo_url and hasattr(tema, campo_url):
+                url_anterior = getattr(tema, campo_url)
+                if url_anterior:
+                    try:
+                        default_storage.delete(url_anterior.replace('/media/', ''))
+                    except Exception:
+                        pass
+
+            # Guardar nuevo archivo
+            ruta_guardada = default_storage.save(nombre_archivo, archivo)
+            url_completa = f'{settings.MEDIA_URL}{ruta_guardada}'
+
+            # Actualizar campo correspondiente en TemaGlobal
+            # Nota: Solo logo_url y favicon_url existen en el modelo actual
+            if tipo == 'header':
+                tema.logo_url = url_completa
+            elif tipo == 'favicon':
+                tema.favicon_url = url_completa
+            # Para otros tipos, podríamos necesitar campos adicionales en el modelo
+
+            tema.save()
+
+            logger.info(f"Logo {tipo} actualizado por {request.user.username}")
+
+            return Response({
+                'mensaje': f'Logo {tipo} actualizado correctamente',
+                'url': url_completa,
+                'tema': TemaGlobalSerializer(tema, context={'request': request}).data
+            })
+
+        except Exception as e:
+            logger.error(f"Error al subir logo {tipo}: {str(e)}")
+            return Response(
+                {'error': f'Error interno: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['delete'], url_path='eliminar-logo/(?P<tipo>[^/.]+)')
+    def eliminar_logo(self, request, tipo=None):
+        """
+        DELETE /api/tema/eliminar-logo/{tipo}/
+        Elimina un logo del tema global.
+        Tipos válidos: header, login, reportes, favicon
+        Solo superusuarios pueden ejecutar esta acción.
+        """
+        if not request.user.is_superuser:
+            return Response(
+                {'error': 'Solo superusuarios pueden eliminar logos'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        tipos_validos = ['header', 'login', 'reportes', 'favicon']
+        if tipo not in tipos_validos:
+            return Response(
+                {'error': f'Tipo de logo inválido. Opciones: {tipos_validos}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            from django.core.files.storage import default_storage
+
+            tema = self._get_tema_activo()
+            if not tema:
+                return Response(
+                    {'error': 'No hay tema configurado'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # Obtener y limpiar campo correspondiente
+            campo_url = 'logo_url' if tipo == 'header' else 'favicon_url' if tipo == 'favicon' else None
+            
+            if campo_url and hasattr(tema, campo_url):
+                url_anterior = getattr(tema, campo_url)
+                if url_anterior:
+                    try:
+                        # Intentar eliminar archivo físico
+                        ruta = url_anterior.replace('/media/', '')
+                        if default_storage.exists(ruta):
+                            default_storage.delete(ruta)
+                    except Exception as e:
+                        logger.warning(f"No se pudo eliminar archivo físico: {e}")
+                    
+                    # Limpiar campo en BD
+                    setattr(tema, campo_url, None)
+                    tema.save()
+
+            logger.info(f"Logo {tipo} eliminado por {request.user.username}")
+
+            return Response({
+                'mensaje': f'Logo {tipo} eliminado correctamente',
+                'tema': TemaGlobalSerializer(tema, context={'request': request}).data
+            })
+
+        except Exception as e:
+            logger.error(f"Error al eliminar logo {tipo}: {str(e)}")
+            return Response(
+                {'error': f'Error interno: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 # =============================================================================
 # PRODUCTO IMAGEN VIEWSET
