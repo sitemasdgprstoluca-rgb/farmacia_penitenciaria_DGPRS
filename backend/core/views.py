@@ -1597,6 +1597,261 @@ class ConfiguracionSistemaViewSet(viewsets.ViewSet):
             'errores': errores
         })
     
+    @action(detail=False, methods=['post'], url_path='aplicar-tema')
+    def aplicar_tema(self, request):
+        """
+        POST /api/configuracion/tema/aplicar-tema/
+        Aplica un tema predefinido al sistema.
+        Solo superusuarios pueden modificar.
+        """
+        try:
+            if not request.user.is_superuser:
+                return Response(
+                    {'error': 'Solo superusuarios pueden aplicar temas'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            tema_nombre = request.data.get('tema')
+            if not tema_nombre:
+                return Response(
+                    {'error': 'Se requiere el nombre del tema'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Definición de temas predefinidos con sus colores
+            TEMAS_PREDEFINIDOS = {
+                'default': {
+                    'nombre': 'Por Defecto (Institucional)',
+                    'color_primario': '#9F2241',
+                    'color_primario_hover': '#6B1839',
+                    'color_secundario': '#424242',
+                    'color_secundario_hover': '#2E2E2E',
+                    'color_exito': '#4CAF50',
+                    'color_exito_hover': '#3d8b40',
+                    'color_alerta': '#FF9800',
+                    'color_alerta_hover': '#e68900',
+                    'color_error': '#F44336',
+                    'color_error_hover': '#d32f2f',
+                    'color_info': '#2196F3',
+                    'color_info_hover': '#1976D2',
+                    'color_fondo_principal': '#F5F5F5',
+                    'color_fondo_sidebar': '#9F2241',
+                    'color_fondo_header': '#9F2241',
+                    'color_texto_principal': '#212121',
+                    'color_texto_sidebar': '#FFFFFF',
+                    'color_texto_header': '#FFFFFF',
+                    'color_texto_links': '#9F2241',
+                    'color_borde_inputs': '#d1d5db',
+                    'color_borde_focus': '#9F2241',
+                    'reporte_color_encabezado': '#9F2241',
+                    'reporte_color_texto': '#1f2937',
+                },
+                'dark': {
+                    'nombre': 'Oscuro',
+                    'color_primario': '#1F2937',
+                    'color_primario_hover': '#111827',
+                    'color_secundario': '#374151',
+                    'color_secundario_hover': '#1F2937',
+                    'color_exito': '#10B981',
+                    'color_exito_hover': '#059669',
+                    'color_alerta': '#F59E0B',
+                    'color_alerta_hover': '#D97706',
+                    'color_error': '#EF4444',
+                    'color_error_hover': '#DC2626',
+                    'color_info': '#3B82F6',
+                    'color_info_hover': '#2563EB',
+                    'color_fondo_principal': '#111827',
+                    'color_fondo_sidebar': '#1F2937',
+                    'color_fondo_header': '#1F2937',
+                    'color_texto_principal': '#F9FAFB',
+                    'color_texto_sidebar': '#F9FAFB',
+                    'color_texto_header': '#F9FAFB',
+                    'color_texto_links': '#60A5FA',
+                    'color_borde_inputs': '#4B5563',
+                    'color_borde_focus': '#3B82F6',
+                    'reporte_color_encabezado': '#1F2937',
+                    'reporte_color_texto': '#1f2937',
+                },
+                'green': {
+                    'nombre': 'Verde Institucional',
+                    'color_primario': '#166534',
+                    'color_primario_hover': '#14532D',
+                    'color_secundario': '#15803D',
+                    'color_secundario_hover': '#166534',
+                    'color_exito': '#22C55E',
+                    'color_exito_hover': '#16A34A',
+                    'color_alerta': '#EAB308',
+                    'color_alerta_hover': '#CA8A04',
+                    'color_error': '#DC2626',
+                    'color_error_hover': '#B91C1C',
+                    'color_info': '#0EA5E9',
+                    'color_info_hover': '#0284C7',
+                    'color_fondo_principal': '#F0FDF4',
+                    'color_fondo_sidebar': '#166534',
+                    'color_fondo_header': '#166534',
+                    'color_texto_principal': '#14532D',
+                    'color_texto_sidebar': '#FFFFFF',
+                    'color_texto_header': '#FFFFFF',
+                    'color_texto_links': '#166534',
+                    'color_borde_inputs': '#86EFAC',
+                    'color_borde_focus': '#22C55E',
+                    'reporte_color_encabezado': '#166534',
+                    'reporte_color_texto': '#14532D',
+                },
+                'purple': {
+                    'nombre': 'Púrpura',
+                    'color_primario': '#7C3AED',
+                    'color_primario_hover': '#6D28D9',
+                    'color_secundario': '#8B5CF6',
+                    'color_secundario_hover': '#7C3AED',
+                    'color_exito': '#10B981',
+                    'color_exito_hover': '#059669',
+                    'color_alerta': '#F59E0B',
+                    'color_alerta_hover': '#D97706',
+                    'color_error': '#EF4444',
+                    'color_error_hover': '#DC2626',
+                    'color_info': '#3B82F6',
+                    'color_info_hover': '#2563EB',
+                    'color_fondo_principal': '#FAF5FF',
+                    'color_fondo_sidebar': '#7C3AED',
+                    'color_fondo_header': '#7C3AED',
+                    'color_texto_principal': '#581C87',
+                    'color_texto_sidebar': '#FFFFFF',
+                    'color_texto_header': '#FFFFFF',
+                    'color_texto_links': '#7C3AED',
+                    'color_borde_inputs': '#C4B5FD',
+                    'color_borde_focus': '#8B5CF6',
+                    'reporte_color_encabezado': '#7C3AED',
+                    'reporte_color_texto': '#581C87',
+                },
+            }
+            
+            if tema_nombre not in TEMAS_PREDEFINIDOS:
+                return Response(
+                    {'error': f'Tema "{tema_nombre}" no es válido. Opciones: {list(TEMAS_PREDEFINIDOS.keys())}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            tema_colores = TEMAS_PREDEFINIDOS[tema_nombre]
+            
+            # Intentar actualizar TemaGlobal si existe
+            try:
+                from core.models import TemaGlobal
+                tema_global = TemaGlobal.objects.filter(es_activo=True).first()
+                if not tema_global:
+                    tema_global = TemaGlobal.objects.first()
+                
+                if tema_global:
+                    # Actualizar los colores del tema global
+                    for campo, valor in tema_colores.items():
+                        if hasattr(tema_global, campo):
+                            setattr(tema_global, campo, valor)
+                    tema_global.save()
+                    logger.info(f"TemaGlobal actualizado con tema '{tema_nombre}' por {request.user.username}")
+            except Exception as e:
+                logger.warning(f"No se pudo actualizar TemaGlobal: {e}")
+            
+            # También actualizar ConfiguracionSistema para compatibilidad
+            configuraciones_actualizadas = 0
+            for clave, valor in tema_colores.items():
+                try:
+                    config, created = ConfiguracionSistema.objects.update_or_create(
+                        clave=clave,
+                        defaults={'valor': str(valor), 'es_publica': True}
+                    )
+                    configuraciones_actualizadas += 1
+                except Exception as e:
+                    logger.warning(f"No se pudo actualizar ConfiguracionSistema '{clave}': {e}")
+            
+            # Guardar el tema activo
+            ConfiguracionSistema.objects.update_or_create(
+                clave='tema_activo',
+                defaults={'valor': tema_nombre, 'es_publica': True}
+            )
+            
+            logger.info(f"Tema '{tema_nombre}' aplicado por {request.user.username}")
+            
+            # Generar respuesta con CSS variables para el frontend
+            css_variables = {
+                '--color-primary': tema_colores.get('color_primario', '#9F2241'),
+                '--color-primary-hover': tema_colores.get('color_primario_hover', '#6B1839'),
+                '--color-primary-light': f"rgba({self._hex_to_rgb(tema_colores.get('color_primario', '#9F2241'))}, 0.2)",
+                '--color-secondary': tema_colores.get('color_secundario', '#424242'),
+                '--color-accent': '#BC955C',
+                '--color-background': tema_colores.get('color_fondo_principal', '#F5F5F5'),
+                '--color-sidebar-bg': tema_colores.get('color_fondo_sidebar', '#9F2241'),
+                '--color-header-bg': tema_colores.get('color_fondo_header', '#9F2241'),
+                '--color-card-bg': '#FFFFFF',
+                '--color-text': tema_colores.get('color_texto_principal', '#212121'),
+                '--color-text-secondary': '#757575',
+                '--color-sidebar-text': tema_colores.get('color_texto_sidebar', '#FFFFFF'),
+                '--color-header-text': tema_colores.get('color_texto_header', '#FFFFFF'),
+                '--color-success': tema_colores.get('color_exito', '#4CAF50'),
+                '--color-warning': tema_colores.get('color_alerta', '#FF9800'),
+                '--color-error': tema_colores.get('color_error', '#F44336'),
+                '--color-info': tema_colores.get('color_info', '#2196F3'),
+            }
+            
+            return Response({
+                'mensaje': f'Tema "{tema_nombre}" aplicado correctamente',
+                'configuracion': {
+                    'tema_activo': tema_nombre,
+                    'nombre_sistema': 'Sistema de Farmacia Penitenciaria',
+                    'css_variables': css_variables,
+                    **tema_colores
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"Error al aplicar tema: {str(e)}")
+            return Response(
+                {'error': f'Error interno al aplicar tema: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def _hex_to_rgb(self, hex_color):
+        """Convierte color hexadecimal a formato RGB para CSS rgba()"""
+        try:
+            hex_color = hex_color.lstrip('#')
+            return ', '.join(str(int(hex_color[i:i+2], 16)) for i in (0, 2, 4))
+        except Exception:
+            return '159, 34, 65'  # Default institucional
+    
+    @action(detail=False, methods=['post'], url_path='restablecer')
+    def restablecer(self, request):
+        """
+        POST /api/configuracion/tema/restablecer/
+        Restablece el tema a los valores institucionales por defecto.
+        Solo superusuarios pueden modificar.
+        """
+        try:
+            if not request.user.is_superuser:
+                return Response(
+                    {'error': 'Solo superusuarios pueden restablecer el tema'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Usar el mismo método aplicar_tema con 'default'
+            request._request.method = 'POST'
+            from django.http import QueryDict
+            original_data = request.data
+            request._full_data = {'tema': 'default'}
+            
+            result = self.aplicar_tema(request)
+            
+            # Restaurar datos originales
+            request._full_data = original_data
+            
+            logger.info(f"Tema restablecido a institucional por {request.user.username}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error al restablecer tema: {str(e)}")
+            return Response(
+                {'error': f'Error interno al restablecer tema: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
     # End of ConfiguracionSistemaViewSet
 
 
