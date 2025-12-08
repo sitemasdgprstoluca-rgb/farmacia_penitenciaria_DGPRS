@@ -611,11 +611,11 @@ const Centros = () => {
         {totalPages > 1 && (
           <div className="px-6 py-4 border-t">
             <Pagination
-              currentPage={currentPage}
+              page={currentPage}
               totalPages={totalPages}
               onPageChange={setCurrentPage}
               totalItems={totalCentros}
-              itemsPerPage={PAGE_SIZE}
+              pageSize={PAGE_SIZE}
             />
           </div>
         )}

@@ -657,7 +657,7 @@ const Donaciones = () => {
         {totalPages > 1 && (
           <div className="border-t p-4">
             <Pagination
-              currentPage={currentPage}
+              page={currentPage}
               totalPages={totalPages}
               onPageChange={setCurrentPage}
               totalItems={totalDonaciones}
