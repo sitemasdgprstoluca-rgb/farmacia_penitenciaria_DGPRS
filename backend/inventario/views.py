@@ -2635,7 +2635,7 @@ class MovimientoViewSet(
             
             centro = request.query_params.get('centro')
             if centro:
-                queryset = queryset.filter(Q(centro_id=centro) | Q(lote__centro_id=centro))
+                queryset = queryset.filter(Q(centro_origen_id=centro) | Q(centro_destino_id=centro) | Q(lote__centro_id=centro))
             
             search = request.query_params.get('search')
             if search:
@@ -3926,11 +3926,13 @@ def trazabilidad_producto(request, clave):
                 'created_at': lote.created_at.isoformat()
             })
 
-        movimientos = Movimiento.objects.filter(lote__producto=producto).select_related('lote')
+        movimientos = Movimiento.objects.filter(lote__producto=producto).select_related('lote', 'centro_origen', 'centro_destino')
         
         # Aplicar filtro de centro a movimientos
         if filtrar_por_centro and user_centro:
-            movimientos = movimientos.filter(lote__centro=user_centro)
+            movimientos = movimientos.filter(
+                Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
+            )
         
         movimientos = movimientos.order_by('-fecha')[:100]
         movimientos_data = []
@@ -4345,11 +4347,13 @@ def reporte_movimientos(request):
         formato = request.query_params.get('formato', 'excel')
         
         # Filtrar movimientos
-        movimientos = Movimiento.objects.select_related('lote__producto').all()
+        movimientos = Movimiento.objects.select_related('lote__producto', 'centro_origen', 'centro_destino').all()
         
         # Aplicar filtro de centro
         if filtrar_por_centro and user_centro:
-            movimientos = movimientos.filter(lote__centro=user_centro)
+            movimientos = movimientos.filter(
+                Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
+            )
         
         if fecha_inicio:
             movimientos = movimientos.filter(fecha__gte=fecha_inicio)
@@ -5064,11 +5068,13 @@ def reporte_consumo(request):
         
         fecha_inicio = request.query_params.get('fecha_inicio')
         fecha_fin = request.query_params.get('fecha_fin')
-        movimientos = Movimiento.objects.select_related('lote__producto').filter(tipo='salida')
+        movimientos = Movimiento.objects.select_related('lote__producto', 'centro_origen', 'centro_destino').filter(tipo='salida')
         
         # Aplicar filtro de centro
         if filtrar_por_centro and user_centro:
-            movimientos = movimientos.filter(lote__centro=user_centro)
+            movimientos = movimientos.filter(
+                Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
+            )
         
         if fecha_inicio:
             movimientos = movimientos.filter(fecha__gte=fecha_inicio)
