@@ -387,18 +387,6 @@ const MOCK_PRODUCTS = Array.from({ length: 124 }).map((_, index) => {
   };
 });
 
-    alerta_stock: alertas[id % alertas.length],
-
-    creado_por: 'admin@edomex.gob.mx',
-
-    created_at: new Date(Date.now() - id * 86400000).toISOString(),
-
-  };
-
-});
-
-
-
 const Productos = () => {
 
   const { user, permisos, getRolPrincipal } = usePermissions();
