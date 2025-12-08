@@ -506,9 +506,9 @@ class ProductoViewSet(viewsets.ModelViewSet):
             # Usuario de centro - filtrar stock solo por su centro
             user_centro = get_user_centro(user)
             if user_centro:
-                # Anotar stock_actual basado SOLO en lotes de su centro
+                # Anotar stock_calculado basado SOLO en lotes de su centro
                 queryset = queryset.annotate(
-                    stock_actual=Coalesce(
+                    stock_calculado=Coalesce(
                         Sum(
                             'lotes__cantidad_actual',
                             filter=Q(
@@ -523,7 +523,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
             else:
                 # Usuario sin centro asignado - stock = 0
                 queryset = queryset.annotate(
-                    stock_actual=Coalesce(Sum('lotes__cantidad_actual', filter=Q(pk__isnull=True)), 0)
+                    stock_calculado=Coalesce(Sum('lotes__cantidad_actual', filter=Q(pk__isnull=True)), 0)
                 )
         else:
             # Admin/Farmacia/Vista - pueden ver stock global o por centro específico
@@ -531,7 +531,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 if centro_param == 'central':
                     # Solo stock de farmacia central (centro=NULL)
                     queryset = queryset.annotate(
-                        stock_actual=Coalesce(
+                        stock_calculado=Coalesce(
                             Sum(
                                 'lotes__cantidad_actual',
                                 filter=Q(
@@ -546,7 +546,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 else:
                     # Stock de un centro específico
                     queryset = queryset.annotate(
-                        stock_actual=Coalesce(
+                        stock_calculado=Coalesce(
                             Sum(
                                 'lotes__cantidad_actual',
                                 filter=Q(
@@ -561,7 +561,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
             else:
                 # Por defecto: stock de farmacia central (donde está el inventario principal)
                 queryset = queryset.annotate(
-                    stock_actual=Coalesce(
+                    stock_calculado=Coalesce(
                         Sum(
                             'lotes__cantidad_actual',
                             filter=Q(
@@ -594,49 +594,49 @@ class ProductoViewSet(viewsets.ModelViewSet):
 
         stock_status = self.request.query_params.get('stock_status')
         if stock_status:
-            # ISS-FIX: Usar stock_actual ya anotado (respeta el centro del usuario)
+            # ISS-FIX: Usar stock_calculado ya anotado (respeta el centro del usuario)
             # Ya no es necesario crear stock_total_calc separado
             status_val = stock_status.lower()
             if status_val == 'sin_stock':
-                queryset = queryset.filter(stock_actual__lte=0)
+                queryset = queryset.filter(stock_calculado__lte=0)
             elif status_val == 'critico':
                 queryset = queryset.filter(
-                    stock_actual__gt=0,
+                    stock_calculado__gt=0,
                     stock_minimo__gt=0,
-                    stock_actual__lt=F('stock_minimo') * 0.5
+                    stock_calculado__lt=F('stock_minimo') * 0.5
                 )
             elif status_val == 'bajo':
                 queryset = queryset.filter(
                     Q(
                         stock_minimo__gt=0,
-                        stock_actual__gte=F('stock_minimo') * 0.5,
-                        stock_actual__lt=F('stock_minimo')
+                        stock_calculado__gte=F('stock_minimo') * 0.5,
+                        stock_calculado__lt=F('stock_minimo')
                     ) | Q(
                         stock_minimo__lte=0,
-                        stock_actual__gt=0,
-                        stock_actual__lt=25
+                        stock_calculado__gt=0,
+                        stock_calculado__lt=25
                     )
                 )
             elif status_val == 'normal':
                 queryset = queryset.filter(
                     Q(
                         stock_minimo__gt=0,
-                        stock_actual__gte=F('stock_minimo'),
-                        stock_actual__lte=F('stock_minimo') * 2
+                        stock_calculado__gte=F('stock_minimo'),
+                        stock_calculado__lte=F('stock_minimo') * 2
                     ) | Q(
                         stock_minimo__lte=0,
-                        stock_actual__gte=25,
-                        stock_actual__lt=100
+                        stock_calculado__gte=25,
+                        stock_calculado__lt=100
                     )
                 )
             elif status_val == 'alto':
                 queryset = queryset.filter(
                     Q(
                         stock_minimo__gt=0,
-                        stock_actual__gt=F('stock_minimo') * 2
+                        stock_calculado__gt=F('stock_minimo') * 2
                     ) | Q(
                         stock_minimo__lte=0,
-                        stock_actual__gte=100
+                        stock_calculado__gte=100
                     )
                 )
         

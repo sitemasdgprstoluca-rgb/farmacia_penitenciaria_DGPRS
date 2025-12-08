@@ -305,7 +305,8 @@ class ProductoSerializer(serializers.ModelSerializer):
         }
     
     def get_stock_actual(self, obj):
-        return getattr(obj, 'stock_actual', 0) or 0
+        # Priorizar stock_calculado (anotación) sobre stock_actual (campo del modelo)
+        return getattr(obj, 'stock_calculado', None) or getattr(obj, 'stock_actual', 0) or 0
     
     def get_lotes_activos(self, obj):
         # Filtrar por activo=True, no por estado (que es propiedad calculada)

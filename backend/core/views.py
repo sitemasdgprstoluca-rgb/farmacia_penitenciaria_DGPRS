@@ -1496,7 +1496,7 @@ class ConfiguracionSistemaViewSet(viewsets.ViewSet):
         GET es público (para cargar el tema al inicio).
         PUT, POST requieren superusuario.
         """
-        if self.action == 'retrieve':
+        if self.action in ['retrieve', 'list']:
             return [AllowAny()]
         return [IsAuthenticated()]
     
