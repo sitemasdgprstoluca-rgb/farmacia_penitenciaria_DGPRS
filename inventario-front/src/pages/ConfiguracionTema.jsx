@@ -181,50 +181,48 @@ const ConfiguracionTema = () => {
     const tema = temaGlobal || configuracion;
     if (tema) {
       // Mapear campos del TemaGlobal al formulario
-      const colores = tema.colores || {};
-      const tipografia = tema.tipografia || {};
-      const reportes = tema.reportes || {};
+      // Los campos vienen directamente del backend con los nombres de la BD
       
       setFormData({
-        // Identidad
-        nombre_sistema: tema.reporte_titulo_institucion || tema.nombre_sistema || '',
-        nombre_institucion: reportes.titulo_institucion || tema.nombre_institucion || '',
-        subtitulo_institucion: reportes.subtitulo || tema.subtitulo_institucion || '',
+        // Identidad (mapear desde nombres de BD)
+        nombre_sistema: tema.titulo_sistema || tema.reporte_titulo_institucion || tema.nombre_sistema || '',
+        nombre_institucion: tema.titulo_sistema || tema.nombre_institucion || '',
+        subtitulo_institucion: tema.subtitulo_sistema || tema.subtitulo_institucion || '',
         
-        // Colores principales
-        color_primario: normalizarColor(colores.primario || tema.color_primario, '#9F2241'),
-        color_primario_hover: normalizarColor(colores.primario_hover || tema.color_primario_hover, '#6B1839'),
-        color_secundario: normalizarColor(colores.secundario || tema.color_secundario, '#424242'),
-        color_acento: normalizarColor(colores.acento || tema.color_acento, '#BC955C'),
+        // Colores principales (nombres directos de BD)
+        color_primario: normalizarColor(tema.color_primario, '#9F2241'),
+        color_primario_hover: normalizarColor(tema.color_primario_hover, '#6B1839'),
+        color_secundario: normalizarColor(tema.color_secundario, '#424242'),
+        color_acento: normalizarColor(tema.color_secundario, '#BC955C'), // Usar secundario como acento
         
-        // Colores de fondo
-        color_fondo: normalizarColor(colores.fondo_principal || tema.color_fondo, '#F5F5F5'),
-        color_fondo_sidebar: normalizarColor(colores.fondo_sidebar || tema.color_fondo_sidebar, '#9F2241'),
-        color_fondo_header: normalizarColor(colores.fondo_header || tema.color_fondo_header, '#9F2241'),
-        color_fondo_card: normalizarColor(colores.fondo_tarjetas || tema.color_fondo_card, '#FFFFFF'),
+        // Colores de fondo (nombres directos de BD)
+        color_fondo: normalizarColor(tema.color_fondo_principal, '#F5F5F5'),
+        color_fondo_sidebar: normalizarColor(tema.color_fondo_sidebar, '#9F2241'),
+        color_fondo_header: normalizarColor(tema.color_fondo_header, '#9F2241'),
+        color_fondo_card: normalizarColor(tema.color_fondo_principal, '#FFFFFF'), // Usar fondo principal
         
-        // Colores de texto
-        color_texto: normalizarColor(colores.texto_principal || tema.color_texto, '#212121'),
-        color_texto_secundario: normalizarColor(colores.texto_secundario || tema.color_texto_secundario, '#757575'),
-        color_texto_sidebar: normalizarColor(colores.texto_invertido || tema.color_texto_sidebar, '#FFFFFF'),
-        color_texto_header: normalizarColor(colores.texto_invertido || tema.color_texto_header, '#FFFFFF'),
+        // Colores de texto (nombres directos de BD)
+        color_texto: normalizarColor(tema.color_texto_principal, '#212121'),
+        color_texto_secundario: normalizarColor(tema.color_texto_principal, '#757575'),
+        color_texto_sidebar: normalizarColor(tema.color_texto_sidebar, '#FFFFFF'),
+        color_texto_header: normalizarColor(tema.color_texto_header, '#FFFFFF'),
         
-        // Colores de estado
-        color_exito: normalizarColor(colores.exito || tema.color_exito, '#4CAF50'),
-        color_advertencia: normalizarColor(colores.advertencia || tema.color_advertencia, '#FF9800'),
-        color_error: normalizarColor(colores.error || tema.color_error, '#F44336'),
-        color_info: normalizarColor(colores.info || tema.color_info, '#2196F3'),
+        // Colores de estado (mapear color_alerta -> color_advertencia para UI)
+        color_exito: normalizarColor(tema.color_exito, '#4CAF50'),
+        color_advertencia: normalizarColor(tema.color_alerta, '#FF9800'),
+        color_error: normalizarColor(tema.color_error, '#F44336'),
+        color_info: normalizarColor(tema.color_info, '#2196F3'),
         
-        // Tipografía
-        fuente_principal: tipografia.fuente_principal || 'Montserrat',
-        fuente_titulos: tipografia.fuente_titulos || 'Montserrat',
+        // Tipografía (valores por defecto)
+        fuente_principal: 'Montserrat',
+        fuente_titulos: 'Montserrat',
         
-        // Reportes
-        reporte_color_encabezado: normalizarColor(reportes.color_encabezado || tema.reporte_color_encabezado, '#9F2241'),
-        reporte_color_texto_encabezado: normalizarColor(reportes.color_texto_encabezado || tema.reporte_color_texto_encabezado, '#ffffff'),
-        reporte_color_filas_alternas: normalizarColor(reportes.color_filas_alternas || tema.reporte_color_filas_alternas, '#f9fafb'),
-        reporte_pie_pagina: reportes.pie_pagina || tema.reporte_pie_pagina || '',
-        reporte_ano_visible: reportes.ano_visible ?? tema.reporte_ano_visible ?? true,
+        // Reportes (nombres directos de BD)
+        reporte_color_encabezado: normalizarColor(tema.reporte_color_encabezado, '#9F2241'),
+        reporte_color_texto_encabezado: normalizarColor(tema.reporte_color_texto, '#ffffff'),
+        reporte_color_filas_alternas: '#f9fafb', // Valor por defecto, no existe en BD
+        reporte_pie_pagina: '', // No existe en BD, valor por defecto
+        reporte_ano_visible: true, // No existe en BD, valor por defecto
       });
       setTemaSeleccionado(tema.tema_activo || tema.nombre || 'default');
       setModoEdicion(false);
@@ -415,14 +413,13 @@ const ConfiguracionTema = () => {
       color_fondo_principal: formData.color_fondo,
       color_fondo_sidebar: formData.color_fondo_sidebar,
       color_fondo_header: formData.color_fondo_header,
-      color_fondo_tarjetas: formData.color_fondo_card,
-      // Colores de texto
+      // Colores de texto (usar nombres de BD)
       color_texto_principal: formData.color_texto,
-      color_texto_secundario: formData.color_texto_secundario,
-      color_texto_invertido: formData.color_texto_sidebar,
-      // Colores de estado
+      color_texto_sidebar: formData.color_texto_sidebar,
+      color_texto_header: formData.color_texto_header,
+      // Colores de estado (mapear color_advertencia -> color_alerta)
       color_exito: formData.color_exito,
-      color_advertencia: formData.color_advertencia,
+      color_alerta: formData.color_advertencia,
       color_error: formData.color_error,
       color_info: formData.color_info,
     };
@@ -448,8 +445,8 @@ const ConfiguracionTema = () => {
    */
   const handleGuardarIdentidad = async () => {
     const datosIdentidad = {
-      reporte_titulo_institucion: formData.nombre_institucion || formData.nombre_sistema,
-      reporte_subtitulo: formData.subtitulo_institucion,
+      titulo_sistema: formData.nombre_institucion || formData.nombre_sistema,
+      subtitulo_sistema: formData.subtitulo_institucion,
     };
 
     const resultado = await ejecutarOperacion(
@@ -468,14 +465,12 @@ const ConfiguracionTema = () => {
 
   /**
    * Guarda la configuración de reportes usando TemaGlobal
+   * Solo guarda campos que existen en BD: reporte_color_encabezado, reporte_color_texto
    */
   const handleGuardarReportes = async () => {
     const datosReportes = {
       reporte_color_encabezado: formData.reporte_color_encabezado,
-      reporte_color_texto_encabezado: formData.reporte_color_texto_encabezado,
-      reporte_color_filas_alternas: formData.reporte_color_filas_alternas,
-      reporte_pie_pagina: formData.reporte_pie_pagina,
-      reporte_ano_visible: formData.reporte_ano_visible,
+      reporte_color_texto: formData.reporte_color_texto_encabezado,
     };
 
     const resultado = await ejecutarOperacion(

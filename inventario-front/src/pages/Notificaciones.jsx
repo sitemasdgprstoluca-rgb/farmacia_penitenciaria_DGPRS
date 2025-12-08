@@ -347,7 +347,7 @@ function Notificaciones() {
                   <tr key={notif.id} className={!notif.leida ? "bg-blue-50/60" : ""}>
                     <td className="px-4 py-3 text-sm font-semibold text-gray-900">{notif.titulo}</td>
                     <td className="px-4 py-3 text-sm text-gray-700 max-w-xs">
-                      <p className="line-clamp-2">{notif.mensaje || notif.descripcion}</p>
+                      <p className="line-clamp-2">{notif.mensaje}</p>
                     </td>
                     <td className="px-4 py-3 text-sm">
                       <span

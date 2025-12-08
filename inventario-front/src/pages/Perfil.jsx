@@ -55,7 +55,6 @@ function Perfil() {
     last_name: "",
     email: "",
     telefono: "",
-    cargo: "",
   });
   const [passForm, setPassForm] = useState({
     old_password: "",
@@ -80,7 +79,6 @@ function Perfil() {
         last_name: res.data.last_name || "",
         email: res.data.email || "",
         telefono: res.data.telefono || "",
-        cargo: res.data.cargo || "",
       }));
     } catch (error) {
       const status = error.response?.status;
@@ -361,15 +359,6 @@ function Perfil() {
                   type="text"
                   value={form.telefono}
                   onChange={(e) => setForm((f) => ({ ...f, telefono: e.target.value }))}
-                  className="mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold text-gray-500">Cargo</label>
-                <input
-                  type="text"
-                  value={form.cargo}
-                  onChange={(e) => setForm((f) => ({ ...f, cargo: e.target.value }))}
                   className="mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
                 />
               </div>

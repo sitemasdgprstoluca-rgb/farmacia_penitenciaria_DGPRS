@@ -201,7 +201,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name', 
-            'rol', 'centro', 'centro_nombre', 'activo', 'password', 
+            'rol', 'centro', 'centro_nombre', 'password', 
             'adscripcion', 'permisos', 'is_active', 'is_superuser',
             'date_joined', 'last_login',
             # Permisos personalizados
@@ -275,7 +275,7 @@ class CentroSerializer(serializers.ModelSerializer):
         ).count()
     
     def get_total_usuarios(self, obj):
-        return obj.usuarios.filter(activo=True).count()
+        return obj.usuarios.filter(is_active=True).count()
 
 
 # =============================================================================
@@ -361,10 +361,15 @@ class ProductoSerializer(serializers.ModelSerializer):
 # =============================================================================
 
 class LoteSerializer(serializers.ModelSerializer):
+    # ISS-DB: Campos alineados con schema de productos (codigo_barras, nombre)
     producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
+    producto_clave = serializers.CharField(source='producto.codigo_barras', read_only=True)  # Alias para compatibilidad
+    producto_descripcion = serializers.CharField(source='producto.nombre', read_only=True)  # Alias para compatibilidad
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, allow_null=True)
     dias_para_caducar = serializers.SerializerMethodField()
     estado = serializers.SerializerMethodField()
+    alerta_caducidad = serializers.SerializerMethodField()  # Para compatibilidad con frontend
+    porcentaje_consumido = serializers.SerializerMethodField()  # Para tabla de lotes
     # precio_unitario tiene precision 12, default 0 en BD
     precio_unitario = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, default=0)
     # Campo 'precio_compra' para compatibilidad con frontend (alias de precio_unitario)
@@ -375,11 +380,13 @@ class LoteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lote
         fields = [
-            'id', 'producto', 'producto_nombre', 'centro', 'centro_nombre',
+            'id', 'producto', 'producto_nombre', 'producto_clave', 'producto_descripcion',
+            'centro', 'centro_nombre',
             'numero_lote', 'fecha_caducidad', 'fecha_fabricacion',
             'cantidad_inicial', 'cantidad_actual', 'precio_unitario', 'precio_compra',
             'numero_contrato', 'marca', 'ubicacion', 'activo', 'estado',
-            'dias_para_caducar', 'created_at', 'updated_at'
+            'dias_para_caducar', 'alerta_caducidad', 'porcentaje_consumido',
+            'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at', 'estado']
         extra_kwargs = {
@@ -417,6 +424,33 @@ class LoteSerializer(serializers.ModelSerializer):
         if obj.fecha_caducidad and obj.fecha_caducidad < timezone.now().date():
             return 'caducado'
         return 'disponible'
+    
+    def get_alerta_caducidad(self, obj):
+        """
+        Calcula el nivel de alerta basado en días para caducar.
+        Alineado con la clasificación SIFP:
+        - Normal: > 6 meses (180 días)
+        - Próximo: 3-6 meses (90-180 días)
+        - Crítico: < 3 meses (90 días)
+        - Vencido: < 0 días
+        """
+        if not obj.fecha_caducidad:
+            return 'normal'
+        dias = (obj.fecha_caducidad - timezone.now().date()).days
+        if dias < 0:
+            return 'vencido'
+        elif dias < 90:
+            return 'critico'
+        elif dias < 180:
+            return 'proximo'
+        return 'normal'
+    
+    def get_porcentaje_consumido(self, obj):
+        """Calcula el porcentaje de consumo del lote."""
+        if obj.cantidad_inicial and obj.cantidad_inicial > 0:
+            consumido = obj.cantidad_inicial - obj.cantidad_actual
+            return round((consumido / obj.cantidad_inicial) * 100)
+        return 0
 
 
 # =============================================================================
@@ -427,6 +461,12 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
     producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
     producto_unidad = serializers.CharField(source='producto.unidad_medida', read_only=True)
     lote_numero = serializers.CharField(source='lote.numero_lote', read_only=True, allow_null=True)
+    # ISS-DB: Alias para compatibilidad con frontend
+    producto_clave = serializers.CharField(source='producto.codigo_barras', read_only=True, allow_null=True)
+    producto_descripcion = serializers.CharField(source='producto.nombre', read_only=True)  # Alias de producto_nombre
+    lote_caducidad = serializers.DateField(source='lote.fecha_caducidad', read_only=True, allow_null=True)
+    lote_stock = serializers.IntegerField(source='lote.cantidad_actual', read_only=True, allow_null=True)
+    stock_disponible = serializers.IntegerField(source='lote.cantidad_actual', read_only=True, allow_null=True)
     # cantidad_surtida tiene default 0 en BD
     cantidad_surtida = serializers.IntegerField(required=False, default=0, allow_null=True)
     # MEJORA FLUJO 3: Campo para explicar ajustes de cantidad
@@ -435,8 +475,10 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
     class Meta:
         model = DetalleRequisicion
         fields = [
-            'id', 'producto', 'lote', 'producto_nombre', 'producto_unidad',
-            'lote_numero', 'cantidad_solicitada', 'cantidad_autorizada', 
+            'id', 'producto', 'lote', 
+            'producto_nombre', 'producto_clave', 'producto_descripcion', 'producto_unidad',
+            'lote_numero', 'lote_caducidad', 'lote_stock', 'stock_disponible',
+            'cantidad_solicitada', 'cantidad_autorizada', 
             'cantidad_surtida', 'cantidad_recibida', 'notas', 'motivo_ajuste',
             'created_at', 'updated_at'
         ]
@@ -484,6 +526,15 @@ class RequisicionSerializer(serializers.ModelSerializer):
     solicitante_nombre = serializers.SerializerMethodField()
     autorizador_nombre = serializers.SerializerMethodField()
     total_productos = serializers.SerializerMethodField()
+    
+    # ISS-DB: Alias para compatibilidad con frontend (campos calculados/read_only)
+    folio = serializers.CharField(source='numero', read_only=True)  # Alias de numero
+    centro_nombre = serializers.CharField(source='centro_destino.nombre', read_only=True, allow_null=True)  # Alias de centro_destino_nombre
+    usuario_solicita_nombre = serializers.SerializerMethodField()  # Alias de solicitante_nombre
+    observaciones = serializers.CharField(source='notas', read_only=True, allow_null=True)  # Alias de notas
+    motivo_rechazo = serializers.CharField(source='notas', read_only=True, allow_null=True)  # Alias de notas
+    total_items = serializers.SerializerMethodField()  # Alias de total_productos
+    
     # Campo 'centro' para compatibilidad con frontend (alias de centro_destino)
     centro = serializers.PrimaryKeyRelatedField(
         source='centro_destino', queryset=Centro.objects.all(), 
@@ -495,17 +546,19 @@ class RequisicionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Requisicion
         fields = [
-            'id', 'numero', 'centro', 'comentario', 'centro_origen', 'centro_origen_nombre', 
-            'centro_destino', 'centro_destino_nombre',
-            'solicitante', 'solicitante_nombre', 'autorizador', 'autorizador_nombre',
+            'id', 'numero', 'folio', 'centro', 'comentario', 
+            'centro_origen', 'centro_origen_nombre', 
+            'centro_destino', 'centro_destino_nombre', 'centro_nombre',
+            'solicitante', 'solicitante_nombre', 'usuario_solicita_nombre',
+            'autorizador', 'autorizador_nombre',
             'fecha_solicitud', 'fecha_autorizacion', 'fecha_surtido', 'fecha_entrega',
-            'estado', 'tipo', 'prioridad', 'notas', 'lugar_entrega',
+            'estado', 'tipo', 'prioridad', 'notas', 'observaciones', 'motivo_rechazo', 'lugar_entrega',
             'foto_firma_surtido', 'foto_firma_recepcion',
             'usuario_firma_surtido', 'usuario_firma_recepcion',
             'fecha_firma_surtido', 'fecha_firma_recepcion',
-            'detalles', 'total_productos', 'created_at', 'updated_at'
+            'detalles', 'total_productos', 'total_items', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['numero', 'fecha_solicitud', 'created_at', 'updated_at']
+        read_only_fields = ['numero', 'folio', 'fecha_solicitud', 'created_at', 'updated_at']
         extra_kwargs = {
             # Campos con defaults en BD
             'estado': {'required': False, 'default': 'borrador'},
@@ -525,6 +578,10 @@ class RequisicionSerializer(serializers.ModelSerializer):
             return obj.solicitante.get_full_name() or obj.solicitante.username
         return None
     
+    def get_usuario_solicita_nombre(self, obj):
+        """Alias de solicitante_nombre para compatibilidad con frontend."""
+        return self.get_solicitante_nombre(obj)
+    
     def get_autorizador_nombre(self, obj):
         if obj.autorizador:
             return obj.autorizador.get_full_name() or obj.autorizador.username
@@ -532,6 +589,10 @@ class RequisicionSerializer(serializers.ModelSerializer):
     
     def get_total_productos(self, obj):
         return obj.detalles.count()
+    
+    def get_total_items(self, obj):
+        """Alias de total_productos para compatibilidad con frontend."""
+        return self.get_total_productos(obj)
     
     def create(self, validated_data):
         detalles_data = validated_data.pop('detalles', [])
@@ -566,10 +627,18 @@ SUBTIPOS_SALIDA_VALIDOS = ['receta', 'consumo_interno', 'merma', 'caducidad', 't
 
 class MovimientoSerializer(serializers.ModelSerializer):
     lote_numero = serializers.CharField(source='lote.numero_lote', read_only=True, allow_null=True)
+    numero_lote = serializers.CharField(source='lote.numero_lote', read_only=True, allow_null=True)  # Alias para frontend
+    lote_codigo = serializers.CharField(source='lote.numero_lote', read_only=True, allow_null=True)  # Alias para frontend
     producto_nombre = serializers.SerializerMethodField()
+    producto_clave = serializers.CharField(source='lote.producto.codigo_barras', read_only=True, allow_null=True)  # Campo para frontend
+    producto_descripcion = serializers.CharField(source='lote.producto.nombre', read_only=True, allow_null=True)  # Campo para frontend
     centro_origen_nombre = serializers.CharField(source='centro_origen.nombre', read_only=True, allow_null=True)
     centro_destino_nombre = serializers.CharField(source='centro_destino.nombre', read_only=True, allow_null=True)
+    centro_nombre = serializers.SerializerMethodField()  # Alias unificado para frontend
     usuario_nombre = serializers.SerializerMethodField()
+    observaciones = serializers.CharField(source='motivo', read_only=True, allow_null=True)  # Alias para frontend
+    requisicion_folio = serializers.CharField(source='requisicion.numero', read_only=True, allow_null=True)  # Folio de requisición
+    fecha_movimiento = serializers.DateTimeField(source='fecha', read_only=True)  # Alias para frontend
     # MEJORA FLUJO 5: Nuevos campos para trazabilidad de pacientes
     subtipo_salida = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=30)
     numero_expediente = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=50)
@@ -577,11 +646,12 @@ class MovimientoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Movimiento
         fields = [
-            'id', 'tipo', 'producto', 'producto_nombre', 'lote', 'lote_numero',
-            'centro_origen', 'centro_origen_nombre', 'centro_destino', 'centro_destino_nombre',
-            'cantidad', 'usuario', 'usuario_nombre', 'requisicion', 
-            'motivo', 'referencia', 'subtipo_salida', 'numero_expediente',
-            'fecha', 'created_at'
+            'id', 'tipo', 'producto', 'producto_nombre', 'producto_clave', 'producto_descripcion',
+            'lote', 'lote_numero', 'numero_lote', 'lote_codigo',
+            'centro_origen', 'centro_origen_nombre', 'centro_destino', 'centro_destino_nombre', 'centro_nombre',
+            'cantidad', 'usuario', 'usuario_nombre', 'requisicion', 'requisicion_folio',
+            'motivo', 'observaciones', 'referencia', 'subtipo_salida', 'numero_expediente',
+            'fecha', 'fecha_movimiento', 'created_at'
         ]
         read_only_fields = ['fecha', 'created_at']
         extra_kwargs = {
@@ -605,6 +675,16 @@ class MovimientoSerializer(serializers.ModelSerializer):
         if obj.usuario:
             return obj.usuario.get_full_name() or obj.usuario.username
         return None
+    
+    def get_centro_nombre(self, obj):
+        """Retorna el nombre del centro (destino para entradas, origen para salidas)."""
+        if obj.centro_destino:
+            return obj.centro_destino.nombre
+        if obj.centro_origen:
+            return obj.centro_origen.nombre
+        if obj.lote and obj.lote.centro:
+            return obj.lote.centro.nombre
+        return 'Farmacia Central'
     
     def validate_subtipo_salida(self, value):
         """Validar que el subtipo de salida sea válido."""
@@ -704,23 +784,40 @@ class ImportacionLogSerializer(serializers.ModelSerializer):
 class UserMeSerializer(serializers.ModelSerializer):
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, default='')
     permisos = serializers.SerializerMethodField()
+    telefono = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
             'rol', 'centro', 'centro_nombre', 'adscripcion', 'permisos',
-            'is_superuser', 'is_staff',
+            'is_superuser', 'is_staff', 'telefono',
         ]
         read_only_fields = ['username', 'rol', 'centro', 'is_superuser', 'is_staff']
 
     def get_permisos(self, obj):
         return build_perm_map(obj)
 
+    def get_telefono(self, obj):
+        """Obtener teléfono desde UserProfile si existe."""
+        profile = getattr(obj, 'profile', None)
+        return profile.telefono if profile else None
+
     def update(self, instance, validated_data):
+        # Extraer telefono de los datos (viene en request.data pero no en validated_data)
+        telefono = self.initial_data.get('telefono')
+        
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
+        
+        # Actualizar teléfono en UserProfile si se proporcionó
+        if telefono is not None:
+            profile = getattr(instance, 'profile', None)
+            if profile:
+                profile.telefono = telefono
+                profile.save(update_fields=['telefono', 'updated_at'])
+        
         return instance
 
 
@@ -749,6 +846,8 @@ class TemaGlobalSerializer(serializers.ModelSerializer):
     Serializer para TemaGlobal - Configuración del tema visual.
     Todos los campos de color son opcionales con defaults en BD.
     """
+    css_variables = serializers.SerializerMethodField()
+    
     class Meta:
         model = TemaGlobal
         fields = [
@@ -765,9 +864,9 @@ class TemaGlobalSerializer(serializers.ModelSerializer):
             'color_texto_principal', 'color_texto_sidebar', 'color_texto_header',
             'color_texto_links', 'color_borde_inputs', 'color_borde_focus',
             'reporte_color_encabezado', 'reporte_color_texto',
-            'created_at', 'updated_at'
+            'css_variables', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at']
+        read_only_fields = ['css_variables', 'created_at', 'updated_at']
         extra_kwargs = {
             'es_activo': {'required': False, 'default': False},
             'logo_url': {'required': False, 'allow_null': True, 'allow_blank': True},
@@ -778,12 +877,47 @@ class TemaGlobalSerializer(serializers.ModelSerializer):
             'subtitulo_sistema': {'required': False, 'allow_null': True},
         }
 
+    def get_css_variables(self, obj):
+        """Genera las variables CSS para el frontend."""
+        return {
+            '--color-primary': obj.color_primario or '#9F2241',
+            '--color-primary-hover': obj.color_primario_hover or '#6B1839',
+            '--color-primary-light': f'rgba({self._hex_to_rgb(obj.color_primario or "#9F2241")}, 0.2)',
+            '--color-secondary': obj.color_secundario or '#424242',
+            '--color-success': obj.color_exito or '#4CAF50',
+            '--color-warning': obj.color_alerta or '#FF9800',
+            '--color-error': obj.color_error or '#F44336',
+            '--color-info': obj.color_info or '#2196F3',
+            '--color-background': obj.color_fondo_principal or '#F5F5F5',
+            '--color-sidebar-bg': obj.color_fondo_sidebar or '#9F2241',
+            '--color-header-bg': obj.color_fondo_header or '#9F2241',
+            '--color-text': obj.color_texto_principal or '#212121',
+            '--color-text-secondary': obj.color_texto_principal or '#757575',
+            '--color-sidebar-text': obj.color_texto_sidebar or '#FFFFFF',
+            '--color-header-text': obj.color_texto_header or '#FFFFFF',
+            '--color-border': obj.color_borde_inputs or '#E0E0E0',
+            '--font-family-principal': "'Montserrat', sans-serif",
+        }
+
+    def _hex_to_rgb(self, hex_color):
+        """Convierte color hex a RGB para rgba()."""
+        try:
+            hex_color = hex_color.lstrip('#')
+            r = int(hex_color[0:2], 16)
+            g = int(hex_color[2:4], 16)
+            b = int(hex_color[4:6], 16)
+            return f'{r}, {g}, {b}'
+        except Exception:
+            return '159, 34, 65'
+
 
 class TemaGlobalPublicoSerializer(serializers.ModelSerializer):
     """
     Serializer público para TemaGlobal - Solo campos necesarios para el frontend.
     Usado en endpoints públicos como login.
     """
+    css_variables = serializers.SerializerMethodField()
+    
     class Meta:
         model = TemaGlobal
         fields = [
@@ -795,8 +929,42 @@ class TemaGlobalPublicoSerializer(serializers.ModelSerializer):
             'color_fondo_principal', 'color_fondo_sidebar', 'color_fondo_header',
             'color_texto_principal', 'color_texto_sidebar', 'color_texto_header',
             'color_texto_links', 'color_borde_inputs', 'color_borde_focus',
+            'css_variables', 'updated_at',
         ]
         read_only_fields = fields
+
+    def get_css_variables(self, obj):
+        """Genera las variables CSS para el frontend."""
+        return {
+            '--color-primary': obj.color_primario or '#9F2241',
+            '--color-primary-hover': obj.color_primario_hover or '#6B1839',
+            '--color-primary-light': f'rgba({self._hex_to_rgb(obj.color_primario or "#9F2241")}, 0.2)',
+            '--color-secondary': obj.color_secundario or '#424242',
+            '--color-success': obj.color_exito or '#4CAF50',
+            '--color-warning': obj.color_alerta or '#FF9800',
+            '--color-error': obj.color_error or '#F44336',
+            '--color-info': obj.color_info or '#2196F3',
+            '--color-background': obj.color_fondo_principal or '#F5F5F5',
+            '--color-sidebar-bg': obj.color_fondo_sidebar or '#9F2241',
+            '--color-header-bg': obj.color_fondo_header or '#9F2241',
+            '--color-text': obj.color_texto_principal or '#212121',
+            '--color-text-secondary': obj.color_texto_principal or '#757575',
+            '--color-sidebar-text': obj.color_texto_sidebar or '#FFFFFF',
+            '--color-header-text': obj.color_texto_header or '#FFFFFF',
+            '--color-border': obj.color_borde_inputs or '#E0E0E0',
+            '--font-family-principal': "'Montserrat', sans-serif",
+        }
+
+    def _hex_to_rgb(self, hex_color):
+        """Convierte color hex a RGB para rgba()."""
+        try:
+            hex_color = hex_color.lstrip('#')
+            r = int(hex_color[0:2], 16)
+            g = int(hex_color[2:4], 16)
+            b = int(hex_color[4:6], 16)
+            return f'{r}, {g}, {b}'
+        except Exception:
+            return '159, 34, 65'
 
 
 # =============================================================================

@@ -189,9 +189,9 @@ class User(AbstractUser):
         default='',
         help_text="Adscripción del usuario (centro/área/unidad de dependencia)"
     )
-    activo = models.BooleanField(default=True)
+    # Campo 'activo' eliminado - usar is_active de AbstractUser
     
-    # Permisos personalizados por mÃ³dulo (null = usar permisos del rol por defecto)
+    # Permisos personalizados por módulo (null = usar permisos del rol por defecto)
     perm_dashboard = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Dashboard")
     perm_productos = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Productos")
     perm_lotes = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Lotes")

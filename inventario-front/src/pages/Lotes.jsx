@@ -127,17 +127,20 @@ const Lotes = () => {
   // Estado para detectar usuario sin centro asignado (error de configuración)
   const [errorSinCentro, setErrorSinCentro] = useState(false);
   
+  // ISS-DB: Campos alineados con tabla lotes de Supabase
+  // Campos reales: numero_lote, producto_id, cantidad_inicial, cantidad_actual, 
+  // fecha_fabricacion, fecha_caducidad, precio_unitario, numero_contrato, marca, ubicacion, centro_id, activo
   const [formData, setFormData] = useState({
     producto: '',
     numero_lote: '',
+    fecha_fabricacion: '',    // Campo real en DB
     fecha_caducidad: '',
     cantidad_inicial: '',
-    precio_compra: '',
-    proveedor: '',
-    factura: '',
+    precio_unitario: '',      // Nombre real en DB (antes precio_compra)
     numero_contrato: '',
     marca: '',
-    observaciones: ''
+    ubicacion: '',            // Campo real en DB
+    centro: ''                // Solo editable por admin/farmacia
   });
 
   const nivelCaducidad = [
@@ -316,10 +319,10 @@ const Lotes = () => {
       return;
     }
     
-    // Parsear precio si existe
-    const precioCompra = formData.precio_compra ? parseFloat(formData.precio_compra) : null;
-    if (formData.precio_compra && (isNaN(precioCompra) || precioCompra < 0)) {
-      toast.error('El precio de compra debe ser un número válido y no negativo');
+    // Parsear precio si existe (campo real: precio_unitario)
+    const precioUnitario = formData.precio_unitario ? parseFloat(formData.precio_unitario) : null;
+    if (formData.precio_unitario && (isNaN(precioUnitario) || precioUnitario < 0)) {
+      toast.error('El precio unitario debe ser un número válido y no negativo');
       return;
     }
     
@@ -329,7 +332,7 @@ const Lotes = () => {
       const dataToSend = {
         ...formData,
         cantidad_inicial: cantidadInicial,
-        precio_compra: precioCompra,
+        precio_unitario: precioUnitario,
       };
       
       // Solo inicializar cantidad_actual en creación, no en edición
@@ -376,14 +379,14 @@ const Lotes = () => {
     setFormData({
       producto: lote.producto,
       numero_lote: lote.numero_lote,
+      fecha_fabricacion: lote.fecha_fabricacion || '',
       fecha_caducidad: lote.fecha_caducidad,
       cantidad_inicial: lote.cantidad_inicial,
-      precio_compra: lote.precio_compra || '',
-      proveedor: lote.proveedor || '',
-      factura: lote.factura || '',
+      precio_unitario: lote.precio_unitario || lote.precio_compra || '',
       numero_contrato: lote.numero_contrato || '',
       marca: lote.marca || '',
-      observaciones: lote.observaciones || ''
+      ubicacion: lote.ubicacion || '',
+      centro: lote.centro || ''
     });
     setShowModal(true);
   };
@@ -487,14 +490,14 @@ const Lotes = () => {
     setFormData({
       producto: '',
       numero_lote: '',
+      fecha_fabricacion: '',
       fecha_caducidad: '',
       cantidad_inicial: '',
-      precio_compra: '',
-      proveedor: '',
-      factura: '',
+      precio_unitario: '',
       numero_contrato: '',
       marca: '',
-      observaciones: ''
+      ubicacion: '',
+      centro: ''
     });
     setEditingLote(null);
   };
@@ -799,7 +802,7 @@ const handleImportar = async (e) => {
                   <option value="">Todos los productos</option>
                   {productos.map(p => (
                     <option key={p.id} value={p.id}>
-                      {p.clave} - {p.descripcion?.substring(0, 30)}
+                      {p.codigo_barras || p.clave} - {(p.nombre || p.descripcion)?.substring(0, 30)}
                     </option>
                   ))}
                 </select>
@@ -1041,7 +1044,7 @@ const handleImportar = async (e) => {
                     <option value="">Seleccione un producto</option>
                     {productos.map(p => (
                       <option key={p.id} value={p.id}>
-                        {p.clave} - {p.descripcion}
+                        {p.codigo_barras || p.clave} - {p.nombre || p.descripcion}
                       </option>
                     ))}
                   </select>
@@ -1134,10 +1137,10 @@ const handleImportar = async (e) => {
                     <p className="text-xs text-gray-500 italic mt-1">Cantidad actual en inventario</p>
                   </div>
                   
-                  {/* Precio de Compra */}
+                  {/* Precio Unitario (nombre real en DB) */}
                   <div>
                     <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      PRECIO DE COMPRA
+                      PRECIO UNITARIO
                     </label>
                     <div className="relative">
                       <span className="absolute left-4 top-3.5 font-bold" style={{ color: '#6B7280' }}>$</span>
@@ -1145,8 +1148,8 @@ const handleImportar = async (e) => {
                         type="number"
                         step="0.01"
                         min="0"
-                        value={formData.precio_compra}
-                        onChange={(e) => setFormData({...formData, precio_compra: e.target.value})}
+                        value={formData.precio_unitario}
+                        onChange={(e) => setFormData({...formData, precio_unitario: e.target.value})}
                         className="w-full pl-8 pr-4 py-3 border-2 border-gray-200 rounded-xl transition-all focus:outline-none"
                         onFocus={(e) => {
                           e.target.style.borderColor = '#9F2241';
@@ -1161,28 +1164,53 @@ const handleImportar = async (e) => {
                     </div>
                   </div>
                 </div>
-              
-                <div>
-                  <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                    PROVEEDOR
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.proveedor}
-                    onChange={(e) => setFormData({...formData, proveedor: e.target.value})}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl transition-all focus:outline-none"
-                    onFocus={(e) => {
-                      e.target.style.borderColor = '#9F2241';
-                      e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.borderColor = '#E5E7EB';
-                      e.target.style.boxShadow = 'none';
-                    }}
-                    placeholder="Nombre del proveedor (opcional)"
-                    maxLength={200}
-                  />
-                  <p className="text-xs text-gray-400 mt-1">0/200 caracteres</p>
+
+                {/* Fecha de Fabricación y Ubicación */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
+                      FECHA DE FABRICACIÓN
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.fecha_fabricacion}
+                      onChange={(e) => setFormData({...formData, fecha_fabricacion: e.target.value})}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl transition-all focus:outline-none"
+                      onFocus={(e) => {
+                        e.target.style.borderColor = '#9F2241';
+                        e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = '#E5E7EB';
+                        e.target.style.boxShadow = 'none';
+                      }}
+                      max={new Date().toISOString().split('T')[0]}
+                    />
+                    <p className="text-xs text-gray-500 italic mt-1">Opcional - Fecha de manufactura del lote</p>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
+                      UBICACIÓN
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.ubicacion}
+                      onChange={(e) => setFormData({...formData, ubicacion: e.target.value})}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl transition-all focus:outline-none"
+                      onFocus={(e) => {
+                        e.target.style.borderColor = '#9F2241';
+                        e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = '#E5E7EB';
+                        e.target.style.boxShadow = 'none';
+                      }}
+                      placeholder="Ej: Estante A, Anaquel 3"
+                      maxLength={100}
+                    />
+                    <p className="text-xs text-gray-500 italic mt-1">Ubicación física del lote en almacén</p>
+                  </div>
                 </div>
 
                 {/* CAMPOS DE TRAZABILIDAD DE CONTRATOS - Solo visible para ADMIN y FARMACIA */}
@@ -1310,19 +1338,19 @@ const handleImportar = async (e) => {
             <div className="p-6">
               <div className="mb-4">
                 <p className="text-sm text-gray-600 mb-2">
-                  El archivo debe contener las siguientes columnas:
+                  El archivo debe contener las siguientes columnas en orden:
                 </p>
                 <ul className="text-sm text-gray-600 list-disc list-inside">
-                  <li>Producto (Clave o ID)</li>
-                  <li>N�mero Lote</li>
-                  <li>Fecha Caducidad (YYYY-MM-DD)</li>
-                  <li>Cantidad</li>
-                  <li>Precio Compra (opcional)</li>
-                  <li>Proveedor (opcional)</li>
-                  <li>Factura (opcional)</li>
-                  <li>N�mero Contrato (opcional)</li>
+                  <li><strong>Producto</strong> (Código de barras o Nombre) - Requerido</li>
+                  <li><strong>Número Lote</strong> - Requerido</li>
+                  <li><strong>Fecha Caducidad</strong> (YYYY-MM-DD) - Requerido</li>
+                  <li><strong>Cantidad Inicial</strong> - Requerido</li>
+                  <li>Cantidad Actual (opcional, por defecto = Inicial)</li>
                   <li>Marca (opcional)</li>
                 </ul>
+                <p className="text-xs text-amber-600 mt-2">
+                  Nota: Las columnas deben estar en el orden indicado. El sistema buscará el producto por código de barras o nombre.
+                </p>
               </div>
               
               <div className="mb-4">

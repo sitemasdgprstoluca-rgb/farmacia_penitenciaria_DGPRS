@@ -329,14 +329,19 @@ class UserViewSet(viewsets.ModelViewSet):
             serializer.is_valid(raise_exception=True)
             serializer.save()
             
+            # Refrescar usuario y profile para capturar cambios
+            request.user.refresh_from_db()
+            
             # Detectar cambios para auditoría
             new_data = {
                 'email': request.user.email,
                 'first_name': request.user.first_name,
                 'last_name': request.user.last_name,
             }
+            # Refrescar profile para obtener telefono actualizado
             profile = getattr(request.user, 'profile', None)
             if profile:
+                profile.refresh_from_db()
                 new_data['telefono'] = profile.telefono
                 new_data['rol'] = profile.rol
             
@@ -729,7 +734,6 @@ class UserViewSet(viewsets.ModelViewSet):
                                 rol=rol,
                                 centro=centro,
                                 is_active=True,
-                                activo=True,
                             )
                             user.set_password(password)
                             user.save()

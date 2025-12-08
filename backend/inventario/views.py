@@ -309,7 +309,7 @@ def invalidar_cache_dashboard(centro_id=None):
         logger.warning(f'Error al invalidar caché del dashboard: {e}')
 
 
-def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=None, requisicion=None, observaciones='', skip_centro_check=False):
+def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=None, requisicion=None, observaciones='', skip_centro_check=False, subtipo_salida=None, numero_expediente=None):
     """
     Helper central para registrar un movimiento y actualizar cantidad_actual del lote.
     
@@ -318,6 +318,9 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
     
     ISS-003 FIX: Los ajustes negativos requieren observaciones obligatorias con
     longitud mínima para auditoría y prevención de robo hormiga.
+    
+    MEJORA FLUJO 5: Soporte para subtipo_salida y numero_expediente para
+    trazabilidad de pacientes en salidas por receta médica.
     
     Args:
         lote: Instancia del Lote a modificar
@@ -329,6 +332,8 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         observaciones: Texto descriptivo (obligatorio para ajustes negativos)
         skip_centro_check: Si True, omite validación de pertenencia (solo para operaciones
                           de sistema/admin que ya validaron permisos)
+        subtipo_salida: Tipo de salida (receta, consumo_interno, merma, etc.)
+        numero_expediente: Número de expediente del paciente (para recetas)
     
     Raises:
         ValidationError: Si los datos son inválidos o hay problemas de autorización
@@ -439,7 +444,10 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
             requisicion=requisicion,
             usuario=usuario if usuario and getattr(usuario, 'is_authenticated', False) else None,
             cantidad=delta,
-            motivo=observaciones or ''
+            motivo=observaciones or '',
+            # MEJORA FLUJO 5: Campos de trazabilidad para pacientes
+            subtipo_salida=subtipo_salida if tipo_normalizado == 'salida' else None,
+            numero_expediente=numero_expediente if tipo_normalizado == 'salida' and subtipo_salida == 'receta' else None
         )
         # Guardar stock previo para evitar fallos de validacion al crear el movimiento
         movimiento._stock_pre_movimiento = stock_disponible
@@ -1935,20 +1943,36 @@ class LoteViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def exportar_excel(self, request):
-        """Exporta lotes aplicando los mismos filtros de listado."""
+        """
+        Exporta lotes aplicando los mismos filtros de listado.
+        
+        ISS-DB: Incluye todos los campos de la tabla lotes de Supabase:
+        - codigo_barras (de producto)
+        - numero_lote, fecha_fabricacion, fecha_caducidad
+        - cantidad_inicial, cantidad_actual
+        - precio_unitario, numero_contrato, marca, ubicacion
+        - centro (nombre), activo
+        """
         try:
             lotes = self.get_queryset()
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = 'Lotes'
 
-            ws.merge_cells('A1:H1')
-            ws['A1'] = 'REPORTE DE LOTES'
+            ws.merge_cells('A1:L1')
+            ws['A1'] = 'REPORTE DE LOTES - SISTEMA DE INVENTARIO FARMACEUTICO PENITENCIARIO'
             ws['A1'].font = Font(bold=True, size=14, color='632842')
             ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
 
             ws.append([])
-            headers = ['#', 'Producto', 'Numero de lote', 'Caducidad', 'Cantidad inicial', 'Cantidad actual', 'Activo', 'Marca']
+            # ISS-DB: Headers alineados con esquema real de Supabase
+            headers = [
+                '#', 'Código Barras', 'Nombre Producto', 'Número Lote',
+                'Fecha Fabricación', 'Fecha Caducidad',
+                'Cantidad Inicial', 'Cantidad Actual',
+                'Precio Unitario', 'Número Contrato', 'Marca', 'Ubicación',
+                'Centro', 'Activo'
+            ]
             ws.append(headers)
             header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
             header_font = Font(bold=True, color='FFFFFF', size=11)
@@ -1960,17 +1984,25 @@ class LoteViewSet(viewsets.ModelViewSet):
             for idx, lote in enumerate(lotes, 1):
                 ws.append([
                     idx,
-                    getattr(lote.producto, 'clave', ''),
-                    lote.numero_lote,
+                    getattr(lote.producto, 'codigo_barras', '') or '',
+                    getattr(lote.producto, 'nombre', '') or '',
+                    lote.numero_lote or '',
+                    lote.fecha_fabricacion.strftime('%Y-%m-%d') if lote.fecha_fabricacion else '',
                     lote.fecha_caducidad.strftime('%Y-%m-%d') if lote.fecha_caducidad else '',
                     lote.cantidad_inicial,
                     lote.cantidad_actual,
-                    'Si' if lote.activo else 'No',
-                    lote.marca or ''
+                    float(lote.precio_unitario) if lote.precio_unitario else 0.00,
+                    lote.numero_contrato or '',
+                    lote.marca or '',
+                    lote.ubicacion or '',
+                    getattr(lote.centro, 'nombre', 'Farmacia Central') if lote.centro else 'Farmacia Central',
+                    'Sí' if lote.activo else 'No'
                 ])
 
-            for col, width in zip(['A','B','C','D','E','F','G','H'], [6,12,18,14,14,14,12,16]):
-                ws.column_dimensions[col].width = width
+            # Ajustar anchos de columna
+            column_widths = [6, 15, 25, 15, 14, 14, 12, 12, 12, 18, 15, 15, 18, 8]
+            for col_idx, width in enumerate(column_widths, 1):
+                ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = width
 
             response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
             response['Content-Disposition'] = f'attachment; filename=Lotes_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
@@ -1984,6 +2016,14 @@ class LoteViewSet(viewsets.ModelViewSet):
     def importar_excel(self, request):
         """
         Importa lotes desde Excel con validaciones.
+        
+        Columnas esperadas (en orden):
+        1. Producto (codigo_barras o nombre) - Requerido
+        2. Numero Lote - Requerido
+        3. Fecha Caducidad (YYYY-MM-DD) - Requerido
+        4. Cantidad Inicial - Requerido
+        5. Cantidad Actual (opcional, default = Cantidad Inicial)
+        6. Marca (opcional)
         
         Limites de seguridad:
         - Tamano maximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
@@ -2438,10 +2478,15 @@ class MovimientoViewSet(
         if producto:
             queryset = queryset.filter(lote__producto_id=producto)
         
-        # Filtro por lote
+        # Filtro por lote (acepta ID numérico o número de lote como texto)
         lote = self.request.query_params.get('lote')
         if lote:
-            queryset = queryset.filter(lote_id=lote)
+            if lote.isdigit():
+                # Si es un número, buscar por ID
+                queryset = queryset.filter(lote_id=lote)
+            else:
+                # Si es texto, buscar por número de lote (coincidencia parcial)
+                queryset = queryset.filter(lote__numero_lote__icontains=lote)
         
         # Filtro por rango de fechas
         fecha_inicio = self.request.query_params.get('fecha_inicio')
@@ -2499,6 +2544,10 @@ class MovimientoViewSet(
                     'tipo': f'Los centros solo pueden registrar: {", ".join(tipos_permitidos_centro)}. Las entradas se generan automticamente al surtir requisiciones.'
                 })
         
+        # MEJORA FLUJO 5: Extraer campos de trazabilidad
+        subtipo_salida = serializer.validated_data.get('subtipo_salida')
+        numero_expediente = serializer.validated_data.get('numero_expediente')
+        
         movimiento, _ = registrar_movimiento_stock(
             lote=lote,
             tipo=serializer.validated_data.get('tipo'),
@@ -2506,7 +2555,9 @@ class MovimientoViewSet(
             usuario=user,
             centro=serializer.validated_data.get('centro') or (lote.centro if lote else None),
             requisicion=serializer.validated_data.get('requisicion'),
-            observaciones=serializer.validated_data.get('observaciones')
+            observaciones=serializer.validated_data.get('observaciones'),
+            subtipo_salida=subtipo_salida,
+            numero_expediente=numero_expediente
         )
         # Dejar instancia lista para serializer.data
         serializer.instance = movimiento
@@ -2516,8 +2567,15 @@ class MovimientoViewSet(
         """
         Genera PDF de trazabilidad de un producto.
         Parmetros: ?producto_clave=XXX
+        
+        SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
         """
         from core.utils.pdf_reports import generar_reporte_trazabilidad
+        
+        # SEGURIDAD: Verificar permisos y determinar filtro de centro
+        user = request.user
+        filtrar_por_centro = not is_farmacia_or_admin(user)
+        user_centro = get_user_centro(user) if filtrar_por_centro else None
         
         clave = request.query_params.get('producto_clave')
         if not clave:
@@ -2533,7 +2591,15 @@ class MovimientoViewSet(
             # Obtener movimientos del producto
             movimientos = Movimiento.objects.filter(
                 lote__producto=producto
-            ).select_related('lote', 'centro_origen', 'centro_destino', 'usuario').order_by('-fecha')[:100]
+            ).select_related('lote', 'centro_origen', 'centro_destino', 'usuario')
+            
+            # Aplicar filtro de centro si corresponde
+            if filtrar_por_centro and user_centro:
+                movimientos = movimientos.filter(
+                    Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
+                )
+            
+            movimientos = movimientos.order_by('-fecha')[:100]
             
             trazabilidad_data = []
             for mov in movimientos:
@@ -2578,8 +2644,14 @@ class MovimientoViewSet(
         """
         Genera PDF de trazabilidad de un lote especfico.
         Parmetros: ?numero_lote=XXX
+        
+        SEGURIDAD: Solo admin/farmacia pueden acceder.
         """
         from core.utils.pdf_reports import generar_reporte_trazabilidad
+        
+        # SEGURIDAD: Solo admin/farmacia pueden exportar trazabilidad de lotes
+        if not is_farmacia_or_admin(request.user):
+            return Response({'error': 'Solo administradores y farmacia pueden exportar trazabilidad de lotes'}, status=status.HTTP_403_FORBIDDEN)
         
         numero_lote = request.query_params.get('numero_lote')
         if not numero_lote:
@@ -2734,19 +2806,19 @@ class MovimientoViewSet(
             ws = wb.active
             ws.title = 'Movimientos'
             
-            # Ttulo
-            ws.merge_cells('A1:H1')
+            # Título - MEJORA FLUJO 5: Extender a 11 columnas (K)
+            ws.merge_cells('A1:K1')
             ws['A1'] = 'REPORTE DE MOVIMIENTOS'
             ws['A1'].font = Font(bold=True, size=14, color='632842')
             ws['A1'].alignment = Alignment(horizontal='center')
             
             # Fecha
-            ws.merge_cells('A2:H2')
+            ws.merge_cells('A2:K2')
             ws['A2'] = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")}'
             ws['A2'].alignment = Alignment(horizontal='center')
             
-            # Encabezados
-            headers = ['#', 'Fecha', 'Tipo', 'Producto', 'Lote', 'Cantidad', 'Centro', 'Usuario']
+            # Encabezados - MEJORA FLUJO 5: Incluir subtipo y expediente
+            headers = ['#', 'Fecha', 'Tipo', 'Subtipo', 'Producto', 'Lote', 'Cantidad', 'Centro', 'Usuario', 'No. Expediente', 'Observaciones']
             ws.append([])
             ws.append(headers)
             
@@ -2757,21 +2829,24 @@ class MovimientoViewSet(
                 cell.font = header_font
                 cell.alignment = Alignment(horizontal='center')
             
-            # Datos
+            # Datos - MEJORA FLUJO 5: Incluir campos de trazabilidad
             for idx, mov in enumerate(movimientos, 1):
                 ws.append([
                     idx,
                     mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
                     mov.tipo.upper(),
+                    (mov.subtipo_salida or '').upper() if mov.tipo == 'salida' else '',
                     mov.lote.producto.descripcion[:50] if mov.lote and mov.lote.producto else 'N/A',
                     mov.lote.numero_lote if mov.lote else 'N/A',
                     mov.cantidad,
                     mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
                     mov.usuario.get_full_name() or mov.usuario.username if mov.usuario else 'Sistema',
+                    mov.numero_expediente or '',
+                    (mov.motivo or '')[:100],
                 ])
             
-            # Ajustar anchos
-            column_widths = [8, 18, 12, 50, 15, 12, 25, 20]
+            # Ajustar anchos - actualizado para 11 columnas
+            column_widths = [8, 18, 12, 15, 45, 15, 10, 25, 20, 18, 30]
             for i, width in enumerate(column_widths, 1):
                 ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
             
@@ -4678,8 +4753,9 @@ def reporte_caducidades(request):
         
         fecha_limite = date.today() + timedelta(days=dias)
         
-        # Obtener lotes proximos a vencer
+        # Obtener lotes proximos a vencer (solo lotes activos)
         lotes = Lote.objects.filter(
+            activo=True,
             cantidad_actual__gt=0,
             fecha_caducidad__lte=fecha_limite
         ).select_related('producto')
@@ -4893,14 +4969,21 @@ def reporte_requisiciones(request):
             estado_req = req.estado.upper()
             estados_count[estado_req] = estados_count.get(estado_req, 0) + 1
             
+            # Determinar centro (preferir destino, luego origen)
+            centro_nombre = 'N/A'
+            if req.centro_destino:
+                centro_nombre = req.centro_destino.nombre
+            elif req.centro_origen:
+                centro_nombre = req.centro_origen.nombre
+            
             datos.append({
                 'id': req.id,
                 'folio': req.folio or f'REQ-{req.id}',
-                'centro': req.centro.nombre if req.centro else 'N/A',
+                'centro': centro_nombre,
                 'estado': estado_req,
                 'fecha_solicitud': req.fecha_solicitud.isoformat() if req.fecha_solicitud else None,
                 'total_productos': req.detalles.count(),
-                'solicitante': req.usuario_solicita.get_full_name() if req.usuario_solicita else 'N/A',
+                'solicitante': req.solicitante.get_full_name() if req.solicitante else 'N/A',
             })
         
         resumen = {
