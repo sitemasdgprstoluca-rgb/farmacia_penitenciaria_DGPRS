@@ -3003,22 +3003,71 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         return errores
 
     def get_queryset(self):
-        queryset = Requisicion.objects.select_related('centro_origen', 'centro_destino', 'solicitante', 'autorizador').prefetch_related('detalles__producto')
-        user = getattr(self.request, 'user', None)
+        """
+        FLUJO V2: Filtros de seguridad a nivel de fila (Row Level Security lógica).
         
-        # SEGURIDAD: Filtrar por centro segun rol
-        if user and not is_farmacia_or_admin(user):
-            # Usuario de centro: forzado a su centro
-            user_centro = self._user_centro(user)
-            if user_centro:
-                queryset = queryset.filter(Q(centro_origen=user_centro) | Q(centro_destino=user_centro))
-            else:
-                return Requisicion.objects.none()
+        Cada rol ve solo las requisiciones que le corresponden según su posición
+        en el flujo jerárquico.
+        """
+        queryset = Requisicion.objects.select_related(
+            'centro_origen', 'centro_destino', 'solicitante', 'autorizador',
+            # FLUJO V2: Actores del flujo
+            'administrador_centro', 'director_centro', 
+            'receptor_farmacia', 'autorizador_farmacia', 'surtidor'
+        ).prefetch_related('detalles__producto')
+        
+        user = getattr(self.request, 'user', None)
+        if not user or not user.is_authenticated:
+            return Requisicion.objects.none()
+        
+        # 1. Superusuario o Admin Global: Ve todo
+        if user.is_superuser or getattr(user, 'rol', '') == 'admin':
+            pass  # Sin filtro de centro
+        
+        # 2. Personal de Farmacia Central: Ve solo lo que ha sido enviado
+        elif getattr(user, 'rol', '') == 'farmacia':
+            # Farmacia NO debe ver borradores ni pendientes internos del centro
+            queryset = queryset.exclude(estado__in=['borrador', 'pendiente_admin', 'pendiente_director'])
+        
+        # 3. Usuarios de Centros Penitenciarios
         else:
-            # Admin/farmacia/vista: pueden filtrar por centro especifico
+            user_centro = self._user_centro(user)
+            if not user_centro:
+                return Requisicion.objects.none()
+            
+            # Filtrar por centro del usuario
+            queryset = queryset.filter(
+                Q(centro_origen=user_centro) | Q(centro_destino=user_centro)
+            )
+            
+            rol = getattr(user, 'rol', '').lower()
+            
+            # 3.1 Médico: Solo sus propias requisiciones (las que creó)
+            if rol == 'medico':
+                queryset = queryset.filter(solicitante=user)
+            
+            # 3.2 Administrador Centro: Ve todo del centro excepto borradores de otros
+            elif rol == 'administrador_centro':
+                # Borradores: solo los propios; el resto: todos del centro
+                queryset = queryset.exclude(
+                    Q(estado='borrador') & ~Q(solicitante=user)
+                )
+            
+            # 3.3 Director Centro: Ve todo excepto borradores
+            elif rol == 'director_centro':
+                queryset = queryset.exclude(estado='borrador')
+            
+            # 3.4 Vista/Centro genérico: Ve todo del centro (lectura)
+            # else: ya está filtrado por centro
+        
+        # Aplicar filtros adicionales de query params
+        # Admin/farmacia pueden filtrar por centro específico
+        if user.is_superuser or getattr(user, 'rol', '') in ['admin', 'farmacia']:
             centro_param = self.request.query_params.get('centro')
             if centro_param:
-                queryset = queryset.filter(Q(centro_origen_id=centro_param) | Q(centro_destino_id=centro_param))
+                queryset = queryset.filter(
+                    Q(centro_origen_id=centro_param) | Q(centro_destino_id=centro_param)
+                )
 
         estado = self.request.query_params.get('estado')
         if estado:
@@ -3731,6 +3780,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         return permisos_rol.get(accion, False)
 
     @action(detail=True, methods=['post'], url_path='enviar-admin')
+    @transaction.atomic
     def enviar_admin(self, request, pk=None):
         """
         FLUJO V2: Médico envía requisición al Administrador del Centro.
@@ -3796,6 +3846,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         })
 
     @action(detail=True, methods=['post'], url_path='autorizar-admin')
+    @transaction.atomic
     def autorizar_admin(self, request, pk=None):
         """
         FLUJO V2: Administrador del Centro autoriza la requisición.
@@ -3853,6 +3904,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         })
 
     @action(detail=True, methods=['post'], url_path='autorizar-director')
+    @transaction.atomic
     def autorizar_director(self, request, pk=None):
         """
         FLUJO V2: Director del Centro autoriza la requisición.
@@ -3913,6 +3965,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         })
 
     @action(detail=True, methods=['post'], url_path='recibir-farmacia')
+    @transaction.atomic
     def recibir_farmacia(self, request, pk=None):
         """
         FLUJO V2: Farmacia Central recibe la requisición para revisión.
@@ -3965,6 +4018,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         })
 
     @action(detail=True, methods=['post'], url_path='autorizar-farmacia')
+    @transaction.atomic
     def autorizar_farmacia(self, request, pk=None):
         """
         FLUJO V2: Farmacia Central autoriza la requisición y asigna fecha límite de recolección.
@@ -4084,6 +4138,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         })
 
     @action(detail=True, methods=['post'], url_path='devolver')
+    @transaction.atomic
     def devolver(self, request, pk=None):
         """
         FLUJO V2: Devuelve una requisición al centro para correcciones.
@@ -4149,6 +4204,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         })
 
     @action(detail=True, methods=['post'], url_path='reenviar')
+    @transaction.atomic
     def reenviar(self, request, pk=None):
         """
         FLUJO V2: Reenvía una requisición devuelta al proceso de autorización.
@@ -4201,6 +4257,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         })
 
     @action(detail=True, methods=['post'], url_path='confirmar-entrega')
+    @transaction.atomic
     def confirmar_entrega(self, request, pk=None):
         """
         FLUJO V2: Centro confirma la recepción de los medicamentos.
@@ -4282,6 +4339,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         })
 
     @action(detail=True, methods=['post'], url_path='marcar-vencida')
+    @transaction.atomic
     def marcar_vencida(self, request, pk=None):
         """
         FLUJO V2: Marca una requisición como vencida (manualmente por admin).

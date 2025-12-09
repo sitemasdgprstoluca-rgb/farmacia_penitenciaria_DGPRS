@@ -882,6 +882,11 @@ class RequisicionSerializer(serializers.ModelSerializer):
             'fecha_envio_director', 'fecha_autorizacion_director',
             'fecha_envio_farmacia', 'fecha_recepcion_farmacia', 'fecha_autorizacion_farmacia',
             'fecha_vencimiento', 'motivo_vencimiento',
+            # FLUJO V2: Estado solo se modifica por endpoints de transición
+            'estado',
+            # FLUJO V2: Actores del flujo (se asignan automáticamente)
+            'administrador_centro', 'director_centro',
+            'receptor_farmacia', 'autorizador_farmacia', 'surtidor',
         ]
         extra_kwargs = {
             # Campos con defaults en BD
