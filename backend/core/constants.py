@@ -27,27 +27,76 @@ ESTADOS_LOTE = [
 
 # Estados de requisición
 # ISS-DB-002: Alineado con CHECK constraint de BD Supabase
-# BD permite: borrador, enviada, autorizada, rechazada, en_surtido, surtida, parcial, cancelada, entregada
+# FLUJO V2: Estados jerárquicos con trazabilidad completa
 ESTADOS_REQUISICION = [
-    ('borrador', 'Borrador'),
-    ('enviada', 'Enviada'),              # Requisicion enviada para autorizacion
-    ('autorizada', 'Autorizada'),        # Completamente autorizada
-    ('rechazada', 'Rechazada'),
-    ('en_surtido', 'En Surtido'),        # En proceso de surtido
-    ('surtida', 'Surtida'),              # Completamente surtida
-    ('parcial', 'Parcialmente Surtida'), # Surtida parcialmente
-    ('entregada', 'Entregada'),          # Entregada al centro
-    ('cancelada', 'Cancelada'),
+    # Estados del flujo del centro
+    ('borrador', 'Borrador'),                    # Médico creando la solicitud
+    ('pendiente_admin', 'Pendiente Administrador'),  # Esperando autorización del Administrador del Centro
+    ('pendiente_director', 'Pendiente Director'),    # Esperando autorización del Director del Centro
+    
+    # Estados del flujo de farmacia
+    ('enviada', 'Enviada'),                      # Enviada a Farmacia Central
+    ('en_revision', 'En Revisión'),              # Farmacia está revisando
+    ('autorizada', 'Autorizada'),                # Farmacia autorizó y asignó fecha de recolección
+    ('en_surtido', 'En Surtido'),                # En proceso de preparación
+    ('surtida', 'Surtida'),                      # Lista para recolección
+    ('entregada', 'Entregada'),                  # Entregada y confirmada
+    
+    # Estados finales negativos
+    ('rechazada', 'Rechazada'),                  # Rechazada en cualquier punto del flujo
+    ('vencida', 'Vencida'),                      # No se recolectó en la fecha límite
+    ('cancelada', 'Cancelada'),                  # Cancelada por el solicitante
+    ('devuelta', 'Devuelta'),                    # Devuelta al centro para corrección
+    
+    # Compatibilidad legacy
+    ('parcial', 'Parcialmente Surtida'),         # Deprecated: usar en_surtido
 ]
 
 # Grupos lógicos de estados de requisición para filtros y resúmenes
-# ISS-DB-002: Alineado con BD Supabase
+# FLUJO V2: Grupos actualizados con estados jerárquicos
 REQUISICION_GRUPOS_ESTADO = {
-    'pendientes': ['borrador', 'enviada'],
-    'en_proceso': ['autorizada', 'en_surtido', 'parcial'],
+    # Estados donde el Centro debe actuar
+    'pendientes_centro': ['borrador', 'devuelta'],
+    'pendientes_admin': ['pendiente_admin'],
+    'pendientes_director': ['pendiente_director'],
+    
+    # Estados donde Farmacia debe actuar
+    'pendientes_farmacia': ['enviada', 'en_revision'],
+    'en_proceso': ['autorizada', 'en_surtido'],
+    
+    # Estados de espera
+    'esperando_recoleccion': ['surtida'],
+    
+    # Estados finales positivos
+    'completadas': ['entregada'],
+    
+    # Estados finales negativos
+    'finalizadas_negativas': ['rechazada', 'cancelada', 'vencida'],
+    
+    # Compatibilidad legacy
+    'pendientes': ['borrador', 'enviada', 'pendiente_admin', 'pendiente_director'],
     'surtidas': ['surtida'],
     'entregadas': ['entregada'],
-    'rechazadas_canceladas': ['rechazada', 'cancelada'],
+    'rechazadas_canceladas': ['rechazada', 'cancelada', 'vencida'],
+}
+
+# Transiciones de estado válidas (para validación en backend)
+# FLUJO V2: Definición de transiciones permitidas
+TRANSICIONES_REQUISICION = {
+    'borrador': ['pendiente_admin', 'cancelada'],
+    'pendiente_admin': ['pendiente_director', 'rechazada', 'devuelta'],
+    'pendiente_director': ['enviada', 'rechazada', 'devuelta'],
+    'enviada': ['en_revision', 'autorizada', 'rechazada'],
+    'en_revision': ['autorizada', 'rechazada', 'devuelta'],
+    'autorizada': ['en_surtido', 'surtida', 'cancelada'],
+    'en_surtido': ['surtida', 'cancelada'],
+    'surtida': ['entregada', 'vencida'],
+    'devuelta': ['pendiente_admin', 'cancelada'],
+    # Estados finales - no pueden cambiar
+    'entregada': [],
+    'rechazada': [],
+    'vencida': [],
+    'cancelada': [],
 }
 
 # Permisos extra (asignados vía grupos) que pueden complementar al rol base
@@ -86,17 +135,81 @@ TIPOS_RESTA_STOCK = ['salida', 'ajuste_negativo', 'merma', 'caducidad']
 TIPOS_SUMA_STOCK = ['entrada', 'ajuste_positivo', 'devolucion']
 
 # Roles de usuario
+# FLUJO V2: Roles específicos del centro para flujo jerárquico
 ROLES_USUARIO = [
-    ('admin_sistema', 'Administrador del sistema'),
-    ('farmacia', 'Usuario Farmacia'),
-    ('centro', 'Usuario Centro/Unidad'),
-    ('vista', 'Usuario Vista/Consultor'),
+    # Roles de Farmacia Central
+    ('admin', 'Administrador del Sistema'),       # Acceso total
+    ('farmacia', 'Personal de Farmacia'),         # Recibe, autoriza, surte
+    ('vista', 'Usuario Vista/Consultor'),         # Solo consulta
+    
+    # Roles de Centro Penitenciario (FLUJO V2)
+    ('medico', 'Médico del Centro'),                    # Crea requisiciones
+    ('administrador_centro', 'Administrador del Centro'), # Primera autorización
+    ('director_centro', 'Director del Centro'),          # Segunda autorización
+    ('centro', 'Usuario Centro (consulta)'),            # Solo consulta en centro
+    
     # Compatibilidad con valores previos
+    ('admin_sistema', 'Administrador del sistema (legacy)'),
     ('superusuario', 'Superusuario (legacy)'),
     ('admin_farmacia', 'Admin Farmacia (legacy)'),
     ('usuario_normal', 'Usuario Centro (legacy)'),
     ('usuario_vista', 'Usuario Vista (legacy)'),
 ]
+
+# Mapeo de permisos del flujo por rol
+# FLUJO V2: Qué puede hacer cada rol en el flujo de requisiciones
+PERMISOS_FLUJO_REQUISICION = {
+    'medico': {
+        'puede_crear': True,
+        'puede_enviar_admin': True,
+        'puede_autorizar_admin': False,
+        'puede_autorizar_director': False,
+        'puede_recibir_farmacia': False,
+        'puede_autorizar_farmacia': False,
+        'puede_surtir': False,
+        'puede_confirmar_entrega': True,
+    },
+    'administrador_centro': {
+        'puede_crear': False,
+        'puede_enviar_admin': False,
+        'puede_autorizar_admin': True,
+        'puede_autorizar_director': False,
+        'puede_recibir_farmacia': False,
+        'puede_autorizar_farmacia': False,
+        'puede_surtir': False,
+        'puede_confirmar_entrega': True,
+    },
+    'director_centro': {
+        'puede_crear': False,
+        'puede_enviar_admin': False,
+        'puede_autorizar_admin': False,
+        'puede_autorizar_director': True,
+        'puede_recibir_farmacia': False,
+        'puede_autorizar_farmacia': False,
+        'puede_surtir': False,
+        'puede_confirmar_entrega': True,
+    },
+    'farmacia': {
+        'puede_crear': False,
+        'puede_enviar_admin': False,
+        'puede_autorizar_admin': False,
+        'puede_autorizar_director': False,
+        'puede_recibir_farmacia': True,
+        'puede_autorizar_farmacia': True,
+        'puede_surtir': True,
+        'puede_confirmar_entrega': False,
+    },
+    'admin': {
+        'puede_crear': True,
+        'puede_enviar_admin': True,
+        'puede_autorizar_admin': True,
+        'puede_autorizar_director': True,
+        'puede_recibir_farmacia': True,
+        'puede_autorizar_farmacia': True,
+        'puede_surtir': True,
+        'puede_confirmar_entrega': True,
+    },
+}
 
 # Niveles de stock
 NIVELES_STOCK = {

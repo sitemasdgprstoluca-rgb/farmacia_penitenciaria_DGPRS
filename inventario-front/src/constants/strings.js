@@ -70,6 +70,17 @@ export const SUCCESS = {
   REQUISICION_REJECTED: 'Requisición rechazada',
   REQUISICION_FILLED: 'Requisición surtida correctamente',
   REQUISICION_RECEIVED: 'Recepción confirmada',
+  // FLUJO V2: Mensajes específicos del flujo jerárquico
+  REQUISICION_SENT_ADMIN: 'Requisición enviada al Administrador',
+  REQUISICION_AUTHORIZED_ADMIN: 'Requisición autorizada por Administrador',
+  REQUISICION_SENT_DIRECTOR: 'Requisición enviada al Director',
+  REQUISICION_AUTHORIZED_DIRECTOR: 'Requisición autorizada por Director, enviada a Farmacia',
+  REQUISICION_RECEIVED_FARMACIA: 'Requisición recibida en Farmacia, en revisión',
+  REQUISICION_AUTHORIZED_FARMACIA: 'Requisición autorizada en Farmacia',
+  REQUISICION_DEVUELTA: 'Requisición devuelta al centro para correcciones',
+  REQUISICION_REENVIADA: 'Requisición reenviada para autorización',
+  REQUISICION_ENTREGA_CONFIRMADA: 'Entrega confirmada exitosamente',
+  REQUISICION_VENCIDA: 'Requisición marcada como vencida',
   
   // Movimientos
   MOVEMENT_REGISTERED: 'Movimiento registrado',
@@ -95,6 +106,16 @@ export const CONFIRM = {
   FILL_REQUISICION: (folio) => `¿Surtir la requisición ${folio}?`,
   CANCEL_REQUISICION: (folio) => `¿Cancelar la requisición ${folio}?`,
   CONFIRM_RECEPTION: (folio) => `¿Confirmar recepción de la requisición ${folio}?`,
+  // FLUJO V2: Confirmaciones del flujo jerárquico
+  SEND_TO_ADMIN: (folio) => `¿Enviar la requisición ${folio} al Administrador del Centro?`,
+  AUTHORIZE_AS_ADMIN: (folio) => `¿Autorizar la requisición ${folio} como Administrador?`,
+  AUTHORIZE_AS_DIRECTOR: (folio) => `¿Autorizar la requisición ${folio} como Director? Esto la enviará a Farmacia Central.`,
+  RECEIVE_IN_FARMACIA: (folio) => `¿Recibir la requisición ${folio} para revisión?`,
+  AUTHORIZE_IN_FARMACIA: (folio) => `¿Autorizar la requisición ${folio}? Deberá asignar una fecha límite de recolección.`,
+  DEVOLVER_REQUISICION: (folio) => `¿Devolver la requisición ${folio} al centro? Deberá proporcionar un motivo.`,
+  REENVIAR_REQUISICION: (folio) => `¿Reenviar la requisición ${folio} para autorización?`,
+  CONFIRM_ENTREGA: (folio) => `¿Confirmar la entrega de la requisición ${folio}?`,
+  MARCAR_VENCIDA: (folio) => `¿Marcar la requisición ${folio} como vencida?`,
 };
 
 // ========================================
@@ -160,6 +181,12 @@ export const LABELS = {
   DELIVERED: 'Entregada',     // BD: 'entregada'
   RECEIVED: 'Entregada',      // Alias para compatibilidad
   IN_TRANSIT: 'En tránsito',
+  // FLUJO V2: Nuevos estados jerárquicos
+  PENDING_ADMIN: 'Pendiente Admin',
+  PENDING_DIRECTOR: 'Pendiente Director',
+  IN_REVIEW: 'En Revisión',
+  RETURNED: 'Devuelta',
+  EXPIRED: 'Vencida',
   
   // Tabla
   ACTIONS: 'Acciones',
@@ -191,6 +218,26 @@ export const ROLES = {
   CENTRO: 'Centro',
   VISTA: 'Solo Vista',
   SIN_ROL: 'Sin Rol',
+  // FLUJO V2: Roles del Centro Penitenciario
+  MEDICO: 'Médico',
+  ADMINISTRADOR_CENTRO: 'Administrador del Centro',
+  DIRECTOR_CENTRO: 'Director del Centro',
+};
+
+// FLUJO V2: Mapeo de roles de BD a labels
+export const ROLES_LABELS = {
+  admin: 'Administrador del Sistema',
+  farmacia: 'Personal de Farmacia',
+  vista: 'Usuario Vista/Consultor',
+  medico: 'Médico del Centro',
+  administrador_centro: 'Administrador del Centro',
+  director_centro: 'Director del Centro',
+  centro: 'Usuario Centro',
+  admin_sistema: 'Administrador del Sistema',
+  superusuario: 'Superusuario',
+  admin_farmacia: 'Admin Farmacia',
+  usuario_normal: 'Usuario Centro',
+  usuario_vista: 'Usuario Vista',
 };
 
 // ========================================
@@ -220,21 +267,59 @@ export const MOVEMENT_TYPES_OPTIONS = [
 ];
 
 // ISS-DB-002: Estados de requisición alineados con BD Supabase
-// BD permite: borrador, enviada, autorizada, rechazada, en_surtido, surtida, parcial, cancelada, entregada
+// FLUJO V2: Estados jerárquicos completos
 export const REQUISICION_ESTADOS = {
-  BORRADOR: { value: 'borrador', label: 'Borrador', color: 'gray' },
-  ENVIADA: { value: 'enviada', label: 'Enviada', color: 'yellow' },
-  AUTORIZADA: { value: 'autorizada', label: 'Autorizada', color: 'blue' },
-  EN_SURTIDO: { value: 'en_surtido', label: 'En Surtido', color: 'orange' },
-  PARCIAL: { value: 'parcial', label: 'Parcialmente Surtida', color: 'purple' },
-  RECHAZADA: { value: 'rechazada', label: 'Rechazada', color: 'red' },
-  SURTIDA: { value: 'surtida', label: 'Surtida', color: 'indigo' },
-  ENTREGADA: { value: 'entregada', label: 'Entregada', color: 'green' },
-  CANCELADA: { value: 'cancelada', label: 'Cancelada', color: 'gray' },
+  BORRADOR: { value: 'borrador', label: 'Borrador', color: 'gray', icon: '📝' },
+  // Estados del flujo jerárquico del centro
+  PENDIENTE_ADMIN: { value: 'pendiente_admin', label: 'Pendiente Admin', color: 'yellow', icon: '👤' },
+  PENDIENTE_DIRECTOR: { value: 'pendiente_director', label: 'Pendiente Director', color: 'orange', icon: '👔' },
+  DEVUELTA: { value: 'devuelta', label: 'Devuelta', color: 'amber', icon: '↩️' },
+  // Estados de farmacia
+  ENVIADA: { value: 'enviada', label: 'Enviada a Farmacia', color: 'blue', icon: '📤' },
+  EN_REVISION: { value: 'en_revision', label: 'En Revisión', color: 'cyan', icon: '🔍' },
+  AUTORIZADA: { value: 'autorizada', label: 'Autorizada', color: 'indigo', icon: '✅' },
+  EN_SURTIDO: { value: 'en_surtido', label: 'En Surtido', color: 'violet', icon: '📦' },
+  PARCIAL: { value: 'parcial', label: 'Parcialmente Surtida', color: 'purple', icon: '📦' },
+  SURTIDA: { value: 'surtida', label: 'Surtida', color: 'teal', icon: '📋' },
+  // Estados finales
+  ENTREGADA: { value: 'entregada', label: 'Entregada', color: 'green', icon: '✅' },
+  VENCIDA: { value: 'vencida', label: 'Vencida', color: 'red', icon: '⏰' },
+  RECHAZADA: { value: 'rechazada', label: 'Rechazada', color: 'red', icon: '❌' },
+  CANCELADA: { value: 'cancelada', label: 'Cancelada', color: 'gray', icon: '🚫' },
 };
 
 // Lista para selectores de estado
 export const REQUISICION_ESTADOS_OPTIONS = Object.values(REQUISICION_ESTADOS);
+
+// FLUJO V2: Transiciones permitidas por estado
+export const TRANSICIONES_REQUISICION = {
+  borrador: ['pendiente_admin', 'cancelada'],
+  pendiente_admin: ['pendiente_director', 'rechazada', 'devuelta'],
+  pendiente_director: ['enviada', 'rechazada', 'devuelta'],
+  enviada: ['en_revision', 'autorizada', 'rechazada'],
+  en_revision: ['autorizada', 'rechazada', 'devuelta'],
+  autorizada: ['en_surtido', 'surtida', 'cancelada'],
+  en_surtido: ['surtida', 'cancelada'],
+  surtida: ['entregada', 'vencida'],
+  devuelta: ['pendiente_admin', 'cancelada'],
+  // Estados finales
+  entregada: [],
+  rechazada: [],
+  vencida: [],
+  cancelada: [],
+};
+
+// FLUJO V2: Estados finales (no pueden cambiar)
+export const ESTADOS_FINALES = ['entregada', 'rechazada', 'vencida', 'cancelada'];
+
+// FLUJO V2: Agrupación de estados para filtros
+export const REQUISICION_GRUPOS_ESTADO = {
+  todas: null, // Sin filtro
+  pendientes_centro: ['borrador', 'pendiente_admin', 'pendiente_director', 'devuelta'],
+  en_farmacia: ['enviada', 'en_revision', 'autorizada', 'en_surtido', 'parcial'],
+  listas_recoger: ['surtida'],
+  finalizadas: ['entregada', 'rechazada', 'vencida', 'cancelada'],
+};
 
 // ========================================
 // SUBTIPOS DE SALIDA (MEJORA FLUJO 5)

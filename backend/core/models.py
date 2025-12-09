@@ -134,44 +134,124 @@ logger = logging.getLogger(__name__)
 
 class User(AbstractUser):
     """
-    Modelo de usuario extendido con roles y asignaciÃ³n de centro.
+    Modelo de usuario extendido con roles y asignación de centro.
     
-    ISS-009: Incluye validaciÃ³n de coherencia entre rol y permisos personalizados.
+    ISS-009: Incluye validación de coherencia entre rol y permisos personalizados.
+    FLUJO V2: Permisos granulares para flujo jerárquico de requisiciones.
     """
     
-    # ISS-009: Definir permisos mÃ¡ximos permitidos por rol
+    # ISS-009: Definir permisos máximos permitidos por rol
     # True = puede tener el permiso, False = nunca puede tenerlo
+    # FLUJO V2: Actualizado con nuevos roles y permisos del flujo
     PERMISOS_POR_ROL = {
-        'admin_sistema': {
+        # Roles de Farmacia Central
+        'admin': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': True,
             'perm_requisiciones': True, 'perm_centros': True, 'perm_usuarios': True,
             'perm_reportes': True, 'perm_trazabilidad': True, 'perm_auditoria': True,
             'perm_notificaciones': True, 'perm_movimientos': True, 'perm_donaciones': True,
+            # Permisos flujo V2
+            'perm_crear_requisicion': True, 'perm_autorizar_admin': True,
+            'perm_autorizar_director': True, 'perm_recibir_farmacia': True,
+            'perm_autorizar_farmacia': True, 'perm_surtir': True, 'perm_confirmar_entrega': True,
+        },
+        'admin_sistema': {  # Legacy alias
+            'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': True,
+            'perm_requisiciones': True, 'perm_centros': True, 'perm_usuarios': True,
+            'perm_reportes': True, 'perm_trazabilidad': True, 'perm_auditoria': True,
+            'perm_notificaciones': True, 'perm_movimientos': True, 'perm_donaciones': True,
+            'perm_crear_requisicion': True, 'perm_autorizar_admin': True,
+            'perm_autorizar_director': True, 'perm_recibir_farmacia': True,
+            'perm_autorizar_farmacia': True, 'perm_surtir': True, 'perm_confirmar_entrega': True,
         },
         'farmacia': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': True,
             'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
             'perm_reportes': True, 'perm_trazabilidad': True, 'perm_auditoria': False,
             'perm_notificaciones': True, 'perm_movimientos': True, 'perm_donaciones': True,
+            # Permisos flujo V2
+            'perm_crear_requisicion': False, 'perm_autorizar_admin': False,
+            'perm_autorizar_director': False, 'perm_recibir_farmacia': True,
+            'perm_autorizar_farmacia': True, 'perm_surtir': True, 'perm_confirmar_entrega': False,
         },
+        'vista': {
+            'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': True,
+            'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
+            'perm_reportes': True, 'perm_trazabilidad': True, 'perm_auditoria': False,
+            'perm_notificaciones': True, 'perm_movimientos': True, 'perm_donaciones': True,
+            # Permisos flujo V2 - Solo consulta
+            'perm_crear_requisicion': False, 'perm_autorizar_admin': False,
+            'perm_autorizar_director': False, 'perm_recibir_farmacia': False,
+            'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': False,
+        },
+        
+        # Roles de Centro Penitenciario (FLUJO V2)
+        'medico': {
+            'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': False,
+            'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
+            'perm_reportes': False, 'perm_trazabilidad': False, 'perm_auditoria': False,
+            'perm_notificaciones': True, 'perm_movimientos': False, 'perm_donaciones': False,
+            # Permisos flujo V2
+            'perm_crear_requisicion': True, 'perm_autorizar_admin': False,
+            'perm_autorizar_director': False, 'perm_recibir_farmacia': False,
+            'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': True,
+        },
+        'administrador_centro': {
+            'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': False,
+            'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
+            'perm_reportes': True, 'perm_trazabilidad': True, 'perm_auditoria': False,
+            'perm_notificaciones': True, 'perm_movimientos': False, 'perm_donaciones': False,
+            # Permisos flujo V2
+            'perm_crear_requisicion': False, 'perm_autorizar_admin': True,
+            'perm_autorizar_director': False, 'perm_recibir_farmacia': False,
+            'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': True,
+        },
+        'director_centro': {
+            'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': False,
+            'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
+            'perm_reportes': True, 'perm_trazabilidad': True, 'perm_auditoria': False,
+            'perm_notificaciones': True, 'perm_movimientos': False, 'perm_donaciones': False,
+            # Permisos flujo V2
+            'perm_crear_requisicion': False, 'perm_autorizar_admin': False,
+            'perm_autorizar_director': True, 'perm_recibir_farmacia': False,
+            'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': True,
+        },
+        'centro': {
+            'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': True,
+            'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
+            'perm_reportes': True, 'perm_trazabilidad': True, 'perm_auditoria': False,
+            'perm_notificaciones': True, 'perm_movimientos': True, 'perm_donaciones': True,
+            # Permisos flujo V2 - Solo consulta
+            'perm_crear_requisicion': False, 'perm_autorizar_admin': False,
+            'perm_autorizar_director': False, 'perm_recibir_farmacia': False,
+            'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': False,
+        },
+        
+        # Legacy roles (compatibilidad)
         'usuario_centro': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': True,
             'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
             'perm_reportes': True, 'perm_trazabilidad': True, 'perm_auditoria': False,
             'perm_notificaciones': True, 'perm_movimientos': True, 'perm_donaciones': True,
+            'perm_crear_requisicion': True, 'perm_autorizar_admin': False,
+            'perm_autorizar_director': False, 'perm_recibir_farmacia': False,
+            'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': True,
         },
         'usuario_normal': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': False,
             'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
             'perm_reportes': False, 'perm_trazabilidad': False, 'perm_auditoria': False,
             'perm_notificaciones': True, 'perm_movimientos': False, 'perm_donaciones': False,
+            'perm_crear_requisicion': True, 'perm_autorizar_admin': False,
+            'perm_autorizar_director': False, 'perm_recibir_farmacia': False,
+            'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': True,
         },
     }
     
     rol = models.CharField(
         max_length=20,
         choices=ROLES_USUARIO,
-        default='usuario_normal',
+        default='centro',
         help_text="Rol del usuario en el sistema"
     )
     centro = models.ForeignKey(
@@ -200,10 +280,26 @@ class User(AbstractUser):
     perm_usuarios = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Usuarios")
     perm_reportes = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Reportes")
     perm_trazabilidad = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Trazabilidad")
-    perm_auditoria = models.BooleanField(null=True, blank=True, help_text="Permiso para ver AuditorÃ­a")
+    perm_auditoria = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Auditoría")
     perm_notificaciones = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Notificaciones")
     perm_movimientos = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Movimientos")
     perm_donaciones = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Donaciones (almacen separado)")
+    
+    # ========== FLUJO V2: PERMISOS GRANULARES DEL FLUJO DE REQUISICIONES ==========
+    perm_crear_requisicion = models.BooleanField(null=True, blank=True, db_column='perm_crear_requisicion',
+        help_text="Permiso para crear requisiciones (médicos)")
+    perm_autorizar_admin = models.BooleanField(null=True, blank=True, db_column='perm_autorizar_admin',
+        help_text="Permiso para autorizar como Administrador del Centro")
+    perm_autorizar_director = models.BooleanField(null=True, blank=True, db_column='perm_autorizar_director',
+        help_text="Permiso para autorizar como Director del Centro")
+    perm_recibir_farmacia = models.BooleanField(null=True, blank=True, db_column='perm_recibir_farmacia',
+        help_text="Permiso para recibir requisiciones en Farmacia Central")
+    perm_autorizar_farmacia = models.BooleanField(null=True, blank=True, db_column='perm_autorizar_farmacia',
+        help_text="Permiso para autorizar requisiciones en Farmacia Central")
+    perm_surtir = models.BooleanField(null=True, blank=True, db_column='perm_surtir',
+        help_text="Permiso para surtir requisiciones")
+    perm_confirmar_entrega = models.BooleanField(null=True, blank=True, db_column='perm_confirmar_entrega',
+        help_text="Permiso para confirmar entrega/recepción")
     
     class Meta:
         db_table = 'usuarios'
@@ -212,6 +308,7 @@ class User(AbstractUser):
     def clean(self):
         """
         ISS-009: Valida coherencia entre rol y permisos personalizados.
+        FLUJO V2: Incluye validación de permisos del flujo de requisiciones.
         
         Evita que un usuario tenga permisos que excedan su rol.
         """
@@ -224,11 +321,14 @@ class User(AbstractUser):
         # Obtener permisos permitidos para este rol
         permisos_rol = self.PERMISOS_POR_ROL.get(self.rol, {})
         
-        # Lista de campos de permisos
+        # Lista de campos de permisos (incluye flujo V2)
         campos_permisos = [
             'perm_dashboard', 'perm_productos', 'perm_lotes', 'perm_requisiciones',
             'perm_centros', 'perm_usuarios', 'perm_reportes', 'perm_trazabilidad',
-            'perm_auditoria', 'perm_notificaciones', 'perm_movimientos', 'perm_donaciones'
+            'perm_auditoria', 'perm_notificaciones', 'perm_movimientos', 'perm_donaciones',
+            # FLUJO V2
+            'perm_crear_requisicion', 'perm_autorizar_admin', 'perm_autorizar_director',
+            'perm_recibir_farmacia', 'perm_autorizar_farmacia', 'perm_surtir', 'perm_confirmar_entrega'
         ]
         
         errores = {}
@@ -236,7 +336,7 @@ class User(AbstractUser):
             valor_actual = getattr(self, campo, None)
             permitido = permisos_rol.get(campo, False)
             
-            # Si el permiso estÃ¡ explÃ­citamente en True pero el rol no lo permite
+            # Si el permiso está explícitamente en True pero el rol no lo permite
             if valor_actual is True and not permitido:
                 nombre_legible = campo.replace('perm_', '').replace('_', ' ').title()
                 errores[campo] = (
@@ -250,17 +350,22 @@ class User(AbstractUser):
     def get_permisos_efectivos(self):
         """
         ISS-009: Retorna los permisos efectivos del usuario.
+        FLUJO V2: Incluye permisos del flujo de requisiciones.
         
         Combina permisos del rol base con personalizaciones, 
-        respetando los lÃ­mites del rol.
+        respetando los límites del rol.
         """
         permisos_rol = self.PERMISOS_POR_ROL.get(self.rol, {})
         efectivos = {}
         
+        # Lista de campos de permisos (incluye flujo V2)
         campos_permisos = [
             'perm_dashboard', 'perm_productos', 'perm_lotes', 'perm_requisiciones',
             'perm_centros', 'perm_usuarios', 'perm_reportes', 'perm_trazabilidad',
-            'perm_auditoria', 'perm_notificaciones', 'perm_movimientos', 'perm_donaciones'
+            'perm_auditoria', 'perm_notificaciones', 'perm_movimientos', 'perm_donaciones',
+            # FLUJO V2
+            'perm_crear_requisicion', 'perm_autorizar_admin', 'perm_autorizar_director',
+            'perm_recibir_farmacia', 'perm_autorizar_farmacia', 'perm_surtir', 'perm_confirmar_entrega'
         ]
         
         for campo in campos_permisos:
@@ -271,13 +376,31 @@ class User(AbstractUser):
                 # Superuser tiene todos los permisos
                 efectivos[campo] = True
             elif valor_personalizado is not None:
-                # PersonalizaciÃ³n: solo si estÃ¡ dentro del lÃ­mite del rol
+                # Personalización: solo si está dentro del límite del rol
                 efectivos[campo] = valor_personalizado and maximo_rol
             else:
-                # Sin personalizaciÃ³n: usar default del rol
+                # Sin personalización: usar default del rol
                 efectivos[campo] = maximo_rol
         
         return efectivos
+    
+    def puede_ejecutar_accion_flujo(self, accion):
+        """
+        FLUJO V2: Verifica si el usuario puede ejecutar una acción del flujo.
+        
+        Args:
+            accion: Una de las acciones definidas en PERMISOS_FLUJO_REQUISICION
+            
+        Returns:
+            bool: True si puede ejecutar la acción
+        """
+        from .constants import PERMISOS_FLUJO_REQUISICION
+        
+        if self.is_superuser:
+            return True
+        
+        permisos_flujo = PERMISOS_FLUJO_REQUISICION.get(self.rol, {})
+        return permisos_flujo.get(accion, False)
 
     def __str__(self):
         return f"{self.get_full_name()} ({self.get_rol_display()})"
@@ -505,8 +628,10 @@ class Requisicion(models.Model):
     Modelo de Requisicion
     Adaptado a la estructura de base de datos existente
     
-    MEJORA: Campos adicionales para formato de requisicion del centro (firmas)
-    MEJORA: Fecha de entrega solicitada y urgencia
+    FLUJO V2: Campos para flujo jerárquico con trazabilidad completa
+    - Médico → Administrador → Director → Farmacia Central
+    - Fechas de cada paso del flujo
+    - Fecha límite de recolección (vencimiento automático)
     """
     numero = models.CharField(max_length=50, unique=True, db_column='numero')
     centro_origen = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_origen', db_column='centro_origen_id')
@@ -532,8 +657,6 @@ class Requisicion(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     # ========== CAMPOS PARA FORMATO DE REQUISICION DEL CENTRO (FIRMAS) ==========
-    # Estos campos son solo para el PDF/formato impreso de la requisicion del centro
-    # No afectan el flujo del sistema
     firma_solicitante = models.CharField(max_length=255, blank=True, null=True, db_column='firma_solicitante')
     nombre_solicitante = models.CharField(max_length=255, blank=True, null=True, db_column='nombre_solicitante')
     cargo_solicitante = models.CharField(max_length=100, blank=True, null=True, db_column='cargo_solicitante')
@@ -548,6 +671,51 @@ class Requisicion(models.Model):
     fecha_entrega_solicitada = models.DateField(null=True, blank=True, db_column='fecha_entrega_solicitada')
     es_urgente = models.BooleanField(default=False, db_column='es_urgente')
     motivo_urgencia = models.TextField(blank=True, null=True, db_column='motivo_urgencia')
+    
+    # ========== FLUJO V2: CAMPOS DE TRAZABILIDAD TEMPORAL ==========
+    # Fechas del flujo jerárquico
+    fecha_envio_admin = models.DateTimeField(null=True, blank=True, db_column='fecha_envio_admin')
+    fecha_autorizacion_admin = models.DateTimeField(null=True, blank=True, db_column='fecha_autorizacion_admin')
+    fecha_envio_director = models.DateTimeField(null=True, blank=True, db_column='fecha_envio_director')
+    fecha_autorizacion_director = models.DateTimeField(null=True, blank=True, db_column='fecha_autorizacion_director')
+    fecha_envio_farmacia = models.DateTimeField(null=True, blank=True, db_column='fecha_envio_farmacia')
+    fecha_recepcion_farmacia = models.DateTimeField(null=True, blank=True, db_column='fecha_recepcion_farmacia')
+    fecha_autorizacion_farmacia = models.DateTimeField(null=True, blank=True, db_column='fecha_autorizacion_farmacia')
+    fecha_recoleccion_limite = models.DateTimeField(null=True, blank=True, db_column='fecha_recoleccion_limite')
+    fecha_vencimiento = models.DateTimeField(null=True, blank=True, db_column='fecha_vencimiento')
+    
+    # ========== FLUJO V2: ACTORES DEL FLUJO (TRAZABILIDAD ANTI-FRAUDE) ==========
+    administrador_centro = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, 
+        null=True, blank=True, related_name='requisiciones_autorizadas_admin',
+        db_column='administrador_centro_id'
+    )
+    director_centro = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='requisiciones_autorizadas_director',
+        db_column='director_centro_id'
+    )
+    receptor_farmacia = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='requisiciones_recibidas',
+        db_column='receptor_farmacia_id'
+    )
+    autorizador_farmacia = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='requisiciones_autorizadas_farmacia',
+        db_column='autorizador_farmacia_id'
+    )
+    surtidor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='requisiciones_surtidas',
+        db_column='surtidor_id'
+    )
+    
+    # ========== FLUJO V2: MOTIVOS DE RECHAZO/DEVOLUCIÓN ==========
+    motivo_rechazo = models.TextField(blank=True, null=True, db_column='motivo_rechazo')
+    motivo_devolucion = models.TextField(blank=True, null=True, db_column='motivo_devolucion')
+    motivo_vencimiento = models.TextField(blank=True, null=True, db_column='motivo_vencimiento')
+    observaciones_farmacia = models.TextField(blank=True, null=True, db_column='observaciones_farmacia')
 
     class Meta:
         db_table = 'requisiciones'
@@ -1221,3 +1389,147 @@ class SalidaDonacion(models.Model):
             self.detalle_donacion.cantidad_disponible -= self.cantidad
             self.detalle_donacion.save()
         super().save(*args, **kwargs)
+
+
+# =============================================================================
+# FLUJO V2: MODELOS DE AUDITORÍA Y TRAZABILIDAD DE REQUISICIONES
+# =============================================================================
+
+class RequisicionHistorialEstados(models.Model):
+    """
+    FLUJO V2: Historial inmutable de cambios de estado de requisiciones.
+    
+    Cada cambio de estado se registra con fecha, usuario responsable y contexto.
+    Permite auditoría completa y detección de fraude.
+    """
+    ACCIONES_FLUJO = [
+        ('crear', 'Crear requisición'),
+        ('enviar_a_administrador', 'Enviar a Administrador'),
+        ('autorizar_administrador', 'Autorizar por Administrador'),
+        ('enviar_a_director', 'Enviar a Director'),
+        ('autorizar_director', 'Autorizar por Director'),
+        ('enviar_farmacia', 'Enviar a Farmacia'),
+        ('recibir_farmacia', 'Recibir en Farmacia'),
+        ('autorizar_farmacia', 'Autorizar en Farmacia'),
+        ('iniciar_surtido', 'Iniciar surtido'),
+        ('completar_surtido', 'Completar surtido'),
+        ('confirmar_entrega', 'Confirmar entrega'),
+        ('rechazar', 'Rechazar'),
+        ('devolver_centro', 'Devolver al Centro'),
+        ('vencer', 'Marcar como vencida'),
+        ('vencer_automatico', 'Vencimiento automático'),
+        ('cancelar', 'Cancelar'),
+        ('cambio_estado', 'Cambio de estado'),
+    ]
+    
+    requisicion = models.ForeignKey(
+        Requisicion, 
+        on_delete=models.CASCADE, 
+        related_name='historial_estados',
+        db_column='requisicion_id'
+    )
+    estado_anterior = models.CharField(max_length=50, blank=True, null=True)
+    estado_nuevo = models.CharField(max_length=50)
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='historial_requisiciones',
+        db_column='usuario_id'
+    )
+    fecha_cambio = models.DateTimeField(auto_now_add=True)
+    accion = models.CharField(max_length=100, choices=ACCIONES_FLUJO, default='cambio_estado')
+    motivo = models.TextField(blank=True, null=True)
+    observaciones = models.TextField(blank=True, null=True)
+    ip_address = models.CharField(max_length=45, blank=True, null=True)
+    user_agent = models.TextField(blank=True, null=True)
+    datos_adicionales = models.JSONField(blank=True, null=True)
+    hash_verificacion = models.CharField(max_length=64, blank=True, null=True)
+
+    class Meta:
+        db_table = 'requisicion_historial_estados'
+        managed = False  # Tabla en Supabase
+        ordering = ['-fecha_cambio']
+
+    def __str__(self):
+        return f"REQ-{self.requisicion.numero}: {self.estado_anterior} → {self.estado_nuevo}"
+    
+    @classmethod
+    def registrar_cambio(cls, requisicion, estado_anterior, estado_nuevo, 
+                         usuario=None, accion='cambio_estado', motivo=None,
+                         ip_address=None, user_agent=None, datos_adicionales=None):
+        """
+        Método helper para registrar cambios de estado.
+        """
+        import hashlib
+        import json
+        from django.utils import timezone
+        
+        # Crear hash de verificación
+        data_to_hash = f"{requisicion.id}|{estado_anterior}|{estado_nuevo}|{timezone.now().isoformat()}"
+        hash_verificacion = hashlib.sha256(data_to_hash.encode()).hexdigest()
+        
+        return cls.objects.create(
+            requisicion=requisicion,
+            estado_anterior=estado_anterior,
+            estado_nuevo=estado_nuevo,
+            usuario=usuario,
+            accion=accion,
+            motivo=motivo,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            datos_adicionales=datos_adicionales,
+            hash_verificacion=hash_verificacion
+        )
+
+
+class RequisicionAjusteCantidad(models.Model):
+    """
+    FLUJO V2: Registro de ajustes de cantidad realizados por Farmacia.
+    
+    Cuando Farmacia autoriza menos cantidad de la solicitada,
+    debe registrar el motivo para auditoría.
+    """
+    TIPOS_AJUSTE = [
+        ('sin_stock', 'Sin stock suficiente'),
+        ('producto_agotado', 'Producto agotado'),
+        ('sustitucion', 'Sustitución por otro producto'),
+        ('correccion_cantidad', 'Corrección de cantidad'),
+        ('lote_proximo_caducar', 'Lote próximo a caducar'),
+    ]
+    
+    detalle_requisicion = models.ForeignKey(
+        DetalleRequisicion,
+        on_delete=models.CASCADE,
+        related_name='ajustes',
+        db_column='detalle_requisicion_id'
+    )
+    cantidad_original = models.IntegerField()
+    cantidad_ajustada = models.IntegerField()
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='ajustes_cantidad',
+        db_column='usuario_id'
+    )
+    fecha_ajuste = models.DateTimeField(auto_now_add=True)
+    motivo_ajuste = models.TextField()
+    tipo_ajuste = models.CharField(max_length=50, choices=TIPOS_AJUSTE)
+    producto_sustituto = models.ForeignKey(
+        Producto,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='sustituciones',
+        db_column='producto_sustituto_id'
+    )
+    ip_address = models.CharField(max_length=45, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'requisicion_ajustes_cantidad'
+        managed = False  # Tabla en Supabase
+        ordering = ['-fecha_ajuste']
+
+    def __str__(self):
+        return f"Ajuste {self.detalle_requisicion}: {self.cantidad_original} → {self.cantidad_ajustada}"
+

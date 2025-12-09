@@ -383,7 +383,7 @@ export const requisicionesAPI = {
   update: (id, data) => apiClient.put(`/requisiciones/${id}/`, data),
   delete: (id) => apiClient.delete(`/requisiciones/${id}/`),
   
-  // Flujo de estados
+  // Flujo de estados (legacy - compatibilidad)
   enviar: (id) => apiClient.post(`/requisiciones/${id}/enviar/`),
   autorizar: (id, data) => apiClient.post(`/requisiciones/${id}/autorizar/`, data),
   rechazar: (id, data) => apiClient.post(`/requisiciones/${id}/rechazar/`, data),
@@ -405,8 +405,37 @@ export const requisicionesAPI = {
     }
     return apiClient.post(`/requisiciones/${id}/marcar-recibida/`, data);
   },
-  cancelar: (id) => apiClient.post(`/requisiciones/${id}/cancelar/`),
+  cancelar: (id, data = {}) => apiClient.post(`/requisiciones/${id}/cancelar/`, data),
   resumenEstados: (params = {}) => apiClient.get('/requisiciones/resumen_estados/', { params }),
+  
+  // ========== FLUJO V2: TRANSICIONES JERÁRQUICAS ==========
+  
+  // Flujo Centro Penitenciario
+  enviarAdmin: (id, data = {}) => apiClient.post(`/requisiciones/${id}/enviar-admin/`, data),
+  autorizarAdmin: (id, data = {}) => apiClient.post(`/requisiciones/${id}/autorizar-admin/`, data),
+  autorizarDirector: (id, data = {}) => apiClient.post(`/requisiciones/${id}/autorizar-director/`, data),
+  
+  // Flujo Farmacia Central
+  recibirFarmacia: (id, data = {}) => apiClient.post(`/requisiciones/${id}/recibir-farmacia/`, data),
+  autorizarFarmacia: (id, data) => apiClient.post(`/requisiciones/${id}/autorizar-farmacia/`, data),
+  
+  // Acciones especiales
+  devolver: (id, data) => apiClient.post(`/requisiciones/${id}/devolver/`, data),
+  reenviar: (id, data = {}) => apiClient.post(`/requisiciones/${id}/reenviar/`, data),
+  confirmarEntrega: (id, data) => {
+    if (data instanceof FormData) {
+      return apiClient.post(`/requisiciones/${id}/confirmar-entrega/`, data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+    }
+    return apiClient.post(`/requisiciones/${id}/confirmar-entrega/`, data);
+  },
+  marcarVencida: (id, data = {}) => apiClient.post(`/requisiciones/${id}/marcar-vencida/`, data),
+  
+  // Historial y transiciones
+  getHistorial: (id) => apiClient.get(`/requisiciones/${id}/historial/`),
+  verificarVencidas: () => apiClient.post('/requisiciones/verificar-vencidas/'),
+  getTransicionesDisponibles: () => apiClient.get('/requisiciones/transiciones-disponibles/'),
   
   // Subir fotos de firma
   subirFirmaSurtido: (id, formData) => apiClient.post(`/requisiciones/${id}/subir-firma-surtido/`, formData, {

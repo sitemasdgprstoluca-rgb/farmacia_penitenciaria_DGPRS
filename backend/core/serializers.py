@@ -6,7 +6,8 @@ from .models import (
     User, Centro, Producto, Lote, Requisicion, DetalleRequisicion, 
     Movimiento, AuditoriaLogs, ImportacionLogs, Notificacion, ConfiguracionSistema,
     TemaGlobal, HojaRecoleccion, DetalleHojaRecoleccion, UserProfile,
-    ProductoImagen, LoteDocumento, Donacion, DetalleDonacion, SalidaDonacion
+    ProductoImagen, LoteDocumento, Donacion, DetalleDonacion, SalidaDonacion,
+    RequisicionHistorialEstados  # FLUJO V2
 )
 from .constants import EXTRA_PERMISSIONS
 import logging
@@ -16,6 +17,17 @@ logger = logging.getLogger(__name__)
 
 # =============================================================================
 # PERMISOS POR ROL
+# =============================================================================
+
+# =============================================================================
+# PERMISOS POR ROL - FLUJO V2
+# =============================================================================
+# Incluye permisos del flujo jerárquico de requisiciones:
+# - autorizarAdmin: Autorizar como Administrador del Centro
+# - autorizarDirector: Autorizar como Director del Centro
+# - recibirFarmacia: Recibir requisiciones en Farmacia Central
+# - autorizarFarmacia: Autorizar requisiciones en Farmacia Central
+# - asignarFechaRecoleccion: Asignar fecha límite de recolección
 # =============================================================================
 
 PERMISOS_POR_ROL = {
@@ -44,6 +56,13 @@ PERMISOS_POR_ROL = {
         'cancelarRequisicion': True,
         'confirmarRecepcion': True,
         'descargarHojaRecoleccion': True,
+        # FLUJO V2: Permisos jerárquicos
+        'autorizarAdmin': True,
+        'autorizarDirector': True,
+        'recibirFarmacia': True,
+        'autorizarFarmacia': True,
+        'asignarFechaRecoleccion': True,
+        'devolverRequisicion': True,
     },
     'FARMACIA': {
         'verDashboard': True,
@@ -59,17 +78,126 @@ PERMISOS_POR_ROL = {
         'verNotificaciones': True,
         'verPerfil': True,
         'verMovimientos': True,
+        'configurarTema': True,
+        'crearRequisicion': False,
+        'editarRequisicion': False,
+        'eliminarRequisicion': False,
+        'enviarRequisicion': False,
+        'autorizarRequisicion': True,
+        'rechazarRequisicion': True,
+        'surtirRequisicion': True,
+        'cancelarRequisicion': True,
+        'confirmarRecepcion': False,
+        'descargarHojaRecoleccion': True,
+        # FLUJO V2: Permisos de farmacia central
+        'autorizarAdmin': False,
+        'autorizarDirector': False,
+        'recibirFarmacia': True,
+        'autorizarFarmacia': True,
+        'asignarFechaRecoleccion': True,
+        'devolverRequisicion': True,
+    },
+    # FLUJO V2: Rol de Médico del Centro (crea requisiciones)
+    'MEDICO': {
+        'verDashboard': True,
+        'verProductos': True,
+        'verLotes': False,
+        'verRequisiciones': True,
+        'verDonaciones': False,
+        'verCentros': False,
+        'verUsuarios': False,
+        'verReportes': False,
+        'verTrazabilidad': False,
+        'verAuditoria': False,
+        'verNotificaciones': True,
+        'verPerfil': True,
+        'verMovimientos': False,
         'configurarTema': False,
         'crearRequisicion': True,
         'editarRequisicion': True,
         'eliminarRequisicion': True,
         'enviarRequisicion': True,
-        'autorizarRequisicion': True,
-        'rechazarRequisicion': True,
-        'surtirRequisicion': True,
+        'autorizarRequisicion': False,
+        'rechazarRequisicion': False,
+        'surtirRequisicion': False,
         'cancelarRequisicion': True,
         'confirmarRecepcion': True,
         'descargarHojaRecoleccion': True,
+        # FLUJO V2: Solo puede crear y enviar
+        'autorizarAdmin': False,
+        'autorizarDirector': False,
+        'recibirFarmacia': False,
+        'autorizarFarmacia': False,
+        'asignarFechaRecoleccion': False,
+        'devolverRequisicion': False,
+    },
+    # FLUJO V2: Rol de Administrador del Centro (primera autorización)
+    'ADMINISTRADOR_CENTRO': {
+        'verDashboard': True,
+        'verProductos': True,
+        'verLotes': False,
+        'verRequisiciones': True,
+        'verDonaciones': False,
+        'verCentros': False,
+        'verUsuarios': False,
+        'verReportes': True,
+        'verTrazabilidad': True,
+        'verAuditoria': False,
+        'verNotificaciones': True,
+        'verPerfil': True,
+        'verMovimientos': False,
+        'configurarTema': False,
+        'crearRequisicion': False,
+        'editarRequisicion': False,
+        'eliminarRequisicion': False,
+        'enviarRequisicion': False,
+        'autorizarRequisicion': False,
+        'rechazarRequisicion': True,
+        'surtirRequisicion': False,
+        'cancelarRequisicion': False,
+        'confirmarRecepcion': True,
+        'descargarHojaRecoleccion': True,
+        # FLUJO V2: Puede autorizar como administrador
+        'autorizarAdmin': True,
+        'autorizarDirector': False,
+        'recibirFarmacia': False,
+        'autorizarFarmacia': False,
+        'asignarFechaRecoleccion': False,
+        'devolverRequisicion': True,
+    },
+    # FLUJO V2: Rol de Director del Centro (segunda autorización)
+    'DIRECTOR_CENTRO': {
+        'verDashboard': True,
+        'verProductos': True,
+        'verLotes': False,
+        'verRequisiciones': True,
+        'verDonaciones': False,
+        'verCentros': False,
+        'verUsuarios': False,
+        'verReportes': True,
+        'verTrazabilidad': True,
+        'verAuditoria': False,
+        'verNotificaciones': True,
+        'verPerfil': True,
+        'verMovimientos': False,
+        'configurarTema': False,
+        'crearRequisicion': False,
+        'editarRequisicion': False,
+        'eliminarRequisicion': False,
+        'enviarRequisicion': False,
+        'autorizarRequisicion': False,
+        'rechazarRequisicion': True,
+        'surtirRequisicion': False,
+        'cancelarRequisicion': False,
+        'confirmarRecepcion': True,
+        'descargarHojaRecoleccion': True,
+        # FLUJO V2: Puede autorizar como director
+        'autorizarAdmin': False,
+        'autorizarDirector': True,
+        'recibirFarmacia': False,
+        'autorizarFarmacia': False,
+        'asignarFechaRecoleccion': False,
+        'devolverRequisicion': True,
     },
     'CENTRO': {
         'verDashboard': True,
@@ -96,6 +224,13 @@ PERMISOS_POR_ROL = {
         'cancelarRequisicion': True,
         'confirmarRecepcion': True,
         'descargarHojaRecoleccion': True,
+        # FLUJO V2
+        'autorizarAdmin': False,
+        'autorizarDirector': False,
+        'recibirFarmacia': False,
+        'autorizarFarmacia': False,
+        'asignarFechaRecoleccion': False,
+        'devolverRequisicion': False,
     },
     'VISTA': {
         'verDashboard': True,
@@ -120,7 +255,15 @@ PERMISOS_POR_ROL = {
         'rechazarRequisicion': False,
         'surtirRequisicion': False,
         'cancelarRequisicion': False,
+        'confirmarRecepcion': False,
         'descargarHojaRecoleccion': True,
+        # FLUJO V2
+        'autorizarAdmin': False,
+        'autorizarDirector': False,
+        'recibirFarmacia': False,
+        'autorizarFarmacia': False,
+        'asignarFechaRecoleccion': False,
+        'devolverRequisicion': False,
     },
     'SIN_ROL': {
         'verDashboard': False,
@@ -145,35 +288,64 @@ PERMISOS_POR_ROL = {
         'rechazarRequisicion': False,
         'surtirRequisicion': False,
         'cancelarRequisicion': False,
+        'confirmarRecepcion': False,
         'descargarHojaRecoleccion': False,
+        # FLUJO V2
+        'autorizarAdmin': False,
+        'autorizarDirector': False,
+        'recibirFarmacia': False,
+        'autorizarFarmacia': False,
+        'asignarFechaRecoleccion': False,
+        'devolverRequisicion': False,
     },
 }
 
 
 def _resolve_rol(user):
+    """Resuelve el rol del usuario al formato normalizado para permisos.
+    
+    FLUJO V2: Incluye roles jerárquicos del centro.
+    """
     if not user:
         return 'SIN_ROL'
     if user.is_superuser:
         return 'ADMIN'
     normalized = (user.rol or '').lower()
-    if normalized in ['admin_sistema', 'superusuario']:
+    
+    # Admin del sistema
+    if normalized in ['admin', 'admin_sistema', 'superusuario']:
         return 'ADMIN'
+    # Personal de Farmacia Central
     if normalized in ['farmacia', 'admin_farmacia']:
         return 'FARMACIA'
-    if normalized in ['centro', 'usuario_normal', 'solicitante']:
+    # FLUJO V2: Roles específicos del centro
+    if normalized == 'medico':
+        return 'MEDICO'
+    if normalized == 'administrador_centro':
+        return 'ADMINISTRADOR_CENTRO'
+    if normalized == 'director_centro':
+        return 'DIRECTOR_CENTRO'
+    # Usuario genérico de centro
+    if normalized in ['centro', 'usuario_normal', 'solicitante', 'usuario_centro']:
         return 'CENTRO'
+    # Solo vista
     if normalized in ['vista', 'usuario_vista']:
         return 'VISTA'
     return 'SIN_ROL'
 
 
 def build_perm_map(user):
+    """Construye el mapa de permisos para el usuario.
+    
+    FLUJO V2: Incluye permisos granulares del flujo jerárquico.
+    """
     rol = _resolve_rol(user)
     base = PERMISOS_POR_ROL.get(rol, PERMISOS_POR_ROL['SIN_ROL']).copy()
     if user and user.is_superuser:
         for key in base.keys():
             base[key] = True
     if user:
+        # Mapeo de campos de BD a claves de permisos del frontend
         perm_fields = {
             'perm_dashboard': 'verDashboard',
             'perm_productos': 'verProductos',
@@ -187,6 +359,14 @@ def build_perm_map(user):
             'perm_notificaciones': 'verNotificaciones',
             'perm_movimientos': 'verMovimientos',
             'perm_donaciones': 'verDonaciones',
+            # FLUJO V2: Permisos granulares del flujo
+            'perm_crear_requisicion': 'crearRequisicion',
+            'perm_autorizar_admin': 'autorizarAdmin',
+            'perm_autorizar_director': 'autorizarDirector',
+            'perm_recibir_farmacia': 'recibirFarmacia',
+            'perm_autorizar_farmacia': 'autorizarFarmacia',
+            'perm_surtir': 'surtirRequisicion',
+            'perm_confirmar_entrega': 'confirmarRecepcion',
         }
         for field, perm_key in perm_fields.items():
             custom_value = getattr(user, field, None)
@@ -473,6 +653,75 @@ class LoteSerializer(serializers.ModelSerializer):
 
 
 # =============================================================================
+# =============================================================================
+# FLUJO V2: HISTORIAL DE ESTADOS SERIALIZER
+# =============================================================================
+
+class RequisicionHistorialEstadosSerializer(serializers.ModelSerializer):
+    """
+    FLUJO V2: Serializer para el historial inmutable de cambios de estado.
+    
+    Proporciona información completa para auditoría y visualización
+    del timeline de requisiciones.
+    """
+    usuario_nombre = serializers.SerializerMethodField()
+    accion_display = serializers.SerializerMethodField()
+    estado_anterior_display = serializers.SerializerMethodField()
+    estado_nuevo_display = serializers.SerializerMethodField()
+    fecha_cambio_formatted = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = RequisicionHistorialEstados
+        fields = [
+            'id',
+            'requisicion',
+            'estado_anterior',
+            'estado_anterior_display',
+            'estado_nuevo',
+            'estado_nuevo_display',
+            'usuario',
+            'usuario_nombre',
+            'fecha_cambio',
+            'fecha_cambio_formatted',
+            'accion',
+            'accion_display',
+            'motivo',
+            'observaciones',
+            'datos_adicionales',
+            # No exponemos ip_address ni hash_verificacion por seguridad
+        ]
+        read_only_fields = fields  # Historial es inmutable
+    
+    def get_usuario_nombre(self, obj):
+        """Nombre del usuario que realizó el cambio."""
+        if obj.usuario:
+            return obj.usuario.get_full_name() or obj.usuario.username
+        return 'Sistema'
+    
+    def get_accion_display(self, obj):
+        """Nombre legible de la acción."""
+        acciones_dict = dict(RequisicionHistorialEstados.ACCIONES_FLUJO)
+        return acciones_dict.get(obj.accion, obj.accion)
+    
+    def get_estado_anterior_display(self, obj):
+        """Nombre legible del estado anterior."""
+        from .constants import ESTADOS_REQUISICION
+        estados_dict = dict(ESTADOS_REQUISICION)
+        return estados_dict.get(obj.estado_anterior, obj.estado_anterior) if obj.estado_anterior else '-'
+    
+    def get_estado_nuevo_display(self, obj):
+        """Nombre legible del estado nuevo."""
+        from .constants import ESTADOS_REQUISICION
+        estados_dict = dict(ESTADOS_REQUISICION)
+        return estados_dict.get(obj.estado_nuevo, obj.estado_nuevo)
+    
+    def get_fecha_cambio_formatted(self, obj):
+        """Fecha formateada para display."""
+        if obj.fecha_cambio:
+            return obj.fecha_cambio.strftime('%d/%m/%Y %H:%M')
+        return None
+
+
 # DETALLE REQUISICION SERIALIZER
 # =============================================================================
 
@@ -567,6 +816,29 @@ class RequisicionSerializer(serializers.ModelSerializer):
     es_urgente = serializers.BooleanField(required=False, default=False)
     motivo_urgencia = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     
+    # ========== FLUJO V2: CAMPOS DE TRAZABILIDAD TEMPORAL ==========
+    fecha_envio_admin = serializers.DateTimeField(read_only=True)
+    fecha_autorizacion_admin = serializers.DateTimeField(read_only=True)
+    fecha_envio_director = serializers.DateTimeField(read_only=True)
+    fecha_autorizacion_director = serializers.DateTimeField(read_only=True)
+    fecha_envio_farmacia = serializers.DateTimeField(read_only=True)
+    fecha_recepcion_farmacia = serializers.DateTimeField(read_only=True)
+    fecha_autorizacion_farmacia = serializers.DateTimeField(read_only=True)
+    fecha_recoleccion_limite = serializers.DateTimeField(required=False, allow_null=True)
+    fecha_vencimiento = serializers.DateTimeField(read_only=True)
+    
+    # ========== FLUJO V2: ACTORES (READ-ONLY PARA TRAZABILIDAD) ==========
+    administrador_centro_nombre = serializers.SerializerMethodField()
+    director_centro_nombre = serializers.SerializerMethodField()
+    receptor_farmacia_nombre = serializers.SerializerMethodField()
+    autorizador_farmacia_nombre = serializers.SerializerMethodField()
+    surtidor_nombre = serializers.SerializerMethodField()
+    
+    # ========== FLUJO V2: MOTIVOS (motivo_rechazo ya existe como alias) ==========
+    motivo_devolucion = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    motivo_vencimiento = serializers.CharField(read_only=True)
+    observaciones_farmacia = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    
     class Meta:
         model = Requisicion
         fields = [
@@ -586,9 +858,31 @@ class RequisicionSerializer(serializers.ModelSerializer):
             'firma_director', 'nombre_director', 'cargo_director',
             # Campos urgencia
             'fecha_entrega_solicitada', 'es_urgente', 'motivo_urgencia',
+            # ========== FLUJO V2: CAMPOS DE TRAZABILIDAD ==========
+            # Fechas del flujo jerárquico
+            'fecha_envio_admin', 'fecha_autorizacion_admin',
+            'fecha_envio_director', 'fecha_autorizacion_director',
+            'fecha_envio_farmacia', 'fecha_recepcion_farmacia', 'fecha_autorizacion_farmacia',
+            'fecha_recoleccion_limite', 'fecha_vencimiento',
+            # Actores (IDs y nombres)
+            'administrador_centro', 'administrador_centro_nombre',
+            'director_centro', 'director_centro_nombre',
+            'receptor_farmacia', 'receptor_farmacia_nombre',
+            'autorizador_farmacia', 'autorizador_farmacia_nombre',
+            'surtidor', 'surtidor_nombre',
+            # Motivos
+            'motivo_devolucion', 'motivo_vencimiento', 'observaciones_farmacia',
+            # Fin FLUJO V2
             'detalles', 'total_productos', 'total_items', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['numero', 'folio', 'fecha_solicitud', 'created_at', 'updated_at']
+        read_only_fields = [
+            'numero', 'folio', 'fecha_solicitud', 'created_at', 'updated_at',
+            # FLUJO V2: Campos de trazabilidad son read-only (se setean por lógica de negocio)
+            'fecha_envio_admin', 'fecha_autorizacion_admin',
+            'fecha_envio_director', 'fecha_autorizacion_director',
+            'fecha_envio_farmacia', 'fecha_recepcion_farmacia', 'fecha_autorizacion_farmacia',
+            'fecha_vencimiento', 'motivo_vencimiento',
+        ]
         extra_kwargs = {
             # Campos con defaults en BD
             'estado': {'required': False, 'default': 'borrador'},
@@ -633,6 +927,37 @@ class RequisicionSerializer(serializers.ModelSerializer):
     def get_total_items(self, obj):
         """Alias de total_productos para compatibilidad con frontend."""
         return self.get_total_productos(obj)
+    
+    # ========== FLUJO V2: MÉTODOS GET PARA NOMBRES DE ACTORES ==========
+    def get_administrador_centro_nombre(self, obj):
+        """Nombre del administrador del centro que autorizó."""
+        if obj.administrador_centro:
+            return obj.administrador_centro.get_full_name() or obj.administrador_centro.username
+        return None
+    
+    def get_director_centro_nombre(self, obj):
+        """Nombre del director del centro que autorizó."""
+        if obj.director_centro:
+            return obj.director_centro.get_full_name() or obj.director_centro.username
+        return None
+    
+    def get_receptor_farmacia_nombre(self, obj):
+        """Nombre del usuario de farmacia que recibió la requisición."""
+        if obj.receptor_farmacia:
+            return obj.receptor_farmacia.get_full_name() or obj.receptor_farmacia.username
+        return None
+    
+    def get_autorizador_farmacia_nombre(self, obj):
+        """Nombre del usuario de farmacia que autorizó."""
+        if obj.autorizador_farmacia:
+            return obj.autorizador_farmacia.get_full_name() or obj.autorizador_farmacia.username
+        return None
+    
+    def get_surtidor_nombre(self, obj):
+        """Nombre del usuario que surtió la requisición."""
+        if obj.surtidor:
+            return obj.surtidor.get_full_name() or obj.surtidor.username
+        return None
     
     def validate(self, data):
         """Validaciones de requisicion con campos de urgencia."""

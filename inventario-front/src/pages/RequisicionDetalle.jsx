@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { requisicionesAPI, hojasRecoleccionAPI, descargarArchivo } from '../services/api';
 import { usePermissions } from '../hooks/usePermissions';
+import { getEstadoBadgeClasses, getEstadoLabel } from '../components/EstadoBadge';
+import RequisicionHistorial from '../components/RequisicionHistorial';
 import { toast } from 'react-hot-toast';
 import InputModal from '../components/InputModal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -24,6 +26,7 @@ import {
   FaFileDownload,
   FaCheckCircle,
   FaEdit,
+  FaHistory,
 } from 'react-icons/fa';
 import { COLORS } from '../constants/theme';
 
@@ -56,6 +59,9 @@ const RequisicionDetalle = () => {
   const [hojaRecoleccion, setHojaRecoleccion] = useState(null);
   // eslint-disable-next-line no-unused-vars
   const [loadingHoja, setLoadingHoja] = useState(false);
+  
+  // FLUJO V2: Historial de estados
+  const [showHistorial, setShowHistorial] = useState(false);
   
   // Para autorización con cantidades editables
   const [modoAutorizar, setModoAutorizar] = useState(false);
@@ -109,39 +115,8 @@ const RequisicionDetalle = () => {
     if (id) cargarRequisicion();
   }, [id, cargarRequisicion]);
 
-  const getEstadoBadge = (estado) => {
-    // ISS-DB-002: Mapeo de estados alineados con BD Supabase
-    // BD permite: borrador, enviada, autorizada, rechazada, en_surtido, surtida, parcial, cancelada, entregada
-    const badges = {
-      borrador: 'bg-gray-200 text-gray-700',
-      enviada: 'bg-amber-100 text-amber-700',      // BD: 'enviada'
-      autorizada: 'bg-green-100 text-green-700',
-      en_surtido: 'bg-orange-100 text-orange-700', // BD: 'en_surtido'
-      parcial: 'bg-purple-100 text-purple-700',    // BD: 'parcial'
-      surtida: 'bg-indigo-100 text-indigo-700',
-      entregada: 'bg-blue-100 text-blue-700',      // BD: 'entregada'
-      rechazada: 'bg-red-100 text-red-600',
-      cancelada: 'bg-gray-100 text-gray-600',
-    };
-    return badges[estado] || 'bg-gray-100 text-gray-800';
-  };
-
-  // Labels amigables para los estados
-  // ISS-DB-002: Mapeo de estados alineados con BD Supabase
-  const getEstadoLabel = (estado) => {
-    const labels = {
-      borrador: 'BORRADOR',
-      enviada: 'ENVIADA',               // BD: 'enviada'
-      autorizada: 'ACEPTADA',
-      en_surtido: 'EN SURTIDO',         // BD: 'en_surtido'
-      parcial: 'PARCIAL',               // BD: 'parcial'
-      rechazada: 'RECHAZADA',
-      surtida: 'SURTIDA',
-      entregada: 'ENTREGADA',           // BD: 'entregada'
-      cancelada: 'CANCELADA',
-    };
-    return labels[estado] || estado?.toUpperCase();
-  };
+  // FLUJO V2: Usa helpers compartidos para colores de badge y labels
+  const getEstadoBadge = (estado) => getEstadoBadgeClasses(estado);
 
   const formatFecha = (fecha) => {
     if (!fecha) return 'N/A';
@@ -976,6 +951,35 @@ const RequisicionDetalle = () => {
           )}
         </div>
       )}
+
+      {/* FLUJO V2: Historial de Estados */}
+      <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold flex items-center gap-2 text-theme-primary">
+            <FaHistory className="text-gray-500" />
+            Historial de Estados
+          </h2>
+          <button
+            onClick={() => setShowHistorial(!showHistorial)}
+            className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
+          >
+            {showHistorial ? 'Ocultar' : 'Mostrar'} historial
+          </button>
+        </div>
+        
+        {showHistorial && (
+          <RequisicionHistorial 
+            requisicionId={requisicion.id}
+            isModal={false}
+          />
+        )}
+        
+        {!showHistorial && (
+          <p className="text-gray-500 text-sm italic">
+            Haz clic en "Mostrar historial" para ver todos los cambios de estado de esta requisición.
+          </p>
+        )}
+      </div>
 
       {/* Acciones */}
       <div className="bg-white rounded-xl shadow-lg p-6">

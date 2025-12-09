@@ -235,6 +235,8 @@ from core.constants import (
     PAGINATION_MAX_PAGE_SIZE,
     UNIDADES_MEDIDA,
     REQUISICION_GRUPOS_ESTADO,
+    TRANSICIONES_REQUISICION,
+    PERMISOS_FLUJO_REQUISICION,
 )
 
 User = get_user_model()
@@ -3671,6 +3673,857 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'error': 'Error al generar el PDF de rechazo',
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # ==========================================================================
+    # FLUJO V2: ENDPOINTS DE TRANSICIÓN DE ESTADOS JERÁRQUICOS
+    # ==========================================================================
+    
+    def _get_client_ip(self, request):
+        """Obtiene la IP del cliente para auditoría."""
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            return x_forwarded_for.split(',')[0].strip()
+        return request.META.get('REMOTE_ADDR', '')
+    
+    def _registrar_historial(self, requisicion, estado_anterior, estado_nuevo, 
+                              usuario, accion, request, motivo=None, datos_adicionales=None):
+        """
+        Registra un cambio de estado en el historial inmutable.
+        """
+        from core.models import RequisicionHistorialEstados
+        
+        try:
+            RequisicionHistorialEstados.objects.create(
+                requisicion=requisicion,
+                estado_anterior=estado_anterior,
+                estado_nuevo=estado_nuevo,
+                usuario=usuario,
+                accion=accion,
+                motivo=motivo,
+                ip_address=self._get_client_ip(request),
+                user_agent=request.META.get('HTTP_USER_AGENT', '')[:500] if request else None,
+                datos_adicionales=datos_adicionales
+            )
+        except Exception as e:
+            logger.warning(f"No se pudo registrar historial: {e}")
+    
+    def _validar_transicion(self, estado_actual, estado_nuevo):
+        """Valida que la transición de estado sea permitida."""
+        transiciones_validas = TRANSICIONES_REQUISICION.get(estado_actual, [])
+        return estado_nuevo in transiciones_validas
+    
+    def _validar_permiso_flujo(self, user, accion):
+        """
+        Valida que el usuario tenga permiso para ejecutar una acción del flujo.
+        
+        Args:
+            user: Usuario que intenta ejecutar la acción
+            accion: Clave del permiso (ej: 'puede_autorizar_admin')
+            
+        Returns:
+            bool: True si tiene permiso
+        """
+        if user.is_superuser:
+            return True
+        
+        rol = (getattr(user, 'rol', '') or '').lower()
+        permisos_rol = PERMISOS_FLUJO_REQUISICION.get(rol, {})
+        return permisos_rol.get(accion, False)
+
+    @action(detail=True, methods=['post'], url_path='enviar-admin')
+    def enviar_admin(self, request, pk=None):
+        """
+        FLUJO V2: Médico envía requisición al Administrador del Centro.
+        
+        Transición: borrador → pendiente_admin
+        Permiso requerido: puede_enviar_admin (rol: medico)
+        """
+        requisicion = self.get_object()
+        estado_actual = (requisicion.estado or '').lower()
+        
+        # Validar estado
+        if estado_actual != 'borrador':
+            return Response({
+                'error': 'Solo se pueden enviar a administrador las requisiciones en BORRADOR',
+                'estado_actual': requisicion.estado
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validar transición
+        if not self._validar_transicion(estado_actual, 'pendiente_admin'):
+            return Response({
+                'error': 'Transición de estado no permitida',
+                'estado_actual': estado_actual,
+                'estado_destino': 'pendiente_admin'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validar permiso
+        if not self._validar_permiso_flujo(request.user, 'puede_enviar_admin'):
+            return Response({
+                'error': 'No tiene permiso para enviar requisiciones al administrador',
+                'rol_actual': getattr(request.user, 'rol', 'sin_rol')
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Validar que tenga detalles
+        if not requisicion.detalles.exists():
+            return Response({
+                'error': 'La requisición debe tener al menos un producto'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validar centro
+        centro_user = self._user_centro(request.user)
+        if not request.user.is_superuser and centro_user:
+            if requisicion.centro_destino_id != centro_user.id:
+                return Response({
+                    'error': 'No puede enviar requisiciones de otro centro'
+                }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Ejecutar transición
+        estado_anterior = requisicion.estado
+        requisicion.estado = 'pendiente_admin'
+        requisicion.fecha_envio_admin = timezone.now()
+        requisicion.save(update_fields=['estado', 'fecha_envio_admin'])
+        
+        # Registrar en historial
+        self._registrar_historial(
+            requisicion, estado_anterior, 'pendiente_admin',
+            request.user, 'enviar_a_administrador', request,
+            datos_adicionales={'centro_id': centro_user.id if centro_user else None}
+        )
+        
+        return Response({
+            'mensaje': 'Requisición enviada al administrador',
+            'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
+        })
+
+    @action(detail=True, methods=['post'], url_path='autorizar-admin')
+    def autorizar_admin(self, request, pk=None):
+        """
+        FLUJO V2: Administrador del Centro autoriza la requisición.
+        
+        Transición: pendiente_admin → pendiente_director
+        Permiso requerido: puede_autorizar_admin (rol: administrador_centro)
+        """
+        requisicion = self.get_object()
+        estado_actual = (requisicion.estado or '').lower()
+        
+        if estado_actual != 'pendiente_admin':
+            return Response({
+                'error': 'Solo se pueden autorizar requisiciones en PENDIENTE_ADMIN',
+                'estado_actual': requisicion.estado
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not self._validar_transicion(estado_actual, 'pendiente_director'):
+            return Response({
+                'error': 'Transición de estado no permitida'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not self._validar_permiso_flujo(request.user, 'puede_autorizar_admin'):
+            return Response({
+                'error': 'No tiene permiso para autorizar como administrador del centro',
+                'rol_actual': getattr(request.user, 'rol', 'sin_rol')
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Validar centro
+        centro_user = self._user_centro(request.user)
+        if not request.user.is_superuser and centro_user:
+            if requisicion.centro_destino_id != centro_user.id:
+                return Response({
+                    'error': 'No puede autorizar requisiciones de otro centro'
+                }, status=status.HTTP_403_FORBIDDEN)
+        
+        observaciones = request.data.get('observaciones', '')
+        
+        estado_anterior = requisicion.estado
+        requisicion.estado = 'pendiente_director'
+        requisicion.fecha_autorizacion_admin = timezone.now()
+        requisicion.administrador_centro = request.user
+        if observaciones:
+            requisicion.notas = f"{requisicion.notas or ''}\n[Admin] {observaciones}".strip()
+        requisicion.save(update_fields=['estado', 'fecha_autorizacion_admin', 'administrador_centro', 'notas'])
+        
+        self._registrar_historial(
+            requisicion, estado_anterior, 'pendiente_director',
+            request.user, 'autorizar_administrador', request,
+            datos_adicionales={'observaciones': observaciones}
+        )
+        
+        return Response({
+            'mensaje': 'Requisición autorizada por administrador, pendiente de director',
+            'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
+        })
+
+    @action(detail=True, methods=['post'], url_path='autorizar-director')
+    def autorizar_director(self, request, pk=None):
+        """
+        FLUJO V2: Director del Centro autoriza la requisición.
+        
+        Transición: pendiente_director → enviada (a farmacia central)
+        Permiso requerido: puede_autorizar_director (rol: director_centro)
+        """
+        requisicion = self.get_object()
+        estado_actual = (requisicion.estado or '').lower()
+        
+        if estado_actual != 'pendiente_director':
+            return Response({
+                'error': 'Solo se pueden autorizar requisiciones en PENDIENTE_DIRECTOR',
+                'estado_actual': requisicion.estado
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not self._validar_transicion(estado_actual, 'enviada'):
+            return Response({
+                'error': 'Transición de estado no permitida'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not self._validar_permiso_flujo(request.user, 'puede_autorizar_director'):
+            return Response({
+                'error': 'No tiene permiso para autorizar como director del centro',
+                'rol_actual': getattr(request.user, 'rol', 'sin_rol')
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        centro_user = self._user_centro(request.user)
+        if not request.user.is_superuser and centro_user:
+            if requisicion.centro_destino_id != centro_user.id:
+                return Response({
+                    'error': 'No puede autorizar requisiciones de otro centro'
+                }, status=status.HTTP_403_FORBIDDEN)
+        
+        observaciones = request.data.get('observaciones', '')
+        
+        estado_anterior = requisicion.estado
+        requisicion.estado = 'enviada'
+        requisicion.fecha_autorizacion_director = timezone.now()
+        requisicion.fecha_envio_farmacia = timezone.now()
+        requisicion.director_centro = request.user
+        if observaciones:
+            requisicion.notas = f"{requisicion.notas or ''}\n[Director] {observaciones}".strip()
+        requisicion.save(update_fields=[
+            'estado', 'fecha_autorizacion_director', 'fecha_envio_farmacia', 
+            'director_centro', 'notas'
+        ])
+        
+        self._registrar_historial(
+            requisicion, estado_anterior, 'enviada',
+            request.user, 'autorizar_director', request,
+            datos_adicionales={'observaciones': observaciones}
+        )
+        
+        return Response({
+            'mensaje': 'Requisición autorizada por director, enviada a farmacia central',
+            'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
+        })
+
+    @action(detail=True, methods=['post'], url_path='recibir-farmacia')
+    def recibir_farmacia(self, request, pk=None):
+        """
+        FLUJO V2: Farmacia Central recibe la requisición para revisión.
+        
+        Transición: enviada → en_revision
+        Permiso requerido: puede_recibir_farmacia (rol: farmacia)
+        """
+        requisicion = self.get_object()
+        estado_actual = (requisicion.estado or '').lower()
+        
+        if estado_actual != 'enviada':
+            return Response({
+                'error': 'Solo se pueden recibir requisiciones en estado ENVIADA',
+                'estado_actual': requisicion.estado
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not self._validar_transicion(estado_actual, 'en_revision'):
+            return Response({
+                'error': 'Transición de estado no permitida'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not self._validar_permiso_flujo(request.user, 'puede_recibir_farmacia'):
+            if not is_farmacia_or_admin(request.user):
+                return Response({
+                    'error': 'Solo personal de farmacia puede recibir requisiciones',
+                    'rol_actual': getattr(request.user, 'rol', 'sin_rol')
+                }, status=status.HTTP_403_FORBIDDEN)
+        
+        observaciones = request.data.get('observaciones', '')
+        
+        estado_anterior = requisicion.estado
+        requisicion.estado = 'en_revision'
+        requisicion.fecha_recepcion_farmacia = timezone.now()
+        requisicion.receptor_farmacia = request.user
+        if observaciones:
+            requisicion.observaciones_farmacia = observaciones
+        requisicion.save(update_fields=[
+            'estado', 'fecha_recepcion_farmacia', 'receptor_farmacia', 'observaciones_farmacia'
+        ])
+        
+        self._registrar_historial(
+            requisicion, estado_anterior, 'en_revision',
+            request.user, 'recibir_farmacia', request,
+            datos_adicionales={'observaciones': observaciones}
+        )
+        
+        return Response({
+            'mensaje': 'Requisición recibida en farmacia, en revisión',
+            'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
+        })
+
+    @action(detail=True, methods=['post'], url_path='autorizar-farmacia')
+    def autorizar_farmacia(self, request, pk=None):
+        """
+        FLUJO V2: Farmacia Central autoriza la requisición y asigna fecha límite de recolección.
+        
+        Transición: en_revision → autorizada (o enviada → autorizada)
+        Permiso requerido: puede_autorizar_farmacia (rol: farmacia)
+        
+        IMPORTANTE: Debe incluir 'fecha_recoleccion_limite' en el request.
+        """
+        requisicion = self.get_object()
+        estado_actual = (requisicion.estado or '').lower()
+        
+        if estado_actual not in ['en_revision', 'enviada']:
+            return Response({
+                'error': 'Solo se pueden autorizar requisiciones en EN_REVISION o ENVIADA',
+                'estado_actual': requisicion.estado
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not self._validar_transicion(estado_actual, 'autorizada'):
+            return Response({
+                'error': 'Transición de estado no permitida'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not self._validar_permiso_flujo(request.user, 'puede_autorizar_farmacia'):
+            if not is_farmacia_or_admin(request.user):
+                return Response({
+                    'error': 'Solo personal de farmacia puede autorizar requisiciones',
+                    'rol_actual': getattr(request.user, 'rol', 'sin_rol')
+                }, status=status.HTTP_403_FORBIDDEN)
+        
+        # CRÍTICO: Validar fecha límite de recolección
+        fecha_recoleccion_str = request.data.get('fecha_recoleccion_limite')
+        if not fecha_recoleccion_str:
+            return Response({
+                'error': 'Debe especificar la fecha límite de recolección',
+                'campo_requerido': 'fecha_recoleccion_limite'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            from django.utils.dateparse import parse_datetime, parse_date
+            fecha_recoleccion = parse_datetime(fecha_recoleccion_str)
+            if not fecha_recoleccion:
+                fecha_date = parse_date(fecha_recoleccion_str)
+                if fecha_date:
+                    # Si solo es fecha, agregar hora 17:00
+                    from datetime import time
+                    fecha_recoleccion = timezone.make_aware(
+                        datetime.combine(fecha_date, time(17, 0, 0))
+                    )
+        except Exception:
+            return Response({
+                'error': 'Formato de fecha inválido. Use YYYY-MM-DD o YYYY-MM-DDTHH:MM:SS'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not fecha_recoleccion:
+            return Response({
+                'error': 'No se pudo parsear la fecha límite de recolección'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validar que la fecha sea futura
+        if fecha_recoleccion <= timezone.now():
+            return Response({
+                'error': 'La fecha límite de recolección debe ser futura'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        observaciones = request.data.get('observaciones', '')
+        
+        # Procesar ajustes de cantidades si se envían
+        items_data = request.data.get('items') or request.data.get('detalles') or []
+        for item_data in items_data:
+            item_id = item_data.get('id')
+            cant_autorizada = item_data.get('cantidad_autorizada')
+            if item_id is None or cant_autorizada is None:
+                continue
+            try:
+                item = requisicion.detalles.get(id=item_id)
+                item.cantidad_autorizada = max(0, int(cant_autorizada))
+                motivo_ajuste = item_data.get('motivo_ajuste', '')
+                if item.cantidad_autorizada < item.cantidad_solicitada and not motivo_ajuste:
+                    return Response({
+                        'error': f'Debe indicar motivo de ajuste para {item.producto.clave}',
+                        'producto': item.producto.clave
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                item.motivo_ajuste = motivo_ajuste
+                item.save()
+            except DetalleRequisicion.DoesNotExist:
+                continue
+        
+        estado_anterior = requisicion.estado
+        requisicion.estado = 'autorizada'
+        requisicion.fecha_autorizacion_farmacia = timezone.now()
+        requisicion.fecha_autorizacion = timezone.now()  # Campo legacy
+        requisicion.fecha_recoleccion_limite = fecha_recoleccion
+        requisicion.autorizador_farmacia = request.user
+        requisicion.autorizador = request.user  # Campo legacy
+        if observaciones:
+            requisicion.observaciones_farmacia = f"{requisicion.observaciones_farmacia or ''}\n{observaciones}".strip()
+        requisicion.save(update_fields=[
+            'estado', 'fecha_autorizacion_farmacia', 'fecha_autorizacion',
+            'fecha_recoleccion_limite', 'autorizador_farmacia', 'autorizador',
+            'observaciones_farmacia'
+        ])
+        
+        self._registrar_historial(
+            requisicion, estado_anterior, 'autorizada',
+            request.user, 'autorizar_farmacia', request,
+            datos_adicionales={
+                'fecha_recoleccion_limite': fecha_recoleccion.isoformat(),
+                'observaciones': observaciones
+            }
+        )
+        
+        return Response({
+            'mensaje': f'Requisición autorizada. Fecha límite de recolección: {fecha_recoleccion.strftime("%Y-%m-%d %H:%M")}',
+            'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data,
+            'fecha_recoleccion_limite': fecha_recoleccion.isoformat()
+        })
+
+    @action(detail=True, methods=['post'], url_path='devolver')
+    def devolver(self, request, pk=None):
+        """
+        FLUJO V2: Devuelve una requisición al centro para correcciones.
+        
+        Transiciones permitidas:
+        - pendiente_admin → devuelta (por administrador)
+        - pendiente_director → devuelta (por director)
+        - en_revision → devuelta (por farmacia)
+        
+        Requiere motivo obligatorio.
+        """
+        requisicion = self.get_object()
+        estado_actual = (requisicion.estado or '').lower()
+        
+        estados_devolvibles = ['pendiente_admin', 'pendiente_director', 'en_revision']
+        if estado_actual not in estados_devolvibles:
+            return Response({
+                'error': f'Solo se pueden devolver requisiciones en: {", ".join(estados_devolvibles)}',
+                'estado_actual': requisicion.estado
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not self._validar_transicion(estado_actual, 'devuelta'):
+            return Response({
+                'error': 'Transición de estado no permitida'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        motivo = request.data.get('motivo') or request.data.get('observaciones', '')
+        if not motivo or len(motivo.strip()) < 10:
+            return Response({
+                'error': 'Debe proporcionar un motivo de devolución (mínimo 10 caracteres)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validar permisos según estado
+        tiene_permiso = False
+        if estado_actual == 'pendiente_admin':
+            tiene_permiso = self._validar_permiso_flujo(request.user, 'puede_autorizar_admin')
+        elif estado_actual == 'pendiente_director':
+            tiene_permiso = self._validar_permiso_flujo(request.user, 'puede_autorizar_director')
+        elif estado_actual == 'en_revision':
+            tiene_permiso = is_farmacia_or_admin(request.user)
+        
+        if not request.user.is_superuser and not tiene_permiso:
+            return Response({
+                'error': 'No tiene permiso para devolver esta requisición',
+                'estado_actual': estado_actual
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        estado_anterior = requisicion.estado
+        requisicion.estado = 'devuelta'
+        requisicion.motivo_devolucion = motivo.strip()
+        requisicion.save(update_fields=['estado', 'motivo_devolucion'])
+        
+        self._registrar_historial(
+            requisicion, estado_anterior, 'devuelta',
+            request.user, 'devolver_centro', request,
+            motivo=motivo.strip()
+        )
+        
+        return Response({
+            'mensaje': 'Requisición devuelta al centro para correcciones',
+            'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data,
+            'motivo_devolucion': motivo.strip()
+        })
+
+    @action(detail=True, methods=['post'], url_path='reenviar')
+    def reenviar(self, request, pk=None):
+        """
+        FLUJO V2: Reenvía una requisición devuelta al proceso de autorización.
+        
+        Transición: devuelta → pendiente_admin
+        Permiso: médico del centro (creador original)
+        """
+        requisicion = self.get_object()
+        estado_actual = (requisicion.estado or '').lower()
+        
+        if estado_actual != 'devuelta':
+            return Response({
+                'error': 'Solo se pueden reenviar requisiciones en estado DEVUELTA',
+                'estado_actual': requisicion.estado
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not self._validar_transicion(estado_actual, 'pendiente_admin'):
+            return Response({
+                'error': 'Transición de estado no permitida'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validar que sea el solicitante original o admin
+        if not request.user.is_superuser:
+            if requisicion.solicitante_id != request.user.id:
+                centro_user = self._user_centro(request.user)
+                if not centro_user or requisicion.centro_destino_id != centro_user.id:
+                    return Response({
+                        'error': 'Solo el solicitante original puede reenviar la requisición'
+                    }, status=status.HTTP_403_FORBIDDEN)
+        
+        observaciones = request.data.get('observaciones', '')
+        
+        estado_anterior = requisicion.estado
+        requisicion.estado = 'pendiente_admin'
+        requisicion.fecha_envio_admin = timezone.now()
+        requisicion.motivo_devolucion = None  # Limpiar motivo anterior
+        if observaciones:
+            requisicion.notas = f"{requisicion.notas or ''}\n[Reenvío] {observaciones}".strip()
+        requisicion.save(update_fields=['estado', 'fecha_envio_admin', 'motivo_devolucion', 'notas'])
+        
+        self._registrar_historial(
+            requisicion, estado_anterior, 'pendiente_admin',
+            request.user, 'enviar_a_administrador', request,
+            datos_adicionales={'es_reenvio': True, 'observaciones': observaciones}
+        )
+        
+        return Response({
+            'mensaje': 'Requisición reenviada para autorización',
+            'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
+        })
+
+    @action(detail=True, methods=['post'], url_path='confirmar-entrega')
+    def confirmar_entrega(self, request, pk=None):
+        """
+        FLUJO V2: Centro confirma la recepción de los medicamentos.
+        
+        Transición: surtida → entregada
+        Permiso: puede_confirmar_entrega (médico del centro)
+        
+        IMPORTANTE: Debe confirmar antes de fecha_recoleccion_limite
+        """
+        requisicion = self.get_object()
+        estado_actual = (requisicion.estado or '').lower()
+        
+        if estado_actual != 'surtida':
+            return Response({
+                'error': 'Solo se pueden confirmar entregas de requisiciones SURTIDAS',
+                'estado_actual': requisicion.estado
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not self._validar_transicion(estado_actual, 'entregada'):
+            return Response({
+                'error': 'Transición de estado no permitida'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Verificar fecha límite
+        if requisicion.fecha_recoleccion_limite:
+            if timezone.now() > requisicion.fecha_recoleccion_limite:
+                return Response({
+                    'error': 'La fecha límite de recolección ha expirado. La requisición será marcada como vencida.',
+                    'fecha_limite': requisicion.fecha_recoleccion_limite.isoformat()
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validar permisos
+        if not self._validar_permiso_flujo(request.user, 'puede_confirmar_entrega'):
+            centro_user = self._user_centro(request.user)
+            if not centro_user or requisicion.centro_destino_id != centro_user.id:
+                return Response({
+                    'error': 'Solo personal del centro receptor puede confirmar la entrega'
+                }, status=status.HTTP_403_FORBIDDEN)
+        
+        lugar_entrega = request.data.get('lugar_entrega', '')
+        observaciones = request.data.get('observaciones', '')
+        
+        if not lugar_entrega:
+            return Response({
+                'error': 'Debe especificar el lugar de entrega'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        estado_anterior = requisicion.estado
+        requisicion.estado = 'entregada'
+        requisicion.fecha_entrega = timezone.now()
+        requisicion.lugar_entrega = lugar_entrega
+        if observaciones:
+            requisicion.notas = f"{requisicion.notas or ''}\n[Recepción] {observaciones}".strip()
+        
+        # Manejar foto de firma si se incluye
+        foto_firma = request.FILES.get('foto_firma_recepcion') or request.FILES.get('foto_firma')
+        update_fields = ['estado', 'fecha_entrega', 'lugar_entrega', 'notas']
+        
+        if foto_firma and foto_firma.size <= 2 * 1024 * 1024:
+            requisicion.foto_firma_recepcion = foto_firma
+            requisicion.fecha_firma_recepcion = timezone.now()
+            requisicion.usuario_firma_recepcion = request.user
+            update_fields.extend(['foto_firma_recepcion', 'fecha_firma_recepcion', 'usuario_firma_recepcion'])
+        
+        requisicion.save(update_fields=update_fields)
+        
+        self._registrar_historial(
+            requisicion, estado_anterior, 'entregada',
+            request.user, 'confirmar_entrega', request,
+            datos_adicionales={
+                'lugar_entrega': lugar_entrega,
+                'observaciones': observaciones
+            }
+        )
+        
+        return Response({
+            'mensaje': 'Entrega confirmada exitosamente',
+            'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
+        })
+
+    @action(detail=True, methods=['post'], url_path='marcar-vencida')
+    def marcar_vencida(self, request, pk=None):
+        """
+        FLUJO V2: Marca una requisición como vencida (manualmente por admin).
+        
+        Transición: surtida → vencida
+        Permiso: Solo admin/superuser
+        
+        NOTA: Normalmente esto lo hace un cron automáticamente.
+        """
+        requisicion = self.get_object()
+        estado_actual = (requisicion.estado or '').lower()
+        
+        if estado_actual != 'surtida':
+            return Response({
+                'error': 'Solo se pueden marcar como vencidas requisiciones SURTIDAS',
+                'estado_actual': requisicion.estado
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not request.user.is_superuser and not is_farmacia_or_admin(request.user):
+            return Response({
+                'error': 'Solo administradores pueden marcar requisiciones como vencidas'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        motivo = request.data.get('motivo', 'Vencimiento manual por administrador')
+        
+        estado_anterior = requisicion.estado
+        requisicion.estado = 'vencida'
+        requisicion.fecha_vencimiento = timezone.now()
+        requisicion.motivo_vencimiento = motivo
+        requisicion.save(update_fields=['estado', 'fecha_vencimiento', 'motivo_vencimiento'])
+        
+        self._registrar_historial(
+            requisicion, estado_anterior, 'vencida',
+            request.user, 'vencer', request,
+            motivo=motivo
+        )
+        
+        return Response({
+            'mensaje': 'Requisición marcada como vencida',
+            'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
+        })
+
+    @action(detail=True, methods=['get'], url_path='historial')
+    def historial_estados(self, request, pk=None):
+        """
+        FLUJO V2: Obtiene el historial de cambios de estado de una requisición.
+        
+        Retorna lista ordenada de todos los cambios para auditoría.
+        """
+        from core.models import RequisicionHistorialEstados
+        from core.serializers import RequisicionHistorialEstadosSerializer
+        
+        requisicion = self.get_object()
+        
+        # Validar acceso
+        if not request.user.is_superuser and not is_farmacia_or_admin(request.user):
+            centro_user = self._user_centro(request.user)
+            if not centro_user or requisicion.centro_destino_id != centro_user.id:
+                return Response({
+                    'error': 'No tiene acceso al historial de esta requisición'
+                }, status=status.HTTP_403_FORBIDDEN)
+        
+        historial = RequisicionHistorialEstados.objects.filter(
+            requisicion=requisicion
+        ).select_related('usuario').order_by('fecha_cambio')
+        
+        # Usar el serializer formal para consistencia
+        serializer = RequisicionHistorialEstadosSerializer(historial, many=True)
+        
+        return Response({
+            'requisicion_id': requisicion.id,
+            'folio': requisicion.folio,
+            'estado_actual': requisicion.estado,
+            'total_cambios': historial.count(),
+            'historial': serializer.data
+        })
+
+    @action(detail=False, methods=['post'], url_path='verificar-vencidas')
+    def verificar_vencidas(self, request):
+        """
+        FLUJO V2: Verifica y marca como vencidas las requisiciones que superaron 
+        su fecha límite de recolección.
+        
+        Este endpoint simula lo que haría el cron diario.
+        Solo disponible para admin/superuser.
+        """
+        if not request.user.is_superuser and not is_farmacia_or_admin(request.user):
+            return Response({
+                'error': 'Solo administradores pueden ejecutar esta operación'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        from core.models import RequisicionHistorialEstados
+        
+        ahora = timezone.now()
+        requisiciones_vencidas = Requisicion.objects.filter(
+            estado='surtida',
+            fecha_recoleccion_limite__lt=ahora
+        )
+        
+        vencidas = []
+        for req in requisiciones_vencidas:
+            estado_anterior = req.estado
+            req.estado = 'vencida'
+            req.fecha_vencimiento = ahora
+            req.motivo_vencimiento = f'Vencimiento automático. Fecha límite: {req.fecha_recoleccion_limite.strftime("%Y-%m-%d %H:%M")}'
+            req.save(update_fields=['estado', 'fecha_vencimiento', 'motivo_vencimiento'])
+            
+            # Registrar en historial
+            try:
+                RequisicionHistorialEstados.objects.create(
+                    requisicion=req,
+                    estado_anterior=estado_anterior,
+                    estado_nuevo='vencida',
+                    usuario=request.user,
+                    accion='vencer_automatico',
+                    motivo=req.motivo_vencimiento,
+                    ip_address=self._get_client_ip(request)
+                )
+            except Exception as e:
+                logger.warning(f"No se pudo registrar historial para REQ-{req.numero}: {e}")
+            
+            vencidas.append({
+                'id': req.id,
+                'folio': req.folio,
+                'centro': req.centro_destino.nombre if req.centro_destino else None,
+                'fecha_limite': req.fecha_recoleccion_limite.isoformat()
+            })
+        
+        return Response({
+            'mensaje': f'Se marcaron {len(vencidas)} requisiciones como vencidas',
+            'total_vencidas': len(vencidas),
+            'requisiciones': vencidas
+        })
+
+    @action(detail=False, methods=['get'], url_path='transiciones-disponibles')
+    def transiciones_disponibles(self, request):
+        """
+        FLUJO V2: Retorna las transiciones de estado disponibles según el rol del usuario.
+        
+        Útil para que el frontend sepa qué acciones mostrar.
+        """
+        user = request.user
+        rol = (getattr(user, 'rol', '') or '').lower()
+        permisos_rol = PERMISOS_FLUJO_REQUISICION.get(rol, {})
+        
+        if user.is_superuser:
+            permisos_rol = {k: True for k in [
+                'puede_crear', 'puede_enviar_admin', 'puede_autorizar_admin',
+                'puede_autorizar_director', 'puede_recibir_farmacia',
+                'puede_autorizar_farmacia', 'puede_surtir', 'puede_confirmar_entrega'
+            ]}
+        
+        acciones_disponibles = []
+        
+        if permisos_rol.get('puede_crear'):
+            acciones_disponibles.append({
+                'accion': 'crear',
+                'endpoint': '/api/requisiciones/',
+                'metodo': 'POST',
+                'descripcion': 'Crear nueva requisición'
+            })
+        
+        if permisos_rol.get('puede_enviar_admin'):
+            acciones_disponibles.append({
+                'accion': 'enviar_admin',
+                'endpoint': '/api/requisiciones/{id}/enviar-admin/',
+                'metodo': 'POST',
+                'estado_requerido': 'borrador',
+                'estado_resultante': 'pendiente_admin',
+                'descripcion': 'Enviar a administrador del centro'
+            })
+        
+        if permisos_rol.get('puede_autorizar_admin'):
+            acciones_disponibles.append({
+                'accion': 'autorizar_admin',
+                'endpoint': '/api/requisiciones/{id}/autorizar-admin/',
+                'metodo': 'POST',
+                'estado_requerido': 'pendiente_admin',
+                'estado_resultante': 'pendiente_director',
+                'descripcion': 'Autorizar como administrador'
+            })
+        
+        if permisos_rol.get('puede_autorizar_director'):
+            acciones_disponibles.append({
+                'accion': 'autorizar_director',
+                'endpoint': '/api/requisiciones/{id}/autorizar-director/',
+                'metodo': 'POST',
+                'estado_requerido': 'pendiente_director',
+                'estado_resultante': 'enviada',
+                'descripcion': 'Autorizar como director'
+            })
+        
+        if permisos_rol.get('puede_recibir_farmacia'):
+            acciones_disponibles.append({
+                'accion': 'recibir_farmacia',
+                'endpoint': '/api/requisiciones/{id}/recibir-farmacia/',
+                'metodo': 'POST',
+                'estado_requerido': 'enviada',
+                'estado_resultante': 'en_revision',
+                'descripcion': 'Recibir en farmacia para revisión'
+            })
+        
+        if permisos_rol.get('puede_autorizar_farmacia'):
+            acciones_disponibles.append({
+                'accion': 'autorizar_farmacia',
+                'endpoint': '/api/requisiciones/{id}/autorizar-farmacia/',
+                'metodo': 'POST',
+                'estado_requerido': ['en_revision', 'enviada'],
+                'estado_resultante': 'autorizada',
+                'descripcion': 'Autorizar y asignar fecha de recolección',
+                'campos_requeridos': ['fecha_recoleccion_limite']
+            })
+        
+        if permisos_rol.get('puede_surtir'):
+            acciones_disponibles.append({
+                'accion': 'surtir',
+                'endpoint': '/api/requisiciones/{id}/surtir/',
+                'metodo': 'POST',
+                'estado_requerido': 'autorizada',
+                'estado_resultante': 'surtida',
+                'descripcion': 'Surtir requisición'
+            })
+        
+        if permisos_rol.get('puede_confirmar_entrega'):
+            acciones_disponibles.append({
+                'accion': 'confirmar_entrega',
+                'endpoint': '/api/requisiciones/{id}/confirmar-entrega/',
+                'metodo': 'POST',
+                'estado_requerido': 'surtida',
+                'estado_resultante': 'entregada',
+                'descripcion': 'Confirmar recepción de medicamentos',
+                'campos_requeridos': ['lugar_entrega']
+            })
+        
+        return Response({
+            'usuario': user.username,
+            'rol': rol,
+            'es_superuser': user.is_superuser,
+            'es_farmacia': is_farmacia_or_admin(user),
+            'acciones_disponibles': acciones_disponibles,
+            'transiciones': TRANSICIONES_REQUISICION
+        })
 
     @action(detail=False, methods=['get'])
     def estadisticas(self, request):

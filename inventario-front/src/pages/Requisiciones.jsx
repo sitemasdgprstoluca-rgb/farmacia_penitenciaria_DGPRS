@@ -13,6 +13,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import InputModal from '../components/InputModal';
 import PageHeader from '../components/PageHeader';
 import Pagination from '../components/Pagination';
+import { getEstadoBadgeClasses, getEstadoLabel } from '../components/EstadoBadge';
 import { toast } from 'react-hot-toast';
 import {
   FaPlus,
@@ -505,39 +506,11 @@ const Requisiciones = () => {
     return false;
   };
 
-  const getEstadoBadge = (estado) => {
-    // ISS-DB-002: Mapeo de estados alineados con BD Supabase
-    // BD permite: borrador, enviada, autorizada, rechazada, en_surtido, surtida, parcial, cancelada, entregada
-    const badges = {
-      borrador: 'bg-gray-100 text-gray-700 border border-gray-300',
-      enviada: 'bg-amber-50 text-amber-700 border border-amber-300',       // BD: 'enviada'
-      autorizada: 'bg-green-50 text-green-700 border border-green-300',
-      en_surtido: 'bg-orange-50 text-orange-700 border border-orange-300', // BD: 'en_surtido'
-      parcial: 'bg-purple-50 text-purple-700 border border-purple-300',    // BD: 'parcial'
-      rechazada: 'bg-red-50 text-red-700 border border-red-300',
-      surtida: 'bg-indigo-50 text-indigo-700 border border-indigo-300',
-      entregada: 'bg-blue-50 text-blue-700 border border-blue-300',        // BD: 'entregada'
-      cancelada: 'bg-gray-50 text-gray-500 border border-gray-200',
-    };
-    return badges[estado] || 'bg-gray-100 text-gray-700 border border-gray-300';
-  };
+  // FLUJO V2: Usa helper compartido para colores de badge
+  const getEstadoBadge = (estado) => getEstadoBadgeClasses(estado);
 
-  // Labels amigables para los estados
-  // ISS-DB-002: Mapeo de estados alineados con BD Supabase
-  const getEstadoLabel = (estado) => {
-    const labels = {
-      borrador: 'BORRADOR',
-      enviada: 'ENVIADA',                // BD: 'enviada'
-      autorizada: 'AUTORIZADA',
-      en_surtido: 'EN SURTIDO',          // BD: 'en_surtido'
-      parcial: 'PARCIAL',                // BD: 'parcial'
-      rechazada: 'RECHAZADA',
-      surtida: 'SURTIDA',
-      entregada: 'ENTREGADA',            // BD: 'entregada'
-      cancelada: 'CANCELADA',
-    };
-    return labels[estado] || estado?.toUpperCase();
-  };
+  // Labels amigables para los estados - FLUJO V2: Usa helper compartido
+  const formatEstadoLabel = (estado) => getEstadoLabel(estado);
 
   const abrirModalCrear = async () => {
     // Validar permisos antes de abrir
