@@ -751,6 +751,10 @@ const Productos = () => {
       errors.unidad_medida = 'Seleccione una unidad válida';
     }
 
+    if (!CATEGORIAS.includes(data.categoria)) {
+      errors.categoria = 'Seleccione una categoría válida';
+    }
+
     return errors;
   };
 
@@ -980,7 +984,13 @@ const Productos = () => {
           'clave': 'clave',
           'nombre': 'nombre',
           'unidad_medida': 'unidad_medida',
+          'categoria': 'categoria',
           'stock_minimo': 'stock_minimo',
+          'descripcion': 'descripcion',
+          'sustancia_activa': 'sustancia_activa',
+          'presentacion': 'presentacion',
+          'concentracion': 'concentracion',
+          'via_administracion': 'via_administracion',
         };
         
         let hasFieldErrors = false;
@@ -2152,11 +2162,11 @@ const Productos = () => {
               {/* Categoría y Descripción */}
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <label className="text-xs font-semibold text-theme-primary-hover">Categoría</label>
+                  <label className="text-xs font-semibold text-theme-primary-hover">Categoría *</label>
                   <select
                     value={formData.categoria}
                     onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
-                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.categoria ? 'border-red-500' : 'border-theme-primary'}`}
                   >
                     {CATEGORIAS.map((cat) => (
                       <option key={cat} value={cat}>
@@ -2164,6 +2174,7 @@ const Productos = () => {
                       </option>
                     ))}
                   </select>
+                  {formErrors.categoria && <p className="text-xs text-red-600">{formErrors.categoria}</p>}
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-theme-primary-hover">Descripción</label>

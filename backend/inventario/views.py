@@ -1078,9 +1078,9 @@ class ProductoViewSet(viewsets.ModelViewSet):
         Columnas:
         - Clave (REQUERIDO, único) - Código identificador del producto
         - Nombre (REQUERIDO) - Nombre del medicamento o insumo
-        - Unidad (opcional) - Unidad de medida (pieza, caja, frasco, etc.)
+        - Unidad (opcional) - Unidad de medida (PIEZA, CAJA, FRASCO, SOBRE, AMPOLLETA, TABLETA, CAPSULA, ML, GR)
         - Stock Minimo (opcional, default: 10) - Cantidad mínima de alerta
-        - Categoria (opcional) - medicamento, material_curacion, insumo_medico
+        - Categoria (opcional) - medicamento, material_curacion, insumo, equipo, otro
         - Sustancia Activa (opcional) - Principio activo
         - Presentacion (opcional) - Forma farmacéutica
         - Concentracion (opcional) - Dosis del principio activo
@@ -1101,19 +1101,19 @@ class ProductoViewSet(viewsets.ModelViewSet):
         ]
         ws.append(headers)
         
-        # Filas de ejemplo
+        # Filas de ejemplo (unidades en mayúsculas como las espera el sistema)
         ws.append([
-            'MED001', 'Paracetamol 500mg', 'Caja', 50, 'medicamento',
+            'MED001', 'Paracetamol 500mg', 'CAJA', 50, 'medicamento',
             'Paracetamol', 'Tableta', '500 mg',
-            'Oral', 'No', 'No', 'Activo'
+            'oral', 'No', 'No', 'Activo'
         ])
         ws.append([
-            'MED002', 'Ibuprofeno 400mg', 'Frasco', 30, 'medicamento',
+            'MED002', 'Ibuprofeno 400mg', 'FRASCO', 30, 'medicamento',
             'Ibuprofeno', 'Cápsula', '400 mg',
-            'Oral', 'No', 'No', 'Activo'
+            'oral', 'No', 'No', 'Activo'
         ])
         ws.append([
-            'INS001', 'Jeringa 10ml', 'Pieza', 100, 'material_curacion',
+            'INS001', 'Jeringa 10ml', 'PIEZA', 100, 'material_curacion',
             '', '', '',
             '', 'No', 'No', 'Activo'
         ])
