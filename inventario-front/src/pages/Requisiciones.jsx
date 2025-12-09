@@ -14,6 +14,7 @@ import InputModal from '../components/InputModal';
 import PageHeader from '../components/PageHeader';
 import Pagination from '../components/Pagination';
 import { getEstadoBadgeClasses, getEstadoLabel } from '../components/EstadoBadge';
+import { RequisicionAcciones } from '../components/RequisicionAcciones';
 import { toast } from 'react-hot-toast';
 import {
   FaPlus,
@@ -1444,6 +1445,7 @@ const Requisiciones = () => {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
+                  {/* Botones de navegación y utilidad */}
                   <button
                     onClick={() => {
                       if (navegando || isSubmitting || actionLoading) return;
@@ -1466,67 +1468,18 @@ const Requisiciones = () => {
                     </button>
                   )}
 
-                  {puedeEnviar(req) && (
-                    <button
-                      onClick={() => handleEnviar(req.id, req.folio)}
-                      disabled={isSubmitting || actionLoading === req.id}
-                      className="bg-gray-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-gray-800 disabled:opacity-50"
-                    >
-                      {actionLoading === req.id ? (
-                        <FaSpinner className="animate-spin" />
-                      ) : (
-                        <FaPaperPlane />
-                      )} Enviar
-                    </button>
-                  )}
+                  {/* FLUJO V2: Componente de acciones de transición */}
+                  <RequisicionAcciones
+                    requisicion={req}
+                    onAccionCompletada={() => {
+                      cargarRequisiciones();
+                      cargarResumenEstados();
+                    }}
+                    mostrarHistorial={false}
+                    size="sm"
+                  />
 
-                  {/* Botón para Revisar y Ajustar - SOLO farmacia/admin con permiso */}
-                  {/* ISS-DB-002: Usar 'enviada' */}
-                  {req.estado === 'enviada' && esAdminOFarmacia && permisos.autorizarRequisicion && (
-                    <button
-                      onClick={() => {
-                        if (navegando || isSubmitting || actionLoading) return;
-                        setNavegando(true);
-                        navigate(`/requisiciones/${req.id}`);
-                      }}
-                      disabled={navegando || isSubmitting || !!actionLoading}
-                      className="text-white px-3 py-1 rounded text-sm font-semibold flex items-center gap-1 hover:opacity-90 bg-theme-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <FaEdit /> Revisar
-                    </button>
-                  )}
-
-                  {/* ISS-DB-002: Usar 'enviada' */}
-                  {req.estado === 'enviada' && esAdminOFarmacia && permisos.rechazarRequisicion && (
-                    <button
-                      onClick={() => handleRechazar(req.id, req.folio)}
-                      disabled={isSubmitting || actionLoading === req.id}
-                      className="bg-red-100 text-red-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-red-200 border border-red-300 disabled:opacity-50"
-                    >
-                      {actionLoading === req.id ? (
-                        <FaSpinner className="animate-spin" />
-                      ) : (
-                        <FaTimes />
-                      )} Rechazar
-                    </button>
-                  )}
-
-                  {/* ISS-DB-002: Botón Surtir disponible para estados 'autorizada' y 'parcial' */}
-                  {['autorizada', 'parcial'].includes(req.estado) && esAdminOFarmacia && permisos.surtirRequisicion && (
-                    <button
-                      onClick={() => handleSurtir(req.id, req.folio)}
-                      disabled={isSubmitting || actionLoading === req.id}
-                      className="text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:opacity-90 disabled:opacity-50 bg-theme-primary"
-                    >
-                      {actionLoading === req.id ? (
-                        <FaSpinner className="animate-spin" />
-                      ) : (
-                        <FaBoxOpen />
-                      )} Surtir
-                    </button>
-                  )}
-
-                  {/* ISS-DB-002: Hoja disponible para estados autorizados hasta entregada */}
+                  {/* Botones de descarga PDF */}
                   {['autorizada', 'en_surtido', 'parcial', 'surtida', 'entregada'].includes(req.estado) &&
                     puedeDescargarPDF(req) && (
                       <button
@@ -1556,20 +1509,7 @@ const Requisiciones = () => {
                     </button>
                   )}
 
-                  {puedeCancelar(req) && (
-                    <button
-                      onClick={() => handleCancelar(req.id, req.folio)}
-                      disabled={isSubmitting || actionLoading === req.id}
-                      className="bg-gray-100 text-gray-600 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-gray-200 border border-gray-300 disabled:opacity-50"
-                    >
-                      {actionLoading === req.id ? (
-                        <FaSpinner className="animate-spin" />
-                      ) : (
-                        <FaBan />
-                      )} Cancelar
-                    </button>
-                  )}
-
+                  {/* Eliminar solo en borrador */}
                   {puedeEditar(req) && permisos.eliminarRequisicion && (
                     <button
                       onClick={() => confirmarEliminar(req)}

@@ -310,4 +310,5 @@ SELECT cron.schedule(
 ---
 
 *Documento generado: 2024-12-08*
-*Versión: 2.0*
+*Última actualización: 2025-12-09*
+*Versión: 2.1*
