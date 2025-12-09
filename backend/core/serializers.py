@@ -1267,6 +1267,9 @@ class TemaGlobalSerializer(serializers.ModelSerializer):
             'color_texto_principal', 'color_texto_sidebar', 'color_texto_header',
             'color_texto_links', 'color_borde_inputs', 'color_borde_focus',
             'reporte_color_encabezado', 'reporte_color_texto',
+            # Campos adicionales de la BD
+            'reporte_color_filas_alternas', 'reporte_pie_pagina', 'reporte_ano_visible',
+            'fuente_principal', 'fuente_titulos',
             'css_variables', 'created_at', 'updated_at'
         ]
         read_only_fields = ['css_variables', 'created_at', 'updated_at']
@@ -1278,6 +1281,12 @@ class TemaGlobalSerializer(serializers.ModelSerializer):
             'favicon_url': {'required': False, 'allow_null': True, 'allow_blank': True},
             'titulo_sistema': {'required': False, 'allow_null': True},
             'subtitulo_sistema': {'required': False, 'allow_null': True},
+            # Nuevos campos
+            'reporte_color_filas_alternas': {'required': False, 'allow_null': True},
+            'reporte_pie_pagina': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'reporte_ano_visible': {'required': False, 'allow_null': True},
+            'fuente_principal': {'required': False, 'allow_null': True},
+            'fuente_titulos': {'required': False, 'allow_null': True},
         }
 
     def get_css_variables(self, obj):

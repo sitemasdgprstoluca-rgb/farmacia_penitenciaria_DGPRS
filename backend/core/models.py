@@ -769,14 +769,8 @@ class Requisicion(models.Model):
     def observaciones(self, value):
         self.notas = value
     
-    @property
-    def motivo_rechazo(self):
-        """Alias para notas (compatibilidad)"""
-        return self.notas
-    
-    @motivo_rechazo.setter
-    def motivo_rechazo(self, value):
-        self.notas = value
+    # NOTA: motivo_rechazo ya es un campo real del modelo (línea ~715)
+    # Se eliminó la property que sobrescribía el campo y causaba errores
     
     # Alias para campos de recepcion (compatibilidad con codigo existente)
     @property
@@ -903,6 +897,12 @@ class TemaGlobal(models.Model):
     color_borde_focus = models.CharField(max_length=20, default='#9F2241', null=True, blank=True)
     reporte_color_encabezado = models.CharField(max_length=20, default='#9F2241', null=True, blank=True)
     reporte_color_texto = models.CharField(max_length=20, default='#1f2937', null=True, blank=True)
+    # Campos adicionales que existen en la BD
+    reporte_color_filas_alternas = models.CharField(max_length=20, default='#f9fafb', null=True, blank=True)
+    reporte_pie_pagina = models.TextField(blank=True, null=True)
+    reporte_ano_visible = models.BooleanField(default=True, null=True, blank=True)
+    fuente_principal = models.CharField(max_length=100, default='Inter', null=True, blank=True)
+    fuente_titulos = models.CharField(max_length=100, default='Inter', null=True, blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
