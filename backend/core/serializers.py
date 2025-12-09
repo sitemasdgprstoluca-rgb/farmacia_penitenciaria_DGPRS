@@ -544,16 +544,24 @@ class ProductoSerializer(serializers.ModelSerializer):
         return obj.lotes.filter(activo=True, cantidad_actual__gt=0).count()
     
     def validate_clave(self, value):
-        """Clave es requerida y única."""
+        """Clave es requerida, única, entre 1 y 50 caracteres."""
         if not value or value.strip() == '':
             raise serializers.ValidationError('La clave es requerida')
-        return value.strip().upper()
+        clave_limpia = value.strip().upper()
+        if len(clave_limpia) > 50:
+            raise serializers.ValidationError('La clave no puede exceder 50 caracteres')
+        return clave_limpia
     
     def validate_nombre(self, value):
-        """Nombre es requerido."""
+        """Nombre es requerido y debe tener al menos 3 caracteres."""
         if not value or value.strip() == '':
             raise serializers.ValidationError('El nombre es requerido')
-        return value.strip()
+        nombre_limpio = value.strip()
+        if len(nombre_limpio) < 3:
+            raise serializers.ValidationError('El nombre debe tener al menos 3 caracteres')
+        if len(nombre_limpio) > 500:
+            raise serializers.ValidationError('El nombre no puede exceder 500 caracteres')
+        return nombre_limpio
     
     def validate_unidad_medida(self, value):
         """Normaliza y valida unidad_medida contra UNIDADES_MEDIDA."""
@@ -579,6 +587,14 @@ class ProductoSerializer(serializers.ModelSerializer):
                 f'Categoría no válida: {value}. Opciones: {", ".join(CATEGORIAS_VALIDAS)}'
             )
         return valor_normalizado
+    
+    def validate_stock_minimo(self, value):
+        """Stock mínimo debe ser un número no negativo."""
+        if value is None:
+            return 0  # Default
+        if value < 0:
+            raise serializers.ValidationError('El stock mínimo no puede ser negativo')
+        return value
     
     def validate(self, attrs):
         return attrs
