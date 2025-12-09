@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   FaBox,
@@ -131,6 +131,17 @@ const Dashboard = () => {
   // Para usuarios restringidos a centro, forzar su centro; para globales (ADMIN/FARMACIA/VISTA), null (todos)
   const [selectedCentro, setSelectedCentro] = useState(esCentroRestringido ? centroUsuario : null);
   const [centroNombre, setCentroNombre] = useState('');
+  
+  // Ref para controlar si el componente está montado (evitar memory leaks)
+  const isMountedRef = useRef(true);
+
+  // Cleanup al desmontar el componente
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // eslint-disable-next-line no-unused-vars
   const applyMockDashboard = useCallback(() => {
@@ -183,6 +194,9 @@ const Dashboard = () => {
 
       // Cargar resumen KPIs y movimientos
       const response = await dashboardAPI.getResumen(params);
+      
+      // Verificar si el componente sigue montado antes de actualizar estado
+      if (!isMountedRef.current) return;
 
       const nextKpis = response.data.kpi || {
         total_productos: 0,
@@ -205,6 +219,8 @@ const Dashboard = () => {
       // Cargar datos de gráficas
       try {
         const graficasResponse = await dashboardAPI.getGraficas(params);
+        // Verificar si el componente sigue montado
+        if (!isMountedRef.current) return;
         setGraficas({
           consumo_mensual: graficasResponse.data.consumo_mensual || [],
           stock_por_centro: graficasResponse.data.stock_por_centro || [],
@@ -212,8 +228,19 @@ const Dashboard = () => {
         });
       } catch (graficasError) {
         console.warn('Error al cargar gráficas, usando datos vacíos:', graficasError);
+        // Resetear gráficas a valores vacíos en caso de error
+        if (isMountedRef.current) {
+          setGraficas({
+            consumo_mensual: [],
+            stock_por_centro: [],
+            requisiciones_por_estado: []
+          });
+        }
       }
     } catch (err) {
+      // Verificar si el componente sigue montado antes de actualizar estado
+      if (!isMountedRef.current) return;
+      
       console.error('Error al cargar dashboard:', err);
       if (err.response?.status === 401) {
         setError('Sesión expirada. Inicia sesión nuevamente.');
@@ -227,8 +254,16 @@ const Dashboard = () => {
         movimientos_mes: 0,
       });
       setMovimientos([]);
+      setGraficas({
+        consumo_mensual: [],
+        stock_por_centro: [],
+        requisiciones_por_estado: []
+      });
     } finally {
-      setLoading(false);
+      // Verificar si el componente sigue montado
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [esVista, esCentroRestringido, centroUsuario]);
 
