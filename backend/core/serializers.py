@@ -578,7 +578,7 @@ class ProductoSerializer(serializers.ModelSerializer):
     
     def validate_categoria(self, value):
         """Normaliza y valida categoría."""
-        CATEGORIAS_VALIDAS = ['medicamento', 'material_curacion', 'insumo', 'equipo', 'otro']
+        from core.constants import CATEGORIAS_VALIDAS
         if not value:
             return 'medicamento'  # Default
         valor_normalizado = value.strip().lower()

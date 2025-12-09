@@ -1010,8 +1010,8 @@ class ProductoViewSet(viewsets.ModelViewSet):
                                 return False
                             return str(val).lower() in ['sí', 'si', 'true', '1', 'yes', 's', 'x']
 
-                        # Validar y normalizar categoría
-                        CATEGORIAS_VALIDAS = ['medicamento', 'material_curacion', 'insumo', 'equipo', 'otro']
+                        # Validar y normalizar categoría (usar constante centralizada)
+                        from core.constants import CATEGORIAS_VALIDAS
                         categoria_limpia = str(categoria).strip().lower() if categoria else 'medicamento'
                         if categoria_limpia not in CATEGORIAS_VALIDAS:
                             categoria_limpia = 'medicamento'  # Default si no es válida

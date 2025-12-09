@@ -16,6 +16,31 @@ UNIDADES_MEDIDA = [
     ('GR', 'Gramo'),
 ]
 
+# Categorías de productos válidas
+CATEGORIAS_PRODUCTO = [
+    ('medicamento', 'Medicamento'),
+    ('material_curacion', 'Material de Curación'),
+    ('insumo', 'Insumo'),
+    ('equipo', 'Equipo'),
+    ('otro', 'Otro'),
+]
+
+# Lista simple para validaciones
+CATEGORIAS_VALIDAS = [c[0] for c in CATEGORIAS_PRODUCTO]
+
+# Estados de lote
+ESTADOS_LOTE = [
+    ('PIEZA', 'Pieza'),
+    ('CAJA', 'Caja'),
+    ('FRASCO', 'Frasco'),
+    ('SOBRE', 'Sobre'),
+    ('AMPOLLETA', 'Ampolleta'),
+    ('TABLETA', 'Tableta'),
+    ('CAPSULA', 'Cápsula'),
+    ('ML', 'Mililitro'),
+    ('GR', 'Gramo'),
+]
+
 # Estados de lote
 ESTADOS_LOTE = [
     ('disponible', 'Disponible'),
