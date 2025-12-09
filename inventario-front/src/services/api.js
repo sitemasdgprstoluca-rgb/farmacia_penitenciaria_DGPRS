@@ -330,10 +330,12 @@ export const lotesAPI = {
   vencidos: () => apiClient.get('/lotes/vencidos/'),
   ajustarStock: (id, data) => apiClient.post(`/lotes/${id}/ajustar-stock/`, data),
   trazabilidad: (id) => apiClient.get(`/lotes/${id}/trazabilidad/`),
+  // Documentos de lote (facturas, contratos, remisiones)
+  listarDocumentos: (id) => apiClient.get(`/lotes/${id}/documentos/`),
   subirDocumento: (id, formData) => apiClient.post(`/lotes/${id}/subir-documento/`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
-  eliminarDocumento: (id) => apiClient.delete(`/lotes/${id}/eliminar-documento/`),
+  eliminarDocumento: (loteId, docId) => apiClient.delete(`/lotes/${loteId}/eliminar-documento/${docId}/`),
   exportar: (params) => apiClient.get('/lotes/exportar-excel/', { 
     params, 
     responseType: 'blob' 

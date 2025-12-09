@@ -425,9 +425,19 @@ const Lotes = () => {
     }
   };
 
-  const handleDocumentoModal = (lote) => {
+  const handleDocumentoModal = async (lote) => {
     setSelectedLoteDoc(lote);
     setShowDocModal(true);
+    // Cargar documentos del lote
+    try {
+      const response = await lotesAPI.listarDocumentos(lote.id);
+      setSelectedLoteDoc(prev => ({
+        ...prev,
+        documentos_cargados: response.data.documentos || []
+      }));
+    } catch (error) {
+      console.error('Error al cargar documentos:', error);
+    }
   };
 
   const handleSubirDocumento = async (e) => {
@@ -451,22 +461,29 @@ const Lotes = () => {
     
     const formData = new FormData();
     formData.append('documento', file);
-    formData.append('nombre', file.name);
+    formData.append('tipo_documento', 'contrato'); // Tipo por defecto
     
     try {
       setActionLoading(selectedLoteDoc.id);
       await lotesAPI.subirDocumento(selectedLoteDoc.id, formData);
       toast.success('Documento subido correctamente');
-      setShowDocModal(false);
+      // Recargar documentos del modal
+      const response = await lotesAPI.listarDocumentos(selectedLoteDoc.id);
+      setSelectedLoteDoc(prev => ({
+        ...prev,
+        documentos_cargados: response.data.documentos || [],
+        tiene_documentos: true
+      }));
       cargarLotes();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Error al subir documento');
     } finally {
       setActionLoading(null);
+      e.target.value = ''; // Limpiar input
     }
   };
 
-  const handleEliminarDocumento = async () => {
+  const handleEliminarDocumento = async (docId) => {
     if (!puede.subirDocumento) {
       toast.error('No tiene permisos para eliminar documentos');
       return;
@@ -476,9 +493,15 @@ const Lotes = () => {
     
     try {
       setActionLoading(selectedLoteDoc.id);
-      await lotesAPI.eliminarDocumento(selectedLoteDoc.id);
+      await lotesAPI.eliminarDocumento(selectedLoteDoc.id, docId);
       toast.success('Documento eliminado');
-      setShowDocModal(false);
+      // Recargar documentos del modal
+      const response = await lotesAPI.listarDocumentos(selectedLoteDoc.id);
+      setSelectedLoteDoc(prev => ({
+        ...prev,
+        documentos_cargados: response.data.documentos || [],
+        tiene_documentos: (response.data.documentos || []).length > 0
+      }));
       cargarLotes();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Error al eliminar documento');
@@ -973,8 +996,8 @@ const handleImportar = async (e) => {
                         <button
                           onClick={() => handleDocumentoModal(lote)}
                           disabled={actionLoading === lote.id}
-                          className={`disabled:opacity-50 disabled:cursor-not-allowed ${lote.documento_url ? 'text-green-600 hover:text-green-800' : 'text-gray-400 hover:text-gray-600'}`}
-                          title={lote.documento_url ? `Ver: ${lote.documento_nombre || 'documento.pdf'}` : (puede.subirDocumento ? 'Subir documento PDF' : 'Sin documento')}
+                          className={`disabled:opacity-50 disabled:cursor-not-allowed ${lote.tiene_documentos ? 'text-green-600 hover:text-green-800' : 'text-gray-400 hover:text-gray-600'}`}
+                          title={lote.tiene_documentos ? 'Ver documentos' : (puede.subirDocumento ? 'Subir documento PDF' : 'Sin documentos')}
                         >
                           {actionLoading === lote.id ? (
                             <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent" />
@@ -1430,13 +1453,13 @@ const handleImportar = async (e) => {
         </div>
       )}
 
-      {/* Modal de Documento */}
+      {/* Modal de Documentos */}
       {showDocModal && selectedLoteDoc && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col">
             <div className="p-6 border-b flex justify-between items-center bg-theme-gradient">
               <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                <FaFilePdf /> Documento del Lote
+                <FaFilePdf /> Documentos del Lote
               </h3>
               <button
                 onClick={() => setShowDocModal(false)}
@@ -1446,55 +1469,66 @@ const handleImportar = async (e) => {
               </button>
             </div>
             
-            <div className="p-6 space-y-4">
-              <div className="text-sm text-gray-600">
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              <div className="text-sm text-gray-600 border-b pb-3">
                 <p><strong>Lote:</strong> {selectedLoteDoc.numero_lote}</p>
                 <p><strong>Producto:</strong> {selectedLoteDoc.producto_nombre}</p>
               </div>
               
-              {selectedLoteDoc.documento_url ? (
-                <div className="space-y-3">
-                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                    <p className="text-sm text-green-800 font-medium">
-                      ✓ Documento actual: {selectedLoteDoc.documento_nombre || 'documento.pdf'}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <a
-                      href={selectedLoteDoc.documento_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                    >
-                      <FaDownload /> Ver documento
-                    </a>
-                    {puede.subirDocumento && (
-                      <button
-                        onClick={handleEliminarDocumento}
-                        disabled={actionLoading === selectedLoteDoc.id}
-                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Eliminar documento"
-                      >
-                        {actionLoading === selectedLoteDoc.id ? (
-                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                        ) : (
-                          <FaTrash />
+              {/* Lista de documentos existentes */}
+              {selectedLoteDoc.documentos_cargados && selectedLoteDoc.documentos_cargados.length > 0 ? (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold text-gray-700">
+                    Documentos adjuntos ({selectedLoteDoc.documentos_cargados.length})
+                  </h4>
+                  {selectedLoteDoc.documentos_cargados.map((doc) => (
+                    <div key={doc.id} className="p-3 bg-green-50 border border-green-200 rounded-lg flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-green-800 font-medium truncate">
+                          📄 {doc.nombre_archivo || 'documento.pdf'}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {doc.tipo_documento} {doc.numero_documento ? `• ${doc.numero_documento}` : ''}
+                          {doc.fecha_documento ? ` • ${new Date(doc.fecha_documento).toLocaleDateString()}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 ml-2">
+                        {doc.archivo && (
+                          <a
+                            href={doc.archivo}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-2 text-blue-600 hover:text-blue-800"
+                            title="Ver documento"
+                          >
+                            <FaDownload />
+                          </a>
                         )}
-                      </button>
-                    )}
-                  </div>
+                        {puede.subirDocumento && (
+                          <button
+                            onClick={() => handleEliminarDocumento(doc.id)}
+                            disabled={actionLoading === selectedLoteDoc.id}
+                            className="p-2 text-red-600 hover:text-red-800 disabled:opacity-50"
+                            title="Eliminar documento"
+                          >
+                            <FaTrash />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
-                  <p className="text-sm text-gray-600 mb-3">No hay documento adjunto</p>
+                  <p className="text-sm text-gray-600">No hay documentos adjuntos</p>
                 </div>
               )}
               
               {/* Input de subida - solo visible si tiene permiso */}
               {puede.subirDocumento && (
-                <div>
+                <div className="border-t pt-4">
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    {selectedLoteDoc.documento_url ? 'Reemplazar documento' : 'Subir documento'}
+                    Agregar nuevo documento
                   </label>
                   <input
                     type="file"
@@ -1525,8 +1559,6 @@ const handleImportar = async (e) => {
 };
 
 export default Lotes;
-
-
 
 
 

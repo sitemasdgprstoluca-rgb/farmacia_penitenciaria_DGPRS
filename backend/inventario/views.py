@@ -217,11 +217,11 @@ def validar_filas_excel(ws):
     
     return True, None, num_filas
 
-from core.models import Producto, Lote, Movimiento, Centro, Requisicion, DetalleRequisicion, HojaRecoleccion
+from core.models import Producto, Lote, Movimiento, Centro, Requisicion, DetalleRequisicion, HojaRecoleccion, LoteDocumento
 from core.serializers import (
     ProductoSerializer, LoteSerializer, MovimientoSerializer, 
     CentroSerializer, RequisicionSerializer, DetalleRequisicionSerializer,
-    HojaRecoleccionSerializer
+    HojaRecoleccionSerializer, LoteDocumentoSerializer
 )
 
 from django.contrib.auth import get_user_model
@@ -2623,6 +2623,181 @@ class LoteViewSet(viewsets.ModelViewSet):
                 'error': 'Error al obtener trazabilidad',
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # =========================================================================
+    # ACCIONES DE DOCUMENTOS (facturas, contratos, remisiones)
+    # =========================================================================
+    
+    @action(detail=True, methods=['get'], url_path='documentos')
+    def listar_documentos(self, request, pk=None):
+        """
+        Lista todos los documentos asociados a un lote.
+        """
+        try:
+            lote = self.get_object()
+            documentos = LoteDocumento.objects.filter(lote=lote).order_by('-created_at')
+            serializer = LoteDocumentoSerializer(documentos, many=True)
+            return Response({
+                'lote_id': lote.id,
+                'numero_lote': lote.numero_lote,
+                'total_documentos': documentos.count(),
+                'documentos': serializer.data
+            })
+        except Exception as e:
+            return Response({
+                'error': 'Error al obtener documentos',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'], url_path='subir-documento')
+    def subir_documento(self, request, pk=None):
+        """
+        Sube un documento (PDF) asociado al lote.
+        
+        Campos requeridos:
+        - documento: archivo PDF (multipart)
+        - tipo_documento: factura/contrato/remision/otro
+        
+        Campos opcionales:
+        - numero_documento: número del documento
+        - fecha_documento: fecha del documento (YYYY-MM-DD)
+        - notas: notas adicionales
+        """
+        try:
+            lote = self.get_object()
+            
+            # Validar permisos de escritura
+            user = request.user
+            if not is_farmacia_or_admin(user):
+                user_centro = get_user_centro(user)
+                lote_centro = lote.centro
+                if lote_centro is None or (user_centro and lote_centro.pk != user_centro.pk):
+                    return Response(
+                        {'error': 'No tiene permisos para subir documentos a este lote'},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            
+            # Validar archivo
+            archivo = request.FILES.get('documento')
+            if not archivo:
+                return Response(
+                    {'error': 'Debe proporcionar un archivo'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validar extensión
+            nombre_archivo = archivo.name
+            extension = nombre_archivo.split('.')[-1].lower() if '.' in nombre_archivo else ''
+            if extension != 'pdf':
+                return Response(
+                    {'error': 'Solo se permiten archivos PDF'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validar tamaño (máx 10MB)
+            max_size = 10 * 1024 * 1024
+            if archivo.size > max_size:
+                return Response(
+                    {'error': f'El archivo excede el tamaño máximo de 10MB ({archivo.size / 1024 / 1024:.2f}MB)'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validar tipo de documento
+            tipo_documento = request.data.get('tipo_documento', 'otro')
+            tipos_validos = ['factura', 'contrato', 'remision', 'otro']
+            if tipo_documento not in tipos_validos:
+                return Response(
+                    {'error': f'Tipo de documento inválido. Valores permitidos: {tipos_validos}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Generar path único para el archivo
+            import uuid
+            timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+            unique_name = f"{tipo_documento}_{timestamp}_{uuid.uuid4().hex[:8]}.pdf"
+            archivo_path = f"lotes/documentos/{lote.id}/{unique_name}"
+            
+            # Guardar archivo (en producción usar Supabase Storage)
+            # Por ahora guardar la referencia
+            # TODO: Implementar subida a Supabase Storage
+            
+            # Parsear fecha si viene
+            fecha_documento = None
+            if request.data.get('fecha_documento'):
+                try:
+                    fecha_documento = datetime.strptime(
+                        request.data.get('fecha_documento'), '%Y-%m-%d'
+                    ).date()
+                except ValueError:
+                    pass
+            
+            # Crear registro de documento
+            documento = LoteDocumento.objects.create(
+                lote=lote,
+                tipo_documento=tipo_documento,
+                numero_documento=request.data.get('numero_documento', ''),
+                archivo=archivo_path,
+                nombre_archivo=nombre_archivo,
+                fecha_documento=fecha_documento,
+                notas=request.data.get('notas', ''),
+                created_by=user if user.is_authenticated else None
+            )
+            
+            serializer = LoteDocumentoSerializer(documento)
+            return Response({
+                'mensaje': 'Documento subido correctamente',
+                'documento': serializer.data
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                'error': 'Error al subir documento',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['delete'], url_path='eliminar-documento/(?P<doc_id>[0-9]+)')
+    def eliminar_documento(self, request, pk=None, doc_id=None):
+        """
+        Elimina un documento específico del lote.
+        """
+        try:
+            lote = self.get_object()
+            
+            # Validar permisos de escritura
+            user = request.user
+            if not is_farmacia_or_admin(user):
+                user_centro = get_user_centro(user)
+                lote_centro = lote.centro
+                if lote_centro is None or (user_centro and lote_centro.pk != user_centro.pk):
+                    return Response(
+                        {'error': 'No tiene permisos para eliminar documentos de este lote'},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            
+            # Buscar documento
+            try:
+                documento = LoteDocumento.objects.get(id=doc_id, lote=lote)
+            except LoteDocumento.DoesNotExist:
+                return Response(
+                    {'error': 'Documento no encontrado'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # TODO: Eliminar archivo de Supabase Storage
+            nombre = documento.nombre_archivo
+            documento.delete()
+            
+            return Response({
+                'mensaje': 'Documento eliminado correctamente',
+                'documento_eliminado': nombre
+            })
+            
+        except Exception as e:
+            return Response({
+                'error': 'Error al eliminar documento',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class MovimientoViewSet(
     mixins.ListModelMixin,

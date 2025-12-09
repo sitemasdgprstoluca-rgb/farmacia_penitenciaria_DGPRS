@@ -620,6 +620,9 @@ class LoteSerializer(serializers.ModelSerializer):
     precio_compra = serializers.DecimalField(source='precio_unitario', max_digits=12, decimal_places=2, required=False, allow_null=True)
     # ISS-DB-004: fecha_caducidad es NOT NULL en BD, hacerlo explícitamente obligatorio
     fecha_caducidad = serializers.DateField(required=True, help_text='Obligatorio. Usar 2099-12-31 para insumos sin caducidad.')
+    # Documentos asociados al lote
+    documentos = serializers.SerializerMethodField()
+    tiene_documentos = serializers.SerializerMethodField()
     
     class Meta:
         model = Lote
@@ -630,9 +633,10 @@ class LoteSerializer(serializers.ModelSerializer):
             'cantidad_inicial', 'cantidad_actual', 'precio_unitario', 'precio_compra',
             'numero_contrato', 'marca', 'ubicacion', 'activo', 'estado',
             'dias_para_caducar', 'alerta_caducidad', 'porcentaje_consumido',
+            'documentos', 'tiene_documentos',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'estado']
+        read_only_fields = ['created_at', 'updated_at', 'estado', 'documentos', 'tiene_documentos']
         extra_kwargs = {
             'cantidad_actual': {'required': False, 'default': 0},
             'numero_contrato': {'required': False, 'allow_null': True, 'allow_blank': True},
@@ -715,6 +719,29 @@ class LoteSerializer(serializers.ModelSerializer):
             consumido = obj.cantidad_inicial - obj.cantidad_actual
             return round((consumido / obj.cantidad_inicial) * 100)
         return 0
+    
+    def get_documentos(self, obj):
+        """Obtiene los documentos asociados al lote."""
+        # Usar prefetch si está disponible, sino hacer query
+        if hasattr(obj, '_prefetched_objects_cache') and 'documentos' in obj._prefetched_objects_cache:
+            docs = obj._prefetched_objects_cache['documentos']
+        else:
+            docs = obj.documentos.all()[:5]  # Limitar a 5 más recientes
+        
+        return [{
+            'id': doc.id,
+            'tipo_documento': doc.tipo_documento,
+            'numero_documento': doc.numero_documento,
+            'archivo': doc.archivo,
+            'nombre_archivo': doc.nombre_archivo,
+            'fecha_documento': doc.fecha_documento,
+        } for doc in docs]
+    
+    def get_tiene_documentos(self, obj):
+        """Indica si el lote tiene documentos asociados."""
+        if hasattr(obj, '_prefetched_objects_cache') and 'documentos' in obj._prefetched_objects_cache:
+            return len(obj._prefetched_objects_cache['documentos']) > 0
+        return obj.documentos.exists()
 
 
 # =============================================================================

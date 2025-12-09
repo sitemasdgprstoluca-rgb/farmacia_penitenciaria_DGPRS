@@ -554,19 +554,20 @@ class Lote(models.Model):
     def alerta_caducidad(self):
         """
         Clasifica el lote según su proximidad a caducar.
+        Alineado con clasificación SIFP y Serializer:
         
         Retorna:
-            - 'vencido': Ya caducó
-            - 'critico': Caduca en 30 días o menos
-            - 'proximo': Caduca en 90 días o menos
-            - 'normal': Más de 90 días para caducar
+            - 'vencido': Ya caducó (< 0 días)
+            - 'critico': Caduca en menos de 3 meses (< 90 días)
+            - 'proximo': Caduca en 3-6 meses (90-180 días)
+            - 'normal': Más de 6 meses para caducar (> 180 días)
         """
         dias = self.dias_para_caducar()
         if dias < 0:
             return 'vencido'
-        elif dias <= 30:
+        elif dias < 90:
             return 'critico'
-        elif dias <= 90:
+        elif dias < 180:
             return 'proximo'
         else:
             return 'normal'
