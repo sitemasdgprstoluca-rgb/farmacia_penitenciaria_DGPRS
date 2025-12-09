@@ -847,16 +847,16 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     idx,
                     producto.clave or '',
                     producto.nombre,
-                    '',  # categoria removed from schema
+                    producto.categoria or '',
                     producto.unidad_medida,
                     producto.stock_minimo,
                     stock_actual,
-                    '',  # sustancia_activa removed
-                    '',  # presentacion removed
-                    '',  # concentracion removed
-                    '',  # via_administracion removed
-                    'No',  # requiere_receta removed
-                    'No',  # es_controlado removed,
+                    producto.sustancia_activa or '',
+                    producto.presentacion or '',
+                    producto.concentracion or '',
+                    producto.via_administracion or '',
+                    'Sí' if producto.requiere_receta else 'No',
+                    'Sí' if producto.es_controlado else 'No',
                     lotes_activos,
                     'Activo' if producto.activo else 'Inactivo'
                 ])
@@ -910,7 +910,11 @@ class ProductoViewSet(viewsets.ModelViewSet):
         
         Formato esperado:
         Fila 1: Encabezados (se ignora)
-        Columnas: Clave | Descripcion | Unidad | Precio | Stock Minimo | Estado
+        Columnas: Clave | Nombre | Unidad | Stock Minimo | Categoria | 
+                  Sustancia Activa | Presentacion | Concentracion | Via Admin |
+                  Requiere Receta | Controlado | Estado
+        
+        Nota: Las primeras 4 columnas son requeridas, el resto son opcionales.
         
         Limites de seguridad:
         - Tamano maximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
@@ -956,17 +960,25 @@ class ProductoViewSet(viewsets.ModelViewSet):
             # Si hay errores críticos, se hace rollback automático
             with transaction.atomic():
                 # Procesar cada fila (empezando desde la fila 2)
-                # Formato esperado: Codigo Barras | Nombre | Categoria | Unidad | Stock Minimo | 
-                #                   Clave | Nombre | Unidad Medida | Stock Minimo | Estado
+                # Formato esperado (columnas): Clave | Nombre | Unidad | Stock Min | Categoria | 
+                #                              Sust Activa | Presentacion | Concentracion | Via Admin | 
+                #                              Req Receta | Controlado | Estado
                 for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                     try:
-                        # Extraer valores (asegurarse de tener al menos 5 columnas)
-                        valores = list(row) + [None] * 5
+                        # Extraer valores (asegurarse de tener al menos 12 columnas)
+                        valores = list(row) + [None] * 12
                         clave = valores[0]
                         nombre = valores[1]
                         unidad_medida = valores[2]
                         stock_minimo = valores[3]
-                        estado = valores[4]
+                        categoria = valores[4]
+                        sustancia_activa = valores[5]
+                        presentacion = valores[6]
+                        concentracion = valores[7]
+                        via_administracion = valores[8]
+                        requiere_receta = valores[9]
+                        es_controlado = valores[10]
+                        estado = valores[11]
                         
                         # Validar campo requerido: clave y nombre
                         if not clave:
@@ -990,11 +1002,24 @@ class ProductoViewSet(viewsets.ModelViewSet):
                             errores.append({'fila': row_idx, 'error': 'Stock minimo invalido'})
                             continue
 
+                        # Parsear campos booleanos
+                        def parse_bool(val):
+                            if val is None:
+                                return False
+                            return str(val).lower() in ['sí', 'si', 'true', '1', 'yes', 's', 'x']
+
                         # Limpiar y preparar datos alineados con schema real
                         datos = {
                             'nombre': str(nombre).strip()[:500],
                             'unidad_medida': unidad_limpia,
                             'stock_minimo': stock_min,
+                            'categoria': str(categoria).strip()[:50] if categoria else 'medicamento',
+                            'sustancia_activa': str(sustancia_activa).strip()[:200] if sustancia_activa else '',
+                            'presentacion': str(presentacion).strip()[:200] if presentacion else '',
+                            'concentracion': str(concentracion).strip()[:100] if concentracion else '',
+                            'via_administracion': str(via_administracion).strip()[:50] if via_administracion else '',
+                            'requiere_receta': parse_bool(requiere_receta),
+                            'es_controlado': parse_bool(es_controlado),
                             'activo': str(estado).lower() in ['activo', 'sí', 'si', 'true', '1', 'yes', 's'] if estado else True
                         }
                         
@@ -1034,7 +1059,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
             return Response({
                 'error': 'Error al procesar archivo',
                 'mensaje': str(e),
-                'sugerencia': 'Verifique que el archivo tenga el formato correcto: Codigo Barras, Nombre, Categoria, Unidad, Stock Minimo, Sustancia Activa, Presentacion, Concentracion, Via Admin, Requiere Receta, Controlado, Estado'
+                'sugerencia': 'Verifique que el archivo tenga el formato correcto: Clave, Nombre, Unidad, Stock Minimo, Categoria, Sustancia Activa, Presentacion, Concentracion, Via Admin, Requiere Receta, Controlado, Estado'
             }, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -1077,7 +1102,9 @@ class CentroViewSet(viewsets.ModelViewSet):
         if search and search.strip():
             queryset = queryset.filter(
                 Q(nombre__icontains=search) | 
-                Q(direccion__icontains=search)
+                Q(direccion__icontains=search) |
+                Q(email__icontains=search) |
+                Q(telefono__icontains=search)
             )
         
         # Filtro por estado activo
@@ -1663,7 +1690,7 @@ class LoteViewSet(viewsets.ModelViewSet):
         Seguridad: Usuarios de centro solo ven lotes de su centro.
         Admin/farmacia/vista ven todo por defecto, pueden filtrar con ?centro=.
         """
-        queryset = Lote.objects.select_related('producto', 'centro').filter(activo=True)
+        queryset = Lote.objects.select_related('producto', 'centro').all()
         
         # SEGURIDAD: Filtrar por centro segun rol
         user = self.request.user
@@ -1929,7 +1956,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             ws.append([])
             # ISS-DB: Headers alineados con esquema real de Supabase
             headers = [
-                '#', 'Código Barras', 'Nombre Producto', 'Número Lote',
+                '#', 'Clave', 'Nombre Producto', 'Número Lote',
                 'Fecha Fabricación', 'Fecha Caducidad',
                 'Cantidad Inicial', 'Cantidad Actual',
                 'Precio Unitario', 'Número Contrato', 'Marca', 'Ubicación',
@@ -1980,12 +2007,17 @@ class LoteViewSet(viewsets.ModelViewSet):
         Importa lotes desde Excel con validaciones.
         
         Columnas esperadas (en orden):
-        1. Producto (clave o descripcion) - Requerido
+        1. Producto (clave o nombre) - Requerido
         2. Numero Lote - Requerido
         3. Fecha Caducidad (YYYY-MM-DD) - Requerido
         4. Cantidad Inicial - Requerido
         5. Cantidad Actual (opcional, default = Cantidad Inicial)
-        6. Marca (opcional)
+        6. Fecha Fabricacion (opcional, YYYY-MM-DD)
+        7. Precio Unitario (opcional, default = 0)
+        8. Numero Contrato (opcional)
+        9. Marca (opcional)
+        10. Ubicacion (opcional)
+        11. Centro ID (opcional, para asignar a un centro especifico)
         
         Limites de seguridad:
         - Tamano maximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
@@ -2027,7 +2059,19 @@ class LoteViewSet(viewsets.ModelViewSet):
 
             for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                 try:
-                    producto_clave, numero_lote, fecha_cad, cantidad_inicial, cantidad_actual, marca = (row + (None,)*6)[:6]
+                    # Extraer valores con padding para columnas opcionales
+                    valores = (list(row) + [None] * 11)[:11]
+                    producto_clave = valores[0]
+                    numero_lote = valores[1]
+                    fecha_cad = valores[2]
+                    cantidad_inicial = valores[3]
+                    cantidad_actual = valores[4]
+                    fecha_fab = valores[5]
+                    precio_unitario = valores[6]
+                    numero_contrato = valores[7]
+                    marca = valores[8]
+                    ubicacion = valores[9]
+                    centro_id = valores[10]
 
                     if not producto_clave or not numero_lote:
                         errores.append({'fila': row_idx, 'error': 'Producto y numero de lote son obligatorios'})
@@ -2041,17 +2085,30 @@ class LoteViewSet(viewsets.ModelViewSet):
                         errores.append({'fila': row_idx, 'error': f'Producto no encontrado: {producto_clave}'})
                         continue
 
+                    # Parsear fecha de caducidad
                     try:
-                        fecha_val = None
+                        fecha_cad_val = None
                         if fecha_cad:
                             if isinstance(fecha_cad, (datetime, date)):
-                                fecha_val = fecha_cad.date() if hasattr(fecha_cad, 'date') else fecha_cad
+                                fecha_cad_val = fecha_cad.date() if hasattr(fecha_cad, 'date') else fecha_cad
                             else:
-                                fecha_val = datetime.strptime(str(fecha_cad), '%Y-%m-%d').date()
+                                fecha_cad_val = datetime.strptime(str(fecha_cad), '%Y-%m-%d').date()
                     except Exception:
                         errores.append({'fila': row_idx, 'error': 'Fecha de caducidad invalida'})
                         continue
 
+                    # Parsear fecha de fabricacion (opcional)
+                    fecha_fab_val = None
+                    if fecha_fab:
+                        try:
+                            if isinstance(fecha_fab, (datetime, date)):
+                                fecha_fab_val = fecha_fab.date() if hasattr(fecha_fab, 'date') else fecha_fab
+                            else:
+                                fecha_fab_val = datetime.strptime(str(fecha_fab), '%Y-%m-%d').date()
+                        except Exception:
+                            pass  # Ignorar fecha fabricacion invalida
+
+                    # Parsear cantidades
                     try:
                         cant_ini = int(cantidad_inicial) if cantidad_inicial not in [None, ''] else 0
                         cant_act = int(cantidad_actual) if cantidad_actual not in [None, ''] else cant_ini
@@ -2061,15 +2118,42 @@ class LoteViewSet(viewsets.ModelViewSet):
                         errores.append({'fila': row_idx, 'error': 'Cantidades invalidas'})
                         continue
 
+                    # Parsear precio unitario (opcional)
+                    precio_val = 0
+                    if precio_unitario not in [None, '']:
+                        try:
+                            precio_val = float(precio_unitario)
+                            if precio_val < 0:
+                                precio_val = 0
+                        except Exception:
+                            pass  # Usar 0 si no es valido
+
+                    # Preparar defaults para update_or_create
+                    defaults = {
+                        'fecha_caducidad': fecha_cad_val or date.today(),
+                        'cantidad_inicial': cant_ini,
+                        'cantidad_actual': cant_act,
+                        'precio_unitario': precio_val,
+                        'numero_contrato': str(numero_contrato).strip()[:100] if numero_contrato else '',
+                        'marca': str(marca).strip()[:100] if marca else '',
+                        'ubicacion': str(ubicacion).strip()[:100] if ubicacion else '',
+                    }
+                    
+                    if fecha_fab_val:
+                        defaults['fecha_fabricacion'] = fecha_fab_val
+                    
+                    # Asignar centro si se proporciona
+                    if centro_id:
+                        try:
+                            centro = Centro.objects.get(pk=int(centro_id))
+                            defaults['centro'] = centro
+                        except (Centro.DoesNotExist, ValueError):
+                            pass  # Ignorar centro invalido
+
                     lote, created = Lote.objects.update_or_create(
                         producto=producto,
                         numero_lote=str(numero_lote).strip().upper(),
-                        defaults={
-                            'fecha_caducidad': fecha_val or date.today(),
-                            'cantidad_inicial': cant_ini,
-                            'cantidad_actual': cant_act,
-                            'marca': marca or ''
-                        }
+                        defaults=defaults
                     )
                     exitos.append({'fila': row_idx, 'lote_id': lote.id, 'numero_lote': lote.numero_lote, 'created': created})
                 except Exception as exc:
@@ -2450,6 +2534,11 @@ class MovimientoViewSet(
                 # Si es texto, buscar por número de lote (coincidencia parcial)
                 queryset = queryset.filter(lote__numero_lote__icontains=lote)
         
+        # Filtro por subtipo de salida (receta, consumo_interno, merma, etc.)
+        subtipo_salida = self.request.query_params.get('subtipo_salida')
+        if subtipo_salida:
+            queryset = queryset.filter(subtipo_salida__iexact=subtipo_salida)
+        
         # Filtro por rango de fechas
         fecha_inicio = self.request.query_params.get('fecha_inicio')
         if fecha_inicio:
@@ -2467,7 +2556,8 @@ class MovimientoViewSet(
                 Q(motivo__icontains=search_term) |
                 Q(lote__numero_lote__icontains=search_term) |
                 Q(lote__producto__clave__icontains=search_term) |
-                Q(lote__producto__descripcion__icontains=search_term)
+                Q(lote__producto__descripcion__icontains=search_term) |
+                Q(numero_expediente__icontains=search_term)
             )
         
         return queryset.order_by('-fecha')
@@ -2576,11 +2666,11 @@ class MovimientoViewSet(
             
             producto_info = {
                 'clave': producto.clave,
-                'descripcion': producto.descripcion,
+                'descripcion': producto.nombre,  # Usar nombre como descripción principal
                 'unidad_medida': producto.unidad_medida,
                 'stock_actual': producto.get_stock_actual() if hasattr(producto, 'get_stock_actual') else 0,
                 'stock_minimo': producto.stock_minimo,
-                'precio_unitario': float(producto.precio_unitario) if producto.precio_unitario else 0,
+                'precio_unitario': 0,  # precio_unitario está en Lote, no en Producto
             }
             
             pdf_buffer = generar_reporte_trazabilidad(trazabilidad_data, producto_info=producto_info)
@@ -4092,10 +4182,10 @@ def trazabilidad_producto(request, clave):
             'producto': {
                 'id': producto.id,
                 'clave': producto.clave,
-                'descripcion': producto.descripcion,
+                'descripcion': producto.nombre,  # Usar nombre como descripción principal
                 'unidad_medida': producto.unidad_medida,
                 'stock_minimo': producto.stock_minimo,
-                'precio_unitario': str(producto.precio_unitario) if producto.precio_unitario else None,
+                'precio_unitario': None,  # precio_unitario está en Lote, no en Producto
                 'activo': producto.activo
             },
             'estadisticas': {
@@ -4194,7 +4284,7 @@ def trazabilidad_lote(request, codigo):
                 'id': lote.id,
                 'numero_lote': lote.numero_lote,
                 'producto': lote.producto.clave,
-                'producto_descripcion': lote.producto.descripcion,
+                'producto_descripcion': lote.producto.nombre,  # Usar nombre como campo principal
                 'cantidad_actual': lote.cantidad_actual,
                 'cantidad_inicial': lote.cantidad_inicial,
                 'activo': lote.activo,
@@ -4287,6 +4377,10 @@ def reporte_inventario(request):
             
             stock_total = lotes_query.aggregate(total=Sum('cantidad_actual'))['total'] or 0
             lotes_activos = lotes_query.filter(cantidad_actual__gt=0).count()
+            
+            # Calcular precio promedio desde lotes (precio_unitario está en Lote, no en Producto)
+            from django.db.models import Avg
+            precio_promedio = lotes_query.filter(cantidad_actual__gt=0).aggregate(avg=Avg('precio_unitario'))['avg'] or 0.0
 
             nivel = 'alto'
             if stock_total == 0:
@@ -4303,10 +4397,11 @@ def reporte_inventario(request):
                 continue
 
             # Se incluye 'nivel_stock' para compatibilidad con el frontend
+            # Usar 'nombre' del producto como descripción principal
             datos.append({
                 '#': idx,
                 'clave': producto.clave,
-                'descripcion': producto.descripcion,
+                'descripcion': producto.nombre,  # nombre es el campo principal del producto
                 'unidad': producto.unidad_medida,
                 'unidad_medida': producto.unidad_medida,  # alias esperado por frontend
                 'stock_minimo': producto.stock_minimo,
@@ -4314,7 +4409,7 @@ def reporte_inventario(request):
                 'lotes_activos': lotes_activos,
                 'nivel': nivel,
                 'nivel_stock': nivel,
-                'precio_unitario': float(producto.precio_unitario) if producto.precio_unitario else 0.0,
+                'precio_unitario': float(precio_promedio),
             })
             total_productos += 1
             total_stock += stock_total
@@ -4754,7 +4849,7 @@ def reporte_caducidades(request):
                 continue
             
             datos.append({
-                'producto': f"{lote.producto.clave} - {lote.producto.descripcion}",
+                'producto': f"{lote.producto.clave} - {lote.producto.nombre}",
                 'lote': lote.numero_lote,
                 'caducidad': lote.fecha_caducidad.isoformat(),
                 'dias_restantes': dias_restantes,

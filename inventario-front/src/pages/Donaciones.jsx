@@ -26,10 +26,13 @@ import ConfirmModal from '../components/ConfirmModal';
 
 const PAGE_SIZE = 15;
 
+// ISS-DB-ALIGN: Estados alineados con BD Supabase
+// BD permite: pendiente, recibida, procesada, rechazada
 const ESTADOS_DONACION = {
   pendiente: { label: 'Pendiente', color: 'bg-yellow-100 text-yellow-800', icon: '⏳' },
+  recibida: { label: 'Recibida', color: 'bg-blue-100 text-blue-800', icon: '📦' },
   procesada: { label: 'Procesada', color: 'bg-green-100 text-green-800', icon: '✅' },
-  cancelada: { label: 'Cancelada', color: 'bg-red-100 text-red-800', icon: '❌' },
+  rechazada: { label: 'Rechazada', color: 'bg-red-100 text-red-800', icon: '❌' },
 };
 
 const TIPOS_DONANTE = [
@@ -40,10 +43,12 @@ const TIPOS_DONANTE = [
   { value: 'otro', label: 'Otro' },
 ];
 
+// ISS-DB-ALIGN: Estados de producto alineados con BD Supabase
+// BD permite: bueno, regular, malo
 const ESTADOS_PRODUCTO = [
-  { value: 'nuevo', label: 'Nuevo' },
-  { value: 'buen_estado', label: 'Buen Estado' },
-  { value: 'dañado', label: 'Dañado' },
+  { value: 'bueno', label: 'Bueno' },
+  { value: 'regular', label: 'Regular' },
+  { value: 'malo', label: 'Malo' },
 ];
 
 const Donaciones = () => {
@@ -70,6 +75,8 @@ const Donaciones = () => {
   const [viewingDonacion, setViewingDonacion] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [confirmProcesar, setConfirmProcesar] = useState(null);
+  const [confirmRecibir, setConfirmRecibir] = useState(null);
+  const [confirmRechazar, setConfirmRechazar] = useState(null);
 
   // Paginación
   const [currentPage, setCurrentPage] = useState(1);
@@ -111,7 +118,7 @@ const Donaciones = () => {
     numero_lote: '',
     cantidad: '',
     fecha_caducidad: '',
-    estado_producto: 'nuevo',
+    estado_producto: 'bueno',
     notas: '',
   });
 
@@ -144,9 +151,10 @@ const Donaciones = () => {
       if (searchTerm) params.search = searchTerm;
       if (filtroEstado) params.estado = filtroEstado;
       if (filtroTipoDonante) params.donante_tipo = filtroTipoDonante;
-      if (filtroCentro) params.centro_destino = filtroCentro;
-      if (filtroFechaDesde) params.fecha_donacion_desde = filtroFechaDesde;
-      if (filtroFechaHasta) params.fecha_donacion_hasta = filtroFechaHasta;
+      // ISS-DB-ALIGN: Backend espera 'centro' no 'centro_destino'
+      if (filtroCentro) params.centro = filtroCentro;
+      if (filtroFechaDesde) params.fecha_desde = filtroFechaDesde;
+      if (filtroFechaHasta) params.fecha_hasta = filtroFechaHasta;
 
       const response = await donacionesAPI.getAll(params);
       const data = response.data;
@@ -196,7 +204,7 @@ const Donaciones = () => {
       numero_lote: '',
       cantidad: '',
       fecha_caducidad: '',
-      estado_producto: 'nuevo',
+      estado_producto: 'bueno',  // ISS-DB-ALIGN: Valor de BD
       notas: '',
     });
     setEditingDonacion(null);
@@ -263,7 +271,7 @@ const Donaciones = () => {
       numero_lote: '',
       cantidad: '',
       fecha_caducidad: '',
-      estado_producto: 'nuevo',
+      estado_producto: 'bueno',
       notas: '',
     });
   };
@@ -346,6 +354,38 @@ const Donaciones = () => {
     } finally {
       setActionLoading(null);
       setConfirmProcesar(null);
+    }
+  };
+
+  // Recibir donación (pendiente → recibida)
+  const handleRecibir = async (id) => {
+    setActionLoading(id);
+    try {
+      await donacionesAPI.recibir(id);
+      toast.success('Donación marcada como recibida');
+      cargarDonaciones();
+    } catch (err) {
+      console.error('Error recibiendo donación:', err);
+      toast.error(err.response?.data?.error || 'Error al recibir donación');
+    } finally {
+      setActionLoading(null);
+      setConfirmRecibir(null);
+    }
+  };
+
+  // Rechazar donación
+  const handleRechazar = async (id, motivo) => {
+    setActionLoading(id);
+    try {
+      await donacionesAPI.rechazar(id, { motivo });
+      toast.success('Donación rechazada');
+      cargarDonaciones();
+    } catch (err) {
+      console.error('Error rechazando donación:', err);
+      toast.error(err.response?.data?.error || 'Error al rechazar donación');
+    } finally {
+      setActionLoading(null);
+      setConfirmRechazar(null);
     }
   };
 
@@ -616,19 +656,47 @@ const Donaciones = () => {
                             </button>
                           )}
 
-                          {/* Procesar (solo pendientes) */}
+                          {/* Recibir (solo pendientes) */}
                           {puede.procesar && donacion.estado === 'pendiente' && (
+                            <button
+                              onClick={() => setConfirmRecibir(donacion)}
+                              disabled={actionLoading === donacion.id}
+                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                              title="Marcar como recibida"
+                            >
+                              {actionLoading === donacion.id ? (
+                                <FaSpinner className="animate-spin" />
+                              ) : (
+                                <FaBox />
+                              )}
+                            </button>
+                          )}
+
+                          {/* Procesar (pendientes o recibidas - según backend) */}
+                          {puede.procesar && ['pendiente', 'recibida'].includes(donacion.estado) && (
                             <button
                               onClick={() => setConfirmProcesar(donacion)}
                               disabled={actionLoading === donacion.id}
                               className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
-                              title="Procesar donación"
+                              title="Procesar donación (crear lotes y movimientos)"
                             >
                               {actionLoading === donacion.id ? (
                                 <FaSpinner className="animate-spin" />
                               ) : (
                                 <FaCheck />
                               )}
+                            </button>
+                          )}
+
+                          {/* Rechazar (pendientes o recibidas) */}
+                          {puede.procesar && ['pendiente', 'recibida'].includes(donacion.estado) && (
+                            <button
+                              onClick={() => setConfirmRechazar(donacion)}
+                              disabled={actionLoading === donacion.id}
+                              className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
+                              title="Rechazar donación"
+                            >
+                              <FaTimes />
                             </button>
                           )}
 
@@ -1100,6 +1168,19 @@ const Donaciones = () => {
         />
       )}
 
+      {/* Modal de confirmación recibir */}
+      {confirmRecibir && (
+        <ConfirmModal
+          title="Recibir Donación"
+          message={`¿Confirmas que has recibido físicamente la donación "${confirmRecibir.numero || 'DON-' + confirmRecibir.id}"?`}
+          confirmText="Confirmar Recepción"
+          cancelText="Cancelar"
+          confirmColor="blue"
+          onConfirm={() => handleRecibir(confirmRecibir.id)}
+          onCancel={() => setConfirmRecibir(null)}
+        />
+      )}
+
       {/* Modal de confirmación procesar */}
       {confirmProcesar && (
         <ConfirmModal
@@ -1110,6 +1191,19 @@ const Donaciones = () => {
           confirmColor="green"
           onConfirm={() => handleProcesar(confirmProcesar.id)}
           onCancel={() => setConfirmProcesar(null)}
+        />
+      )}
+
+      {/* Modal de confirmación rechazar */}
+      {confirmRechazar && (
+        <ConfirmModal
+          title="Rechazar Donación"
+          message={`¿Estás seguro de rechazar la donación "${confirmRechazar.numero || 'DON-' + confirmRechazar.id}"? Esta acción no se puede deshacer.`}
+          confirmText="Rechazar"
+          cancelText="Cancelar"
+          confirmColor="red"
+          onConfirm={() => handleRechazar(confirmRechazar.id, 'Rechazada por el usuario')}
+          onCancel={() => setConfirmRechazar(null)}
         />
       )}
     </div>

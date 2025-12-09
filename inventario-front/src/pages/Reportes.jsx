@@ -12,10 +12,12 @@ import {
   FaExclamationTriangle,
   FaTimesCircle,
   FaDatabase,
-  FaSpinner
+  FaSpinner,
+  FaLock
 } from "react-icons/fa";
 import { reportesAPI, centrosAPI, descargarArchivo } from "../services/api";
 import PageHeader from "../components/PageHeader";
+import { usePermissions } from '../hooks/usePermissions';
 
 // Los colores ahora se leen del tema CSS - esto es solo para compatibilidad
 const getThemeColor = (varName, fallback) => {
@@ -119,6 +121,18 @@ const formatValue = (value, key) => {
 };
 
 const Reportes = () => {
+  const { user, permisos, getRolPrincipal } = usePermissions();
+  
+  // Verificación de permisos
+  const rolPrincipal = getRolPrincipal();
+  const esAdmin = rolPrincipal === 'ADMIN';
+  const esFarmacia = rolPrincipal === 'FARMACIA';
+  const esSuperusuario = permisos?.isSuperuser;
+  const esAdminOFarmacia = esAdmin || esFarmacia || esSuperusuario;
+  
+  // Si el usuario tiene centro asignado y no es admin/farmacia, forzar filtro por su centro
+  const userCentroId = user?.centro?.id || null;
+  
   const [filtros, setFiltros] = useState(baseFilters);
   const [datos, setDatos] = useState([]);
   const [preview, setPreview] = useState([]);
@@ -146,7 +160,14 @@ const Reportes = () => {
     if (filtros.estado) params.estado = filtros.estado;
     if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
     if (filtros.fechaFin) params.fecha_fin = filtros.fechaFin;
-    if (filtros.centro) params.centro = filtros.centro;
+    
+    // Aplicar filtro de centro: usuarios no admin/farmacia forzados a su centro
+    if (!esAdminOFarmacia && userCentroId) {
+      params.centro = userCentroId;
+    } else if (filtros.centro) {
+      params.centro = filtros.centro;
+    }
+    
     if (filtros.nivelStock) params.nivel_stock = filtros.nivelStock;
     if (filtros.tipo === "caducidades") params.dias = filtros.dias || 30;
     return params;
@@ -458,17 +479,26 @@ const Reportes = () => {
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-gray-700">Centro</label>
                 <select
-                  value={filtros.centro}
+                  value={!esAdminOFarmacia && userCentroId ? userCentroId : filtros.centro}
                   onChange={(e) => handleFiltro("centro", e.target.value)}
-                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                  disabled={!esAdminOFarmacia && userCentroId}
+                  className={`w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors ${!esAdminOFarmacia && userCentroId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 >
-                  <option value="">Todos los centros</option>
-                  <option value="central">🏥 Farmacia Central</option>
-                  {centros.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nombre}
+                  {esAdminOFarmacia ? (
+                    <>
+                      <option value="">Todos los centros</option>
+                      <option value="central">🏥 Farmacia Central</option>
+                      {centros.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre}
+                        </option>
+                      ))}
+                    </>
+                  ) : (
+                    <option value={userCentroId}>
+                      {centros.find(c => c.id === userCentroId)?.nombre || 'Tu centro'}
                     </option>
-                  ))}
+                  )}
                 </select>
               </div>
               <div className="space-y-1">
@@ -512,16 +542,25 @@ const Reportes = () => {
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-gray-700">Centro</label>
                 <select
-                  value={filtros.centro}
+                  value={!esAdminOFarmacia && userCentroId ? userCentroId : filtros.centro}
                   onChange={(e) => handleFiltro("centro", e.target.value)}
-                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                  disabled={!esAdminOFarmacia && userCentroId}
+                  className={`w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors ${!esAdminOFarmacia && userCentroId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 >
-                  <option value="">Todos los centros</option>
-                  {centros.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nombre}
+                  {esAdminOFarmacia ? (
+                    <>
+                      <option value="">Todos los centros</option>
+                      {centros.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre}
+                        </option>
+                      ))}
+                    </>
+                  ) : (
+                    <option value={userCentroId}>
+                      {centros.find(c => c.id === userCentroId)?.nombre || 'Tu centro'}
                     </option>
-                  ))}
+                  )}
                 </select>
               </div>
               <div className="space-y-1">
@@ -550,17 +589,26 @@ const Reportes = () => {
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-gray-700">Centro</label>
                 <select
-                  value={filtros.centro}
+                  value={!esAdminOFarmacia && userCentroId ? userCentroId : filtros.centro}
                   onChange={(e) => handleFiltro("centro", e.target.value)}
-                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                  disabled={!esAdminOFarmacia && userCentroId}
+                  className={`w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors ${!esAdminOFarmacia && userCentroId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 >
-                  <option value="">Todos los centros</option>
-                  <option value="central">🏥 Farmacia Central</option>
-                  {centros.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nombre}
+                  {esAdminOFarmacia ? (
+                    <>
+                      <option value="">Todos los centros</option>
+                      <option value="central">🏥 Farmacia Central</option>
+                      {centros.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre}
+                        </option>
+                      ))}
+                    </>
+                  ) : (
+                    <option value={userCentroId}>
+                      {centros.find(c => c.id === userCentroId)?.nombre || 'Tu centro'}
                     </option>
-                  ))}
+                  )}
                 </select>
               </div>
               <div className="space-y-1">

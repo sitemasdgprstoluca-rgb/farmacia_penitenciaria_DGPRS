@@ -23,6 +23,7 @@ const PERMISOS_INTERNOS = [
 
 // Etiquetas amigables para permisos
 const ETIQUETAS_PERMISOS = {
+  // Permisos de módulos principales
   verDashboard: "Ver Dashboard",
   verProductos: "Ver Productos",
   verLotes: "Ver Lotes",
@@ -35,6 +36,8 @@ const ETIQUETAS_PERMISOS = {
   verNotificaciones: "Ver Notificaciones",
   verPerfil: "Ver Perfil",
   verMovimientos: "Ver Movimientos",
+  verDonaciones: "Ver Donaciones",
+  // Permisos de requisiciones
   crearRequisicion: "Crear Requisiciones",
   editarRequisicion: "Editar Requisiciones",
   eliminarRequisicion: "Eliminar Requisiciones",
@@ -43,7 +46,35 @@ const ETIQUETAS_PERMISOS = {
   rechazarRequisicion: "Rechazar Requisiciones",
   surtirRequisicion: "Surtir Requisiciones",
   cancelarRequisicion: "Cancelar Requisiciones",
+  confirmarRecepcion: "Confirmar Recepción",
   descargarHojaRecoleccion: "Descargar Hoja de Recolección",
+  // Permisos de gestión de usuarios
+  gestionUsuarios: "Gestionar Usuarios",
+  // Permisos de lotes
+  crearLote: "Crear Lotes",
+  editarLote: "Editar Lotes",
+  eliminarLote: "Eliminar Lotes",
+  exportarLotes: "Exportar Lotes",
+  importarLotes: "Importar Lotes",
+  // Permisos de movimientos
+  crearMovimiento: "Crear Movimientos",
+  exportarMovimientos: "Exportar Movimientos",
+  // Permisos de productos
+  crearProducto: "Crear Productos",
+  editarProducto: "Editar Productos",
+  eliminarProducto: "Eliminar Productos",
+  exportarProductos: "Exportar Productos",
+  importarProductos: "Importar Productos",
+  // Permisos de notificaciones
+  gestionarNotificaciones: "Gestionar Notificaciones",
+  // Permisos de configuración
+  configurarTema: "Configurar Tema",
+  // Permisos de donaciones
+  crearDonacion: "Crear Donaciones",
+  editarDonacion: "Editar Donaciones",
+  eliminarDonacion: "Eliminar Donaciones",
+  recibirDonacion: "Recibir Donaciones",
+  rechazarDonacion: "Rechazar Donaciones",
 };
 
 function Perfil() {

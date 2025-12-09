@@ -1873,6 +1873,9 @@ class TemaGlobalViewSet(viewsets.ViewSet):
     def get_permissions(self):
         if self.action in ['tema_activo']:
             return [AllowAny()]
+        # Para acciones de modificación, usar IsFarmaciaRole (admin + farmacia)
+        if self.action in ['update', 'restablecer_institucional', 'subir_logo', 'eliminar_logo']:
+            return [IsAuthenticated(), IsFarmaciaRole()]
         return [IsAuthenticated()]
 
     def _get_tema_activo(self):
@@ -1897,12 +1900,7 @@ class TemaGlobalViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def update(self, request, pk=None):
-        if not request.user.is_superuser:
-            return Response(
-                {'error': 'Solo superusuarios pueden modificar el tema global'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
+        # Permiso controlado por get_permissions() -> IsFarmaciaRole
         tema = self._get_tema_activo()
         if not tema:
             tema = TemaGlobal.objects.create(nombre='Tema Sistema', es_activo=True)
@@ -1931,14 +1929,9 @@ class TemaGlobalViewSet(viewsets.ViewSet):
         """
         POST /api/tema/restablecer/
         Restablece el tema global a valores institucionales por defecto.
-        Solo superusuarios pueden ejecutar esta acción.
+        Permiso: admin o farmacia (IsFarmaciaRole)
         """
-        if not request.user.is_superuser:
-            return Response(
-                {'error': 'Solo superusuarios pueden restablecer el tema'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
+        # Permiso controlado por get_permissions() -> IsFarmaciaRole
         try:
             tema = self._get_tema_activo()
             if not tema:
@@ -2006,13 +1999,9 @@ class TemaGlobalViewSet(viewsets.ViewSet):
         POST /api/tema/subir-logo/{tipo}/
         Sube un logo para el tema global.
         Tipos válidos: header, login, reportes, favicon
-        Solo superusuarios pueden ejecutar esta acción.
+        Permiso: admin o farmacia (IsFarmaciaRole)
         """
-        if not request.user.is_superuser:
-            return Response(
-                {'error': 'Solo superusuarios pueden modificar logos'},
-                status=status.HTTP_403_FORBIDDEN
-            )
+        # Permiso controlado por get_permissions() -> IsFarmaciaRole
 
         tipos_validos = ['header', 'login', 'reportes', 'favicon']
         if tipo not in tipos_validos:
@@ -2101,13 +2090,9 @@ class TemaGlobalViewSet(viewsets.ViewSet):
         DELETE /api/tema/eliminar-logo/{tipo}/
         Elimina un logo del tema global.
         Tipos válidos: header, login, reportes, favicon
-        Solo superusuarios pueden ejecutar esta acción.
+        Permiso: admin o farmacia (IsFarmaciaRole)
         """
-        if not request.user.is_superuser:
-            return Response(
-                {'error': 'Solo superusuarios pueden eliminar logos'},
-                status=status.HTTP_403_FORBIDDEN
-            )
+        # Permiso controlado por get_permissions() -> IsFarmaciaRole
 
         tipos_validos = ['header', 'login', 'reportes', 'favicon']
         if tipo not in tipos_validos:

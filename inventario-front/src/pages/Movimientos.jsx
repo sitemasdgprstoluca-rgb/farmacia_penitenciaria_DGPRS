@@ -41,6 +41,7 @@ const Movimientos = () => {
     fecha_inicio: "",
     fecha_fin: "",
     tipo: "",
+    subtipo_salida: "",
     producto: "",
     centro: centroInicial,
     lote: "",
@@ -52,6 +53,7 @@ const Movimientos = () => {
     fecha_inicio: "",
     fecha_fin: "",
     tipo: "",
+    subtipo_salida: "",
     producto: "",
     centro: centroInicial,
     lote: "",
@@ -378,7 +380,14 @@ const Movimientos = () => {
     if (field === 'centro' && !puedeVerTodosCentros && centroUsuario) {
       return; // Ignorar cambios al filtro de centro para usuarios restringidos
     }
-    setFiltros((prev) => ({ ...prev, [field]: value }));
+    setFiltros((prev) => {
+      const newState = { ...prev, [field]: value };
+      // Limpiar subtipo_salida si el tipo cambia a algo que no es salida
+      if (field === 'tipo' && value !== 'salida' && value !== '') {
+        newState.subtipo_salida = '';
+      }
+      return newState;
+    });
   };
 
   // Validar y aplicar filtros (dispara recarga)
@@ -410,6 +419,7 @@ const Movimientos = () => {
       fecha_inicio: "",
       fecha_fin: "",
       tipo: "",
+      subtipo_salida: "",
       producto: "",
       centro: centroFijo,
       lote: "",
@@ -721,6 +731,25 @@ const Movimientos = () => {
                     <option value="ajuste">Ajuste</option>
                   </select>
                 </div>
+                {/* Filtro por subtipo de salida - solo visible cuando tipo=salida o sin filtro */}
+                {(filtros.tipo === "" || filtros.tipo === "salida") && (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-gray-700">Subtipo Salida</label>
+                    <select
+                      value={filtros.subtipo_salida}
+                      onChange={(e) => handleFiltro("subtipo_salida", e.target.value)}
+                      className="border rounded-lg px-3 py-2"
+                    >
+                      <option value="">Todos</option>
+                      <option value="receta">💊 Receta médica</option>
+                      <option value="consumo_interno">🏥 Consumo interno</option>
+                      <option value="merma">📉 Merma</option>
+                      <option value="caducidad">⏰ Caducidad</option>
+                      <option value="transferencia">🔄 Transferencia</option>
+                      <option value="otro">Otro</option>
+                    </select>
+                  </div>
+                )}
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold text-gray-700">Producto</label>
                   <select
@@ -844,17 +873,29 @@ const Movimientos = () => {
                             <div className="text-xs text-gray-500">Lote: {mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
                           </td>
                           <td className="px-4 py-3">
-                            <span
-                              className={`px-2 py-1 rounded text-xs font-semibold ${
-                                mov.tipo === "entrada"
-                                  ? "bg-green-100 text-green-800"
-                                  : mov.tipo === "salida"
-                                  ? "bg-red-100 text-red-800"
-                                  : "bg-yellow-100 text-yellow-800"
-                              }`}
-                            >
-                              {mov.tipo?.toUpperCase()}
-                            </span>
+                            <div className="flex flex-col gap-1">
+                              <span
+                                className={`px-2 py-1 rounded text-xs font-semibold inline-block w-fit ${
+                                  mov.tipo === "entrada"
+                                    ? "bg-green-100 text-green-800"
+                                    : mov.tipo === "salida"
+                                    ? "bg-red-100 text-red-800"
+                                    : "bg-yellow-100 text-yellow-800"
+                                }`}
+                              >
+                                {mov.tipo?.toUpperCase()}
+                              </span>
+                              {mov.tipo === 'salida' && mov.subtipo_salida && (
+                                <span className="text-xs text-gray-500">
+                                  {mov.subtipo_salida === 'receta' ? '💊 Receta' :
+                                   mov.subtipo_salida === 'consumo_interno' ? '🏥 Consumo' :
+                                   mov.subtipo_salida === 'merma' ? '📉 Merma' :
+                                   mov.subtipo_salida === 'caducidad' ? '⏰ Caducidad' :
+                                   mov.subtipo_salida === 'transferencia' ? '🔄 Transfer.' :
+                                   mov.subtipo_salida}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-4 py-3 text-right font-semibold text-gray-900">
                             {mov.tipo === 'salida' ? '-' : '+'}{Math.abs(mov.cantidad)}
@@ -905,6 +946,25 @@ const Movimientos = () => {
                                   <span className="font-semibold text-gray-600">Requisición:</span>
                                   <p className="text-gray-800">{mov.requisicion_folio || 'N/A'}</p>
                                 </div>
+                                {mov.tipo === 'salida' && (
+                                  <div>
+                                    <span className="font-semibold text-gray-600">Subtipo Salida:</span>
+                                    <p className="text-gray-800">
+                                      {mov.subtipo_salida === 'receta' ? '💊 Receta médica' :
+                                       mov.subtipo_salida === 'consumo_interno' ? '🏥 Consumo interno' :
+                                       mov.subtipo_salida === 'merma' ? '📉 Merma' :
+                                       mov.subtipo_salida === 'caducidad' ? '⏰ Caducidad' :
+                                       mov.subtipo_salida === 'transferencia' ? '🔄 Transferencia' :
+                                       mov.subtipo_salida || 'No especificado'}
+                                    </p>
+                                  </div>
+                                )}
+                                {mov.tipo === 'salida' && mov.subtipo_salida === 'receta' && (
+                                  <div>
+                                    <span className="font-semibold text-gray-600">No. Expediente:</span>
+                                    <p className="text-gray-800 font-mono bg-blue-50 px-2 py-1 rounded">{mov.numero_expediente || 'N/A'}</p>
+                                  </div>
+                                )}
                                 <div>
                                   <span className="font-semibold text-gray-600">Fecha exacta:</span>
                                   <p className="text-gray-800">{mov.fecha_movimiento || mov.fecha ? new Date(mov.fecha_movimiento || mov.fecha).toLocaleString('es-MX', { dateStyle: 'full', timeStyle: 'medium' }) : ''}</p>

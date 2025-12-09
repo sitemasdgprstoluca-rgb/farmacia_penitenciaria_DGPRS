@@ -831,6 +831,18 @@ const handleImportar = async (e) => {
                   <option value="sin_stock">Sin Inventario</option>
                 </select>
               </div>
+              <div>
+                <label className="text-xs font-semibold text-theme-primary-hover">Estado</label>
+                <select
+                  value={filtroActivo}
+                  onChange={(e) => setFiltroActivo(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                >
+                  <option value="">Todos</option>
+                  <option value="true">Activos</option>
+                  <option value="false">Inactivos</option>
+                </select>
+              </div>
               {/* Selector de Centro - solo para admin/farmacia/vista */}
               {puedeVerGlobal && (
                 <div>
@@ -1112,10 +1124,10 @@ const handleImportar = async (e) => {
                 </div>
               
                 <div className="grid grid-cols-2 gap-4">
-                  {/* Cantidad Actual */}
+                  {/* Cantidad Inicial */}
                   <div>
                     <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      CANTIDAD ACTUAL <span className="text-red-600">*</span>
+                      CANTIDAD INICIAL <span className="text-red-600">*</span>
                     </label>
                     <input
                       type="number"
@@ -1134,7 +1146,7 @@ const handleImportar = async (e) => {
                       required
                       placeholder="0"
                     />
-                    <p className="text-xs text-gray-500 italic mt-1">Cantidad actual en inventario</p>
+                    <p className="text-xs text-gray-500 italic mt-1">{editingLote ? 'Cantidad original del lote' : 'Se usará como cantidad actual'}</p>
                   </div>
                   
                   {/* Precio Unitario (nombre real en DB) */}
@@ -1340,16 +1352,21 @@ const handleImportar = async (e) => {
                 <p className="text-sm text-gray-600 mb-2">
                   El archivo debe contener las siguientes columnas en orden:
                 </p>
-                <ul className="text-sm text-gray-600 list-disc list-inside">
-                  <li><strong>Producto</strong> (Código de barras o Nombre) - Requerido</li>
+                <ul className="text-sm text-gray-600 list-disc list-inside space-y-1">
+                  <li><strong>Producto</strong> (Clave o Nombre) - Requerido</li>
                   <li><strong>Número Lote</strong> - Requerido</li>
                   <li><strong>Fecha Caducidad</strong> (YYYY-MM-DD) - Requerido</li>
                   <li><strong>Cantidad Inicial</strong> - Requerido</li>
-                  <li>Cantidad Actual (opcional, por defecto = Inicial)</li>
+                  <li>Cantidad Actual (opcional, default = Inicial)</li>
+                  <li>Fecha Fabricación (opcional, YYYY-MM-DD)</li>
+                  <li>Precio Unitario (opcional, default = 0)</li>
+                  <li>Número Contrato (opcional)</li>
                   <li>Marca (opcional)</li>
+                  <li>Ubicación (opcional)</li>
+                  <li>Centro ID (opcional)</li>
                 </ul>
                 <p className="text-xs text-amber-600 mt-2">
-                  Nota: Las columnas deben estar en el orden indicado. El sistema buscará el producto por código de barras o nombre.
+                  Nota: Las columnas deben estar en el orden indicado. El sistema buscará el producto por clave o nombre.
                 </p>
               </div>
               

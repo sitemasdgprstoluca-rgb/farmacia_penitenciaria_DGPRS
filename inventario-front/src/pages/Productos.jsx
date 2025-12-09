@@ -330,12 +330,24 @@ const renderStockBadge = (nivel) => {
 const DEFAULT_FORM = {
   clave: '',
   nombre: '',
+  descripcion: '',
   unidad_medida: 'PIEZA',
+  categoria: 'medicamento',
   stock_minimo: '10',
+  sustancia_activa: '',
+  presentacion: '',
+  concentracion: '',
+  via_administracion: '',
+  requiere_receta: false,
+  es_controlado: false,
   activo: true,
   imagen: null,
   imagenPreview: null,
 };
+
+// Constantes para selects de datos farmacéuticos
+const CATEGORIAS = ['medicamento', 'material_curacion', 'insumo', 'equipo', 'otro'];
+const VIAS_ADMINISTRACION = ['oral', 'intravenosa', 'intramuscular', 'subcutanea', 'topica', 'inhalatoria', 'rectal', 'oftalmico', 'otico', 'nasal', 'otra'];
 
 
 
@@ -749,8 +761,16 @@ const Productos = () => {
       setFormData({
         clave: producto.clave || '',
         nombre: producto.nombre || '',
+        descripcion: producto.descripcion || '',
         unidad_medida: producto.unidad_medida || 'PIEZA',
+        categoria: producto.categoria || 'medicamento',
         stock_minimo: producto.stock_minimo ?? 10,
+        sustancia_activa: producto.sustancia_activa || '',
+        presentacion: producto.presentacion || '',
+        concentracion: producto.concentracion || '',
+        via_administracion: producto.via_administracion || '',
+        requiere_receta: producto.requiere_receta ?? false,
+        es_controlado: producto.es_controlado ?? false,
         activo: producto.activo ?? true,
         imagen: null,
         imagenPreview: producto.imagen || null,
@@ -898,16 +918,32 @@ const Productos = () => {
         dataToSend = new FormData();
         dataToSend.append('clave', formData.clave || '');
         dataToSend.append('nombre', formData.nombre);
+        dataToSend.append('descripcion', formData.descripcion || '');
         dataToSend.append('unidad_medida', formData.unidad_medida);
+        dataToSend.append('categoria', formData.categoria || 'medicamento');
         dataToSend.append('stock_minimo', parseInt(formData.stock_minimo, 10) || 0);
+        dataToSend.append('sustancia_activa', formData.sustancia_activa || '');
+        dataToSend.append('presentacion', formData.presentacion || '');
+        dataToSend.append('concentracion', formData.concentracion || '');
+        dataToSend.append('via_administracion', formData.via_administracion || '');
+        dataToSend.append('requiere_receta', formData.requiere_receta);
+        dataToSend.append('es_controlado', formData.es_controlado);
         dataToSend.append('activo', formData.activo);
         dataToSend.append('imagen', formData.imagen);
       } else {
         dataToSend = {
           clave: formData.clave || '',
           nombre: formData.nombre,
+          descripcion: formData.descripcion || '',
           unidad_medida: formData.unidad_medida,
+          categoria: formData.categoria || 'medicamento',
           stock_minimo: parseInt(formData.stock_minimo, 10) || 0,
+          sustancia_activa: formData.sustancia_activa || '',
+          presentacion: formData.presentacion || '',
+          concentracion: formData.concentracion || '',
+          via_administracion: formData.via_administracion || '',
+          requiere_receta: formData.requiere_receta,
+          es_controlado: formData.es_controlado,
           activo: formData.activo,
         };
       }
@@ -1439,7 +1475,7 @@ const Productos = () => {
 
                 'Clave',
 
-                'Descripción',
+                'Nombre',
 
                 'Unidad',
 
@@ -2088,6 +2124,119 @@ const Productos = () => {
                 </div>
 
               </div>
+
+              {/* Categoría y Descripción */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="text-xs font-semibold text-theme-primary-hover">Categoría</label>
+                  <select
+                    value={formData.categoria}
+                    onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                  >
+                    {CATEGORIAS.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat.charAt(0).toUpperCase() + cat.slice(1).replace('_', ' ')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-theme-primary-hover">Descripción</label>
+                  <input
+                    type="text"
+                    value={formData.descripcion}
+                    onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
+                    maxLength={500}
+                    placeholder="Descripción adicional del producto"
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Datos Farmacéuticos (desplegable) */}
+              <details className="rounded-lg border border-gray-200 bg-gray-50">
+                <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-theme-primary-hover hover:bg-gray-100">
+                  📋 Datos Farmacéuticos (opcional)
+                </summary>
+                <div className="space-y-4 px-4 pb-4 pt-2">
+                  {/* Sustancia Activa y Presentación */}
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600">Sustancia Activa</label>
+                      <input
+                        type="text"
+                        value={formData.sustancia_activa}
+                        onChange={(e) => setFormData({ ...formData, sustancia_activa: e.target.value })}
+                        maxLength={200}
+                        placeholder="Ej: Paracetamol"
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-gray-300"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600">Presentación</label>
+                      <input
+                        type="text"
+                        value={formData.presentacion}
+                        onChange={(e) => setFormData({ ...formData, presentacion: e.target.value })}
+                        maxLength={200}
+                        placeholder="Ej: Tabletas, Cápsulas, Jarabe"
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-gray-300"
+                      />
+                    </div>
+                  </div>
+                  {/* Concentración y Vía de Administración */}
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600">Concentración</label>
+                      <input
+                        type="text"
+                        value={formData.concentracion}
+                        onChange={(e) => setFormData({ ...formData, concentracion: e.target.value })}
+                        maxLength={100}
+                        placeholder="Ej: 500mg, 10ml"
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-gray-300"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600">Vía de Administración</label>
+                      <select
+                        value={formData.via_administracion}
+                        onChange={(e) => setFormData({ ...formData, via_administracion: e.target.value })}
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-gray-300"
+                      >
+                        <option value="">-- Seleccionar --</option>
+                        {VIAS_ADMINISTRACION.map((via) => (
+                          <option key={via} value={via}>
+                            {via.charAt(0).toUpperCase() + via.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  {/* Checkboxes: Requiere Receta y Es Controlado */}
+                  <div className="flex flex-wrap gap-6">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.requiere_receta}
+                        onChange={(e) => setFormData({ ...formData, requiere_receta: e.target.checked })}
+                        className="h-4 w-4"
+                      />
+                      <span className="text-sm text-gray-700">Requiere Receta</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.es_controlado}
+                        onChange={(e) => setFormData({ ...formData, es_controlado: e.target.checked })}
+                        className="h-4 w-4"
+                      />
+                      <span className="text-sm text-gray-700">Es Controlado</span>
+                    </label>
+                  </div>
+                </div>
+              </details>
 
               {/* Checkbox: activo */}
               <div className="flex items-center gap-2 rounded-lg border px-4 py-3 border-theme-primary">

@@ -70,7 +70,7 @@ function Notificaciones() {
       const params = {
         page: targetPage,
         page_size: pageSize,
-        ordering: "-fecha_creacion",
+        // Backend usa ordering_fields = ['created_at'] con default '-created_at'
       };
       if (filters.tipo) params.tipo = filters.tipo;
       if (filters.desde) params.desde = filters.desde;

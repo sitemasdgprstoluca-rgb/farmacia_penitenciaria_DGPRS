@@ -475,8 +475,8 @@ const Requisiciones = () => {
   const puedeCancelar = (requisicion) => {
     // Normalizar estado a minúsculas para evitar problemas de casing
     const estadoNormalizado = requisicion.estado?.toLowerCase();
-    // Estados finales no se pueden cancelar
-    if (['surtida', 'cancelada', 'rechazada'].includes(estadoNormalizado)) return false;
+    // ISS-DB-002: Estados finales no se pueden cancelar (incluye 'entregada')
+    if (['surtida', 'cancelada', 'rechazada', 'entregada'].includes(estadoNormalizado)) return false;
     // Validar permiso fino
     if (!permisos.cancelarRequisicion) return false;
     // Admin/Farmacia pueden cancelar cualquiera
@@ -1538,7 +1538,8 @@ const Requisiciones = () => {
                     </button>
                   )}
 
-                  {req.estado === 'autorizada' && esAdminOFarmacia && permisos.surtirRequisicion && (
+                  {/* ISS-DB-002: Botón Surtir disponible para estados 'autorizada' y 'parcial' */}
+                  {['autorizada', 'parcial'].includes(req.estado) && esAdminOFarmacia && permisos.surtirRequisicion && (
                     <button
                       onClick={() => handleSurtir(req.id, req.folio)}
                       disabled={isSubmitting || actionLoading === req.id}
@@ -1552,8 +1553,8 @@ const Requisiciones = () => {
                     </button>
                   )}
 
-                  {/* ISS-DB-002: Usar 'parcial' y 'en_surtido' */}
-                  {['autorizada', 'en_surtido', 'parcial', 'surtida'].includes(req.estado) &&
+                  {/* ISS-DB-002: Hoja disponible para estados autorizados hasta entregada */}
+                  {['autorizada', 'en_surtido', 'parcial', 'surtida', 'entregada'].includes(req.estado) &&
                     puedeDescargarPDF(req) && (
                       <button
                         onClick={() => handleDescargarPDF(req.id, 'aceptacion', req.folio)}
@@ -1768,7 +1769,7 @@ const Requisiciones = () => {
                         <thead className="bg-gray-100 sticky top-0">
                           <tr>
                             <th className="text-left px-4 py-3 font-semibold">Clave</th>
-                            <th className="text-left px-4 py-3 font-semibold">Descripción</th>
+                            <th className="text-left px-4 py-3 font-semibold">Nombre</th>
                             <th className="text-left px-4 py-3 font-semibold">Lote</th>
                             <th className="text-center px-4 py-3 font-semibold">Caducidad</th>
                             <th className="text-center px-4 py-3 font-semibold">Inventario</th>

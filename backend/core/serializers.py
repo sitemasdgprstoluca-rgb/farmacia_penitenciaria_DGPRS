@@ -186,6 +186,7 @@ def build_perm_map(user):
             'perm_auditoria': 'verAuditoria',
             'perm_notificaciones': 'verNotificaciones',
             'perm_movimientos': 'verMovimientos',
+            'perm_donaciones': 'verDonaciones',
         }
         for field, perm_key in perm_fields.items():
             custom_value = getattr(user, field, None)

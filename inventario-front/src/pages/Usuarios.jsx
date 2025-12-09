@@ -7,11 +7,10 @@ import { COLORS } from '../constants/theme';
 import { usePermissions } from '../hooks/usePermissions';
 
 const ROLES = [
-  { value: 'admin', label: 'Administrador' },
-  { value: 'admin_sistema', label: 'Admin Sistema' },
-  { value: 'farmacia', label: 'Farmacia' },
-  { value: 'centro', label: 'Centro' },
-  { value: 'vista', label: 'Consulta' }
+  { value: 'admin_sistema', label: 'Administrador del Sistema' },
+  { value: 'farmacia', label: 'Usuario Farmacia' },
+  { value: 'centro', label: 'Usuario Centro/Unidad' },
+  { value: 'vista', label: 'Usuario Vista/Consultor' }
 ];
 
 // Constantes de validación de contraseña
@@ -22,10 +21,9 @@ const PASSWORD_REQUIREMENTS = 'Mínimo 8 caracteres, 1 mayúscula, 1 minúscula 
 // Jerarquía de roles (menor número = mayor jerarquía)
 const ROL_JERARQUIA = {
   'admin_sistema': 1,
-  'admin': 2,
-  'farmacia': 3,
-  'centro': 4,
-  'vista': 5
+  'farmacia': 2,
+  'centro': 3,
+  'vista': 4
 };
 
 // Extensiones y tamaño máximo para importación
@@ -93,6 +91,7 @@ function Usuarios() {
     perm_auditoria: null,
     perm_notificaciones: null,
     perm_movimientos: null,
+    perm_donaciones: null,
   });
   
   const [passwordData, setPasswordData] = useState({
@@ -213,13 +212,14 @@ function Usuarios() {
         perm_auditoria: usuario.perm_auditoria,
         perm_notificaciones: usuario.perm_notificaciones,
         perm_movimientos: usuario.perm_movimientos,
+        perm_donaciones: usuario.perm_donaciones,
       });
       // Mostrar permisos avanzados si hay alguno personalizado
       const tienePermisosPersonalizados = [
         usuario.perm_dashboard, usuario.perm_productos, usuario.perm_lotes,
         usuario.perm_requisiciones, usuario.perm_centros, usuario.perm_usuarios,
         usuario.perm_reportes, usuario.perm_trazabilidad, usuario.perm_auditoria,
-        usuario.perm_notificaciones, usuario.perm_movimientos
+        usuario.perm_notificaciones, usuario.perm_movimientos, usuario.perm_donaciones
       ].some(p => p !== null && p !== undefined);
       setShowPermisosAvanzados(tienePermisosPersonalizados);
     } else {
@@ -246,6 +246,7 @@ function Usuarios() {
         perm_auditoria: null,
         perm_notificaciones: null,
         perm_movimientos: null,
+        perm_donaciones: null,
       });
       setShowPermisosAvanzados(false);
     }
@@ -388,6 +389,7 @@ function Usuarios() {
         payload.perm_auditoria = formData.perm_auditoria;
         payload.perm_notificaciones = formData.perm_notificaciones;
         payload.perm_movimientos = formData.perm_movimientos;
+        payload.perm_donaciones = formData.perm_donaciones;
       }
       
       if (editingUsuario) {
@@ -1126,6 +1128,7 @@ function Usuarios() {
                           { key: 'perm_lotes', label: 'Lotes', icon: '🏷️' },
                           { key: 'perm_requisiciones', label: 'Requisiciones', icon: '📋' },
                           { key: 'perm_movimientos', label: 'Movimientos', icon: '🔄' },
+                          { key: 'perm_donaciones', label: 'Donaciones', icon: '🎁' },
                           { key: 'perm_centros', label: 'Centros', icon: '🏢' },
                           { key: 'perm_usuarios', label: 'Usuarios', icon: '👥' },
                           { key: 'perm_reportes', label: 'Reportes', icon: '📈' },
@@ -1163,7 +1166,7 @@ function Usuarios() {
                             perm_dashboard: null, perm_productos: null, perm_lotes: null,
                             perm_requisiciones: null, perm_centros: null, perm_usuarios: null,
                             perm_reportes: null, perm_trazabilidad: null, perm_auditoria: null,
-                            perm_notificaciones: null, perm_movimientos: null,
+                            perm_notificaciones: null, perm_movimientos: null, perm_donaciones: null,
                           })}
                           className="text-xs px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded transition font-semibold"
                         >

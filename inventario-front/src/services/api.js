@@ -627,8 +627,12 @@ export const donacionesAPI = {
   create: (data) => apiClient.post('/donaciones/', data),
   update: (id, data) => apiClient.put(`/donaciones/${id}/`, data),
   delete: (id) => apiClient.delete(`/donaciones/${id}/`),
+  // Recibir donación (pendiente → recibida)
+  recibir: (id) => apiClient.post(`/donaciones/${id}/recibir/`),
   // Procesar donación (genera movimientos de entrada)
   procesar: (id) => apiClient.post(`/donaciones/${id}/procesar/`),
+  // Rechazar donación
+  rechazar: (id, data) => apiClient.post(`/donaciones/${id}/rechazar/`, data),
   // Exportar
   exportar: (params) => apiClient.get('/donaciones/exportar/', { 
     params, 

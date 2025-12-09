@@ -26,6 +26,7 @@ const PERMISOS_POR_ROL = {
     verNotificaciones: true,
     verPerfil: true,
     verMovimientos: true,
+    verDonaciones: true,  // Admin puede ver y gestionar todas las donaciones
     esSuperusuario: true,
     configurarTema: true, // Permite personalizar tema del sistema
     // Permisos granulares de requisiciones
@@ -72,6 +73,7 @@ const PERMISOS_POR_ROL = {
     verNotificaciones: true,
     verPerfil: true,
     verMovimientos: true,
+    verDonaciones: true,  // Farmacia puede gestionar donaciones
     esSuperusuario: false,
     configurarTema: true, // FARMACIA puede personalizar tema junto con Admin
     // Permisos granulares de requisiciones
@@ -118,6 +120,7 @@ const PERMISOS_POR_ROL = {
     verNotificaciones: true,
     verPerfil: true,
     verMovimientos: true,  // ISS-FIX: Centro puede ver movimientos de SU centro
+    verDonaciones: false,  // Centro NO puede ver/gestionar donaciones
     esSuperusuario: false,
     configurarTema: false, // Centro no puede personalizar tema
     // Permisos granulares de requisiciones - Centro solo crea y envía
@@ -165,6 +168,7 @@ const PERMISOS_POR_ROL = {
     verNotificaciones: true,
     verPerfil: true,
     verMovimientos: true,
+    verDonaciones: true,  // Vista puede consultar donaciones (solo lectura)
     esSuperusuario: false,
     configurarTema: false, // Vista no puede personalizar tema
     // Vista no puede modificar requisiciones
@@ -211,6 +215,7 @@ const PERMISOS_POR_ROL = {
     verNotificaciones: false,
     verPerfil: false,
     verMovimientos: false,
+    verDonaciones: false,
     esSuperusuario: false,
     configurarTema: false,
     crearRequisicion: false,

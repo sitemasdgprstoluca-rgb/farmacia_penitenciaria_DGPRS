@@ -474,7 +474,7 @@ const Centros = () => {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full border-none bg-transparent text-sm focus:outline-none"
-                    placeholder="Buscar por clave, nombre, dirección..."
+                    placeholder="Buscar por nombre, dirección, email o teléfono..."
                   />
                 </div>
               </div>
