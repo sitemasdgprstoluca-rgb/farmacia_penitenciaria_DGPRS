@@ -555,6 +555,31 @@ class ProductoSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('El nombre es requerido')
         return value.strip()
     
+    def validate_unidad_medida(self, value):
+        """Normaliza y valida unidad_medida contra UNIDADES_MEDIDA."""
+        from core.constants import UNIDADES_MEDIDA
+        if not value:
+            return 'PIEZA'  # Default
+        valor_normalizado = value.strip().upper()
+        valores_validos = dict(UNIDADES_MEDIDA).keys()
+        if valor_normalizado not in valores_validos:
+            raise serializers.ValidationError(
+                f'Unidad no válida: {value}. Opciones: {", ".join(valores_validos)}'
+            )
+        return valor_normalizado
+    
+    def validate_categoria(self, value):
+        """Normaliza y valida categoría."""
+        CATEGORIAS_VALIDAS = ['medicamento', 'material_curacion', 'insumo', 'equipo', 'otro']
+        if not value:
+            return 'medicamento'  # Default
+        valor_normalizado = value.strip().lower()
+        if valor_normalizado not in CATEGORIAS_VALIDAS:
+            raise serializers.ValidationError(
+                f'Categoría no válida: {value}. Opciones: {", ".join(CATEGORIAS_VALIDAS)}'
+            )
+        return valor_normalizado
+    
     def validate(self, attrs):
         return attrs
 
