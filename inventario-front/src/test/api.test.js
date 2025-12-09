@@ -87,26 +87,26 @@ describe('API Client Functions', () => {
     it('debe tener métodos de autenticación', () => {
       expect(typeof apiModule.authAPI.login).toBe('function');
       expect(typeof apiModule.authAPI.logout).toBe('function');
-      expect(typeof apiModule.authAPI.getProfile).toBe('function');
+      expect(typeof apiModule.authAPI.me).toBe('function');
     });
   });
 
-  describe('inventarioAPI', () => {
-    it('debe exportar objeto inventarioAPI', () => {
-      expect(apiModule.inventarioAPI).toBeDefined();
-      expect(typeof apiModule.inventarioAPI).toBe('object');
+  describe('productosAPI', () => {
+    it('debe exportar objeto productosAPI', () => {
+      expect(apiModule.productosAPI).toBeDefined();
+      expect(typeof apiModule.productosAPI).toBe('object');
     });
   });
 });
 
 describe('Error Handling', () => {
   it('debe exportar función para descargar archivos', async () => {
-    const { downloadFile } = await import('../services/api.js');
-    expect(typeof downloadFile).toBe('function');
+    const { descargarArchivo } = await import('../services/api.js');
+    expect(typeof descargarArchivo).toBe('function');
   });
 
-  it('debe exportar función registerActivityCallback', async () => {
-    const { registerActivityCallback } = await import('../services/api.js');
-    expect(typeof registerActivityCallback).toBe('function');
+  it('debe exportar función setApiActivityHandler', async () => {
+    const { setApiActivityHandler } = await import('../services/api.js');
+    expect(typeof setApiActivityHandler).toBe('function');
   });
 });

@@ -9,6 +9,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import { PermissionProvider } from '@/context/PermissionContext';
+import { ThemeProvider } from '@/context/ThemeContext';
 import Login from './Login';
 
 // Mock de react-hot-toast
@@ -42,9 +43,11 @@ import { authAPI } from '@/services/api';
 // Wrapper con providers necesarios
 const TestWrapper = ({ children }) => (
     <BrowserRouter>
-        <PermissionProvider>
-            {children}
-        </PermissionProvider>
+        <ThemeProvider>
+            <PermissionProvider>
+                {children}
+            </PermissionProvider>
+        </ThemeProvider>
     </BrowserRouter>
 );
 
