@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { donacionesAPI, productosAPI, centrosAPI, lotesAPI } from '../services/api';
+import { donacionesAPI, productosAPI, centrosAPI, lotesAPI, salidasDonacionesAPI, detallesDonacionAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
 import {
   FaPlus,
@@ -17,6 +17,8 @@ import {
   FaCalendar,
   FaBox,
   FaSearch,
+  FaHandHoldingMedical,
+  FaHistory,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { COLORS } from '../constants/theme';
@@ -77,6 +79,19 @@ const Donaciones = () => {
   const [confirmProcesar, setConfirmProcesar] = useState(null);
   const [confirmRecibir, setConfirmRecibir] = useState(null);
   const [confirmRechazar, setConfirmRechazar] = useState(null);
+
+  // Salidas de donaciones (entregas)
+  const [showSalidaModal, setShowSalidaModal] = useState(false);
+  const [salidaDetalle, setSalidaDetalle] = useState(null);
+  const [salidaForm, setSalidaForm] = useState({
+    cantidad: '',
+    destinatario: '',
+    motivo: '',
+    notas: '',
+  });
+  const [showHistorialModal, setShowHistorialModal] = useState(false);
+  const [historialSalidas, setHistorialSalidas] = useState([]);
+  const [loadingSalidas, setLoadingSalidas] = useState(false);
 
   // Paginación
   const [currentPage, setCurrentPage] = useState(1);
@@ -400,6 +415,76 @@ const Donaciones = () => {
     setCurrentPage(1);
   };
 
+  // =====================================================
+  // SALIDAS DE DONACIONES (Almacén Separado)
+  // =====================================================
+
+  // Abrir modal para registrar salida
+  const handleAbrirSalida = (detalle, donacion) => {
+    setSalidaDetalle({ ...detalle, donacion_numero: donacion.numero });
+    setSalidaForm({
+      cantidad: '',
+      destinatario: '',
+      motivo: '',
+      notas: '',
+    });
+    setShowSalidaModal(true);
+  };
+
+  // Registrar salida de donación
+  const handleRegistrarSalida = async () => {
+    if (!salidaForm.cantidad || !salidaForm.destinatario) {
+      toast.error('Completa cantidad y destinatario');
+      return;
+    }
+
+    const cantidad = parseInt(salidaForm.cantidad);
+    if (cantidad <= 0 || cantidad > salidaDetalle.cantidad_disponible) {
+      toast.error(`Cantidad inválida. Disponible: ${salidaDetalle.cantidad_disponible}`);
+      return;
+    }
+
+    setActionLoading('salida');
+    try {
+      await salidasDonacionesAPI.create({
+        detalle_donacion: salidaDetalle.id,
+        cantidad: cantidad,
+        destinatario: salidaForm.destinatario,
+        motivo: salidaForm.motivo || null,
+        notas: salidaForm.notas || null,
+      });
+      toast.success('Entrega registrada correctamente');
+      setShowSalidaModal(false);
+      setSalidaDetalle(null);
+      // Refrescar donación si está abierta
+      if (viewingDonacion) {
+        const updated = await donacionesAPI.getById(viewingDonacion.id);
+        setViewingDonacion(updated.data);
+      }
+      cargarDonaciones();
+    } catch (err) {
+      console.error('Error registrando salida:', err);
+      toast.error(err.response?.data?.error || err.response?.data?.cantidad?.[0] || 'Error al registrar entrega');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Ver historial de salidas de una donación
+  const handleVerHistorialSalidas = async (donacion) => {
+    setLoadingSalidas(true);
+    setShowHistorialModal(true);
+    try {
+      const res = await salidasDonacionesAPI.getAll({ donacion: donacion.id, page_size: 100 });
+      setHistorialSalidas(res.data.results || res.data || []);
+    } catch (err) {
+      console.error('Error cargando historial:', err);
+      toast.error('Error al cargar historial de entregas');
+    } finally {
+      setLoadingSalidas(false);
+    }
+  };
+
   // Formatear fecha
   const formatFecha = (fecha) => {
     if (!fecha) return '-';
@@ -645,6 +730,17 @@ const Donaciones = () => {
                             <FaEye />
                           </button>
 
+                          {/* Ver historial de entregas (solo procesadas) */}
+                          {donacion.estado === 'procesada' && (
+                            <button
+                              onClick={() => handleVerHistorialSalidas(donacion)}
+                              className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                              title="Ver historial de entregas"
+                            >
+                              <FaHistory />
+                            </button>
+                          )}
+
                           {/* Editar (solo pendientes) */}
                           {puede.editar && donacion.estado === 'pendiente' && (
                             <button
@@ -678,7 +774,7 @@ const Donaciones = () => {
                               onClick={() => setConfirmProcesar(donacion)}
                               disabled={actionLoading === donacion.id}
                               className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
-                              title="Procesar donación (crear lotes y movimientos)"
+                              title="Procesar donación (activar stock)"
                             >
                               {actionLoading === donacion.id ? (
                                 <FaSpinner className="animate-spin" />
@@ -1096,7 +1192,12 @@ const Donaciones = () => {
 
               {/* Productos */}
               <div>
-                <h3 className="font-semibold text-gray-700 mb-3">Productos Donados</h3>
+                <h3 className="font-semibold text-gray-700 mb-3">
+                  Productos Donados 
+                  {viewingDonacion.estado === 'procesada' && (
+                    <span className="text-sm font-normal text-gray-500 ml-2">(Stock disponible para entregas)</span>
+                  )}
+                </h3>
                 {viewingDonacion.detalles && viewingDonacion.detalles.length > 0 ? (
                   <div className="border rounded-lg overflow-hidden">
                     <table className="w-full text-sm">
@@ -1104,22 +1205,50 @@ const Donaciones = () => {
                         <tr>
                           <th className="px-4 py-2 text-left font-medium text-gray-600">Producto</th>
                           <th className="px-4 py-2 text-left font-medium text-gray-600">Lote</th>
-                          <th className="px-4 py-2 text-center font-medium text-gray-600">Cantidad</th>
+                          <th className="px-4 py-2 text-center font-medium text-gray-600">Recibido</th>
+                          {viewingDonacion.estado === 'procesada' && (
+                            <th className="px-4 py-2 text-center font-medium text-gray-600">Disponible</th>
+                          )}
                           <th className="px-4 py-2 text-left font-medium text-gray-600">Caducidad</th>
                           <th className="px-4 py-2 text-left font-medium text-gray-600">Estado</th>
+                          {viewingDonacion.estado === 'procesada' && puede.procesar && (
+                            <th className="px-4 py-2 text-center font-medium text-gray-600">Entregar</th>
+                          )}
                         </tr>
                       </thead>
                       <tbody className="divide-y">
                         {viewingDonacion.detalles.map((d, idx) => (
                           <tr key={d.id || idx}>
                             <td className="px-4 py-2">
-                              <span className="font-medium">{d.producto_clave}</span>
+                              <span className="font-medium">{d.producto_codigo || d.producto_clave}</span>
                               <span className="block text-xs text-gray-500">{d.producto_nombre}</span>
                             </td>
                             <td className="px-4 py-2 text-gray-600">{d.numero_lote || '-'}</td>
                             <td className="px-4 py-2 text-center font-medium">{d.cantidad}</td>
+                            {viewingDonacion.estado === 'procesada' && (
+                              <td className="px-4 py-2 text-center">
+                                <span className={`font-medium ${d.cantidad_disponible > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                  {d.cantidad_disponible || 0}
+                                </span>
+                              </td>
+                            )}
                             <td className="px-4 py-2 text-gray-600">{formatFecha(d.fecha_caducidad)}</td>
                             <td className="px-4 py-2 capitalize text-gray-600">{d.estado_producto}</td>
+                            {viewingDonacion.estado === 'procesada' && puede.procesar && (
+                              <td className="px-4 py-2 text-center">
+                                {d.cantidad_disponible > 0 ? (
+                                  <button
+                                    onClick={() => handleAbrirSalida(d, viewingDonacion)}
+                                    className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                    title="Registrar entrega"
+                                  >
+                                    <FaHandHoldingMedical />
+                                  </button>
+                                ) : (
+                                  <span className="text-gray-400 text-xs">Agotado</span>
+                                )}
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>
@@ -1127,7 +1256,7 @@ const Donaciones = () => {
                   </div>
                 ) : (
                   <p className="text-gray-500">Sin productos registrados</p>
-                )}
+                )}}
               </div>
 
               {/* Notas */}
@@ -1185,7 +1314,7 @@ const Donaciones = () => {
       {confirmProcesar && (
         <ConfirmModal
           title="Procesar Donación"
-          message={`¿Estás seguro de procesar la donación "${confirmProcesar.numero || 'DON-' + confirmProcesar.id}"? Esto creará los movimientos de entrada y los lotes correspondientes.`}
+          message={`¿Estás seguro de procesar la donación "${confirmProcesar.numero || 'DON-' + confirmProcesar.id}"? Esto activará el stock disponible en el almacén de donaciones para registrar entregas.`}
           confirmText="Procesar"
           cancelText="Cancelar"
           confirmColor="green"
@@ -1205,6 +1334,216 @@ const Donaciones = () => {
           onConfirm={() => handleRechazar(confirmRechazar.id, 'Rechazada por el usuario')}
           onCancel={() => setConfirmRechazar(null)}
         />
+      )}
+
+      {/* Modal de Registrar Salida/Entrega */}
+      {showSalidaModal && salidaDetalle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            {/* Header */}
+            <div
+              className="px-6 py-4 border-b flex items-center justify-between"
+              style={{ backgroundColor: COLORS.primary }}
+            >
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <FaHandHoldingMedical /> Registrar Entrega
+              </h2>
+              <button
+                onClick={() => {
+                  setShowSalidaModal(false);
+                  setSalidaDetalle(null);
+                }}
+                className="text-white/80 hover:text-white transition-colors"
+              >
+                <FaTimes size={20} />
+              </button>
+            </div>
+
+            {/* Contenido */}
+            <div className="p-6">
+              {/* Info del producto */}
+              <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                <p className="text-sm text-gray-500">Producto</p>
+                <p className="font-semibold">{salidaDetalle.producto_nombre}</p>
+                <p className="text-sm text-gray-600">
+                  Donación: {salidaDetalle.donacion_numero} | Lote: {salidaDetalle.numero_lote || 'N/A'}
+                </p>
+                <p className="text-sm mt-2">
+                  Stock disponible: <span className="font-bold text-green-600">{salidaDetalle.cantidad_disponible}</span>
+                </p>
+              </div>
+
+              {/* Formulario */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Cantidad a entregar *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={salidaDetalle.cantidad_disponible}
+                    value={salidaForm.cantidad}
+                    onChange={(e) => setSalidaForm({ ...salidaForm, cantidad: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Destinatario *
+                  </label>
+                  <input
+                    type="text"
+                    value={salidaForm.destinatario}
+                    onChange={(e) => setSalidaForm({ ...salidaForm, destinatario: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                    placeholder="Nombre del paciente/interno o área"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Motivo
+                  </label>
+                  <input
+                    type="text"
+                    value={salidaForm.motivo}
+                    onChange={(e) => setSalidaForm({ ...salidaForm, motivo: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                    placeholder="Motivo de la entrega"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Notas
+                  </label>
+                  <textarea
+                    value={salidaForm.notas}
+                    onChange={(e) => setSalidaForm({ ...salidaForm, notas: e.target.value })}
+                    rows={2}
+                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                    placeholder="Observaciones adicionales..."
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowSalidaModal(false);
+                  setSalidaDetalle(null);
+                }}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleRegistrarSalida}
+                disabled={actionLoading === 'salida'}
+                className="px-6 py-2 rounded-lg text-white transition-colors disabled:opacity-50 flex items-center gap-2"
+                style={{ backgroundColor: COLORS.primary }}
+              >
+                {actionLoading === 'salida' ? (
+                  <>
+                    <FaSpinner className="animate-spin" /> Registrando...
+                  </>
+                ) : (
+                  <>
+                    <FaHandHoldingMedical /> Registrar Entrega
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Historial de Entregas */}
+      {showHistorialModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div
+              className="px-6 py-4 border-b flex items-center justify-between"
+              style={{ backgroundColor: COLORS.primary }}
+            >
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <FaHistory /> Historial de Entregas
+              </h2>
+              <button
+                onClick={() => {
+                  setShowHistorialModal(false);
+                  setHistorialSalidas([]);
+                }}
+                className="text-white/80 hover:text-white transition-colors"
+              >
+                <FaTimes size={20} />
+              </button>
+            </div>
+
+            {/* Contenido */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {loadingSalidas ? (
+                <div className="flex items-center justify-center py-12">
+                  <FaSpinner className="animate-spin text-3xl text-gray-400" />
+                </div>
+              ) : historialSalidas.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <FaHistory className="mx-auto text-4xl mb-3 opacity-30" />
+                  <p>No hay entregas registradas para esta donación</p>
+                </div>
+              ) : (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-medium text-gray-600">Fecha</th>
+                        <th className="px-4 py-3 text-left font-medium text-gray-600">Producto</th>
+                        <th className="px-4 py-3 text-center font-medium text-gray-600">Cantidad</th>
+                        <th className="px-4 py-3 text-left font-medium text-gray-600">Destinatario</th>
+                        <th className="px-4 py-3 text-left font-medium text-gray-600">Entregado por</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {historialSalidas.map((salida) => (
+                        <tr key={salida.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-gray-600">
+                            {new Date(salida.fecha_entrega).toLocaleString('es-MX', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </td>
+                          <td className="px-4 py-3 font-medium">{salida.producto_nombre || '-'}</td>
+                          <td className="px-4 py-3 text-center font-bold text-primary">{salida.cantidad}</td>
+                          <td className="px-4 py-3">{salida.destinatario}</td>
+                          <td className="px-4 py-3 text-gray-600">{salida.entregado_por_nombre || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end">
+              <button
+                onClick={() => {
+                  setShowHistorialModal(false);
+                  setHistorialSalidas([]);
+                }}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

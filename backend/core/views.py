@@ -2383,7 +2383,9 @@ class DonacionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='procesar')
     def procesar(self, request, pk=None):
         """
-        Procesar una donacion - crear lotes y movimientos de entrada.
+        Procesar una donacion - activar stock disponible en almacen de donaciones.
+        Las donaciones funcionan como ALMACEN SEPARADO, no afectan inventario principal.
+        Las salidas se registran mediante SalidaDonacion.
         """
         donacion = self.get_object()
         
@@ -2395,60 +2397,13 @@ class DonacionViewSet(viewsets.ModelViewSet):
         
         try:
             with transaction.atomic():
-                from core.models import Lote, Movimiento
-                
+                # Actualizar cantidad_disponible de cada detalle
                 for detalle in donacion.detalles.all():
-                    # Crear o actualizar lote
-                    if detalle.lote:
-                        # Si ya tiene lote asignado, actualizar cantidad
-                        lote = detalle.lote
-                        lote.cantidad_actual += detalle.cantidad
-                        lote.save()
-                    elif detalle.numero_lote:
-                        # Buscar lote existente o crear nuevo
-                        lote, created = Lote.objects.get_or_create(
-                            numero_lote=detalle.numero_lote,
-                            producto=detalle.producto,
-                            defaults={
-                                'cantidad_inicial': detalle.cantidad,
-                                'cantidad_actual': detalle.cantidad,
-                                'fecha_caducidad': detalle.fecha_caducidad or (date.today() + timedelta(days=365)),
-                                'centro': donacion.centro_destino,
-                                'activo': True,
-                            }
-                        )
-                        if not created:
-                            lote.cantidad_actual += detalle.cantidad
-                            lote.save()
-                        detalle.lote = lote
-                        detalle.save()
-                    else:
-                        # Crear lote nuevo
-                        import random
-                        lote = Lote.objects.create(
-                            numero_lote=f"DON-{donacion.numero}-{random.randint(1000, 9999)}",
-                            producto=detalle.producto,
-                            cantidad_inicial=detalle.cantidad,
-                            cantidad_actual=detalle.cantidad,
-                            fecha_caducidad=detalle.fecha_caducidad or (date.today() + timedelta(days=365)),
-                            centro=donacion.centro_destino,
-                            activo=True,
-                        )
-                        detalle.lote = lote
-                        detalle.save()
-                    
-                    # Crear movimiento de entrada por donacion
-                    Movimiento.objects.create(
-                        tipo='donacion',
-                        producto=detalle.producto,
-                        lote=lote,
-                        cantidad=detalle.cantidad,
-                        centro_destino=donacion.centro_destino,
-                        usuario=request.user,
-                        motivo=f"Donacion {donacion.numero} de {donacion.donante_nombre}",
-                        referencia=donacion.numero,
-                    )
+                    # Asegurar que cantidad_disponible = cantidad recibida
+                    detalle.cantidad_disponible = detalle.cantidad
+                    detalle.save()
                 
+                # Cambiar estado a procesada
                 donacion.estado = 'procesada'
                 donacion.save()
                 
@@ -2456,7 +2411,7 @@ class DonacionViewSet(viewsets.ModelViewSet):
                 
                 from core.serializers import DonacionSerializer
                 return Response({
-                    'mensaje': 'Donacion procesada correctamente',
+                    'mensaje': 'Donacion procesada correctamente. Stock disponible en almacen de donaciones.',
                     'donacion': DonacionSerializer(donacion).data
                 })
         
