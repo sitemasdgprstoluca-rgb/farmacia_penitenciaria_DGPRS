@@ -655,6 +655,26 @@ class LoteSerializer(serializers.ModelSerializer):
             )
         return value
     
+    def validate_numero_lote(self, value):
+        """Número de lote es requerido y no puede estar vacío."""
+        if not value or value.strip() == '':
+            raise serializers.ValidationError('El número de lote es requerido')
+        return value.strip()
+    
+    def validate_cantidad_inicial(self, value):
+        """Cantidad inicial debe ser un número positivo."""
+        if value is None:
+            raise serializers.ValidationError('La cantidad inicial es requerida')
+        if value < 0:
+            raise serializers.ValidationError('La cantidad inicial no puede ser negativa')
+        return value
+    
+    def validate_precio_unitario(self, value):
+        """Precio unitario debe ser no negativo."""
+        if value is not None and value < 0:
+            raise serializers.ValidationError('El precio unitario no puede ser negativo')
+        return value
+    
     def get_dias_para_caducar(self, obj):
         if obj.fecha_caducidad:
             delta = obj.fecha_caducidad - timezone.now().date()
