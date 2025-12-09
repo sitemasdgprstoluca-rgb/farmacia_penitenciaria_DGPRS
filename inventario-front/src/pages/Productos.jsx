@@ -1233,6 +1233,26 @@ const Productos = () => {
 
   };
 
+  // Handler para descargar plantilla de importación
+  const handleDescargarPlantilla = async () => {
+    try {
+      const response = await productosAPI.plantilla();
+      const blob = new Blob([response.data]);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'Plantilla_Productos.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Plantilla descargada correctamente');
+    } catch (err) {
+      console.error('Error al descargar plantilla', err);
+      toast.error('No se pudo descargar la plantilla');
+    }
+  };
+
   // Constantes para validación de importación
   const IMPORT_MAX_SIZE_MB = 10;
   const IMPORT_ALLOWED_EXTENSIONS = ['.xlsx', '.xls'];
@@ -1718,6 +1738,19 @@ const Productos = () => {
                 )}
                 {importLoading ? 'Importando...' : 'Importar'}
               </ProtectedButton>
+              
+              {/* Botón de descarga de plantilla */}
+              <ProtectedButton
+                permission="importarProductos"
+                type="button"
+                onClick={handleDescargarPlantilla}
+                className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-theme-primary bg-white/90 hover:bg-white transition"
+                title="Descargar plantilla Excel para importación"
+              >
+                <FaDownload />
+                Plantilla
+              </ProtectedButton>
+              
               <input
                 ref={fileInputRef}
                 type="file"

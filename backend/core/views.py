@@ -822,6 +822,85 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @action(detail=False, methods=['get'], url_path='plantilla')
+    def plantilla_usuarios(self, request):
+        """
+        Descarga plantilla Excel para importación de usuarios.
+        
+        Columnas:
+        - Username (REQUERIDO, único) - Nombre de usuario (3-50 chars, minúsculas)
+        - Email (opcional) - Correo electrónico
+        - Nombre (opcional) - Nombre del usuario
+        - Apellido (opcional) - Apellido del usuario
+        - Rol (opcional) - admin_sistema, farmacia, centro, vista (default: centro)
+        - Password (opcional) - Contraseña (mín 8 chars, si vacío se genera temporal)
+        - Centro Clave (opcional) - Clave del centro a asignar
+        
+        SEGURIDAD: Los usuarios creados sin contraseña requieren cambio en primer login.
+        """
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill
+        
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Usuarios'
+        
+        # Headers que coinciden con importar_excel
+        headers = [
+            'Username', 'Email', 'Nombre', 'Apellido', 
+            'Rol', 'Password', 'Centro Clave'
+        ]
+        ws.append(headers)
+        
+        # Filas de ejemplo con formato esperado
+        ws.append([
+            'juan.perez', 'juan.perez@ejemplo.gob.mx', 'Juan', 'Pérez',
+            'centro', 'Temporal123!', 'CP01'
+        ])
+        ws.append([
+            'maria.garcia', 'maria.garcia@ejemplo.gob.mx', 'María', 'García',
+            'farmacia', 'Temporal123!', ''
+        ])
+        ws.append([
+            'usuario.vista', 'vista@ejemplo.gob.mx', 'Usuario', 'Vista',
+            'vista', '', ''
+        ])
+        
+        # Aplicar formato a headers
+        header_font = Font(bold=True, color='FFFFFF')
+        header_fill = PatternFill(start_color='9F2241', end_color='9F2241', fill_type='solid')
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col)
+            cell.font = header_font
+            cell.fill = header_fill
+        
+        # Ajustar ancho de columnas
+        column_widths = {
+            'A': 20,  # Username
+            'B': 30,  # Email
+            'C': 15,  # Nombre
+            'D': 15,  # Apellido
+            'E': 15,  # Rol
+            'F': 15,  # Password
+            'G': 15,  # Centro Clave
+        }
+        for col_letter, width in column_widths.items():
+            ws.column_dimensions[col_letter].width = width
+        
+        # Agregar nota sobre roles válidos
+        ws.append([])
+        ws.append(['Roles válidos: admin_sistema, admin_farmacia, farmacia, centro, vista, usuario_normal, usuario_vista'])
+        ws.merge_cells(f'A{ws.max_row}:G{ws.max_row}')
+        note_cell = ws.cell(row=ws.max_row, column=1)
+        note_cell.font = Font(italic=True, color='666666')
+        
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename=Plantilla_Usuarios.xlsx'
+        wb.save(response)
+        return response
+
 
 # NOTA: ProductoViewSet, LoteViewSet, RequisicionViewSet y CentroViewSet
 # están en inventario/views.py para evitar duplicación.

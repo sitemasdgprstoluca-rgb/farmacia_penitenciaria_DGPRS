@@ -554,6 +554,26 @@ function Usuarios() {
     }
   };
 
+  // Handler para descargar plantilla de importación
+  const handleDescargarPlantilla = async () => {
+    try {
+      const response = await usuariosAPI.plantilla();
+      const blob = new Blob([response.data]);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'Plantilla_Usuarios.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Plantilla descargada correctamente');
+    } catch (err) {
+      console.error('Error al descargar plantilla', err);
+      toast.error('No se pudo descargar la plantilla');
+    }
+  };
+
   // Importar usuarios desde Excel
   const handleImportar = async (e) => {
     const file = e.target.files?.[0];
@@ -671,6 +691,17 @@ function Usuarios() {
               </>
             )}
           </button>
+          
+          {/* Botón de descarga de plantilla */}
+          <button
+            type="button"
+            onClick={handleDescargarPlantilla}
+            className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-theme-primary bg-white/90 hover:bg-white transition"
+            title="Descargar plantilla Excel para importación"
+          >
+            <FaDownload /> Plantilla
+          </button>
+          
           <input
             ref={fileInputRef}
             type="file"

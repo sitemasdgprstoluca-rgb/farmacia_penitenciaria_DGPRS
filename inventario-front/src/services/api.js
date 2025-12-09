@@ -315,6 +315,7 @@ export const productosAPI = {
   importar: (formData) => apiClient.post('/productos/importar-excel/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
+  plantilla: () => apiClient.get('/productos/plantilla/', { responseType: 'blob' }),
   auditoria: (id) => apiClient.get(`/productos/${id}/auditoria/`),
 };
 
@@ -340,6 +341,7 @@ export const lotesAPI = {
   importar: (formData) => apiClient.post('/lotes/importar-excel/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
+  plantilla: () => apiClient.get('/lotes/plantilla/', { responseType: 'blob' }),
 };
 
 // Centros
@@ -373,6 +375,7 @@ export const usuariosAPI = {
   importar: (formData) => apiClient.post('/usuarios/importar-excel/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
+  plantilla: () => apiClient.get('/usuarios/plantilla/', { responseType: 'blob' }),
 };
 
 // Requisiciones -  COMPLETO CON FLUJO

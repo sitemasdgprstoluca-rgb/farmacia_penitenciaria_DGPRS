@@ -1064,6 +1064,88 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 'sugerencia': 'Verifique que el archivo tenga el formato correcto: Clave, Nombre, Unidad, Stock Minimo, Categoria, Sustancia Activa, Presentacion, Concentracion, Via Admin, Requiere Receta, Controlado, Estado'
             }, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=False, methods=['get'], url_path='plantilla')
+    def plantilla_productos(self, request):
+        """
+        Descarga plantilla Excel para importación de productos.
+        
+        Columnas:
+        - Clave (REQUERIDO, único) - Código identificador del producto
+        - Nombre (REQUERIDO) - Nombre del medicamento o insumo
+        - Unidad (opcional) - Unidad de medida (pieza, caja, frasco, etc.)
+        - Stock Minimo (opcional, default: 10) - Cantidad mínima de alerta
+        - Categoria (opcional) - medicamento, material_curacion, insumo_medico
+        - Sustancia Activa (opcional) - Principio activo
+        - Presentacion (opcional) - Forma farmacéutica
+        - Concentracion (opcional) - Dosis del principio activo
+        - Via Admin (opcional) - Vía de administración
+        - Requiere Receta (opcional) - Sí/No
+        - Controlado (opcional) - Sí/No
+        - Estado (opcional, default: Activo) - Activo/Inactivo
+        """
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Productos'
+        
+        # Headers que coinciden con importar_excel
+        headers = [
+            'Clave', 'Nombre', 'Unidad', 'Stock Minimo', 'Categoria',
+            'Sustancia Activa', 'Presentacion', 'Concentracion', 
+            'Via Admin', 'Requiere Receta', 'Controlado', 'Estado'
+        ]
+        ws.append(headers)
+        
+        # Filas de ejemplo
+        ws.append([
+            'MED001', 'Paracetamol 500mg', 'Caja', 50, 'medicamento',
+            'Paracetamol', 'Tableta', '500 mg',
+            'Oral', 'No', 'No', 'Activo'
+        ])
+        ws.append([
+            'MED002', 'Ibuprofeno 400mg', 'Frasco', 30, 'medicamento',
+            'Ibuprofeno', 'Cápsula', '400 mg',
+            'Oral', 'No', 'No', 'Activo'
+        ])
+        ws.append([
+            'INS001', 'Jeringa 10ml', 'Pieza', 100, 'material_curacion',
+            '', '', '',
+            '', 'No', 'No', 'Activo'
+        ])
+        
+        # Aplicar formato a headers
+        from openpyxl.styles import Font, PatternFill
+        header_font = Font(bold=True, color='FFFFFF')
+        header_fill = PatternFill(start_color='9F2241', end_color='9F2241', fill_type='solid')
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col)
+            cell.font = header_font
+            cell.fill = header_fill
+        
+        # Ajustar ancho de columnas
+        column_widths = {
+            'A': 12,  # Clave
+            'B': 35,  # Nombre
+            'C': 12,  # Unidad
+            'D': 14,  # Stock Minimo
+            'E': 18,  # Categoria
+            'F': 20,  # Sustancia Activa
+            'G': 15,  # Presentacion
+            'H': 15,  # Concentracion
+            'I': 12,  # Via Admin
+            'J': 15,  # Requiere Receta
+            'K': 12,  # Controlado
+            'L': 10,  # Estado
+        }
+        for col_letter, width in column_widths.items():
+            ws.column_dimensions[col_letter].width = width
+        
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename=Plantilla_Productos.xlsx'
+        wb.save(response)
+        return response
+
 
 class CentroViewSet(viewsets.ModelViewSet):
     """
@@ -2175,6 +2257,90 @@ class LoteViewSet(viewsets.ModelViewSet):
         except Exception as exc:
             # traceback removido por seguridad (ISS-008)
             return Response({'error': 'Error al procesar archivo', 'mensaje': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'], url_path='plantilla')
+    def plantilla_lotes(self, request):
+        """
+        Descarga plantilla Excel para importación de lotes.
+        
+        Columnas (en orden):
+        1. Producto (REQUERIDO) - Clave o nombre del producto
+        2. Numero Lote (REQUERIDO) - Identificador único del lote
+        3. Fecha Caducidad (REQUERIDO, YYYY-MM-DD)
+        4. Cantidad Inicial (REQUERIDO) - Cantidad recibida
+        5. Cantidad Actual (opcional, default = Cantidad Inicial)
+        6. Fecha Fabricacion (opcional, YYYY-MM-DD)
+        7. Precio Unitario (opcional, default = 0)
+        8. Numero Contrato (opcional)
+        9. Marca (opcional)
+        10. Ubicacion (opcional)
+        11. Centro ID (opcional) - ID numérico del centro
+        """
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Lotes'
+        
+        # Headers que coinciden con importar_excel
+        headers = [
+            'Producto', 'Numero Lote', 'Fecha Caducidad', 'Cantidad Inicial',
+            'Cantidad Actual', 'Fecha Fabricacion', 'Precio Unitario',
+            'Numero Contrato', 'Marca', 'Ubicacion', 'Centro ID'
+        ]
+        ws.append(headers)
+        
+        # Filas de ejemplo con formato esperado
+        from datetime import date, timedelta
+        fecha_cad_ejemplo = (date.today() + timedelta(days=365)).strftime('%Y-%m-%d')
+        fecha_fab_ejemplo = date.today().strftime('%Y-%m-%d')
+        
+        ws.append([
+            'MED001', 'LOTE-2025-001', fecha_cad_ejemplo, 100,
+            100, fecha_fab_ejemplo, 25.50,
+            'CONT-2025-001', 'Laboratorio Nacional', 'Almacén A', ''
+        ])
+        ws.append([
+            'MED002', 'LOTE-2025-002', fecha_cad_ejemplo, 50,
+            50, fecha_fab_ejemplo, 18.75,
+            'CONT-2025-002', 'Farmacéutica SA', 'Almacén B', ''
+        ])
+        ws.append([
+            'INS001', 'LOTE-2025-003', fecha_cad_ejemplo, 200,
+            200, '', 5.00,
+            '', '', '', ''
+        ])
+        
+        # Aplicar formato a headers
+        from openpyxl.styles import Font, PatternFill
+        header_font = Font(bold=True, color='FFFFFF')
+        header_fill = PatternFill(start_color='9F2241', end_color='9F2241', fill_type='solid')
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col)
+            cell.font = header_font
+            cell.fill = header_fill
+        
+        # Ajustar ancho de columnas
+        column_widths = {
+            'A': 15,  # Producto
+            'B': 18,  # Numero Lote
+            'C': 16,  # Fecha Caducidad
+            'D': 16,  # Cantidad Inicial
+            'E': 16,  # Cantidad Actual
+            'F': 18,  # Fecha Fabricacion
+            'G': 15,  # Precio Unitario
+            'H': 18,  # Numero Contrato
+            'I': 20,  # Marca
+            'J': 15,  # Ubicacion
+            'K': 12,  # Centro ID
+        }
+        for col_letter, width in column_widths.items():
+            ws.column_dimensions[col_letter].width = width
+        
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename=Plantilla_Lotes.xlsx'
+        wb.save(response)
+        return response
     
     @action(detail=False, methods=['get'])
     def por_vencer(self, request):

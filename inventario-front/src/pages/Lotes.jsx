@@ -559,6 +559,26 @@ const Lotes = () => {
     }
   };
 
+  // Handler para descargar plantilla de importación
+  const handleDescargarPlantilla = async () => {
+    try {
+      const response = await lotesAPI.plantilla();
+      const blob = new Blob([response.data]);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'Plantilla_Lotes.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Plantilla descargada correctamente');
+    } catch (err) {
+      console.error('Error al descargar plantilla', err);
+      toast.error('No se pudo descargar la plantilla');
+    }
+  };
+
 const handleImportar = async (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -1366,6 +1386,14 @@ const handleImportar = async (e) => {
                 <p className="text-xs text-amber-600 mt-2">
                   Nota: Las columnas deben estar en el orden indicado. El sistema buscará el producto por clave o nombre.
                 </p>
+                {/* Botón de descarga de plantilla */}
+                <button
+                  onClick={handleDescargarPlantilla}
+                  className="mt-3 flex items-center gap-2 text-sm text-theme-primary hover:text-theme-secondary transition"
+                >
+                  <FaDownload />
+                  Descargar plantilla de ejemplo
+                </button>
               </div>
               
               <div className="mb-4">
