@@ -44,6 +44,7 @@ const COLORES_ESTADO_REQUISICION = {
   // Estados autorizados/en proceso (cyan/teal)
   'AUTORIZADA': '#06B6D4',
   'EN_SURTIDO': '#14B8A6',
+  'PARCIAL': '#A855F7',  // Púrpura para parcialmente surtido
   
   // Estados completados positivos (verde)
   'SURTIDA': '#22C55E',
@@ -82,7 +83,7 @@ const formatearEstado = (estado) => {
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { getRolPrincipal, permisos, user } = usePermissions();
+  const { getRolPrincipal, permisos, user, loading: cargandoPermisos } = usePermissions();
   const rolPrincipal = getRolPrincipal();
   
   // Detectar tipo de usuario para control de acceso
@@ -231,7 +232,20 @@ const Dashboard = () => {
     }
   }, [esVista, esCentroRestringido, centroUsuario]);
 
+  // Sincronizar selectedCentro cuando el usuario se carga correctamente
+  // Esto corrige el estado inicial que pudo haberse calculado con user=null
   useEffect(() => {
+    // Solo sincronizar si los permisos ya cargaron y hay un centro de usuario
+    if (!cargandoPermisos && esCentroRestringido && centroUsuario) {
+      setSelectedCentro(centroUsuario);
+    }
+  }, [cargandoPermisos, esCentroRestringido, centroUsuario]);
+
+  useEffect(() => {
+    // No cargar mientras se están cargando los permisos
+    if (cargandoPermisos) {
+      return;
+    }
     // No cargar si no tiene permiso de dashboard o no hay token
     if (!permisos?.verDashboard) {
       setLoading(false);
@@ -243,7 +257,7 @@ const Dashboard = () => {
       return;
     }
     loadDashboard(selectedCentro);
-  }, [loadDashboard, selectedCentro, permisos?.verDashboard]);
+  }, [loadDashboard, selectedCentro, permisos?.verDashboard, cargandoPermisos]);
 
   const handleCentroChange = (centroId, nombreCentro = '') => {
     // Los usuarios restringidos a centro no pueden cambiar su centro
@@ -277,6 +291,18 @@ const Dashboard = () => {
       </g>
     );
   };
+
+  // Mostrar loading mientras se cargan los permisos
+  if (cargandoPermisos) {
+    return (
+      <div className="dashboard-container">
+        <div className="loading-state">
+          <div className="spinner" />
+          <p>Cargando permisos...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!permisos?.verDashboard) {
     return (
