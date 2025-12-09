@@ -402,11 +402,15 @@ class UserSerializer(serializers.ModelSerializer):
             'rol', 'centro', 'centro_id', 'centro_nombre', 'password', 
             'adscripcion', 'permisos', 'is_active', 'is_superuser',
             'date_joined', 'last_login',
-            # Permisos personalizados
+            # Permisos personalizados por módulo
             'perm_dashboard', 'perm_productos', 'perm_lotes',
             'perm_requisiciones', 'perm_centros', 'perm_usuarios',
             'perm_reportes', 'perm_trazabilidad', 'perm_auditoria',
-            'perm_notificaciones', 'perm_movimientos', 'perm_donaciones'
+            'perm_notificaciones', 'perm_movimientos', 'perm_donaciones',
+            # FLUJO V2: Permisos granulares del flujo de requisiciones
+            'perm_crear_requisicion', 'perm_autorizar_admin',
+            'perm_autorizar_director', 'perm_recibir_farmacia',
+            'perm_autorizar_farmacia', 'perm_surtir', 'perm_confirmar_entrega'
         ]
         read_only_fields = ['date_joined', 'last_login']
         extra_kwargs = {
@@ -800,7 +804,7 @@ class RequisicionSerializer(serializers.ModelSerializer):
     centro_nombre = serializers.CharField(source='centro_destino.nombre', read_only=True, allow_null=True)  # Alias de centro_destino_nombre
     usuario_solicita_nombre = serializers.SerializerMethodField()  # Alias de solicitante_nombre
     observaciones = serializers.CharField(source='notas', read_only=True, allow_null=True)  # Alias de notas
-    motivo_rechazo = serializers.CharField(source='notas', read_only=True, allow_null=True)  # Alias de notas
+    # motivo_rechazo es ahora un campo real en la BD (FLUJO V2), no un alias
     total_items = serializers.SerializerMethodField()  # Alias de total_productos
     
     # Campo 'centro' para compatibilidad con frontend (alias de centro_destino)
