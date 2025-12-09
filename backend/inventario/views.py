@@ -1010,12 +1010,18 @@ class ProductoViewSet(viewsets.ModelViewSet):
                                 return False
                             return str(val).lower() in ['sí', 'si', 'true', '1', 'yes', 's', 'x']
 
+                        # Validar y normalizar categoría
+                        CATEGORIAS_VALIDAS = ['medicamento', 'material_curacion', 'insumo', 'equipo', 'otro']
+                        categoria_limpia = str(categoria).strip().lower() if categoria else 'medicamento'
+                        if categoria_limpia not in CATEGORIAS_VALIDAS:
+                            categoria_limpia = 'medicamento'  # Default si no es válida
+
                         # Limpiar y preparar datos alineados con schema real
                         datos = {
                             'nombre': str(nombre).strip()[:500],
                             'unidad_medida': unidad_limpia,
                             'stock_minimo': stock_min,
-                            'categoria': str(categoria).strip()[:50] if categoria else 'medicamento',
+                            'categoria': categoria_limpia,
                             'sustancia_activa': str(sustancia_activa).strip()[:200] if sustancia_activa else '',
                             'presentacion': str(presentacion).strip()[:200] if presentacion else '',
                             'concentracion': str(concentracion).strip()[:100] if concentracion else '',
@@ -1026,7 +1032,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                         }
                         
                         # Crear o actualizar producto usando clave como identificador
-                        clave_limpia = str(clave).strip()[:50]
+                        clave_limpia = str(clave).strip()[:50].upper()  # También normalizar a mayúsculas
                         
                         producto, created = Producto.objects.update_or_create(
                             clave=clave_limpia,

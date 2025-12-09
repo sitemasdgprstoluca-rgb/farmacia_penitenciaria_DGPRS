@@ -449,7 +449,7 @@ class Producto(models.Model):
     clave = models.CharField(max_length=50, unique=True, db_column='clave')
     nombre = models.CharField(max_length=500, db_column='nombre')
     descripcion = models.TextField(blank=True, null=True)
-    unidad_medida = models.CharField(max_length=20, default='pieza')
+    unidad_medida = models.CharField(max_length=20, default='PIEZA')
     categoria = models.CharField(max_length=50, default='medicamento')
     stock_minimo = models.IntegerField(default=0)
     stock_actual = models.IntegerField(default=0)
