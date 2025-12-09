@@ -80,7 +80,7 @@ function Usuarios() {
     rol: 'centro',
     centro: '',
     is_active: true,
-    // Permisos personalizados (null = usar permisos del rol)
+    // Permisos personalizados por módulo (null = usar permisos del rol)
     perm_dashboard: null,
     perm_productos: null,
     perm_lotes: null,
@@ -93,6 +93,14 @@ function Usuarios() {
     perm_notificaciones: null,
     perm_movimientos: null,
     perm_donaciones: null,
+    // FLUJO V2: Permisos granulares del flujo de requisiciones
+    perm_crear_requisicion: null,
+    perm_autorizar_admin: null,
+    perm_autorizar_director: null,
+    perm_recibir_farmacia: null,
+    perm_autorizar_farmacia: null,
+    perm_surtir: null,
+    perm_confirmar_entrega: null,
   });
   
   const [passwordData, setPasswordData] = useState({
@@ -214,13 +222,25 @@ function Usuarios() {
         perm_notificaciones: usuario.perm_notificaciones,
         perm_movimientos: usuario.perm_movimientos,
         perm_donaciones: usuario.perm_donaciones,
+        // FLUJO V2: Permisos del flujo de requisiciones
+        perm_crear_requisicion: usuario.perm_crear_requisicion,
+        perm_autorizar_admin: usuario.perm_autorizar_admin,
+        perm_autorizar_director: usuario.perm_autorizar_director,
+        perm_recibir_farmacia: usuario.perm_recibir_farmacia,
+        perm_autorizar_farmacia: usuario.perm_autorizar_farmacia,
+        perm_surtir: usuario.perm_surtir,
+        perm_confirmar_entrega: usuario.perm_confirmar_entrega,
       });
       // Mostrar permisos avanzados si hay alguno personalizado
       const tienePermisosPersonalizados = [
         usuario.perm_dashboard, usuario.perm_productos, usuario.perm_lotes,
         usuario.perm_requisiciones, usuario.perm_centros, usuario.perm_usuarios,
         usuario.perm_reportes, usuario.perm_trazabilidad, usuario.perm_auditoria,
-        usuario.perm_notificaciones, usuario.perm_movimientos, usuario.perm_donaciones
+        usuario.perm_notificaciones, usuario.perm_movimientos, usuario.perm_donaciones,
+        // FLUJO V2
+        usuario.perm_crear_requisicion, usuario.perm_autorizar_admin, usuario.perm_autorizar_director,
+        usuario.perm_recibir_farmacia, usuario.perm_autorizar_farmacia, usuario.perm_surtir,
+        usuario.perm_confirmar_entrega
       ].some(p => p !== null && p !== undefined);
       setShowPermisosAvanzados(tienePermisosPersonalizados);
     } else {
@@ -248,6 +268,14 @@ function Usuarios() {
         perm_notificaciones: null,
         perm_movimientos: null,
         perm_donaciones: null,
+        // FLUJO V2
+        perm_crear_requisicion: null,
+        perm_autorizar_admin: null,
+        perm_autorizar_director: null,
+        perm_recibir_farmacia: null,
+        perm_autorizar_farmacia: null,
+        perm_surtir: null,
+        perm_confirmar_entrega: null,
       });
       setShowPermisosAvanzados(false);
     }
@@ -280,6 +308,15 @@ function Usuarios() {
       perm_auditoria: null,
       perm_notificaciones: null,
       perm_movimientos: null,
+      perm_donaciones: null,
+      // FLUJO V2
+      perm_crear_requisicion: null,
+      perm_autorizar_admin: null,
+      perm_autorizar_director: null,
+      perm_recibir_farmacia: null,
+      perm_autorizar_farmacia: null,
+      perm_surtir: null,
+      perm_confirmar_entrega: null,
     });
   };
   
@@ -391,6 +428,14 @@ function Usuarios() {
         payload.perm_notificaciones = formData.perm_notificaciones;
         payload.perm_movimientos = formData.perm_movimientos;
         payload.perm_donaciones = formData.perm_donaciones;
+        // FLUJO V2: Permisos del flujo de requisiciones
+        payload.perm_crear_requisicion = formData.perm_crear_requisicion;
+        payload.perm_autorizar_admin = formData.perm_autorizar_admin;
+        payload.perm_autorizar_director = formData.perm_autorizar_director;
+        payload.perm_recibir_farmacia = formData.perm_recibir_farmacia;
+        payload.perm_autorizar_farmacia = formData.perm_autorizar_farmacia;
+        payload.perm_surtir = formData.perm_surtir;
+        payload.perm_confirmar_entrega = formData.perm_confirmar_entrega;
       }
       
       if (editingUsuario) {
@@ -1187,6 +1232,44 @@ function Usuarios() {
                         ))}
                       </div>
                       
+                      {/* FLUJO V2: Permisos del flujo de requisiciones */}
+                      <div className="border-t pt-4 mt-4">
+                        <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                          📋 Permisos de Flujo de Requisiciones
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {[
+                            { key: 'perm_crear_requisicion', label: 'Crear Requisición', icon: '✏️' },
+                            { key: 'perm_autorizar_admin', label: 'Autorizar (Admin Centro)', icon: '✅' },
+                            { key: 'perm_autorizar_director', label: 'Autorizar (Director)', icon: '👔' },
+                            { key: 'perm_recibir_farmacia', label: 'Recibir en Farmacia', icon: '📥' },
+                            { key: 'perm_autorizar_farmacia', label: 'Autorizar en Farmacia', icon: '💊' },
+                            { key: 'perm_surtir', label: 'Surtir Requisición', icon: '📤' },
+                            { key: 'perm_confirmar_entrega', label: 'Confirmar Entrega', icon: '✔️' },
+                          ].map(({ key, label, icon }) => (
+                            <div key={key} className="flex items-center gap-3 bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
+                              <span>{icon}</span>
+                              <span className="text-xs font-medium flex-1">{label}</span>
+                              <select
+                                value={formData[key] === null ? 'default' : formData[key] ? 'true' : 'false'}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setFormData({
+                                    ...formData,
+                                    [key]: val === 'default' ? null : val === 'true'
+                                  });
+                                }}
+                                className="text-xs border rounded px-2 py-1 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              >
+                                <option value="default">Por defecto</option>
+                                <option value="true"> Permitir</option>
+                                <option value="false"> Denegar</option>
+                              </select>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      
                       <div className="flex gap-2 mt-3">
                         <button
                           type="button"
@@ -1196,6 +1279,10 @@ function Usuarios() {
                             perm_requisiciones: null, perm_centros: null, perm_usuarios: null,
                             perm_reportes: null, perm_trazabilidad: null, perm_auditoria: null,
                             perm_notificaciones: null, perm_movimientos: null, perm_donaciones: null,
+                            // FLUJO V2
+                            perm_crear_requisicion: null, perm_autorizar_admin: null, perm_autorizar_director: null,
+                            perm_recibir_farmacia: null, perm_autorizar_farmacia: null, perm_surtir: null,
+                            perm_confirmar_entrega: null,
                           })}
                           className="text-xs px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded transition font-semibold"
                         >

@@ -40,6 +40,11 @@ const PERMISOS_POR_ROL = {
     cancelarRequisicion: true,
     confirmarRecepcion: true,  // Admin puede confirmar recepción de cualquier centro
     descargarHojaRecoleccion: true,
+    // FLUJO V2: Permisos jerárquicos
+    autorizarAdmin: true,       // Puede autorizar como Administrador de Centro
+    autorizarDirector: true,    // Puede autorizar como Director de Centro
+    recibirFarmacia: true,      // Puede recibir requisiciones en Farmacia
+    autorizarFarmacia: true,    // Puede autorizar en Farmacia
     // Permisos de gestión de usuarios
     gestionUsuarios: true,
     // Permisos granulares de lotes
@@ -77,16 +82,21 @@ const PERMISOS_POR_ROL = {
     esSuperusuario: false,
     configurarTema: true, // FARMACIA puede personalizar tema junto con Admin
     // Permisos granulares de requisiciones
-    crearRequisicion: true,
+    crearRequisicion: false,  // Farmacia no crea requisiciones
     editarRequisicion: true,
     eliminarRequisicion: true,
-    enviarRequisicion: true,
+    enviarRequisicion: false,
     autorizarRequisicion: true,
     rechazarRequisicion: true,
     surtirRequisicion: true,
     cancelarRequisicion: true,
-    confirmarRecepcion: true,  // Farmacia puede confirmar recepción
+    confirmarRecepcion: false,  // Farmacia no confirma recepción (lo hace el centro)
     descargarHojaRecoleccion: true,
+    // FLUJO V2: Permisos jerárquicos
+    autorizarAdmin: false,      // No es administrador de centro
+    autorizarDirector: false,   // No es director de centro
+    recibirFarmacia: true,      // Puede recibir requisiciones en Farmacia
+    autorizarFarmacia: true,    // Puede autorizar en Farmacia
     // Permisos de gestión de usuarios
     gestionUsuarios: true,
     // Permisos granulares de lotes
@@ -134,6 +144,11 @@ const PERMISOS_POR_ROL = {
     cancelarRequisicion: true,  // Puede cancelar las suyas
     confirmarRecepcion: true,  // Centro puede confirmar recepción de sus requisiciones
     descargarHojaRecoleccion: true,  // Puede descargar para recoger
+    // FLUJO V2: Permisos jerárquicos - Centro médico solo crea
+    autorizarAdmin: false,      // Médico no autoriza como admin
+    autorizarDirector: false,   // Médico no autoriza como director
+    recibirFarmacia: false,     // Centro no recibe en farmacia
+    autorizarFarmacia: false,   // Centro no autoriza en farmacia
     // Permisos de gestión de usuarios
     gestionUsuarios: false,
     // Permisos granulares de lotes - Centro NO puede crear/editar (solo ver)
@@ -182,6 +197,11 @@ const PERMISOS_POR_ROL = {
     cancelarRequisicion: false,
     confirmarRecepcion: false,  // Vista no puede confirmar recepción
     descargarHojaRecoleccion: true,  // Puede descargar para consulta
+    // FLUJO V2: Vista no tiene permisos de flujo
+    autorizarAdmin: false,
+    autorizarDirector: false,
+    recibirFarmacia: false,
+    autorizarFarmacia: false,
     // Permisos de gestión de usuarios
     gestionUsuarios: false,
     // Permisos granulares de lotes - Vista solo lectura
@@ -229,6 +249,11 @@ const PERMISOS_POR_ROL = {
     confirmarRecepcion: false,
     descargarHojaRecoleccion: false,
     gestionUsuarios: false,
+    // FLUJO V2: Sin permisos de flujo
+    autorizarAdmin: false,
+    autorizarDirector: false,
+    recibirFarmacia: false,
+    autorizarFarmacia: false,
     // Permisos granulares de lotes
     crearLote: false,
     editarLote: false,
@@ -260,7 +285,11 @@ const getRolFromUser = (userData, userGroups) => {
   if (isSuperuser || rol === 'admin' || rol === 'admin_sistema' || rol === 'superusuario') return 'ADMIN';
   // Farmacia: rol farmacia o grupo FARMACIA_ADMIN, o staff sin rol específico
   if (rol === 'farmacia' || rol === 'admin_farmacia' || groupNames.includes('FARMACIA_ADMIN')) return 'FARMACIA';
-  if (rol === 'centro' || rol === 'usuario_normal' || groupNames.includes('CENTRO_USER')) return 'CENTRO';
+  // FLUJO V2: Roles de Centro Penitenciario (médico, administrador, director)
+  // Todos mapean a CENTRO porque comparten la misma vista de módulos
+  if (rol === 'medico' || rol === 'administrador_centro' || rol === 'director_centro' ||
+      rol === 'centro' || rol === 'usuario_normal' || rol === 'usuario_centro' ||
+      groupNames.includes('CENTRO_USER')) return 'CENTRO';
   if (rol === 'vista' || rol === 'usuario_vista' || groupNames.includes('VISTA_USER')) return 'VISTA';
   // Staff sin rol específico = FARMACIA
   if (isStaff) return 'FARMACIA';

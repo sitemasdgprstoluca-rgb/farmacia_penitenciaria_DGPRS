@@ -52,8 +52,8 @@ router.register(r'movimientos', MovimientoViewSet, basename='movimiento')
 router.register(r'hojas-recoleccion', HojaRecoleccionViewSet, basename='hoja-recoleccion')
 
 # Nuevos endpoints
-router.register(r'producto-imagenes', ProductoImagenViewSet, basename='producto-imagen')
-router.register(r'lote-documentos', LoteDocumentoViewSet, basename='lote-documento')
+router.register(r'productos-imagenes', ProductoImagenViewSet, basename='producto-imagen')
+router.register(r'lotes-documentos', LoteDocumentoViewSet, basename='lote-documento')
 router.register(r'donaciones', DonacionViewSet, basename='donacion')
 router.register(r'detalle-donaciones', DetalleDonacionViewSet, basename='detalle-donacion')
 router.register(r'salidas-donaciones', SalidaDonacionViewSet, basename='salida-donacion')
