@@ -5,6 +5,7 @@ import { FaPlus, FaEdit, FaTrash, FaKey, FaUsers, FaTimes, FaDownload, FaFileUpl
 import PageHeader from '../components/PageHeader';
 import { COLORS } from '../constants/theme';
 import { usePermissions } from '../hooks/usePermissions';
+import { UsuariosSkeleton } from '../components/skeletons';
 
 const ROLES = [
   { value: 'admin_sistema', label: 'Administrador del Sistema' },
@@ -774,10 +775,7 @@ function Usuarios() {
       </div>
 
       {loading ? (
-        <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-t-transparent mx-auto spinner-institucional"></div>
-          <p className="mt-3 text-gray-600">Cargando usuarios...</p>
-        </div>
+        <UsuariosSkeleton />
       ) : (
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="overflow-x-auto">

@@ -36,6 +36,7 @@ import { usePermissions } from '../hooks/usePermissions';
 
 import { ProtectedButton } from '../components/ProtectedAction';
 import Pagination from '../components/Pagination';
+import { ProductosSkeleton } from '../components/skeletons';
 
 import { COLORS } from '../constants/theme';
 
@@ -1393,17 +1394,7 @@ const Productos = () => {
 
     if (loading) {
 
-      return (
-
-        <div className="py-12 text-center">
-
-          <div className="animate-spin mx-auto mb-3 h-10 w-10 border-4 border-t-transparent spinner-institucional rounded-full" />
-
-          <p className="text-sm text-gray-600">Cargando productos...</p>
-
-        </div>
-
-      );
+      return <ProductosSkeleton />;
 
     }
 

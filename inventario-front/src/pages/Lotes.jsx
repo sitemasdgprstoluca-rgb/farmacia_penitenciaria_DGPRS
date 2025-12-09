@@ -20,6 +20,7 @@ import { DEV_CONFIG } from '../config/dev';
 import PageHeader from '../components/PageHeader';
 import { COLORS, SECONDARY_GRADIENT } from '../constants/theme';
 import Pagination from '../components/Pagination';
+import { LotesSkeleton } from '../components/skeletons';
 import { usePermissions } from '../hooks/usePermissions';
 
 const MOCK_PRODUCTOS = Array.from({ length: 40 }).map((_, index) => ({
@@ -892,11 +893,8 @@ const handleImportar = async (e) => {
             <tbody className="bg-white divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan="8" className="text-center py-8">
-                    <div className="flex justify-center items-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent spinner-institucional"></div>
-                      <span className="ml-2">Cargando lotes...</span>
-                    </div>
+                  <td colSpan="8" className="p-0">
+                    <LotesSkeleton />
                   </td>
                 </tr>
               ) : lotes.length === 0 ? (
