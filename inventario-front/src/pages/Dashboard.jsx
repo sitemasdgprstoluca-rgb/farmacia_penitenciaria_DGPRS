@@ -28,6 +28,58 @@ import { hasAccessToken } from '../services/tokenManager';
 // Colores para gráficas - usarán variables CSS cuando sea posible
 const COLORS = ['var(--color-primary, #9F2241)', '#10B981', '#F59E0B', '#06B6D4', '#8B5CF6'];
 
+// Colores semánticos para estados de requisiciones (FLUJO V2)
+const COLORES_ESTADO_REQUISICION = {
+  // Estados de creación/borrador (gris)
+  'BORRADOR': '#9CA3AF',
+  
+  // Estados pendientes de autorización (amarillo/naranja)
+  'PENDIENTE_ADMIN': '#F59E0B',
+  'PENDIENTE_DIRECTOR': '#F97316',
+  
+  // Estados enviados/en revisión (azul)
+  'ENVIADA': '#3B82F6',
+  'EN_REVISION': '#6366F1',
+  
+  // Estados autorizados/en proceso (cyan/teal)
+  'AUTORIZADA': '#06B6D4',
+  'EN_SURTIDO': '#14B8A6',
+  
+  // Estados completados positivos (verde)
+  'SURTIDA': '#22C55E',
+  'ENTREGADA': '#10B981',
+  
+  // Estados negativos (rojo)
+  'RECHAZADA': '#EF4444',
+  'CANCELADA': '#DC2626',
+  'VENCIDA': '#B91C1C',
+  'DEVUELTA': '#F87171',
+  
+  // Fallback
+  'DEFAULT': '#9F2241',
+};
+
+// Formateo legible de estados
+const formatearEstado = (estado) => {
+  const ESTADOS_LABEL = {
+    'BORRADOR': 'Borrador',
+    'PENDIENTE_ADMIN': 'Pend. Admin',
+    'PENDIENTE_DIRECTOR': 'Pend. Director',
+    'ENVIADA': 'Enviada',
+    'EN_REVISION': 'En Revisión',
+    'AUTORIZADA': 'Autorizada',
+    'EN_SURTIDO': 'En Surtido',
+    'SURTIDA': 'Surtida',
+    'ENTREGADA': 'Entregada',
+    'RECHAZADA': 'Rechazada',
+    'CANCELADA': 'Cancelada',
+    'VENCIDA': 'Vencida',
+    'DEVUELTA': 'Devuelta',
+    'PARCIAL': 'Parcial',
+  };
+  return ESTADOS_LABEL[estado] || estado.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const { getRolPrincipal, permisos, user } = usePermissions();
@@ -497,16 +549,21 @@ const Dashboard = () => {
                 cx="50%"
                 cy="50%"
                 labelLine={false}
-                label={({ estado, cantidad }) => `${estado}: ${cantidad}`}
+                label={({ estado, cantidad }) => `${formatearEstado(estado)}: ${cantidad}`}
                 outerRadius={100}
                 fill="#8884d8"
                 dataKey="cantidad"
               >
                 {graficas.requisiciones_por_estado.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  <Cell 
+                    key={`cell-${index}`} 
+                    fill={COLORES_ESTADO_REQUISICION[entry.estado] || COLORES_ESTADO_REQUISICION.DEFAULT} 
+                  />
                 ))}
               </Pie>
-              <Tooltip />
+              <Tooltip 
+                formatter={(value, name, props) => [value, formatearEstado(props.payload.estado)]}
+              />
             </PieChart>
           </ResponsiveContainer>
         </div>
