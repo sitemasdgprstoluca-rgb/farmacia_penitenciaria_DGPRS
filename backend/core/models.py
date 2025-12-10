@@ -725,10 +725,28 @@ class Lote(models.Model):
     
     def save(self, *args, **kwargs):
         """
-        ISS-001: Ejecutar validaciones antes de guardar.
+        ISS-001/ISS-002 FIX (audit12): Ejecutar validaciones antes de guardar.
+        
+        El parámetro skip_validation SOLO debe usarse en:
+        - Migraciones de datos controladas
+        - Scripts de mantenimiento con supervisión
+        
+        NUNCA en producción para operaciones regulares.
         """
-        # Permitir saltar validaciones en migraciones/imports
+        from django.conf import settings
+        
         skip_validation = kwargs.pop('skip_validation', False)
+        
+        # ISS-002 FIX (audit12): Registrar uso de skip_validation
+        if skip_validation:
+            if not getattr(settings, 'DEBUG', False):
+                logger = logging.getLogger(__name__)
+                logger.critical(
+                    f"ISS-002 ALERTA: skip_validation usado en PRODUCCIÓN para Lote. "
+                    f"ID: {self.pk}, Producto: {self.producto_id}, Estado: {self.estado}. "
+                    "Revisar trazabilidad."
+                )
+        
         if not skip_validation:
             self.full_clean()
         super().save(*args, **kwargs)
@@ -922,18 +940,63 @@ class Movimiento(models.Model):
                 errors['centro_destino'] = 'Las transferencias requieren un centro de destino.'
             if self.centro_origen_id and self.centro_destino_id and self.centro_origen_id == self.centro_destino_id:
                 errors['centro_destino'] = 'El centro de destino debe ser diferente al centro de origen.'
+            
+            # ISS-004 FIX (audit12): Validar estado del lote para transferencias
+            if self.lote:
+                estado_lote = (getattr(self.lote, 'estado', None) or '').lower()
+                if estado_lote and estado_lote not in ('disponible',):
+                    errors['lote'] = (
+                        f'No se puede transferir del lote {self.lote.numero_lote} '
+                        f'porque su estado es "{estado_lote}". Solo lotes "disponible" pueden transferirse.'
+                    )
+                
+                # ISS-004 FIX (audit12): Validar que el lote pertenezca al centro origen
+                if self.lote.centro_id and self.centro_origen_id:
+                    if self.lote.centro_id != self.centro_origen_id:
+                        errors['lote'] = (
+                            f'El lote {self.lote.numero_lote} no pertenece al centro de origen. '
+                            f'Lote en centro: {self.lote.centro_id}, Origen indicado: {self.centro_origen_id}'
+                        )
         
         if errors:
             raise ValidationError(errors)
     
     def save(self, *args, **kwargs):
         """
-        ISS-002: Ejecutar validaciones antes de guardar.
+        ISS-002 FIX (audit12): Ejecutar validaciones antes de guardar.
+        
         NOTA: Para operaciones atómicas con actualización de stock,
         usar RequisicionService que maneja transacciones completas.
+        
+        El parámetro skip_validation SOLO debe usarse en:
+        - Migraciones de datos controladas
+        - Scripts de mantenimiento con supervisión
+        - Tests con datos ficticios
+        
+        NUNCA en producción para operaciones regulares.
         """
-        # Permitir saltar validaciones en operaciones batch/migración
+        from django.conf import settings
+        
         skip_validation = kwargs.pop('skip_validation', False)
+        
+        # ISS-002 FIX (audit12): Restringir skip_validation a DEBUG o forzar log de alerta
+        if skip_validation:
+            if not getattr(settings, 'DEBUG', False):
+                # En producción: registrar alerta CRÍTICA pero permitir (para migraciones)
+                logger = logging.getLogger(__name__)
+                logger.critical(
+                    f"ISS-002 ALERTA: skip_validation usado en PRODUCCIÓN para Movimiento. "
+                    f"Lote: {self.lote_id}, Tipo: {self.tipo}, Cantidad: {self.cantidad}, "
+                    f"Centro: {self.centro_id}. Revisar trazabilidad."
+                )
+            else:
+                # En desarrollo: solo warning
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"ISS-002: skip_validation usado para Movimiento "
+                    f"(lote={self.lote_id}, tipo={self.tipo})"
+                )
+        
         if not skip_validation:
             self.full_clean()
         super().save(*args, **kwargs)

@@ -195,3 +195,129 @@ def check_transitions_constraint() -> bool:
     except Exception as e:
         logger.warning(f"ISS-001: No se pudo verificar CHECK constraint: {e}")
         return False
+
+
+# ISS-001 FIX (audit12): Validaciones adicionales de integridad
+def check_foreign_key_constraints() -> dict:
+    """
+    ISS-001 FIX (audit12): Verifica que existan FK constraints críticas.
+    
+    Returns:
+        dict: {constraint_name: exists}
+    """
+    EXPECTED_FKS = {
+        'requisiciones': ['centro_id', 'solicitante_id'],
+        'movimientos': ['lote_id', 'centro_id', 'requisicion_id'],
+        'lotes': ['producto_id', 'centro_id'],
+        'detalles_requisicion': ['requisicion_id', 'producto_id'],
+    }
+    
+    results = {}
+    
+    try:
+        with connection.cursor() as cursor:
+            for table, expected_fks in EXPECTED_FKS.items():
+                cursor.execute("""
+                    SELECT kcu.column_name
+                    FROM information_schema.table_constraints tc
+                    JOIN information_schema.key_column_usage kcu
+                        ON tc.constraint_name = kcu.constraint_name
+                    WHERE tc.constraint_type = 'FOREIGN KEY'
+                        AND tc.table_name = %s
+                """, [table])
+                
+                actual_fks = {row[0] for row in cursor.fetchall()}
+                
+                for fk_col in expected_fks:
+                    key = f"{table}.{fk_col}"
+                    exists = fk_col in actual_fks
+                    results[key] = exists
+                    
+                    if not exists:
+                        logger.warning(
+                            f"ISS-001 (audit12): FK faltante: {key}. "
+                            "Puede causar datos huérfanos."
+                        )
+                    else:
+                        logger.debug(f"ISS-001: FK verificada: {key}")
+                        
+    except Exception as e:
+        logger.warning(f"ISS-001: Error verificando FKs: {e}")
+    
+    return results
+
+
+def check_not_null_constraints() -> dict:
+    """
+    ISS-001 FIX (audit12): Verifica NOT NULL en columnas críticas.
+    
+    Returns:
+        dict: {column: is_nullable}
+    """
+    CRITICAL_NOT_NULL = {
+        'requisiciones': ['estado', 'centro_id', 'solicitante_id'],
+        'movimientos': ['tipo', 'cantidad', 'lote_id'],
+        'lotes': ['producto_id', 'cantidad_actual', 'estado'],
+    }
+    
+    results = {}
+    
+    try:
+        with connection.cursor() as cursor:
+            for table, columns in CRITICAL_NOT_NULL.items():
+                cursor.execute("""
+                    SELECT column_name, is_nullable
+                    FROM information_schema.columns
+                    WHERE table_name = %s
+                        AND column_name = ANY(%s)
+                """, [table, columns])
+                
+                for col_name, is_nullable in cursor.fetchall():
+                    key = f"{table}.{col_name}"
+                    results[key] = is_nullable
+                    
+                    if is_nullable == 'YES':
+                        logger.warning(
+                            f"ISS-001 (audit12): Columna crítica nullable: {key}. "
+                            "Puede causar datos inconsistentes."
+                        )
+                        
+    except Exception as e:
+        logger.warning(f"ISS-001: Error verificando NOT NULL: {e}")
+    
+    return results
+
+
+def validate_all_integrity_constraints() -> dict:
+    """
+    ISS-001 FIX (audit12): Ejecuta todas las validaciones de integridad.
+    
+    Returns:
+        dict: Resumen de todas las validaciones
+    """
+    results = {
+        'schemas': validate_unmanaged_schemas(raise_on_error=False),
+        'estado_constraint': check_transitions_constraint(),
+        'foreign_keys': check_foreign_key_constraints(),
+        'not_null': check_not_null_constraints(),
+    }
+    
+    # Contar problemas
+    schema_errors = sum(len(errors) for errors in results['schemas'].values())
+    fk_missing = sum(1 for exists in results['foreign_keys'].values() if not exists)
+    nullable_critical = sum(1 for is_null in results['not_null'].values() if is_null == 'YES')
+    
+    total_issues = schema_errors + fk_missing + nullable_critical
+    if not results['estado_constraint']:
+        total_issues += 1
+    
+    if total_issues > 0:
+        logger.warning(
+            f"ISS-001 (audit12): Validación de integridad completada con "
+            f"{total_issues} problema(s). Verifique el esquema de Supabase."
+        )
+    else:
+        logger.info("ISS-001 (audit12): Validación de integridad completada OK")
+    
+    results['total_issues'] = total_issues
+    return results
