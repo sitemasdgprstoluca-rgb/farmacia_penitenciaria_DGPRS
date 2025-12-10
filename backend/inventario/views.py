@@ -52,10 +52,83 @@ ALLOWED_IMAGE_MIMES = {
     'image/jpeg', 'image/png', 'image/gif', 'image/webp'
 }
 
+# ISS-005 FIX (audit7): Magic bytes para validación de PDF
+PDF_MAGIC_BYTES = b'%PDF-'  # Todos los PDFs válidos empiezan con este header
+PDF_MAX_SIZE_MB = 10  # Tamaño máximo en MB
+PDF_MAX_SIZE_BYTES = PDF_MAX_SIZE_MB * 1024 * 1024
+
 # ISS-001: Estados iniciales válidos por rol
 ESTADOS_INICIALES_VALIDOS = {'borrador', 'enviada'}
 ESTADO_INICIAL_CENTRO = 'borrador'  # Usuarios de centro siempre empiezan en borrador
 ESTADO_INICIAL_FARMACIA = 'borrador'  # Farmacia también empieza en borrador
+
+
+def validar_archivo_pdf(file, max_size_mb=PDF_MAX_SIZE_MB):
+    """
+    ISS-005 FIX (audit7): Valida archivo PDF antes de guardarlo.
+    
+    Validaciones:
+    1. Archivo presente y con nombre válido
+    2. Extensión .pdf
+    3. Tamaño dentro de límites
+    4. Magic bytes correctos (%PDF-)
+    5. Content-Type MIME válido (si disponible)
+    
+    Retorna: (es_valido, mensaje_error)
+    """
+    # 1. Validar que hay archivo
+    if not file:
+        return False, 'No se recibió archivo PDF'
+    
+    # 2. Validar nombre obligatorio
+    nombre = getattr(file, 'name', None)
+    if not nombre or not nombre.strip():
+        return False, 'El archivo debe tener un nombre válido'
+    
+    # 3. Validar extensión
+    extension = ('.' + nombre.split('.')[-1].lower()) if '.' in nombre else ''
+    if extension != '.pdf':
+        return False, f'Solo se permiten archivos PDF (.pdf). Extensión recibida: {extension}'
+    
+    # 4. Validar tamaño
+    max_size_bytes = max_size_mb * 1024 * 1024
+    if hasattr(file, 'size') and file.size > max_size_bytes:
+        return False, f'El archivo excede el tamaño máximo de {max_size_mb}MB ({file.size / 1024 / 1024:.2f}MB)'
+    
+    # 5. Validar magic bytes - leer primeros bytes con límite
+    try:
+        buffer_result, bytes_leidos = leer_archivo_con_limite(file, max_size_bytes + 1024)
+        
+        if buffer_result is None:
+            return False, bytes_leidos  # bytes_leidos contiene el mensaje de error
+        
+        # Validar tamaño real
+        if bytes_leidos > max_size_bytes:
+            return False, f'El archivo excede el tamaño máximo de {max_size_mb}MB (tamaño real: {bytes_leidos / 1024 / 1024:.2f}MB)'
+        
+        # Verificar magic bytes de PDF
+        header = buffer_result.read(8)
+        buffer_result.seek(0)  # Restaurar posición
+        
+        if not header.startswith(PDF_MAGIC_BYTES):
+            logger.warning(
+                f"ISS-005: Archivo {nombre} rechazado - magic bytes incorrectos: {header[:8]!r}"
+            )
+            return False, 'El archivo no es un PDF válido (magic bytes incorrectos)'
+        
+    except Exception as e:
+        logger.error(f"ISS-005: Error validando PDF {nombre}: {e}")
+        return False, f'Error al validar el archivo PDF: {str(e)}'
+    
+    # 6. Validar Content-Type si disponible
+    content_type = getattr(file, 'content_type', None)
+    if content_type and content_type not in ['application/pdf', 'application/x-pdf']:
+        logger.warning(
+            f"ISS-005: Archivo {nombre} tiene content-type sospechoso: {content_type}"
+        )
+        # Solo advertir, no bloquear (el magic bytes es más confiable)
+    
+    return True, None
 
 
 def leer_archivo_con_limite(file, max_bytes):
@@ -2899,7 +2972,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_403_FORBIDDEN
                     )
             
-            # Validar archivo
+            # ISS-005 FIX (audit7): Validar archivo PDF con función centralizada
             archivo = request.FILES.get('documento')
             if not archivo:
                 return Response(
@@ -2907,20 +2980,11 @@ class LoteViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Validar extensión
-            nombre_archivo = archivo.name
-            extension = nombre_archivo.split('.')[-1].lower() if '.' in nombre_archivo else ''
-            if extension != 'pdf':
+            # Usar validador centralizado que verifica extensión, tamaño Y magic bytes
+            es_valido, error_msg = validar_archivo_pdf(archivo)
+            if not es_valido:
                 return Response(
-                    {'error': 'Solo se permiten archivos PDF'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Validar tamaño (máx 10MB)
-            max_size = 10 * 1024 * 1024
-            if archivo.size > max_size:
-                return Response(
-                    {'error': f'El archivo excede el tamaño máximo de 10MB ({archivo.size / 1024 / 1024:.2f}MB)'},
+                    {'error': error_msg},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             

@@ -906,18 +906,23 @@ class Requisicion(models.Model):
     """
     
     # ========== FLUJO V2: TRANSICIONES Y ESTADOS (FUENTE ÚNICA DE VERDAD) ==========
-    # ISS-001/002/003: Alineado con core.constants.TRANSICIONES_REQUISICION
+    # ISS-001 FIX (audit7): Unificado con core.constants.TRANSICIONES_REQUISICION y servicio
+    # ELIMINADOS saltos directos: enviada→autorizada, autorizada→surtida
     TRANSICIONES_VALIDAS = {
         'borrador': ['pendiente_admin', 'cancelada'],
         'pendiente_admin': ['pendiente_director', 'rechazada', 'devuelta', 'cancelada'],
         'pendiente_director': ['enviada', 'rechazada', 'devuelta', 'cancelada'],
-        'enviada': ['en_revision', 'autorizada', 'rechazada', 'cancelada'],
+        # ISS-001 FIX: enviada DEBE pasar por en_revision (NO puede ir a autorizada directo)
+        'enviada': ['en_revision', 'rechazada', 'cancelada'],
         'en_revision': ['autorizada', 'rechazada', 'devuelta', 'cancelada'],
-        'autorizada': ['en_surtido', 'surtida', 'cancelada'],
-        'en_surtido': ['surtida', 'cancelada'],
+        # ISS-001 FIX: autorizada DEBE pasar por en_surtido (NO puede ir a surtida directo)
+        'autorizada': ['en_surtido', 'cancelada'],
+        'en_surtido': ['surtida', 'parcial', 'cancelada'],
+        'parcial': ['en_surtido', 'surtida', 'cancelada'],  # Parcial puede reintentar
         'surtida': ['entregada', 'vencida'],
-        'devuelta': ['pendiente_admin', 'cancelada'],
-        'parcial': ['surtida', 'cancelada'],  # Compatibilidad legacy
+        # ISS-001 FIX: devuelta regresa a borrador (no a pendiente_admin)
+        'devuelta': ['borrador', 'cancelada'],
+        # Estados finales - NO pueden cambiar
         'entregada': [],
         'rechazada': [],
         'vencida': [],
@@ -1186,25 +1191,52 @@ class Requisicion(models.Model):
         
         return errores
     
-    def cambiar_estado(self, nuevo_estado: str, usuario=None, motivo: str = None, validar: bool = True):
+    # ISS-002 FIX (audit7): Estados que requieren pasar por el servicio transaccional
+    # Estos estados involucran operaciones de inventario que deben ser atómicas
+    ESTADOS_REQUIEREN_SERVICIO = {
+        'en_surtido',  # Inicia reserva de stock
+        'surtida',     # Confirma descuento de inventario
+        'parcial',     # Surtido parcial con movimientos
+        'entregada',   # Confirmación de entrega
+    }
+    
+    def cambiar_estado(self, nuevo_estado: str, usuario=None, motivo: str = None, 
+                       validar: bool = True, forzar_modelo: bool = False):
         """
-        ISS-003: Cambia el estado de la requisición con validaciones.
+        ISS-002 FIX (audit7): Cambia el estado de la requisición con validaciones.
+        
+        IMPORTANTE: Las transiciones a estados de inventario (en_surtido, surtida, parcial, 
+        entregada) DEBEN usar el servicio transaccional RequisicionService para garantizar
+        atomicidad y validación de stock. Este método bloqueará dichos cambios a menos 
+        que se use forzar_modelo=True (solo para migraciones/scripts administrativos).
         
         Args:
             nuevo_estado: Estado destino
             usuario: Usuario que realiza la transición
             motivo: Motivo (para rechazos/devoluciones)
-            validar: Si se deben ejecutar las validaciones
+            validar: Si se deben ejecutar las validaciones básicas
+            forzar_modelo: Si True, permite cambios directos (solo admin/scripts)
             
         Raises:
-            ValidationError: Si la transición no es válida
+            ValidationError: Si la transición no es válida o requiere servicio
         """
         from django.core.exceptions import ValidationError
         from django.utils import timezone
         
         nuevo_estado = nuevo_estado.lower()
         
-        # Validar transición
+        # ISS-002 FIX: Bloquear cambios a estados de inventario desde el modelo
+        if nuevo_estado in self.ESTADOS_REQUIEREN_SERVICIO and not forzar_modelo:
+            raise ValidationError({
+                'estado': [
+                    f"La transición a '{nuevo_estado}' requiere operaciones de inventario. "
+                    f"Use el servicio transaccional RequisicionService en lugar de cambiar "
+                    f"el estado directamente en el modelo. Esto garantiza validación de stock, "
+                    f"atomicidad y trazabilidad completa."
+                ]
+            })
+        
+        # Validar transición básica
         if validar:
             errores = self.validar_transicion(nuevo_estado, motivo)
             if errores:

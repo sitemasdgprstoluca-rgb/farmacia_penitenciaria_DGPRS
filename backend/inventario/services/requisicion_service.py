@@ -217,14 +217,24 @@ class RequisicionService:
         
         return True
     
+    # ISS-003 FIX (audit7): Transiciones críticas que NO permiten bypass de superusuario
+    # Estas transiciones afectan inventario y deben validar centro/contrato siempre
+    TRANSICIONES_SIN_BYPASS_SUPERUSUARIO = {
+        ('en_surtido', 'surtida'),      # Descuento de inventario
+        ('en_surtido', 'parcial'),      # Descuento parcial
+        ('surtida', 'entregada'),       # Confirmación de entrega
+        ('autorizada', 'en_surtido'),   # Inicio de surtido
+    }
+    
     def _validar_pertenencia_centro_transicion(self, estado_actual, nuevo_estado):
         """
-        ISS-003 FIX (audit4): Valida que el usuario pertenezca al centro/contrato correcto.
+        ISS-003 FIX (audit7): Valida que el usuario pertenezca al centro/contrato correcto.
         
         Reglas:
         - Transiciones de CENTRO (crear, aprobar interno): usuario debe pertenecer al centro de la req
         - Transiciones de FARMACIA (autorizar, surtir): usuario debe ser farmacia central (sin centro)
         - Recepción: usuario debe pertenecer al centro destino
+        - ISS-003 FIX: Superusuario NO tiene bypass en transiciones críticas de inventario
         
         Args:
             estado_actual: Estado origen
@@ -233,8 +243,18 @@ class RequisicionService:
         Raises:
             PermisoRequisicionError: Si no pertenece al centro/contrato correcto
         """
+        transicion = (estado_actual, nuevo_estado)
+        
+        # ISS-003 FIX (audit7): Limitar bypass de superusuario en transiciones críticas
         if self.usuario.is_superuser:
-            return True
+            if transicion in self.TRANSICIONES_SIN_BYPASS_SUPERUSUARIO:
+                logger.warning(
+                    f"ISS-003: Superusuario {self.usuario.username} en transición crítica "
+                    f"{estado_actual} → {nuevo_estado}. Aplicando validación de centro."
+                )
+                # No retornar, continuar con validación
+            else:
+                return True  # Bypass permitido para transiciones no críticas
         
         user_centro = getattr(self.usuario, 'centro', None)
         user_rol = (getattr(self.usuario, 'rol', '') or '').lower()
@@ -786,6 +806,40 @@ class RequisicionService:
                 f"Estado actual: {estado_actual}",
                 estado_actual=estado_actual
             )
+        
+        # ISS-004 FIX (audit7): Verificar idempotencia - detectar surtido en progreso o duplicado
+        # Si ya hay movimientos de salida para esta requisición, es un reintento potencialmente duplicado
+        movimientos_existentes = Movimiento.objects.filter(
+            requisicion=requisicion_bloqueada,
+            tipo='salida'
+        ).select_for_update()
+        
+        if estado_actual == 'en_surtido' and movimientos_existentes.exists():
+            # Ya se inició un surtido, verificar si está completo
+            total_surtido = movimientos_existentes.aggregate(total=Sum('cantidad'))['total'] or 0
+            total_pendiente = sum(
+                (d.cantidad_autorizada or d.cantidad_solicitada) - (d.cantidad_surtida or 0)
+                for d in requisicion_bloqueada.detalles.all()
+            )
+            
+            if total_pendiente <= 0:
+                # Surtido ya completado, retornar sin duplicar
+                logger.warning(
+                    f"ISS-004: Reintento de surtido detectado para {requisicion_bloqueada.folio}. "
+                    f"Ya hay {movimientos_existentes.count()} movimientos registrados. "
+                    f"Operación idempotente - no se duplicarán movimientos."
+                )
+                raise EstadoInvalidoError(
+                    f"La requisición {requisicion_bloqueada.folio} ya fue surtida completamente. "
+                    f"Hay {movimientos_existentes.count()} movimientos de inventario registrados. "
+                    f"Para continuar, use la transición a 'surtida'.",
+                    estado_actual=estado_actual
+                )
+            else:
+                logger.info(
+                    f"ISS-004: Continuación de surtido parcial para {requisicion_bloqueada.folio}. "
+                    f"Pendiente por surtir: {total_pendiente}"
+                )
         
         # Actualizar referencia local con la versión bloqueada
         self.requisicion = requisicion_bloqueada
