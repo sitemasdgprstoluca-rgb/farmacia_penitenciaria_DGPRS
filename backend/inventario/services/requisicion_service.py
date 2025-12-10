@@ -125,26 +125,38 @@ class RequisicionService:
                 estado_actual=estado_actual
             )
         
-        # 2. ISS-004 FIX: Validar rol autorizado para esta transición
+        # 2. ISS-005 FIX (audit9): Validar rol autorizado ESTRICTAMENTE para esta transición
+        # ISS-005 FIX: ELIMINAR fallback de roles admin genéricos - cada transición
+        # debe tener roles específicos definidos en ROLES_POR_TRANSICION
         if not self.usuario.is_superuser:
             user_rol = (getattr(self.usuario, 'rol', '') or '').lower()
             transicion_key = (estado_actual, nuevo_estado_lower)
             roles_permitidos = self.ROLES_POR_TRANSICION.get(transicion_key, [])
             
-            # Si hay roles definidos para esta transición, validar
-            if roles_permitidos and user_rol not in roles_permitidos:
-                # Fallback: verificar si es admin/farmacia genérico
-                roles_admin = {'admin', 'admin_sistema', 'superusuario', 'administrador'}
-                if user_rol not in roles_admin:
+            # ISS-005 FIX (audit9): Validación ESTRICTA sin fallback
+            # Si hay roles definidos para esta transición, el usuario DEBE tener uno de ellos
+            if roles_permitidos:
+                if user_rol not in roles_permitidos:
                     logger.warning(
-                        f"ISS-004: Rol '{user_rol}' no autorizado para transición "
-                        f"{estado_actual} → {nuevo_estado}. Roles permitidos: {roles_permitidos}"
+                        f"ISS-005: Rol '{user_rol}' no autorizado para transición "
+                        f"{estado_actual} → {nuevo_estado}. Roles permitidos: {roles_permitidos}. "
+                        f"NO HAY FALLBACK - validación estricta."
                     )
                     raise PermisoRequisicionError(
                         f"Su rol '{user_rol}' no está autorizado para la transición "
                         f"{estado_actual} → {nuevo_estado}. "
                         f"Roles permitidos: {', '.join(roles_permitidos)}"
                     )
+            else:
+                # Transición no tiene roles definidos - bloquear por seguridad
+                logger.error(
+                    f"ISS-005: Transición {estado_actual} → {nuevo_estado} no tiene roles definidos. "
+                    f"Bloqueando por seguridad."
+                )
+                raise PermisoRequisicionError(
+                    f"Transición {estado_actual} → {nuevo_estado} no configurada. "
+                    f"Contacte al administrador del sistema."
+                )
         
         # 3. ISS-003 FIX (audit4): Validar pertenencia al centro/contrato
         self._validar_pertenencia_centro_transicion(estado_actual, nuevo_estado_lower)
@@ -160,13 +172,31 @@ class RequisicionService:
         
         return True
     
-    # ISS-003 FIX (audit7): Transiciones críticas que NO permiten bypass de superusuario
-    # Estas transiciones afectan inventario y deben validar centro/contrato siempre
+    # ISS-003 FIX (audit9): Transiciones que NO permiten bypass de superusuario
+    # AMPLIADO: Incluir TODAS las transiciones sensibles al centro/contrato
+    # Superusuario debe tener pertenencia correcta o autorización explícita
     TRANSICIONES_SIN_BYPASS_SUPERUSUARIO = {
+        # Transiciones de inventario (críticas)
         ('en_surtido', 'surtida'),      # Descuento de inventario
         ('en_surtido', 'parcial'),      # Descuento parcial
         ('surtida', 'entregada'),       # Confirmación de entrega
         ('autorizada', 'en_surtido'),   # Inicio de surtido
+        
+        # ISS-003 FIX (audit9): Agregar transiciones de devolución/rechazo
+        # Estas también afectan trazabilidad de centro
+        ('en_revision', 'devuelta'),    # Devolver al centro
+        ('en_revision', 'rechazada'),   # Rechazar requisición
+        ('pendiente_admin', 'rechazada'),
+        ('pendiente_director', 'rechazada'),
+        
+        # ISS-003 FIX (audit9): Cancelaciones también requieren validación
+        ('borrador', 'cancelada'),
+        ('pendiente_admin', 'cancelada'),
+        ('pendiente_director', 'cancelada'),
+        ('enviada', 'cancelada'),
+        ('en_revision', 'cancelada'),
+        ('autorizada', 'cancelada'),
+        ('en_surtido', 'cancelada'),
     }
     
     def _validar_pertenencia_centro_transicion(self, estado_actual, nuevo_estado):

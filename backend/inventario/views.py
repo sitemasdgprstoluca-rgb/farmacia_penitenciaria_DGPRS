@@ -19,6 +19,14 @@ import os
 import logging
 from io import BytesIO
 
+# ISS-004 FIX (audit9): Pillow para validación profunda de imágenes
+try:
+    from PIL import Image
+    PILLOW_AVAILABLE = True
+except ImportError:
+    PILLOW_AVAILABLE = False
+    Image = None
+
 # ISS-011, ISS-021, ISS-030: Import de servicios transaccionales
 from inventario.services import CentroPermissionMixin
 
@@ -57,10 +65,17 @@ PDF_MAGIC_BYTES = b'%PDF-'  # Todos los PDFs válidos empiezan con este header
 PDF_MAX_SIZE_MB = 10  # Tamaño máximo en MB
 PDF_MAX_SIZE_BYTES = PDF_MAX_SIZE_MB * 1024 * 1024
 
-# ISS-001: Estados iniciales válidos por rol
-ESTADOS_INICIALES_VALIDOS = {'borrador', 'enviada'}
-ESTADO_INICIAL_CENTRO = 'borrador'  # Usuarios de centro siempre empiezan en borrador
-ESTADO_INICIAL_FARMACIA = 'borrador'  # Farmacia también empieza en borrador
+# ISS-002 FIX (audit9): Content-Types válidos para PDF (validación estricta)
+PDF_VALID_CONTENT_TYPES = {'application/pdf', 'application/x-pdf'}
+
+# ISS-001 FIX (audit9): Estado inicial SOLO borrador para TODOS los usuarios
+# El flujo jerárquico OBLIGA: borrador → pendiente_admin → pendiente_director → enviada
+# NUNCA se puede crear una requisición directamente en 'enviada'
+ESTADO_INICIAL_UNICO = 'borrador'
+# Mantener por compatibilidad pero DEPRECADO - usar ESTADO_INICIAL_UNICO
+ESTADOS_INICIALES_VALIDOS = {'borrador'}  # ISS-001 FIX: Eliminado 'enviada'
+ESTADO_INICIAL_CENTRO = 'borrador'
+ESTADO_INICIAL_FARMACIA = 'borrador'
 
 
 def validar_archivo_pdf(file, max_size_mb=PDF_MAX_SIZE_MB):
@@ -120,13 +135,19 @@ def validar_archivo_pdf(file, max_size_mb=PDF_MAX_SIZE_MB):
         logger.error(f"ISS-005: Error validando PDF {nombre}: {e}")
         return False, f'Error al validar el archivo PDF: {str(e)}'
     
-    # 6. Validar Content-Type si disponible
+    # 6. ISS-002 FIX (audit9): Validar Content-Type ESTRICTAMENTE
+    # No solo advertir, BLOQUEAR archivos con Content-Type sospechoso
     content_type = getattr(file, 'content_type', None)
-    if content_type and content_type not in ['application/pdf', 'application/x-pdf']:
-        logger.warning(
-            f"ISS-005: Archivo {nombre} tiene content-type sospechoso: {content_type}"
-        )
-        # Solo advertir, no bloquear (el magic bytes es más confiable)
+    if content_type:
+        if content_type not in PDF_VALID_CONTENT_TYPES:
+            logger.error(
+                f"ISS-002: Archivo {nombre} BLOQUEADO - content-type inválido: {content_type}. "
+                f"Solo se permiten: {PDF_VALID_CONTENT_TYPES}"
+            )
+            return False, (
+                f'Content-Type inválido: {content_type}. '
+                f'Solo se permiten archivos PDF (application/pdf)'
+            )
     
     return True, None
 
@@ -256,6 +277,71 @@ def validar_archivo_imagen(file, max_size_mb=2):
     except Exception as e:
         logger.error(f"Error validando magic bytes de imagen: {e}")
         return False, 'Error al validar el contenido del archivo de imagen'
+    
+    # 7. ISS-004 FIX (audit9): Validación profunda con Pillow
+    # Intenta abrir la imagen para detectar archivos corruptos o maliciosos
+    if PILLOW_AVAILABLE and Image is not None:
+        try:
+            pos = file.tell() if hasattr(file, 'tell') else 0
+            
+            # Leer contenido completo para Pillow
+            if hasattr(file, 'seek'):
+                file.seek(0)
+            content = file.read()
+            
+            # Restaurar posición
+            if hasattr(file, 'seek'):
+                file.seek(pos)
+            
+            # Intentar abrir con Pillow
+            img_buffer = BytesIO(content)
+            with Image.open(img_buffer) as img:
+                # Verificar que realmente se puede decodificar
+                img.verify()
+                
+                # Reabrir para validar dimensiones (verify() invalida el handle)
+                img_buffer.seek(0)
+                with Image.open(img_buffer) as img_check:
+                    width, height = img_check.size
+                    
+                    # Límites de dimensiones para evitar DoS
+                    MAX_IMAGE_DIMENSION = 4096  # 4K máximo
+                    if width > MAX_IMAGE_DIMENSION or height > MAX_IMAGE_DIMENSION:
+                        logger.warning(
+                            f"Imagen rechazada por dimensiones excesivas: {width}x{height}, "
+                            f"máximo: {MAX_IMAGE_DIMENSION}x{MAX_IMAGE_DIMENSION}"
+                        )
+                        return False, f'Imagen demasiado grande: {width}x{height}. Máximo: {MAX_IMAGE_DIMENSION}x{MAX_IMAGE_DIMENSION} píxeles'
+                    
+                    # Verificar formato reportado por Pillow
+                    pillow_format = img_check.format
+                    expected_formats = {
+                        '.jpg': ['JPEG'],
+                        '.jpeg': ['JPEG'],
+                        '.png': ['PNG'],
+                        '.gif': ['GIF'],
+                        '.webp': ['WEBP'],
+                    }
+                    
+                    if ext in expected_formats and pillow_format not in expected_formats[ext]:
+                        logger.warning(
+                            f"Imagen rechazada: extensión {ext} pero Pillow detectó {pillow_format}. "
+                            f"Nombre: {nombre}"
+                        )
+                        return False, f'El contenido del archivo ({pillow_format}) no corresponde a la extensión {ext}'
+                    
+        except Exception as e:
+            logger.warning(
+                f"Imagen rechazada: Pillow no pudo abrir/verificar el archivo. "
+                f"Error: {e}, Nombre: {nombre}"
+            )
+            return False, 'Imagen corrupta o formato no válido - no se puede procesar'
+    else:
+        # Log warning si Pillow no está disponible (operación degradada)
+        logger.warning(
+            "Pillow no disponible - validación de imagen limitada a magic bytes. "
+            "Instale Pillow para validación completa."
+        )
     
     return True, None
 
