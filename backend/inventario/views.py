@@ -2939,9 +2939,30 @@ class LoteViewSet(viewsets.ModelViewSet):
             unique_name = f"{tipo_documento}_{timestamp}_{uuid.uuid4().hex[:8]}.pdf"
             archivo_path = f"lotes/documentos/{lote.id}/{unique_name}"
             
-            # Guardar archivo (en producción usar Supabase Storage)
-            # Por ahora guardar la referencia
-            # TODO: Implementar subida a Supabase Storage
+            # ISS-001 FIX: Subir archivo al almacenamiento ANTES de crear registro
+            from inventario.services.storage_service import get_storage_service, StorageError
+            
+            storage = get_storage_service()
+            upload_result = storage.upload_file(
+                file_content=archivo,
+                file_path=archivo_path,
+                content_type='application/pdf',
+                metadata={
+                    'lote_id': lote.id,
+                    'tipo_documento': tipo_documento,
+                    'uploaded_by': user.username if user.is_authenticated else 'anonymous'
+                }
+            )
+            
+            # ISS-001 FIX: Si falla la subida, NO crear registro (rollback)
+            if not upload_result.get('success'):
+                logger.error(
+                    f"ISS-001: Fallo subida documento lote {lote.id}: {upload_result.get('error')}"
+                )
+                return Response({
+                    'error': 'Error al guardar archivo en almacenamiento',
+                    'detalle': upload_result.get('error', 'Error desconocido')
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             # Parsear fecha si viene
             fecha_documento = None
@@ -2953,22 +2974,38 @@ class LoteViewSet(viewsets.ModelViewSet):
                 except ValueError:
                     pass
             
-            # Crear registro de documento
-            documento = LoteDocumento.objects.create(
-                lote=lote,
-                tipo_documento=tipo_documento,
-                numero_documento=request.data.get('numero_documento', ''),
-                archivo=archivo_path,
-                nombre_archivo=nombre_archivo,
-                fecha_documento=fecha_documento,
-                notas=request.data.get('notas', ''),
-                created_by=user if user.is_authenticated else None
+            # ISS-001 FIX: Solo crear registro si la subida fue exitosa
+            try:
+                documento = LoteDocumento.objects.create(
+                    lote=lote,
+                    tipo_documento=tipo_documento,
+                    numero_documento=request.data.get('numero_documento', ''),
+                    archivo=archivo_path,
+                    nombre_archivo=nombre_archivo,
+                    fecha_documento=fecha_documento,
+                    notas=request.data.get('notas', ''),
+                    created_by=user if user.is_authenticated else None
+                )
+            except Exception as db_error:
+                # ISS-001 FIX: Si falla crear registro, eliminar archivo subido (rollback)
+                logger.error(f"ISS-001: Error BD, revirtiendo subida: {db_error}")
+                storage.delete_file(archivo_path)
+                raise
+            
+            logger.info(
+                f"ISS-001: Documento subido exitosamente - Lote: {lote.id}, "
+                f"Path: {archivo_path}, Storage: {upload_result.get('storage')}"
             )
             
             serializer = LoteDocumentoSerializer(documento)
             return Response({
                 'mensaje': 'Documento subido correctamente',
-                'documento': serializer.data
+                'documento': serializer.data,
+                'storage_info': {
+                    'path': archivo_path,
+                    'url': upload_result.get('url'),
+                    'storage_type': upload_result.get('storage')
+                }
             }, status=status.HTTP_201_CREATED)
             
         except Exception as e:
@@ -3005,13 +3042,38 @@ class LoteViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            # TODO: Eliminar archivo de Supabase Storage
+            # ISS-002 FIX: Eliminar archivo del almacenamiento ANTES de borrar registro
+            from inventario.services.storage_service import get_storage_service
+            
+            archivo_path = documento.archivo
             nombre = documento.nombre_archivo
+            
+            storage = get_storage_service()
+            delete_result = storage.delete_file(archivo_path)
+            
+            # ISS-002 FIX: Registrar resultado de eliminación de storage
+            if not delete_result.get('success'):
+                logger.warning(
+                    f"ISS-002: No se pudo eliminar archivo '{archivo_path}' del storage: "
+                    f"{delete_result.get('error')}. Se eliminará el registro de BD igualmente."
+                )
+            else:
+                logger.info(
+                    f"ISS-002: Archivo eliminado de storage: {archivo_path}"
+                )
+            
+            # Eliminar registro de BD
             documento.delete()
+            
+            logger.info(
+                f"ISS-002: Documento eliminado - Lote: {lote.id}, "
+                f"Archivo: {nombre}, Path: {archivo_path}"
+            )
             
             return Response({
                 'mensaje': 'Documento eliminado correctamente',
-                'documento_eliminado': nombre
+                'documento_eliminado': nombre,
+                'storage_cleanup': delete_result.get('success', False)
             })
             
         except Exception as e:

@@ -156,6 +156,9 @@ npm test
 | `SECURE_HSTS_SECONDS` | No | `0` | Segundos para HSTS. Recomendado `31536000` (1 año) en producción |
 | `SESSION_COOKIE_SECURE` | No | `False` | Cookies solo por HTTPS. Usar `True` en producción |
 | `CSRF_COOKIE_SECURE` | No | `False` | Cookie CSRF solo por HTTPS. Usar `True` en producción |
+| `SUPABASE_URL` | ✅ Sí (prod) | - | URL del proyecto Supabase para almacenamiento de documentos |
+| `SUPABASE_KEY` | ✅ Sí (prod) | - | API Key de Supabase (usar `service_role` para backend) |
+| `SUPABASE_STORAGE_BUCKET` | No | `documentos` | Nombre del bucket para documentos de lotes |
 
 #### Ejemplo `.env` Desarrollo
 ```env
@@ -178,6 +181,10 @@ SECURE_SSL_REDIRECT=True
 SECURE_HSTS_SECONDS=31536000
 SESSION_COOKIE_SECURE=True
 CSRF_COOKIE_SECURE=True
+# Supabase Storage para documentos de lotes
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_STORAGE_BUCKET=documentos
 ```
 
 ### Frontend (`.env`)

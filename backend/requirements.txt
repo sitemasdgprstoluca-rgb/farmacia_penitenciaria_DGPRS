@@ -36,6 +36,9 @@ uritemplate==4.1.1
 psycopg[binary]>=3.1.0
 dj-database-url==2.1.0
 
+# ISS-001/002: Supabase Storage para documentos de lotes
+supabase>=2.0.0
+
 # Servidor WSGI para producción
 gunicorn==22.0.0
 

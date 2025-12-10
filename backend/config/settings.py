@@ -307,6 +307,32 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# ═══════════════════════════════════════════════════════════
+# ISS-001/002 FIX: SUPABASE STORAGE CONFIGURATION
+# ═══════════════════════════════════════════════════════════
+# Para almacenamiento de documentos (facturas, contratos de lotes)
+# En producción usa Supabase Storage (S3 compatible)
+# En desarrollo usa almacenamiento local como fallback
+#
+# Variables de entorno requeridas para producción:
+#   SUPABASE_URL: URL del proyecto Supabase (ej: https://xxx.supabase.co)
+#   SUPABASE_KEY: API Key del proyecto (preferir service_role para backend)
+#
+# Bucket por defecto: 'documentos'
+# Se debe crear manualmente en Supabase Dashboard > Storage
+SUPABASE_URL = config('SUPABASE_URL', default='')
+SUPABASE_KEY = config('SUPABASE_KEY', default='')
+SUPABASE_STORAGE_BUCKET = config('SUPABASE_STORAGE_BUCKET', default='documentos')
+
+# Advertir si no está configurado en producción (pero no bloquear)
+if not DEBUG and not SUPABASE_URL and not _skip_validation:
+    import sys
+    print(
+        "[WARNING] ISS-001: SUPABASE_URL no configurado. "
+        "Los documentos de lotes se guardarán localmente (no persistente en Render).",
+        file=sys.stderr
+    )
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ═══════════════════════════════════════════════════════════
