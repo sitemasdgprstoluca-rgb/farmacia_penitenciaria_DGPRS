@@ -20,7 +20,6 @@ from core.models import (
 def centro_penal(db):
     """Centro penitenciario de prueba."""
     return Centro.objects.create(
-        clave="CPT01",
         nombre="Centro Penitenciario Test",
         direccion="Dirección Test",
         activo=True
@@ -31,7 +30,6 @@ def centro_penal(db):
 def centro_otro(db):
     """Otro centro de prueba."""
     return Centro.objects.create(
-        clave="COT01",
         nombre="Centro Otro Test",
         direccion="Dirección Otro",
         activo=True
@@ -44,9 +42,9 @@ def producto(db):
     from decimal import Decimal
     return Producto.objects.create(
         clave="MED001",
+        nombre="Medicamento de prueba para tests ISS-001",
         descripcion="Medicamento de prueba para tests ISS-001",
         unidad_medida="CAJA",
-        precio_unitario=Decimal("50.00"),
         stock_minimo=10,
         activo=True
     )
@@ -87,24 +85,23 @@ def lote_farmacia_central(db, producto):
         fecha_caducidad=timezone.now().date() + timedelta(days=365),
         cantidad_inicial=100,
         cantidad_actual=100,
-        estado='disponible',
-        precio_compra=Decimal("50.00")
+        precio_unitario=Decimal("50.00"),
+        activo=True
     )
 
 
 @pytest.fixture
 def lote_en_centro(db, producto, centro_penal, lote_farmacia_central):
-    """Lote en centro penitenciario (debe tener lote_origen y mismo numero_lote)."""
+    """Lote en centro penitenciario."""
     return Lote.objects.create(
         producto=producto,
-        numero_lote=lote_farmacia_central.numero_lote,  # Debe coincidir con lote_origen
+        numero_lote="CT-001",
         centro=centro_penal,
-        lote_origen=lote_farmacia_central,
         fecha_caducidad=lote_farmacia_central.fecha_caducidad,
         cantidad_inicial=30,
         cantidad_actual=30,
-        estado='disponible',
-        precio_compra=Decimal("50.00")
+        precio_unitario=Decimal("50.00"),
+        activo=True
     )
 
 
@@ -175,7 +172,7 @@ class TestISS001StockPorUbicacion:
             fecha_caducidad=timezone.now().date() - timedelta(days=1),
             cantidad_inicial=50,
             cantidad_actual=50,
-            estado='disponible'
+            activo=True
         )
         
         # Lote vigente
@@ -186,7 +183,7 @@ class TestISS001StockPorUbicacion:
             fecha_caducidad=timezone.now().date() + timedelta(days=30),
             cantidad_inicial=25,
             cantidad_actual=25,
-            estado='disponible'
+            activo=True
         )
         
         stock = producto.get_stock_farmacia_central()
@@ -194,18 +191,17 @@ class TestISS001StockPorUbicacion:
         # Solo debe contar el lote vigente
         assert stock == 25
     
-    def test_stock_excluye_lotes_soft_deleted(self, producto):
-        """El stock debe excluir lotes con soft-delete."""
-        # Lote eliminado
+    def test_stock_excluye_lotes_inactivos(self, producto):
+        """El stock debe excluir lotes inactivos."""
+        # Lote inactivo
         Lote.objects.create(
             producto=producto,
-            numero_lote="FC-DELETED",
+            numero_lote="FC-INACTIVO",
             centro=None,
             fecha_caducidad=timezone.now().date() + timedelta(days=365),
             cantidad_inicial=50,
             cantidad_actual=50,
-            estado='disponible',
-            deleted_at=timezone.now()  # Soft-deleted
+            activo=False  # Inactivo
         )
         
         # Lote activo
@@ -216,8 +212,7 @@ class TestISS001StockPorUbicacion:
             fecha_caducidad=timezone.now().date() + timedelta(days=365),
             cantidad_inicial=25,
             cantidad_actual=25,
-            estado='disponible',
-            deleted_at=None
+            activo=True
         )
         
         stock = producto.get_stock_farmacia_central()
@@ -380,8 +375,8 @@ class TestISS004CalculoStockNormalizado:
         assert stock == 100
     
     def test_stock_solo_cuenta_lotes_disponibles(self, producto):
-        """Solo deben contarse lotes con estado='disponible'."""
-        # Lote disponible
+        """Solo deben contarse lotes activos, vigentes y con stock."""
+        # Lote disponible (activo, vigente, con stock)
         Lote.objects.create(
             producto=producto,
             numero_lote="DISP-001",
@@ -389,10 +384,10 @@ class TestISS004CalculoStockNormalizado:
             fecha_caducidad=timezone.now().date() + timedelta(days=365),
             cantidad_inicial=100,
             cantidad_actual=100,
-            estado='disponible'
+            activo=True
         )
         
-        # Lote agotado
+        # Lote agotado (cantidad = 0)
         Lote.objects.create(
             producto=producto,
             numero_lote="AGOT-001",
@@ -400,10 +395,10 @@ class TestISS004CalculoStockNormalizado:
             fecha_caducidad=timezone.now().date() + timedelta(days=365),
             cantidad_inicial=50,
             cantidad_actual=0,
-            estado='agotado'
+            activo=True
         )
         
-        # Lote bloqueado
+        # Lote inactivo
         Lote.objects.create(
             producto=producto,
             numero_lote="BLOQ-001",
@@ -411,7 +406,7 @@ class TestISS004CalculoStockNormalizado:
             fecha_caducidad=timezone.now().date() + timedelta(days=365),
             cantidad_inicial=30,
             cantidad_actual=30,
-            estado='bloqueado'
+            activo=False
         )
         
         stock = producto.get_stock_farmacia_central()
@@ -472,21 +467,20 @@ class TestIntegracionFlujoRequisicion:
             fecha_caducidad=timezone.now().date() + timedelta(days=365),
             cantidad_inicial=100,
             cantidad_actual=100,
-            estado='disponible',
-            precio_compra=Decimal("50.00")
+            precio_unitario=Decimal("50.00"),
+            activo=True
         )
         
-        # Lote en centro (ya distribuido) - requiere lote_origen y mismo numero_lote
+        # Lote en centro (ya distribuido)
         lote_ct = Lote.objects.create(
             producto=producto,
-            numero_lote=lote_fc.numero_lote,  # Debe coincidir con lote_origen
+            numero_lote="INT-CT-001",
             centro=centro_penal,
-            lote_origen=lote_fc,
             fecha_caducidad=lote_fc.fecha_caducidad,
             cantidad_inicial=30,
             cantidad_actual=30,
-            estado='disponible',
-            precio_compra=Decimal("50.00")
+            precio_unitario=Decimal("50.00"),
+            activo=True
         )
         
         return {

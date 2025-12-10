@@ -743,9 +743,63 @@ class Producto(models.Model):
             # ISS-004 FIX (audit14): No usar estado__in, campo no existe en BD
         ).order_by('fecha_caducidad')
     
-    def get_nivel_stock(self):
-        """Retorna el nivel de stock: critico, bajo, normal, alto"""
-        stock = self.get_stock_actual()
+    def get_stock_global(self, solo_vigentes=True, use_cache=False, cache_timeout=60):
+        """
+        ISS-002/ISS-004 FIX: Calcula stock total de todos los lotes (farmacia + centros).
+        
+        Útil para reportes globales de inventario, pero NO debe usarse
+        para validar disponibilidad de requisiciones (usar get_stock_farmacia_central).
+        
+        Args:
+            solo_vigentes: Si True, excluye lotes vencidos (default True)
+            use_cache: Si True, usa cache de Django (default False)
+            cache_timeout: Tiempo de cache en segundos (default 60)
+            
+        Returns:
+            int: Stock total disponible
+        """
+        from django.db.models import Sum
+        from django.utils import timezone
+        from django.core.cache import cache
+        
+        if use_cache:
+            cache_key = f'stock_global_{self.id}_{solo_vigentes}'
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return cached
+        
+        filtros = {
+            'activo': True,
+            'cantidad_actual__gt': 0,
+        }
+        
+        if solo_vigentes:
+            filtros['fecha_caducidad__gte'] = timezone.now().date()
+        
+        result = self.lotes.filter(**filtros).aggregate(
+            total=Sum('cantidad_actual')
+        )['total'] or 0
+        
+        if use_cache:
+            cache.set(cache_key, result, cache_timeout)
+        
+        return result
+    
+    def get_nivel_stock(self, centro=None):
+        """
+        ISS-004 FIX: Retorna el nivel de stock: critico, bajo, normal, alto.
+        
+        Args:
+            centro: Centro específico para calcular nivel (None = farmacia central)
+            
+        Returns:
+            str: 'critico', 'bajo', 'normal', o 'alto'
+        """
+        if centro:
+            stock = self.get_stock_centro(centro)
+        else:
+            stock = self.get_stock_farmacia_central()
+        
         if stock == 0:
             return 'critico'
         if self.stock_minimo > 0:
@@ -921,8 +975,37 @@ class Lote(models.Model):
     
     @property
     def estado(self):
-        """Calculated field since 'estado' column is gone"""
-        return 'disponible' if self.activo else 'agotado' # Simplification
+        """
+        ISS-003 FIX: Propiedad calculada que determina el estado real del lote.
+        
+        Considera:
+        - activo: Si el lote está activo en el sistema
+        - fecha_caducidad: Si el lote está vencido
+        - cantidad_actual: Si el lote tiene existencias
+        
+        Estados posibles:
+        - 'vencido': Fecha de caducidad pasada
+        - 'agotado': cantidad_actual <= 0 o activo=False
+        - 'disponible': Activo, con stock y no vencido
+        """
+        from django.utils import timezone
+        
+        # Primero verificar si está inactivo
+        if not self.activo:
+            return 'agotado'
+        
+        # Verificar si está vencido
+        if self.fecha_caducidad:
+            hoy = timezone.now().date()
+            if self.fecha_caducidad < hoy:
+                return 'vencido'
+        
+        # Verificar si está agotado
+        if self.cantidad_actual is None or self.cantidad_actual <= 0:
+            return 'agotado'
+        
+        # Si pasa todas las validaciones, está disponible
+        return 'disponible'
 
     def dias_para_caducar(self):
         """Calcula días restantes para caducidad (número entero)"""
