@@ -155,18 +155,20 @@ class RequisicionService:
     def validar_transicion_estado(self, nuevo_estado):
         """
         ISS-004 FIX (audit3): Valida transición con registro de actor/fecha.
+        ISS-003 FIX (audit4): Valida pertenencia al centro/contrato.
         
         Validaciones:
         1. Transición permitida según máquina de estados
         2. Rol del usuario autorizado para esta transición
-        3. Registro de quién/cuándo para auditoría
+        3. ISS-003 FIX: Pertenencia al centro para transiciones críticas
+        4. Registro de quién/cuándo para auditoría
         
         Args:
             nuevo_estado: Estado destino
             
         Raises:
             EstadoInvalidoError: Si la transición no es válida
-            PermisoRequisicionError: Si el rol no está autorizado
+            PermisoRequisicionError: Si el rol no está autorizado o no pertenece al centro
         """
         estado_actual = (self.requisicion.estado or 'borrador').lower()
         nuevo_estado_lower = nuevo_estado.lower()
@@ -201,7 +203,10 @@ class RequisicionService:
                         f"Roles permitidos: {', '.join(roles_permitidos)}"
                     )
         
-        # 3. ISS-004 FIX: Registrar transición para auditoría
+        # 3. ISS-003 FIX (audit4): Validar pertenencia al centro/contrato
+        self._validar_pertenencia_centro_transicion(estado_actual, nuevo_estado_lower)
+        
+        # 4. ISS-004 FIX: Registrar transición para auditoría
         logger.info(
             f"ISS-004 TRANSICIÓN: {self.requisicion.folio} | "
             f"{estado_actual} → {nuevo_estado} | "
@@ -211,6 +216,233 @@ class RequisicionService:
         )
         
         return True
+    
+    def _validar_pertenencia_centro_transicion(self, estado_actual, nuevo_estado):
+        """
+        ISS-003 FIX (audit4): Valida que el usuario pertenezca al centro/contrato correcto.
+        
+        Reglas:
+        - Transiciones de CENTRO (crear, aprobar interno): usuario debe pertenecer al centro de la req
+        - Transiciones de FARMACIA (autorizar, surtir): usuario debe ser farmacia central (sin centro)
+        - Recepción: usuario debe pertenecer al centro destino
+        
+        Args:
+            estado_actual: Estado origen
+            nuevo_estado: Estado destino
+            
+        Raises:
+            PermisoRequisicionError: Si no pertenece al centro/contrato correcto
+        """
+        if self.usuario.is_superuser:
+            return True
+        
+        user_centro = getattr(self.usuario, 'centro', None)
+        user_rol = (getattr(self.usuario, 'rol', '') or '').lower()
+        requisicion_centro = self.requisicion.centro
+        
+        # Transiciones que requieren pertenecer al CENTRO de la requisición
+        transiciones_centro = {
+            ('borrador', 'pendiente_admin'),
+            ('pendiente_admin', 'pendiente_director'),
+            ('pendiente_director', 'enviada'),
+            ('devuelta', 'pendiente_admin'),
+            ('surtida', 'entregada'),  # Recepción
+        }
+        
+        # Transiciones que requieren ser FARMACIA CENTRAL (sin centro asignado)
+        transiciones_farmacia = {
+            ('enviada', 'en_revision'),
+            ('en_revision', 'autorizada'),
+            ('en_revision', 'rechazada'),
+            ('en_revision', 'devuelta'),
+            ('autorizada', 'en_surtido'),
+            ('en_surtido', 'surtida'),
+            ('en_surtido', 'parcial'),
+        }
+        
+        transicion = (estado_actual, nuevo_estado)
+        
+        # ISS-003 FIX: Validar transiciones de centro
+        if transicion in transiciones_centro:
+            # Usuario debe pertenecer al centro de la requisición
+            if requisicion_centro and user_centro:
+                if user_centro.pk != requisicion_centro.pk:
+                    logger.warning(
+                        f"ISS-003: Usuario {self.usuario.username} (centro {user_centro.pk}) "
+                        f"intenta transición en requisición de centro {requisicion_centro.pk}"
+                    )
+                    raise PermisoRequisicionError(
+                        f"Esta transición solo puede ser realizada por usuarios del centro "
+                        f"'{requisicion_centro.nombre}'. Su centro es '{user_centro.nombre}'."
+                    )
+            # Si no tiene centro y la transición requiere centro, bloquear (excepto admins)
+            elif requisicion_centro and user_centro is None:
+                roles_admin_global = {'admin', 'admin_sistema', 'superusuario', 'farmacia', 'admin_farmacia'}
+                if user_rol not in roles_admin_global:
+                    raise PermisoRequisicionError(
+                        f"Esta transición requiere pertenecer al centro '{requisicion_centro.nombre}'."
+                    )
+        
+        # ISS-003 FIX: Validar transiciones de farmacia
+        if transicion in transiciones_farmacia:
+            roles_farmacia = {'farmacia', 'farmaceutico', 'admin_farmacia', 'usuario_farmacia'}
+            
+            # Usuario debe ser de farmacia central
+            if user_rol in roles_farmacia:
+                # Farmacia con centro asignado = configuración errónea
+                if user_centro is not None:
+                    logger.warning(
+                        f"ISS-003: Usuario farmacia {self.usuario.username} tiene centro asignado "
+                        f"({user_centro.pk}). Permitiendo pero se recomienda corregir."
+                    )
+            elif user_rol not in {'admin', 'admin_sistema', 'superusuario', 'administrador'}:
+                raise PermisoRequisicionError(
+                    f"Esta transición solo puede ser realizada por personal de farmacia central. "
+                    f"Su rol '{user_rol}' no está autorizado."
+                )
+        
+        return True
+    
+    @transaction.atomic
+    def devolver_requisicion(self, motivo):
+        """
+        ISS-005 FIX (audit4): Devuelve una requisición y revierte reservas/movimientos previos.
+        
+        Cuando una requisición se devuelve para corrección:
+        1. Si tiene movimientos de reserva/surtido parcial, se revierten
+        2. Se registra el motivo y actor para trazabilidad
+        3. Se recalcula disponibilidad de stock
+        
+        Estados desde los que se puede devolver:
+        - en_revision: Sin movimientos, devolución directa
+        - pendiente_admin, pendiente_director: Sin movimientos, devolución directa
+        - parcial: Puede tener movimientos, requiere reversión
+        
+        Args:
+            motivo: Motivo de devolución (obligatorio, mínimo 10 caracteres)
+            
+        Returns:
+            dict: Resultado de la devolución
+            
+        Raises:
+            EstadoInvalidoError: Si la requisición no es devolvable
+            ValidationError: Si no se proporciona motivo válido
+        """
+        from django.core.exceptions import ValidationError
+        from core.models import Requisicion as RequisicionModel, Movimiento
+        
+        # Validar motivo obligatorio
+        if not motivo or len(motivo.strip()) < 10:
+            raise ValidationError({
+                'motivo': 'Se requiere un motivo de devolución de al menos 10 caracteres'
+            })
+        
+        # Bloquear requisición
+        requisicion = RequisicionModel.objects.select_for_update().get(pk=self.requisicion.pk)
+        
+        estado_actual = (requisicion.estado or '').lower()
+        estados_devolvibles = ['en_revision', 'pendiente_admin', 'pendiente_director', 'parcial']
+        
+        if estado_actual not in estados_devolvibles:
+            raise EstadoInvalidoError(
+                f"No se pueden devolver requisiciones en estado '{estado_actual}'. "
+                f"Estados devolvibles: {estados_devolvibles}",
+                estado_actual=estado_actual
+            )
+        
+        movimientos_revertidos = []
+        
+        # ISS-005 FIX: Si hay movimientos (parcial), revertirlos
+        if estado_actual == 'parcial':
+            # Buscar y revertir movimientos de salida
+            movimientos_salida = Movimiento.objects.select_for_update().filter(
+                requisicion=requisicion,
+                tipo='salida'
+            ).select_related('lote')
+            
+            for mov in movimientos_salida:
+                cantidad_restaurar = abs(mov.cantidad)
+                
+                # Restaurar stock en lote de farmacia
+                Lote.objects.filter(pk=mov.lote.pk).update(
+                    cantidad_actual=F('cantidad_actual') + cantidad_restaurar,
+                    activo=True,
+                    updated_at=timezone.now()
+                )
+                
+                # Registrar movimiento de ajuste
+                Movimiento.objects.create(
+                    tipo='entrada',
+                    producto=mov.lote.producto,
+                    lote=mov.lote,
+                    centro_destino=mov.centro_origen,
+                    requisicion=requisicion,
+                    usuario=self.usuario,
+                    cantidad=cantidad_restaurar,
+                    motivo=f'REVERSO por devolución de requisición {requisicion.numero}'
+                )
+                
+                movimientos_revertidos.append({
+                    'lote': mov.lote.numero_lote,
+                    'cantidad_restaurada': cantidad_restaurar
+                })
+            
+            # Revertir entradas en centro
+            movimientos_entrada = Movimiento.objects.select_for_update().filter(
+                requisicion=requisicion,
+                tipo='entrada'
+            ).select_related('lote')
+            
+            for mov in movimientos_entrada:
+                Lote.objects.filter(pk=mov.lote.pk).update(
+                    cantidad_actual=F('cantidad_actual') - mov.cantidad,
+                    updated_at=timezone.now()
+                )
+                
+                Movimiento.objects.create(
+                    tipo='salida',
+                    producto=mov.lote.producto,
+                    lote=mov.lote,
+                    centro_origen=mov.centro_destino,
+                    requisicion=requisicion,
+                    usuario=self.usuario,
+                    cantidad=-mov.cantidad,
+                    motivo=f'REVERSO por devolución de requisición {requisicion.numero}'
+                )
+            
+            # Resetear cantidades surtidas
+            requisicion.detalles.update(cantidad_surtida=0)
+        
+        # Registrar transición para trazabilidad
+        self.requisicion = requisicion
+        self.registrar_transicion_historial(
+            estado_anterior=estado_actual,
+            estado_nuevo='devuelta',
+            observaciones=f'Motivo: {motivo}. Movimientos revertidos: {len(movimientos_revertidos)}'
+        )
+        
+        # Actualizar estado
+        requisicion.estado = 'devuelta'
+        timestamp = timezone.now().strftime('%Y-%m-%d %H:%M:%S')
+        requisicion.notas = (requisicion.notas or '') + (
+            f'\n[DEVOLUCIÓN {timestamp}] Por: {self.usuario.username} | '
+            f'Motivo: {motivo} | Movimientos revertidos: {len(movimientos_revertidos)}'
+        )
+        requisicion.save(update_fields=['estado', 'notas', 'updated_at'])
+        
+        logger.info(
+            f"Requisición {requisicion.folio} devuelta por {self.usuario.username}. "
+            f"Motivo: {motivo}. Movimientos revertidos: {len(movimientos_revertidos)}"
+        )
+        
+        return {
+            'exito': True,
+            'folio': requisicion.folio,
+            'estado': 'devuelta',
+            'motivo': motivo,
+            'movimientos_revertidos': movimientos_revertidos,
+            'usuario': self.usuario.username
+        }
     
     def registrar_transicion_historial(self, estado_anterior, estado_nuevo, observaciones=''):
         """
@@ -811,30 +1043,32 @@ class RequisicionService:
         return lote_destino
     
     @transaction.atomic
-    def confirmar_recepcion(self, observaciones=''):
+    def confirmar_recepcion(self, observaciones='', validar_inventario=True):
         """
-        ISS-004 FIX / ISS-DB-002: Confirma la recepción de una requisición surtida.
+        ISS-006 FIX (audit4): Confirma la recepción de una requisición surtida.
         
-        Este método marca la requisición como entregada de forma transaccional,
-        registrando el usuario receptor y validando que el estado sea correcto.
-        
-        La conciliación de inventario (descuento farmacia → entrada centro) ya
-        se realizó en el surtido, por lo que este método solo:
-        1. Valida estado 'surtida' o 'parcial'
-        2. Registra usuario receptor y fecha
-        3. Cambia estado a 'entregada' o mantiene 'parcial'
+        ISS-006 FIX: Operación transaccional completa que:
+        1. Bloquea requisición para evitar modificaciones concurrentes
+        2. Valida estado 'surtida' o 'parcial'
+        3. ISS-006 FIX: Valida consistencia de inventario (farmacia vs centro)
+        4. Registra usuario receptor y fecha
+        5. Cambia estado a 'entregada'
+        6. Si falla cualquier paso, rollback completo
         
         Args:
             observaciones: Observaciones adicionales de recepción
+            validar_inventario: Si True, valida que los movimientos estén completos
             
         Returns:
             dict: Resultado de la confirmación
             
         Raises:
-            EstadoInvalidoError: Si la requisición no está en estado surtible
+            EstadoInvalidoError: Si la requisición no está en estado recibible
             PermisoRequisicionError: Si el usuario no pertenece al centro destino
+            ValidationError: Si hay inconsistencia de inventario
         """
-        from core.models import Requisicion as RequisicionModel
+        from django.core.exceptions import ValidationError
+        from core.models import Requisicion as RequisicionModel, Movimiento
         
         # Bloquear requisición
         requisicion = RequisicionModel.objects.select_for_update().get(pk=self.requisicion.pk)
@@ -861,6 +1095,10 @@ class RequisicionService:
             raise PermisoRequisicionError(
                 f"Solo usuarios del centro {requisicion.centro.nombre} pueden confirmar esta recepción"
             )
+        
+        # ISS-006 FIX (audit4): Validar consistencia de inventario
+        if validar_inventario:
+            self._validar_consistencia_inventario_entrega(requisicion)
         
         # Actualizar campos de recepción
         requisicion.usuario_firma_recepcion = self.usuario
@@ -906,38 +1144,152 @@ class RequisicionService:
             'observaciones': observaciones
         }
     
-    @transaction.atomic
-    def cancelar_requisicion(self, motivo):
+    def _validar_consistencia_inventario_entrega(self, requisicion):
         """
-        ISS-003 FIX: Cancela una requisición y revierte movimientos si aplica.
+        ISS-006 FIX (audit4): Valida consistencia de inventario antes de confirmar entrega.
         
-        Si la requisición tiene movimientos de surtido, los revierte:
-        - Restaura stock en lotes de farmacia
-        - Descuenta de lotes en centro
-        - Invalida movimientos previos
+        Verifica que:
+        1. Los movimientos de salida (farmacia) coincidan con entradas (centro)
+        2. No haya movimientos huérfanos o incompletos
+        3. Las cantidades surtidas coincidan con los movimientos
         
         Args:
-            motivo: Motivo de cancelación (obligatorio)
+            requisicion: Requisición a validar (ya bloqueada)
+            
+        Raises:
+            ValidationError: Si hay inconsistencia de inventario
+        """
+        from django.core.exceptions import ValidationError
+        from django.db.models import Sum
+        from core.models import Movimiento
+        
+        # Total de salidas de farmacia
+        salidas_farmacia = Movimiento.objects.filter(
+            requisicion=requisicion,
+            tipo='salida'
+        ).aggregate(total=Sum('cantidad'))['total'] or 0
+        
+        # Total de entradas al centro
+        entradas_centro = Movimiento.objects.filter(
+            requisicion=requisicion,
+            tipo='entrada'
+        ).aggregate(total=Sum('cantidad'))['total'] or 0
+        
+        # Las salidas son negativas, las entradas positivas
+        # La suma debe ser ~0 (salidas + entradas = 0)
+        balance = abs(salidas_farmacia) - entradas_centro
+        
+        if abs(balance) > 0:
+            logger.warning(
+                f"ISS-006: Inconsistencia de inventario en requisición {requisicion.folio}. "
+                f"Salidas farmacia: {abs(salidas_farmacia)}, Entradas centro: {entradas_centro}, "
+                f"Diferencia: {balance}"
+            )
+            raise ValidationError({
+                'inventario': (
+                    f'Inconsistencia de inventario detectada. '
+                    f'Salidas de farmacia ({abs(salidas_farmacia)}) no coinciden con '
+                    f'entradas al centro ({entradas_centro}). '
+                    f'Diferencia: {balance} unidades. Contacte al administrador.'
+                )
+            })
+        
+        # Validar que cada detalle tenga movimientos correspondientes
+        for detalle in requisicion.detalles.all():
+            if detalle.cantidad_surtida and detalle.cantidad_surtida > 0:
+                # Verificar que hay movimientos para este producto
+                movimientos_producto = Movimiento.objects.filter(
+                    requisicion=requisicion,
+                    producto=detalle.producto,
+                    tipo='salida'
+                ).aggregate(total=Sum('cantidad'))['total'] or 0
+                
+                cantidad_movida = abs(movimientos_producto)
+                if cantidad_movida != detalle.cantidad_surtida:
+                    logger.warning(
+                        f"ISS-006: Discrepancia en detalle {detalle.pk}. "
+                        f"Cantidad surtida: {detalle.cantidad_surtida}, "
+                        f"Movimientos: {cantidad_movida}"
+                    )
+                    # Solo advertir, no bloquear (puede haber ajustes manuales válidos)
+        
+        logger.info(
+            f"ISS-006: Validación de inventario exitosa para requisición {requisicion.folio}. "
+            f"Balance: {balance}"
+        )
+        return True
+    
+    # ISS-001 FIX (audit4): Estados donde cancelar requiere reversión de movimientos
+    ESTADOS_CON_MOVIMIENTOS_POSIBLES = {'autorizada', 'en_surtido', 'parcial', 'surtida'}
+    
+    # ISS-001/002 FIX (audit4): Estados que NUNCA pueden cancelarse (ya hay entrega)
+    ESTADOS_SIN_CANCELACION = {'entregada', 'vencida'}
+    
+    @transaction.atomic
+    def cancelar_requisicion(self, motivo, forzar_reversion=False):
+        """
+        ISS-001/002 FIX (audit4): Cancela una requisición con control de movimientos.
+        
+        LÓGICA DE CANCELACIÓN:
+        1. Estados sin movimientos (borrador, enviada, en_revision): Cancelación directa
+        2. Estados con posibles movimientos (autorizada, en_surtido, parcial):
+           - Si hay movimientos: REQUIERE forzar_reversion=True y se revierten
+           - Si no hay movimientos: Cancelación directa
+        3. Estados finales (surtida, entregada, vencida): NO cancelables
+        
+        Args:
+            motivo: Motivo de cancelación (obligatorio, mínimo 10 caracteres)
+            forzar_reversion: Si True, revierte movimientos existentes
             
         Returns:
             dict: Resultado de la cancelación
             
         Raises:
             EstadoInvalidoError: Si la requisición no es cancelable
-            ValidationError: Si no se proporciona motivo
+            ValidationError: Si no se proporciona motivo o hay movimientos sin forzar
         """
         from django.core.exceptions import ValidationError
         from core.models import Requisicion as RequisicionModel, Movimiento
         
-        if not motivo:
-            raise ValidationError({'motivo': 'Se requiere un motivo para cancelar'})
+        # ISS-001 FIX: Validar motivo obligatorio con longitud mínima
+        if not motivo or len(motivo.strip()) < 10:
+            raise ValidationError({
+                'motivo': 'Se requiere un motivo de cancelación de al menos 10 caracteres'
+            })
         
         # Bloquear requisición
         requisicion = RequisicionModel.objects.select_for_update().get(pk=self.requisicion.pk)
         
         # Validar estado cancelable
         estado_actual = (requisicion.estado or '').lower()
-        estados_cancelables = ['borrador', 'enviada', 'autorizada', 'parcial']
+        
+        # ISS-001 FIX: Estados finales NUNCA cancelables
+        if estado_actual in self.ESTADOS_SIN_CANCELACION:
+            raise EstadoInvalidoError(
+                f"No se pueden cancelar requisiciones en estado '{estado_actual}'. "
+                f"Estados finales no cancelables: {self.ESTADOS_SIN_CANCELACION}",
+                estado_actual=estado_actual
+            )
+        
+        # ISS-001 FIX: Verificar movimientos existentes antes de cancelar
+        tiene_movimientos = Movimiento.objects.filter(
+            requisicion=requisicion,
+            tipo='salida'
+        ).exists()
+        
+        # ISS-001 FIX: Si hay movimientos y no se fuerza reversión, bloquear
+        if tiene_movimientos and not forzar_reversion:
+            raise ValidationError({
+                'cancelacion': (
+                    f"La requisición tiene movimientos de inventario asociados. "
+                    f"Para cancelar debe confirmar la reversión de stock (forzar_reversion=True). "
+                    f"Esto restaurará el stock en farmacia y descontará del centro."
+                )
+            })
+        
+        # Estados que permiten cancelación (con o sin movimientos)
+        estados_cancelables = ['borrador', 'pendiente_admin', 'pendiente_director', 
+                              'enviada', 'en_revision', 'autorizada', 'en_surtido', 'parcial']
         
         if estado_actual not in estados_cancelables:
             raise EstadoInvalidoError(
@@ -1011,10 +1363,23 @@ class RequisicionService:
             # Resetear cantidades surtidas en detalles
             requisicion.detalles.update(cantidad_surtida=0)
         
+        # ISS-001 FIX (audit4): Registrar transición para trazabilidad
+        self.requisicion = requisicion
+        self.registrar_transicion_historial(
+            estado_anterior=estado_actual,
+            estado_nuevo='cancelada',
+            observaciones=f'Motivo: {motivo}. Movimientos revertidos: {len(movimientos_revertidos)}'
+        )
+        
         # Actualizar estado a cancelada
         requisicion.estado = 'cancelada'
-        # Guardar motivo y observaciones en notas (único campo de texto en BD)
-        requisicion.notas = (requisicion.notas or '') + f'\n[Cancelación] {motivo}'
+        # ISS-001 FIX: Guardar motivo con timestamp y actor para trazabilidad
+        from django.utils import timezone
+        timestamp = timezone.now().strftime('%Y-%m-%d %H:%M:%S')
+        requisicion.notas = (requisicion.notas or '') + (
+            f'\n[CANCELACIÓN {timestamp}] Por: {self.usuario.username} | '
+            f'Motivo: {motivo} | Movimientos revertidos: {len(movimientos_revertidos)}'
+        )
         requisicion.save(update_fields=[
             'estado', 'notas', 'updated_at'
         ])

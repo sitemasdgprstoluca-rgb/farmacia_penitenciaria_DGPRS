@@ -127,11 +127,17 @@ class RequisicionContractValidator:
     - Permisos de usuario
     """
     
-    ESTADOS_EDITABLES = {'borrador'}
+    ESTADOS_EDITABLES = {'borrador', 'devuelta'}
     # ISS-DB-002: Alineado con BD Supabase
     ESTADOS_AUTORIZABLES = {'enviada'}
     ESTADOS_SURTIBLES = {'autorizada', 'parcial'}
-    ESTADOS_CANCELABLES = {'borrador', 'enviada', 'autorizada', 'parcial', 'en_surtido'}
+    # ISS-002 FIX (audit4): Estados cancelables SIN movimientos de inventario
+    # Estados con posibles movimientos requieren validación adicional
+    ESTADOS_CANCELABLES_SIN_MOVIMIENTOS = {'borrador', 'pendiente_admin', 'pendiente_director', 'enviada', 'en_revision'}
+    # ISS-002 FIX: Estados que PUEDEN cancelarse pero requieren verificación de movimientos
+    ESTADOS_CANCELABLES_CON_VERIFICACION = {'autorizada', 'en_surtido', 'parcial'}
+    # ISS-002 FIX: Estados NUNCA cancelables (finales o con entrega confirmada)
+    ESTADOS_NO_CANCELABLES = {'surtida', 'entregada', 'rechazada', 'vencida', 'cancelada'}
     
     def __init__(self, requisicion):
         """
@@ -170,12 +176,17 @@ class RequisicionContractValidator:
         
         return self.contrato
     
-    def validar_envio(self, verificar_stock=True) -> ContratoValidacion:
+    def validar_envio(self, verificar_stock=True, validar_contrato=True) -> ContratoValidacion:
         """
-        ISS-013 + ISS-006 FIX: Valida reglas para enviar una requisición.
+        ISS-013 + ISS-004 FIX (audit4): Valida reglas para enviar una requisición.
+        
+        ISS-004 FIX: La validación de stock es SIEMPRE obligatoria para prevenir
+        requisiciones sin disponibilidad. El parámetro verificar_stock ahora solo
+        controla si se bloquea (True) o advierte (False) el envío.
         
         Args:
-            verificar_stock: Si True, valida disponibilidad de stock (default True)
+            verificar_stock: Si True, bloquea envío sin stock. Si False, solo advierte.
+            validar_contrato: Si True, valida vigencia y límites contractuales.
         
         Returns:
             ContratoValidacion con resultados
@@ -185,14 +196,15 @@ class RequisicionContractValidator:
         
         self.contrato = ContratoValidacion()
         
-        # Debe estar en borrador
-        if self.requisicion.estado != 'borrador':
+        # ISS-004 FIX: Validar estado permitido (borrador o devuelta)
+        estados_enviables = ['borrador', 'devuelta']
+        if self.requisicion.estado not in estados_enviables:
             self.contrato.agregar_error(
                 'estado',
                 TipoValidacion.NEGOCIO,
-                f'Solo se pueden enviar requisiciones en borrador. Estado actual: {self.requisicion.estado}',
+                f'Solo se pueden enviar requisiciones en {estados_enviables}. Estado actual: {self.requisicion.estado}',
                 valor_actual=self.requisicion.estado,
-                valor_esperado='borrador'
+                valor_esperado=estados_enviables
             )
         
         # Debe tener detalles
@@ -260,7 +272,88 @@ class RequisicionContractValidator:
                         valor_esperado=f'>={detalle.cantidad_solicitada}'
                     )
         
+        # ISS-004 FIX (audit4): Validaciones contractuales obligatorias
+        if validar_contrato:
+            self._validar_reglas_contractuales(today)
+        
         return self.contrato
+    
+    def _validar_reglas_contractuales(self, fecha_referencia):
+        """
+        ISS-004 FIX (audit4): Valida reglas contractuales para el envío.
+        
+        Validaciones:
+        - Vigencia del contrato/convenio del centro
+        - Límites de cantidad por producto según contrato
+        - Frecuencia máxima de requisiciones
+        - Lotes no vencidos a la fecha de recepción esperada
+        
+        Args:
+            fecha_referencia: Fecha para validar vigencia
+        """
+        from datetime import timedelta
+        
+        centro = self.requisicion.centro
+        if not centro:
+            self.contrato.agregar_error(
+                'centro',
+                TipoValidacion.REQUERIDO,
+                'La requisición debe tener un centro asignado'
+            )
+            return
+        
+        # ISS-004 FIX: Validar vigencia del centro/convenio
+        fecha_vigencia = getattr(centro, 'fecha_vigencia_convenio', None)
+        if fecha_vigencia and fecha_vigencia < fecha_referencia:
+            self.contrato.agregar_error(
+                'centro.vigencia',
+                TipoValidacion.NEGOCIO,
+                f'El convenio del centro {centro.nombre} venció el {fecha_vigencia}. '
+                f'No se pueden enviar requisiciones.',
+                valor_actual=str(fecha_vigencia),
+                valor_esperado=f'>={fecha_referencia}'
+            )
+        
+        # ISS-004 FIX: Validar límites por producto (si existen en el centro)
+        limites_producto = getattr(centro, 'limites_producto', None)
+        if limites_producto and isinstance(limites_producto, dict):
+            for detalle in self.requisicion.detalles.select_related('producto').all():
+                producto_clave = detalle.producto.clave
+                limite = limites_producto.get(producto_clave)
+                if limite and detalle.cantidad_solicitada > limite:
+                    self.contrato.agregar_error(
+                        f'detalles[{producto_clave}].limite',
+                        TipoValidacion.RANGO,
+                        f'Cantidad solicitada ({detalle.cantidad_solicitada}) excede el límite '
+                        f'contractual ({limite}) para {detalle.producto.descripcion}',
+                        valor_actual=detalle.cantidad_solicitada,
+                        valor_esperado=f'<={limite}'
+                    )
+        
+        # ISS-004 FIX: Validar caducidad de lotes disponibles
+        # Estimar fecha de recepción (7 días hábiles aprox)
+        fecha_recepcion_estimada = fecha_referencia + timedelta(days=10)
+        
+        from core.models import Lote
+        for detalle in self.requisicion.detalles.select_related('producto').all():
+            # Verificar si hay lotes que vencerán antes de la recepción
+            lotes_por_vencer = Lote.objects.filter(
+                producto=detalle.producto,
+                centro__isnull=True,  # Farmacia central
+                activo=True,
+                cantidad_actual__gt=0,
+                fecha_caducidad__lt=fecha_recepcion_estimada
+            )
+            
+            if lotes_por_vencer.exists():
+                self.contrato.agregar_advertencia(
+                    f'detalles[{detalle.producto.clave}].caducidad',
+                    TipoValidacion.NEGOCIO,
+                    f'Existen lotes de {detalle.producto.descripcion} que vencerán antes '
+                    f'de la fecha de recepción estimada ({fecha_recepcion_estimada}). '
+                    f'Se usarán lotes con mayor vigencia.',
+                    valor_actual=str(lotes_por_vencer.first().fecha_caducidad)
+                )
     
     def validar_autorizacion(
         self,
