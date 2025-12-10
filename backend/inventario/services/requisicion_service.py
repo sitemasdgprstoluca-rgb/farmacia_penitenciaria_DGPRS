@@ -650,6 +650,9 @@ class RequisicionService:
         los lotes ya están bloqueados por la transacción padre. Esto previene
         race conditions donde el stock cambia entre pre-check y surtido.
         
+        ISS-001 FIX (perf): Consolidar consultas usando agregaciones por producto
+        para evitar N+1 queries. Calcular stock y comprometido en una sola pasada.
+        
         Args:
             usar_bloqueo: Si True, aplica select_for_update a los lotes consultados
                           para prevenir condiciones de carrera. Usar True cuando
@@ -665,35 +668,70 @@ class RequisicionService:
             StockInsuficienteError: Si no hay stock suficiente en farmacia central
         """
         from django.utils import timezone
+        from django.db.models import Sum, Value, OuterRef, Subquery
+        from django.db.models.functions import Coalesce
+        from core.models import DetalleRequisicion
+        from core.constants import ESTADOS_COMPROMETIDOS
         
         hoy = timezone.now().date()
         errores_stock = []
         
-        for detalle in self.requisicion.detalles.select_related('producto'):
+        # ISS-001 FIX (perf): Obtener todos los detalles con sus productos en una sola query
+        detalles = list(self.requisicion.detalles.select_related('producto').all())
+        
+        if not detalles:
+            return []
+        
+        # ISS-001 FIX (perf): Extraer IDs de productos para consultas batch
+        producto_ids = [d.producto_id for d in detalles if d.producto_id]
+        
+        # ISS-001 FIX (perf): Calcular stock de farmacia para TODOS los productos en UNA query
+        stock_farmacia_query = Lote.objects.filter(
+            centro__isnull=True,  # Solo farmacia central
+            producto_id__in=producto_ids,
+            activo=True,
+            cantidad_actual__gt=0,
+            fecha_caducidad__gte=hoy,
+        )
+        
+        # ISS-007 FIX: Aplicar bloqueo si se requiere
+        if usar_bloqueo and not revalidacion_post_lock:
+            stock_farmacia_query = stock_farmacia_query.select_for_update(nowait=False)
+        
+        # Agregación por producto_id
+        stock_por_producto = {
+            item['producto_id']: item['total']
+            for item in stock_farmacia_query.values('producto_id').annotate(
+                total=Coalesce(Sum('cantidad_actual'), Value(0))
+            )
+        }
+        
+        # ISS-002 FIX (perf): Calcular stock comprometido para TODOS los productos en UNA query
+        # Excluir esta requisición para evitar contar doble
+        comprometido_query = DetalleRequisicion.objects.filter(
+            requisicion__estado__in=ESTADOS_COMPROMETIDOS,
+            producto_id__in=producto_ids
+        ).exclude(
+            requisicion_id=self.requisicion.pk
+        ).values('producto_id').annotate(
+            total_autorizado=Coalesce(Sum('cantidad_autorizada'), Value(0)),
+            total_surtido=Coalesce(Sum('cantidad_surtida'), Value(0))
+        )
+        
+        comprometido_por_producto = {
+            item['producto_id']: max(0, item['total_autorizado'] - item['total_surtido'])
+            for item in comprometido_query
+        }
+        
+        # ISS-001 FIX: Validar cada detalle usando datos pre-calculados
+        for detalle in detalles:
             requerido = (detalle.cantidad_autorizada or detalle.cantidad_solicitada) - (detalle.cantidad_surtida or 0)
             if requerido <= 0:
                 continue
             
-            # ISS-001 FIX: SOLO lotes de farmacia central (centro=NULL)
-            # ISS-002 FIX: SOLO lotes NO caducados (fecha_caducidad >= hoy)
-            query_lotes = Lote.objects.filter(
-                centro__isnull=True,  # Solo farmacia central
-                producto=detalle.producto,
-                activo=True,
-                cantidad_actual__gt=0,
-                fecha_caducidad__gte=hoy,  # ISS-002 FIX: Solo lotes vigentes
-            )
-            
-            # ISS-007 FIX: Aplicar bloqueo si se requiere (dentro de transacción)
-            # ISS-001 FIX: NO re-bloquear si ya estamos en revalidación post-lock
-            if usar_bloqueo and not revalidacion_post_lock:
-                query_lotes = query_lotes.select_for_update(nowait=False)
-            
-            stock_farmacia = query_lotes.aggregate(total=Sum('cantidad_actual'))['total'] or 0
-            
-            # ISS-004 FIX (audit2): Descontar stock comprometido por OTRAS requisiciones
-            # (excluyendo esta misma requisición para evitar contar doble)
-            stock_comprometido = self._get_stock_comprometido_otras(detalle.producto)
+            producto_id = detalle.producto_id
+            stock_farmacia = stock_por_producto.get(producto_id, 0)
+            stock_comprometido = comprometido_por_producto.get(producto_id, 0)
             disponible = stock_farmacia - stock_comprometido
             
             if disponible < requerido:
@@ -720,6 +758,9 @@ class RequisicionService:
         """
         ISS-004 FIX (audit2): Calcula stock comprometido por OTRAS requisiciones.
         ISS-002 FIX (audit13): Optimizado a una sola consulta.
+        
+        NOTA: Este método se mantiene para compatibilidad con código existente.
+        Para validaciones batch, usar validar_stock_disponible que hace todo en una pasada.
         
         Excluye la requisición actual para no contar doble.
         Usa estados desde constants para mantener consistencia con máquina de estados.
@@ -911,6 +952,30 @@ class RequisicionService:
             for lote in lotes:
                 if pendiente <= 0:
                     break
+                
+                # ISS-004 FIX: Revalidar estado del lote DESPUÉS del lock
+                # El lote pudo haber cambiado entre la query y el lock
+                lote.refresh_from_db()
+                
+                # ISS-004 FIX: Verificar que el lote sigue siendo válido para surtido
+                if not lote.activo:
+                    logger.warning(
+                        f"ISS-004: Lote {lote.numero_lote} inactivo después del lock. Saltando."
+                    )
+                    continue
+                
+                if lote.cantidad_actual <= 0:
+                    logger.warning(
+                        f"ISS-004: Lote {lote.numero_lote} sin stock después del lock. Saltando."
+                    )
+                    continue
+                
+                if lote.fecha_caducidad < hoy:
+                    logger.warning(
+                        f"ISS-004: Lote {lote.numero_lote} venció después del lock "
+                        f"(caducidad: {lote.fecha_caducidad}). Saltando."
+                    )
+                    continue
                 
                 usar = min(pendiente, lote.cantidad_actual)
                 

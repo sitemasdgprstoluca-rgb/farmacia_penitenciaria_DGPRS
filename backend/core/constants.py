@@ -132,6 +132,22 @@ TRANSICIONES_REQUISICION = {
 # ISS-002 FIX (audit4): Estados que NO permiten cancelación por tener movimientos
 ESTADOS_SIN_CANCELACION = ['surtida', 'entregada', 'parcial']
 
+# =============================================================================
+# ISS-005 FIX: CONSTANTES DE STOCK Y ESTADOS - FUENTE ÚNICA DE VERDAD
+# =============================================================================
+# Estas constantes definen qué estados afectan el cálculo de stock disponible.
+# IMPORTANTE: Cualquier cambio aquí afecta:
+# - RequisicionService.validar_stock_disponible()
+# - RequisicionService._get_stock_comprometido_otras()
+# - RequisicionContractValidator.validar_envio()
+# - Reportes de inventario y stock
+#
+# Para agregar/modificar estados que comprometen stock:
+# 1. Actualizar ESTADOS_COMPROMETIDOS
+# 2. Actualizar TRANSICIONES_REQUISICION si es necesario
+# 3. Verificar que las pruebas pasen
+# =============================================================================
+
 # ISS-001/002/003 FIX (audit8): Estados surtibles - FUENTE ÚNICA
 # Solo estos estados permiten iniciar/continuar proceso de surtido
 ESTADOS_SURTIBLES = ['autorizada', 'en_surtido']
@@ -139,7 +155,13 @@ ESTADOS_SURTIBLES = ['autorizada', 'en_surtido']
 # ISS-002 FIX (audit13): Estados que comprometen stock - FUENTE ÚNICA
 # Requisiciones en estos estados tienen stock "reservado" pendiente de surtir
 # Usado para calcular stock disponible real (evitar sobre-autorización)
+# 
+# Fórmula: stock_disponible = stock_farmacia - sum(autorizado - surtido) para estos estados
 ESTADOS_COMPROMETIDOS = ['autorizada', 'en_surtido', 'parcial', 'surtida']
+
+# ISS-005 FIX: Estados que permiten edición de detalles
+# En estos estados el usuario puede modificar cantidades solicitadas
+ESTADOS_EDITABLES = ['borrador', 'devuelta']
 
 # ISS-001/002/003 FIX (audit8): Estados terminales - FUENTE ÚNICA
 # Estados que NO permiten ninguna transición posterior
