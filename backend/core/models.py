@@ -1040,23 +1040,72 @@ class Movimiento(models.Model):
             self.full_clean()
         super().save(*args, **kwargs)
     
-    def aplicar_movimiento_a_lote(self):
+    def aplicar_movimiento_a_lote(self, revalidar_stock=True):
         """
-        ISS-002: Aplica el efecto del movimiento al stock del lote.
-        IMPORTANTE: Usar dentro de una transacción atómica.
+        ISS-001 FIX (audit14): Aplica el efecto del movimiento al stock del lote.
+        
+        IMPORTANTE: Esta operación DEBE ejecutarse dentro de una transacción atómica
+        con select_for_update() aplicado al lote.
+        
+        ISS-001: Revalida stock justo antes de modificar para evitar race conditions.
+        Si otro proceso modificó el stock entre clean() y este método, se detectará.
+        
+        Args:
+            revalidar_stock: Si True, revalida que haya stock suficiente (default True).
+                            Solo pasar False en migraciones controladas.
+        
+        Raises:
+            ValidationError: Si no hay stock suficiente al revalidar
         """
+        from django.core.exceptions import ValidationError
+        from django.db import transaction
+        
         if not self.lote:
             return
         
         tipo = (self.tipo or '').lower()
         
-        if tipo in self.TIPOS_RESTA_STOCK:
-            self.lote.cantidad_actual -= self.cantidad
-        elif tipo in self.TIPOS_SUMA_STOCK:
-            self.lote.cantidad_actual += self.cantidad
-        
-        # Guardar sin re-ejecutar validaciones completas del lote
-        self.lote.save(update_fields=['cantidad_actual', 'updated_at'])
+        # ISS-001 FIX: Usar select_for_update para bloqueo real
+        # Esto evita que otra transacción modifique el lote simultáneamente
+        with transaction.atomic():
+            # Re-obtener lote con lock exclusivo
+            lote_bloqueado = Lote.objects.select_for_update().get(pk=self.lote.pk)
+            
+            # ISS-001 FIX: Revalidar stock DESPUÉS de obtener el lock
+            # Esto detecta cambios concurrentes que ocurrieron entre clean() y ahora
+            if revalidar_stock and tipo in self.TIPOS_RESTA_STOCK:
+                if lote_bloqueado.cantidad_actual < self.cantidad:
+                    raise ValidationError({
+                        'cantidad': (
+                            f'ISS-001: Stock insuficiente al aplicar movimiento. '
+                            f'Lote {lote_bloqueado.numero_lote}: '
+                            f'disponible={lote_bloqueado.cantidad_actual}, '
+                            f'requerido={self.cantidad}. '
+                            f'Posible modificación concurrente detectada.'
+                        )
+                    })
+            
+            # Aplicar el cambio de stock
+            if tipo in self.TIPOS_RESTA_STOCK:
+                lote_bloqueado.cantidad_actual -= self.cantidad
+            elif tipo in self.TIPOS_SUMA_STOCK:
+                lote_bloqueado.cantidad_actual += self.cantidad
+            
+            # ISS-001 FIX: Validar que no quede negativo (doble check)
+            if lote_bloqueado.cantidad_actual < 0:
+                raise ValidationError({
+                    'cantidad': (
+                        f'ISS-001: Operación resultaría en stock negativo. '
+                        f'Lote {lote_bloqueado.numero_lote}: resultado={lote_bloqueado.cantidad_actual}. '
+                        f'Transacción cancelada.'
+                    )
+                })
+            
+            # Guardar sin re-ejecutar validaciones completas del lote
+            lote_bloqueado.save(update_fields=['cantidad_actual', 'updated_at'])
+            
+            # Actualizar referencia local
+            self.lote = lote_bloqueado
     
     # Propiedades para compatibilidad
     @property
@@ -1549,6 +1598,89 @@ class Requisicion(models.Model):
         )
         
         return estado_anterior
+
+    def clean(self):
+        """
+        ISS-003 FIX (audit14): Validaciones de negocio para requisiciones.
+        
+        Valida:
+        - Estado válido según máquina de estados
+        - Campos obligatorios por estado
+        - Coherencia de fechas
+        """
+        from django.core.exceptions import ValidationError
+        from django.utils import timezone
+        
+        errors = {}
+        estado = (self.estado or 'borrador').lower()
+        
+        # Lista de estados válidos
+        estados_validos = list(self.TRANSICIONES_VALIDAS.keys()) + list(self.ESTADOS_TERMINALES)
+        if estado not in estados_validos:
+            errors['estado'] = f'Estado "{estado}" no es válido. Estados válidos: {", ".join(estados_validos)}'
+        
+        # Validar campos obligatorios según estado
+        if estado not in ['borrador', 'devuelta']:
+            if not self.centro_destino_id and not self.centro_origen_id:
+                errors['centro_origen'] = 'La requisición debe tener al menos un centro asignado.'
+        
+        # Validar solicitante para estados avanzados
+        if estado not in ['borrador']:
+            if not self.solicitante_id:
+                errors['solicitante'] = 'La requisición debe tener un solicitante asignado.'
+        
+        # Validar autorizador para estado autorizada
+        if estado == 'autorizada' and not self.autorizador_id:
+            errors['autorizador'] = 'Las requisiciones autorizadas deben tener un autorizador asignado.'
+        
+        # Validar que requisiciones terminales tengan fecha de término
+        if estado in ['surtida', 'entregada'] and not self.fecha_surtido:
+            errors['fecha_surtido'] = f'Las requisiciones en estado "{estado}" deben tener fecha de surtido.'
+        
+        # Validar coherencia de fechas
+        if self.fecha_autorizacion and self.fecha_solicitud:
+            if self.fecha_autorizacion < self.fecha_solicitud:
+                errors['fecha_autorizacion'] = 'La fecha de autorización no puede ser anterior a la fecha de solicitud.'
+        
+        if self.fecha_surtido and self.fecha_autorizacion:
+            if self.fecha_surtido < self.fecha_autorizacion:
+                errors['fecha_surtido'] = 'La fecha de surtido no puede ser anterior a la fecha de autorización.'
+        
+        if errors:
+            raise ValidationError(errors)
+    
+    def save(self, *args, **kwargs):
+        """
+        ISS-003 FIX (audit14): Ejecutar validaciones antes de guardar.
+        
+        IMPORTANTE: Para cambios de estado, usar los métodos:
+        - cambiar_estado() para transiciones simples
+        - cambiar_estado_con_historial() para trazabilidad completa
+        - RequisicionService para operaciones de inventario
+        
+        El parámetro skip_validation permite omitir validaciones solo en:
+        - Migraciones de datos
+        - Scripts de mantenimiento supervisados
+        - Tests
+        """
+        from django.conf import settings
+        
+        skip_validation = kwargs.pop('skip_validation', False)
+        
+        # ISS-003 FIX: Restringir skip_validation en producción
+        if skip_validation:
+            if not getattr(settings, 'DEBUG', False):
+                logger.warning(
+                    f"ISS-003: skip_validation usado en PRODUCCIÓN para Requisicion {self.numero}. "
+                    f"Estado: {self.estado}. Revisar trazabilidad."
+                )
+            else:
+                logger.debug(f"ISS-003: skip_validation usado para Requisicion {self.numero}")
+        
+        if not skip_validation:
+            self.full_clean()
+        
+        super().save(*args, **kwargs)
 
 
 class DetalleRequisicion(models.Model):
