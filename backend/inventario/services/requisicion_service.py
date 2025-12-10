@@ -85,8 +85,8 @@ class RequisicionService:
         'parcial': ['en_surtido', 'surtida', 'cancelada'],  # Parcial puede reintentar
         'surtida': ['entregada', 'vencida'],
         
-        # Devolución - puede reenviar al flujo
-        'devuelta': ['pendiente_admin', 'cancelada'],
+        # Devolución - regresa a borrador para que médico corrija
+        'devuelta': ['borrador', 'cancelada'],
         
         # Estados finales - NO pueden cambiar
         'entregada': [],
@@ -245,7 +245,7 @@ class RequisicionService:
             ('borrador', 'pendiente_admin'),
             ('pendiente_admin', 'pendiente_director'),
             ('pendiente_director', 'enviada'),
-            ('devuelta', 'pendiente_admin'),
+            ('devuelta', 'borrador'),  # Médico corrige y reinicia
             ('surtida', 'entregada'),  # Recepción
         }
         

@@ -91,9 +91,9 @@ class TestTransicionesConstantes:
             assert len(transiciones) == 0, f"Estado final '{estado}' tiene transiciones: {transiciones}"
     
     def test_devuelta_puede_reenviar(self):
-        """Desde devuelta puede volver a pendiente_admin."""
+        """Desde devuelta puede volver a borrador para que médico corrija."""
         transiciones = TRANSICIONES_REQUISICION.get('devuelta', [])
-        assert 'pendiente_admin' in transiciones
+        assert 'borrador' in transiciones
         assert 'cancelada' in transiciones
 
 
@@ -204,11 +204,12 @@ class TestFlujoSimulado:
         assert estado_actual == 'entregada'
     
     def test_flujo_con_devolucion(self):
-        """Simula flujo con devolución."""
+        """Simula flujo con devolución: admin devuelve → médico corrige en borrador → reinicia ciclo."""
         flujo = [
             ('borrador', 'pendiente_admin'),
             ('pendiente_admin', 'devuelta'),  # Admin devuelve
-            ('devuelta', 'pendiente_admin'),  # Médico reenvía
+            ('devuelta', 'borrador'),  # Regresa a borrador para corrección
+            ('borrador', 'pendiente_admin'),  # Médico reenvía corregido
             ('pendiente_admin', 'pendiente_director'),
             ('pendiente_director', 'enviada'),
         ]

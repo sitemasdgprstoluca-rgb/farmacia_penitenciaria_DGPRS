@@ -108,7 +108,8 @@ TRANSICIONES_REQUISICION = {
     'parcial': ['en_surtido', 'surtida', 'cancelada'],
     # ISS-002 FIX: surtida NO puede cancelarse (ya hay movimientos de inventario)
     'surtida': ['entregada', 'vencida'],
-    'devuelta': ['pendiente_admin', 'cancelada'],
+    # Devolución: regresa a borrador para que médico corrija y reinicie ciclo completo
+    'devuelta': ['borrador', 'cancelada'],
     # Estados finales - no pueden cambiar
     'entregada': [],
     'rechazada': [],
