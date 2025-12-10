@@ -903,35 +903,26 @@ class Requisicion(models.Model):
     - Médico → Administrador → Director → Farmacia Central
     - Fechas de cada paso del flujo
     - Fecha límite de recolección (vencimiento automático)
+    
+    ISS-001/002/003 FIX (audit8): Estados y transiciones importados desde
+    core.constants como FUENTE ÚNICA DE VERDAD.
     """
     
-    # ========== FLUJO V2: TRANSICIONES Y ESTADOS (FUENTE ÚNICA DE VERDAD) ==========
-    # ISS-001 FIX (audit7): Unificado con core.constants.TRANSICIONES_REQUISICION y servicio
-    # ELIMINADOS saltos directos: enviada→autorizada, autorizada→surtida
-    TRANSICIONES_VALIDAS = {
-        'borrador': ['pendiente_admin', 'cancelada'],
-        'pendiente_admin': ['pendiente_director', 'rechazada', 'devuelta', 'cancelada'],
-        'pendiente_director': ['enviada', 'rechazada', 'devuelta', 'cancelada'],
-        # ISS-001 FIX: enviada DEBE pasar por en_revision (NO puede ir a autorizada directo)
-        'enviada': ['en_revision', 'rechazada', 'cancelada'],
-        'en_revision': ['autorizada', 'rechazada', 'devuelta', 'cancelada'],
-        # ISS-001 FIX: autorizada DEBE pasar por en_surtido (NO puede ir a surtida directo)
-        'autorizada': ['en_surtido', 'cancelada'],
-        'en_surtido': ['surtida', 'parcial', 'cancelada'],
-        'parcial': ['en_surtido', 'surtida', 'cancelada'],  # Parcial puede reintentar
-        'surtida': ['entregada', 'vencida'],
-        # ISS-001 FIX: devuelta regresa a borrador (no a pendiente_admin)
-        'devuelta': ['borrador', 'cancelada'],
-        # Estados finales - NO pueden cambiar
-        'entregada': [],
-        'rechazada': [],
-        'vencida': [],
-        'cancelada': [],
-    }
+    # ========== FLUJO V2: IMPORTAR DE CONSTANTS (FUENTE ÚNICA DE VERDAD) ==========
+    # ISS-001/002/003 FIX (audit8): NO duplicar definiciones, importar desde constants
+    from core.constants import (
+        TRANSICIONES_REQUISICION as _TRANSICIONES,
+        ESTADOS_SURTIBLES as _ESTADOS_SURTIBLES,
+        ESTADOS_EDITABLES as _ESTADOS_EDITABLES,
+        ESTADOS_TERMINALES as _ESTADOS_TERMINALES,
+        ESTADOS_REQUIEREN_SERVICIO as _ESTADOS_REQUIEREN_SERVICIO,
+    )
     
-    ESTADOS_SURTIBLES = ['autorizada', 'en_surtido']
-    ESTADOS_EDITABLES = ['borrador', 'devuelta']
-    ESTADOS_TERMINALES = ['entregada', 'rechazada', 'vencida', 'cancelada']
+    # Exponer como atributos de clase para compatibilidad
+    TRANSICIONES_VALIDAS = _TRANSICIONES
+    ESTADOS_SURTIBLES = _ESTADOS_SURTIBLES
+    ESTADOS_EDITABLES = _ESTADOS_EDITABLES
+    ESTADOS_TERMINALES = _ESTADOS_TERMINALES
     
     numero = models.CharField(max_length=50, unique=True, db_column='numero')
     centro_origen = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_origen', db_column='centro_origen_id')

@@ -1,6 +1,10 @@
 """
 Constantes del sistema de Farmacia Penitenciaria
 Centraliza valores mágicos y configuraciones
+
+ISS-001/002/003 FIX (audit8): FUENTE ÚNICA DE VERDAD para estados y transiciones.
+Todos los módulos (models.py, requisicion_service.py, state_machine.py) deben
+importar estas constantes en lugar de definir sus propias copias.
 """
 
 # Unidades de medida disponibles
@@ -120,6 +124,18 @@ TRANSICIONES_REQUISICION = {
 # ISS-002 FIX (audit4): Estados que NO permiten cancelación por tener movimientos
 ESTADOS_SIN_CANCELACION = ['surtida', 'entregada', 'parcial']
 
+# ISS-001/002/003 FIX (audit8): Estados surtibles - FUENTE ÚNICA
+# Solo estos estados permiten iniciar/continuar proceso de surtido
+ESTADOS_SURTIBLES = ['autorizada', 'en_surtido']
+
+# ISS-001/002/003 FIX (audit8): Estados terminales - FUENTE ÚNICA
+# Estados que NO permiten ninguna transición posterior
+ESTADOS_TERMINALES = ['entregada', 'rechazada', 'vencida', 'cancelada']
+
+# ISS-001/002/003 FIX (audit8): Estados que requieren servicio transaccional
+# Cambios a estos estados DEBEN pasar por RequisicionService, no modelo directo
+ESTADOS_REQUIEREN_SERVICIO = ['en_surtido', 'surtida', 'parcial', 'entregada']
+
 # ISS-003 FIX (audit4): Segregación de funciones - roles incompatibles
 # Un usuario NO puede ejecutar dos acciones del mismo par en la misma requisición
 SEGREGACION_FUNCIONES = {
@@ -131,11 +147,62 @@ SEGREGACION_FUNCIONES = {
     ('autorizar_farmacia', 'surtir'): True,
 }
 
-# ISS-004 FIX (audit4): Estados que permiten edición
+# ISS-004 FIX (audit4): Estados que permiten edición completa
 ESTADOS_EDITABLES = ['borrador', 'devuelta']
+
+# ISS-001/002/003 FIX (audit8): Estados con edición limitada (solo notas/observaciones)
+ESTADOS_EDICION_LIMITADA = ['pendiente_admin', 'pendiente_director', 'enviada', 'en_revision']
+
+# ISS-001/002/003 FIX (audit8): Estados sin ninguna edición
+ESTADOS_SIN_EDICION = ['autorizada', 'en_surtido', 'surtida', 'entregada', 
+                       'rechazada', 'vencida', 'cancelada', 'parcial']
 
 # ISS-004 FIX (audit4): Estados que requieren revalidación si se editan
 ESTADOS_REVALIDAR_SI_EDITA = ['pendiente_admin', 'pendiente_director']
+
+# ISS-001/002/003 FIX (audit8): Roles por transición - FUENTE ÚNICA
+ROLES_POR_TRANSICION = {
+    # Creación y envío - roles de centro
+    ('borrador', 'pendiente_admin'): ['medico', 'centro', 'usuario_centro'],
+    ('pendiente_admin', 'pendiente_director'): ['administrador_centro'],
+    ('pendiente_director', 'enviada'): ['director_centro'],
+    
+    # Revisión y autorización - roles de farmacia
+    ('enviada', 'en_revision'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
+    ('en_revision', 'autorizada'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
+    ('en_revision', 'rechazada'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
+    ('en_revision', 'devuelta'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
+    
+    # Surtido - solo farmacia
+    ('autorizada', 'en_surtido'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
+    ('en_surtido', 'surtida'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
+    ('en_surtido', 'parcial'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
+    
+    # Recepción - solo centro destino
+    ('surtida', 'entregada'): ['centro', 'usuario_centro', 'administrador_centro', 'director_centro', 'medico'],
+    
+    # Devolución - regresa a borrador
+    ('devuelta', 'borrador'): ['medico', 'centro', 'usuario_centro'],
+    
+    # Cancelaciones - depende del estado
+    ('borrador', 'cancelada'): ['medico', 'centro', 'usuario_centro', 'administrador_centro'],
+    ('pendiente_admin', 'cancelada'): ['administrador_centro', 'director_centro'],
+    ('pendiente_director', 'cancelada'): ['director_centro'],
+    ('enviada', 'cancelada'): ['farmacia', 'admin_farmacia'],
+    ('en_revision', 'cancelada'): ['farmacia', 'admin_farmacia'],
+    ('autorizada', 'cancelada'): ['farmacia', 'admin_farmacia'],
+    ('en_surtido', 'cancelada'): ['farmacia', 'admin_farmacia'],
+    ('devuelta', 'cancelada'): ['medico', 'administrador_centro'],
+    
+    # Rechazos
+    ('pendiente_admin', 'rechazada'): ['administrador_centro'],
+    ('pendiente_director', 'rechazada'): ['director_centro'],
+    ('enviada', 'rechazada'): ['farmacia', 'admin_farmacia'],
+    
+    # Devoluciones internas
+    ('pendiente_admin', 'devuelta'): ['administrador_centro'],
+    ('pendiente_director', 'devuelta'): ['director_centro'],
+}
 
 # Permisos extra (asignados vía grupos) que pueden complementar al rol base
 EXTRA_PERMISSIONS = [

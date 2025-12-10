@@ -52,92 +52,35 @@ class RequisicionService:
     ISS-011, ISS-021: Todas las operaciones son atómicas con rollback completo.
     ISS-014: Usa select_for_update() para bloqueo optimista de lotes.
     ISS-030: Valida permisos de acceso por centro.
-    ISS-002: Usa máquina de estados del modelo Requisicion (fuente única de verdad).
+    ISS-001/002/003 FIX (audit8): Importa desde core.constants como FUENTE ÚNICA DE VERDAD.
     """
     
-    # Transiciones de estado válidas para requisiciones
-    # ISS-001/002 + ISS-004 FIX (audit3): FLUJO V2 - Transiciones ESTRICTAS
-    # 
-    # Flujo jerárquico obligatorio:
-    #   borrador → pendiente_admin → pendiente_director → enviada
-    #   → en_revision → autorizada → en_surtido → surtida → entregada
-    # 
-    # ISS-004 FIX: Se ELIMINAN saltos de estados:
-    #   - autorizada → surtida (DEBE pasar por en_surtido)
-    #   - enviada → autorizada (DEBE pasar por en_revision)
-    # 
-    # Estados negativos: rechazada, cancelada, vencida, devuelta
-    TRANSICIONES_VALIDAS_DEFAULT = {
-        # Flujo del centro penitenciario (creación y envío)
-        'borrador': ['pendiente_admin', 'cancelada'],
-        'pendiente_admin': ['pendiente_director', 'rechazada', 'devuelta', 'cancelada'],
-        'pendiente_director': ['enviada', 'rechazada', 'devuelta', 'cancelada'],
-        
-        # Flujo de farmacia central (revisión y autorización)
-        # ISS-004 FIX: Enviada DEBE pasar por en_revision antes de autorizar
-        'enviada': ['en_revision', 'rechazada', 'cancelada'],
-        'en_revision': ['autorizada', 'rechazada', 'devuelta', 'cancelada'],
-        
-        # Flujo de surtido (solo farmacia central)
-        # ISS-004 FIX: Autorizada DEBE pasar por en_surtido antes de surtida
-        'autorizada': ['en_surtido', 'cancelada'],
-        'en_surtido': ['surtida', 'parcial', 'cancelada'],
-        'parcial': ['en_surtido', 'surtida', 'cancelada'],  # Parcial puede reintentar
-        'surtida': ['entregada', 'vencida'],
-        
-        # Devolución - regresa a borrador para que médico corrija
-        'devuelta': ['borrador', 'cancelada'],
-        
-        # Estados finales - NO pueden cambiar
-        'entregada': [],
-        'rechazada': [],
-        'vencida': [],
-        'cancelada': [],
-    }
+    # ISS-001/002/003 FIX (audit8): IMPORTAR desde constants, NO duplicar
+    from core.constants import (
+        TRANSICIONES_REQUISICION,
+        ESTADOS_SURTIBLES,
+        ESTADOS_EDITABLES,
+        ESTADOS_TERMINALES,
+        ROLES_POR_TRANSICION as _ROLES_POR_TRANSICION,
+    )
     
-    # ISS-004 FIX (audit3): Roles autorizados por transición
-    ROLES_POR_TRANSICION = {
-        # Creación y envío - roles de centro
-        ('borrador', 'pendiente_admin'): ['medico', 'centro', 'usuario_centro'],
-        ('pendiente_admin', 'pendiente_director'): ['administrador_centro'],
-        ('pendiente_director', 'enviada'): ['director_centro'],
-        
-        # Revisión y autorización - roles de farmacia
-        ('enviada', 'en_revision'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
-        ('en_revision', 'autorizada'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
-        ('en_revision', 'rechazada'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
-        ('en_revision', 'devuelta'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
-        
-        # Surtido - solo farmacia
-        ('autorizada', 'en_surtido'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
-        ('en_surtido', 'surtida'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
-        ('en_surtido', 'parcial'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
-        
-        # Recepción - solo centro destino
-        ('surtida', 'entregada'): ['centro', 'usuario_centro', 'administrador_centro', 'director_centro'],
-        
-        # Cancelaciones - depende del estado actual
-        ('borrador', 'cancelada'): ['medico', 'centro', 'usuario_centro', 'administrador_centro'],
-        ('pendiente_admin', 'cancelada'): ['administrador_centro', 'director_centro'],
-        ('pendiente_director', 'cancelada'): ['director_centro'],
-        ('enviada', 'cancelada'): ['farmacia', 'admin_farmacia'],
-        ('en_revision', 'cancelada'): ['farmacia', 'admin_farmacia'],
-        ('autorizada', 'cancelada'): ['farmacia', 'admin_farmacia'],
-        ('en_surtido', 'cancelada'): ['farmacia', 'admin_farmacia'],
-    }
+    # Mantener como atributo de clase para compatibilidad
+    TRANSICIONES_VALIDAS_DEFAULT = TRANSICIONES_REQUISICION
+    
+    # ISS-001/002/003 FIX (audit8): Roles importados desde constants
+    ROLES_POR_TRANSICION = _ROLES_POR_TRANSICION
     
     @property
     def ESTADOS_SURTIBLES(self):
-        """ISS-002/FLUJO V2: Obtener estados surtibles del modelo."""
-        from core.models import Requisicion
-        # FLUJO V2: Solo se puede surtir desde autorizada o en_surtido
-        return getattr(Requisicion, 'ESTADOS_SURTIBLES', ['autorizada', 'en_surtido'])
+        """ISS-001/002/003 FIX (audit8): Estados surtibles desde constants."""
+        from core.constants import ESTADOS_SURTIBLES
+        return ESTADOS_SURTIBLES
     
     @property
     def TRANSICIONES_VALIDAS(self):
-        """ISS-002: Obtener transiciones del modelo (fuente única de verdad)."""
-        from core.models import Requisicion
-        return getattr(Requisicion, 'TRANSICIONES_VALIDAS', self.TRANSICIONES_VALIDAS_DEFAULT)
+        """ISS-001/002/003 FIX (audit8): Transiciones desde constants."""
+        from core.constants import TRANSICIONES_REQUISICION
+        return TRANSICIONES_REQUISICION
     
     def __init__(self, requisicion, usuario):
         """

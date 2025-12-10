@@ -6,6 +6,9 @@ Implementa un patrón State Machine robusto que:
 - Valida precondiciones para cada transición
 - Registra historial de cambios de estado
 - Emite eventos/hooks para acciones post-transición
+
+ISS-001/002/003 FIX (audit8): Estados y transiciones importados desde
+core.constants como FUENTE ÚNICA DE VERDAD.
 """
 import logging
 from datetime import datetime
@@ -16,6 +19,16 @@ from enum import Enum
 from django.db import transaction
 from django.utils import timezone
 from django.core.exceptions import ValidationError
+
+# ISS-001/002/003 FIX (audit8): Importar desde constants como FUENTE ÚNICA
+from core.constants import (
+    TRANSICIONES_REQUISICION,
+    ESTADOS_SURTIBLES,
+    ESTADOS_EDITABLES,
+    ESTADOS_TERMINALES,
+    ESTADOS_EDICION_LIMITADA,
+    ESTADOS_SIN_EDICION,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,40 +82,28 @@ class EstadoRequisicion(str, Enum):
     
     @classmethod
     def terminales(cls):
-        """Estados que no permiten más transiciones."""
-        return [cls.ENTREGADA, cls.RECHAZADA, cls.VENCIDA, cls.CANCELADA]
+        """ISS-001/002/003 FIX (audit8): Estados terminales desde constants."""
+        return [cls(e) for e in ESTADOS_TERMINALES if e in [m.value for m in cls]]
     
     @classmethod
     def editables(cls):
-        """
-        ISS-004 FIX (audit4): Estados que permiten editar la requisición.
-        Solo borrador y devuelta permiten edición libre.
-        """
-        return [cls.BORRADOR, cls.DEVUELTA]
+        """ISS-001/002/003 FIX (audit8): Estados editables desde constants."""
+        return [cls(e) for e in ESTADOS_EDITABLES if e in [m.value for m in cls]]
     
     @classmethod
     def estados_sin_edicion(cls):
-        """
-        ISS-004 FIX (audit4): Estados que NO permiten ninguna edición.
-        Incluye todos los estados desde autorizada en adelante.
-        """
-        return [
-            cls.AUTORIZADA, cls.EN_SURTIDO, cls.SURTIDA, cls.ENTREGADA,
-            cls.RECHAZADA, cls.VENCIDA, cls.CANCELADA, cls.PARCIAL
-        ]
+        """ISS-001/002/003 FIX (audit8): Estados sin edición desde constants."""
+        return [cls(e) for e in ESTADOS_SIN_EDICION if e in [m.value for m in cls]]
     
     @classmethod
     def estados_edicion_limitada(cls):
-        """
-        ISS-004 FIX (audit4): Estados con edición limitada.
-        Solo permiten editar observaciones/notas, no cantidades.
-        """
-        return [cls.PENDIENTE_ADMIN, cls.PENDIENTE_DIRECTOR, cls.ENVIADA, cls.EN_REVISION]
+        """ISS-001/002/003 FIX (audit8): Estados con edición limitada desde constants."""
+        return [cls(e) for e in ESTADOS_EDICION_LIMITADA if e in [m.value for m in cls]]
     
     @classmethod
     def surtibles(cls):
-        """Estados desde los que se puede surtir."""
-        return [cls.AUTORIZADA, cls.EN_SURTIDO]
+        """ISS-001/002/003 FIX (audit8): Estados surtibles desde constants."""
+        return [cls(e) for e in ESTADOS_SURTIBLES if e in [m.value for m in cls]]
     
     @classmethod
     def pendientes_centro(cls):
@@ -155,82 +156,41 @@ class RequisicionStateMachine:
                          EN_SURTIDO → SURTIDA → ENTREGADA
                          
     Cualquier estado (excepto terminales) → CANCELADA
+    
+    ISS-001/002/003 FIX (audit8): MATRIZ_TRANSICIONES generada desde constants.
     """
     
     # Definición de todas las transiciones válidas
     TRANSICIONES: Dict[str, TransicionEstado] = {}
     
-    # Matriz de transiciones: origen → [destinos posibles]
-    # ISS-001 FIX (audit4): autorizada SOLO puede ir a en_surtido, NO a surtida
-    # ISS-002 FIX (audit4): Estados con movimientos NO pueden cancelarse
-    MATRIZ_TRANSICIONES = {
-        # Flujo del centro penitenciario
-        EstadoRequisicion.BORRADOR: [
-            EstadoRequisicion.PENDIENTE_ADMIN,
-            EstadoRequisicion.CANCELADA
-        ],
-        EstadoRequisicion.PENDIENTE_ADMIN: [
-            EstadoRequisicion.PENDIENTE_DIRECTOR,
-            EstadoRequisicion.RECHAZADA,
-            EstadoRequisicion.DEVUELTA,
-            EstadoRequisicion.CANCELADA
-        ],
-        EstadoRequisicion.PENDIENTE_DIRECTOR: [
-            EstadoRequisicion.ENVIADA,
-            EstadoRequisicion.RECHAZADA,
-            EstadoRequisicion.DEVUELTA,
-            EstadoRequisicion.CANCELADA
-        ],
-        
-        # Flujo de farmacia central
-        # ISS-001 FIX: enviada NO puede ir directo a autorizada
-        EstadoRequisicion.ENVIADA: [
-            EstadoRequisicion.EN_REVISION,
-            EstadoRequisicion.RECHAZADA,
-            EstadoRequisicion.CANCELADA
-        ],
-        EstadoRequisicion.EN_REVISION: [
-            EstadoRequisicion.AUTORIZADA,
-            EstadoRequisicion.RECHAZADA,
-            EstadoRequisicion.DEVUELTA,
-            EstadoRequisicion.CANCELADA
-        ],
-        # ISS-001 FIX: autorizada SOLO puede ir a en_surtido, NUNCA a surtida directamente
-        EstadoRequisicion.AUTORIZADA: [
-            EstadoRequisicion.EN_SURTIDO,
-            EstadoRequisicion.CANCELADA
-        ],
-        # ISS-002 FIX: en_surtido puede cancelarse SOLO si no hay movimientos
-        EstadoRequisicion.EN_SURTIDO: [
-            EstadoRequisicion.SURTIDA,
-            EstadoRequisicion.PARCIAL,
-            EstadoRequisicion.CANCELADA
-        ],
-        # ISS-002 FIX: surtida NO puede cancelarse (ya hay movimientos)
-        EstadoRequisicion.SURTIDA: [
-            EstadoRequisicion.ENTREGADA,
-            EstadoRequisicion.VENCIDA
-        ],
-        
-        # Estados de devolución (puede reenviar)
-        EstadoRequisicion.DEVUELTA: [
-            EstadoRequisicion.PENDIENTE_ADMIN,
-            EstadoRequisicion.CANCELADA
-        ],
-        
-        # Compatibilidad legacy - parcial puede reintentar surtido
-        EstadoRequisicion.PARCIAL: [
-            EstadoRequisicion.EN_SURTIDO,
-            EstadoRequisicion.SURTIDA,
-            EstadoRequisicion.CANCELADA
-        ],
-        
-        # Estados terminales - no pueden cambiar
-        EstadoRequisicion.ENTREGADA: [],
-        EstadoRequisicion.RECHAZADA: [],
-        EstadoRequisicion.VENCIDA: [],
-        EstadoRequisicion.CANCELADA: []
-    }
+    # ISS-001/002/003 FIX (audit8): Generar matriz desde TRANSICIONES_REQUISICION
+    @classmethod
+    def _generar_matriz_transiciones(cls):
+        """Genera MATRIZ_TRANSICIONES desde constants.TRANSICIONES_REQUISICION."""
+        matriz = {}
+        for origen_str, destinos_str in TRANSICIONES_REQUISICION.items():
+            try:
+                origen_enum = EstadoRequisicion(origen_str)
+                destinos_enum = []
+                for d in destinos_str:
+                    try:
+                        destinos_enum.append(EstadoRequisicion(d))
+                    except ValueError:
+                        pass  # Estado no existe en enum, ignorar
+                matriz[origen_enum] = destinos_enum
+            except ValueError:
+                pass  # Estado no existe en enum, ignorar
+        return matriz
+    
+    # Matriz generada dinámicamente desde constants
+    MATRIZ_TRANSICIONES = None  # Se inicializa en __init_subclass__ o al primer uso
+    
+    @classmethod
+    def get_matriz_transiciones(cls):
+        """Obtener matriz de transiciones, generándola si es necesario."""
+        if cls.MATRIZ_TRANSICIONES is None:
+            cls.MATRIZ_TRANSICIONES = cls._generar_matriz_transiciones()
+        return cls.MATRIZ_TRANSICIONES
     
     # Roles requeridos para cada tipo de transición
     # FLUJO V2: Roles jerárquicos del centro y farmacia
@@ -293,7 +253,7 @@ class RequisicionStateMachine:
         except ValueError:
             return False
         
-        transiciones_permitidas = self.MATRIZ_TRANSICIONES.get(self.estado_actual, [])
+        transiciones_permitidas = self.get_matriz_transiciones().get(self.estado_actual, [])
         return destino_enum in transiciones_permitidas
     
     def get_transiciones_disponibles(self) -> List[str]:
@@ -303,7 +263,7 @@ class RequisicionStateMachine:
         Returns:
             list: Lista de estados destino posibles
         """
-        transiciones = self.MATRIZ_TRANSICIONES.get(self.estado_actual, [])
+        transiciones = self.get_matriz_transiciones().get(self.estado_actual, [])
         return [t.value for t in transiciones]
     
     def es_estado_terminal(self) -> bool:
