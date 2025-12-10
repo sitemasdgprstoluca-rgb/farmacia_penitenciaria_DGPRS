@@ -38,6 +38,25 @@ EXCEL_MAGIC_BYTES = {
     '.xls': b'\xD0\xCF\x11\xE0',  # OLE2 Compound Document
 }
 
+# ISS-006: Magic bytes y MIME types para imágenes permitidas en firmas
+IMAGE_MAGIC_BYTES = {
+    '.jpg': [b'\xff\xd8\xff'],  # JPEG
+    '.jpeg': [b'\xff\xd8\xff'],  # JPEG
+    '.png': [b'\x89PNG\r\n\x1a\n'],  # PNG
+    '.gif': [b'GIF87a', b'GIF89a'],  # GIF
+    '.webp': [b'RIFF'],  # WebP (RIFF container)
+}
+
+ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+ALLOWED_IMAGE_MIMES = {
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp'
+}
+
+# ISS-001: Estados iniciales válidos por rol
+ESTADOS_INICIALES_VALIDOS = {'borrador', 'enviada'}
+ESTADO_INICIAL_CENTRO = 'borrador'  # Usuarios de centro siempre empiezan en borrador
+ESTADO_INICIAL_FARMACIA = 'borrador'  # Farmacia también empieza en borrador
+
 
 def leer_archivo_con_limite(file, max_bytes):
     """
@@ -85,6 +104,87 @@ def leer_archivo_con_limite(file, max_bytes):
     except Exception as e:
         logger.error(f"Error leyendo archivo: {e}")
         return None, f'Error al leer el archivo: {str(e)}'
+
+
+def validar_archivo_imagen(file, max_size_mb=2):
+    """
+    ISS-006: Valida archivo de imagen antes de guardarlo.
+    
+    Validaciones:
+    1. Archivo presente y con nombre válido
+    2. Extensión permitida (.jpg, .jpeg, .png, .gif, .webp)
+    3. Tamaño dentro de límites (default 2MB)
+    4. Magic bytes correctos (contenido real corresponde a imagen)
+    5. Content-Type MIME válido (si disponible)
+    
+    Retorna: (es_valido, mensaje_error)
+    """
+    # 1. Validar que hay archivo
+    if not file:
+        return False, 'No se recibió archivo de imagen'
+    
+    # 2. Validar nombre obligatorio
+    nombre = getattr(file, 'name', None)
+    if not nombre or not nombre.strip():
+        return False, 'El archivo debe tener un nombre válido'
+    
+    nombre_lower = nombre.lower().strip()
+    ext = os.path.splitext(nombre_lower)[1]
+    
+    # 3. Validar extensión
+    if not ext:
+        return False, 'El archivo debe tener una extensión (.jpg, .png, etc.)'
+    
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        return False, f'Extensión no permitida: {ext}. Use: {", ".join(ALLOWED_IMAGE_EXTENSIONS)}'
+    
+    # 4. Validar tamaño
+    max_size_bytes = max_size_mb * 1024 * 1024
+    file_size = getattr(file, 'size', None)
+    if file_size is not None and file_size > max_size_bytes:
+        return False, f'Imagen demasiado grande: {file_size / 1024 / 1024:.1f}MB. Máximo: {max_size_mb}MB'
+    
+    # 5. Validar Content-Type MIME si está disponible
+    content_type = getattr(file, 'content_type', None)
+    if content_type and content_type.lower() not in ALLOWED_IMAGE_MIMES:
+        logger.warning(
+            f"Archivo rechazado: content_type {content_type} no permitido. "
+            f"Nombre: {nombre}"
+        )
+        return False, f'Tipo de archivo no permitido: {content_type}. Use imágenes JPG, PNG, GIF o WebP'
+    
+    # 6. Validar magic bytes - contenido real del archivo
+    try:
+        pos = file.tell() if hasattr(file, 'tell') else 0
+        header = file.read(16)  # Leer suficientes bytes
+        
+        if hasattr(file, 'seek'):
+            file.seek(pos)
+        
+        if not header or len(header) < 4:
+            return False, 'Archivo vacío o corrupto'
+        
+        # Verificar magic bytes según extensión
+        expected_magics = IMAGE_MAGIC_BYTES.get(ext, [])
+        if expected_magics:
+            match = False
+            for magic in expected_magics:
+                if header.startswith(magic):
+                    match = True
+                    break
+            
+            if not match:
+                logger.warning(
+                    f"Archivo imagen rechazado: extensión {ext} pero magic bytes incorrectos. "
+                    f"Header: {header[:8].hex()}, Nombre: {nombre}"
+                )
+                return False, f'El contenido del archivo no corresponde a una imagen {ext} válida'
+    
+    except Exception as e:
+        logger.error(f"Error validando magic bytes de imagen: {e}")
+        return False, 'Error al validar el contenido del archivo de imagen'
+    
+    return True, None
 
 
 def validar_archivo_excel(file):
@@ -3457,9 +3557,13 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     def _user_centro(self, user):
         return getattr(user, 'centro', None) or getattr(getattr(user, 'profile', None), 'centro', None)
 
-    def _validar_stock_items(self, items, centro=None, validar_farmacia_central=True):
+    def _validar_stock_items(self, items, centro=None, validar_farmacia_central=True, modo='informativo'):
         """
-        ISS-001, ISS-004: Valida stock disponible con lógica clara por ubicación.
+        ISS-001, ISS-004, ISS-005 FIX: Valida stock disponible con lógica clara por ubicación.
+        
+        ISS-005 FIX: Dos modos de validación:
+        - 'informativo': Solo reporta problemas sin bloquear (para creación)
+        - 'estricto': Bloquea si no hay stock suficiente (para autorización/surtido)
         
         LÓGICA DE VALIDACIÓN:
         - Para requisiciones (validar_farmacia_central=True): 
@@ -3474,9 +3578,10 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             items: Lista de items con producto y cantidad
             centro: Centro para contexto (usado para info, no para validación de requisiciones)
             validar_farmacia_central: Si True, valida contra farmacia central
+            modo: 'informativo' (default) o 'estricto'
             
         Returns:
-            list: Lista de errores de stock
+            list: Lista de errores/advertencias de stock
         """
         from django.utils import timezone
         
@@ -3511,16 +3616,22 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                     disponible = producto.get_stock_farmacia_central(solo_vigentes=True)
 
             if cantidad > disponible:
-                errores.append({
+                error_item = {
                     'producto': producto.clave,
                     'descripcion': producto.descripcion[:50] if producto.descripcion else '',
                     'disponible': disponible,
                     'solicitado': cantidad,
+                    'deficit': cantidad - disponible,
                     'ubicacion': 'farmacia_central' if validar_farmacia_central else (
                         centro.nombre if centro else 'farmacia_central'
                     ),
-                    'nota': 'Solo se considera stock de lotes vigentes (no vencidos)'
-                })
+                    'nota': 'Solo se considera stock de lotes vigentes (no vencidos)',
+                    # ISS-005: Indicar tipo de error según modo
+                    'tipo': 'advertencia' if modo == 'informativo' else 'error',
+                    'bloquea': modo == 'estricto'
+                }
+                errores.append(error_item)
+        
         return errores
 
     def get_queryset(self):
@@ -3614,7 +3725,15 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         return queryset.order_by('-fecha_solicitud')
     
     def create(self, request, *args, **kwargs):
-        """Crea requisicion en estado borrador/enviada segun data."""
+        """
+        ISS-001 FIX: Crea requisicion SIEMPRE en estado borrador.
+        
+        SEGURIDAD:
+        - El estado enviado por el cliente es IGNORADO
+        - Usuarios de centro: siempre 'borrador'
+        - Farmacia/Admin: siempre 'borrador' (deben usar acción 'enviar' para cambiar)
+        - Se valida contra máquina de estados antes de persistir
+        """
         try:
             data = request.data.copy()
             fecha = timezone.now()
@@ -3622,8 +3741,15 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             while Requisicion.objects.filter(numero=numero).exists():
                 numero = f"REQ-{fecha.strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
 
-            data.setdefault('estado', 'borrador')
-            data['estado'] = str(data.get('estado')).lower()
+            # ISS-001 FIX: IGNORAR estado enviado por cliente - siempre borrador
+            # El cliente NO puede crear requisiciones en estados avanzados
+            estado_solicitado = str(data.get('estado', '')).lower()
+            if estado_solicitado and estado_solicitado != 'borrador':
+                logger.warning(
+                    f"ISS-001: Intento de crear requisición en estado '{estado_solicitado}' "
+                    f"por usuario {request.user.username}. Forzando a 'borrador'."
+                )
+            data['estado'] = ESTADO_INICIAL_CENTRO  # Siempre 'borrador'
             data['numero'] = numero
 
             solicitante = request.user if request.user.is_authenticated else None
@@ -3655,19 +3781,15 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             if not centro and solicitante and not solicitante.is_superuser:
                 return Response({'error': 'No se encontro el centro para validar stock'}, status=status.HTTP_400_BAD_REQUEST)
             
-            # ISS-001, ISS-004: Validar stock de FARMACIA CENTRAL para todas las requisiciones
+            # ISS-001, ISS-004, ISS-005 FIX: Validación INFORMATIVA de stock en creación
             # Las requisiciones solicitan medicamentos que serán surtidos desde farmacia central
-            errores_stock = self._validar_stock_items(
+            # En creación solo advertimos, no bloqueamos (modo='informativo')
+            advertencias_stock = self._validar_stock_items(
                 items_data, 
                 centro=centro,
-                validar_farmacia_central=True  # Siempre validar farmacia central para requisiciones
+                validar_farmacia_central=True,
+                modo='informativo'  # ISS-005: Solo advertir en creación
             )
-            if errores_stock:
-                return Response({
-                    'error': 'Stock insuficiente en farmacia central',
-                    'detalles': errores_stock,
-                    'nota': 'Las requisiciones se surten desde farmacia central'
-                }, status=status.HTTP_400_BAD_REQUEST)
 
             # Agregar detalles a data para que el serializer los procese
             data['detalles'] = items_data
@@ -3676,10 +3798,20 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             serializer.is_valid(raise_exception=True)
             requisicion = serializer.save()
 
-            return Response({
+            response_data = {
                 'mensaje': 'Requisicion creada exitosamente',
                 'requisicion': RequisicionSerializer(requisicion).data
-            }, status=status.HTTP_201_CREATED)
+            }
+            
+            # ISS-005: Incluir advertencias de stock si las hay
+            if advertencias_stock:
+                response_data['advertencias_stock'] = advertencias_stock
+                response_data['nota'] = (
+                    'Hay productos con stock insuficiente en farmacia central. '
+                    'La requisición se creó pero puede ser rechazada en autorización.'
+                )
+
+            return Response(response_data, status=status.HTTP_201_CREATED)
         except serializers.ValidationError as exc:
             return Response({'error': 'Error de validacion', 'detalles': exc.detail}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
@@ -3703,17 +3835,13 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
 
         items_data = request.data.get('items') or request.data.get('detalles') or []
         if items_data:
-            # ISS-001, ISS-004: Validar stock de farmacia central para requisiciones
-            errores_stock = self._validar_stock_items(
+            # ISS-001, ISS-004, ISS-005: Validar stock en modo informativo (solo advertir)
+            advertencias_stock = self._validar_stock_items(
                 items_data, 
                 centro=requisicion.centro,
-                validar_farmacia_central=True
+                validar_farmacia_central=True,
+                modo='informativo'  # ISS-005: Solo advertir en edición
             )
-            if errores_stock:
-                return Response({
-                    'error': 'Stock insuficiente en farmacia central',
-                    'detalles': errores_stock
-                }, status=status.HTTP_400_BAD_REQUEST)
             requisicion.detalles.all().delete()
             for item_data in items_data:
                 producto_id = item_data.get('producto')
@@ -3727,6 +3855,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                     cantidad_autorizada=int(item_data.get('cantidad_autorizada') or 0),
                     observaciones=item_data.get('observaciones', '')
                 )
+            
+            # ISS-005: Devolver resultado con advertencias si las hay
+            response_data = {'mensaje': 'Requisicion actualizada exitosamente', 'requisicion': RequisicionSerializer(requisicion).data}
+            if advertencias_stock:
+                response_data['advertencias_stock'] = advertencias_stock
+            return Response(response_data)
 
         return Response({'mensaje': 'Requisicion actualizada exitosamente', 'requisicion': RequisicionSerializer(requisicion).data})
     
@@ -4009,82 +4143,201 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='marcar-recibida')
     def marcar_recibida(self, request, pk=None):
         """
-        Marca una requisicin surtida como recibida por el centro.
+        ISS-002 FIX: Marca una requisición surtida como recibida con CONCILIACIÓN.
         
         PERMISOS:
         - Solo usuarios del centro receptor pueden marcar como recibida
-        - Solo requisiciones en estado 'surtida' pueden marcarse
+        - Solo requisiciones en estado 'surtida' o 'parcial' pueden marcarse
         
         DATOS REQUERIDOS:
-        - lugar_entrega: Lugar donde se recibi
-        - observaciones_recepcion: Observaciones de la recepcin (opcional)
+        - lugar_entrega: Lugar donde se recibió
+        - items_recibidos: Lista de {detalle_id, cantidad_recibida} para conciliación
+        - observaciones_recepcion: Observaciones de la recepción (opcional)
+        
+        CONCILIACIÓN (ISS-002):
+        - Valida cantidades recibidas vs surtidas
+        - Registra divergencias (faltantes/daños)
+        - Crea movimientos de recepción para trazabilidad
         """
         from django.utils import timezone
+        from django.db import transaction
         
         requisicion = self.get_object()
         estado_actual = (requisicion.estado or '').lower()
         
-        if estado_actual != 'surtida':
+        # ISS-002: También permitir 'parcial'
+        if estado_actual not in ['surtida', 'parcial']:
             return Response({
-                'error': 'Solo se pueden marcar como recibidas las requisiciones surtidas',
+                'error': 'Solo se pueden marcar como recibidas las requisiciones surtidas o parciales',
                 'estado_actual': requisicion.estado
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # PERMISOS: Solo usuarios del centro receptor pueden confirmar recepcin
+        # PERMISOS: Solo usuarios del centro receptor pueden confirmar recepción
         user = request.user
         if not user.is_superuser:
             centro_user = self._user_centro(user)
             if not centro_user or requisicion.centro_id != centro_user.id:
                 return Response({
-                    'error': 'Solo el centro receptor puede confirmar la recepcin'
+                    'error': 'Solo el centro receptor puede confirmar la recepción'
                 }, status=status.HTTP_403_FORBIDDEN)
         
         # Obtener datos del request
         lugar_entrega = request.data.get('lugar_entrega', '')
         observaciones_recepcion = request.data.get('observaciones_recepcion', '')
+        items_recibidos = request.data.get('items_recibidos', [])
         
         if not lugar_entrega:
             return Response({
                 'error': 'El lugar de entrega es requerido'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # ISS-DB-002: 'recibida' -> 'entregada' para alinearse con BD Supabase
-        # Actualizar la requisicion
-        requisicion.estado = 'entregada'
-        requisicion.fecha_entrega = timezone.now()
-        requisicion.lugar_entrega = lugar_entrega
-        # Guardar observaciones en notas si hay
-        if observaciones_recepcion:
-            notas_actual = requisicion.notas or ''
-            requisicion.notas = f"{notas_actual}\n[Recepcion] {observaciones_recepcion}".strip()
+        # ISS-002 FIX: Conciliación de cantidades recibidas vs surtidas
+        divergencias = []
+        detalles_conciliados = []
         
-        # ISS-NEW: Manejar foto de firma de recepcion si se incluye
-        foto_firma = request.FILES.get('foto_firma_recepcion') or request.FILES.get('foto_firma')
-        if foto_firma:
-            requisicion.foto_firma_recepcion = foto_firma
-            requisicion.fecha_firma_recepcion = timezone.now()
+        with transaction.atomic():
+            for detalle in requisicion.detalles.select_related('producto'):
+                cantidad_surtida = detalle.cantidad_surtida or 0
+                
+                # Buscar item recibido correspondiente
+                item_recibido = next(
+                    (i for i in items_recibidos if str(i.get('detalle_id')) == str(detalle.id)),
+                    None
+                )
+                
+                if item_recibido:
+                    try:
+                        cantidad_recibida = int(item_recibido.get('cantidad_recibida', cantidad_surtida))
+                    except (ValueError, TypeError):
+                        cantidad_recibida = cantidad_surtida
+                    
+                    observacion_item = item_recibido.get('observaciones', '')
+                else:
+                    # Si no se especifica, asumir que recibió lo surtido
+                    cantidad_recibida = cantidad_surtida
+                    observacion_item = ''
+                
+                # Detectar divergencia
+                diferencia = cantidad_surtida - cantidad_recibida
+                if diferencia != 0:
+                    divergencias.append({
+                        'producto': detalle.producto.clave,
+                        'producto_nombre': (detalle.producto.nombre or '')[:50],
+                        'cantidad_surtida': cantidad_surtida,
+                        'cantidad_recibida': cantidad_recibida,
+                        'diferencia': diferencia,
+                        'tipo': 'faltante' if diferencia > 0 else 'excedente',
+                        'observaciones': observacion_item
+                    })
+                    
+                    # ISS-002: Registrar movimiento de ajuste por divergencia
+                    if diferencia > 0 and requisicion.centro:
+                        # Faltante: registrar ajuste negativo en centro
+                        lotes_centro = Lote.objects.filter(
+                            producto=detalle.producto,
+                            centro=requisicion.centro,
+                            activo=True,
+                            cantidad_actual__gt=0
+                        ).order_by('fecha_caducidad')
+                        
+                        faltante_pendiente = diferencia
+                        for lote in lotes_centro:
+                            if faltante_pendiente <= 0:
+                                break
+                            
+                            ajustar = min(faltante_pendiente, lote.cantidad_actual)
+                            registrar_movimiento_stock(
+                                lote=lote,
+                                tipo='ajuste',
+                                cantidad=-ajustar,
+                                usuario=user,
+                                centro=requisicion.centro,
+                                requisicion=requisicion,
+                                observaciones=f'AJUSTE_RECEPCION: Faltante en recepción REQ-{requisicion.numero}. {observacion_item}',
+                                skip_centro_check=True
+                            )
+                            faltante_pendiente -= ajustar
+                
+                # Guardar cantidad recibida en detalle
+                detalle.cantidad_recibida = cantidad_recibida
+                detalle.save(update_fields=['cantidad_recibida'])
+                
+                detalles_conciliados.append({
+                    'detalle_id': detalle.id,
+                    'producto': detalle.producto.clave,
+                    'surtida': cantidad_surtida,
+                    'recibida': cantidad_recibida
+                })
+            
+            # Actualizar la requisición
+            requisicion.estado = 'entregada'
+            requisicion.fecha_entrega = timezone.now()
+            requisicion.lugar_entrega = lugar_entrega
             requisicion.usuario_firma_recepcion = user
+            requisicion.fecha_firma_recepcion = timezone.now()
+            
+            # ISS-002: Registrar divergencias y responsable en notas
+            notas_recepcion = f"[Recepción {timezone.now().strftime('%Y-%m-%d %H:%M')}] "
+            notas_recepcion += f"Recibido por: {user.username}. "
+            if observaciones_recepcion:
+                notas_recepcion += f"Obs: {observaciones_recepcion}. "
+            if divergencias:
+                notas_recepcion += f"DIVERGENCIAS: {len(divergencias)} productos con diferencias. "
+            
+            notas_actual = requisicion.notas or ''
+            requisicion.notas = f"{notas_actual}\n{notas_recepcion}".strip()
+            
+            # Validar foto de firma si se incluye
+            foto_firma = request.FILES.get('foto_firma_recepcion') or request.FILES.get('foto_firma')
+            if foto_firma:
+                # ISS-006: Validar imagen antes de guardar
+                es_valido, error_msg = validar_archivo_imagen(foto_firma, max_size_mb=2)
+                if not es_valido:
+                    return Response({
+                        'error': f'Error en foto de firma: {error_msg}'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                requisicion.foto_firma_recepcion = foto_firma
+            
+            update_fields = [
+                'estado', 'fecha_entrega', 'lugar_entrega', 'notas',
+                'usuario_firma_recepcion_id', 'fecha_firma_recepcion'
+            ]
+            if foto_firma:
+                update_fields.append('foto_firma_recepcion')
+            
+            requisicion.save(update_fields=update_fields)
         
-        update_fields = [
-            'estado', 'fecha_entrega', 'lugar_entrega', 'notas'
-        ]
-        if foto_firma:
-            update_fields.extend(['foto_firma_recepcion', 'fecha_firma_recepcion', 'usuario_firma_recepcion_id'])
+        response_data = {
+            'mensaje': 'Requisición marcada como recibida',
+            'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data,
+            'conciliacion': {
+                'detalles': detalles_conciliados,
+                'total_items': len(detalles_conciliados)
+            }
+        }
         
-        requisicion.save(update_fields=update_fields)
+        # ISS-002: Incluir divergencias si las hay
+        if divergencias:
+            response_data['divergencias'] = divergencias
+            response_data['mensaje'] += f' (con {len(divergencias)} divergencias registradas)'
         
-        return Response({
-            'mensaje': 'Requisicin marcada como recibida',
-            'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
-        })
+        return Response(response_data)
 
     @action(detail=True, methods=['post'], url_path='subir-firma-surtido')
     def subir_firma_surtido(self, request, pk=None):
         """
-        Sube la foto de firma de surtido para una requisición.
+        ISS-006 FIX: Sube la foto de firma de surtido con validación de imagen.
+        
         ISS-DB-002: 'recibida' -> 'entregada' para alinearse con BD Supabase.
         Solo disponible para requisiciones en estado 'surtida' o 'entregada'.
         Solo usuarios de farmacia/admin pueden subir esta firma.
+        
+        Validaciones de seguridad (ISS-006):
+        - Extensión permitida (.jpg, .jpeg, .png, .gif, .webp)
+        - MIME type correcto
+        - Magic bytes válidos (contenido real = imagen)
+        - Tamaño máximo 2MB
         """
         from django.utils import timezone
         
@@ -4111,10 +4364,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'error': 'No se proporcionó la foto de firma'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Validar tamaño (max 2MB)
-        if foto_firma.size > 2 * 1024 * 1024:
+        # ISS-006 FIX: Validar imagen con magic bytes, MIME y extensión
+        es_valido, error_msg = validar_archivo_imagen(foto_firma, max_size_mb=2)
+        if not es_valido:
             return Response({
-                'error': 'La imagen no puede exceder 2MB'
+                'error': f'Error en foto de firma: {error_msg}'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         requisicion.foto_firma_surtido = foto_firma
@@ -4130,10 +4384,17 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='subir-firma-recepcion')
     def subir_firma_recepcion(self, request, pk=None):
         """
-        Sube la foto de firma de recepción para una requisición.
+        ISS-006 FIX: Sube la foto de firma de recepción con validación de imagen.
+        
         ISS-DB-002: 'recibida' -> 'entregada' para alinearse con BD Supabase.
         Solo disponible para requisiciones en estado 'entregada'.
         Solo usuarios del centro receptor pueden subir esta firma.
+        
+        Validaciones de seguridad (ISS-006):
+        - Extensión permitida (.jpg, .jpeg, .png, .gif, .webp)
+        - MIME type correcto
+        - Magic bytes válidos (contenido real = imagen)
+        - Tamaño máximo 2MB
         """
         from django.utils import timezone
         
@@ -4162,16 +4423,22 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'error': 'No se proporcionó la foto de firma'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Validar tamaño (max 2MB)
-        if foto_firma.size > 2 * 1024 * 1024:
+        # ISS-006 FIX: Validar imagen con magic bytes, MIME y extensión
+        es_valido, error_msg = validar_archivo_imagen(foto_firma, max_size_mb=2)
+        if not es_valido:
             return Response({
-                'error': 'La imagen no puede exceder 2MB'
+                'error': f'Error en foto de firma: {error_msg}'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         requisicion.foto_firma_recepcion = foto_firma
         requisicion.fecha_firma_recepcion = timezone.now()
         requisicion.usuario_firma_recepcion = user
         requisicion.save(update_fields=['foto_firma_recepcion', 'fecha_firma_recepcion', 'usuario_firma_recepcion'])
+        
+        return Response({
+            'mensaje': 'Firma de recepción subida correctamente',
+            'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
+        })
         
         return Response({
             'mensaje': 'Firma de recepción subida correctamente',

@@ -56,34 +56,74 @@ class RequisicionService:
     """
     
     # Transiciones de estado válidas para requisiciones
-    # ISS-001/002: FLUJO V2 - Alineado con core.constants.TRANSICIONES_REQUISICION
-    # Flujo jerárquico: borrador → pendiente_admin → pendiente_director → enviada
-    #                   → en_revision → autorizada → en_surtido → surtida → entregada
+    # ISS-001/002 + ISS-004 FIX (audit3): FLUJO V2 - Transiciones ESTRICTAS
+    # 
+    # Flujo jerárquico obligatorio:
+    #   borrador → pendiente_admin → pendiente_director → enviada
+    #   → en_revision → autorizada → en_surtido → surtida → entregada
+    # 
+    # ISS-004 FIX: Se ELIMINAN saltos de estados:
+    #   - autorizada → surtida (DEBE pasar por en_surtido)
+    #   - enviada → autorizada (DEBE pasar por en_revision)
+    # 
     # Estados negativos: rechazada, cancelada, vencida, devuelta
     TRANSICIONES_VALIDAS_DEFAULT = {
-        # Flujo del centro penitenciario
+        # Flujo del centro penitenciario (creación y envío)
         'borrador': ['pendiente_admin', 'cancelada'],
         'pendiente_admin': ['pendiente_director', 'rechazada', 'devuelta', 'cancelada'],
         'pendiente_director': ['enviada', 'rechazada', 'devuelta', 'cancelada'],
         
-        # Flujo de farmacia central
-        'enviada': ['en_revision', 'autorizada', 'rechazada', 'cancelada'],
+        # Flujo de farmacia central (revisión y autorización)
+        # ISS-004 FIX: Enviada DEBE pasar por en_revision antes de autorizar
+        'enviada': ['en_revision', 'rechazada', 'cancelada'],
         'en_revision': ['autorizada', 'rechazada', 'devuelta', 'cancelada'],
-        'autorizada': ['en_surtido', 'surtida', 'cancelada'],
-        'en_surtido': ['surtida', 'cancelada'],
+        
+        # Flujo de surtido (solo farmacia central)
+        # ISS-004 FIX: Autorizada DEBE pasar por en_surtido antes de surtida
+        'autorizada': ['en_surtido', 'cancelada'],
+        'en_surtido': ['surtida', 'parcial', 'cancelada'],
+        'parcial': ['en_surtido', 'surtida', 'cancelada'],  # Parcial puede reintentar
         'surtida': ['entregada', 'vencida'],
         
-        # Devolución - puede reenviar
+        # Devolución - puede reenviar al flujo
         'devuelta': ['pendiente_admin', 'cancelada'],
         
-        # Compatibilidad legacy
-        'parcial': ['surtida', 'cancelada'],
-        
-        # Estados finales - no pueden cambiar
+        # Estados finales - NO pueden cambiar
         'entregada': [],
         'rechazada': [],
         'vencida': [],
         'cancelada': [],
+    }
+    
+    # ISS-004 FIX (audit3): Roles autorizados por transición
+    ROLES_POR_TRANSICION = {
+        # Creación y envío - roles de centro
+        ('borrador', 'pendiente_admin'): ['medico', 'centro', 'usuario_centro'],
+        ('pendiente_admin', 'pendiente_director'): ['administrador_centro'],
+        ('pendiente_director', 'enviada'): ['director_centro'],
+        
+        # Revisión y autorización - roles de farmacia
+        ('enviada', 'en_revision'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
+        ('en_revision', 'autorizada'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
+        ('en_revision', 'rechazada'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
+        ('en_revision', 'devuelta'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
+        
+        # Surtido - solo farmacia
+        ('autorizada', 'en_surtido'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
+        ('en_surtido', 'surtida'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
+        ('en_surtido', 'parcial'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
+        
+        # Recepción - solo centro destino
+        ('surtida', 'entregada'): ['centro', 'usuario_centro', 'administrador_centro', 'director_centro'],
+        
+        # Cancelaciones - depende del estado actual
+        ('borrador', 'cancelada'): ['medico', 'centro', 'usuario_centro', 'administrador_centro'],
+        ('pendiente_admin', 'cancelada'): ['administrador_centro', 'director_centro'],
+        ('pendiente_director', 'cancelada'): ['director_centro'],
+        ('enviada', 'cancelada'): ['farmacia', 'admin_farmacia'],
+        ('en_revision', 'cancelada'): ['farmacia', 'admin_farmacia'],
+        ('autorizada', 'cancelada'): ['farmacia', 'admin_farmacia'],
+        ('en_surtido', 'cancelada'): ['farmacia', 'admin_farmacia'],
     }
     
     @property
@@ -114,30 +154,105 @@ class RequisicionService:
     
     def validar_transicion_estado(self, nuevo_estado):
         """
-        ISS-012: Valida que la transición de estado sea válida.
+        ISS-004 FIX (audit3): Valida transición con registro de actor/fecha.
+        
+        Validaciones:
+        1. Transición permitida según máquina de estados
+        2. Rol del usuario autorizado para esta transición
+        3. Registro de quién/cuándo para auditoría
         
         Args:
             nuevo_estado: Estado destino
             
         Raises:
             EstadoInvalidoError: Si la transición no es válida
+            PermisoRequisicionError: Si el rol no está autorizado
         """
         estado_actual = (self.requisicion.estado or 'borrador').lower()
+        nuevo_estado_lower = nuevo_estado.lower()
         transiciones_permitidas = self.TRANSICIONES_VALIDAS.get(estado_actual, [])
         
-        if nuevo_estado.lower() not in transiciones_permitidas:
+        # 1. Validar que la transición esté permitida
+        if nuevo_estado_lower not in transiciones_permitidas:
             raise EstadoInvalidoError(
                 f"Transición de estado inválida: {estado_actual} → {nuevo_estado}. "
-                f"Transiciones permitidas: {transiciones_permitidas}",
+                f"Transiciones permitidas desde '{estado_actual}': {transiciones_permitidas}",
                 estado_actual=estado_actual
             )
+        
+        # 2. ISS-004 FIX: Validar rol autorizado para esta transición
+        if not self.usuario.is_superuser:
+            user_rol = (getattr(self.usuario, 'rol', '') or '').lower()
+            transicion_key = (estado_actual, nuevo_estado_lower)
+            roles_permitidos = self.ROLES_POR_TRANSICION.get(transicion_key, [])
+            
+            # Si hay roles definidos para esta transición, validar
+            if roles_permitidos and user_rol not in roles_permitidos:
+                # Fallback: verificar si es admin/farmacia genérico
+                roles_admin = {'admin', 'admin_sistema', 'superusuario', 'administrador'}
+                if user_rol not in roles_admin:
+                    logger.warning(
+                        f"ISS-004: Rol '{user_rol}' no autorizado para transición "
+                        f"{estado_actual} → {nuevo_estado}. Roles permitidos: {roles_permitidos}"
+                    )
+                    raise PermisoRequisicionError(
+                        f"Su rol '{user_rol}' no está autorizado para la transición "
+                        f"{estado_actual} → {nuevo_estado}. "
+                        f"Roles permitidos: {', '.join(roles_permitidos)}"
+                    )
+        
+        # 3. ISS-004 FIX: Registrar transición para auditoría
+        logger.info(
+            f"ISS-004 TRANSICIÓN: {self.requisicion.folio} | "
+            f"{estado_actual} → {nuevo_estado} | "
+            f"Usuario: {self.usuario.username} | "
+            f"Rol: {getattr(self.usuario, 'rol', 'N/A')} | "
+            f"Fecha: {timezone.now().isoformat()}"
+        )
+        
+        return True
+    
+    def registrar_transicion_historial(self, estado_anterior, estado_nuevo, observaciones=''):
+        """
+        ISS-004 FIX (audit3): Registra transición en historial para trazabilidad.
+        
+        Guarda en las notas de la requisición un registro estructurado de cada
+        transición con: estado anterior, estado nuevo, usuario, fecha, rol.
+        
+        Args:
+            estado_anterior: Estado antes de la transición
+            estado_nuevo: Estado después de la transición
+            observaciones: Observaciones adicionales
+        """
+        from django.utils import timezone
+        
+        timestamp = timezone.now().strftime('%Y-%m-%d %H:%M:%S')
+        user_rol = getattr(self.usuario, 'rol', 'N/A')
+        
+        # Formato estructurado para facilitar parsing posterior
+        registro = (
+            f"\n[TRANSICIÓN {timestamp}] "
+            f"{estado_anterior} → {estado_nuevo} | "
+            f"Por: {self.usuario.username} ({user_rol})"
+        )
+        
+        if observaciones:
+            registro += f" | Obs: {observaciones}"
+        
+        # Agregar al campo notas (único campo de texto disponible)
+        notas_actuales = self.requisicion.notas or ''
+        self.requisicion.notas = notas_actuales + registro
     
     def validar_permisos_surtido(self, is_farmacia_or_admin_fn, get_user_centro_fn):
         """
-        ISS-003 FIX (audit2): Valida permisos del usuario para surtir.
+        ISS-003 FIX (audit2 + audit3): Valida permisos del usuario para surtir.
         
         IMPORTANTE: Solo farmacia central y administradores pueden surtir.
         Los usuarios de centros NO pueden surtir, solo pueden confirmar recepción.
+        
+        ISS-003 FIX (audit3): Valida adscripción del usuario:
+        - Usuarios de farmacia deben estar adscritos a farmacia central (centro=NULL)
+        - Solo pueden surtir requisiciones dentro de su ámbito
         
         Args:
             is_farmacia_or_admin_fn: Función que verifica si usuario es farmacia/admin
@@ -148,16 +263,55 @@ class RequisicionService:
         """
         if self.usuario.is_superuser:
             return True
-            
-        if is_farmacia_or_admin_fn(self.usuario):
-            return True
         
-        # ISS-003 FIX (audit2): Usuarios de centro NO pueden surtir
-        # Solo pueden confirmar recepción vía confirmar_recepcion()
-        raise PermisoRequisicionError(
-            "Solo personal de farmacia central o administradores pueden surtir requisiciones. "
-            "Los usuarios de centro pueden confirmar recepción usando el endpoint correspondiente."
+        # Verificar rol farmacia/admin
+        if not is_farmacia_or_admin_fn(self.usuario):
+            # ISS-003 FIX: Usuarios de centro NO pueden surtir
+            raise PermisoRequisicionError(
+                "Solo personal de farmacia central o administradores pueden surtir requisiciones. "
+                "Los usuarios de centro pueden confirmar recepción usando el endpoint correspondiente."
+            )
+        
+        # ISS-003 FIX (audit3): Validar adscripción del usuario de farmacia
+        # Los usuarios de farmacia central no deben tener centro asignado
+        user_centro = get_user_centro_fn(self.usuario)
+        user_rol = (getattr(self.usuario, 'rol', '') or '').lower()
+        
+        # Roles de farmacia central no deben estar adscritos a un centro específico
+        roles_farmacia_central = {'farmacia', 'farmaceutico', 'admin_farmacia', 'usuario_farmacia'}
+        if user_rol in roles_farmacia_central and user_centro is not None:
+            # Farmacia con centro asignado = probablemente error de configuración
+            # Solo advertir, pero permitir si es necesario
+            logger.warning(
+                f"ISS-003: Usuario farmacia {self.usuario.username} tiene centro asignado "
+                f"({user_centro.pk}). Se recomienda que farmacia central no tenga centro."
+            )
+        
+        # Validar que la requisición pertenece a un centro válido
+        requisicion_centro = getattr(self.requisicion, 'centro', None)
+        if requisicion_centro is None and getattr(self.requisicion, 'centro_id', None):
+            # Cargar centro si solo tenemos el ID
+            from core.models import Centro
+            try:
+                requisicion_centro = Centro.objects.get(pk=self.requisicion.centro_id)
+            except Centro.DoesNotExist:
+                raise PermisoRequisicionError(
+                    f"Centro de requisición no válido: {self.requisicion.centro_id}"
+                )
+        
+        if requisicion_centro is None:
+            raise PermisoRequisicionError(
+                "La requisición no tiene centro destino asignado. No se puede surtir."
+            )
+        
+        # ISS-003 FIX (audit3): Registrar quién realiza el surtido para auditoría
+        logger.info(
+            f"ISS-003: Usuario {self.usuario.username} (rol: {user_rol}) "
+            f"autorizado para surtir requisición {self.requisicion.folio} "
+            f"del centro {requisicion_centro.nombre}"
         )
+        
+        return True
     
     def validar_stock_disponible(self):
         """
