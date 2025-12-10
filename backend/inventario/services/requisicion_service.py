@@ -53,6 +53,7 @@ class RequisicionService:
     ISS-014: Usa select_for_update() para bloqueo optimista de lotes.
     ISS-030: Valida permisos de acceso por centro.
     ISS-001/002/003 FIX (audit8): Importa desde core.constants como FUENTE ÚNICA DE VERDAD.
+    ISS-001 FIX (audit11): Filtra lotes por estado 'disponible'.
     """
     
     # ISS-001/002/003 FIX (audit8): IMPORTAR desde constants, NO duplicar
@@ -62,6 +63,7 @@ class RequisicionService:
         ESTADOS_EDITABLES,
         ESTADOS_TERMINALES,
         ROLES_POR_TRANSICION as _ROLES_POR_TRANSICION,
+        ESTADOS_LOTE_DISPONIBLES,  # ISS-001 FIX (audit11)
     )
     
     # Mantener como atributo de clase para compatibilidad
@@ -75,6 +77,12 @@ class RequisicionService:
         """ISS-001/002/003 FIX (audit8): Estados surtibles desde constants."""
         from core.constants import ESTADOS_SURTIBLES
         return ESTADOS_SURTIBLES
+    
+    @property
+    def ESTADOS_LOTE_DISPONIBLES(self):
+        """ISS-001 FIX (audit11): Estados de lote que cuentan como disponibles."""
+        from core.constants import ESTADOS_LOTE_DISPONIBLES
+        return ESTADOS_LOTE_DISPONIBLES
     
     @property
     def TRANSICIONES_VALIDAS(self):
@@ -849,7 +857,9 @@ class RequisicionService:
             cantidad_surtida_item = 0
             lotes_usados = []
             
-            # ISS-002 FIX + ISS-014: Obtener lotes SOLO de farmacia central CON BLOQUEO
+            # ISS-001 FIX (audit11): Obtener SOLO lotes con estado 'disponible'
+            # Excluye lotes bloqueados, retirados, vencidos o agotados
+            # ISS-002 FIX + ISS-014: Lotes SOLO de farmacia central CON BLOQUEO
             # select_for_update() bloquea las filas hasta que termine la transacción
             # 
             # IMPORTANTE: Solo usamos lotes de farmacia central (centro=NULL).
@@ -865,6 +875,7 @@ class RequisicionService:
                 activo=True,
                 cantidad_actual__gt=0,
                 fecha_caducidad__gte=hoy,  # ISS-002 FIX: Solo lotes vigentes
+                estado__in=self.ESTADOS_LOTE_DISPONIBLES,  # ISS-001 FIX (audit11)
             ).order_by('fecha_caducidad', 'id')  # FEFO + ID para evitar deadlocks
             
             for lote in lotes:

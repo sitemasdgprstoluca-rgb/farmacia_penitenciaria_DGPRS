@@ -20,6 +20,7 @@ from .constants import (
     LOTE_NUMERO_MIN_LENGTH,
     LOTE_NUMERO_MAX_LENGTH,
     NIVELES_STOCK,
+    ESTADOS_LOTE_DISPONIBLES,  # ISS-001 FIX (audit11)
 )
 import logging
 import os
@@ -472,77 +473,151 @@ class Producto(models.Model):
     def __str__(self):
         return f"{self.clave} - {self.nombre}"
     
-    def get_stock_actual(self, centro=None):
-        """Calcula el stock actual sumando lotes disponibles."""
-        from django.db.models import Sum
+    def get_stock_actual(self, centro=None, use_cache=False, cache_timeout=60):
+        """
+        ISS-001 FIX (audit11): Calcula el stock actual sumando lotes disponibles.
+        ISS-007 FIX (audit11): Soporte para caching opcional.
         
-        filtros = {'activo': True}
+        SOLO cuenta lotes con estado 'disponible', activos y no vencidos.
+        Excluye lotes bloqueados, retirados, vencidos o agotados.
+        
+        Args:
+            centro: Filtrar por centro específico (None = todos)
+            use_cache: Si True, usa cache de Django (default False para transacciones)
+            cache_timeout: Tiempo de cache en segundos (default 60)
+        """
+        from django.db.models import Sum
+        from django.utils import timezone
+        from django.core.cache import cache
+        
+        # ISS-007 FIX (audit11): Caching opcional para reportes/vistas
+        if use_cache:
+            centro_key = centro.id if hasattr(centro, 'id') else (centro or 'all')
+            cache_key = f'stock_producto_{self.id}_{centro_key}'
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return cached
+        
+        filtros = {
+            'activo': True,
+            'estado__in': ESTADOS_LOTE_DISPONIBLES,  # ISS-001 FIX: Solo lotes disponibles
+            'cantidad_actual__gt': 0,
+            'fecha_caducidad__gte': timezone.now().date(),  # ISS-001 FIX: Solo vigentes
+        }
         if centro and centro != 'todos':
             filtros['centro'] = centro
         
-        return self.lotes.filter(**filtros).aggregate(
+        result = self.lotes.filter(**filtros).aggregate(
             total=Sum('cantidad_actual')
         )['total'] or 0
+        
+        # ISS-007 FIX: Guardar en cache si se solicitó
+        if use_cache:
+            cache.set(cache_key, result, cache_timeout)
+        
+        return result
     
-    def get_stock_farmacia_central(self, solo_vigentes=True):
+    def get_stock_farmacia_central(self, solo_vigentes=True, use_cache=False, cache_timeout=60):
         """
-        ISS-004: Calcula stock disponible en farmacia central.
+        ISS-001 FIX (audit11): Calcula stock disponible en farmacia central.
+        ISS-007 FIX (audit11): Soporte para caching opcional.
+        
+        SOLO cuenta lotes con estado 'disponible', activos y no vencidos.
+        Excluye lotes bloqueados, retirados, vencidos o agotados.
         
         Args:
-            solo_vigentes: Si True, excluye lotes vencidos
+            solo_vigentes: Si True, excluye lotes vencidos (default True)
+            use_cache: Si True, usa cache de Django (default False)
+            cache_timeout: Tiempo de cache en segundos (default 60)
             
         Returns:
             int: Stock disponible
         """
         from django.db.models import Sum
         from django.utils import timezone
+        from django.core.cache import cache
+        
+        # ISS-007 FIX (audit11): Caching opcional
+        if use_cache:
+            cache_key = f'stock_farmacia_central_{self.id}_{solo_vigentes}'
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return cached
         
         filtros = {
             'activo': True,
             'centro__isnull': True,  # Farmacia central = sin centro asignado
-            'cantidad_actual__gt': 0
+            'cantidad_actual__gt': 0,
+            'estado__in': ESTADOS_LOTE_DISPONIBLES,  # ISS-001 FIX: Solo lotes disponibles
         }
         
         if solo_vigentes:
             filtros['fecha_caducidad__gte'] = timezone.now().date()
         
-        return self.lotes.filter(**filtros).aggregate(
+        result = self.lotes.filter(**filtros).aggregate(
             total=Sum('cantidad_actual')
         )['total'] or 0
+        
+        if use_cache:
+            cache.set(cache_key, result, cache_timeout)
+        
+        return result
     
-    def get_stock_centro(self, centro, solo_vigentes=True):
+    def get_stock_centro(self, centro, solo_vigentes=True, use_cache=False, cache_timeout=60):
         """
-        ISS-004: Calcula stock disponible en un centro específico.
+        ISS-001 FIX (audit11): Calcula stock disponible en un centro específico.
+        ISS-007 FIX (audit11): Soporte para caching opcional.
+        
+        SOLO cuenta lotes con estado 'disponible', activos y no vencidos.
+        Excluye lotes bloqueados, retirados, vencidos o agotados.
         
         Args:
             centro: Instancia o ID del centro
-            solo_vigentes: Si True, excluye lotes vencidos
+            solo_vigentes: Si True, excluye lotes vencidos (default True)
+            use_cache: Si True, usa cache de Django (default False)
+            cache_timeout: Tiempo de cache en segundos (default 60)
             
         Returns:
             int: Stock disponible
         """
         from django.db.models import Sum
         from django.utils import timezone
+        from django.core.cache import cache
         
         centro_id = centro.id if hasattr(centro, 'id') else centro
+        
+        # ISS-007 FIX (audit11): Caching opcional
+        if use_cache:
+            cache_key = f'stock_centro_{self.id}_{centro_id}_{solo_vigentes}'
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return cached
         
         filtros = {
             'activo': True,
             'centro_id': centro_id,
-            'cantidad_actual__gt': 0
+            'cantidad_actual__gt': 0,
+            'estado__in': ESTADOS_LOTE_DISPONIBLES,  # ISS-001 FIX: Solo lotes disponibles
         }
         
         if solo_vigentes:
             filtros['fecha_caducidad__gte'] = timezone.now().date()
         
-        return self.lotes.filter(**filtros).aggregate(
+        result = self.lotes.filter(**filtros).aggregate(
             total=Sum('cantidad_actual')
         )['total'] or 0
+        
+        if use_cache:
+            cache.set(cache_key, result, cache_timeout)
+        
+        return result
     
     def get_lotes_disponibles_farmacia(self):
         """
-        ISS-004: Retorna lotes disponibles para surtido en farmacia central.
+        ISS-001 FIX (audit11): Retorna lotes disponibles para surtido en farmacia central.
         Ordenados por fecha de caducidad (FEFO - First Expired, First Out).
+        
+        SOLO retorna lotes con estado 'disponible', activos y no vencidos.
         """
         from django.utils import timezone
         
@@ -550,7 +625,8 @@ class Producto(models.Model):
             activo=True,
             centro__isnull=True,
             cantidad_actual__gt=0,
-            fecha_caducidad__gte=timezone.now().date()
+            fecha_caducidad__gte=timezone.now().date(),
+            estado__in=ESTADOS_LOTE_DISPONIBLES,  # ISS-001 FIX: Solo lotes disponibles
         ).order_by('fecha_caducidad')
     
     def get_nivel_stock(self):

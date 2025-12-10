@@ -41,6 +41,12 @@ ESTADOS_LOTE = [
     ('retirado', 'Retirado'),
 ]
 
+# ISS-001 FIX (audit11): Estados de lote que pueden contarse como stock disponible
+# SOLO 'disponible' cuenta para cálculos de inventario surtible
+# Lotes bloqueados, retirados, vencidos o agotados NO deben incluirse
+ESTADOS_LOTE_DISPONIBLES = {'disponible'}
+ESTADOS_LOTE_NO_DISPONIBLES = {'agotado', 'vencido', 'bloqueado', 'retirado'}
+
 # Estados de requisición
 # ISS-DB-002: Alineado con CHECK constraint de BD Supabase
 # FLUJO V2: Estados jerárquicos con trazabilidad completa

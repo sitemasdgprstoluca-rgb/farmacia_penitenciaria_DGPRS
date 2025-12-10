@@ -329,6 +329,10 @@ def validar_archivo_imagen(file, max_size_mb=2):
                             f"Nombre: {nombre}"
                         )
                         return False, f'El contenido del archivo ({pillow_format}) no corresponde a la extensión {ext}'
+            
+            # ISS-006 FIX (audit11): Asegurar que el stream quede en posición original
+            if hasattr(file, 'seek'):
+                file.seek(0)
                     
         except Exception as e:
             logger.warning(
@@ -337,11 +341,17 @@ def validar_archivo_imagen(file, max_size_mb=2):
             )
             return False, 'Imagen corrupta o formato no válido - no se puede procesar'
     else:
-        # Log warning si Pillow no está disponible (operación degradada)
-        logger.warning(
-            "Pillow no disponible - validación de imagen limitada a magic bytes. "
-            "Instale Pillow para validación completa."
+        # ISS-006 FIX (audit11): Rechazar imágenes si Pillow no está disponible
+        # La validación solo con magic bytes no es suficiente para seguridad
+        logger.error(
+            "Pillow NO disponible - rechazando imagen por seguridad. "
+            "Instale Pillow con: pip install Pillow"
         )
+        return False, 'Validación de imágenes no disponible. Contacte al administrador.'
+    
+    # ISS-006 FIX (audit11): Asegurar stream en posición 0 para el caller
+    if hasattr(file, 'seek'):
+        file.seek(0)
     
     return True, None
 

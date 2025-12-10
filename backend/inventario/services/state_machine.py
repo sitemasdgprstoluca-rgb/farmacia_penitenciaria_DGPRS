@@ -28,6 +28,7 @@ from core.constants import (
     ESTADOS_TERMINALES,
     ESTADOS_EDICION_LIMITADA,
     ESTADOS_SIN_EDICION,
+    ESTADOS_LOTE_DISPONIBLES,  # ISS-001 FIX (audit11)
 )
 
 logger = logging.getLogger(__name__)
@@ -361,6 +362,7 @@ class RequisicionStateMachine:
         SOLO valida stock en farmacia central, no incluye stock del centro destino.
         ISS-002 FIX: Solo considera lotes NO caducados.
         ISS-001 FIX (audit4): Requiere estado en_surtido, NO puede venir de autorizada directamente.
+        ISS-001 FIX (audit11): Solo cuenta lotes con estado 'disponible'.
         """
         from django.db.models import Sum
         from django.utils import timezone
@@ -382,14 +384,15 @@ class RequisicionStateMachine:
             if cantidad_requerida <= 0:
                 continue
             
-            # ISS-001/ISS-002 FIX: Stock SOLO en farmacia central (centro=NULL)
-            # ISS-002 FIX: Solo lotes vigentes (fecha_caducidad >= hoy)
+            # ISS-001 FIX (audit11): Stock SOLO de lotes con estado 'disponible'
+            # Excluye lotes bloqueados, retirados, vencidos o agotados
             stock_disponible = Lote.objects.filter(
                 centro__isnull=True,  # Solo farmacia central
                 producto=detalle.producto,
                 activo=True,
                 cantidad_actual__gt=0,
-                fecha_caducidad__gte=hoy,  # ISS-002 FIX: Solo lotes vigentes
+                fecha_caducidad__gte=hoy,
+                estado__in=ESTADOS_LOTE_DISPONIBLES,  # ISS-001 FIX (audit11)
             ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
             
             if stock_disponible < cantidad_requerida:
@@ -403,12 +406,14 @@ class RequisicionStateMachine:
     def _validar_precondiciones_en_surtido(self) -> List[str]:
         """
         ISS-003 FIX (audit10): Valida precondiciones para iniciar surtido.
+        ISS-001 FIX (audit11): Solo cuenta lotes con estado 'disponible'.
         
         Esta validación se ejecuta al transicionar de AUTORIZADA → EN_SURTIDO.
         Verifica ANTES de reservar inventario que:
         1. Hay stock suficiente en farmacia central
         2. Hay lotes vigentes (no caducados)
-        3. Los lotes tienen cantidad mínima requerida
+        3. Hay lotes con estado 'disponible' (no bloqueados/retirados)
+        4. Los lotes tienen cantidad mínima requerida
         
         CRÍTICO: Esta validación previene requisiciones que no pueden surtirse,
         evitando inventarios negativos y discrepancias.
@@ -437,14 +442,16 @@ class RequisicionStateMachine:
                 )
                 continue
             
-            # ISS-003 FIX (audit10): Consulta de lotes vigentes en farmacia central
+            # ISS-001 FIX (audit11): Solo lotes con estado 'disponible'
+            # Excluye lotes bloqueados, retirados, vencidos o agotados
             lotes_vigentes = Lote.objects.filter(
                 centro__isnull=True,  # Solo farmacia central
                 producto=detalle.producto,
                 activo=True,
                 cantidad_actual__gt=0,
-                fecha_caducidad__gte=hoy,  # Solo lotes vigentes
-            ).values('id', 'numero_lote', 'cantidad_actual', 'fecha_caducidad')
+                fecha_caducidad__gte=hoy,
+                estado__in=ESTADOS_LOTE_DISPONIBLES,  # ISS-001 FIX (audit11)
+            ).values('id', 'numero_lote', 'cantidad_actual', 'fecha_caducidad', 'estado')
             
             # Calcular stock total disponible
             stock_disponible = sum(lote['cantidad_actual'] for lote in lotes_vigentes)
@@ -452,15 +459,15 @@ class RequisicionStateMachine:
             if stock_disponible < cantidad_requerida:
                 # Listar lotes disponibles para diagnóstico
                 lotes_info = [
-                    f"  - Lote {l['numero_lote']}: {l['cantidad_actual']} uds (vence: {l['fecha_caducidad']})"
+                    f"  - Lote {l['numero_lote']}: {l['cantidad_actual']} uds (vence: {l['fecha_caducidad']}, estado: {l['estado']})"
                     for l in lotes_vigentes
                 ]
-                lotes_str = "\n".join(lotes_info) if lotes_info else "  (ninguno)"
+                lotes_str = "\n".join(lotes_info) if lotes_info else "  (ninguno con estado 'disponible')"
                 
                 errores.append(
                     f"Stock insuficiente para '{detalle.producto.clave}' ({detalle.producto.nombre}): "
                     f"requerido {cantidad_requerida}, disponible {stock_disponible}.\n"
-                    f"Lotes vigentes en farmacia central:\n{lotes_str}"
+                    f"Lotes disponibles en farmacia central:\n{lotes_str}"
                 )
             
             # ISS-003 FIX (audit10): Advertencia de lotes próximos a vencer
