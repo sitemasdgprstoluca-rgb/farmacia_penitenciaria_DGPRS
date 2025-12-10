@@ -283,17 +283,22 @@ class RequisicionService:
                         f"Esta transición requiere pertenecer al centro '{requisicion_centro.nombre}'."
                     )
         
-        # ISS-003 FIX: Validar transiciones de farmacia
+        # ISS-001 FIX (audit6): Validar transiciones de farmacia con bloqueo estricto
         if transicion in transiciones_farmacia:
             roles_farmacia = {'farmacia', 'farmaceutico', 'admin_farmacia', 'usuario_farmacia'}
             
             # Usuario debe ser de farmacia central
             if user_rol in roles_farmacia:
-                # Farmacia con centro asignado = configuración errónea
+                # ISS-001 FIX: BLOQUEAR si farmacia tiene centro asignado
                 if user_centro is not None:
-                    logger.warning(
-                        f"ISS-003: Usuario farmacia {self.usuario.username} tiene centro asignado "
-                        f"({user_centro.pk}). Permitiendo pero se recomienda corregir."
+                    logger.error(
+                        f"ISS-001: Usuario farmacia {self.usuario.username} tiene centro asignado "
+                        f"({user_centro.pk}). Transición '{transicion}' bloqueada."
+                    )
+                    raise PermisoRequisicionError(
+                        f"El usuario '{self.usuario.username}' tiene rol de farmacia pero está adscrito "
+                        f"al centro '{user_centro}'. Las transiciones de farmacia requieren usuarios "
+                        f"sin centro asignado. Contacte al administrador para corregir su adscripción."
                     )
             elif user_rol not in {'admin', 'admin_sistema', 'superusuario', 'administrador'}:
                 raise PermisoRequisicionError(
@@ -351,15 +356,56 @@ class RequisicionService:
             )
         
         movimientos_revertidos = []
+        errores_validacion = []
         
-        # ISS-005 FIX: Si hay movimientos (parcial), revertirlos
+        # ISS-002 FIX (audit6): Si hay movimientos (parcial), validar ANTES de revertir
         if estado_actual == 'parcial':
-            # Buscar y revertir movimientos de salida
+            # Buscar movimientos de salida y entrada con lock
             movimientos_salida = Movimiento.objects.select_for_update().filter(
                 requisicion=requisicion,
                 tipo='salida'
             ).select_related('lote')
             
+            movimientos_entrada = Movimiento.objects.select_for_update().filter(
+                requisicion=requisicion,
+                tipo='entrada'
+            ).select_related('lote')
+            
+            # ISS-002 FIX: VALIDAR que reversión de entradas no genere stock negativo
+            # Antes de hacer cualquier cambio, verificar que todos los ajustes sean válidos
+            for mov in movimientos_entrada:
+                lote = Lote.objects.select_for_update().get(pk=mov.lote.pk)
+                cantidad_actual = lote.cantidad_actual or 0
+                cantidad_a_restar = mov.cantidad
+                
+                if cantidad_actual < cantidad_a_restar:
+                    errores_validacion.append({
+                        'lote': lote.numero_lote,
+                        'producto': str(lote.producto),
+                        'stock_actual': cantidad_actual,
+                        'cantidad_a_restar': cantidad_a_restar,
+                        'deficit': cantidad_a_restar - cantidad_actual
+                    })
+            
+            # ISS-002 FIX: Si hay errores de validación, abortar atómicamente
+            if errores_validacion:
+                logger.error(
+                    f"ISS-002: Reversión de requisición {requisicion.folio} abortada. "
+                    f"Stock insuficiente en {len(errores_validacion)} lote(s): {errores_validacion}"
+                )
+                raise RequisicionServiceError(
+                    f"No se puede devolver la requisición: la reversión de movimientos "
+                    f"generaría stock negativo en {len(errores_validacion)} lote(s).",
+                    details={
+                        'codigo': 'stock_negativo_reversion',
+                        'lotes_afectados': errores_validacion,
+                        'recomendacion': 'Verifique que el stock del centro no haya sido consumido antes de devolver'
+                    },
+                    code='integridad_inventario'
+                )
+            
+            # ISS-002 FIX: Validaciones pasaron, proceder con reversión
+            # Restaurar stock en farmacia (salidas -> entradas)
             for mov in movimientos_salida:
                 cantidad_restaurar = abs(mov.cantidad)
                 
@@ -384,20 +430,21 @@ class RequisicionService:
                 
                 movimientos_revertidos.append({
                     'lote': mov.lote.numero_lote,
-                    'cantidad_restaurada': cantidad_restaurar
+                    'cantidad_restaurada': cantidad_restaurar,
+                    'tipo': 'restauracion_farmacia'
                 })
             
-            # Revertir entradas en centro
-            movimientos_entrada = Movimiento.objects.select_for_update().filter(
-                requisicion=requisicion,
-                tipo='entrada'
-            ).select_related('lote')
-            
+            # ISS-002 FIX: Revertir entradas en centro (ya validado que no genera negativo)
             for mov in movimientos_entrada:
-                Lote.objects.filter(pk=mov.lote.pk).update(
-                    cantidad_actual=F('cantidad_actual') - mov.cantidad,
-                    updated_at=timezone.now()
-                )
+                # Re-obtener lote con lock para actualización segura
+                lote = Lote.objects.select_for_update().get(pk=mov.lote.pk)
+                nueva_cantidad = lote.cantidad_actual - mov.cantidad
+                
+                # Actualizar con valor calculado (no F() para evitar race condition)
+                lote.cantidad_actual = nueva_cantidad
+                lote.activo = nueva_cantidad > 0  # Desactivar si queda en 0
+                lote.updated_at = timezone.now()
+                lote.save(update_fields=['cantidad_actual', 'activo', 'updated_at'])
                 
                 Movimiento.objects.create(
                     tipo='salida',
@@ -409,6 +456,12 @@ class RequisicionService:
                     cantidad=-mov.cantidad,
                     motivo=f'REVERSO por devolución de requisición {requisicion.numero}'
                 )
+                
+                movimientos_revertidos.append({
+                    'lote': mov.lote.numero_lote,
+                    'cantidad_revertida': mov.cantidad,
+                    'tipo': 'reversion_centro'
+                })
             
             # Resetear cantidades surtidas
             requisicion.detalles.update(cantidad_surtida=0)
@@ -444,36 +497,67 @@ class RequisicionService:
             'usuario': self.usuario.username
         }
     
-    def registrar_transicion_historial(self, estado_anterior, estado_nuevo, observaciones=''):
+    def registrar_transicion_historial(self, estado_anterior, estado_nuevo, observaciones='', 
+                                         accion='cambio_estado', ip_address=None, user_agent=None):
         """
-        ISS-004 FIX (audit3): Registra transición en historial para trazabilidad.
+        ISS-003 FIX (audit6): Registra transición en tabla estructurada de historial.
         
-        Guarda en las notas de la requisición un registro estructurado de cada
-        transición con: estado anterior, estado nuevo, usuario, fecha, rol.
+        Usa el modelo RequisicionHistorialEstados para persistencia estructurada
+        con campos consultables (no concatenación de texto en notas).
         
         Args:
             estado_anterior: Estado antes de la transición
             estado_nuevo: Estado después de la transición
             observaciones: Observaciones adicionales
+            accion: Tipo de acción (crear, autorizar, rechazar, etc.)
+            ip_address: IP del cliente (para auditoría)
+            user_agent: User agent del cliente (para auditoría)
         """
-        from django.utils import timezone
+        from core.models import RequisicionHistorialEstados
         
-        timestamp = timezone.now().strftime('%Y-%m-%d %H:%M:%S')
-        user_rol = getattr(self.usuario, 'rol', 'N/A')
-        
-        # Formato estructurado para facilitar parsing posterior
-        registro = (
-            f"\n[TRANSICIÓN {timestamp}] "
-            f"{estado_anterior} → {estado_nuevo} | "
-            f"Por: {self.usuario.username} ({user_rol})"
-        )
-        
-        if observaciones:
-            registro += f" | Obs: {observaciones}"
-        
-        # Agregar al campo notas (único campo de texto disponible)
-        notas_actuales = self.requisicion.notas or ''
-        self.requisicion.notas = notas_actuales + registro
+        try:
+            # ISS-003 FIX: Usar tabla estructurada en lugar de campo de texto
+            historial = RequisicionHistorialEstados.registrar_cambio(
+                requisicion=self.requisicion,
+                estado_anterior=estado_anterior,
+                estado_nuevo=estado_nuevo,
+                usuario=self.usuario,
+                accion=accion,
+                motivo=observaciones if observaciones else None,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                datos_adicionales={
+                    'rol_usuario': getattr(self.usuario, 'rol', 'N/A'),
+                    'centro_usuario': str(getattr(self.usuario, 'centro', None)),
+                    'timestamp_local': timezone.now().isoformat()
+                }
+            )
+            
+            logger.info(
+                f"ISS-003: Historial estructurado creado para requisición {self.requisicion.pk}: "
+                f"{estado_anterior} → {estado_nuevo} (ID: {historial.pk})"
+            )
+            
+        except Exception as e:
+            # Fallback a notas si la tabla no existe o falla
+            logger.warning(
+                f"ISS-003: No se pudo guardar en historial estructurado ({e}). "
+                f"Usando fallback a notas."
+            )
+            timestamp = timezone.now().strftime('%Y-%m-%d %H:%M:%S')
+            user_rol = getattr(self.usuario, 'rol', 'N/A')
+            
+            registro = (
+                f"\n[TRANSICIÓN {timestamp}] "
+                f"{estado_anterior} → {estado_nuevo} | "
+                f"Por: {self.usuario.username} ({user_rol})"
+            )
+            
+            if observaciones:
+                registro += f" | Obs: {observaciones}"
+            
+            notas_actuales = self.requisicion.notas or ''
+            self.requisicion.notas = notas_actuales + registro
     
     def validar_permisos_surtido(self, is_farmacia_or_admin_fn, get_user_centro_fn):
         """
@@ -504,19 +588,24 @@ class RequisicionService:
                 "Los usuarios de centro pueden confirmar recepción usando el endpoint correspondiente."
             )
         
-        # ISS-003 FIX (audit3): Validar adscripción del usuario de farmacia
-        # Los usuarios de farmacia central no deben tener centro asignado
+        # ISS-001 FIX (audit6): Validar adscripción del usuario de farmacia
+        # Los usuarios de farmacia central NO deben tener centro asignado
         user_centro = get_user_centro_fn(self.usuario)
         user_rol = (getattr(self.usuario, 'rol', '') or '').lower()
         
         # Roles de farmacia central no deben estar adscritos a un centro específico
         roles_farmacia_central = {'farmacia', 'farmaceutico', 'admin_farmacia', 'usuario_farmacia'}
         if user_rol in roles_farmacia_central and user_centro is not None:
-            # Farmacia con centro asignado = probablemente error de configuración
-            # Solo advertir, pero permitir si es necesario
-            logger.warning(
-                f"ISS-003: Usuario farmacia {self.usuario.username} tiene centro asignado "
-                f"({user_centro.pk}). Se recomienda que farmacia central no tenga centro."
+            # ISS-001 FIX: BLOQUEAR operaciones de farmacia con centro asignado
+            # Antes solo advertía, ahora rechaza para mantener segregación
+            logger.error(
+                f"ISS-001: Usuario farmacia {self.usuario.username} tiene centro asignado "
+                f"({user_centro.pk}). Operación bloqueada por seguridad."
+            )
+            raise PermisoRequisicionError(
+                f"El usuario '{self.usuario.username}' tiene rol de farmacia pero está adscrito "
+                f"al centro '{user_centro}'. Los usuarios de farmacia central no deben tener "
+                f"centro asignado. Contacte al administrador para corregir su adscripción."
             )
         
         # Validar que la requisición pertenece a un centro válido
