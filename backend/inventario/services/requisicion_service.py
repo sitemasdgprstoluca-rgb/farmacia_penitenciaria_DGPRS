@@ -56,28 +56,42 @@ class RequisicionService:
     """
     
     # Transiciones de estado válidas para requisiciones
-    # ISS-DB-002: Alineado con BD Supabase CHECK constraint
-    # BD permite: borrador, enviada, autorizada, rechazada, en_surtido, surtida, parcial, cancelada, entregada
-    # Flujo: borrador → enviada → autorizada → en_surtido → (surtida|parcial) → entregada
-    #                           → rechazada
-    #        cualquier estado → cancelada
+    # ISS-001/002: FLUJO V2 - Alineado con core.constants.TRANSICIONES_REQUISICION
+    # Flujo jerárquico: borrador → pendiente_admin → pendiente_director → enviada
+    #                   → en_revision → autorizada → en_surtido → surtida → entregada
+    # Estados negativos: rechazada, cancelada, vencida, devuelta
     TRANSICIONES_VALIDAS_DEFAULT = {
-        'borrador': ['enviada', 'cancelada'],
-        'enviada': ['autorizada', 'rechazada', 'cancelada'],
-        'autorizada': ['en_surtido', 'surtida', 'parcial', 'cancelada'],
-        'en_surtido': ['surtida', 'parcial', 'cancelada'],
-        'parcial': ['en_surtido', 'surtida', 'entregada', 'cancelada'],
-        'surtida': ['entregada'],
-        'rechazada': [],
+        # Flujo del centro penitenciario
+        'borrador': ['pendiente_admin', 'cancelada'],
+        'pendiente_admin': ['pendiente_director', 'rechazada', 'devuelta', 'cancelada'],
+        'pendiente_director': ['enviada', 'rechazada', 'devuelta', 'cancelada'],
+        
+        # Flujo de farmacia central
+        'enviada': ['en_revision', 'autorizada', 'rechazada', 'cancelada'],
+        'en_revision': ['autorizada', 'rechazada', 'devuelta', 'cancelada'],
+        'autorizada': ['en_surtido', 'surtida', 'cancelada'],
+        'en_surtido': ['surtida', 'cancelada'],
+        'surtida': ['entregada', 'vencida'],
+        
+        # Devolución - puede reenviar
+        'devuelta': ['pendiente_admin', 'cancelada'],
+        
+        # Compatibilidad legacy
+        'parcial': ['surtida', 'cancelada'],
+        
+        # Estados finales - no pueden cambiar
         'entregada': [],
+        'rechazada': [],
+        'vencida': [],
         'cancelada': [],
     }
     
     @property
     def ESTADOS_SURTIBLES(self):
-        """ISS-002/ISS-DB-002: Obtener estados surtibles del modelo."""
+        """ISS-002/FLUJO V2: Obtener estados surtibles del modelo."""
         from core.models import Requisicion
-        return getattr(Requisicion, 'ESTADOS_SURTIBLES', ['autorizada', 'parcial'])
+        # FLUJO V2: Solo se puede surtir desde autorizada o en_surtido
+        return getattr(Requisicion, 'ESTADOS_SURTIBLES', ['autorizada', 'en_surtido'])
     
     @property
     def TRANSICIONES_VALIDAS(self):

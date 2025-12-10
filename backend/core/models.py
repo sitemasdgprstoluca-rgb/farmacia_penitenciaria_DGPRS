@@ -634,6 +634,30 @@ class Requisicion(models.Model):
     - Fechas de cada paso del flujo
     - Fecha límite de recolección (vencimiento automático)
     """
+    
+    # ========== FLUJO V2: TRANSICIONES Y ESTADOS (FUENTE ÚNICA DE VERDAD) ==========
+    # ISS-001/002/003: Alineado con core.constants.TRANSICIONES_REQUISICION
+    TRANSICIONES_VALIDAS = {
+        'borrador': ['pendiente_admin', 'cancelada'],
+        'pendiente_admin': ['pendiente_director', 'rechazada', 'devuelta', 'cancelada'],
+        'pendiente_director': ['enviada', 'rechazada', 'devuelta', 'cancelada'],
+        'enviada': ['en_revision', 'autorizada', 'rechazada', 'cancelada'],
+        'en_revision': ['autorizada', 'rechazada', 'devuelta', 'cancelada'],
+        'autorizada': ['en_surtido', 'surtida', 'cancelada'],
+        'en_surtido': ['surtida', 'cancelada'],
+        'surtida': ['entregada', 'vencida'],
+        'devuelta': ['pendiente_admin', 'cancelada'],
+        'parcial': ['surtida', 'cancelada'],  # Compatibilidad legacy
+        'entregada': [],
+        'rechazada': [],
+        'vencida': [],
+        'cancelada': [],
+    }
+    
+    ESTADOS_SURTIBLES = ['autorizada', 'en_surtido']
+    ESTADOS_EDITABLES = ['borrador', 'devuelta']
+    ESTADOS_TERMINALES = ['entregada', 'rechazada', 'vencida', 'cancelada']
+    
     numero = models.CharField(max_length=50, unique=True, db_column='numero')
     centro_origen = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_origen', db_column='centro_origen_id')
     centro_destino = models.ForeignKey('Centro', on_delete=models.SET_NULL, null=True, blank=True, related_name='requisiciones_destino', db_column='centro_destino_id')

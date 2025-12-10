@@ -24,46 +24,73 @@ class EstadoRequisicion(str, Enum):
     """
     Estados posibles de una requisición.
     ISS-DB-002: Alineados con CHECK constraint de BD Supabase.
-    BD permite: borrador, enviada, autorizada, rechazada, en_surtido, surtida, parcial, cancelada, entregada
+    FLUJO V2: Estados jerárquicos con trazabilidad completa
     """
-    BORRADOR = 'borrador'
-    ENVIADA = 'enviada'          # Requisición enviada para autorización
-    AUTORIZADA = 'autorizada'
-    EN_SURTIDO = 'en_surtido'    # En proceso de surtido
-    PARCIAL = 'parcial'          # Surtida parcialmente
-    RECHAZADA = 'rechazada'
-    SURTIDA = 'surtida'
-    ENTREGADA = 'entregada'
-    CANCELADA = 'cancelada'
+    # Estados del flujo del centro
+    BORRADOR = 'borrador'                    # Médico creando la solicitud
+    PENDIENTE_ADMIN = 'pendiente_admin'      # Esperando autorización Administrador Centro
+    PENDIENTE_DIRECTOR = 'pendiente_director'  # Esperando autorización Director Centro
+    
+    # Estados del flujo de farmacia
+    ENVIADA = 'enviada'                      # Enviada a Farmacia Central
+    EN_REVISION = 'en_revision'              # Farmacia está revisando
+    AUTORIZADA = 'autorizada'                # Farmacia autorizó + fecha recolección
+    EN_SURTIDO = 'en_surtido'                # En proceso de preparación
+    SURTIDA = 'surtida'                      # Lista para recolección
+    ENTREGADA = 'entregada'                  # Entregada y confirmada
+    
+    # Estados finales negativos
+    RECHAZADA = 'rechazada'                  # Rechazada en cualquier punto
+    VENCIDA = 'vencida'                      # No se recolectó en fecha límite
+    CANCELADA = 'cancelada'                  # Cancelada por el solicitante
+    DEVUELTA = 'devuelta'                    # Devuelta al centro para corrección
+    
+    # Compatibilidad legacy
+    PARCIAL = 'parcial'                      # Deprecated: usar en_surtido
     
     @classmethod
     def choices(cls):
         return [
             ('borrador', 'Borrador'),
+            ('pendiente_admin', 'Pendiente Administrador'),
+            ('pendiente_director', 'Pendiente Director'),
             ('enviada', 'Enviada'),
+            ('en_revision', 'En Revisión'),
             ('autorizada', 'Autorizada'),
             ('en_surtido', 'En Surtido'),
-            ('parcial', 'Parcialmente Surtida'),
-            ('rechazada', 'Rechazada'),
             ('surtida', 'Surtida'),
             ('entregada', 'Entregada'),
+            ('rechazada', 'Rechazada'),
+            ('vencida', 'Vencida'),
             ('cancelada', 'Cancelada'),
+            ('devuelta', 'Devuelta'),
+            ('parcial', 'Parcialmente Surtida'),
         ]
     
     @classmethod
     def terminales(cls):
         """Estados que no permiten más transiciones."""
-        return [cls.ENTREGADA, cls.CANCELADA]
+        return [cls.ENTREGADA, cls.RECHAZADA, cls.VENCIDA, cls.CANCELADA]
     
     @classmethod
     def editables(cls):
         """Estados que permiten editar la requisición."""
-        return [cls.BORRADOR]
+        return [cls.BORRADOR, cls.DEVUELTA]
     
     @classmethod
     def surtibles(cls):
         """Estados desde los que se puede surtir."""
-        return [cls.AUTORIZADA, cls.PARCIAL]
+        return [cls.AUTORIZADA, cls.EN_SURTIDO]
+    
+    @classmethod
+    def pendientes_centro(cls):
+        """Estados donde el Centro debe actuar."""
+        return [cls.BORRADOR, cls.DEVUELTA]
+    
+    @classmethod
+    def pendientes_farmacia(cls):
+        """Estados donde Farmacia debe actuar."""
+        return [cls.ENVIADA, cls.EN_REVISION, cls.AUTORIZADA, cls.EN_SURTIDO]
 
 
 @dataclass
@@ -112,16 +139,37 @@ class RequisicionStateMachine:
     TRANSICIONES: Dict[str, TransicionEstado] = {}
     
     # Matriz de transiciones: origen → [destinos posibles]
-    # ISS-DB-002: Alineado con estados de BD Supabase
+    # ISS-001/002: FLUJO V2 - Alineado con core.constants.TRANSICIONES_REQUISICION
     MATRIZ_TRANSICIONES = {
+        # Flujo del centro penitenciario
         EstadoRequisicion.BORRADOR: [
-            EstadoRequisicion.ENVIADA,
+            EstadoRequisicion.PENDIENTE_ADMIN,
             EstadoRequisicion.CANCELADA
         ],
-        EstadoRequisicion.ENVIADA: [
-            EstadoRequisicion.AUTORIZADA,
-            EstadoRequisicion.PARCIAL,
+        EstadoRequisicion.PENDIENTE_ADMIN: [
+            EstadoRequisicion.PENDIENTE_DIRECTOR,
             EstadoRequisicion.RECHAZADA,
+            EstadoRequisicion.DEVUELTA,
+            EstadoRequisicion.CANCELADA
+        ],
+        EstadoRequisicion.PENDIENTE_DIRECTOR: [
+            EstadoRequisicion.ENVIADA,
+            EstadoRequisicion.RECHAZADA,
+            EstadoRequisicion.DEVUELTA,
+            EstadoRequisicion.CANCELADA
+        ],
+        
+        # Flujo de farmacia central
+        EstadoRequisicion.ENVIADA: [
+            EstadoRequisicion.EN_REVISION,
+            EstadoRequisicion.AUTORIZADA,
+            EstadoRequisicion.RECHAZADA,
+            EstadoRequisicion.CANCELADA
+        ],
+        EstadoRequisicion.EN_REVISION: [
+            EstadoRequisicion.AUTORIZADA,
+            EstadoRequisicion.RECHAZADA,
+            EstadoRequisicion.DEVUELTA,
             EstadoRequisicion.CANCELADA
         ],
         EstadoRequisicion.AUTORIZADA: [
@@ -129,35 +177,59 @@ class RequisicionStateMachine:
             EstadoRequisicion.SURTIDA,
             EstadoRequisicion.CANCELADA
         ],
-        EstadoRequisicion.PARCIAL: [
-            EstadoRequisicion.EN_SURTIDO,
-            EstadoRequisicion.SURTIDA,
-            EstadoRequisicion.AUTORIZADA,  # Re-autorizar completo
-            EstadoRequisicion.CANCELADA
-        ],
         EstadoRequisicion.EN_SURTIDO: [
             EstadoRequisicion.SURTIDA,
-            EstadoRequisicion.PARCIAL,
-            EstadoRequisicion.CANCELADA
-        ],
-        EstadoRequisicion.RECHAZADA: [
             EstadoRequisicion.CANCELADA
         ],
         EstadoRequisicion.SURTIDA: [
-            EstadoRequisicion.ENTREGADA
+            EstadoRequisicion.ENTREGADA,
+            EstadoRequisicion.VENCIDA
         ],
-        EstadoRequisicion.ENTREGADA: [],  # Estado terminal
-        EstadoRequisicion.CANCELADA: []  # Estado terminal
+        
+        # Estados de devolución (puede reenviar)
+        EstadoRequisicion.DEVUELTA: [
+            EstadoRequisicion.PENDIENTE_ADMIN,
+            EstadoRequisicion.CANCELADA
+        ],
+        
+        # Compatibilidad legacy
+        EstadoRequisicion.PARCIAL: [
+            EstadoRequisicion.SURTIDA,
+            EstadoRequisicion.CANCELADA
+        ],
+        
+        # Estados terminales - no pueden cambiar
+        EstadoRequisicion.ENTREGADA: [],
+        EstadoRequisicion.RECHAZADA: [],
+        EstadoRequisicion.VENCIDA: [],
+        EstadoRequisicion.CANCELADA: []
     }
     
     # Roles requeridos para cada tipo de transición
+    # FLUJO V2: Roles jerárquicos del centro y farmacia
     ROLES_TRANSICION = {
-        'enviar': ['centro', 'farmacia', 'admin'],
-        'autorizar': ['farmacia', 'admin'],
-        'rechazar': ['farmacia', 'admin'],
+        # Acciones del centro penitenciario
+        'enviar_admin': ['medico'],
+        'autorizar_admin': ['administrador_centro', 'admin'],
+        'autorizar_director': ['director_centro', 'admin'],
+        
+        # Acciones de farmacia central
+        'recibir_farmacia': ['farmacia', 'admin'],
+        'autorizar_farmacia': ['farmacia', 'admin'],
         'surtir': ['farmacia', 'admin'],
-        'recibir': ['centro', 'farmacia', 'admin'],
-        'cancelar': ['centro', 'farmacia', 'admin']  # El dueño puede cancelar
+        'confirmar_entrega': ['medico', 'administrador_centro', 'director_centro', 'centro', 'admin'],
+        
+        # Acciones especiales
+        'devolver': ['administrador_centro', 'director_centro', 'farmacia', 'admin'],
+        'reenviar': ['medico', 'administrador_centro', 'admin'],
+        'rechazar': ['administrador_centro', 'director_centro', 'farmacia', 'admin'],
+        'cancelar': ['medico', 'administrador_centro', 'director_centro', 'farmacia', 'admin'],
+        'marcar_vencida': ['farmacia', 'admin'],
+        
+        # Compatibilidad legacy
+        'enviar': ['medico', 'centro', 'farmacia', 'admin'],
+        'autorizar': ['farmacia', 'admin'],
+        'recibir': ['medico', 'centro', 'farmacia', 'admin']
     }
     
     def __init__(self, requisicion):
@@ -300,7 +372,7 @@ class RequisicionStateMachine:
         
         Args:
             destino: Estado destino
-            motivo: Motivo de la transición (requerido para rechazos)
+            motivo: Motivo de la transición (requerido para rechazos/devoluciones)
             
         Returns:
             list: Lista de errores (vacía si es válida)
@@ -321,22 +393,53 @@ class RequisicionStateMachine:
             ]
         
         # Validar precondiciones según destino
-        # ISS-DB-002: Usar nombres de estados alineados con BD
-        if destino_enum == EstadoRequisicion.ENVIADA:
+        # FLUJO V2: Precondiciones para cada tipo de transición
+        
+        # Enviar a administrador (médico → admin)
+        if destino_enum == EstadoRequisicion.PENDIENTE_ADMIN:
             errores.extend(self._validar_precondiciones_enviar())
         
-        elif destino_enum == EstadoRequisicion.AUTORIZADA:
+        # Enviar a farmacia (director → farmacia)
+        elif destino_enum == EstadoRequisicion.ENVIADA:
+            errores.extend(self._validar_precondiciones_enviar())
+        
+        # Autorizar (admin/director/farmacia)
+        elif destino_enum in [EstadoRequisicion.PENDIENTE_DIRECTOR, 
+                               EstadoRequisicion.EN_REVISION,
+                               EstadoRequisicion.AUTORIZADA]:
             errores.extend(self._validar_precondiciones_autorizar())
         
+        # Surtir
         elif destino_enum == EstadoRequisicion.SURTIDA:
             errores.extend(self._validar_precondiciones_surtir())
         
+        # Entregar
         elif destino_enum == EstadoRequisicion.ENTREGADA:
             errores.extend(self._validar_precondiciones_recibir())
+            # Validar fecha límite de recolección
+            if hasattr(self.requisicion, 'fecha_recoleccion_limite'):
+                from django.utils import timezone
+                fecha_limite = self.requisicion.fecha_recoleccion_limite
+                if fecha_limite and timezone.now() > fecha_limite:
+                    errores.append(
+                        f"La fecha límite de recolección ({fecha_limite.strftime('%d/%m/%Y %H:%M')}) "
+                        "ha expirado. La requisición debe marcarse como vencida."
+                    )
         
+        # Rechazar - requiere motivo
         elif destino_enum == EstadoRequisicion.RECHAZADA:
             if not motivo or not motivo.strip():
                 errores.append("Se requiere un motivo para rechazar la requisición")
+        
+        # Devolver - requiere motivo
+        elif destino_enum == EstadoRequisicion.DEVUELTA:
+            if not motivo or not motivo.strip():
+                errores.append("Se requiere un motivo para devolver la requisición")
+        
+        # Vencida - validar que esté surtida
+        elif destino_enum == EstadoRequisicion.VENCIDA:
+            if self.estado_actual != EstadoRequisicion.SURTIDA:
+                errores.append("Solo requisiciones surtidas pueden marcarse como vencidas")
         
         return errores
     
@@ -388,22 +491,73 @@ class RequisicionStateMachine:
         # Aplicar cambios según el tipo de transición
         self.requisicion.estado = destino_enum.value
         
-        if destino_enum == EstadoRequisicion.RECHAZADA:
-            self.requisicion.motivo_rechazo = motivo
+        # FLUJO V2: Registrar actores y fechas según la transición
         
-        # ISS-DB-002: Estados que registran autorización
-        if destino_enum in [EstadoRequisicion.AUTORIZADA, EstadoRequisicion.PARCIAL]:
+        # Enviar a administrador del centro
+        if destino_enum == EstadoRequisicion.PENDIENTE_ADMIN:
+            self.requisicion.fecha_envio_admin = timezone.now()
+        
+        # Autorización del administrador del centro
+        elif destino_enum == EstadoRequisicion.PENDIENTE_DIRECTOR:
+            self.requisicion.fecha_autorizacion_admin = timezone.now()
+            self.requisicion.fecha_envio_director = timezone.now()
+            if usuario:
+                self.requisicion.administrador_centro = usuario
+        
+        # Autorización del director → enviar a farmacia
+        elif destino_enum == EstadoRequisicion.ENVIADA:
+            self.requisicion.fecha_autorizacion_director = timezone.now()
+            self.requisicion.fecha_envio_farmacia = timezone.now()
+            if usuario:
+                self.requisicion.director_centro = usuario
+        
+        # Farmacia recibe
+        elif destino_enum == EstadoRequisicion.EN_REVISION:
+            self.requisicion.fecha_recepcion_farmacia = timezone.now()
+            if usuario:
+                self.requisicion.receptor_farmacia = usuario
+        
+        # Farmacia autoriza
+        elif destino_enum == EstadoRequisicion.AUTORIZADA:
+            self.requisicion.fecha_autorizacion_farmacia = timezone.now()
             self.requisicion.fecha_autorizacion = timezone.now()
             if usuario:
+                self.requisicion.autorizador_farmacia = usuario
                 self.requisicion.autorizador = usuario
         
-        # ISS-DB-002: Estado de entrega
-        if destino_enum == EstadoRequisicion.ENTREGADA:
+        # Surtido
+        elif destino_enum == EstadoRequisicion.SURTIDA:
+            self.requisicion.fecha_surtido = timezone.now()
+            if usuario:
+                self.requisicion.surtidor = usuario
+        
+        # Entrega
+        elif destino_enum == EstadoRequisicion.ENTREGADA:
+            self.requisicion.fecha_entrega = timezone.now()
             self.requisicion.fecha_firma_recepcion = timezone.now()
             if usuario:
                 self.requisicion.usuario_firma_recepcion = usuario
             if observaciones:
                 self.requisicion.notas = (self.requisicion.notas or '') + f'\n[Recepción] {observaciones}'
+        
+        # Rechazo
+        elif destino_enum == EstadoRequisicion.RECHAZADA:
+            self.requisicion.motivo_rechazo = motivo
+        
+        # Devolución
+        elif destino_enum == EstadoRequisicion.DEVUELTA:
+            self.requisicion.motivo_devolucion = motivo
+        
+        # Vencimiento
+        elif destino_enum == EstadoRequisicion.VENCIDA:
+            self.requisicion.fecha_vencimiento = timezone.now()
+            self.requisicion.motivo_vencimiento = motivo or "Fecha límite de recolección expirada"
+        
+        # Compatibilidad legacy
+        elif destino_enum == EstadoRequisicion.PARCIAL:
+            self.requisicion.fecha_autorizacion = timezone.now()
+            if usuario:
+                self.requisicion.autorizador = usuario
         
         # Guardar cambios
         self.requisicion.save()
