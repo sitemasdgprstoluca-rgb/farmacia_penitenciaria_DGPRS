@@ -134,6 +134,11 @@ ESTADOS_SIN_CANCELACION = ['surtida', 'entregada', 'parcial']
 # Solo estos estados permiten iniciar/continuar proceso de surtido
 ESTADOS_SURTIBLES = ['autorizada', 'en_surtido']
 
+# ISS-002 FIX (audit13): Estados que comprometen stock - FUENTE ÚNICA
+# Requisiciones en estos estados tienen stock "reservado" pendiente de surtir
+# Usado para calcular stock disponible real (evitar sobre-autorización)
+ESTADOS_COMPROMETIDOS = ['autorizada', 'en_surtido', 'parcial', 'surtida']
+
 # ISS-001/002/003 FIX (audit8): Estados terminales - FUENTE ÚNICA
 # Estados que NO permiten ninguna transición posterior
 ESTADOS_TERMINALES = ['entregada', 'rechazada', 'vencida', 'cancelada']

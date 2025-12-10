@@ -403,6 +403,45 @@ class User(AbstractUser):
         permisos_flujo = PERMISOS_FLUJO_REQUISICION.get(self.rol, {})
         return permisos_flujo.get(accion, False)
 
+    def save(self, *args, **kwargs):
+        """
+        ISS-001 FIX (audit13): Forzar validación de permisos al guardar.
+        
+        IMPORTANTE: Como managed=False, no hay constraints de BD.
+        Este save() garantiza que clean() SIEMPRE se ejecute, previniendo
+        escalada de privilegios vía ORM o scripts.
+        
+        Args:
+            skip_validation: bool - Solo permitido en DEBUG, con warning.
+        """
+        skip_validation = kwargs.pop('skip_validation', False)
+        
+        if skip_validation:
+            from django.conf import settings
+            import traceback
+            if not getattr(settings, 'DEBUG', False):
+                logger.warning(
+                    f"ISS-001: skip_validation ignorado en producción para User {self.username}"
+                )
+                skip_validation = False
+            else:
+                logger.warning(
+                    f"ISS-001: skip_validation usado en DEBUG para User {self.username}. "
+                    f"Stack trace: {''.join(traceback.format_stack()[-3:-1])}"
+                )
+        
+        if not skip_validation:
+            # Ejecutar full_clean() que incluye clean() con validación de permisos
+            try:
+                self.full_clean()
+            except ValidationError as e:
+                logger.error(
+                    f"ISS-001: Validación fallida para User {self.username}: {e.message_dict if hasattr(e, 'message_dict') else e}"
+                )
+                raise
+        
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.get_full_name()} ({self.get_rol_display()})"
 

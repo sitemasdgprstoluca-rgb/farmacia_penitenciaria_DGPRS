@@ -698,46 +698,36 @@ class RequisicionService:
     def _get_stock_comprometido_otras(self, producto):
         """
         ISS-004 FIX (audit2): Calcula stock comprometido por OTRAS requisiciones.
+        ISS-002 FIX (audit13): Optimizado a una sola consulta.
         
         Excluye la requisición actual para no contar doble.
+        Usa estados desde constants para mantener consistencia con máquina de estados.
         
         Args:
             producto: Producto para calcular comprometido
             
         Returns:
-            int: Cantidad comprometida por otras requisiciones
+            int: Cantidad comprometida por otras requisiciones (pendiente de surtir)
         """
-        from django.db.models import Sum
+        from django.db.models import Sum, Value
+        from django.db.models.functions import Coalesce
         from core.models import DetalleRequisicion
+        from core.constants import ESTADOS_COMPROMETIDOS
         
-        # ISS-DB-002: Estados que comprometen stock
-        ESTADOS_COMPROMETIDOS = ['autorizada', 'en_surtido', 'parcial', 'surtida']
-        
-        comprometido = DetalleRequisicion.objects.filter(
+        # ISS-002 FIX (audit13): Una sola query con Coalesce para manejar NULLs
+        # Calcula directamente: autorizado - surtido = pendiente (comprometido)
+        resultado = DetalleRequisicion.objects.filter(
             requisicion__estado__in=ESTADOS_COMPROMETIDOS,
             producto=producto
         ).exclude(
             requisicion_id=self.requisicion.pk  # Excluir esta requisición
         ).aggregate(
-            total=Sum('cantidad_autorizada') - Sum('cantidad_surtida')
+            total_autorizado=Coalesce(Sum('cantidad_autorizada'), Value(0)),
+            total_surtido=Coalesce(Sum('cantidad_surtida'), Value(0))
         )
         
-        # Calcular pendiente de surtir
-        total_autorizado = DetalleRequisicion.objects.filter(
-            requisicion__estado__in=ESTADOS_COMPROMETIDOS,
-            producto=producto
-        ).exclude(
-            requisicion_id=self.requisicion.pk
-        ).aggregate(total=Sum('cantidad_autorizada'))['total'] or 0
-        
-        total_surtido = DetalleRequisicion.objects.filter(
-            requisicion__estado__in=ESTADOS_COMPROMETIDOS,
-            producto=producto
-        ).exclude(
-            requisicion_id=self.requisicion.pk
-        ).aggregate(total=Sum('cantidad_surtida'))['total'] or 0
-        
-        return max(0, total_autorizado - total_surtido)
+        pendiente = resultado['total_autorizado'] - resultado['total_surtido']
+        return max(0, pendiente)
     
     @transaction.atomic
     def surtir(self, is_farmacia_or_admin_fn, get_user_centro_fn):
@@ -804,18 +794,31 @@ class RequisicionService:
             )
             
             if total_pendiente <= 0:
-                # Surtido ya completado, retornar sin duplicar
-                logger.warning(
-                    f"ISS-004: Reintento de surtido detectado para {requisicion_bloqueada.folio}. "
-                    f"Ya hay {movimientos_existentes.count()} movimientos registrados. "
-                    f"Operación idempotente - no se duplicarán movimientos."
+                # ISS-003 FIX (audit13): Cerrar ciclo automáticamente en vez de lanzar error
+                # Completar transición a 'surtida' para evitar requisiciones atascadas
+                logger.info(
+                    f"ISS-003 FIX: Completando transición automática a 'surtida' para {requisicion_bloqueada.folio}. "
+                    f"Ya hay {movimientos_existentes.count()} movimientos registrados y 0 pendiente."
                 )
-                raise EstadoInvalidoError(
-                    f"La requisición {requisicion_bloqueada.folio} ya fue surtida completamente. "
-                    f"Hay {movimientos_existentes.count()} movimientos de inventario registrados. "
-                    f"Para continuar, use la transición a 'surtida'.",
-                    estado_actual=estado_actual
-                )
+                
+                # Actualizar estado a 'surtida'
+                requisicion_bloqueada.estado = 'surtida'
+                requisicion_bloqueada.surtidor = self.usuario
+                requisicion_bloqueada.fecha_surtido = timezone.now()
+                requisicion_bloqueada.save(update_fields=['estado', 'surtidor', 'fecha_surtido', 'updated_at'])
+                
+                # Refrescar referencia local
+                self.requisicion = requisicion_bloqueada
+                
+                # Retornar resultado de operación idempotente
+                return {
+                    'success': True,
+                    'idempotente': True,
+                    'mensaje': f'Requisición {requisicion_bloqueada.folio} ya estaba surtida. Estado actualizado a "surtida".',
+                    'requisicion_id': requisicion_bloqueada.pk,
+                    'estado_final': 'surtida',
+                    'movimientos_existentes': movimientos_existentes.count(),
+                }
             else:
                 logger.info(
                     f"ISS-004: Continuación de surtido parcial para {requisicion_bloqueada.folio}. "
