@@ -96,6 +96,44 @@ cd backend
 DEBUG=True python -m pytest
 ```
 
+### Con Cobertura
+```bash
+cd backend
+DEBUG=True python -m pytest --cov=core --cov=inventario --cov-report=html --cov-report=term-missing
+# Reporte HTML generado en backend/htmlcov/index.html
+```
+
+### Matriz de Cobertura de Tests
+
+| Módulo | Archivo | Cobertura | Prioridad |
+|--------|---------|-----------|-----------|
+| **core** | `models.py` | ✅ Alta | Crítico |
+| **core** | `permissions.py` | ✅ Alta | Crítico |
+| **core** | `views.py` | ✅ Alta | Crítico |
+| **inventario** | `services/state_machine.py` | ✅ Alta | Crítico |
+| **inventario** | `services/stock_service.py` | ✅ Alta | Crítico |
+| **inventario** | `views.py` | ✅ Media | Alto |
+| **core** | `serializers.py` | ✅ Media | Medio |
+| **core** | `middleware.py` | ⚠️ Baja | Medio |
+
+### Áreas Críticas Cubiertas
+- **Máquina de estados**: Transiciones válidas/inválidas, bypass bloqueados
+- **Permisos por rol**: RBAC para cada endpoint y acción
+- **Validaciones de inventario**: Stock insuficiente, lotes vencidos
+- **Segregación de funciones**: Validación de acciones incompatibles
+
+### Ejecutar Tests Específicos
+```bash
+# Tests de state machine
+DEBUG=True python -m pytest core/tests/test_state_machine.py -v
+
+# Tests de permisos
+DEBUG=True python -m pytest core/tests/test_permissions.py -v
+
+# Tests de inventario
+DEBUG=True python -m pytest inventario/tests/ -v
+```
+
 ### Frontend
 ```bash
 cd inventario-front
@@ -105,18 +143,63 @@ npm test
 ## 🔐 Variables de Entorno
 
 ### Backend (`.env`)
+
+| Variable | Requerida | Default | Descripción |
+|----------|-----------|---------|-------------|
+| `SECRET_KEY` | ✅ Sí | - | Clave secreta para criptografía. **DEBE** ser única en producción. Generar con `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"` |
+| `DEBUG` | No | `False` | Modo debug. **NUNCA** usar `True` en producción |
+| `ALLOWED_HOSTS` | ✅ Sí (prod) | `localhost,127.0.0.1` | Lista de hosts permitidos separados por coma |
+| `DATABASE_URL` | ✅ Sí (prod) | SQLite local | URL de conexión PostgreSQL (ej: `postgres://user:pass@host:5432/db`) |
+| `CORS_ALLOWED_ORIGINS` | No | `http://localhost:5173` | Orígenes CORS permitidos separados por coma |
+| `CSRF_TRUSTED_ORIGINS` | No | `http://localhost:5173` | Orígenes confiables para CSRF separados por coma |
+| `SECURE_SSL_REDIRECT` | No | `False` | Redirigir HTTP a HTTPS. Usar `True` en producción |
+| `SECURE_HSTS_SECONDS` | No | `0` | Segundos para HSTS. Recomendado `31536000` (1 año) en producción |
+| `SESSION_COOKIE_SECURE` | No | `False` | Cookies solo por HTTPS. Usar `True` en producción |
+| `CSRF_COOKIE_SECURE` | No | `False` | Cookie CSRF solo por HTTPS. Usar `True` en producción |
+
+#### Ejemplo `.env` Desarrollo
 ```env
-SECRET_KEY=tu-clave-secreta
+SECRET_KEY=dev-only-key-change-in-production
 DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1
 CORS_ALLOWED_ORIGINS=http://localhost:5173
 CSRF_TRUSTED_ORIGINS=http://localhost:5173
 ```
 
-### Frontend (`.env`)
+#### Ejemplo `.env` Producción
 ```env
-VITE_API_BASE_URL=http://127.0.0.1:8000/api/
+SECRET_KEY=<clave-generada-aleatoriamente-64-chars>
+DEBUG=False
+ALLOWED_HOSTS=farmacia.ejemplo.gob.mx,api.farmacia.ejemplo.gob.mx
+DATABASE_URL=postgres://farmacia_user:secure_password@db.render.com:5432/farmacia_prod
+CORS_ALLOWED_ORIGINS=https://farmacia.ejemplo.gob.mx
+CSRF_TRUSTED_ORIGINS=https://farmacia.ejemplo.gob.mx
+SECURE_SSL_REDIRECT=True
+SECURE_HSTS_SECONDS=31536000
+SESSION_COOKIE_SECURE=True
+CSRF_COOKIE_SECURE=True
 ```
+
+### Frontend (`.env`)
+
+| Variable | Requerida | Default | Descripción |
+|----------|-----------|---------|-------------|
+| `VITE_API_BASE_URL` | ✅ Sí | - | URL base del API backend (incluir `/api/` al final) |
+
+#### Ejemplo Frontend
+```env
+# Desarrollo
+VITE_API_BASE_URL=http://127.0.0.1:8000/api/
+
+# Producción
+VITE_API_BASE_URL=https://api.farmacia.ejemplo.gob.mx/api/
+```
+
+### Notas de Seguridad
+- **NUNCA** commitear archivos `.env` al repositorio
+- Usar gestores de secretos en producción (AWS Secrets Manager, HashiCorp Vault, etc.)
+- Rotar `SECRET_KEY` periódicamente (requiere invalidar sesiones activas)
+- En Render, configurar variables en el Dashboard, no en archivos
 
 ## 📦 Despliegue
 

@@ -74,8 +74,30 @@ class EstadoRequisicion(str, Enum):
     
     @classmethod
     def editables(cls):
-        """Estados que permiten editar la requisición."""
+        """
+        ISS-004 FIX (audit4): Estados que permiten editar la requisición.
+        Solo borrador y devuelta permiten edición libre.
+        """
         return [cls.BORRADOR, cls.DEVUELTA]
+    
+    @classmethod
+    def estados_sin_edicion(cls):
+        """
+        ISS-004 FIX (audit4): Estados que NO permiten ninguna edición.
+        Incluye todos los estados desde autorizada en adelante.
+        """
+        return [
+            cls.AUTORIZADA, cls.EN_SURTIDO, cls.SURTIDA, cls.ENTREGADA,
+            cls.RECHAZADA, cls.VENCIDA, cls.CANCELADA, cls.PARCIAL
+        ]
+    
+    @classmethod
+    def estados_edicion_limitada(cls):
+        """
+        ISS-004 FIX (audit4): Estados con edición limitada.
+        Solo permiten editar observaciones/notas, no cantidades.
+        """
+        return [cls.PENDIENTE_ADMIN, cls.PENDIENTE_DIRECTOR, cls.ENVIADA, cls.EN_REVISION]
     
     @classmethod
     def surtibles(cls):
@@ -139,7 +161,8 @@ class RequisicionStateMachine:
     TRANSICIONES: Dict[str, TransicionEstado] = {}
     
     # Matriz de transiciones: origen → [destinos posibles]
-    # ISS-001/002: FLUJO V2 - Alineado con core.constants.TRANSICIONES_REQUISICION
+    # ISS-001 FIX (audit4): autorizada SOLO puede ir a en_surtido, NO a surtida
+    # ISS-002 FIX (audit4): Estados con movimientos NO pueden cancelarse
     MATRIZ_TRANSICIONES = {
         # Flujo del centro penitenciario
         EstadoRequisicion.BORRADOR: [
@@ -160,9 +183,9 @@ class RequisicionStateMachine:
         ],
         
         # Flujo de farmacia central
+        # ISS-001 FIX: enviada NO puede ir directo a autorizada
         EstadoRequisicion.ENVIADA: [
             EstadoRequisicion.EN_REVISION,
-            EstadoRequisicion.AUTORIZADA,
             EstadoRequisicion.RECHAZADA,
             EstadoRequisicion.CANCELADA
         ],
@@ -172,15 +195,18 @@ class RequisicionStateMachine:
             EstadoRequisicion.DEVUELTA,
             EstadoRequisicion.CANCELADA
         ],
+        # ISS-001 FIX: autorizada SOLO puede ir a en_surtido, NUNCA a surtida directamente
         EstadoRequisicion.AUTORIZADA: [
             EstadoRequisicion.EN_SURTIDO,
-            EstadoRequisicion.SURTIDA,
             EstadoRequisicion.CANCELADA
         ],
+        # ISS-002 FIX: en_surtido puede cancelarse SOLO si no hay movimientos
         EstadoRequisicion.EN_SURTIDO: [
             EstadoRequisicion.SURTIDA,
+            EstadoRequisicion.PARCIAL,
             EstadoRequisicion.CANCELADA
         ],
+        # ISS-002 FIX: surtida NO puede cancelarse (ya hay movimientos)
         EstadoRequisicion.SURTIDA: [
             EstadoRequisicion.ENTREGADA,
             EstadoRequisicion.VENCIDA
@@ -192,8 +218,9 @@ class RequisicionStateMachine:
             EstadoRequisicion.CANCELADA
         ],
         
-        # Compatibilidad legacy
+        # Compatibilidad legacy - parcial puede reintentar surtido
         EstadoRequisicion.PARCIAL: [
+            EstadoRequisicion.EN_SURTIDO,
             EstadoRequisicion.SURTIDA,
             EstadoRequisicion.CANCELADA
         ],
@@ -287,6 +314,55 @@ class RequisicionStateMachine:
         """Verifica si la requisición puede editarse."""
         return self.estado_actual in EstadoRequisicion.editables()
     
+    def validar_edicion(self, campos_editados: List[str] = None) -> List[str]:
+        """
+        ISS-004 FIX (audit4): Valida si la edición es permitida.
+        
+        Args:
+            campos_editados: Lista de campos que se quieren editar
+            
+        Returns:
+            list: Lista de errores (vacía si es permitido)
+        """
+        errores = []
+        campos_editados = campos_editados or []
+        
+        # Campos sensibles que afectan inventario/autorizaciones
+        campos_sensibles = {
+            'cantidad_solicitada', 'cantidad_autorizada', 'producto',
+            'detalles', 'items', 'centro_destino'
+        }
+        
+        # Campos que siempre se pueden editar (notas/observaciones)
+        campos_libres = {'notas', 'observaciones', 'comentario'}
+        
+        campos_sensibles_editados = set(campos_editados) & campos_sensibles
+        
+        # Estados sin edición
+        if self.estado_actual in EstadoRequisicion.estados_sin_edicion():
+            errores.append(
+                f"ISS-004: No se permite editar requisiciones en estado '{self.estado_actual.value}'. "
+                "La requisición ya fue autorizada o procesada."
+            )
+            return errores
+        
+        # Estados con edición limitada
+        if self.estado_actual in EstadoRequisicion.estados_edicion_limitada():
+            if campos_sensibles_editados:
+                errores.append(
+                    f"ISS-004: En estado '{self.estado_actual.value}' solo se pueden editar "
+                    f"observaciones/notas. No se permite modificar: {', '.join(campos_sensibles_editados)}. "
+                    "La requisición debe devolverse a borrador para cambios mayores."
+                )
+        
+        return errores
+    
+    def requiere_revalidacion(self) -> bool:
+        """
+        ISS-004 FIX (audit4): Indica si el estado actual requiere revalidación tras edición.
+        """
+        return self.estado_actual in EstadoRequisicion.estados_edicion_limitada()
+    
     def es_surtible(self) -> bool:
         """Verifica si la requisición puede surtirse."""
         return self.estado_actual in EstadoRequisicion.surtibles()
@@ -324,6 +400,7 @@ class RequisicionStateMachine:
         
         SOLO valida stock en farmacia central, no incluye stock del centro destino.
         ISS-002 FIX: Solo considera lotes NO caducados.
+        ISS-001 FIX (audit4): Requiere estado en_surtido, NO puede venir de autorizada directamente.
         """
         from django.db.models import Sum
         from django.utils import timezone
@@ -331,6 +408,14 @@ class RequisicionStateMachine:
         
         hoy = timezone.now().date()
         errores = []
+        
+        # ISS-001 FIX (audit4): Validar que viene de en_surtido
+        if self.estado_actual != EstadoRequisicion.EN_SURTIDO:
+            errores.append(
+                f"Solo se puede surtir desde estado 'en_surtido'. "
+                f"Estado actual: '{self.estado_actual.value}'"
+            )
+            return errores
         
         for detalle in self.requisicion.detalles.select_related('producto'):
             cantidad_requerida = (detalle.cantidad_autorizada or detalle.cantidad_solicitada) - (detalle.cantidad_surtida or 0)
@@ -355,6 +440,99 @@ class RequisicionStateMachine:
         
         return errores
     
+    def _validar_precondiciones_cancelar(self) -> List[str]:
+        """
+        ISS-002 FIX (audit4): Valida precondiciones para cancelar.
+        
+        Verifica:
+        1. Estado permite cancelación
+        2. No hay movimientos de inventario asociados
+        3. Si hay movimientos, requiere proceso de devolución
+        """
+        from core.models import Movimiento
+        
+        errores = []
+        
+        # ISS-002 FIX: Estados que NO permiten cancelación
+        estados_sin_cancelar = [
+            EstadoRequisicion.SURTIDA,
+            EstadoRequisicion.ENTREGADA,
+            EstadoRequisicion.RECHAZADA,
+            EstadoRequisicion.VENCIDA,
+            EstadoRequisicion.CANCELADA
+        ]
+        
+        if self.estado_actual in estados_sin_cancelar:
+            errores.append(
+                f"No se puede cancelar desde estado '{self.estado_actual.value}'. "
+                "Las requisiciones surtidas o finalizadas no pueden cancelarse."
+            )
+            return errores
+        
+        # ISS-002 FIX: Verificar si hay movimientos de inventario
+        movimientos = Movimiento.objects.filter(requisicion=self.requisicion)
+        if movimientos.exists():
+            total_mov = movimientos.count()
+            errores.append(
+                f"La requisición tiene {total_mov} movimientos de inventario asociados. "
+                "No se puede cancelar sin revertir los movimientos primero. "
+                "Use el proceso de devolución para reintegrar el stock."
+            )
+        
+        return errores
+    
+    def _validar_segregacion_funciones(self, usuario, accion: str) -> List[str]:
+        """
+        ISS-003 FIX (audit4): Valida segregación de funciones.
+        
+        Verifica que el usuario no haya ejecutado una acción incompatible
+        en la misma requisición.
+        
+        Args:
+            usuario: Usuario que intenta la acción
+            accion: Acción a ejecutar (autorizar_farmacia, surtir, etc.)
+        """
+        errores = []
+        
+        if not usuario or not hasattr(self.requisicion, 'id'):
+            return errores
+        
+        # Mapeo de acciones a campos de usuario en la requisición
+        acciones_usuario = {
+            'crear': self.requisicion.solicitante,
+            'autorizar_admin': getattr(self.requisicion, 'administrador_centro', None),
+            'autorizar_director': getattr(self.requisicion, 'director_centro', None),
+            'autorizar_farmacia': getattr(self.requisicion, 'autorizador_farmacia', None),
+            'surtir': getattr(self.requisicion, 'surtidor', None),
+        }
+        
+        # Reglas de segregación
+        reglas = [
+            ('crear', 'autorizar_admin', 'El creador no puede autorizar como administrador'),
+            ('crear', 'autorizar_director', 'El creador no puede autorizar como director'),
+            ('crear', 'autorizar_farmacia', 'El creador no puede autorizar en farmacia'),
+            ('autorizar_admin', 'autorizar_director', 'El mismo usuario no puede hacer ambas autorizaciones del centro'),
+            ('autorizar_farmacia', 'surtir', 'El autorizador de farmacia no puede ser el surtidor'),
+        ]
+        
+        usuario_id = getattr(usuario, 'id', None)
+        if not usuario_id:
+            return errores
+        
+        for accion1, accion2, mensaje in reglas:
+            if accion in [accion1, accion2]:
+                # Verificar la otra acción del par
+                otra_accion = accion2 if accion == accion1 else accion1
+                usuario_otra = acciones_usuario.get(otra_accion)
+                
+                if usuario_otra and getattr(usuario_otra, 'id', None) == usuario_id:
+                    errores.append(
+                        f"ISS-003: Segregación de funciones - {mensaje}. "
+                        f"Usuario {usuario.username} ya ejecutó '{otra_accion}' en esta requisición."
+                    )
+        
+        return errores
+    
     def _validar_precondiciones_recibir(self) -> List[str]:
         """Valida precondiciones para marcar como recibida."""
         errores = []
@@ -366,13 +544,16 @@ class RequisicionStateMachine:
         
         return errores
     
-    def validar_transicion(self, destino: str, motivo: str = None) -> List[str]:
+    def validar_transicion(self, destino: str, motivo: str = None, usuario=None) -> List[str]:
         """
         Valida una transición incluyendo precondiciones.
+        
+        ISS-003 FIX (audit4): Incluye validación de segregación de funciones.
         
         Args:
             destino: Estado destino
             motivo: Motivo de la transición (requerido para rechazos/devoluciones)
+            usuario: Usuario que ejecuta la transición (para segregación)
             
         Returns:
             list: Lista de errores (vacía si es válida)
@@ -398,20 +579,40 @@ class RequisicionStateMachine:
         # Enviar a administrador (médico → admin)
         if destino_enum == EstadoRequisicion.PENDIENTE_ADMIN:
             errores.extend(self._validar_precondiciones_enviar())
+            if usuario:
+                errores.extend(self._validar_segregacion_funciones(usuario, 'enviar_admin'))
         
         # Enviar a farmacia (director → farmacia)
         elif destino_enum == EstadoRequisicion.ENVIADA:
             errores.extend(self._validar_precondiciones_enviar())
+            if usuario:
+                errores.extend(self._validar_segregacion_funciones(usuario, 'autorizar_director'))
         
         # Autorizar (admin/director/farmacia)
-        elif destino_enum in [EstadoRequisicion.PENDIENTE_DIRECTOR, 
-                               EstadoRequisicion.EN_REVISION,
-                               EstadoRequisicion.AUTORIZADA]:
+        # ISS-003 FIX (audit4): Validar segregación según el rol
+        elif destino_enum == EstadoRequisicion.PENDIENTE_DIRECTOR:
+            errores.extend(self._validar_precondiciones_autorizar())
+            if usuario:
+                errores.extend(self._validar_segregacion_funciones(usuario, 'autorizar_admin'))
+        
+        elif destino_enum == EstadoRequisicion.EN_REVISION:
             errores.extend(self._validar_precondiciones_autorizar())
         
-        # Surtir
+        elif destino_enum == EstadoRequisicion.AUTORIZADA:
+            errores.extend(self._validar_precondiciones_autorizar())
+            if usuario:
+                errores.extend(self._validar_segregacion_funciones(usuario, 'autorizar_farmacia'))
+        
+        # ISS-001 FIX (audit4): Transición a en_surtido (preparación)
+        elif destino_enum == EstadoRequisicion.EN_SURTIDO:
+            # Validar que hay productos autorizados
+            errores.extend(self._validar_precondiciones_autorizar())
+        
+        # Surtir - ISS-003 FIX: segregación autorizar/surtir
         elif destino_enum == EstadoRequisicion.SURTIDA:
             errores.extend(self._validar_precondiciones_surtir())
+            if usuario:
+                errores.extend(self._validar_segregacion_funciones(usuario, 'surtir'))
         
         # Entregar
         elif destino_enum == EstadoRequisicion.ENTREGADA:
@@ -440,6 +641,10 @@ class RequisicionStateMachine:
         elif destino_enum == EstadoRequisicion.VENCIDA:
             if self.estado_actual != EstadoRequisicion.SURTIDA:
                 errores.append("Solo requisiciones surtidas pueden marcarse como vencidas")
+        
+        # ISS-002 FIX (audit4): Cancelar - validar movimientos
+        elif destino_enum == EstadoRequisicion.CANCELADA:
+            errores.extend(self._validar_precondiciones_cancelar())
         
         return errores
     
@@ -472,8 +677,9 @@ class RequisicionStateMachine:
         destino_lower = destino.lower()
         
         # Validar transición y precondiciones
+        # ISS-003 FIX (audit4): Pasar usuario para validar segregación
         if validar_precondiciones:
-            errores = self.validar_transicion(destino_lower, motivo)
+            errores = self.validar_transicion(destino_lower, motivo, usuario=usuario)
             if errores:
                 raise PrecondicionFallidaError(
                     precondicion="validacion_transicion",

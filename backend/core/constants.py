@@ -94,16 +94,19 @@ REQUISICION_GRUPOS_ESTADO = {
 
 # Transiciones de estado válidas (para validación en backend)
 # FLUJO V2: Definición de transiciones permitidas
-# ISS-FIX: 'cancelada' agregado a todos los estados no-finales (excepto 'surtida' que no puede cancelarse)
+# ISS-001 FIX (audit4): autorizada → en_surtido OBLIGATORIO (no saltar a surtida)
+# ISS-002 FIX (audit4): cancelada con validación de movimientos pendientes
 TRANSICIONES_REQUISICION = {
     'borrador': ['pendiente_admin', 'cancelada'],
     'pendiente_admin': ['pendiente_director', 'rechazada', 'devuelta', 'cancelada'],
     'pendiente_director': ['enviada', 'rechazada', 'devuelta', 'cancelada'],
-    'enviada': ['en_revision', 'autorizada', 'rechazada', 'cancelada'],
+    'enviada': ['en_revision', 'rechazada', 'cancelada'],  # ISS-001: Quitar autorizada directa
     'en_revision': ['autorizada', 'rechazada', 'devuelta', 'cancelada'],
-    'autorizada': ['en_surtido', 'surtida', 'cancelada'],
-    'en_surtido': ['surtida', 'cancelada'],
-    'parcial': ['surtida', 'cancelada'],
+    # ISS-001 FIX: autorizada SOLO puede ir a en_surtido, NO a surtida directamente
+    'autorizada': ['en_surtido', 'cancelada'],
+    'en_surtido': ['surtida', 'parcial', 'cancelada'],
+    'parcial': ['en_surtido', 'surtida', 'cancelada'],
+    # ISS-002 FIX: surtida NO puede cancelarse (ya hay movimientos de inventario)
     'surtida': ['entregada', 'vencida'],
     'devuelta': ['pendiente_admin', 'cancelada'],
     # Estados finales - no pueden cambiar
@@ -112,6 +115,26 @@ TRANSICIONES_REQUISICION = {
     'vencida': [],
     'cancelada': [],
 }
+
+# ISS-002 FIX (audit4): Estados que NO permiten cancelación por tener movimientos
+ESTADOS_SIN_CANCELACION = ['surtida', 'entregada', 'parcial']
+
+# ISS-003 FIX (audit4): Segregación de funciones - roles incompatibles
+# Un usuario NO puede ejecutar dos acciones del mismo par en la misma requisición
+SEGREGACION_FUNCIONES = {
+    # (accion1, accion2): No pueden ser ejecutadas por el mismo usuario
+    ('crear', 'autorizar_admin'): True,
+    ('crear', 'autorizar_director'): True,
+    ('crear', 'autorizar_farmacia'): True,
+    ('autorizar_admin', 'autorizar_director'): True,
+    ('autorizar_farmacia', 'surtir'): True,
+}
+
+# ISS-004 FIX (audit4): Estados que permiten edición
+ESTADOS_EDITABLES = ['borrador', 'devuelta']
+
+# ISS-004 FIX (audit4): Estados que requieren revalidación si se editan
+ESTADOS_REVALIDAR_SI_EDITA = ['pendiente_admin', 'pendiente_director']
 
 # Permisos extra (asignados vía grupos) que pueden complementar al rol base
 EXTRA_PERMISSIONS = [
@@ -210,10 +233,14 @@ PERMISOS_FLUJO_REQUISICION = {
         'puede_autorizar_director': False,
         'puede_recibir_farmacia': True,
         'puede_autorizar_farmacia': True,
+        # ISS-003 FIX: Farmacia autoriza O surte, pero NO ambos en misma requisición
         'puede_surtir': True,
         'puede_confirmar_entrega': False,
+        # ISS-003 FIX (audit4): Segregación de funciones
+        'segregacion_autorizar_surtir': True,  # Si autorizó, no puede surtir
     },
     'admin': {
+        # ISS-003 FIX (audit4): Admin tiene capacidades pero con segregación
         'puede_crear': True,
         'puede_enviar_admin': True,
         'puede_autorizar_admin': True,
@@ -222,6 +249,9 @@ PERMISOS_FLUJO_REQUISICION = {
         'puede_autorizar_farmacia': True,
         'puede_surtir': True,
         'puede_confirmar_entrega': True,
+        # ISS-003 FIX: Segregación incluso para admin
+        'segregacion_autorizar_surtir': True,
+        'segregacion_crear_autorizar': True,
     },
 }
 
