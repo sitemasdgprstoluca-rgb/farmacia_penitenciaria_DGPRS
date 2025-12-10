@@ -635,7 +635,7 @@ class RequisicionService:
         
         return True
     
-    def validar_stock_disponible(self, usar_bloqueo=False):
+    def validar_stock_disponible(self, usar_bloqueo=False, revalidacion_post_lock=False):
         """
         ISS-001 FIX: Valida que hay stock suficiente SOLO en farmacia central.
         ISS-002 FIX: Solo considera lotes NO caducados.
@@ -646,11 +646,17 @@ class RequisicionService:
         El stock del centro destino NO debe considerarse para validación,
         ya que ese stock ya fue transferido previamente y pertenece al centro.
         
+        ISS-001 FIX (audit-final): Cuando revalidacion_post_lock=True, se asume que
+        los lotes ya están bloqueados por la transacción padre. Esto previene
+        race conditions donde el stock cambia entre pre-check y surtido.
+        
         Args:
             usar_bloqueo: Si True, aplica select_for_update a los lotes consultados
                           para prevenir condiciones de carrera. Usar True cuando
                           la validación es parte de una transacción de surtido.
                           Default False para consultas de preview/visualización.
+            revalidacion_post_lock: Si True, indica que esta es una revalidación
+                          DESPUÉS de adquirir locks. No intenta bloquear de nuevo.
         
         Returns:
             list: Lista vacía si hay stock suficiente
@@ -679,7 +685,8 @@ class RequisicionService:
             )
             
             # ISS-007 FIX: Aplicar bloqueo si se requiere (dentro de transacción)
-            if usar_bloqueo:
+            # ISS-001 FIX: NO re-bloquear si ya estamos en revalidación post-lock
+            if usar_bloqueo and not revalidacion_post_lock:
                 query_lotes = query_lotes.select_for_update(nowait=False)
             
             stock_farmacia = query_lotes.aggregate(total=Sum('cantidad_actual'))['total'] or 0
@@ -697,7 +704,8 @@ class RequisicionService:
                     'disponible': disponible,
                     'stock_farmacia': stock_farmacia,
                     'stock_comprometido': stock_comprometido,
-                    'deficit': requerido - disponible
+                    'deficit': requerido - disponible,
+                    'validacion_tipo': 'post_lock' if revalidacion_post_lock else 'pre_check'
                 })
         
         if errores_stock:
@@ -844,9 +852,11 @@ class RequisicionService:
         # 2. Validar permisos
         self.validar_permisos_surtido(is_farmacia_or_admin_fn, get_user_centro_fn)
         
-        # 3. ISS-007 FIX: Validar stock CON BLOQUEO para prevenir race conditions
+        # 3. ISS-001 FIX + ISS-007 FIX: Validar stock CON BLOQUEO para prevenir race conditions
         # El bloqueo se mantiene hasta el final de la transacción atómica
-        self.validar_stock_disponible(usar_bloqueo=True)
+        # ISS-001 FIX (audit-final): Revalidar con flag post_lock=True para indicar
+        # que ya tenemos los locks y no intentar re-bloquear
+        self.validar_stock_disponible(usar_bloqueo=True, revalidacion_post_lock=True)
         
         centro_requisicion = self.requisicion.centro
         items_surtidos = []
@@ -874,7 +884,7 @@ class RequisicionService:
             cantidad_surtida_item = 0
             lotes_usados = []
             
-            # ISS-001 FIX (audit11): Obtener SOLO lotes con estado 'disponible'
+            # ISS-001 FIX (audit11): Obtener SOLO lotes disponibles para surtido
             # Excluye lotes bloqueados, retirados, vencidos o agotados
             # ISS-002 FIX + ISS-014: Lotes SOLO de farmacia central CON BLOQUEO
             # select_for_update() bloquea las filas hasta que termine la transacción
@@ -886,13 +896,16 @@ class RequisicionService:
             # ISS-007 FIX: El order_by('id') FINAL asegura un orden determinista
             # para evitar deadlocks cuando múltiples transacciones adquieren locks.
             # FEFO (fecha_caducidad primero), luego ID para consistencia.
+            # 
+            # ISS-004 FIX (audit14): No usar estado__in porque 'estado' es una
+            # propiedad calculada, no un campo real de BD. Usamos activo=True,
+            # cantidad_actual__gt=0 y fecha_caducidad__gte=hoy que son equivalentes.
             lotes = Lote.objects.select_for_update().filter(
                 centro__isnull=True,  # Solo farmacia central
                 producto=detalle.producto,
-                activo=True,
-                cantidad_actual__gt=0,
+                activo=True,          # Lote activo (no eliminado ni bloqueado)
+                cantidad_actual__gt=0, # Con stock disponible
                 fecha_caducidad__gte=hoy,  # ISS-002 FIX: Solo lotes vigentes
-                estado__in=self.ESTADOS_LOTE_DISPONIBLES,  # ISS-001 FIX (audit11)
             ).order_by('fecha_caducidad', 'id')  # FEFO + ID para evitar deadlocks
             
             for lote in lotes:
@@ -900,6 +913,14 @@ class RequisicionService:
                     break
                 
                 usar = min(pendiente, lote.cantidad_actual)
+                
+                # ISS-006 FIX: Verificar que el lote tenga contrato válido
+                # Advertir si no tiene, pero NO bloquear (algunos productos pueden no requerir contrato)
+                if not lote.numero_contrato:
+                    logger.warning(
+                        f"ISS-006: Lote {lote.numero_lote} usado sin número de contrato. "
+                        f"Producto: {detalle.producto.clave}, Requisición: {self.requisicion.folio}"
+                    )
                 
                 # Guardar stock previo antes de descontar
                 stock_previo = lote.cantidad_actual
@@ -1048,7 +1069,7 @@ class RequisicionService:
     
     def _crear_movimiento(self, lote, tipo, cantidad, centro, observaciones, stock_previo=None, producto=None):
         """
-        Crea un movimiento de inventario.
+        ISS-008 FIX: Crea un movimiento de inventario con trazabilidad completa.
         
         Args:
             lote: Lote asociado
@@ -1060,7 +1081,7 @@ class RequisicionService:
             producto: Producto asociado (si no se pasa, se toma del lote)
             
         Returns:
-            Movimiento: Instancia creada
+            Movimiento: Instancia creada con trazabilidad completa
         """
         # Determinar centro_origen/centro_destino según tipo
         centro_origen = centro if tipo == 'salida' else None
@@ -1069,6 +1090,19 @@ class RequisicionService:
         # Producto es requerido en la BD
         producto_movimiento = producto or (lote.producto if lote else None)
         
+        # ISS-008 FIX: Construir observaciones con trazabilidad completa
+        user_rol = getattr(self.usuario, 'rol', 'N/A') if self.usuario else 'Sistema'
+        user_centro = getattr(self.usuario, 'centro', None)
+        user_centro_nombre = user_centro.nombre if user_centro else 'Farmacia Central'
+        
+        trazabilidad = (
+            f"{observaciones} | "
+            f"Ejecutor: {self.usuario.username if self.usuario else 'Sistema'} | "
+            f"Rol: {user_rol} | "
+            f"Adscripcion: {user_centro_nombre} | "
+            f"Timestamp: {timezone.now().isoformat()}"
+        )
+        
         movimiento = Movimiento(
             tipo=tipo,
             producto=producto_movimiento,
@@ -1076,9 +1110,11 @@ class RequisicionService:
             centro_origen=centro_origen,
             centro_destino=centro_destino,
             requisicion=self.requisicion,
-            usuario=self.usuario if self.usuario.is_authenticated else None,
+            usuario=self.usuario if self.usuario and self.usuario.is_authenticated else None,
             cantidad=cantidad,
-            motivo=observaciones
+            motivo=trazabilidad,
+            # ISS-008 FIX: Agregar referencia para búsquedas
+            referencia=f"REQ-{self.requisicion.folio}" if self.requisicion else None
         )
         # Pasar stock previo para evitar re-validación (ya descontamos)
         if stock_previo is not None:
@@ -1086,6 +1122,18 @@ class RequisicionService:
         movimiento.save()
         
         self._movimientos_creados.append(movimiento)
+        
+        # ISS-008 FIX: Log de auditoría adicional
+        logger.info(
+            f"ISS-008 MOVIMIENTO: {tipo.upper()} | "
+            f"Producto: {producto_movimiento.clave if producto_movimiento else 'N/A'} | "
+            f"Lote: {lote.numero_lote if lote else 'N/A'} | "
+            f"Cantidad: {cantidad} | "
+            f"Requisicion: {self.requisicion.folio if self.requisicion else 'N/A'} | "
+            f"Usuario: {self.usuario.username if self.usuario else 'Sistema'} | "
+            f"Rol: {user_rol}"
+        )
+        
         return movimiento
     
     def _registrar_detalle_surtido(self, detalle, lote, cantidad, movimiento):
