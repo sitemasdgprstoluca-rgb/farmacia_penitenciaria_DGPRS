@@ -120,24 +120,43 @@ class RequisicionContractValidator:
     """
     ISS-013: Validador contractual para requisiciones.
     
+    ISS-001 FIX: Usa campos reales del modelo Requisicion:
+    - centro_destino_id (alias: centro_id) - Centro que solicita
+    - solicitante_id (alias: usuario_solicita_id) - Usuario que crea
+    - autorizador_id (alias: usuario_autoriza_id) - Usuario que autoriza
+    
     Valida todas las reglas de negocio para requisiciones:
     - Estado válido para operaciones
     - Campos requeridos según estado
     - Consistencia de cantidades
     - Permisos de usuario
+    
+    ISS-005 FIX: Estados importados desde core.constants como FUENTE ÚNICA DE VERDAD.
     """
     
-    ESTADOS_EDITABLES = {'borrador', 'devuelta'}
+    # ISS-005 FIX: Importar estados desde constants.py para evitar divergencias
+    # Esto garantiza sincronización con el modelo y otros servicios
+    from core.constants import (
+        ESTADOS_EDITABLES as _ESTADOS_EDITABLES,
+        ESTADOS_SURTIBLES as _ESTADOS_SURTIBLES,
+        ESTADOS_TERMINALES as _ESTADOS_TERMINALES,
+        ESTADOS_SIN_CANCELACION as _ESTADOS_SIN_CANCELACION,
+        ESTADOS_COMPROMETIDOS as _ESTADOS_COMPROMETIDOS,
+    )
+    
+    ESTADOS_EDITABLES = set(_ESTADOS_EDITABLES)
     # ISS-DB-002: Alineado con BD Supabase
-    ESTADOS_AUTORIZABLES = {'enviada'}
-    ESTADOS_SURTIBLES = {'autorizada', 'parcial'}
+    # ISS-005 FIX: en_revision también es autorizable según flujo V2
+    ESTADOS_AUTORIZABLES = {'enviada', 'en_revision'}
+    ESTADOS_SURTIBLES = set(_ESTADOS_SURTIBLES)
     # ISS-002 FIX (audit4): Estados cancelables SIN movimientos de inventario
     # Estados con posibles movimientos requieren validación adicional
     ESTADOS_CANCELABLES_SIN_MOVIMIENTOS = {'borrador', 'pendiente_admin', 'pendiente_director', 'enviada', 'en_revision'}
     # ISS-002 FIX: Estados que PUEDEN cancelarse pero requieren verificación de movimientos
-    ESTADOS_CANCELABLES_CON_VERIFICACION = {'autorizada', 'en_surtido', 'parcial'}
+    ESTADOS_CANCELABLES_CON_VERIFICACION = {'autorizada', 'en_surtido'}
     # ISS-002 FIX: Estados NUNCA cancelables (finales o con entrega confirmada)
-    ESTADOS_NO_CANCELABLES = {'surtida', 'entregada', 'rechazada', 'vencida', 'cancelada'}
+    # ISS-005 FIX: Usar ESTADOS_SIN_CANCELACION + ESTADOS_TERMINALES
+    ESTADOS_NO_CANCELABLES = set(_ESTADOS_SIN_CANCELACION) | set(_ESTADOS_TERMINALES)
     
     def __init__(self, requisicion):
         """
@@ -153,25 +172,33 @@ class RequisicionContractValidator:
         """
         ISS-013: Valida reglas para crear una requisición.
         
+        ISS-001 FIX: Usa campos reales del modelo (centro_destino_id, solicitante_id)
+        en lugar de propiedades alias (centro_id, usuario_solicita_id) para evitar
+        confusiones. El modelo tiene propiedades alias de solo lectura para compatibilidad.
+        
         Returns:
             ContratoValidacion con resultados
         """
         self.contrato = ContratoValidacion()
         
-        # Centro requerido
-        if not self.requisicion.centro_id:
+        # ISS-001 FIX: Usar campo real centro_destino_id (no alias centro_id)
+        # El centro destino es obligatorio - es el centro que solicita los medicamentos
+        centro_id = self.requisicion.centro_destino_id
+        if not centro_id:
             self.contrato.agregar_error(
-                'centro',
+                'centro_destino',
                 TipoValidacion.REQUERIDO,
-                'El centro es obligatorio para crear una requisición'
+                'El centro destino es obligatorio para crear una requisición. '
+                'Especifique el centro que solicita los medicamentos.'
             )
         
-        # Usuario solicitante requerido
-        if not self.requisicion.usuario_solicita_id:
+        # ISS-001 FIX: Usar campo real solicitante_id (no alias usuario_solicita_id)
+        solicitante_id = self.requisicion.solicitante_id
+        if not solicitante_id:
             self.contrato.agregar_error(
-                'usuario_solicita',
+                'solicitante',
                 TipoValidacion.REQUERIDO,
-                'El usuario solicitante es obligatorio'
+                'El solicitante es obligatorio. Debe especificar quién crea la requisición.'
             )
         
         return self.contrato

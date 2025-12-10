@@ -56,9 +56,83 @@ def producto_imagen_path(instance, filename):
 
 
 def requisicion_firma_path(instance, filename):
-    """Genera ruta para fotos de firma de requisiciones"""
-    ext = filename.split('.')[-1]
-    return f'requisiciones/firmas/{instance.folio}_{filename}'
+    """
+    ISS-006 FIX: Genera ruta SEGURA para fotos de firma de requisiciones.
+    
+    Sanitiza el nombre de archivo para prevenir:
+    - Path traversal (../)
+    - Caracteres peligrosos
+    - Extensiones no permitidas
+    """
+    import uuid
+    from django.utils import timezone
+    
+    # ISS-006: Extensiones de imagen permitidas
+    EXTENSIONES_PERMITIDAS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+    
+    # Sanitizar extensión
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in EXTENSIONES_PERMITIDAS:
+        ext = '.jpg'  # Default seguro
+    
+    # Generar nombre único (evita colisiones y path traversal)
+    timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    unique_id = uuid.uuid4().hex[:8]
+    folio = getattr(instance, 'folio', 'REQ') or 'REQ'
+    
+    # Sanitizar folio (solo alfanuméricos y guiones)
+    safe_folio = ''.join(c for c in str(folio) if c.isalnum() or c in '-_')[:50]
+    
+    return f'requisiciones/firmas/{safe_folio}_{timestamp}_{unique_id}{ext}'
+
+
+def validate_firma_path(value):
+    r"""
+    ISS-006 FIX: Valida que una ruta de firma sea segura.
+    
+    Previene:
+    - Path traversal (../, ..\)
+    - Rutas absolutas
+    - Caracteres peligrosos
+    - Extensiones no permitidas
+    
+    Args:
+        value: Ruta a validar (string)
+        
+    Raises:
+        ValidationError si la ruta es insegura
+    """
+    if not value:
+        return
+    
+    # ISS-006: Extensiones de imagen permitidas
+    EXTENSIONES_PERMITIDAS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+    
+    # Caracteres peligrosos
+    CARACTERES_PELIGROSOS = ['..', '\\', '//', '<', '>', ':', '"', '|', '?', '*', '\x00']
+    
+    value_str = str(value)
+    
+    # Detectar path traversal
+    for peligroso in CARACTERES_PELIGROSOS:
+        if peligroso in value_str:
+            raise ValidationError(
+                f'ISS-006: Ruta de archivo inválida. Caracteres no permitidos detectados.'
+            )
+    
+    # No permitir rutas absolutas
+    if value_str.startswith('/') or (len(value_str) > 1 and value_str[1] == ':'):
+        raise ValidationError(
+            f'ISS-006: No se permiten rutas absolutas para archivos de firma.'
+        )
+    
+    # Validar extensión
+    ext = os.path.splitext(value_str)[1].lower()
+    if ext and ext not in EXTENSIONES_PERMITIDAS:
+        raise ValidationError(
+            f'ISS-006: Extensión de archivo no permitida: {ext}. '
+            f'Extensiones válidas: {", ".join(EXTENSIONES_PERMITIDAS)}'
+        )
 
 
 # ISS-005: Validador de archivos PDF
@@ -1317,14 +1391,44 @@ class Requisicion(models.Model):
     def fecha_recibido(self, value):
         self.fecha_firma_recepcion = value
     
-    # updated_by no existe en la BD, se ignora silenciosamente
+    # ========== ISS-004 FIX: Campo updated_by en memoria ==========
+    # El campo updated_by NO existe en la BD (managed=False).
+    # Se implementa como atributo de instancia para trazabilidad temporal.
+    # Para auditoría persistente, use:
+    # - cambiar_estado_con_historial() que registra en RequisicionHistorialEstados
+    # - Los campos de actores (surtidor, receptor_farmacia, etc.) para operaciones específicas
+    _updated_by = None
+    
     @property
     def updated_by(self):
-        return None
+        """
+        ISS-004 FIX: Usuario que realizó la última modificación.
+        
+        NOTA: Este campo NO se persiste en BD. Para trazabilidad completa:
+        1. Use cambiar_estado_con_historial() para cambios de estado
+        2. Use RequisicionHistorialEstados para consultar historial
+        3. Los campos de actores (surtidor, autorizador, etc.) persisten quién ejecutó cada acción
+        """
+        return self._updated_by
     
     @updated_by.setter
     def updated_by(self, value):
-        pass  # Campo no existe en BD, se ignora
+        """
+        ISS-004 FIX: Registra el usuario que modifica (en memoria).
+        
+        Se recomienda registrar también en log para auditoría:
+        ```
+        requisicion.updated_by = usuario
+        logger.info(f"Requisicion {requisicion.numero} modificada por {usuario.username}")
+        ```
+        """
+        self._updated_by = value
+        # ISS-004: Log de auditoría cuando se asigna updated_by
+        if value:
+            logger.info(
+                f"ISS-004 AUDIT: Requisicion {self.numero} marcada como modificada por "
+                f"usuario ID={getattr(value, 'id', 'N/A')} ({getattr(value, 'username', 'N/A')})"
+            )
     
     # ========== ISS-003: MÉTODOS DE MÁQUINA DE ESTADOS ==========
     
@@ -1610,11 +1714,13 @@ class Requisicion(models.Model):
     def clean(self):
         """
         ISS-003 FIX (audit14): Validaciones de negocio para requisiciones.
+        ISS-006 FIX: Validación de rutas de archivos de firma.
         
         Valida:
         - Estado válido según máquina de estados
         - Campos obligatorios por estado
         - Coherencia de fechas
+        - Rutas de archivos de firma seguras
         """
         from django.core.exceptions import ValidationError
         from django.utils import timezone
@@ -1653,6 +1759,23 @@ class Requisicion(models.Model):
         if self.fecha_surtido and self.fecha_autorizacion:
             if self.fecha_surtido < self.fecha_autorizacion:
                 errors['fecha_surtido'] = 'La fecha de surtido no puede ser anterior a la fecha de autorización.'
+        
+        # ========== ISS-006 FIX: Validar rutas de archivos de firma ==========
+        # Campos de ruta de firma que deben ser validados
+        campos_firma = [
+            ('foto_firma_surtido', self.foto_firma_surtido),
+            ('foto_firma_recepcion', self.foto_firma_recepcion),
+            ('firma_solicitante', self.firma_solicitante),
+            ('firma_jefe_area', self.firma_jefe_area),
+            ('firma_director', self.firma_director),
+        ]
+        
+        for campo_nombre, valor in campos_firma:
+            if valor:
+                try:
+                    validate_firma_path(valor)
+                except ValidationError as e:
+                    errors[campo_nombre] = str(e.message if hasattr(e, 'message') else e)
         
         if errors:
             raise ValidationError(errors)
@@ -1698,6 +1821,11 @@ class DetalleRequisicion(models.Model):
     
     MEJORA FLUJO 3: Campo motivo_ajuste para comunicar al Centro
     por qué Farmacia autorizó menos cantidad de la solicitada.
+    
+    ISS-003 FIX: Validaciones de negocio implementadas:
+    - Cantidades no pueden ser negativas
+    - Coherencia: solicitada >= autorizada >= surtida >= recibida
+    - motivo_ajuste obligatorio cuando cantidad_autorizada < cantidad_solicitada
     """
     requisicion = models.ForeignKey(Requisicion, on_delete=models.CASCADE, related_name='detalles', db_column='requisicion_id')
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='detalles_requisicion', db_column='producto_id')
@@ -1722,6 +1850,106 @@ class DetalleRequisicion(models.Model):
     @property
     def observaciones(self):
         return self.notas
+    
+    def clean(self):
+        """
+        ISS-003 FIX: Validaciones de negocio para detalles de requisición.
+        
+        Valida:
+        - Cantidades no negativas
+        - Coherencia entre cantidades (solicitada >= autorizada >= surtida >= recibida)
+        - Obligatoriedad de motivo_ajuste cuando se reduce cantidad autorizada
+        """
+        from django.core.exceptions import ValidationError
+        
+        errors = {}
+        
+        # ========== Validar cantidades no negativas ==========
+        if self.cantidad_solicitada is not None and self.cantidad_solicitada < 0:
+            errors['cantidad_solicitada'] = 'La cantidad solicitada no puede ser negativa.'
+        
+        if self.cantidad_autorizada is not None and self.cantidad_autorizada < 0:
+            errors['cantidad_autorizada'] = 'La cantidad autorizada no puede ser negativa.'
+        
+        if self.cantidad_surtida is not None and self.cantidad_surtida < 0:
+            errors['cantidad_surtida'] = 'La cantidad surtida no puede ser negativa.'
+        
+        if self.cantidad_recibida is not None and self.cantidad_recibida < 0:
+            errors['cantidad_recibida'] = 'La cantidad recibida no puede ser negativa.'
+        
+        # ========== Validar coherencia de cantidades ==========
+        # Solo validar coherencia si los valores están presentes
+        
+        # cantidad_autorizada no puede superar cantidad_solicitada
+        if (self.cantidad_autorizada is not None and 
+            self.cantidad_solicitada is not None and
+            self.cantidad_autorizada > self.cantidad_solicitada):
+            errors['cantidad_autorizada'] = (
+                f'La cantidad autorizada ({self.cantidad_autorizada}) no puede '
+                f'superar la cantidad solicitada ({self.cantidad_solicitada}).'
+            )
+        
+        # cantidad_surtida no puede superar cantidad_autorizada
+        if (self.cantidad_surtida is not None and 
+            self.cantidad_autorizada is not None and
+            self.cantidad_surtida > self.cantidad_autorizada):
+            errors['cantidad_surtida'] = (
+                f'La cantidad surtida ({self.cantidad_surtida}) no puede '
+                f'superar la cantidad autorizada ({self.cantidad_autorizada}).'
+            )
+        
+        # cantidad_recibida no puede superar cantidad_surtida
+        if (self.cantidad_recibida is not None and 
+            self.cantidad_surtida is not None and
+            self.cantidad_recibida > self.cantidad_surtida):
+            errors['cantidad_recibida'] = (
+                f'La cantidad recibida ({self.cantidad_recibida}) no puede '
+                f'superar la cantidad surtida ({self.cantidad_surtida}).'
+            )
+        
+        # ========== ISS-003 FIX: Validar motivo_ajuste obligatorio ==========
+        # Si cantidad_autorizada es menor que cantidad_solicitada, se requiere motivo
+        if (self.cantidad_autorizada is not None and 
+            self.cantidad_solicitada is not None and
+            self.cantidad_autorizada < self.cantidad_solicitada):
+            if not self.motivo_ajuste or not self.motivo_ajuste.strip():
+                errors['motivo_ajuste'] = (
+                    f'Se requiere un motivo de ajuste cuando la cantidad autorizada '
+                    f'({self.cantidad_autorizada}) es menor que la solicitada '
+                    f'({self.cantidad_solicitada}). Explique la razón del ajuste.'
+                )
+        
+        # ========== Validar cantidad_solicitada > 0 ==========
+        if self.cantidad_solicitada is not None and self.cantidad_solicitada <= 0:
+            errors['cantidad_solicitada'] = 'La cantidad solicitada debe ser mayor a cero.'
+        
+        if errors:
+            raise ValidationError(errors)
+    
+    def save(self, *args, **kwargs):
+        """
+        ISS-003 FIX: Ejecutar validaciones antes de guardar.
+        
+        El parámetro skip_validation permite omitir validaciones solo en:
+        - Migraciones de datos
+        - Scripts de mantenimiento supervisados
+        """
+        from django.conf import settings
+        
+        skip_validation = kwargs.pop('skip_validation', False)
+        
+        if skip_validation:
+            if not getattr(settings, 'DEBUG', False):
+                logger.warning(
+                    f"ISS-003: skip_validation usado en PRODUCCIÓN para DetalleRequisicion. "
+                    f"Requisicion: {self.requisicion_id}, Producto: {self.producto_id}. "
+                    f"Revisar trazabilidad."
+                )
+        
+        if not skip_validation:
+            self.full_clean()
+        
+        super().save(*args, **kwargs)
 
 
 class Notificacion(models.Model):

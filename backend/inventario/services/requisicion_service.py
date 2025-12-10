@@ -635,15 +635,22 @@ class RequisicionService:
         
         return True
     
-    def validar_stock_disponible(self):
+    def validar_stock_disponible(self, usar_bloqueo=False):
         """
         ISS-001 FIX: Valida que hay stock suficiente SOLO en farmacia central.
         ISS-002 FIX: Solo considera lotes NO caducados.
         ISS-004 FIX (audit2): Descuenta stock comprometido por otras requisiciones.
+        ISS-007 FIX: Opcionalmente aplica select_for_update para prevenir race conditions.
         
         IMPORTANTE: Las requisiciones SOLO se surten desde farmacia central.
         El stock del centro destino NO debe considerarse para validación,
         ya que ese stock ya fue transferido previamente y pertenece al centro.
+        
+        Args:
+            usar_bloqueo: Si True, aplica select_for_update a los lotes consultados
+                          para prevenir condiciones de carrera. Usar True cuando
+                          la validación es parte de una transacción de surtido.
+                          Default False para consultas de preview/visualización.
         
         Returns:
             list: Lista vacía si hay stock suficiente
@@ -663,13 +670,19 @@ class RequisicionService:
             
             # ISS-001 FIX: SOLO lotes de farmacia central (centro=NULL)
             # ISS-002 FIX: SOLO lotes NO caducados (fecha_caducidad >= hoy)
-            stock_farmacia = Lote.objects.filter(
+            query_lotes = Lote.objects.filter(
                 centro__isnull=True,  # Solo farmacia central
                 producto=detalle.producto,
                 activo=True,
                 cantidad_actual__gt=0,
                 fecha_caducidad__gte=hoy,  # ISS-002 FIX: Solo lotes vigentes
-            ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+            )
+            
+            # ISS-007 FIX: Aplicar bloqueo si se requiere (dentro de transacción)
+            if usar_bloqueo:
+                query_lotes = query_lotes.select_for_update(nowait=False)
+            
+            stock_farmacia = query_lotes.aggregate(total=Sum('cantidad_actual'))['total'] or 0
             
             # ISS-004 FIX (audit2): Descontar stock comprometido por OTRAS requisiciones
             # (excluyendo esta misma requisición para evitar contar doble)
@@ -831,8 +844,9 @@ class RequisicionService:
         # 2. Validar permisos
         self.validar_permisos_surtido(is_farmacia_or_admin_fn, get_user_centro_fn)
         
-        # 3. Validar stock (pre-check)
-        self.validar_stock_disponible()
+        # 3. ISS-007 FIX: Validar stock CON BLOQUEO para prevenir race conditions
+        # El bloqueo se mantiene hasta el final de la transacción atómica
+        self.validar_stock_disponible(usar_bloqueo=True)
         
         centro_requisicion = self.requisicion.centro
         items_surtidos = []
