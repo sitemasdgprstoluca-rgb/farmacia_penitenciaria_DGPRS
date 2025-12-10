@@ -860,7 +860,7 @@ class Notificacion(models.Model):
 
 class TemaGlobal(models.Model):
     """
-    ConfiguraciÃ³n del tema visual - Supabase
+    Configuración del tema visual - Supabase
     
     Campos en Supabase: id, nombre, es_activo, logo_url, logo_width, logo_height,
     favicon_url, titulo_sistema, subtitulo_sistema, y muchos colores...
@@ -871,7 +871,7 @@ class TemaGlobal(models.Model):
     logo_width = models.IntegerField(default=160)
     logo_height = models.IntegerField(default=60)
     favicon_url = models.CharField(max_length=500, blank=True, null=True)
-    titulo_sistema = models.CharField(max_length=100, default='Sistema de Inventario FarmacÃ©utico', null=True, blank=True)
+    titulo_sistema = models.CharField(max_length=100, default='Sistema de Inventario Farmacéutico', null=True, blank=True)
     subtitulo_sistema = models.CharField(max_length=200, default='Gobierno del Estado', null=True, blank=True)
     
     # Colores
@@ -915,7 +915,7 @@ class TemaGlobal(models.Model):
     def __str__(self):
         return self.nombre
     
-    # Propiedad para compatibilidad
+    # Propiedades para compatibilidad con pdf_reports.py
     @property
     def activo(self):
         return self.es_activo
@@ -927,6 +927,41 @@ class TemaGlobal(models.Model):
     @property
     def color_texto(self):
         return self.color_texto_principal
+    
+    @property
+    def color_texto_secundario(self):
+        """Alias para color_texto_secundario (usa color_texto_sidebar como fallback)"""
+        return getattr(self, '_color_texto_secundario', None) or '#6b7280'
+    
+    @property
+    def color_advertencia(self):
+        """Alias para color_advertencia (usa color_alerta)"""
+        return self.color_alerta or '#FF9800'
+    
+    @property
+    def reporte_color_texto_encabezado(self):
+        """Color del texto en encabezados de tablas de reportes"""
+        return getattr(self, '_reporte_color_texto_encabezado', None) or '#FFFFFF'
+    
+    @property
+    def reporte_titulo_institucion(self):
+        """Título de la institución para reportes"""
+        return self.titulo_sistema or 'Sistema de Farmacia Penitenciaria'
+    
+    @property
+    def reporte_subtitulo(self):
+        """Subtítulo para reportes"""
+        return self.subtitulo_sistema or 'Secretaría de Seguridad'
+    
+    @property
+    def logo_reportes(self):
+        """Logo para reportes (usa logo_url)"""
+        return None  # No hay campo de archivo, retornar None
+    
+    @property
+    def imagen_fondo_reportes(self):
+        """Imagen de fondo para reportes"""
+        return None  # No hay campo de archivo, retornar None
     
     def to_css_variables(self):
         """Genera diccionario de variables CSS"""
@@ -950,6 +985,40 @@ class TemaGlobal(models.Model):
             '--color-texto-sidebar': self.color_texto_sidebar,
             '--color-texto-header': self.color_texto_header,
         }
+
+    @classmethod
+    def get_tema_activo(cls):
+        """
+        Obtiene el tema activo del sistema.
+        Retorna el primer tema con es_activo=True, o crea un tema por defecto.
+        """
+        try:
+            tema = cls.objects.filter(es_activo=True).first()
+            if tema:
+                return tema
+            # Retornar el primer tema existente si ninguno está activo
+            tema = cls.objects.first()
+            if tema:
+                return tema
+        except Exception:
+            pass
+        # Retornar un objeto con valores por defecto
+        return cls(
+            nombre='default',
+            es_activo=True,
+            color_primario='#632842',
+            color_primario_hover='#8a3b5c',
+            color_secundario='#424242',
+            color_texto_principal='#1f2937',
+            color_texto_secundario='#6b7280',
+            reporte_color_encabezado='#632842',
+            reporte_color_texto='#FFFFFF',
+            reporte_color_filas_alternas='#F5F5F5',
+            color_exito='#4CAF50',
+            color_error='#F44336',
+            color_alerta='#FF9800',
+            color_info='#2196F3',
+        )
 
 
 class ConfiguracionSistema(models.Model):

@@ -6,12 +6,27 @@ import PageHeader from '../components/PageHeader';
 import { COLORS } from '../constants/theme';
 import { usePermissions } from '../hooks/usePermissions';
 import { UsuariosSkeleton } from '../components/skeletons';
+import Pagination from '../components/Pagination';
 
+const PAGE_SIZE = 25;
+
+// ROLES DEL SISTEMA - Sincronizados con backend/core/constants.py ROLES_USUARIO
+// Orden: Mayor privilegio primero
 const ROLES = [
-  { value: 'admin_sistema', label: 'Administrador del Sistema' },
-  { value: 'farmacia', label: 'Usuario Farmacia' },
-  { value: 'centro', label: 'Usuario Centro/Unidad' },
-  { value: 'vista', label: 'Usuario Vista/Consultor' }
+  // Roles de Farmacia Central (pueden NO tener centro asignado)
+  { value: 'admin', label: 'Administrador del Sistema', grupo: 'farmacia', requiereCentro: false },
+  { value: 'farmacia', label: 'Personal de Farmacia', grupo: 'farmacia', requiereCentro: false },
+  { value: 'vista', label: 'Usuario Vista/Consultor', grupo: 'farmacia', requiereCentro: false },
+  
+  // Roles de Centro Penitenciario (FLUJO V2 - REQUIEREN centro asignado)
+  { value: 'director_centro', label: 'Director del Centro', grupo: 'centro', requiereCentro: true },
+  { value: 'administrador_centro', label: 'Administrador del Centro', grupo: 'centro', requiereCentro: true },
+  { value: 'medico', label: 'Médico del Centro', grupo: 'centro', requiereCentro: true },
+  { value: 'centro', label: 'Usuario Centro (consulta)', grupo: 'centro', requiereCentro: true },
+  
+  // Legacy (compatibilidad con usuarios existentes - ocultos en UI normal)
+  { value: 'admin_sistema', label: 'Admin Sistema (legacy)', grupo: 'legacy', requiereCentro: false },
+  { value: 'superusuario', label: 'Superusuario (legacy)', grupo: 'legacy', requiereCentro: false },
 ];
 
 // Constantes de validación de contraseña
@@ -20,11 +35,33 @@ const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
 const PASSWORD_REQUIREMENTS = 'Mínimo 8 caracteres, 1 mayúscula, 1 minúscula y 1 número';
 
 // Jerarquía de roles (menor número = mayor jerarquía)
+// SINCRONIZADO CON backend/core/views.py ROLE_HIERARCHY
 const ROL_JERARQUIA = {
+  // Nivel 0: Superusuario (acceso total)
+  'superuser': 0,
+  'superusuario': 0,
+  
+  // Nivel 1: Administradores del sistema
+  'admin': 1,
   'admin_sistema': 1,
+  
+  // Nivel 2: Personal de Farmacia Central
   'farmacia': 2,
-  'centro': 3,
-  'vista': 4
+  'admin_farmacia': 2,
+  
+  // Nivel 3: Directivos del Centro (FLUJO V2)
+  'director_centro': 3,
+  'administrador_centro': 3,
+  
+  // Nivel 4: Personal operativo del Centro (FLUJO V2)
+  'medico': 4,
+  
+  // Nivel 5: Usuarios de consulta
+  'centro': 5,
+  'usuario_centro': 5,
+  'vista': 5,
+  'usuario_vista': 5,
+  'usuario_normal': 5,
 };
 
 // Extensiones y tamaño máximo para importación
@@ -46,6 +83,11 @@ function Usuarios() {
   const [editingUsuario, setEditingUsuario] = useState(null);
   const fileInputRef = useRef(null);
   const { user, permisos, getRolPrincipal } = usePermissions();
+  
+  // Paginación
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalUsuarios, setTotalUsuarios] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   
   // ID del usuario actual (desde el contexto, ya cargado)
   const currentUserId = user?.id;
@@ -110,7 +152,10 @@ function Usuarios() {
 
   // Construir los parámetros de filtro para enviar al backend
   const buildFilterParams = () => {
-    const params = {};
+    const params = {
+      page: currentPage,
+      page_size: PAGE_SIZE,
+    };
     
     // Si no es admin/farmacia, siempre filtrar por centro del usuario
     if (!esAdminOFarmacia && user?.centro?.id) {
@@ -149,6 +194,11 @@ function Usuarios() {
       const data = response.data.results || response.data;
       setUsuarios(data);
       setFilteredUsuarios(data);
+      
+      // Manejar paginación del backend
+      const total = response.data.count || (Array.isArray(data) ? data.length : 0);
+      setTotalUsuarios(total);
+      setTotalPages(Math.max(1, Math.ceil(total / PAGE_SIZE)));
     } catch (error) {
       toast.error('Error al cargar usuarios');
     } finally {
@@ -160,7 +210,12 @@ function Usuarios() {
     cargarCentros();
   }, []);
 
-  // Cargar usuarios cuando los filtros cambian (con debounce para búsqueda)
+  // Resetear a página 1 cuando cambian los filtros
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterRol, filterEstado, filterCentro]);
+
+  // Cargar usuarios cuando los filtros o página cambian (con debounce para búsqueda)
   useEffect(() => {
     // Si es la primera carga o cambió algo que no sea searchTerm, cargar inmediatamente
     if (debounceRef.current) {
@@ -180,7 +235,7 @@ function Usuarios() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchTerm, filterRol, filterEstado, filterCentro, esAdminOFarmacia, user?.centro?.id]);
+  }, [searchTerm, filterRol, filterEstado, filterCentro, currentPage, esAdminOFarmacia, user?.centro?.id]);
   
   const cargarCentros = async () => {
     try {
@@ -321,21 +376,25 @@ function Usuarios() {
   };
   
   // Validar si el rol actual puede asignar el rol objetivo
+  // ISS-013 FIX: Solo puede asignar roles de MENOR privilegio (mayor número)
   const puedeAsignarRol = (rolObjetivo) => {
+    if (esSuperusuario) return true;
     const miJerarquia = ROL_JERARQUIA[rolPrincipal?.toLowerCase()] || 99;
     const objetivoJerarquia = ROL_JERARQUIA[rolObjetivo] || 99;
-    // Solo puede asignar roles de igual o menor jerarquía
-    return miJerarquia <= objetivoJerarquia || esSuperusuario;
+    // Solo puede asignar roles de menor privilegio (mayor número en jerarquía)
+    return miJerarquia < objetivoJerarquia;
   };
 
   // Validar si el usuario actual puede modificar/eliminar a otro usuario
-  // Retorna true si el usuario objetivo tiene igual o menor jerarquía
+  // ISS-004 FIX: Solo puede modificar usuarios con MENOR privilegio (mayor número en jerarquía)
+  // Un usuario NO puede modificar a otro del mismo rol (excepto superusuarios)
   const puedeModificarUsuario = (usuario) => {
     if (esSuperusuario) return true;
     if (!tienePermisoGestion) return false;
     const miJerarquia = ROL_JERARQUIA[rolPrincipal?.toLowerCase()] || 99;
     const usuarioJerarquia = ROL_JERARQUIA[usuario.rol] || 99;
-    return miJerarquia <= usuarioJerarquia;
+    // Solo puede modificar si el objetivo tiene MENOR privilegio (mayor número)
+    return miJerarquia < usuarioJerarquia;
   };
 
   const handleSubmit = async (e) => {
@@ -343,6 +402,12 @@ function Usuarios() {
     
     // Validar contraseña para nuevos usuarios
     if (!editingUsuario) {
+      // CRÍTICO: La contraseña es obligatoria para nuevos usuarios
+      if (!formData.password || formData.password.trim() === '') {
+        toast.error('La contraseña es obligatoria para nuevos usuarios');
+        return;
+      }
+      
       if (formData.password !== formData.password_confirm) {
         toast.error('Las contraseñas no coinciden');
         return;
@@ -359,10 +424,11 @@ function Usuarios() {
       }
     }
     
-    // Validar que roles CENTRO y VISTA tengan centro asignado
-    const rolesRequierenCentro = ['centro', 'vista'];
-    if (rolesRequierenCentro.includes(formData.rol) && !formData.centro) {
-      toast.error(`Los usuarios con rol "${formData.rol}" deben tener un centro asignado`);
+    // Validar que roles que requieren centro lo tengan asignado
+    // Usar la propiedad requiereCentro del rol definido en ROLES
+    const rolSeleccionado = ROLES.find(r => r.value === formData.rol);
+    if (rolSeleccionado?.requiereCentro && !formData.centro) {
+      toast.error(`Los usuarios con rol "${rolSeleccionado.label}" deben tener un centro asignado`);
       return;
     }
 
@@ -470,11 +536,11 @@ function Usuarios() {
       return;
     }
 
-    // Prevenir eliminar usuarios de mayor jerarquía
+    // ISS-004 FIX: Prevenir eliminar usuarios de igual o mayor jerarquía
     const miJerarquia = ROL_JERARQUIA[rolPrincipal?.toLowerCase()] || 99;
     const usuarioJerarquia = ROL_JERARQUIA[usuario.rol] || 99;
-    if (usuarioJerarquia < miJerarquia && !esSuperusuario) {
-      toast.error('No puede eliminar usuarios con rol superior al suyo');
+    if (usuarioJerarquia <= miJerarquia && !esSuperusuario) {
+      toast.error('No puede eliminar usuarios con rol igual o superior al suyo');
       return;
     }
 
@@ -773,8 +839,8 @@ function Usuarios() {
     <div className="p-4 sm:p-6 space-y-6">
       <PageHeader
         icon={FaUsers}
-        title="Gestin de Usuarios"
-        subtitle={`Total: ${filteredUsuarios.length} de ${usuarios.length} usuarios`}
+        title="Gestión de Usuarios"
+        subtitle={`Total: ${totalUsuarios} usuarios | Página ${currentPage} de ${totalPages}`}
         actions={headerActions}
       />
 
@@ -798,9 +864,24 @@ function Usuarios() {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
             >
               <option value="">Todos los roles</option>
-              {ROLES.map(rol => (
-                <option key={rol.value} value={rol.value}>{rol.label}</option>
-              ))}
+              <optgroup label="Farmacia Central">
+                {ROLES.filter(r => r.grupo === 'farmacia').map(rol => (
+                  <option key={rol.value} value={rol.value}>{rol.label}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Centro Penitenciario">
+                {ROLES.filter(r => r.grupo === 'centro').map(rol => (
+                  <option key={rol.value} value={rol.value}>{rol.label}</option>
+                ))}
+              </optgroup>
+              {/* Solo mostrar legacy si hay usuarios con esos roles */}
+              {esSuperusuario && (
+                <optgroup label="Legacy">
+                  {ROLES.filter(r => r.grupo === 'legacy').map(rol => (
+                    <option key={rol.value} value={rol.value}>{rol.label}</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
           <div>
@@ -853,6 +934,7 @@ function Usuarios() {
       {loading ? (
         <UsuariosSkeleton />
       ) : (
+        <>
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
@@ -872,12 +954,14 @@ function Usuarios() {
               {filteredUsuarios.length === 0 ? (
                 <tr>
                   <td colSpan="8" className="px-6 py-12 text-center text-gray-500">
-                    {usuarios.length === 0 ? 'No hay usuarios registrados' : 'No se encontraron usuarios con los filtros aplicados'}
+                    {totalUsuarios === 0 && !searchTerm && !filterRol && !filterEstado && !filterCentro
+                      ? 'No hay usuarios registrados' 
+                      : 'No se encontraron usuarios con los filtros aplicados'}
                   </td>
                 </tr>
               ) : filteredUsuarios.map((usuario, idx) => (
                 <tr key={usuario.id} className={`hover:bg-gray-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                  <td className="px-6 py-4 text-sm text-gray-500">{idx + 1}</td>
+                  <td className="px-6 py-4 text-sm text-gray-500">{(currentPage - 1) * PAGE_SIZE + idx + 1}</td>
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">{usuario.username}</td>
                   <td className="px-6 py-4 text-sm text-gray-700">{usuario.first_name} {usuario.last_name}</td>
                   <td className="px-6 py-4 text-sm text-gray-600">{usuario.email}</td>
@@ -885,7 +969,11 @@ function Usuarios() {
                     <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
                       usuario.rol === 'admin' || usuario.rol === 'admin_sistema' ? 'bg-purple-100 text-purple-800' :
                       usuario.rol === 'farmacia' ? 'bg-blue-100 text-blue-800' :
+                      usuario.rol === 'director_centro' ? 'bg-amber-100 text-amber-800' :
+                      usuario.rol === 'administrador_centro' ? 'bg-orange-100 text-orange-800' :
+                      usuario.rol === 'medico' ? 'bg-teal-100 text-teal-800' :
                       usuario.rol === 'centro' ? 'bg-green-100 text-green-800' :
+                      usuario.rol === 'vista' ? 'bg-gray-100 text-gray-700' :
                       'bg-gray-100 text-gray-800'
                     }`}>
                       {ROLES.find(r => r.value === usuario.rol)?.label || usuario.rol || 'Sin rol'}
@@ -970,6 +1058,18 @@ function Usuarios() {
           </table>
           </div>
         </div>
+        
+        {/* Paginación */}
+        {totalPages > 1 && (
+          <Pagination
+            page={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+            totalItems={totalUsuarios}
+            pageSize={PAGE_SIZE}
+          />
+        )}
+        </>
       )}
       
       {/* Modal Crear/Editar Usuario */}
@@ -1062,19 +1162,25 @@ function Usuarios() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     required
                   >
-                    {ROLES.map(rol => {
-                      const disabled = !puedeAsignarRol(rol.value);
-                      return (
-                        <option 
-                          key={rol.value} 
-                          value={rol.value}
-                          disabled={disabled}
-                        >
-                          {rol.label}{disabled ? ' (sin permiso)' : ''}
-                        </option>
-                      );
-                    })}
+                    {/* Agrupar roles por grupo, ocultar legacy salvo que el usuario ya tenga ese rol */}
+                    {ROLES
+                      .filter(rol => rol.grupo !== 'legacy' || editingUsuario?.rol === rol.value)
+                      .map(rol => {
+                        const disabled = !puedeAsignarRol(rol.value);
+                        return (
+                          <option 
+                            key={rol.value} 
+                            value={rol.value}
+                            disabled={disabled}
+                          >
+                            {rol.label}{disabled ? ' (sin permiso)' : ''}{rol.requiereCentro ? ' *' : ''}
+                          </option>
+                        );
+                      })}
                   </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    * Roles marcados con asterisco requieren centro asignado
+                  </p>
                   {editingUsuario && formData.rol !== editingUsuario.rol && (
                     <p className="text-xs text-amber-600 mt-1">
                       ⚠️ Cambiar el rol afectará los permisos del usuario
@@ -1084,12 +1190,13 @@ function Usuarios() {
                 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">
-                    Centro
+                    Centro {ROLES.find(r => r.value === formData.rol)?.requiereCentro && <span className="text-red-500">*</span>}
                   </label>
                   <select
                     value={formData.centro}
                     onChange={(e) => setFormData({...formData, centro: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required={ROLES.find(r => r.value === formData.rol)?.requiereCentro}
                   >
                     <option value="">Sin asignar</option>
                     {centros.map(centro => (

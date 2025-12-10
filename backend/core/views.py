@@ -71,13 +71,30 @@ class PasswordChangeThrottle(UserRateThrottle):
 # ============================================
 # Menor número = mayor privilegio
 # Esto previene escalamiento de privilegios
+# FLUJO V2: Incluye roles jerárquicos del centro
 ROLE_HIERARCHY = {
+    # Nivel 0: Superusuario (acceso total)
     'superuser': 0,
+    'superusuario': 0,
+    
+    # Nivel 1: Administradores del sistema
+    'admin': 1,
     'admin_sistema': 1,
+    
+    # Nivel 2: Personal de Farmacia Central
+    'farmacia': 2,
     'admin_farmacia': 2,
-    'farmacia': 3,
-    'centro': 4,
-    'usuario_centro': 4,
+    
+    # Nivel 3: Directivos del Centro (FLUJO V2)
+    'director_centro': 3,
+    'administrador_centro': 3,
+    
+    # Nivel 4: Personal operativo del Centro (FLUJO V2)
+    'medico': 4,
+    
+    # Nivel 5: Usuarios de consulta
+    'centro': 5,
+    'usuario_centro': 5,
     'vista': 5,
     'usuario_vista': 5,
     'usuario_normal': 5,
@@ -303,6 +320,54 @@ class UserViewSet(viewsets.ModelViewSet):
                 ip_address=self.request.META.get('REMOTE_ADDR')
             )
         logger.info(f"Usuario {user.username} actualizado por {self.request.user.username}: {cambios}")
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        ISS-004 FIX: Valida jerarquía de roles antes de eliminar usuario.
+        
+        - Un usuario no puede eliminarse a sí mismo
+        - Un usuario no puede eliminar a otro de igual o mayor privilegio
+        """
+        from rest_framework.exceptions import PermissionDenied
+        
+        instance = self.get_object()
+        
+        # Prevenir auto-eliminación
+        if instance.pk == request.user.pk:
+            return Response(
+                {'error': 'No puede eliminarse a sí mismo'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar jerarquía (excepto superusuarios)
+        if not request.user.is_superuser:
+            requesting_level = get_role_level(request.user)
+            target_level = get_role_level(instance)
+            
+            if target_level <= requesting_level:
+                raise PermissionDenied(
+                    'No puede eliminar a este usuario. '
+                    'Solo usuarios con mayor privilegio pueden eliminarlo.'
+                )
+        
+        # Registrar en auditoría antes de eliminar
+        AuditoriaLog.objects.create(
+            usuario=request.user,
+            accion='DELETE',
+            modelo='User',
+            objeto_id=str(instance.id),
+            datos_anteriores={
+                'username': instance.username,
+                'email': instance.email,
+                'rol': instance.rol,
+                'centro_id': instance.centro_id,
+            },
+            detalles={'objeto_repr': instance.username, 'eliminado_por': request.user.username},
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        logger.info(f"Usuario {instance.username} eliminado por {request.user.username}")
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=False, methods=['get', 'patch'], url_path='me')
     def me(self, request):
@@ -2314,13 +2379,25 @@ class LoteDocumentoViewSet(viewsets.ModelViewSet):
 class DonacionViewSet(viewsets.ModelViewSet):
     """
     ViewSet para gestionar donaciones de medicamentos.
+    Solo ADMIN y FARMACIA pueden crear/editar/procesar.
+    VISTA puede consultar en solo lectura.
     """
-    permission_classes = [IsAuthenticated]
     pagination_class = StandardResultsSetPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['numero', 'donante_nombre', 'donante_rfc']
     ordering_fields = ['fecha_donacion', 'fecha_recepcion', 'created_at']
     ordering = ['-fecha_recepcion']
+    
+    def get_permissions(self):
+        """Permisos según la acción:
+        - list, retrieve: IsAuthenticated + tener perm_donaciones
+        - create, update, destroy, acciones: IsFarmaciaRole (admin/farmacia)
+        """
+        if self.action in ['list', 'retrieve']:
+            # Cualquier autenticado con permiso de donaciones puede ver
+            return [IsAuthenticated()]
+        # Crear, editar, eliminar, acciones solo admin/farmacia
+        return [IsAuthenticated(), IsFarmaciaRole()]
     
     def get_queryset(self):
         from core.models import Donacion
@@ -2451,9 +2528,22 @@ class DonacionViewSet(viewsets.ModelViewSet):
 class DetalleDonacionViewSet(viewsets.ModelViewSet):
     """
     ViewSet para gestionar detalles de donaciones.
+    Solo ADMIN y FARMACIA pueden modificar.
     """
-    permission_classes = [IsAuthenticated]
     pagination_class = StandardResultsSetPagination
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['producto__nombre', 'producto__clave', 'numero_lote', 'donacion__numero']
+    ordering_fields = ['created_at', 'fecha_caducidad', 'cantidad_disponible']
+    ordering = ['-created_at']
+    
+    def get_permissions(self):
+        """Permisos según la acción:
+        - list, retrieve: IsAuthenticated
+        - create, update, destroy: IsFarmaciaRole
+        """
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated()]
+        return [IsAuthenticated(), IsFarmaciaRole()]
     
     def get_queryset(self):
         from core.models import DetalleDonacion
@@ -2471,6 +2561,11 @@ class DetalleDonacionViewSet(viewsets.ModelViewSet):
         if solo_disponible == 'true':
             queryset = queryset.filter(cantidad_disponible__gt=0)
         
+        # Filtrar por estado de producto
+        estado = self.request.query_params.get('estado_producto')
+        if estado:
+            queryset = queryset.filter(estado_producto=estado)
+        
         return queryset.order_by('-created_at')
     
     def get_serializer_class(self):
@@ -2486,10 +2581,19 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
     """
     ViewSet para gestionar salidas/entregas del almacen de donaciones.
     Control interno sin afectar movimientos principales.
+    Solo ADMIN y FARMACIA pueden registrar entregas.
     """
-    permission_classes = [IsAuthenticated]
     pagination_class = StandardResultsSetPagination
     http_method_names = ['get', 'post', 'head', 'options']  # No permite editar ni eliminar
+    
+    def get_permissions(self):
+        """Permisos según la acción:
+        - list, retrieve: IsAuthenticated
+        - create: IsFarmaciaRole
+        """
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated()]
+        return [IsAuthenticated(), IsFarmaciaRole()]
     
     def get_queryset(self):
         from core.models import SalidaDonacion

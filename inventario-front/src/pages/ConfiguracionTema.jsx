@@ -50,6 +50,19 @@ const normalizarColor = (color, fallback = '#000000') => {
 };
 
 /**
+ * Genera un color hover más oscuro a partir de un color base
+ * Oscurece el color un 15% aprox.
+ */
+const generarColorHover = (hexColor) => {
+  if (!esColorValido(hexColor)) return hexColor;
+  const hex = hexColor.replace('#', '');
+  const r = Math.max(0, parseInt(hex.substring(0, 2), 16) - 30);
+  const g = Math.max(0, parseInt(hex.substring(2, 4), 16) - 30);
+  const b = Math.max(0, parseInt(hex.substring(4, 6), 16) - 30);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`.toUpperCase();
+};
+
+/**
  * Página de configuración del tema del sistema
  * Solo accesible por superusuarios
  * 
@@ -394,8 +407,7 @@ const ConfiguracionTema = () => {
 
   /**
    * Guarda los colores personalizados usando TemaGlobal API
-   * NOTA: Los colores se guardan de forma independiente, sin sincronización forzada
-   * El usuario tiene control total sobre cada color individual
+   * NOTA: Los colores hover se generan automáticamente oscureciendo el color base
    */
   const handleGuardar = async () => {
     if (!validarColoresAntesDeGuardar()) {
@@ -404,29 +416,32 @@ const ConfiguracionTema = () => {
     }
 
     // Preparar datos para TemaGlobal - mapeo directo a columnas de BD
-    // SIN sincronización forzada: el usuario controla cada color
+    // Los colores hover se generan automáticamente oscureciendo el color base
     const datosActualizacion = {
-      // Colores principales (columnas: color_primario, color_primario_hover, color_secundario, color_secundario_hover)
+      // Colores principales con hover generado
       color_primario: formData.color_primario,
-      color_primario_hover: formData.color_primario_hover,
+      color_primario_hover: formData.color_primario_hover || generarColorHover(formData.color_primario),
       color_secundario: formData.color_secundario,
-      color_secundario_hover: formData.color_secundario, // Usar mismo color como fallback
-      // Colores de fondo (columnas: color_fondo_principal, color_fondo_sidebar, color_fondo_header)
+      color_secundario_hover: generarColorHover(formData.color_secundario),
+      // Colores de fondo
       color_fondo_principal: formData.color_fondo,
       color_fondo_sidebar: formData.color_fondo_sidebar,
       color_fondo_header: formData.color_fondo_header,
-      // Colores de texto (columnas: color_texto_principal, color_texto_sidebar, color_texto_header, color_texto_links)
+      // Colores de texto
       color_texto_principal: formData.color_texto,
       color_texto_sidebar: formData.color_texto_sidebar,
       color_texto_header: formData.color_texto_header,
-      color_texto_links: formData.color_primario, // Links usan color primario
-      // Colores de estado (columnas: color_exito, color_alerta, color_error, color_info)
-      // IMPORTANTE: BD usa "color_alerta", UI usa "color_advertencia"
+      color_texto_links: formData.color_primario,
+      // Colores de estado con hover generado automáticamente
       color_exito: formData.color_exito,
+      color_exito_hover: generarColorHover(formData.color_exito),
       color_alerta: formData.color_advertencia,
+      color_alerta_hover: generarColorHover(formData.color_advertencia),
       color_error: formData.color_error,
+      color_error_hover: generarColorHover(formData.color_error),
       color_info: formData.color_info,
-      // Bordes (columnas: color_borde_inputs, color_borde_focus)
+      color_info_hover: generarColorHover(formData.color_info),
+      // Bordes
       color_borde_inputs: '#E0E0E0',
       color_borde_focus: formData.color_primario,
     };

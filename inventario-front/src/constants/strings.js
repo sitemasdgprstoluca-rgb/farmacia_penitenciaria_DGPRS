@@ -292,14 +292,16 @@ export const REQUISICION_ESTADOS = {
 export const REQUISICION_ESTADOS_OPTIONS = Object.values(REQUISICION_ESTADOS);
 
 // FLUJO V2: Transiciones permitidas por estado
+// ISS-FIX: 'cancelada' agregado a todos los estados no-finales (excepto 'surtida' que no puede cancelarse)
 export const TRANSICIONES_REQUISICION = {
   borrador: ['pendiente_admin', 'cancelada'],
-  pendiente_admin: ['pendiente_director', 'rechazada', 'devuelta'],
-  pendiente_director: ['enviada', 'rechazada', 'devuelta'],
-  enviada: ['en_revision', 'autorizada', 'rechazada'],
-  en_revision: ['autorizada', 'rechazada', 'devuelta'],
+  pendiente_admin: ['pendiente_director', 'rechazada', 'devuelta', 'cancelada'],
+  pendiente_director: ['enviada', 'rechazada', 'devuelta', 'cancelada'],
+  enviada: ['en_revision', 'autorizada', 'rechazada', 'cancelada'],
+  en_revision: ['autorizada', 'rechazada', 'devuelta', 'cancelada'],
   autorizada: ['en_surtido', 'surtida', 'cancelada'],
   en_surtido: ['surtida', 'cancelada'],
+  parcial: ['surtida', 'cancelada'],
   surtida: ['entregada', 'vencida'],
   devuelta: ['pendiente_admin', 'cancelada'],
   // Estados finales

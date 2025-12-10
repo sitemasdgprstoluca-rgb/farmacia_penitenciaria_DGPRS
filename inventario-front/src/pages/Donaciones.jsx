@@ -19,6 +19,11 @@ import {
   FaSearch,
   FaHandHoldingMedical,
   FaHistory,
+  FaWarehouse,
+  FaClipboardList,
+  FaArrowRight,
+  FaExclamationTriangle,
+  FaFileExport,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { COLORS } from '../constants/theme';
@@ -26,7 +31,7 @@ import Pagination from '../components/Pagination';
 import { usePermissions } from '../hooks/usePermissions';
 import ConfirmModal from '../components/ConfirmModal';
 
-const PAGE_SIZE = 15;
+const PAGE_SIZE = 25;
 
 // ISS-DB-ALIGN: Estados alineados con BD Supabase
 // BD permite: pendiente, recibida, procesada, rechazada
@@ -37,10 +42,11 @@ const ESTADOS_DONACION = {
   rechazada: { label: 'Rechazada', color: 'bg-red-100 text-red-800', icon: '❌' },
 };
 
+// ISS-DB-ALIGN: Tipos de donante alineados con BD Supabase (core/models.py TIPOS_DONANTE)
 const TIPOS_DONANTE = [
+  { value: 'empresa', label: 'Empresa' },
   { value: 'gobierno', label: 'Gobierno' },
   { value: 'ong', label: 'ONG' },
-  { value: 'empresa', label: 'Empresa' },
   { value: 'particular', label: 'Particular' },
   { value: 'otro', label: 'Otro' },
 ];
@@ -54,17 +60,21 @@ const ESTADOS_PRODUCTO = [
 ];
 
 const Donaciones = () => {
-  const { getRolPrincipal, permisos, user } = usePermissions();
+  const { getRolPrincipal, permisos, user, verificarPermiso } = usePermissions();
   const rolPrincipal = getRolPrincipal();
   const esFarmaciaAdmin = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
+  
+  // Verificar permiso granular de donaciones (perm_donaciones en BD → verDonaciones en frontend)
+  const tienePermisoDonaciones = verificarPermiso('verDonaciones');
 
-  // Permisos - Donaciones solo para ADMIN y FARMACIA
+  // Permisos - Crear/Editar/Procesar solo para ADMIN y FARMACIA
+  // Ver: cualquier rol con permiso de donaciones
   const puede = {
-    crear: esFarmaciaAdmin,
-    editar: esFarmaciaAdmin,
-    eliminar: esFarmaciaAdmin,
-    procesar: esFarmaciaAdmin,
-    ver: esFarmaciaAdmin || rolPrincipal === 'VISTA',
+    crear: esFarmaciaAdmin && tienePermisoDonaciones,
+    editar: esFarmaciaAdmin && tienePermisoDonaciones,
+    eliminar: esFarmaciaAdmin && tienePermisoDonaciones,
+    procesar: esFarmaciaAdmin && tienePermisoDonaciones,
+    ver: tienePermisoDonaciones,
   };
 
   // Estados
@@ -79,6 +89,7 @@ const Donaciones = () => {
   const [confirmProcesar, setConfirmProcesar] = useState(null);
   const [confirmRecibir, setConfirmRecibir] = useState(null);
   const [confirmRechazar, setConfirmRechazar] = useState(null);
+  const [motivoRechazo, setMotivoRechazo] = useState('');
 
   // Salidas de donaciones (entregas)
   const [showSalidaModal, setShowSalidaModal] = useState(false);
@@ -92,6 +103,31 @@ const Donaciones = () => {
   const [showHistorialModal, setShowHistorialModal] = useState(false);
   const [historialSalidas, setHistorialSalidas] = useState([]);
   const [loadingSalidas, setLoadingSalidas] = useState(false);
+
+  // Sistema de Tabs: donaciones | inventario | entregas
+  const [activeTab, setActiveTab] = useState('donaciones');
+  
+  // Inventario de Donaciones (productos con stock disponible)
+  const [inventarioDonaciones, setInventarioDonaciones] = useState([]);
+  const [loadingInventario, setLoadingInventario] = useState(false);
+  const [inventarioPage, setInventarioPage] = useState(1);
+  const [inventarioTotalPages, setInventarioTotalPages] = useState(1);
+  const [searchInventario, setSearchInventario] = useState('');
+  
+  // Historial de Entregas (todas las salidas)
+  const [todasEntregas, setTodasEntregas] = useState([]);
+  const [loadingEntregas, setLoadingEntregas] = useState(false);
+  const [entregasPage, setEntregasPage] = useState(1);
+  const [entregasTotalPages, setEntregasTotalPages] = useState(1);
+  const [searchEntregas, setSearchEntregas] = useState('');
+  
+  // Estadísticas del almacén de donaciones
+  const [estadisticas, setEstadisticas] = useState({
+    totalProductos: 0,
+    totalUnidades: 0,
+    productosAgotados: 0,
+    productosPorCaducar: 0,
+  });
 
   // Paginación
   const [currentPage, setCurrentPage] = useState(1);
@@ -112,11 +148,11 @@ const Donaciones = () => {
   const [centros, setCentros] = useState([]);
   const [lotes, setLotes] = useState([]);
 
-  // Formulario
+  // Formulario - ISS-DB-ALIGN: donante_tipo default 'empresa' (primer valor del array)
   const [formData, setFormData] = useState({
     numero: '',
     donante_nombre: '',
-    donante_tipo: 'gobierno',
+    donante_tipo: 'empresa',
     donante_rfc: '',
     donante_direccion: '',
     donante_contacto: '',
@@ -124,6 +160,7 @@ const Donaciones = () => {
     fecha_recepcion: new Date().toISOString().split('T')[0],
     centro_destino: '',
     notas: '',
+    documento_donacion: '', // ISS-DB-ALIGN: Campo de BD para referencia de documento
     detalles: [],
   });
 
@@ -191,20 +228,110 @@ const Donaciones = () => {
     }
   }, [currentPage, searchTerm, filtroEstado, filtroTipoDonante, filtroCentro, filtroFechaDesde, filtroFechaHasta]);
 
+  // Cargar inventario de donaciones (productos con stock disponible)
+  const cargarInventarioDonaciones = useCallback(async () => {
+    setLoadingInventario(true);
+    try {
+      const params = {
+        page: inventarioPage,
+        page_size: PAGE_SIZE,
+        disponible: 'true', // Solo productos con stock > 0
+      };
+      if (searchInventario) params.search = searchInventario;
+
+      const response = await detallesDonacionAPI.getAll(params);
+      const data = response.data;
+
+      if (data.results) {
+        setInventarioDonaciones(data.results);
+        setInventarioTotalPages(Math.ceil((data.count || 0) / PAGE_SIZE));
+      } else {
+        setInventarioDonaciones(data || []);
+        setInventarioTotalPages(1);
+      }
+
+      // Calcular estadísticas
+      const allItems = data.results || data || [];
+      const hoy = new Date();
+      const en30Dias = new Date(hoy.getTime() + 30 * 24 * 60 * 60 * 1000);
+      
+      let totalUnidades = 0;
+      let productosAgotados = 0;
+      let productosPorCaducar = 0;
+
+      allItems.forEach(item => {
+        totalUnidades += item.cantidad_disponible || 0;
+        if ((item.cantidad_disponible || 0) === 0) productosAgotados++;
+        if (item.fecha_caducidad) {
+          const fechaCad = new Date(item.fecha_caducidad);
+          if (fechaCad <= en30Dias) productosPorCaducar++;
+        }
+      });
+
+      setEstadisticas({
+        totalProductos: allItems.length,
+        totalUnidades,
+        productosAgotados,
+        productosPorCaducar,
+      });
+
+    } catch (err) {
+      console.error('Error cargando inventario de donaciones:', err);
+      toast.error('Error al cargar inventario');
+    } finally {
+      setLoadingInventario(false);
+    }
+  }, [inventarioPage, searchInventario]);
+
+  // Cargar historial de todas las entregas
+  const cargarTodasEntregas = useCallback(async () => {
+    setLoadingEntregas(true);
+    try {
+      const params = {
+        page: entregasPage,
+        page_size: PAGE_SIZE,
+        ordering: '-fecha_entrega',
+      };
+      if (searchEntregas) params.destinatario = searchEntregas;
+
+      const response = await salidasDonacionesAPI.getAll(params);
+      const data = response.data;
+
+      if (data.results) {
+        setTodasEntregas(data.results);
+        setEntregasTotalPages(Math.ceil((data.count || 0) / PAGE_SIZE));
+      } else {
+        setTodasEntregas(data || []);
+        setEntregasTotalPages(1);
+      }
+    } catch (err) {
+      console.error('Error cargando entregas:', err);
+      toast.error('Error al cargar historial de entregas');
+    } finally {
+      setLoadingEntregas(false);
+    }
+  }, [entregasPage, searchEntregas]);
+
   useEffect(() => {
     cargarCatalogos();
   }, [cargarCatalogos]);
 
   useEffect(() => {
-    cargarDonaciones();
-  }, [cargarDonaciones]);
+    if (activeTab === 'donaciones') {
+      cargarDonaciones();
+    } else if (activeTab === 'inventario') {
+      cargarInventarioDonaciones();
+    } else if (activeTab === 'entregas') {
+      cargarTodasEntregas();
+    }
+  }, [activeTab, cargarDonaciones, cargarInventarioDonaciones, cargarTodasEntregas]);
 
   // Reset formulario
   const resetForm = () => {
     setFormData({
       numero: '',
       donante_nombre: '',
-      donante_tipo: 'gobierno',
+      donante_tipo: 'empresa',  // ISS-DB-ALIGN: Primer valor del array de tipos
       donante_rfc: '',
       donante_direccion: '',
       donante_contacto: '',
@@ -212,6 +339,7 @@ const Donaciones = () => {
       fecha_recepcion: new Date().toISOString().split('T')[0],
       centro_destino: '',
       notas: '',
+      documento_donacion: '', // ISS-DB-ALIGN: Campo para referencia de documento
       detalles: [],
     });
     setDetalleForm({
@@ -237,7 +365,7 @@ const Donaciones = () => {
     setFormData({
       numero: donacion.numero || '',
       donante_nombre: donacion.donante_nombre || '',
-      donante_tipo: donacion.donante_tipo || 'gobierno',
+      donante_tipo: donacion.donante_tipo || 'empresa',
       donante_rfc: donacion.donante_rfc || '',
       donante_direccion: donacion.donante_direccion || '',
       donante_contacto: donacion.donante_contacto || '',
@@ -245,6 +373,7 @@ const Donaciones = () => {
       fecha_recepcion: donacion.fecha_recepcion || '',
       centro_destino: donacion.centro_destino || '',
       notas: donacion.notas || '',
+      documento_donacion: donacion.documento_donacion || '', // ISS-DB-ALIGN
       detalles: donacion.detalles || [],
     });
     setShowModal(true);
@@ -461,7 +590,14 @@ const Donaciones = () => {
         const updated = await donacionesAPI.getById(viewingDonacion.id);
         setViewingDonacion(updated.data);
       }
-      cargarDonaciones();
+      // Refrescar según la tab activa
+      if (activeTab === 'donaciones') {
+        cargarDonaciones();
+      } else if (activeTab === 'inventario') {
+        cargarInventarioDonaciones();
+      } else if (activeTab === 'entregas') {
+        cargarTodasEntregas();
+      }
     } catch (err) {
       console.error('Error registrando salida:', err);
       toast.error(err.response?.data?.error || err.response?.data?.cantidad?.[0] || 'Error al registrar entrega');
@@ -495,55 +631,112 @@ const Donaciones = () => {
     });
   };
 
+  // Si el usuario no tiene permiso para ver donaciones
+  if (!puede.ver) {
+    return (
+      <div className="p-6">
+        <PageHeader
+          title="Donaciones"
+          subtitle="Gestión de donaciones recibidas"
+          icon={<FaGift className="text-3xl" style={{ color: COLORS.primary }} />}
+        />
+        <div className="bg-white rounded-xl shadow-sm border p-8 text-center">
+          <FaGift className="mx-auto text-5xl text-gray-300 mb-4" />
+          <h2 className="text-xl font-semibold text-gray-700 mb-2">Acceso Restringido</h2>
+          <p className="text-gray-500">No tienes permisos para acceder al módulo de Donaciones.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
       <PageHeader
         title="Donaciones"
-        subtitle="Gestión de donaciones recibidas"
+        subtitle="Gestión completa del almacén de donaciones"
         icon={<FaGift className="text-3xl" style={{ color: COLORS.primary }} />}
       />
 
-      {/* Barra de acciones */}
-      <div className="bg-white rounded-xl shadow-sm border p-4 mb-6">
-        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-          {/* Búsqueda */}
-          <div className="relative flex-1 max-w-md">
-            <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por número, donante..."
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
-            />
-          </div>
+      {/* Tabs de navegación */}
+      <div className="bg-white rounded-xl shadow-sm border mb-6">
+        <div className="flex border-b">
+          <button
+            onClick={() => setActiveTab('donaciones')}
+            className={`flex items-center gap-2 px-6 py-4 font-medium transition-colors border-b-2 -mb-px ${
+              activeTab === 'donaciones'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <FaGift /> Donaciones
+          </button>
+          <button
+            onClick={() => setActiveTab('inventario')}
+            className={`flex items-center gap-2 px-6 py-4 font-medium transition-colors border-b-2 -mb-px ${
+              activeTab === 'inventario'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <FaWarehouse /> Inventario
+          </button>
+          <button
+            onClick={() => setActiveTab('entregas')}
+            className={`flex items-center gap-2 px-6 py-4 font-medium transition-colors border-b-2 -mb-px ${
+              activeTab === 'entregas'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <FaHandHoldingMedical /> Entregas
+          </button>
+        </div>
+      </div>
 
-          {/* Acciones */}
-          <div className="flex gap-2 flex-wrap">
-            {/* Toggle filtros */}
-            <button
-              onClick={() => setShowFiltersMenu(!showFiltersMenu)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
-                filtrosActivos > 0
-                  ? 'bg-primary/10 border-primary text-primary'
-                  : 'bg-white hover:bg-gray-50'
-              }`}
-            >
-              <FaFilter />
-              Filtros
-              {filtrosActivos > 0 && (
-                <span className="bg-primary text-white text-xs px-2 py-0.5 rounded-full">
-                  {filtrosActivos}
-                </span>
-              )}
-              <FaChevronDown className={`transition-transform ${showFiltersMenu ? 'rotate-180' : ''}`} />
-            </button>
+      {/* ========== TAB: DONACIONES ========== */}
+      {activeTab === 'donaciones' && (
+        <>
+          {/* Barra de acciones */}
+          <div className="bg-white rounded-xl shadow-sm border p-4 mb-6">
+            <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+              {/* Búsqueda */}
+              <div className="relative flex-1 max-w-md">
+                <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar por número, donante..."
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                />
+              </div>
 
-            {/* Botón nueva donación */}
-            {puede.crear && (
+              {/* Acciones */}
+              <div className="flex gap-2 flex-wrap">
+                {/* Toggle filtros */}
+                <button
+                  onClick={() => setShowFiltersMenu(!showFiltersMenu)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                    filtrosActivos > 0
+                      ? 'bg-primary/10 border-primary text-primary'
+                      : 'bg-white hover:bg-gray-50'
+                  }`}
+                >
+                  <FaFilter />
+                  Filtros
+                  {filtrosActivos > 0 && (
+                    <span className="bg-primary text-white text-xs px-2 py-0.5 rounded-full">
+                      {filtrosActivos}
+                    </span>
+                  )}
+                  <FaChevronDown className={`transition-transform ${showFiltersMenu ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Botón nueva donación */}
+                {puede.crear && (
               <button
                 onClick={handleNuevo}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-white transition-colors"
@@ -830,6 +1023,278 @@ const Donaciones = () => {
           </div>
         )}
       </div>
+        </>
+      )}
+
+      {/* ========== TAB: INVENTARIO DE DONACIONES ========== */}
+      {activeTab === 'inventario' && (
+        <>
+          {/* Estadísticas del almacén */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="bg-white rounded-xl shadow-sm border p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-lg bg-blue-100">
+                  <FaBox className="text-blue-600 text-xl" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Total Productos</p>
+                  <p className="text-2xl font-bold text-gray-800">{estadisticas.totalProductos}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-lg bg-green-100">
+                  <FaWarehouse className="text-green-600 text-xl" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Total Unidades</p>
+                  <p className="text-2xl font-bold text-gray-800">{estadisticas.totalUnidades.toLocaleString()}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-lg bg-red-100">
+                  <FaTimes className="text-red-600 text-xl" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Agotados</p>
+                  <p className="text-2xl font-bold text-red-600">{estadisticas.productosAgotados}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-lg bg-yellow-100">
+                  <FaExclamationTriangle className="text-yellow-600 text-xl" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Por Caducar (30 días)</p>
+                  <p className="text-2xl font-bold text-yellow-600">{estadisticas.productosPorCaducar}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Barra de búsqueda inventario */}
+          <div className="bg-white rounded-xl shadow-sm border p-4 mb-6">
+            <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+              <div className="relative flex-1 max-w-md">
+                <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar producto en inventario de donaciones..."
+                  value={searchInventario}
+                  onChange={(e) => {
+                    setSearchInventario(e.target.value);
+                    setInventarioPage(1);
+                  }}
+                  className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                />
+              </div>
+              <button
+                onClick={() => cargarInventarioDonaciones()}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border hover:bg-gray-50 transition-colors"
+              >
+                <FaHistory /> Actualizar
+              </button>
+            </div>
+          </div>
+
+          {/* Tabla de inventario */}
+          <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+            {loadingInventario ? (
+              <div className="flex items-center justify-center py-20">
+                <FaSpinner className="animate-spin text-4xl text-gray-400" />
+              </div>
+            ) : inventarioDonaciones.length === 0 ? (
+              <div className="text-center py-20 text-gray-500">
+                <FaWarehouse className="mx-auto text-5xl mb-4 opacity-30" />
+                <p>No hay productos en el inventario de donaciones</p>
+                <p className="text-sm mt-2">Procesa una donación para agregar productos al inventario</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Producto</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Donación</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Lote</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Recibido</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Disponible</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Caducidad</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Estado</th>
+                      {puede.procesar && (
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Entregar</th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {inventarioDonaciones.map((item) => {
+                      const esCritico = item.cantidad_disponible === 0;
+                      const porCaducar = item.fecha_caducidad && new Date(item.fecha_caducidad) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                      return (
+                        <tr key={item.id} className={`hover:bg-gray-50 ${esCritico ? 'bg-red-50' : porCaducar ? 'bg-yellow-50' : ''}`}>
+                          <td className="px-4 py-3">
+                            <span className="font-medium">{item.producto_codigo}</span>
+                            <span className="block text-xs text-gray-500">{item.producto_nombre}</span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {item.donacion_numero || `DON-${item.donacion}`}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{item.numero_lote || '-'}</td>
+                          <td className="px-4 py-3 text-center text-gray-600">{item.cantidad}</td>
+                          <td className="px-4 py-3 text-center">
+                            <span className={`font-bold ${item.cantidad_disponible > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                              {item.cantidad_disponible}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`text-sm ${porCaducar ? 'text-yellow-600 font-medium' : 'text-gray-600'}`}>
+                              {formatFecha(item.fecha_caducidad)}
+                              {porCaducar && <FaExclamationTriangle className="inline ml-1 text-yellow-500" />}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 capitalize text-sm text-gray-600">{item.estado_producto}</td>
+                          {puede.procesar && (
+                            <td className="px-4 py-3 text-center">
+                              {item.cantidad_disponible > 0 ? (
+                                <button
+                                  onClick={() => handleAbrirSalida(item, { numero: item.donacion_numero || `DON-${item.donacion}` })}
+                                  className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                  title="Registrar entrega"
+                                >
+                                  <FaHandHoldingMedical />
+                                </button>
+                              ) : (
+                                <span className="text-gray-400 text-xs">Agotado</span>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Paginación inventario */}
+            {inventarioTotalPages > 1 && (
+              <div className="border-t p-4">
+                <Pagination
+                  page={inventarioPage}
+                  totalPages={inventarioTotalPages}
+                  onPageChange={setInventarioPage}
+                  totalItems={inventarioDonaciones.length}
+                  pageSize={PAGE_SIZE}
+                />
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ========== TAB: HISTORIAL DE ENTREGAS ========== */}
+      {activeTab === 'entregas' && (
+        <>
+          {/* Barra de búsqueda entregas */}
+          <div className="bg-white rounded-xl shadow-sm border p-4 mb-6">
+            <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+              <div className="relative flex-1 max-w-md">
+                <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar por destinatario..."
+                  value={searchEntregas}
+                  onChange={(e) => {
+                    setSearchEntregas(e.target.value);
+                    setEntregasPage(1);
+                  }}
+                  className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                />
+              </div>
+              <button
+                onClick={() => cargarTodasEntregas()}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border hover:bg-gray-50 transition-colors"
+              >
+                <FaHistory /> Actualizar
+              </button>
+            </div>
+          </div>
+
+          {/* Tabla de entregas */}
+          <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+            {loadingEntregas ? (
+              <div className="flex items-center justify-center py-20">
+                <FaSpinner className="animate-spin text-4xl text-gray-400" />
+              </div>
+            ) : todasEntregas.length === 0 ? (
+              <div className="text-center py-20 text-gray-500">
+                <FaHandHoldingMedical className="mx-auto text-5xl mb-4 opacity-30" />
+                <p>No hay entregas registradas</p>
+                <p className="text-sm mt-2">Las entregas aparecerán aquí cuando se registren desde el inventario</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Fecha</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Producto</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Cantidad</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Destinatario</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Motivo</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Entregado por</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Donación</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {todasEntregas.map((entrega) => (
+                      <tr key={entrega.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {new Date(entrega.fecha_entrega).toLocaleString('es-MX', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </td>
+                        <td className="px-4 py-3 font-medium">{entrega.producto_nombre || '-'}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="font-bold text-primary">{entrega.cantidad}</span>
+                        </td>
+                        <td className="px-4 py-3">{entrega.destinatario}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{entrega.motivo || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{entrega.entregado_por_nombre || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-500">
+                          {entrega.detalle_donacion_info?.donacion_numero || '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Paginación entregas */}
+            {entregasTotalPages > 1 && (
+              <div className="border-t p-4">
+                <Pagination
+                  page={entregasPage}
+                  totalPages={entregasTotalPages}
+                  onPageChange={setEntregasPage}
+                  totalItems={todasEntregas.length}
+                  pageSize={PAGE_SIZE}
+                />
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Modal de Creación/Edición */}
       {showModal && (
@@ -971,15 +1436,27 @@ const Donaciones = () => {
                     </select>
                   </div>
                 </div>
-                <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-600 mb-1">Notas</label>
-                  <textarea
-                    value={formData.notas}
-                    onChange={(e) => setFormData({ ...formData, notas: e.target.value })}
-                    rows={2}
-                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
-                    placeholder="Observaciones adicionales..."
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-1">Documento de Donación</label>
+                    <input
+                      type="text"
+                      value={formData.documento_donacion}
+                      onChange={(e) => setFormData({ ...formData, documento_donacion: e.target.value })}
+                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                      placeholder="Nº Factura, Carta de Donación, Acta, etc."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-1">Notas</label>
+                    <textarea
+                      value={formData.notas}
+                      onChange={(e) => setFormData({ ...formData, notas: e.target.value })}
+                      rows={2}
+                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                      placeholder="Observaciones adicionales..."
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -1188,6 +1665,14 @@ const Donaciones = () => {
                   <span className="text-sm text-gray-500">Fecha Donación</span>
                   <p className="font-medium">{formatFecha(viewingDonacion.fecha_donacion)}</p>
                 </div>
+                <div>
+                  <span className="text-sm text-gray-500">Documento</span>
+                  <p className="font-medium">{viewingDonacion.documento_donacion || '-'}</p>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-500">Notas</span>
+                  <p className="font-medium text-sm">{viewingDonacion.notas || '-'}</p>
+                </div>
               </div>
 
               {/* Productos */}
@@ -1256,7 +1741,7 @@ const Donaciones = () => {
                   </div>
                 ) : (
                   <p className="text-gray-500">Sin productos registrados</p>
-                )}}
+                )}
               </div>
 
               {/* Notas */}
@@ -1323,17 +1808,66 @@ const Donaciones = () => {
         />
       )}
 
-      {/* Modal de confirmación rechazar */}
+      {/* Modal de rechazo con motivo */}
       {confirmRechazar && (
-        <ConfirmModal
-          title="Rechazar Donación"
-          message={`¿Estás seguro de rechazar la donación "${confirmRechazar.numero || 'DON-' + confirmRechazar.id}"? Esta acción no se puede deshacer.`}
-          confirmText="Rechazar"
-          cancelText="Cancelar"
-          confirmColor="red"
-          onConfirm={() => handleRechazar(confirmRechazar.id, 'Rechazada por el usuario')}
-          onCancel={() => setConfirmRechazar(null)}
-        />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="px-6 py-4 border-b bg-red-600">
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <FaTimes /> Rechazar Donación
+              </h2>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700 mb-4">
+                ¿Estás seguro de rechazar la donación <strong>"{confirmRechazar.numero || 'DON-' + confirmRechazar.id}"</strong>?
+                Esta acción no se puede deshacer.
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Motivo del rechazo *
+                </label>
+                <textarea
+                  value={motivoRechazo}
+                  onChange={(e) => setMotivoRechazo(e.target.value)}
+                  rows={3}
+                  className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500"
+                  placeholder="Indica el motivo del rechazo..."
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setConfirmRechazar(null);
+                  setMotivoRechazo('');
+                }}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  if (!motivoRechazo.trim()) {
+                    toast.error('Debes indicar un motivo para rechazar');
+                    return;
+                  }
+                  handleRechazar(confirmRechazar.id, motivoRechazo);
+                  setMotivoRechazo('');
+                }}
+                disabled={actionLoading === confirmRechazar.id}
+                className="px-4 py-2 rounded-lg text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {actionLoading === confirmRechazar.id ? (
+                  <>
+                    <FaSpinner className="animate-spin" /> Rechazando...
+                  </>
+                ) : (
+                  'Rechazar Donación'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal de Registrar Salida/Entrega */}

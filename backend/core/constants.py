@@ -94,14 +94,16 @@ REQUISICION_GRUPOS_ESTADO = {
 
 # Transiciones de estado válidas (para validación en backend)
 # FLUJO V2: Definición de transiciones permitidas
+# ISS-FIX: 'cancelada' agregado a todos los estados no-finales (excepto 'surtida' que no puede cancelarse)
 TRANSICIONES_REQUISICION = {
     'borrador': ['pendiente_admin', 'cancelada'],
-    'pendiente_admin': ['pendiente_director', 'rechazada', 'devuelta'],
-    'pendiente_director': ['enviada', 'rechazada', 'devuelta'],
-    'enviada': ['en_revision', 'autorizada', 'rechazada'],
-    'en_revision': ['autorizada', 'rechazada', 'devuelta'],
+    'pendiente_admin': ['pendiente_director', 'rechazada', 'devuelta', 'cancelada'],
+    'pendiente_director': ['enviada', 'rechazada', 'devuelta', 'cancelada'],
+    'enviada': ['en_revision', 'autorizada', 'rechazada', 'cancelada'],
+    'en_revision': ['autorizada', 'rechazada', 'devuelta', 'cancelada'],
     'autorizada': ['en_surtido', 'surtida', 'cancelada'],
     'en_surtido': ['surtida', 'cancelada'],
+    'parcial': ['surtida', 'cancelada'],
     'surtida': ['entregada', 'vencida'],
     'devuelta': ['pendiente_admin', 'cancelada'],
     # Estados finales - no pueden cambiar

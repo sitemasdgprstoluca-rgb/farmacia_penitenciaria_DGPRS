@@ -157,9 +157,6 @@ const Reportes = () => {
 
   const buildParams = () => {
     const params = {};
-    if (filtros.estado) params.estado = filtros.estado;
-    if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
-    if (filtros.fechaFin) params.fecha_fin = filtros.fechaFin;
     
     // Aplicar filtro de centro: usuarios no admin/farmacia forzados a su centro
     if (!esAdminOFarmacia && userCentroId) {
@@ -168,8 +165,18 @@ const Reportes = () => {
       params.centro = filtros.centro;
     }
     
-    if (filtros.nivelStock) params.nivel_stock = filtros.nivelStock;
-    if (filtros.tipo === "caducidades") params.dias = filtros.dias || 30;
+    // Parámetros específicos por tipo de reporte
+    if (filtros.tipo === "inventario") {
+      if (filtros.nivelStock) params.nivel_stock = filtros.nivelStock;
+    } else if (filtros.tipo === "caducidades") {
+      params.dias = filtros.dias || 30;
+      if (filtros.estado) params.estado = filtros.estado;
+    } else if (filtros.tipo === "requisiciones") {
+      if (filtros.estado) params.estado = filtros.estado;
+      if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
+      if (filtros.fechaFin) params.fecha_fin = filtros.fechaFin;
+    }
+    
     return params;
   };
 
@@ -376,12 +383,33 @@ const Reportes = () => {
 
     if (filtros.tipo === 'caducidades') {
       return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gradient-to-r from-gray-50 to-white border-t">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-gradient-to-r from-gray-50 to-white border-t">
+          <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+            <FaClock className="text-2xl text-blue-600" />
+            <div>
+              <p className="text-xs text-blue-600 font-semibold">Total Lotes</p>
+              <p className="text-xl font-bold text-blue-800">{resumen.total || datos.length}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-3 bg-red-50 rounded-lg">
+            <FaTimesCircle className="text-2xl text-red-600" />
+            <div>
+              <p className="text-xs text-red-600 font-semibold">Vencidos</p>
+              <p className="text-xl font-bold text-red-800">{resumen.vencidos || 0}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-3 bg-orange-50 rounded-lg">
+            <FaExclamationTriangle className="text-2xl text-orange-600" />
+            <div>
+              <p className="text-xs text-orange-600 font-semibold">Críticos (≤7 días)</p>
+              <p className="text-xl font-bold text-orange-800">{resumen.criticos || 0}</p>
+            </div>
+          </div>
           <div className="flex items-center gap-3 p-3 bg-yellow-50 rounded-lg">
             <FaClock className="text-2xl text-yellow-600" />
             <div>
-              <p className="text-xs text-yellow-600 font-semibold">Total Lotes por Caducar</p>
-              <p className="text-xl font-bold text-yellow-800">{resumen.total_lotes || datos.length}</p>
+              <p className="text-xs text-yellow-600 font-semibold">Próximos</p>
+              <p className="text-xl font-bold text-yellow-800">{resumen.proximos || 0}</p>
             </div>
           </div>
         </div>

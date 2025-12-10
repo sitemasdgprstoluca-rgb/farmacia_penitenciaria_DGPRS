@@ -94,7 +94,8 @@ const Lotes = () => {
   const [centros, setCentros] = useState([]);
   const [loading, setLoading] = useState(false); // Solo para carga de tabla
   const [savingLote, setSavingLote] = useState(false); // Para guardar en modal
-  const [exportLoading, setExportLoading] = useState(false); // Para exportar
+  const [exportLoading, setExportLoading] = useState(false); // Para exportar Excel
+  const [exportPdfLoading, setExportPdfLoading] = useState(false); // Para exportar PDF
   const [importLoading, setImportLoading] = useState(false); // Para importar
   const [actionLoading, setActionLoading] = useState(null); // ID del lote en acción (delete/doc)
   const [showModal, setShowModal] = useState(false);
@@ -582,6 +583,47 @@ const Lotes = () => {
     }
   };
 
+  // Handler para exportar a PDF (reporte de inventario)
+  const handleExportarPdf = async () => {
+    if (!puede.exportar) {
+      toast.error('No tiene permisos para exportar');
+      return;
+    }
+    
+    if (exportPdfLoading) return;
+    
+    try {
+      setExportPdfLoading(true);
+      // Enviar TODOS los filtros activos para que el PDF coincida con la vista
+      const params = {};
+      if (searchTerm) params.search = searchTerm;
+      if (filtroProducto) params.producto = filtroProducto;
+      if (filtroCaducidad) params.caducidad = filtroCaducidad;
+      if (filtroConStock) params.con_stock = filtroConStock;
+      if (filtroActivo) params.activo = filtroActivo;
+      // Forzar filtro de centro para usuarios sin permisos globales
+      const centroParaExportar = !puedeVerGlobal ? (centroUsuario?.toString() || filtroCentro) : filtroCentro;
+      if (centroParaExportar) params.centro = centroParaExportar;
+      
+      const response = await lotesAPI.exportarPdf(params);
+      
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `inventario_lotes_${new Date().toISOString().split('T')[0]}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('PDF de inventario generado correctamente');
+    } catch (error) {
+      toast.error('Error al generar PDF');
+    } finally {
+      setExportPdfLoading(false);
+    }
+  };
+
   // Handler para descargar plantilla de importación
   const handleDescargarPlantilla = async () => {
     try {
@@ -714,7 +756,25 @@ const handleImportar = async (e) => {
           ) : (
             <FaFileExcel />
           )}
-          {exportLoading ? 'Exportando...' : 'Exportar'}
+          {exportLoading ? 'Exportando...' : 'Excel'}
+        </button>
+      )}
+      {puede.exportar && (
+        <button
+          type="button"
+          onClick={handleExportarPdf}
+          disabled={exportPdfLoading}
+          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{
+            background: 'linear-gradient(135deg, #c62828 0%, #8b0000 100%)',
+          }}
+        >
+          {exportPdfLoading ? (
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+          ) : (
+            <FaFilePdf />
+          )}
+          {exportPdfLoading ? 'Generando...' : 'PDF'}
         </button>
       )}
       {puede.importar && (

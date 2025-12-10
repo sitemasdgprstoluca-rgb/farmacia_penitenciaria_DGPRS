@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
-import { FaSpinner, FaSignOutAlt, FaSave, FaKey } from "react-icons/fa";
+import { 
+  FaSpinner, 
+  FaSignOutAlt, 
+  FaSave, 
+  FaKey, 
+  FaUserCircle,
+  FaCheckCircle,
+  FaShieldAlt
+} from "react-icons/fa";
+import ConfirmModal from "../components/ConfirmModal";
+import PageHeader from "../components/PageHeader";
 import { usuariosAPI, authAPI } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
 import { clearTokens } from "../services/tokenManager";
@@ -96,6 +106,7 @@ function Perfil() {
   const [savingPerfil, setSavingPerfil] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const navigate = useNavigate();
 
   const cargarPerfil = async () => {
@@ -146,10 +157,22 @@ function Perfil() {
       return;
     }
     
+    // Validar email básico
+    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      toast.error("El formato del email no es válido");
+      return;
+    }
+    
+    // Validar teléfono (opcional, pero si se ingresa debe ser válido)
+    if (form.telefono && !/^[\d\s\-+()]{7,20}$/.test(form.telefono)) {
+      toast.error("El formato del teléfono no es válido");
+      return;
+    }
+    
     setSavingPerfil(true);
     try {
       await usuariosAPI.actualizarPerfil(form);
-      toast.success("Perfil actualizado");
+      toast.success("Perfil actualizado correctamente");
       
       // Recargar usuario con manejo de errores
       try {
@@ -261,15 +284,16 @@ function Perfil() {
   if (perfilError && !loadingPerfil) {
     return (
       <div className="space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Mi Perfil</h1>
-            <p className="text-gray-600 text-sm">Gestiona tu información y credenciales</p>
-          </div>
+        <PageHeader
+          icon={FaUserCircle}
+          title="Mi Perfil"
+          subtitle="Gestiona tu información y credenciales"
+        />
+        <div className="flex justify-end">
           <button
-            onClick={logout}
+            onClick={() => setShowLogoutConfirm(true)}
             disabled={loggingOut}
-            className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60 flex items-center gap-2"
+            className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60 inline-flex items-center gap-2"
           >
             {loggingOut ? (
               <>
@@ -294,21 +318,33 @@ function Perfil() {
             Reintentar
           </button>
         </div>
+        
+        <ConfirmModal
+          open={showLogoutConfirm}
+          title="Cerrar sesión"
+          message="¿Estás seguro que deseas cerrar tu sesión? Tendrás que iniciar sesión nuevamente para acceder al sistema."
+          confirmText="Cerrar sesión"
+          onCancel={() => setShowLogoutConfirm(false)}
+          onConfirm={logout}
+        />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Mi Perfil</h1>
-          <p className="text-gray-600 text-sm">Gestiona tu información y credenciales</p>
-        </div>
+      <PageHeader
+        icon={FaUserCircle}
+        title="Mi Perfil"
+        subtitle="Gestiona tu información y credenciales"
+      />
+      
+      {/* Barra de acciones */}
+      <div className="flex justify-end">
         <button
-          onClick={logout}
+          onClick={() => setShowLogoutConfirm(true)}
           disabled={loggingOut}
-          className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60 flex items-center gap-2"
+          className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60 inline-flex items-center gap-2"
         >
           {loggingOut ? (
             <>
@@ -351,10 +387,15 @@ function Perfil() {
               <span className="text-gray-500">Centro</span>
               <span className="font-semibold text-gray-900">{perfil?.centro_nombre || "No asignado"}</span>
             </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500">Adscripción</span>
+              <span className="font-semibold text-gray-900">{perfil?.adscripcion || "—"}</span>
+            </div>
           </div>
         </div>
 
         <div className="lg:col-span-2 bg-white rounded-xl shadow p-5">
+          <h3 className="text-base font-semibold text-gray-900 mb-4">Editar información personal</h3>
           <form className="space-y-4" onSubmit={guardarDatos}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -363,6 +404,8 @@ function Perfil() {
                   type="text"
                   value={form.first_name}
                   onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))}
+                  placeholder="Tu nombre"
+                  maxLength={150}
                   className="mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
                 />
               </div>
@@ -372,6 +415,8 @@ function Perfil() {
                   type="text"
                   value={form.last_name}
                   onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))}
+                  placeholder="Tus apellidos"
+                  maxLength={150}
                   className="mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
                 />
               </div>
@@ -381,15 +426,19 @@ function Perfil() {
                   type="email"
                   value={form.email}
                   onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                  placeholder="correo@ejemplo.com"
+                  maxLength={254}
                   className="mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
                 />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-500">Teléfono</label>
                 <input
-                  type="text"
+                  type="tel"
                   value={form.telefono}
                   onChange={(e) => setForm((f) => ({ ...f, telefono: e.target.value }))}
+                  placeholder="(123) 456-7890"
+                  maxLength={20}
                   className="mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
                 />
               </div>
@@ -397,7 +446,7 @@ function Perfil() {
             <div className="flex justify-end">
               <button
                 type="submit"
-                className="px-5 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-60 flex items-center gap-2"
+                className="px-5 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-60 inline-flex items-center gap-2"
                 disabled={savingPerfil || loadingPerfil || !perfil}
                 title={!perfil ? "Carga el perfil primero" : ""}
               >
@@ -425,7 +474,10 @@ function Perfil() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-xl shadow p-5">
-          <h3 className="text-base font-semibold text-gray-900 mb-3">Cambiar contraseña</h3>
+          <div className="flex items-center gap-2 mb-3">
+            <FaKey className="text-emerald-600" />
+            <h3 className="text-base font-semibold text-gray-900">Cambiar contraseña</h3>
+          </div>
           <form className="space-y-3" onSubmit={cambiarPassword}>
             <div>
               <label className="block text-xs font-semibold text-gray-500">Contraseña actual</label>
@@ -433,6 +485,8 @@ function Perfil() {
                 type="password"
                 value={passForm.old_password}
                 onChange={(e) => setPassForm((f) => ({ ...f, old_password: e.target.value }))}
+                placeholder="••••••••"
+                autoComplete="current-password"
                 className="mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
               />
             </div>
@@ -442,6 +496,8 @@ function Perfil() {
                 type="password"
                 value={passForm.new_password}
                 onChange={(e) => setPassForm((f) => ({ ...f, new_password: e.target.value }))}
+                placeholder="••••••••"
+                autoComplete="new-password"
                 className="mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
               />
               {/* Indicadores de validación de contraseña */}
@@ -466,6 +522,8 @@ function Perfil() {
                 type="password"
                 value={passForm.confirm_password}
                 onChange={(e) => setPassForm((f) => ({ ...f, confirm_password: e.target.value }))}
+                placeholder="••••••••"
+                autoComplete="new-password"
                 className="mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
               />
               {passForm.confirm_password && passForm.new_password !== passForm.confirm_password && (
@@ -477,7 +535,7 @@ function Perfil() {
             </div>
             <button
               type="submit"
-              className="w-full px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-60 flex items-center justify-center gap-2"
+              className="w-full px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-60 inline-flex items-center justify-center gap-2"
               disabled={passwordLoading}
             >
               {passwordLoading ? (
@@ -496,13 +554,17 @@ function Perfil() {
         </div>
 
         <div className="lg:col-span-2 bg-white rounded-xl shadow p-5">
-          <h3 className="text-base font-semibold text-gray-900 mb-3">Permisos asignados</h3>
+          <div className="flex items-center gap-2 mb-3">
+            <FaShieldAlt className="text-primary-600" />
+            <h3 className="text-base font-semibold text-gray-900">Permisos asignados</h3>
+          </div>
           <p className="text-xs text-gray-500 mb-3">
             Estos son los permisos activos según tu rol ({permisos?.role || user?.rol || "—"})
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
             {permisosVisibles.map(({ clave, etiqueta }) => (
-              <div key={clave} className="px-3 py-2 rounded-lg bg-gray-50 border border-gray-100 text-sm font-semibold text-gray-800">
+              <div key={clave} className="px-3 py-2 rounded-lg bg-gray-50 border border-gray-100 text-sm font-semibold text-gray-800 inline-flex items-center gap-2">
+                <FaCheckCircle className="text-green-500 flex-shrink-0" />
                 {etiqueta}
               </div>
             ))}
@@ -510,6 +572,15 @@ function Perfil() {
           </div>
         </div>
       </div>
+
+      <ConfirmModal
+        open={showLogoutConfirm}
+        title="Cerrar sesión"
+        message="¿Estás seguro que deseas cerrar tu sesión? Tendrás que iniciar sesión nuevamente para acceder al sistema."
+        confirmText="Cerrar sesión"
+        onCancel={() => setShowLogoutConfirm(false)}
+        onConfirm={logout}
+      />
     </div>
   );
 }

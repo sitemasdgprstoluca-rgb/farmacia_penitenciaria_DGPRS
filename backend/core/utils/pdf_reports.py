@@ -5,7 +5,7 @@ Integra colores del TemaGlobal para personalización
 """
 
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.pagesizes import letter, A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch, cm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
@@ -700,6 +700,209 @@ def generar_reporte_caducidades(lotes_data, dias=30, filtros=None):
     return buffer
 
 
+def generar_reporte_lotes(lotes_data, filtros=None):
+    """
+    Genera reporte PDF de inventario general de lotes con fondo oficial.
+    
+    Incluye información completa de cada lote: producto, número de lote,
+    fechas de fabricación y caducidad, cantidades, ubicación, centro y estado.
+    
+    Args:
+        lotes_data: Lista de diccionarios con datos de lotes
+        filtros: Diccionario opcional con filtros aplicados
+    
+    Returns:
+        BytesIO con el PDF generado
+    """
+    buffer = BytesIO()
+    fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
+    
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=landscape(letter),  # Horizontal para más columnas
+        topMargin=1.5*inch,
+        bottomMargin=1*inch,
+        leftMargin=0.5*inch,
+        rightMargin=0.5*inch
+    )
+    
+    elements = []
+    styles = _obtener_estilos_institucionales()
+    
+    # Título
+    titulo = Paragraph("REPORTE DE INVENTARIO - LOTES", styles['TituloReporte'])
+    elements.append(titulo)
+    elements.append(Spacer(1, 0.15*inch))
+    
+    # Información del reporte y filtros
+    info_text = f"<b>Fecha de generación:</b> {timezone.now().strftime('%d/%m/%Y %H:%M')}<br/>"
+    info_text += f"<b>Total de lotes:</b> {len(lotes_data)}<br/>"
+    
+    if filtros:
+        if filtros.get('centro'):
+            info_text += f"<b>Centro:</b> {filtros['centro']}<br/>"
+        if filtros.get('producto'):
+            info_text += f"<b>Producto:</b> {filtros['producto']}<br/>"
+        if filtros.get('caducidad'):
+            caducidad_map = {
+                'vencido': 'Vencidos',
+                'critico': 'Críticos (< 90 días)',
+                'proximo': 'Próximos (90-180 días)',
+                'normal': 'Normal (> 180 días)'
+            }
+            info_text += f"<b>Estado caducidad:</b> {caducidad_map.get(filtros['caducidad'], filtros['caducidad'])}<br/>"
+        if filtros.get('con_stock'):
+            stock_map = {'con_stock': 'Con stock', 'sin_stock': 'Sin stock'}
+            info_text += f"<b>Stock:</b> {stock_map.get(filtros['con_stock'], filtros['con_stock'])}<br/>"
+        if filtros.get('activo'):
+            info_text += f"<b>Estado:</b> {'Activos' if filtros['activo'] == 'true' else 'Inactivos'}<br/>"
+    
+    info = Paragraph(info_text, styles['Normal'])
+    elements.append(info)
+    elements.append(Spacer(1, 0.15*inch))
+    
+    # Resumen de inventario
+    total_cantidad = sum(int(l.get('cantidad_actual', 0)) for l in lotes_data)
+    lotes_activos = sum(1 for l in lotes_data if l.get('activo', True))
+    lotes_con_stock = sum(1 for l in lotes_data if int(l.get('cantidad_actual', 0)) > 0)
+    
+    # Calcular lotes por estado de caducidad
+    from datetime import date
+    hoy = date.today()
+    vencidos = 0
+    criticos = 0
+    proximos = 0
+    normales = 0
+    
+    for lote in lotes_data:
+        fecha_cad = lote.get('fecha_caducidad_raw') or lote.get('fecha_caducidad')
+        if fecha_cad:
+            try:
+                if isinstance(fecha_cad, str):
+                    from datetime import datetime
+                    fecha_cad = datetime.strptime(fecha_cad[:10], '%Y-%m-%d').date()
+                dias = (fecha_cad - hoy).days
+                if dias < 0:
+                    vencidos += 1
+                elif dias <= 90:
+                    criticos += 1
+                elif dias <= 180:
+                    proximos += 1
+                else:
+                    normales += 1
+            except:
+                pass
+    
+    resumen_titulo = Paragraph("RESUMEN DE INVENTARIO", styles['SeccionTitulo'])
+    elements.append(resumen_titulo)
+    
+    resumen_data = [
+        ['Concepto', 'Cantidad'],
+        ['Total de lotes', str(len(lotes_data))],
+        ['Lotes activos', str(lotes_activos)],
+        ['Lotes con stock', str(lotes_con_stock)],
+        ['Unidades totales', str(total_cantidad)],
+        ['', ''],
+        ['Estado de Caducidad', 'Lotes'],
+        ['Vencidos', str(vencidos)],
+        ['Críticos (≤90 días)', str(criticos)],
+        ['Próximos (91-180 días)', str(proximos)],
+        ['Normal (>180 días)', str(normales)],
+    ]
+    
+    resumen_table = Table(resumen_data, colWidths=[2.2*inch, 1*inch])
+    resumen_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('FONTNAME', (0, 6), (-1, 6), 'Helvetica-Bold'),
+        ('BACKGROUND', (0, 6), (-1, 6), COLOR_GUINDA),
+        ('TEXTCOLOR', (0, 6), (-1, 6), colors.white),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+    ]))
+    elements.append(resumen_table)
+    elements.append(Spacer(1, 0.15*inch))
+    
+    # Tabla de lotes
+    lotes_titulo = Paragraph("DETALLE DE LOTES", styles['SeccionTitulo'])
+    elements.append(lotes_titulo)
+    
+    # Estilo para celdas de texto largo
+    estilo_celda = ParagraphStyle(
+        'CeldaTextoLotesInv',
+        parent=styles['Normal'],
+        fontSize=6,
+        leading=8,
+        wordWrap='CJK',
+    )
+    
+    data = [['#', 'Clave', 'Producto', 'Lote', 'F. Fabricación', 'F. Caducidad', 'Cant. Inicial', 'Cant. Actual', 'Centro', 'Estado']]
+    
+    for idx, lote in enumerate(lotes_data, 1):
+        producto_desc = str(lote.get('producto_nombre', lote.get('producto', '')))[:30]
+        producto_paragraph = Paragraph(producto_desc, estilo_celda)
+        
+        centro = str(lote.get('centro_nombre', lote.get('centro', 'Farmacia Central')))[:15]
+        centro_paragraph = Paragraph(centro, estilo_celda)
+        
+        # Determinar estado visual de caducidad
+        estado_cad = ''
+        fecha_cad = lote.get('fecha_caducidad_raw') or lote.get('fecha_caducidad')
+        if fecha_cad:
+            try:
+                if isinstance(fecha_cad, str):
+                    from datetime import datetime
+                    fecha_cad_date = datetime.strptime(fecha_cad[:10], '%Y-%m-%d').date()
+                else:
+                    fecha_cad_date = fecha_cad
+                dias = (fecha_cad_date - hoy).days
+                if dias < 0:
+                    estado_cad = '⚠️ VENCIDO'
+                elif dias <= 90:
+                    estado_cad = '🔴 CRÍTICO'
+                elif dias <= 180:
+                    estado_cad = '🟡 PRÓXIMO'
+                else:
+                    estado_cad = '🟢 OK'
+            except:
+                estado_cad = 'N/A'
+        
+        activo = 'Activo' if lote.get('activo', True) else 'Inactivo'
+        
+        data.append([
+            str(idx),
+            str(lote.get('producto_clave', lote.get('clave', '')))[:12],
+            producto_paragraph,
+            str(lote.get('numero_lote', ''))[:12],
+            str(lote.get('fecha_fabricacion', ''))[:10],
+            str(lote.get('fecha_caducidad', ''))[:10],
+            str(lote.get('cantidad_inicial', 0)),
+            str(lote.get('cantidad_actual', 0)),
+            centro_paragraph,
+            f"{activo}\n{estado_cad}"
+        ])
+    
+    # Anchos ajustados para orientación horizontal
+    col_widths = [0.35*inch, 0.7*inch, 1.8*inch, 0.8*inch, 0.75*inch, 0.75*inch, 0.6*inch, 0.6*inch, 1.1*inch, 0.85*inch]
+    table = _crear_tabla_institucional(data, col_widths)
+    elements.append(table)
+    
+    # Usar canvas con fondo institucional
+    def make_canvas(*args, **kwargs):
+        return FondoOficialCanvas(*args, fondo_path=fondo_path, titulo_reporte='INVENTARIO LOTES', **kwargs)
+    
+    doc.build(elements, canvasmaker=make_canvas)
+    
+    buffer.seek(0)
+    logger.info(f"Reporte de lotes PDF generado: {len(lotes_data)} lotes")
+    return buffer
+
+
 def generar_reporte_requisiciones(requisiciones_data, filtros=None):
     """
     Genera reporte PDF de requisiciones con fondo oficial
@@ -901,7 +1104,7 @@ def generar_reporte_movimientos(movimientos_data, filtros=None):
     elements.append(resumen_table)
     elements.append(Spacer(1, 0.2*inch))
     
-    # Tabla de movimientos
+    # Tabla de movimientos - MEJORA: Extendida con subtipo, expediente y observaciones
     mov_titulo = Paragraph("DETALLE DE MOVIMIENTOS", styles['SeccionTitulo'])
     elements.append(mov_titulo)
     
@@ -909,32 +1112,40 @@ def generar_reporte_movimientos(movimientos_data, filtros=None):
     estilo_celda = ParagraphStyle(
         'CeldaTextoMov',
         parent=styles['Normal'],
-        fontSize=7,
-        leading=9,
+        fontSize=6,
+        leading=8,
         wordWrap='CJK',
     )
     
-    data = [['Fecha', 'Tipo', 'Producto', 'Lote', 'Cant.', 'Usuario']]
+    data = [['Fecha', 'Tipo', 'Subtipo', 'Producto', 'Lote', 'Cant.', 'Centro', 'Expediente', 'Obs.']]
     
     for mov in movimientos_data:
         tipo = str(mov.get('tipo', '')).upper()
+        subtipo = str(mov.get('subtipo', ''))
         cantidad = mov.get('cantidad', 0)
         signo = '+' if cantidad >= 0 else ''
         producto = str(mov.get('producto_clave', mov.get('producto', '')))
         producto_paragraph = Paragraph(producto, estilo_celda)
-        usuario = str(mov.get('usuario', ''))
-        usuario_paragraph = Paragraph(usuario, estilo_celda)
+        centro = str(mov.get('centro', ''))[:15]
+        centro_paragraph = Paragraph(centro, estilo_celda)
+        expediente = str(mov.get('expediente', ''))[:12]
+        observaciones = str(mov.get('observaciones', ''))[:30]
+        obs_paragraph = Paragraph(observaciones, estilo_celda)
         
         data.append([
             str(mov.get('fecha_movimiento', mov.get('fecha', '')))[:16],
             tipo,
+            subtipo[:10],
             producto_paragraph,
-            str(mov.get('numero_lote', mov.get('lote', '')))[:12],
+            str(mov.get('numero_lote', mov.get('lote', '')))[:10],
             f"{signo}{cantidad}",
-            usuario_paragraph
+            centro_paragraph,
+            expediente,
+            obs_paragraph
         ])
     
-    col_widths = [1*inch, 0.6*inch, 2*inch, 0.9*inch, 0.55*inch, 1.1*inch]
+    # Anchos ajustados para 9 columnas en orientación portrait
+    col_widths = [0.85*inch, 0.5*inch, 0.55*inch, 1.1*inch, 0.7*inch, 0.4*inch, 0.9*inch, 0.7*inch, 0.9*inch]
     table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
     

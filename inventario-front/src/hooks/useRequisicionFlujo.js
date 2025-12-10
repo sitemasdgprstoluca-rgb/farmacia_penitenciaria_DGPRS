@@ -118,7 +118,8 @@ const ACCIONES_FLUJO = {
   cancelar: {
     endpoint: 'cancelar',
     label: 'Cancelar',
-    estadosPermitidos: ['borrador', 'devuelta', 'autorizada', 'en_surtido'],
+    // ISS-FIX: Alineado con backend - permite cancelar desde cualquier estado EXCEPTO finales y surtida
+    estadosPermitidos: ['borrador', 'pendiente_admin', 'pendiente_director', 'enviada', 'en_revision', 'autorizada', 'en_surtido', 'devuelta', 'parcial'],
     estadoResultante: 'cancelada',
     rolesPermitidos: ['medico', 'centro', 'farmacia', 'admin'],
     requiereMotivo: false,

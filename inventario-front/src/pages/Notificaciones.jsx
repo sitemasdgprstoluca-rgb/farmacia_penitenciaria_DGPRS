@@ -1,17 +1,28 @@
 import { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
-import { FaSpinner } from "react-icons/fa";
+import { 
+  FaSpinner, 
+  FaBell, 
+  FaInfoCircle, 
+  FaCheckCircle, 
+  FaExclamationTriangle, 
+  FaTimesCircle,
+  FaSync,
+  FaCheck,
+  FaTrash
+} from "react-icons/fa";
 import ConfirmModal from "../components/ConfirmModal";
+import PageHeader from "../components/PageHeader";
 import { notificacionesAPI } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
 import { ProtectedButton } from "../components/ProtectedAction";
 
 const TIPOS = [
-  { value: "", label: "Todos" },
-  { value: "info", label: "Información" },
-  { value: "success", label: "Éxitos" },
-  { value: "warning", label: "Advertencias" },
-  { value: "error", label: "Errores" },
+  { value: "", label: "Todos", icon: null },
+  { value: "info", label: "Información", icon: FaInfoCircle },
+  { value: "success", label: "Éxitos", icon: FaCheckCircle },
+  { value: "warning", label: "Advertencias", icon: FaExclamationTriangle },
+  { value: "error", label: "Errores", icon: FaTimesCircle },
 ];
 
 const ESTADOS = [
@@ -21,10 +32,10 @@ const ESTADOS = [
 ];
 
 const badgeByTipo = {
-  info: "bg-blue-100 text-blue-700",
-  success: "bg-green-100 text-green-700",
-  warning: "bg-yellow-100 text-yellow-800",
-  error: "bg-red-100 text-red-700",
+  info: { bg: "bg-blue-100 text-blue-700", Icon: FaInfoCircle },
+  success: { bg: "bg-green-100 text-green-700", Icon: FaCheckCircle },
+  warning: { bg: "bg-yellow-100 text-yellow-800", Icon: FaExclamationTriangle },
+  error: { bg: "bg-red-100 text-red-700", Icon: FaTimesCircle },
 };
 
 function Notificaciones() {
@@ -49,7 +60,6 @@ function Notificaciones() {
 
   // Verificar permiso de ver notificaciones
   const tienePermisoVer = permisos?.verNotificaciones;
-  const tienePermisoGestionar = permisos?.gestionarNotificaciones;
 
   const fetchData = async (targetPage = 1) => {
     // VALIDAR PERMISO antes de llamar al backend
@@ -106,7 +116,7 @@ function Notificaciones() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.tipo, filters.desde, filters.hasta, filters.leida, pageSize, tienePermisoVer]);
 
-  // Ya no necesitamos filtrado local - el backend ya filtrÃ³
+  // Ya no necesitamos filtrado local - el backend ya filtró
   const filtered = notificaciones;
 
   // Usar el conteo del backend en lugar del filtrado local
@@ -194,9 +204,7 @@ function Notificaciones() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
         <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
-          <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
+          <FaExclamationTriangle className="w-8 h-8 text-red-500" />
         </div>
         <h2 className="text-xl font-semibold text-gray-900">Acceso denegado</h2>
         <p className="text-gray-600 text-center max-w-md">
@@ -206,38 +214,52 @@ function Notificaciones() {
     );
   }
 
+  // Badge para el PageHeader
+  const badgeContent = sinLeer > 0 ? (
+    <span className="flex items-center gap-2 rounded-full bg-white/20 px-4 py-1 text-sm font-semibold">
+      <FaBell className="animate-pulse" />
+      {sinLeer} sin leer
+    </span>
+  ) : (
+    <span className="flex items-center gap-2 rounded-full bg-white/20 px-4 py-1 text-sm font-semibold">
+      <FaCheckCircle />
+      Todas leídas
+    </span>
+  );
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Notificaciones</h1>
-          <p className="text-gray-600 text-sm">Historial de eventos y alertas del sistema</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <ProtectedButton
-            permission="gestionarNotificaciones"
-            onClick={marcarTodas}
-            className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm hover:bg-primary-700 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
-            disabled={loading || marcandoTodas || !puedeMarcarTodas}
-            title={filtroEsLeidas ? 'No aplica cuando filtra por "Leídas"' : undefined}
-          >
-            {marcandoTodas && <FaSpinner className="animate-spin" />}
-            {marcandoTodas ? 'Marcando...' : 'Marcar todas como leídas'}
-          </ProtectedButton>
-          <ProtectedButton
-            permission="verNotificaciones"
-            onClick={() => fetchData(page)}
-            className="px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            disabled={loading}
-          >
-            {loading && <FaSpinner className="animate-spin" />}
-            Refrescar
-          </ProtectedButton>
-        </div>
+    <div className="p-6 space-y-6">
+      <PageHeader
+        icon={FaBell}
+        title="Notificaciones"
+        subtitle="Historial de eventos y alertas del sistema"
+        badge={badgeContent}
+      />
+
+      {/* Barra de acciones */}
+      <div className="flex flex-wrap items-center gap-3">
+        <ProtectedButton
+          permission="gestionarNotificaciones"
+          onClick={marcarTodas}
+          className="px-4 py-2 rounded-lg text-white text-sm font-semibold transition-all hover:scale-105 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2 bg-theme-gradient"
+          disabled={loading || marcandoTodas || !puedeMarcarTodas}
+          title={filtroEsLeidas ? 'No aplica cuando filtra por "Leídas"' : undefined}
+        >
+          {marcandoTodas ? <FaSpinner className="animate-spin" /> : <FaCheck />}
+          {marcandoTodas ? 'Marcando...' : 'Marcar todas como leídas'}
+        </ProtectedButton>
+        <button
+          onClick={() => fetchData(page)}
+          className="px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          disabled={loading}
+        >
+          {loading ? <FaSpinner className="animate-spin" /> : <FaSync />}
+          Refrescar
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="md:col-span-3 bg-white rounded-xl shadow p-4">
+        <div className="md:col-span-3 bg-white rounded-xl shadow p-4 border-l-4 card-theme-border">
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
               <label className="block text-xs font-semibold text-gray-500">Tipo</label>
@@ -350,11 +372,16 @@ function Notificaciones() {
                       <p className="line-clamp-2">{notif.mensaje}</p>
                     </td>
                     <td className="px-4 py-3 text-sm">
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-semibold ${badgeByTipo[notif.tipo] || "bg-gray-100 text-gray-700"}`}
-                      >
-                        {notif.tipo || "info"}
-                      </span>
+                      {(() => {
+                        const badge = badgeByTipo[notif.tipo] || { bg: "bg-gray-100 text-gray-700", Icon: FaInfoCircle };
+                        const IconComponent = badge.Icon;
+                        return (
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${badge.bg}`}>
+                            <IconComponent className="w-3 h-3" />
+                            {notif.tipo || "info"}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {notif.fecha_creacion ? new Date(notif.fecha_creacion).toLocaleString() : "-"}
@@ -375,9 +402,9 @@ function Notificaciones() {
                           permission="verNotificaciones"
                           onClick={() => marcarLeida(notif.id)}
                           disabled={marcandoId === notif.id}
-                          className="px-3 py-1 rounded-lg border border-primary-100 text-primary-600 hover:bg-primary-50 text-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                          className="px-3 py-1 rounded-lg border border-primary-100 text-primary-600 hover:bg-primary-50 text-xs disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1"
                         >
-                          {marcandoId === notif.id && <FaSpinner className="animate-spin" />}
+                          {marcandoId === notif.id ? <FaSpinner className="animate-spin" /> : <FaCheck />}
                           {marcandoId === notif.id ? 'Marcando...' : 'Marcar leída'}
                         </ProtectedButton>
                       )}
@@ -385,9 +412,9 @@ function Notificaciones() {
                         permission="gestionarNotificaciones"
                         onClick={() => setDeleteId(notif.id)}
                         disabled={eliminandoId === notif.id}
-                        className="px-3 py-1 rounded-lg border border-red-100 text-red-600 hover:bg-red-50 text-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                        className="px-3 py-1 rounded-lg border border-red-100 text-red-600 hover:bg-red-50 text-xs disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1"
                       >
-                        {eliminandoId === notif.id && <FaSpinner className="animate-spin" />}
+                        {eliminandoId === notif.id ? <FaSpinner className="animate-spin" /> : <FaTrash />}
                         {eliminandoId === notif.id ? 'Eliminando...' : 'Eliminar'}
                       </ProtectedButton>
                     </td>

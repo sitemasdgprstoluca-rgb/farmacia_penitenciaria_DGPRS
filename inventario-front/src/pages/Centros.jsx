@@ -12,7 +12,7 @@ import {
 import PageHeader from '../components/PageHeader';
 import { COLORS, SECONDARY_GRADIENT } from '../constants/theme';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 25;
 
 // Extensiones y tamaño máximo permitidos para importación
 const IMPORT_ALLOWED_EXTENSIONS = ['.xlsx', '.xls'];

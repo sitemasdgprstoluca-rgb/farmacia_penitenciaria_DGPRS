@@ -109,7 +109,7 @@ if not DEBUG and not _skip_validation:
         _error_msg += '=' * 70 + '\n'
         raise ValueError(_error_msg)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,testserver', cast=Csv())
 # Hardened security toggles (enable in producción)
 ENFORCE_HTTPS = config('ENFORCE_HTTPS', default=not DEBUG, cast=bool)
 SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=ENFORCE_HTTPS, cast=bool)
@@ -275,6 +275,12 @@ else:
 
 # CUSTOM USER MODEL
 AUTH_USER_MODEL = 'core.User'
+
+# AUTHENTICATION BACKENDS
+# Usa backend case-insensitive para que "Centro", "centro", "CENTRO" funcionen igual
+AUTHENTICATION_BACKENDS = [
+    'core.backends.CaseInsensitiveModelBackend',
+]
 
 # PASSWORD VALIDATION
 AUTH_PASSWORD_VALIDATORS = [

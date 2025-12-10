@@ -39,7 +39,7 @@ import {
 } from 'react-icons/fa';
 import { COLORS } from '../constants/theme';
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 25;
 
 // Componente para previsualizar foto de firma sin memory leak
 const FotoFirmaSurtidoPreview = ({ archivo, onRemove }) => {

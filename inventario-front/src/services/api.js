@@ -336,7 +336,12 @@ export const lotesAPI = {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
   eliminarDocumento: (loteId, docId) => apiClient.delete(`/lotes/${loteId}/eliminar-documento/${docId}/`),
+  // Exportaciones
   exportar: (params) => apiClient.get('/lotes/exportar-excel/', { 
+    params, 
+    responseType: 'blob' 
+  }),
+  exportarPdf: (params) => apiClient.get('/lotes/exportar-pdf/', { 
     params, 
     responseType: 'blob' 
   }),

@@ -1204,7 +1204,15 @@ class CentroViewSet(viewsets.ModelViewSet):
         elif activo == 'false':
             queryset = queryset.filter(activo=False)
         
-        return queryset.order_by('-created_at')
+        # Ordenamiento (respeta parámetro del frontend)
+        ordering = self.request.query_params.get('ordering', '-created_at')
+        valid_orderings = ['nombre', '-nombre', 'created_at', '-created_at', 'activo', '-activo']
+        if ordering in valid_orderings:
+            queryset = queryset.order_by(ordering)
+        else:
+            queryset = queryset.order_by('-created_at')
+        
+        return queryset
     
     def create(self, request, *args, **kwargs):
         """Crea un nuevo centro"""
@@ -1267,37 +1275,63 @@ class CentroViewSet(viewsets.ModelViewSet):
         Elimina un centro.
         
         Validaciones:
-        - No puede eliminarse si tiene requisiciones asociadas
+        - No puede eliminarse si tiene requisiciones asociadas (como origen o destino)
         - No puede eliminarse si tiene usuarios asignados
         """
         instance = self.get_object()
         
         try:
-            # Verificar requisiciones (como destino)
-            if hasattr(instance, 'requisiciones_destino') and instance.requisiciones_destino.exists():
-                total_requisiciones = instance.requisiciones_destino.count()
-                requisiciones_activas = instance.requisiciones_destino.exclude(
+            # Verificar requisiciones (como origen O destino)
+            has_req_origen = hasattr(instance, 'requisiciones_origen') and instance.requisiciones_origen.exists()
+            has_req_destino = hasattr(instance, 'requisiciones_destino') and instance.requisiciones_destino.exists()
+            
+            if has_req_origen or has_req_destino:
+                total_origen = instance.requisiciones_origen.count() if has_req_origen else 0
+                total_destino = instance.requisiciones_destino.count() if has_req_destino else 0
+                total_requisiciones = total_origen + total_destino
+                
+                # Contar requisiciones activas
+                activas_origen = instance.requisiciones_origen.exclude(
                     estado__in=['CANCELADA', 'SURTIDA']
-                ).count()
+                ).count() if has_req_origen else 0
+                activas_destino = instance.requisiciones_destino.exclude(
+                    estado__in=['CANCELADA', 'SURTIDA']
+                ).count() if has_req_destino else 0
+                requisiciones_activas = activas_origen + activas_destino
                 
                 return Response({
                     'error': 'No se puede eliminar el centro',
                     'razon': 'Tiene requisiciones asociadas',
                     'total_requisiciones': total_requisiciones,
+                    'como_origen': total_origen,
+                    'como_destino': total_destino,
                     'requisiciones_activas': requisiciones_activas,
                     'sugerencia': 'Marque el centro como inactivo en lugar de eliminarlo'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Verificar usuarios asignados
-            if hasattr(instance, 'usuarios') and instance.usuarios.exists():
-                total_usuarios = instance.usuarios.count()
-                
-                return Response({
-                    'error': 'No se puede eliminar el centro',
-                    'razon': 'Tiene usuarios asignados',
-                    'total_usuarios': total_usuarios,
-                    'sugerencia': 'Reasigne los usuarios a otro centro o marque el centro como inactivo'
-                }, status=status.HTTP_400_BAD_REQUEST)
+            # Verificar usuarios asignados (solo activos, consistente con serializer)
+            if hasattr(instance, 'usuarios'):
+                usuarios_activos = instance.usuarios.filter(is_active=True)
+                if usuarios_activos.exists():
+                    total_usuarios = usuarios_activos.count()
+                    
+                    return Response({
+                        'error': 'No se puede eliminar el centro',
+                        'razon': 'Tiene usuarios activos asignados',
+                        'total_usuarios': total_usuarios,
+                        'sugerencia': 'Reasigne los usuarios a otro centro o marque el centro como inactivo'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Verificar lotes con stock activo
+            if hasattr(instance, 'lotes'):
+                lotes_con_stock = instance.lotes.filter(activo=True, cantidad_actual__gt=0).count()
+                if lotes_con_stock > 0:
+                    return Response({
+                        'error': 'No se puede eliminar el centro',
+                        'razon': 'Tiene lotes con stock disponible',
+                        'lotes_con_stock': lotes_con_stock,
+                        'sugerencia': 'Transfiera el inventario a otro centro o marque el centro como inactivo'
+                    }, status=status.HTTP_400_BAD_REQUEST)
             
             # Si no tiene relaciones, se puede eliminar
             clave_eliminada = instance.clave
@@ -1459,10 +1493,12 @@ class CentroViewSet(viewsets.ModelViewSet):
             
             # Datos de centros
             for idx, centro in enumerate(centros, start=1):
-                # Calcular total de requisiciones si existe la relacion
+                # Calcular total de requisiciones (origen + destino, consistente con serializer)
                 total_requisiciones = 0
+                if hasattr(centro, 'requisiciones_origen'):
+                    total_requisiciones += centro.requisiciones_origen.count()
                 if hasattr(centro, 'requisiciones_destino'):
-                    total_requisiciones = centro.requisiciones_destino.count()
+                    total_requisiciones += centro.requisiciones_destino.count()
                 
                 ws.append([
                     idx,
@@ -2020,7 +2056,93 @@ class LoteViewSet(viewsets.ModelViewSet):
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], url_path='exportar-pdf')
+    def exportar_pdf(self, request):
+        """
+        Genera PDF de inventario de lotes con filtros opcionales.
+        
+        Usa los mismos filtros que get_queryset para consistencia:
+        - producto: ID del producto
+        - activo: true/false
+        - search: búsqueda en número de lote o producto
+        - caducidad: vencido/critico/proximo/normal
+        - con_stock: con_stock/sin_stock
+        - centro: ID del centro o 'central'
+        
+        Respeta permisos de usuario:
+        - Usuarios de centro solo ven lotes de su centro
+        - Admin/Farmacia/Vista ven todo
+        """
+        from core.utils.pdf_reports import generar_reporte_lotes
+        
+        try:
+            # Usar get_queryset que ya aplica filtros y permisos
+            queryset = self.get_queryset()
+            
+            # Limitar a 500 lotes para PDF
+            lotes = queryset[:500]
+            
+            # Preparar datos para el PDF
+            lotes_data = []
+            for lote in lotes:
+                lotes_data.append({
+                    'producto_clave': getattr(lote.producto, 'clave', '') if lote.producto else '',
+                    'producto_nombre': getattr(lote.producto, 'nombre', '') if lote.producto else '',
+                    'numero_lote': lote.numero_lote or '',
+                    'fecha_fabricacion': lote.fecha_fabricacion.strftime('%Y-%m-%d') if lote.fecha_fabricacion else '',
+                    'fecha_caducidad': lote.fecha_caducidad.strftime('%Y-%m-%d') if lote.fecha_caducidad else '',
+                    'fecha_caducidad_raw': lote.fecha_caducidad,
+                    'cantidad_inicial': lote.cantidad_inicial,
+                    'cantidad_actual': lote.cantidad_actual,
+                    'centro_nombre': getattr(lote.centro, 'nombre', 'Farmacia Central') if lote.centro else 'Farmacia Central',
+                    'activo': lote.activo,
+                })
+            
+            # Preparar filtros para mostrar en el PDF
+            filtros = {}
+            if request.query_params.get('producto'):
+                try:
+                    producto = Producto.objects.get(pk=request.query_params.get('producto'))
+                    filtros['producto'] = f"{producto.clave} - {producto.nombre}"
+                except Producto.DoesNotExist:
+                    pass
+            if request.query_params.get('centro'):
+                centro_param = request.query_params.get('centro')
+                if centro_param == 'central':
+                    filtros['centro'] = 'Farmacia Central'
+                else:
+                    try:
+                        centro = Centro.objects.get(pk=centro_param)
+                        filtros['centro'] = centro.nombre
+                    except Centro.DoesNotExist:
+                        pass
+            if request.query_params.get('caducidad'):
+                filtros['caducidad'] = request.query_params.get('caducidad')
+            if request.query_params.get('con_stock'):
+                filtros['con_stock'] = request.query_params.get('con_stock')
+            if request.query_params.get('activo'):
+                filtros['activo'] = request.query_params.get('activo')
+            if request.query_params.get('search'):
+                filtros['busqueda'] = request.query_params.get('search')
+            
+            pdf_buffer = generar_reporte_lotes(lotes_data, filtros)
+            
+            response = HttpResponse(
+                pdf_buffer.getvalue(),
+                content_type='application/pdf'
+            )
+            response['Content-Disposition'] = f'attachment; filename="Inventario_Lotes_{timezone.now().strftime("%Y%m%d_%H%M%S")}.pdf"'
+            
+            return response
+            
+        except Exception as e:
+            # traceback removido por seguridad (ISS-008)
+            return Response({
+                'error': 'Error al generar PDF de lotes',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='exportar-excel')
     def exportar_excel(self, request):
         """
         Exporta lotes aplicando los mismos filtros de listado.
@@ -2384,7 +2506,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    @action(detail=False, methods=['get'], url_path='por_caducar')
+    @action(detail=False, methods=['get'], url_path='por-caducar')
     def por_caducar(self, request):
         """Alias compatible para el frontend: lotes proximos a vencer."""
         try:
@@ -2955,7 +3077,8 @@ class MovimientoViewSet(
             usuario=user,
             centro=serializer.validated_data.get('centro') or (lote.centro if lote else None),
             requisicion=serializer.validated_data.get('requisicion'),
-            observaciones=serializer.validated_data.get('observaciones'),
+            # FIX: El serializer mapea 'observaciones' del frontend a 'motivo' via to_internal_value
+            observaciones=serializer.validated_data.get('motivo', ''),
             subtipo_salida=subtipo_salida,
             numero_expediente=numero_expediente
         )
@@ -3111,11 +3234,12 @@ class MovimientoViewSet(
     def exportar_pdf(self, request):
         """
         Genera PDF de movimientos con filtros opcionales.
+        Filtros soportados: tipo, fecha_inicio, fecha_fin, producto, centro, lote, subtipo_salida, search
         """
         from core.utils.pdf_reports import generar_reporte_movimientos
         
         try:
-            # Aplicar filtros
+            # Aplicar filtros (get_queryset ya aplica filtros base, aquí se duplican por consistencia explícita)
             queryset = self.get_queryset()
             
             tipo = request.query_params.get('tipo')
@@ -3130,18 +3254,52 @@ class MovimientoViewSet(
             if fecha_fin:
                 queryset = queryset.filter(fecha__lte=fecha_fin)
             
+            # FIX: Agregar filtros faltantes para consistencia total
+            producto = request.query_params.get('producto')
+            if producto:
+                queryset = queryset.filter(lote__producto_id=producto)
+            
+            centro = request.query_params.get('centro')
+            if centro:
+                queryset = queryset.filter(Q(centro_origen_id=centro) | Q(centro_destino_id=centro) | Q(lote__centro_id=centro))
+            
+            lote = request.query_params.get('lote')
+            if lote:
+                if lote.isdigit():
+                    queryset = queryset.filter(lote_id=lote)
+                else:
+                    queryset = queryset.filter(lote__numero_lote__icontains=lote)
+            
+            subtipo_salida = request.query_params.get('subtipo_salida')
+            if subtipo_salida:
+                queryset = queryset.filter(subtipo_salida__iexact=subtipo_salida)
+            
+            search = request.query_params.get('search')
+            if search:
+                queryset = queryset.filter(
+                    Q(lote__numero_lote__icontains=search) |
+                    Q(lote__producto__nombre__icontains=search) |
+                    Q(lote__producto__descripcion__icontains=search) |
+                    Q(motivo__icontains=search) |
+                    Q(numero_expediente__icontains=search)
+                )
+            
             movimientos = queryset[:200]  # Limitar para PDF
             
+            # MEJORA: Incluir subtipo_salida y numero_expediente en datos del PDF
             movimientos_data = []
             for mov in movimientos:
                 movimientos_data.append({
                     'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
                     'tipo': mov.tipo.upper(),
+                    'subtipo': (mov.subtipo_salida or '').upper() if mov.tipo == 'salida' else '',
                     'producto': mov.lote.producto.clave if mov.lote and mov.lote.producto else 'N/A',
                     'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                     'cantidad': mov.cantidad,
                     'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
                     'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
+                    'expediente': mov.numero_expediente or '',
+                    'observaciones': (mov.motivo or '')[:50],
                 })
             
             pdf_buffer = generar_reporte_movimientos(movimientos_data)
@@ -3165,9 +3323,10 @@ class MovimientoViewSet(
     def exportar_excel(self, request):
         """
         Genera Excel de movimientos con filtros opcionales.
+        Filtros soportados: tipo, fecha_inicio, fecha_fin, producto, centro, lote, subtipo_salida, search
         """
         try:
-            # Aplicar filtros
+            # Aplicar filtros (get_queryset ya aplica filtros base, aquí se duplican por consistencia explícita)
             queryset = self.get_queryset()
             
             tipo = request.query_params.get('tipo')
@@ -3190,13 +3349,26 @@ class MovimientoViewSet(
             if centro:
                 queryset = queryset.filter(Q(centro_origen_id=centro) | Q(centro_destino_id=centro) | Q(lote__centro_id=centro))
             
+            # FIX: Agregar filtros faltantes para consistencia total
+            lote = request.query_params.get('lote')
+            if lote:
+                if lote.isdigit():
+                    queryset = queryset.filter(lote_id=lote)
+                else:
+                    queryset = queryset.filter(lote__numero_lote__icontains=lote)
+            
+            subtipo_salida = request.query_params.get('subtipo_salida')
+            if subtipo_salida:
+                queryset = queryset.filter(subtipo_salida__iexact=subtipo_salida)
+            
             search = request.query_params.get('search')
             if search:
                 queryset = queryset.filter(
                     Q(lote__numero_lote__icontains=search) |
                     Q(lote__producto__nombre__icontains=search) |
                     Q(lote__producto__descripcion__icontains=search) |
-                    Q(motivo__icontains=search)
+                    Q(motivo__icontains=search) |
+                    Q(numero_expediente__icontains=search)
                 )
             
             movimientos = queryset[:1000]  # Limitar para Excel
@@ -3454,6 +3626,15 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
 
             solicitante = request.user if request.user.is_authenticated else None
             es_privilegiado = False
+            
+            # ISS-FIX: Mapear 'centro' del frontend a 'centro_destino' para consistencia
+            if 'centro' in data and 'centro_destino' not in data:
+                data['centro_destino'] = data.pop('centro')
+            
+            # ISS-FIX: Mapear 'comentario' del frontend a 'notas' para consistencia
+            if 'comentario' in data and 'notas' not in data:
+                data['notas'] = data.pop('comentario')
+            
             if solicitante:
                 data['solicitante'] = getattr(solicitante, 'id', None)
                 centro_user = self._user_centro(solicitante)
@@ -4963,23 +5144,64 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='resumen_estados')
     def resumen_estados(self, request):
-        """Resumen de conteos por estado y por grupo logico. Filtrado por centro si aplica."""
+        """
+        Resumen de conteos por estado y por grupo lógico.
+        
+        FIX: Ahora aplica TODOS los filtros del frontend para que los contadores
+        de las tabs reflejen correctamente los datos filtrados.
+        
+        Filtros soportados: centro, estado, grupo_estado, search, fecha_desde, fecha_hasta
+        """
         try:
-            # SEGURIDAD: Filtrar por centro del usuario si no es admin/farmacia
             user = request.user
             base_queryset = Requisicion.objects.all()
             
+            # SEGURIDAD: Filtrar por centro del usuario si no es admin/farmacia
             if not is_farmacia_or_admin(user):
                 user_centro = get_user_centro(user)
                 if user_centro:
-                    base_queryset = base_queryset.filter(centro_destino=user_centro)
+                    base_queryset = base_queryset.filter(
+                        Q(centro_origen=user_centro) | Q(centro_destino=user_centro)
+                    )
                 else:
                     base_queryset = Requisicion.objects.none()
+            else:
+                # Admin/farmacia pueden filtrar por centro específico
+                centro_param = request.query_params.get('centro')
+                if centro_param and centro_param not in ['', 'null', 'undefined', 'todos', 'PENDING']:
+                    try:
+                        centro_id = int(centro_param)
+                        base_queryset = base_queryset.filter(
+                            Q(centro_origen_id=centro_id) | Q(centro_destino_id=centro_id)
+                        )
+                    except (ValueError, TypeError):
+                        pass
             
+            # FIX: Aplicar filtro de búsqueda (search)
+            search = request.query_params.get('search', '').strip()
+            if search:
+                base_queryset = base_queryset.filter(
+                    Q(numero__icontains=search) |
+                    Q(solicitante__first_name__icontains=search) |
+                    Q(solicitante__last_name__icontains=search) |
+                    Q(centro_destino__nombre__icontains=search)
+                )
+            
+            # FIX: Aplicar filtro de fechas
+            fecha_desde = request.query_params.get('fecha_desde')
+            if fecha_desde:
+                base_queryset = base_queryset.filter(fecha_solicitud__date__gte=fecha_desde)
+            
+            fecha_hasta = request.query_params.get('fecha_hasta')
+            if fecha_hasta:
+                base_queryset = base_queryset.filter(fecha_solicitud__date__lte=fecha_hasta)
+            
+            # Calcular conteos por estado y por grupo
             por_estado = {estado.upper(): base_queryset.filter(estado=estado).count() for estado, _ in ESTADOS_REQUISICION}
             por_grupo = {}
             for nombre, estados in REQUISICION_GRUPOS_ESTADO.items():
                 por_grupo[nombre] = base_queryset.filter(estado__in=estados).count()
+            
             return Response({'por_estado': por_estado, 'por_grupo': por_grupo})
         except Exception as exc:
             # traceback removido por seguridad (ISS-008)
@@ -6094,17 +6316,22 @@ def reporte_caducidades(request):
             
             if dias_restantes < 0:
                 estado = 'vencido'
-                vencidos += 1
             elif dias_restantes <= 7:
                 estado = 'critico'
-                criticos += 1
             else:
                 estado = 'proximo'
-                proximos += 1
             
-            # Filtrar por estado si se especific
+            # Filtrar por estado si se especificó
             if estado_filtro and estado != estado_filtro:
                 continue
+            
+            # Contadores DESPUÉS del filtro para reflejar datos reales
+            if estado == 'vencido':
+                vencidos += 1
+            elif estado == 'critico':
+                criticos += 1
+            else:
+                proximos += 1
             
             datos.append({
                 'producto': f"{lote.producto.clave} - {lote.producto.nombre}",

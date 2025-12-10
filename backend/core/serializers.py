@@ -63,6 +63,8 @@ PERMISOS_POR_ROL = {
         'autorizarFarmacia': True,
         'asignarFechaRecoleccion': True,
         'devolverRequisicion': True,
+        # Permisos de notificaciones
+        'gestionarNotificaciones': True,
     },
     'FARMACIA': {
         'verDashboard': True,
@@ -96,6 +98,8 @@ PERMISOS_POR_ROL = {
         'autorizarFarmacia': True,
         'asignarFechaRecoleccion': True,
         'devolverRequisicion': True,
+        # Permisos de notificaciones
+        'gestionarNotificaciones': True,
     },
     # FLUJO V2: Rol de Médico del Centro (crea requisiciones)
     'MEDICO': {
@@ -130,6 +134,8 @@ PERMISOS_POR_ROL = {
         'autorizarFarmacia': False,
         'asignarFechaRecoleccion': False,
         'devolverRequisicion': False,
+        # Permisos de notificaciones
+        'gestionarNotificaciones': False,
     },
     # FLUJO V2: Rol de Administrador del Centro (primera autorización)
     'ADMINISTRADOR_CENTRO': {
@@ -164,6 +170,8 @@ PERMISOS_POR_ROL = {
         'autorizarFarmacia': False,
         'asignarFechaRecoleccion': False,
         'devolverRequisicion': True,
+        # Permisos de notificaciones
+        'gestionarNotificaciones': False,
     },
     # FLUJO V2: Rol de Director del Centro (segunda autorización)
     'DIRECTOR_CENTRO': {
@@ -198,6 +206,8 @@ PERMISOS_POR_ROL = {
         'autorizarFarmacia': False,
         'asignarFechaRecoleccion': False,
         'devolverRequisicion': True,
+        # Permisos de notificaciones
+        'gestionarNotificaciones': False,
     },
     'CENTRO': {
         'verDashboard': True,
@@ -231,6 +241,8 @@ PERMISOS_POR_ROL = {
         'autorizarFarmacia': False,
         'asignarFechaRecoleccion': False,
         'devolverRequisicion': False,
+        # Permisos de notificaciones
+        'gestionarNotificaciones': False,
     },
     'VISTA': {
         'verDashboard': True,
@@ -264,6 +276,8 @@ PERMISOS_POR_ROL = {
         'autorizarFarmacia': False,
         'asignarFechaRecoleccion': False,
         'devolverRequisicion': False,
+        # Permisos de notificaciones
+        'gestionarNotificaciones': False,
     },
     'SIN_ROL': {
         'verDashboard': False,
@@ -297,6 +311,8 @@ PERMISOS_POR_ROL = {
         'autorizarFarmacia': False,
         'asignarFechaRecoleccion': False,
         'devolverRequisicion': False,
+        # Permisos de notificaciones
+        'gestionarNotificaciones': False,
     },
 }
 
@@ -432,6 +448,21 @@ class UserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('El username ya esta en uso')
         return value.lower()
     
+    def validate_password(self, value):
+        """Valida que la contraseña cumpla los requisitos mínimos"""
+        # Si es update, la contraseña es opcional
+        if self.instance is not None:
+            return value
+        
+        # Para creación, la contraseña es obligatoria
+        if not value or value.strip() == '':
+            raise serializers.ValidationError('La contraseña es obligatoria para nuevos usuarios')
+        
+        if len(value) < 8:
+            raise serializers.ValidationError('La contraseña debe tener al menos 8 caracteres')
+        
+        return value
+    
     def validate_centro_id(self, value):
         """Valida que el centro_id exista si se proporciona"""
         if value is not None:
@@ -439,12 +470,24 @@ class UserSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(f'Centro con ID {value} no existe')
         return value
     
+    def validate(self, attrs):
+        """Validación a nivel de objeto - asegura que la contraseña esté presente al crear"""
+        # Si es creación (no hay instance), la contraseña es obligatoria
+        if self.instance is None:
+            password = attrs.get('password')
+            if not password or (isinstance(password, str) and password.strip() == ''):
+                raise serializers.ValidationError({
+                    'password': 'La contraseña es obligatoria para nuevos usuarios'
+                })
+        return attrs
+    
     def create(self, validated_data):
         password = validated_data.pop('password', None)
         # Extraer centro_id y asignarlo al campo centro
         centro_id = validated_data.pop('centro_id', None)
         
         logger.info(f"UserSerializer.create - validated_data: {validated_data}, centro_id: {centro_id}")
+        logger.info(f"UserSerializer.create - password received: {'YES (length=' + str(len(password)) + ')' if password else 'NO'}")
         
         user = User(**validated_data)
         # Asignar centro directamente usando el ID
@@ -453,10 +496,21 @@ class UserSerializer(serializers.ModelSerializer):
         
         if password:
             user.set_password(password)
+            logger.info(f"UserSerializer.create - Password set for user {user.username}")
         else:
             user.set_unusable_password()
+            logger.warning(f"UserSerializer.create - NO PASSWORD SET for user {user.username} - user won't be able to login!")
         user.save()
-        logger.info(f"UserSerializer.create - User saved: id={user.id}, centro_id={user.centro_id}")
+        
+        # Verificar que la contraseña se guardó correctamente
+        if password:
+            user.refresh_from_db()
+            can_auth = user.check_password(password)
+            logger.info(f"UserSerializer.create - Password verification after save: {can_auth}")
+            if not can_auth:
+                logger.error(f"UserSerializer.create - PASSWORD VERIFICATION FAILED for {user.username}!")
+        
+        logger.info(f"UserSerializer.create - User saved: id={user.id}, centro_id={user.centro_id}, is_active={user.is_active}")
         return user
     
     def update(self, instance, validated_data):
@@ -891,17 +945,21 @@ class RequisicionSerializer(serializers.ModelSerializer):
     folio = serializers.CharField(source='numero', read_only=True)  # Alias de numero
     centro_nombre = serializers.CharField(source='centro_destino.nombre', read_only=True, allow_null=True)  # Alias de centro_destino_nombre
     usuario_solicita_nombre = serializers.SerializerMethodField()  # Alias de solicitante_nombre
+    usuario_autoriza_nombre = serializers.SerializerMethodField()  # Alias de autorizador_nombre
     observaciones = serializers.CharField(source='notas', read_only=True, allow_null=True)  # Alias de notas
     # motivo_rechazo es ahora un campo real en la BD (FLUJO V2), no un alias
     total_items = serializers.SerializerMethodField()  # Alias de total_productos
     
     # Campo 'centro' para compatibilidad con frontend (alias de centro_destino)
-    centro = serializers.PrimaryKeyRelatedField(
+    # NOTA: Se usa SerializerMethodField para lectura y se sobreescribe en create/update para escritura
+    centro = serializers.SerializerMethodField(read_only=True)  # Para lectura (devuelve centro_destino_id)
+    centro_write = serializers.PrimaryKeyRelatedField(
         source='centro_destino', queryset=Centro.objects.all(), 
         required=False, allow_null=True, write_only=True
     )
     # Campo 'comentario' para compatibilidad con frontend (alias de notas)
-    comentario = serializers.CharField(source='notas', required=False, allow_blank=True, allow_null=True, write_only=True)
+    comentario = serializers.SerializerMethodField(read_only=True)  # Para lectura (devuelve notas)
+    comentario_write = serializers.CharField(source='notas', required=False, allow_blank=True, allow_null=True, write_only=True)
     
     # ========== CAMPOS URGENCIA ==========
     fecha_entrega_solicitada = serializers.DateField(required=False, allow_null=True)
@@ -934,11 +992,11 @@ class RequisicionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Requisicion
         fields = [
-            'id', 'numero', 'folio', 'centro', 'comentario', 
+            'id', 'numero', 'folio', 'centro', 'centro_write', 'comentario', 'comentario_write',
             'centro_origen', 'centro_origen_nombre', 
             'centro_destino', 'centro_destino_nombre', 'centro_nombre',
             'solicitante', 'solicitante_nombre', 'usuario_solicita_nombre',
-            'autorizador', 'autorizador_nombre',
+            'autorizador', 'autorizador_nombre', 'usuario_autoriza_nombre',
             'fecha_solicitud', 'fecha_autorizacion', 'fecha_surtido', 'fecha_entrega',
             'estado', 'tipo', 'prioridad', 'notas', 'observaciones', 'motivo_rechazo', 'lugar_entrega',
             'foto_firma_surtido', 'foto_firma_recepcion',
@@ -1018,6 +1076,18 @@ class RequisicionSerializer(serializers.ModelSerializer):
             return obj.autorizador.get_full_name() or obj.autorizador.username
         return None
     
+    def get_centro(self, obj):
+        """Alias de centro_destino_id para compatibilidad con frontend."""
+        return obj.centro_destino_id
+    
+    def get_comentario(self, obj):
+        """Alias de notas para compatibilidad con frontend (lectura)."""
+        return obj.notas
+    
+    def get_usuario_autoriza_nombre(self, obj):
+        """Alias de autorizador_nombre para compatibilidad con frontend."""
+        return self.get_autorizador_nombre(obj)
+    
     def get_total_productos(self, obj):
         return obj.detalles.count()
     
@@ -1055,6 +1125,25 @@ class RequisicionSerializer(serializers.ModelSerializer):
         if obj.surtidor:
             return obj.surtidor.get_full_name() or obj.surtidor.username
         return None
+    
+    def to_internal_value(self, data):
+        """
+        Mapea campos del frontend a campos internos antes de validación.
+        El frontend envía 'centro' y 'comentario', pero internamente usamos
+        'centro_destino' y 'notas'.
+        """
+        # Crear copia mutable de los datos
+        data = data.copy() if hasattr(data, 'copy') else dict(data)
+        
+        # Mapear 'centro' → 'centro_write' (que tiene source='centro_destino')
+        if 'centro' in data and 'centro_write' not in data:
+            data['centro_write'] = data.pop('centro')
+        
+        # Mapear 'comentario' → 'comentario_write' (que tiene source='notas')
+        if 'comentario' in data and 'comentario_write' not in data:
+            data['comentario_write'] = data.pop('comentario')
+        
+        return super().to_internal_value(data)
     
     def validate(self, data):
         """Validaciones de requisicion con campos de urgencia."""
@@ -1131,12 +1220,16 @@ class MovimientoSerializer(serializers.ModelSerializer):
     centro_destino_nombre = serializers.CharField(source='centro_destino.nombre', read_only=True, allow_null=True)
     centro_nombre = serializers.SerializerMethodField()  # Alias unificado para frontend
     usuario_nombre = serializers.SerializerMethodField()
-    observaciones = serializers.CharField(source='motivo', read_only=True, allow_null=True)  # Alias para frontend
+    observaciones = serializers.CharField(source='motivo', read_only=True, allow_null=True)  # Alias para lectura frontend
     requisicion_folio = serializers.CharField(source='requisicion.numero', read_only=True, allow_null=True)  # Folio de requisición
     fecha_movimiento = serializers.DateTimeField(source='fecha', read_only=True)  # Alias para frontend
     # MEJORA FLUJO 5: Nuevos campos para trazabilidad de pacientes
     subtipo_salida = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=30)
     numero_expediente = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=50)
+    
+    # ========== FIX: Campos para escritura desde frontend ==========
+    # El frontend envía 'centro' y 'observaciones', pero el modelo tiene 'centro_destino' y 'motivo'
+    # Usamos to_internal_value para mapear estos campos correctamente
     
     class Meta:
         model = Movimiento
@@ -1158,6 +1251,27 @@ class MovimientoSerializer(serializers.ModelSerializer):
             'requisicion': {'required': False, 'allow_null': True},
             'usuario': {'required': False, 'allow_null': True},
         }
+    
+    def to_internal_value(self, data):
+        """
+        FIX: Mapear campos del frontend a campos del modelo.
+        - 'centro' -> se guarda en validated_data['centro'] para que ViewSet lo use
+        - 'observaciones' -> se mapea a 'motivo' para el modelo
+        """
+        data = data.copy() if hasattr(data, 'copy') else dict(data)
+        
+        # Mapear 'observaciones' del frontend a 'motivo' del modelo
+        if 'observaciones' in data and 'motivo' not in data:
+            data['motivo'] = data.pop('observaciones')
+        
+        result = super().to_internal_value(data)
+        
+        # Preservar 'centro' para que ViewSet lo pueda usar (no es un campo del modelo directamente)
+        # El ViewSet usa este valor para la función registrar_movimiento_stock
+        if 'centro' in data:
+            result['centro'] = data['centro']
+        
+        return result
     
     def get_producto_nombre(self, obj):
         if obj.producto:
@@ -1637,11 +1751,12 @@ class DetalleDonacionSerializer(serializers.ModelSerializer):
     producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
     producto_codigo = serializers.CharField(source='producto.clave', read_only=True)
     estado_producto_display = serializers.CharField(source='get_estado_producto_display', read_only=True)
+    donacion_numero = serializers.CharField(source='donacion.numero', read_only=True)
     
     class Meta:
         model = DetalleDonacion
         fields = [
-            'id', 'donacion', 'producto', 'producto_nombre', 'producto_codigo',
+            'id', 'donacion', 'donacion_numero', 'producto', 'producto_nombre', 'producto_codigo',
             'numero_lote', 'cantidad', 'cantidad_disponible',
             'fecha_caducidad', 'estado_producto', 'estado_producto_display',
             'notas', 'created_at'
