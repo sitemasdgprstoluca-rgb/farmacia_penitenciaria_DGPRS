@@ -65,7 +65,6 @@ class TestMovimientoTransaccionesAtomicas(TransactionTestCase):
             fecha_caducidad=date.today() + timedelta(days=365),
             cantidad_inicial=100,
             cantidad_actual=100,
-            estado='disponible',
             activo=True
         )
         self.usuario = User.objects.create_user(
@@ -335,7 +334,6 @@ class TestSkipValidationProduccion(TestCase):
             fecha_caducidad=date.today() + timedelta(days=365),
             cantidad_inicial=100,
             cantidad_actual=100,
-            estado='disponible',
             activo=True
         )
         cls.usuario = User.objects.create_user(

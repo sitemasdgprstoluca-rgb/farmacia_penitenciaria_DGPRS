@@ -41,11 +41,13 @@ ESTADOS_LOTE = [
     ('retirado', 'Retirado'),
 ]
 
-# ISS-001 FIX (audit11): Estados de lote que pueden contarse como stock disponible
-# SOLO 'disponible' cuenta para cálculos de inventario surtible
-# Lotes bloqueados, retirados, vencidos o agotados NO deben incluirse
-ESTADOS_LOTE_DISPONIBLES = {'disponible'}
-ESTADOS_LOTE_NO_DISPONIBLES = {'agotado', 'vencido', 'bloqueado', 'retirado'}
+# ISS-001 FIX (audit11): Estados de lote para cálculos de stock
+# NOTA: La tabla 'lotes' en BD NO tiene campo 'estado'. 
+# La disponibilidad se determina por: activo=True AND cantidad_actual>0 AND fecha_caducidad>=hoy
+# Esta constante se mantiene por compatibilidad con código legacy que pueda referenciarla.
+# ISS-004 FIX (audit14): Los filtros reales deben usar los campos existentes en BD.
+ESTADOS_LOTE_DISPONIBLES = {'disponible'}  # DEPRECADO - usar filtros de BD reales
+ESTADOS_LOTE_NO_DISPONIBLES = {'agotado', 'vencido', 'bloqueado', 'retirado'}  # DEPRECADO
 
 # Estados de requisición
 # ISS-DB-002: Alineado con CHECK constraint de BD Supabase

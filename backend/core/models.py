@@ -539,7 +539,8 @@ class Producto(models.Model):
         
         filtros = {
             'activo': True,
-            'estado__in': ESTADOS_LOTE_DISPONIBLES,  # ISS-001 FIX: Solo lotes disponibles
+            # ISS-004 FIX (audit14): La BD NO tiene campo 'estado' en lotes
+            # La disponibilidad se determina por activo + cantidad + fecha
             'cantidad_actual__gt': 0,
             'fecha_caducidad__gte': timezone.now().date(),  # ISS-001 FIX: Solo vigentes
         }
@@ -587,7 +588,7 @@ class Producto(models.Model):
             'activo': True,
             'centro__isnull': True,  # Farmacia central = sin centro asignado
             'cantidad_actual__gt': 0,
-            'estado__in': ESTADOS_LOTE_DISPONIBLES,  # ISS-001 FIX: Solo lotes disponibles
+            # ISS-004 FIX (audit14): No usar estado__in, campo no existe en BD
         }
         
         if solo_vigentes:
@@ -636,7 +637,7 @@ class Producto(models.Model):
             'activo': True,
             'centro_id': centro_id,
             'cantidad_actual__gt': 0,
-            'estado__in': ESTADOS_LOTE_DISPONIBLES,  # ISS-001 FIX: Solo lotes disponibles
+            # ISS-004 FIX (audit14): No usar estado__in, campo no existe en BD
         }
         
         if solo_vigentes:
@@ -665,7 +666,7 @@ class Producto(models.Model):
             centro__isnull=True,
             cantidad_actual__gt=0,
             fecha_caducidad__gte=timezone.now().date(),
-            estado__in=ESTADOS_LOTE_DISPONIBLES,  # ISS-001 FIX: Solo lotes disponibles
+            # ISS-004 FIX (audit14): No usar estado__in, campo no existe en BD
         ).order_by('fecha_caducidad')
     
     def get_nivel_stock(self):
@@ -980,13 +981,20 @@ class Movimiento(models.Model):
             if self.centro_origen_id and self.centro_destino_id and self.centro_origen_id == self.centro_destino_id:
                 errors['centro_destino'] = 'El centro de destino debe ser diferente al centro de origen.'
             
-            # ISS-004 FIX (audit12): Validar estado del lote para transferencias
+            # ISS-004 FIX (audit14): Validar lote activo y con stock para transferencias
+            # NOTA: La BD no tiene campo 'estado' en lotes, usar activo + cantidad + fecha
             if self.lote:
-                estado_lote = (getattr(self.lote, 'estado', None) or '').lower()
-                if estado_lote and estado_lote not in ('disponible',):
+                if not self.lote.activo:
                     errors['lote'] = (
                         f'No se puede transferir del lote {self.lote.numero_lote} '
-                        f'porque su estado es "{estado_lote}". Solo lotes "disponible" pueden transferirse.'
+                        f'porque está inactivo.'
+                    )
+                
+                from django.utils import timezone
+                if self.lote.fecha_caducidad and self.lote.fecha_caducidad < timezone.now().date():
+                    errors['lote'] = (
+                        f'No se puede transferir del lote {self.lote.numero_lote} '
+                        f'porque está vencido (caducidad: {self.lote.fecha_caducidad}).'
                     )
                 
                 # ISS-004 FIX (audit12): Validar que el lote pertenezca al centro origen

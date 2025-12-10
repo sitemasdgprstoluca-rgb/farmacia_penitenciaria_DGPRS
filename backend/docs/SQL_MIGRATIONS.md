@@ -121,24 +121,31 @@ consistencia incluso ante operaciones directas o fallas de concurrencia.
 -- ISS-004: CONSTRAINTS DE INTEGRIDAD
 -- Ejecutar en: Supabase SQL Editor
 -- IMPORTANTE: Revisar datos existentes antes de aplicar
+-- Verificado contra esquema real de BD: 2025-12
 -- ============================================
 
 -- ===========================================
 -- 1. LOTES: Stock nunca negativo
+-- Campos reales: cantidad_inicial, cantidad_actual (no hay campo 'estado')
 -- ===========================================
 ALTER TABLE lotes 
-ADD CONSTRAINT chk_lote_cantidad_positiva 
+ADD CONSTRAINT chk_lote_cantidad_actual_positiva 
 CHECK (cantidad_actual >= 0);
 
 ALTER TABLE lotes 
 ADD CONSTRAINT chk_lote_cantidad_inicial_positiva 
 CHECK (cantidad_inicial >= 0);
 
-COMMENT ON CONSTRAINT chk_lote_cantidad_positiva ON lotes IS 
+ALTER TABLE lotes
+ADD CONSTRAINT chk_lote_precio_positivo
+CHECK (precio_unitario >= 0);
+
+COMMENT ON CONSTRAINT chk_lote_cantidad_actual_positiva ON lotes IS 
   'ISS-001: Evita stock negativo por operaciones concurrentes o directas';
 
 -- ===========================================
 -- 2. MOVIMIENTOS: Validaciones básicas
+-- Campos reales: tipo, cantidad, producto_id (NOT NULL), lote_id (nullable)
 -- ===========================================
 ALTER TABLE movimientos 
 ADD CONSTRAINT chk_movimiento_cantidad_positiva 
@@ -154,6 +161,7 @@ COMMENT ON CONSTRAINT chk_movimiento_cantidad_positiva ON movimientos IS
 
 -- ===========================================
 -- 3. REQUISICIONES: Estados válidos
+-- Campo real: estado (character varying, NOT NULL)
 -- ===========================================
 ALTER TABLE requisiciones 
 ADD CONSTRAINT chk_requisicion_estado_valido 
@@ -164,11 +172,22 @@ CHECK (estado IN (
   'devuelta', 'vencida', 'cancelada'
 ));
 
+-- Prioridad válida
+ALTER TABLE requisiciones
+ADD CONSTRAINT chk_requisicion_prioridad_valida
+CHECK (prioridad IN ('baja', 'normal', 'alta', 'urgente'));
+
+-- Tipo válido
+ALTER TABLE requisiciones
+ADD CONSTRAINT chk_requisicion_tipo_valido
+CHECK (tipo IN ('normal', 'urgente', 'programada', 'emergencia'));
+
 COMMENT ON CONSTRAINT chk_requisicion_estado_valido ON requisiciones IS 
   'ISS-003: Solo estados válidos de la máquina de estados';
 
 -- ===========================================
 -- 4. USUARIOS: Roles válidos
+-- Campo real: rol (character varying, NOT NULL)
 -- ===========================================
 ALTER TABLE usuarios 
 ADD CONSTRAINT chk_usuario_rol_valido 
@@ -182,52 +201,100 @@ COMMENT ON CONSTRAINT chk_usuario_rol_valido ON usuarios IS
   'ISS-001: Solo roles definidos en el sistema';
 
 -- ===========================================
--- 5. ÍNDICES PARA CONCURRENCIA
+-- 5. DETALLES_REQUISICION: Cantidades válidas
+-- ===========================================
+ALTER TABLE detalles_requisicion
+ADD CONSTRAINT chk_detalle_cantidad_solicitada_positiva
+CHECK (cantidad_solicitada > 0);
+
+ALTER TABLE detalles_requisicion
+ADD CONSTRAINT chk_detalle_cantidad_autorizada_valida
+CHECK (cantidad_autorizada IS NULL OR cantidad_autorizada >= 0);
+
+ALTER TABLE detalles_requisicion
+ADD CONSTRAINT chk_detalle_cantidad_surtida_valida
+CHECK (cantidad_surtida IS NULL OR cantidad_surtida >= 0);
+
+-- ===========================================
+-- 6. PRODUCTOS: Valores válidos
+-- ===========================================
+ALTER TABLE productos
+ADD CONSTRAINT chk_producto_stock_minimo_positivo
+CHECK (stock_minimo >= 0);
+
+ALTER TABLE productos
+ADD CONSTRAINT chk_producto_stock_actual_positivo
+CHECK (stock_actual >= 0);
+
+-- ===========================================
+-- 7. CENTROS: Básicos
+-- ===========================================
+ALTER TABLE centros
+ADD CONSTRAINT chk_centro_nombre_no_vacio
+CHECK (TRIM(nombre) <> '');
+
+-- ===========================================
+-- 8. ÍNDICES PARA PERFORMANCE Y CONCURRENCIA
 -- ===========================================
 
 -- Índice para bloqueos por lote (usado en select_for_update)
 CREATE INDEX IF NOT EXISTS idx_lotes_pk_lock ON lotes(id);
+
+-- Índice para búsqueda de lotes por producto y centro
+CREATE INDEX IF NOT EXISTS idx_lotes_producto_centro 
+ON lotes(producto_id, centro_id) WHERE activo = true;
+
+-- Índice para lotes por fecha caducidad (alertas de vencimiento)
+CREATE INDEX IF NOT EXISTS idx_lotes_caducidad 
+ON lotes(fecha_caducidad) WHERE activo = true;
 
 -- Índice para búsqueda de movimientos por requisición
 CREATE INDEX IF NOT EXISTS idx_movimientos_requisicion_tipo 
 ON movimientos(requisicion_id, tipo) WHERE requisicion_id IS NOT NULL;
 
 -- Índice para estado de requisiciones (filtros frecuentes)
-CREATE INDEX IF NOT EXISTS idx_requisiciones_estado ON requisiciones(estado);
+CREATE INDEX IF NOT EXISTS idx_requisiciones_estado 
+ON requisiciones(estado);
 
--- Índice compuesto para stock por centro
-CREATE INDEX IF NOT EXISTS idx_lotes_centro_producto 
-ON lotes(centro_id, producto_id) WHERE activo = true;
+-- Índice para requisiciones por centro
+CREATE INDEX IF NOT EXISTS idx_requisiciones_centro_origen
+ON requisiciones(centro_origen_id) WHERE centro_origen_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_requisiciones_centro_destino
+ON requisiciones(centro_destino_id) WHERE centro_destino_id IS NOT NULL;
+
+-- Índice para historial de requisiciones
+CREATE INDEX IF NOT EXISTS idx_historial_requisicion
+ON requisicion_historial_estados(requisicion_id, fecha_cambio DESC);
+
+-- Índice para usuarios por centro
+CREATE INDEX IF NOT EXISTS idx_usuarios_centro
+ON usuarios(centro_id) WHERE centro_id IS NOT NULL;
 
 -- ===========================================
--- 6. TRIGGER: Auditoría de cambios de stock
+-- 9. TRIGGER: Auditoría de cambios de stock (OPCIONAL)
+-- Requiere tabla audit_log existente
 -- ===========================================
-CREATE OR REPLACE FUNCTION audit_stock_change()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF OLD.cantidad_actual IS DISTINCT FROM NEW.cantidad_actual THEN
-    INSERT INTO audit_log (
-      tabla, registro_id, campo, valor_anterior, valor_nuevo, fecha
-    ) VALUES (
-      'lotes', NEW.id, 'cantidad_actual', 
-      OLD.cantidad_actual::text, NEW.cantidad_actual::text, now()
-    );
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Crear trigger solo si no existe
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_audit_lote_stock'
-  ) THEN
-    CREATE TRIGGER trg_audit_lote_stock
-    AFTER UPDATE ON lotes
-    FOR EACH ROW EXECUTE FUNCTION audit_stock_change();
-  END IF;
-END $$;
+-- CREATE OR REPLACE FUNCTION audit_stock_change()
+-- RETURNS TRIGGER AS $$
+-- BEGIN
+--   IF OLD.cantidad_actual IS DISTINCT FROM NEW.cantidad_actual THEN
+--     INSERT INTO auditoria_logs (
+--       modelo, objeto_id, accion, datos_anteriores, datos_nuevos, timestamp
+--     ) VALUES (
+--       'lotes', NEW.id::text, 'UPDATE_STOCK', 
+--       jsonb_build_object('cantidad_actual', OLD.cantidad_actual),
+--       jsonb_build_object('cantidad_actual', NEW.cantidad_actual),
+--       now()
+--     );
+--   END IF;
+--   RETURN NEW;
+-- END;
+-- $$ LANGUAGE plpgsql;
+-- 
+-- CREATE TRIGGER trg_audit_lote_stock
+-- AFTER UPDATE ON lotes
+-- FOR EACH ROW EXECUTE FUNCTION audit_stock_change();
 ```
 
 ### Verificación pre-aplicación
