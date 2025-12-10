@@ -484,6 +484,75 @@ class Producto(models.Model):
             total=Sum('cantidad_actual')
         )['total'] or 0
     
+    def get_stock_farmacia_central(self, solo_vigentes=True):
+        """
+        ISS-004: Calcula stock disponible en farmacia central.
+        
+        Args:
+            solo_vigentes: Si True, excluye lotes vencidos
+            
+        Returns:
+            int: Stock disponible
+        """
+        from django.db.models import Sum
+        from django.utils import timezone
+        
+        filtros = {
+            'activo': True,
+            'centro__isnull': True,  # Farmacia central = sin centro asignado
+            'cantidad_actual__gt': 0
+        }
+        
+        if solo_vigentes:
+            filtros['fecha_caducidad__gte'] = timezone.now().date()
+        
+        return self.lotes.filter(**filtros).aggregate(
+            total=Sum('cantidad_actual')
+        )['total'] or 0
+    
+    def get_stock_centro(self, centro, solo_vigentes=True):
+        """
+        ISS-004: Calcula stock disponible en un centro específico.
+        
+        Args:
+            centro: Instancia o ID del centro
+            solo_vigentes: Si True, excluye lotes vencidos
+            
+        Returns:
+            int: Stock disponible
+        """
+        from django.db.models import Sum
+        from django.utils import timezone
+        
+        centro_id = centro.id if hasattr(centro, 'id') else centro
+        
+        filtros = {
+            'activo': True,
+            'centro_id': centro_id,
+            'cantidad_actual__gt': 0
+        }
+        
+        if solo_vigentes:
+            filtros['fecha_caducidad__gte'] = timezone.now().date()
+        
+        return self.lotes.filter(**filtros).aggregate(
+            total=Sum('cantidad_actual')
+        )['total'] or 0
+    
+    def get_lotes_disponibles_farmacia(self):
+        """
+        ISS-004: Retorna lotes disponibles para surtido en farmacia central.
+        Ordenados por fecha de caducidad (FEFO - First Expired, First Out).
+        """
+        from django.utils import timezone
+        
+        return self.lotes.filter(
+            activo=True,
+            centro__isnull=True,
+            cantidad_actual__gt=0,
+            fecha_caducidad__gte=timezone.now().date()
+        ).order_by('fecha_caducidad')
+    
     def get_nivel_stock(self):
         """Retorna el nivel de stock: critico, bajo, normal, alto"""
         stock = self.get_stock_actual()
@@ -509,6 +578,11 @@ class Lote(models.Model):
     numero_contrato, marca, ubicacion, centro_id, activo, created_at, updated_at
     
     Constraints: lote_producto_unique (numero_lote, producto_id)
+    
+    ISS-001: Validaciones de negocio implementadas:
+    - fecha_caducidad debe ser posterior a fecha_fabricacion
+    - cantidad_inicial y cantidad_actual deben ser >= 0
+    - fecha_caducidad no puede ser anterior a la fecha actual para lotes nuevos
     """
     numero_lote = models.CharField(max_length=100)
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='lotes', db_column='producto_id')
@@ -532,6 +606,106 @@ class Lote(models.Model):
 
     def __str__(self):
         return f"{self.numero_lote} - {self.producto}"
+    
+    def clean(self):
+        """
+        ISS-001: Validaciones de negocio para lotes.
+        Se ejecutan en save() y en serializers con full_clean().
+        """
+        from django.core.exceptions import ValidationError
+        from django.utils import timezone
+        
+        errors = {}
+        
+        # Validar cantidad_inicial no negativa
+        if self.cantidad_inicial is not None and self.cantidad_inicial < 0:
+            errors['cantidad_inicial'] = 'La cantidad inicial no puede ser negativa.'
+        
+        # Validar cantidad_actual no negativa
+        if self.cantidad_actual is not None and self.cantidad_actual < 0:
+            errors['cantidad_actual'] = 'La cantidad actual no puede ser negativa.'
+        
+        # Validar que fecha_caducidad sea posterior a fecha_fabricacion
+        if self.fecha_fabricacion and self.fecha_caducidad:
+            if self.fecha_caducidad <= self.fecha_fabricacion:
+                errors['fecha_caducidad'] = 'La fecha de caducidad debe ser posterior a la fecha de fabricación.'
+        
+        # Validar que lotes nuevos no estén ya vencidos (solo en creación)
+        if not self.pk and self.fecha_caducidad:  # Solo para nuevos registros
+            hoy = timezone.now().date()
+            if self.fecha_caducidad < hoy:
+                errors['fecha_caducidad'] = f'No se puede registrar un lote ya vencido (caducidad: {self.fecha_caducidad}, hoy: {hoy}).'
+        
+        # Validar precio unitario no negativo
+        if self.precio_unitario is not None and self.precio_unitario < 0:
+            errors['precio_unitario'] = 'El precio unitario no puede ser negativo.'
+        
+        # ISS-006: Advertencia si no tiene contrato (solo warning, no bloquea)
+        # La validación estricta de contrato se hace en el serializer donde podemos
+        # acceder a reglas de negocio más complejas
+        
+        if errors:
+            raise ValidationError(errors)
+    
+    def save(self, *args, **kwargs):
+        """
+        ISS-001: Ejecutar validaciones antes de guardar.
+        """
+        # Permitir saltar validaciones en migraciones/imports
+        skip_validation = kwargs.pop('skip_validation', False)
+        if not skip_validation:
+            self.full_clean()
+        super().save(*args, **kwargs)
+    
+    def validar_contrato(self, cantidad_a_ingresar=None):
+        """
+        ISS-006: Valida reglas de contrato para el lote.
+        
+        Args:
+            cantidad_a_ingresar: Cantidad adicional que se pretende ingresar
+            
+        Returns:
+            dict: {valido: bool, errores: list, advertencias: list}
+        """
+        errores = []
+        advertencias = []
+        
+        # Validar que tenga número de contrato si es entrada formal
+        if not self.numero_contrato:
+            advertencias.append('El lote no tiene número de contrato asociado.')
+        
+        # Validar cantidad inicial vs cantidad actual
+        if cantidad_a_ingresar and self.cantidad_actual:
+            nueva_cantidad = self.cantidad_actual + cantidad_a_ingresar
+            if nueva_cantidad > self.cantidad_inicial * 1.1:  # Permitir 10% de margen
+                advertencias.append(
+                    f'La cantidad resultante ({nueva_cantidad}) excede significativamente '
+                    f'la cantidad inicial del lote ({self.cantidad_inicial}).'
+                )
+        
+        return {
+            'valido': len(errores) == 0,
+            'errores': errores,
+            'advertencias': advertencias
+        }
+    
+    def esta_vencido(self):
+        """ISS-001: Verifica si el lote ya venció."""
+        from django.utils import timezone
+        if not self.fecha_caducidad:
+            return False
+        return self.fecha_caducidad < timezone.now().date()
+    
+    def esta_disponible_para_surtido(self):
+        """
+        ISS-001: Verifica si el lote puede usarse para surtir.
+        Debe estar activo, con stock disponible y no vencido.
+        """
+        return (
+            self.activo and 
+            self.cantidad_actual > 0 and 
+            not self.esta_vencido()
+        )
     
     @property
     def precio_compra(self):
@@ -584,7 +758,23 @@ class Movimiento(models.Model):
     
     MEJORA FLUJO 5: Campos subtipo_salida y numero_expediente para
     trazabilidad de pacientes en salidas por receta médica.
+    
+    ISS-002: Validaciones de negocio implementadas:
+    - Validar signo de cantidad según tipo de movimiento
+    - Validar stock suficiente antes de restar (salidas, mermas, etc.)
+    - Exigir lote para tipos que lo requieren
+    - Verificar que lotes no estén vencidos para salidas
     """
+    
+    # Tipos que RESTAN stock (cantidad debe ser positiva, se resta del inventario)
+    TIPOS_RESTA_STOCK = ['salida', 'ajuste_negativo', 'merma', 'caducidad', 'transferencia']
+    # Tipos que SUMAN stock (cantidad debe ser positiva, se suma al inventario)
+    TIPOS_SUMA_STOCK = ['entrada', 'ajuste_positivo', 'devolucion']
+    # Tipos que REQUIEREN lote obligatorio
+    TIPOS_REQUIERE_LOTE = ['salida', 'merma', 'caducidad', 'transferencia']
+    # Tipos válidos
+    TIPOS_VALIDOS = ['entrada', 'salida', 'transferencia', 'ajuste_positivo', 'ajuste_negativo', 'devolucion', 'merma', 'caducidad']
+    
     tipo = models.CharField(max_length=30)
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='movimientos', db_column='producto_id')
     lote = models.ForeignKey(Lote, on_delete=models.SET_NULL, null=True, blank=True, related_name='movimientos', db_column='lote_id')
@@ -609,6 +799,86 @@ class Movimiento(models.Model):
 
     def __str__(self):
         return f"{self.tipo} - {self.cantidad} - {self.fecha}"
+    
+    def clean(self):
+        """
+        ISS-002: Validaciones de negocio para movimientos.
+        """
+        from django.core.exceptions import ValidationError
+        
+        errors = {}
+        tipo = (self.tipo or '').lower()
+        
+        # Validar tipo de movimiento válido
+        if tipo and tipo not in self.TIPOS_VALIDOS:
+            errors['tipo'] = f'Tipo de movimiento inválido: {tipo}. Tipos válidos: {", ".join(self.TIPOS_VALIDOS)}'
+        
+        # Validar que cantidad sea positiva (el tipo determina si suma o resta)
+        if self.cantidad is not None and self.cantidad <= 0:
+            errors['cantidad'] = 'La cantidad debe ser un número positivo mayor a cero.'
+        
+        # Validar lote obligatorio para tipos que lo requieren
+        if tipo in self.TIPOS_REQUIERE_LOTE and not self.lote_id:
+            errors['lote'] = f'El tipo de movimiento "{tipo}" requiere especificar un lote.'
+        
+        # Validar que el lote no esté vencido para salidas
+        if self.lote and tipo in self.TIPOS_RESTA_STOCK:
+            if hasattr(self.lote, 'esta_vencido') and self.lote.esta_vencido():
+                errors['lote'] = f'No se puede usar el lote {self.lote.numero_lote} porque está vencido.'
+        
+        # Validar stock suficiente para tipos que restan
+        if tipo in self.TIPOS_RESTA_STOCK and self.lote and self.cantidad:
+            if self.lote.cantidad_actual < self.cantidad:
+                errors['cantidad'] = (
+                    f'Stock insuficiente en lote {self.lote.numero_lote}. '
+                    f'Disponible: {self.lote.cantidad_actual}, Solicitado: {self.cantidad}'
+                )
+        
+        # Validar expediente obligatorio para salidas por receta
+        if self.subtipo_salida == 'receta' and not self.numero_expediente:
+            errors['numero_expediente'] = 'El número de expediente es obligatorio para salidas por receta médica.'
+        
+        # Validar que transferencias tengan centro origen y destino
+        if tipo == 'transferencia':
+            if not self.centro_origen_id:
+                errors['centro_origen'] = 'Las transferencias requieren un centro de origen.'
+            if not self.centro_destino_id:
+                errors['centro_destino'] = 'Las transferencias requieren un centro de destino.'
+            if self.centro_origen_id and self.centro_destino_id and self.centro_origen_id == self.centro_destino_id:
+                errors['centro_destino'] = 'El centro de destino debe ser diferente al centro de origen.'
+        
+        if errors:
+            raise ValidationError(errors)
+    
+    def save(self, *args, **kwargs):
+        """
+        ISS-002: Ejecutar validaciones antes de guardar.
+        NOTA: Para operaciones atómicas con actualización de stock,
+        usar RequisicionService que maneja transacciones completas.
+        """
+        # Permitir saltar validaciones en operaciones batch/migración
+        skip_validation = kwargs.pop('skip_validation', False)
+        if not skip_validation:
+            self.full_clean()
+        super().save(*args, **kwargs)
+    
+    def aplicar_movimiento_a_lote(self):
+        """
+        ISS-002: Aplica el efecto del movimiento al stock del lote.
+        IMPORTANTE: Usar dentro de una transacción atómica.
+        """
+        if not self.lote:
+            return
+        
+        tipo = (self.tipo or '').lower()
+        
+        if tipo in self.TIPOS_RESTA_STOCK:
+            self.lote.cantidad_actual -= self.cantidad
+        elif tipo in self.TIPOS_SUMA_STOCK:
+            self.lote.cantidad_actual += self.cantidad
+        
+        # Guardar sin re-ejecutar validaciones completas del lote
+        self.lote.save(update_fields=['cantidad_actual', 'updated_at'])
     
     # Propiedades para compatibilidad
     @property
@@ -824,6 +1094,260 @@ class Requisicion(models.Model):
     @updated_by.setter
     def updated_by(self, value):
         pass  # Campo no existe en BD, se ignora
+    
+    # ========== ISS-003: MÉTODOS DE MÁQUINA DE ESTADOS ==========
+    
+    def puede_transicionar_a(self, nuevo_estado: str) -> bool:
+        """
+        ISS-003: Verifica si la transición es válida sin ejecutarla.
+        
+        Args:
+            nuevo_estado: Estado destino
+            
+        Returns:
+            bool: True si la transición es válida
+        """
+        estado_actual = (self.estado or 'borrador').lower()
+        nuevo_estado = nuevo_estado.lower()
+        transiciones_permitidas = self.TRANSICIONES_VALIDAS.get(estado_actual, [])
+        return nuevo_estado in transiciones_permitidas
+    
+    def get_transiciones_disponibles(self) -> list:
+        """
+        ISS-003: Retorna las transiciones disponibles desde el estado actual.
+        """
+        estado_actual = (self.estado or 'borrador').lower()
+        return self.TRANSICIONES_VALIDAS.get(estado_actual, [])
+    
+    def es_estado_terminal(self) -> bool:
+        """ISS-003: Verifica si el estado actual es terminal."""
+        estado_actual = (self.estado or 'borrador').lower()
+        return estado_actual in self.ESTADOS_TERMINALES
+    
+    def es_editable(self) -> bool:
+        """ISS-003: Verifica si la requisición puede editarse."""
+        estado_actual = (self.estado or 'borrador').lower()
+        return estado_actual in self.ESTADOS_EDITABLES
+    
+    def es_surtible(self) -> bool:
+        """ISS-003: Verifica si la requisición puede surtirse."""
+        estado_actual = (self.estado or 'borrador').lower()
+        return estado_actual in self.ESTADOS_SURTIBLES
+    
+    def validar_transicion(self, nuevo_estado: str, motivo: str = None) -> list:
+        """
+        ISS-003: Valida una transición incluyendo reglas de negocio.
+        
+        Args:
+            nuevo_estado: Estado destino
+            motivo: Motivo (requerido para rechazos/devoluciones)
+            
+        Returns:
+            list: Lista de errores (vacía si es válida)
+        """
+        from django.utils import timezone
+        
+        errores = []
+        nuevo_estado = nuevo_estado.lower()
+        estado_actual = (self.estado or 'borrador').lower()
+        
+        # Validar que la transición esté permitida
+        if not self.puede_transicionar_a(nuevo_estado):
+            transiciones = self.get_transiciones_disponibles()
+            errores.append(
+                f"Transición de '{estado_actual}' a '{nuevo_estado}' no permitida. "
+                f"Transiciones válidas: {', '.join(transiciones) or 'ninguna'}"
+            )
+            return errores  # No continuar validando si la transición no es válida
+        
+        # Validar motivo para rechazos
+        if nuevo_estado == 'rechazada':
+            if not motivo or not motivo.strip():
+                errores.append("Se requiere un motivo para rechazar la requisición.")
+        
+        # Validar motivo para devoluciones
+        if nuevo_estado == 'devuelta':
+            if not motivo or not motivo.strip():
+                errores.append("Se requiere un motivo para devolver la requisición.")
+        
+        # Validar que no esté vencida antes de entregar
+        if nuevo_estado == 'entregada':
+            if self.fecha_recoleccion_limite:
+                if timezone.now() > self.fecha_recoleccion_limite:
+                    errores.append(
+                        f"La fecha límite de recolección ({self.fecha_recoleccion_limite.strftime('%d/%m/%Y %H:%M')}) "
+                        "ha expirado. La requisición debe marcarse como vencida."
+                    )
+        
+        # Validar que tenga detalles antes de enviar
+        if nuevo_estado in ['pendiente_admin', 'enviada']:
+            if hasattr(self, 'detalles') and not self.detalles.exists():
+                errores.append("La requisición debe tener al menos un producto.")
+        
+        return errores
+    
+    def cambiar_estado(self, nuevo_estado: str, usuario=None, motivo: str = None, validar: bool = True):
+        """
+        ISS-003: Cambia el estado de la requisición con validaciones.
+        
+        Args:
+            nuevo_estado: Estado destino
+            usuario: Usuario que realiza la transición
+            motivo: Motivo (para rechazos/devoluciones)
+            validar: Si se deben ejecutar las validaciones
+            
+        Raises:
+            ValidationError: Si la transición no es válida
+        """
+        from django.core.exceptions import ValidationError
+        from django.utils import timezone
+        
+        nuevo_estado = nuevo_estado.lower()
+        
+        # Validar transición
+        if validar:
+            errores = self.validar_transicion(nuevo_estado, motivo)
+            if errores:
+                raise ValidationError({'estado': errores})
+        
+        estado_anterior = self.estado
+        self.estado = nuevo_estado
+        
+        # Registrar campos según el nuevo estado
+        if nuevo_estado == 'rechazada' and motivo:
+            self.motivo_rechazo = motivo
+        elif nuevo_estado == 'devuelta' and motivo:
+            self.motivo_devolucion = motivo
+        elif nuevo_estado == 'vencida':
+            self.fecha_vencimiento = timezone.now()
+            if motivo:
+                self.motivo_vencimiento = motivo
+        
+        # Registrar timestamp de la transición
+        if nuevo_estado == 'pendiente_admin':
+            self.fecha_envio_admin = timezone.now()
+        elif nuevo_estado == 'pendiente_director':
+            self.fecha_autorizacion_admin = timezone.now()
+            self.fecha_envio_director = timezone.now()
+            if usuario:
+                self.administrador_centro = usuario
+        elif nuevo_estado == 'enviada':
+            self.fecha_autorizacion_director = timezone.now()
+            self.fecha_envio_farmacia = timezone.now()
+            if usuario:
+                self.director_centro = usuario
+        elif nuevo_estado == 'en_revision':
+            self.fecha_recepcion_farmacia = timezone.now()
+            if usuario:
+                self.receptor_farmacia = usuario
+        elif nuevo_estado == 'autorizada':
+            self.fecha_autorizacion_farmacia = timezone.now()
+            self.fecha_autorizacion = timezone.now()
+            if usuario:
+                self.autorizador_farmacia = usuario
+                self.autorizador = usuario
+        elif nuevo_estado == 'surtida':
+            self.fecha_surtido = timezone.now()
+            if usuario:
+                self.surtidor = usuario
+        elif nuevo_estado == 'entregada':
+            self.fecha_entrega = timezone.now()
+            self.fecha_firma_recepcion = timezone.now()
+            if usuario:
+                self.usuario_firma_recepcion = usuario
+        
+        return estado_anterior
+    
+    def registrar_cambio_estado(self, estado_anterior: str, estado_nuevo: str, 
+                                 usuario=None, accion: str = None, motivo: str = None,
+                                 ip_address: str = None, datos_adicionales: dict = None):
+        """
+        ISS-007: Registra un cambio de estado en el historial de la requisición.
+        
+        Args:
+            estado_anterior: Estado antes del cambio
+            estado_nuevo: Estado después del cambio
+            usuario: Usuario que realizó el cambio
+            accion: Tipo de acción (autorizar, rechazar, etc.)
+            motivo: Razón del cambio
+            ip_address: IP desde donde se realizó
+            datos_adicionales: Contexto extra (JSON)
+        """
+        from django.utils import timezone
+        
+        # Importar modelo de historial
+        try:
+            RequisicionHistorialEstados.objects.create(
+                requisicion=self,
+                estado_anterior=estado_anterior,
+                estado_nuevo=estado_nuevo,
+                usuario=usuario,
+                accion=accion or f"{estado_anterior}_a_{estado_nuevo}",
+                motivo=motivo or '',
+                ip_address=ip_address or '',
+                datos_adicionales=datos_adicionales or {},
+                fecha_cambio=timezone.now()
+            )
+        except Exception as e:
+            # Log error pero no fallar la operación principal
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Error registrando historial de requisición {self.numero}: {e}")
+    
+    def cambiar_estado_con_historial(self, nuevo_estado: str, usuario=None, 
+                                      motivo: str = None, ip_address: str = None,
+                                      datos_adicionales: dict = None, validar: bool = True):
+        """
+        ISS-007: Cambia el estado y registra en historial automáticamente.
+        
+        Args:
+            nuevo_estado: Estado destino
+            usuario: Usuario que realiza la transición
+            motivo: Motivo del cambio
+            ip_address: IP de la solicitud
+            datos_adicionales: Datos extra para auditoría
+            validar: Si se deben ejecutar las validaciones
+            
+        Returns:
+            str: Estado anterior
+            
+        Raises:
+            ValidationError: Si la transición no es válida
+        """
+        estado_anterior = self.estado
+        
+        # Ejecutar cambio de estado con validaciones
+        self.cambiar_estado(nuevo_estado, usuario, motivo, validar)
+        
+        # Determinar acción según el estado nuevo
+        acciones_map = {
+            'pendiente_admin': 'enviar_admin',
+            'pendiente_director': 'autorizar_admin',
+            'enviada': 'autorizar_director',
+            'en_revision': 'recibir_farmacia',
+            'autorizada': 'autorizar_farmacia',
+            'en_surtido': 'iniciar_surtido',
+            'surtida': 'surtir',
+            'entregada': 'entregar',
+            'rechazada': 'rechazar',
+            'devuelta': 'devolver',
+            'vencida': 'marcar_vencida',
+            'cancelada': 'cancelar',
+        }
+        accion = acciones_map.get(nuevo_estado, f"cambiar_a_{nuevo_estado}")
+        
+        # Registrar en historial
+        self.registrar_cambio_estado(
+            estado_anterior=estado_anterior,
+            estado_nuevo=nuevo_estado,
+            usuario=usuario,
+            accion=accion,
+            motivo=motivo,
+            ip_address=ip_address,
+            datos_adicionales=datos_adicionales
+        )
+        
+        return estado_anterior
 
 
 class DetalleRequisicion(models.Model):

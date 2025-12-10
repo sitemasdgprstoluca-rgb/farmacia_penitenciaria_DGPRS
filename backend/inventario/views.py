@@ -3465,6 +3465,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         - Para requisiciones (validar_farmacia_central=True): 
           Valida contra stock de FARMACIA CENTRAL, ya que las requisiciones
           solicitan medicamentos que serán surtidos desde farmacia.
+          ISS-004: Solo considera lotes vigentes (no vencidos).
         
         - Para operaciones internas de centro (validar_farmacia_central=False):
           Valida contra stock del centro específico.
@@ -3498,16 +3499,16 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 continue
 
             # ISS-001, ISS-004: Lógica clara de validación de stock
+            # SIEMPRE validamos contra stock VIGENTE (no vencido)
             if validar_farmacia_central:
-                # Requisiciones: validar contra FARMACIA CENTRAL
-                # Los centros solicitan medicamentos que están en farmacia
-                disponible = producto.get_stock_farmacia_central()
+                # Requisiciones: validar contra FARMACIA CENTRAL con lotes vigentes
+                disponible = producto.get_stock_farmacia_central(solo_vigentes=True)
             else:
-                # Operaciones internas: validar contra stock del centro
+                # Operaciones internas: validar contra stock del centro con lotes vigentes
                 if centro:
-                    disponible = producto.get_stock_centro(centro)
+                    disponible = producto.get_stock_centro(centro, solo_vigentes=True)
                 else:
-                    disponible = producto.get_stock_farmacia_central()
+                    disponible = producto.get_stock_farmacia_central(solo_vigentes=True)
 
             if cantidad > disponible:
                 errores.append({
@@ -3517,7 +3518,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                     'solicitado': cantidad,
                     'ubicacion': 'farmacia_central' if validar_farmacia_central else (
                         centro.nombre if centro else 'farmacia_central'
-                    )
+                    ),
+                    'nota': 'Solo se considera stock de lotes vigentes (no vencidos)'
                 })
         return errores
 
