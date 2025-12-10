@@ -400,6 +400,85 @@ class RequisicionStateMachine:
         
         return errores
     
+    def _validar_precondiciones_en_surtido(self) -> List[str]:
+        """
+        ISS-003 FIX (audit10): Valida precondiciones para iniciar surtido.
+        
+        Esta validación se ejecuta al transicionar de AUTORIZADA → EN_SURTIDO.
+        Verifica ANTES de reservar inventario que:
+        1. Hay stock suficiente en farmacia central
+        2. Hay lotes vigentes (no caducados)
+        3. Los lotes tienen cantidad mínima requerida
+        
+        CRÍTICO: Esta validación previene requisiciones que no pueden surtirse,
+        evitando inventarios negativos y discrepancias.
+        """
+        from django.db.models import Sum
+        from django.utils import timezone
+        from core.models import Lote
+        
+        hoy = timezone.now().date()
+        errores = []
+        
+        # Validar que viene de autorizada
+        if self.estado_actual not in [EstadoRequisicion.AUTORIZADA]:
+            errores.append(
+                f"Solo se puede iniciar surtido desde estado 'autorizada'. "
+                f"Estado actual: '{self.estado_actual.value}'"
+            )
+            return errores
+        
+        # Validar stock y lotes para cada producto
+        for detalle in self.requisicion.detalles.select_related('producto'):
+            cantidad_requerida = detalle.cantidad_autorizada or detalle.cantidad_solicitada
+            if cantidad_requerida <= 0:
+                errores.append(
+                    f"Cantidad inválida para {detalle.producto.clave}: {cantidad_requerida}"
+                )
+                continue
+            
+            # ISS-003 FIX (audit10): Consulta de lotes vigentes en farmacia central
+            lotes_vigentes = Lote.objects.filter(
+                centro__isnull=True,  # Solo farmacia central
+                producto=detalle.producto,
+                activo=True,
+                cantidad_actual__gt=0,
+                fecha_caducidad__gte=hoy,  # Solo lotes vigentes
+            ).values('id', 'numero_lote', 'cantidad_actual', 'fecha_caducidad')
+            
+            # Calcular stock total disponible
+            stock_disponible = sum(lote['cantidad_actual'] for lote in lotes_vigentes)
+            
+            if stock_disponible < cantidad_requerida:
+                # Listar lotes disponibles para diagnóstico
+                lotes_info = [
+                    f"  - Lote {l['numero_lote']}: {l['cantidad_actual']} uds (vence: {l['fecha_caducidad']})"
+                    for l in lotes_vigentes
+                ]
+                lotes_str = "\n".join(lotes_info) if lotes_info else "  (ninguno)"
+                
+                errores.append(
+                    f"Stock insuficiente para '{detalle.producto.clave}' ({detalle.producto.nombre}): "
+                    f"requerido {cantidad_requerida}, disponible {stock_disponible}.\n"
+                    f"Lotes vigentes en farmacia central:\n{lotes_str}"
+                )
+            
+            # ISS-003 FIX (audit10): Advertencia de lotes próximos a vencer
+            # Buscar lotes que vencen en menos de 30 días
+            from datetime import timedelta
+            limite_vencimiento = hoy + timedelta(days=30)
+            lotes_proximos_vencer = [l for l in lotes_vigentes if l['fecha_caducidad'] < limite_vencimiento]
+            
+            if lotes_proximos_vencer and not errores:
+                # Solo registrar warning, no bloquear
+                logger.warning(
+                    f"Requisición {self.requisicion.folio or self.requisicion.id}: "
+                    f"Producto {detalle.producto.clave} tiene lotes próximos a vencer: "
+                    f"{[l['numero_lote'] for l in lotes_proximos_vencer]}"
+                )
+        
+        return errores
+    
     def _validar_precondiciones_cancelar(self) -> List[str]:
         """
         ISS-002 FIX (audit4): Valida precondiciones para cancelar.
@@ -563,10 +642,13 @@ class RequisicionStateMachine:
             if usuario:
                 errores.extend(self._validar_segregacion_funciones(usuario, 'autorizar_farmacia'))
         
-        # ISS-001 FIX (audit4): Transición a en_surtido (preparación)
+        # ISS-003 FIX (audit10): Transición a en_surtido requiere validación de stock
+        # Esta es la transición crítica donde se reserva inventario
         elif destino_enum == EstadoRequisicion.EN_SURTIDO:
             # Validar que hay productos autorizados
             errores.extend(self._validar_precondiciones_autorizar())
+            # ISS-003 FIX (audit10): Validar existencias ANTES de iniciar surtido
+            errores.extend(self._validar_precondiciones_en_surtido())
         
         # Surtir - ISS-003 FIX: segregación autorizar/surtir
         elif destino_enum == EstadoRequisicion.SURTIDA:

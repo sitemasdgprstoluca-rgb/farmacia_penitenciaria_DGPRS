@@ -33,7 +33,18 @@ if not LOG_TO_STDOUT:
 # ISS-002: Modo mantenimiento para permitir comandos administrativos
 # sin bloquear por validaciones de entorno (migraciones, collectstatic, etc.)
 MAINTENANCE_MODE = config('MAINTENANCE_MODE', default=False, cast=bool)
-SKIP_SECURITY_VALIDATION = config('SKIP_SECURITY_VALIDATION', default=False, cast=bool)
+
+# ISS-001 FIX (audit10): SKIP_SECURITY_VALIDATION SOLO funciona con DEBUG=True
+# En producción (DEBUG=False), esta bandera es IGNORADA para prevenir despliegues inseguros
+_skip_security_env = config('SKIP_SECURITY_VALIDATION', default=False, cast=bool)
+if _skip_security_env and not DEBUG:
+    import sys
+    print(
+        "[SECURITY WARNING] SKIP_SECURITY_VALIDATION=True IGNORADO porque DEBUG=False. "
+        "Esta bandera solo funciona en desarrollo.",
+        file=sys.stderr
+    )
+SKIP_SECURITY_VALIDATION = _skip_security_env and DEBUG  # ISS-001 FIX: Solo válido en DEBUG=True
 
 # ISS-004: Detectar comandos de gestión de Django para permitir operaciones offline
 # Esto evita bloqueos en migraciones, collectstatic, y pipelines de CI
@@ -48,30 +59,53 @@ RUNNING_MIGRATIONS = config('RUNNING_MIGRATIONS', default=False, cast=bool)
 RUNNING_COLLECTSTATIC = config('RUNNING_COLLECTSTATIC', default=False, cast=bool)
 CI_ENVIRONMENT = config('CI', default=False, cast=bool) or config('CI_ENVIRONMENT', default=False, cast=bool)
 
-# Determinar si debemos saltar validación
+# ISS-001 FIX (audit10): Validación crítica SIEMPRE en producción
+# Solo permitir bypass para comandos offline específicos (migrate, collectstatic, etc.)
+# NUNCA para arranque del servidor en producción
 _skip_validation = (
-    MAINTENANCE_MODE or 
-    SKIP_SECURITY_VALIDATION or 
-    _is_offline_command or 
-    RUNNING_MIGRATIONS or 
-    RUNNING_COLLECTSTATIC or
-    CI_ENVIRONMENT
+    DEBUG or  # En desarrollo se permite todo
+    _is_offline_command or  # Comandos de gestión offline
+    RUNNING_MIGRATIONS or  # Pipeline de migraciones
+    RUNNING_COLLECTSTATIC or  # Pipeline de collectstatic
+    CI_ENVIRONMENT  # Entorno de CI (tests)
 )
+# ISS-001 FIX: MAINTENANCE_MODE ya NO permite bypass de validación de seguridad
+# Solo se usa para otras funciones de mantenimiento, no para arranque inseguro
 
-# Solo validar en producción Y cuando no estamos en modo mantenimiento/offline
+# ISS-001 FIX (audit10): Validaciones CRÍTICAS que SIEMPRE se ejecutan en producción
+# Incluso si _skip_validation es True, SECRET_KEY y HTTPS se validan SIEMPRE
+if not DEBUG:
+    _critical_errors = []
+    
+    # CRÍTICO 1: SECRET_KEY NUNCA puede estar vacía o ser insegura en producción
+    if not SECRET_KEY or SECRET_KEY == 'dev-only-insecure-key-not-for-production':
+        _critical_errors.append(
+            'SECRET_KEY: CRÍTICO - Variable no configurada en producción. '
+            'Genera una con: python -c "import secrets; print(secrets.token_urlsafe(64))"'
+        )
+    elif len(SECRET_KEY) < 50:
+        _critical_errors.append(f'SECRET_KEY: CRÍTICO - Muy corta ({len(SECRET_KEY)} chars). Mínimo 50.')
+    elif 'insecure' in SECRET_KEY.lower() or 'dev' in SECRET_KEY.lower():
+        _critical_errors.append('SECRET_KEY: CRÍTICO - Parece ser una clave de desarrollo.')
+    
+    # Si hay errores CRÍTICOS, fallar SIEMPRE (sin importar banderas de bypass)
+    if _critical_errors:
+        _error_msg = '\n\n' + '=' * 70 + '\n'
+        _error_msg += '🚨 ERRORES CRÍTICOS DE SEGURIDAD (NO BYPASSEABLE)\n'
+        _error_msg += '=' * 70 + '\n\n'
+        for i, err in enumerate(_critical_errors, 1):
+            _error_msg += f'  {i}. {err}\n\n'
+        _error_msg += '=' * 70 + '\n'
+        _error_msg += 'Estas validaciones NO pueden omitirse en producción.\n'
+        _error_msg += '=' * 70 + '\n'
+        raise ValueError(_error_msg)
+
+# Solo validar configuración completa cuando no estamos en modo offline
 if not DEBUG and not _skip_validation:
     # Lista de verificaciones de seguridad para producción
     _security_errors = []
     
-    # 1. SECRET_KEY debe ser segura
-    if not SECRET_KEY or SECRET_KEY == 'dev-only-insecure-key-not-for-production':
-        _security_errors.append('SECRET_KEY: Variable no configurada. Genera una con: python -c "import secrets; print(secrets.token_urlsafe(64))"')
-    elif len(SECRET_KEY) < 50:
-        _security_errors.append(f'SECRET_KEY: Muy corta ({len(SECRET_KEY)} chars). Mínimo 50 caracteres.')
-    elif 'insecure' in SECRET_KEY.lower() or 'dev' in SECRET_KEY.lower():
-        _security_errors.append('SECRET_KEY: Parece ser una clave de desarrollo. Usa una clave segura.')
-    
-    # 2. DATABASE_URL debe ser PostgreSQL
+    # 1. DATABASE_URL debe ser PostgreSQL
     _db_url = config('DATABASE_URL', default='')
     if not _db_url:
         _security_errors.append('DATABASE_URL: Variable no configurada. Requerida para producción.')
@@ -80,19 +114,30 @@ if not DEBUG and not _skip_validation:
     elif not _db_url.startswith(('postgres://', 'postgresql://')):
         _security_errors.append('DATABASE_URL: Debe ser una URL de PostgreSQL válida.')
     
-    # 3. ALLOWED_HOSTS debe estar configurado
+    # 2. ISS-002 FIX (audit10): ALLOWED_HOSTS DEBE estar configurado explícitamente
+    # Ya no hay default permisivo - vacío = error
     _allowed_hosts = config('ALLOWED_HOSTS', default='')
-    if not _allowed_hosts or _allowed_hosts in ('localhost', '127.0.0.1', '*'):
-        _security_errors.append('ALLOWED_HOSTS: Configura los dominios de producción (no localhost ni *).')
+    if not _allowed_hosts:
+        _security_errors.append(
+            'ALLOWED_HOSTS: OBLIGATORIO - No hay default en producción. '
+            'Configura los dominios de producción explícitamente.'
+        )
+    elif _allowed_hosts == '*':
+        _security_errors.append('ALLOWED_HOSTS: Wildcard (*) no permitido en producción.')
+    elif _allowed_hosts in ('localhost', '127.0.0.1', 'localhost,127.0.0.1,testserver'):
+        _security_errors.append(
+            'ALLOWED_HOSTS: Solo contiene hosts de desarrollo. '
+            'Agrega los dominios de producción.'
+        )
     
-    # 4. CORS_ALLOWED_ORIGINS debe estar configurado
+    # 3. CORS_ALLOWED_ORIGINS debe estar configurado
     _cors_origins = config('CORS_ALLOWED_ORIGINS', default='')
     if not _cors_origins:
         _security_errors.append('CORS_ALLOWED_ORIGINS: Variable no configurada. Requerida para frontend.')
     elif 'localhost' in _cors_origins and 'onrender.com' not in _cors_origins:
         _security_errors.append('CORS_ALLOWED_ORIGINS: Contiene localhost pero no dominios de producción.')
     
-    # 5. CSRF_TRUSTED_ORIGINS debe estar configurado
+    # 4. CSRF_TRUSTED_ORIGINS debe estar configurado
     _csrf_origins = config('CSRF_TRUSTED_ORIGINS', default='')
     if not _csrf_origins:
         _security_errors.append('CSRF_TRUSTED_ORIGINS: Variable no configurada. Requerida para protección CSRF.')
@@ -109,9 +154,30 @@ if not DEBUG and not _skip_validation:
         _error_msg += '=' * 70 + '\n'
         raise ValueError(_error_msg)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,testserver', cast=Csv())
-# Hardened security toggles (enable in producción)
+# ISS-002 FIX (audit10): ALLOWED_HOSTS con validación estricta
+# En producción sin _skip_validation ya se validó arriba
+# En desarrollo o comandos offline, usar default seguro
+if DEBUG:
+    ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,testserver', cast=Csv())
+else:
+    # En producción, SIEMPRE requiere configuración explícita
+    _hosts = config('ALLOWED_HOSTS', default='')
+    if not _hosts and _skip_validation:
+        # Solo para comandos offline en producción, permitir localhost temporal
+        ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+    else:
+        ALLOWED_HOSTS = config('ALLOWED_HOSTS', cast=Csv())
+
+# ISS-002 FIX (audit10): ENFORCE_HTTPS = True por defecto en producción
+# Solo se puede desactivar explícitamente con ENFORCE_HTTPS=False
 ENFORCE_HTTPS = config('ENFORCE_HTTPS', default=not DEBUG, cast=bool)
+if not DEBUG and not ENFORCE_HTTPS:
+    import sys
+    print(
+        "[SECURITY WARNING] ENFORCE_HTTPS=False en producción. "
+        "El tráfico HTTP expone credenciales JWT. Considera habilitar HTTPS.",
+        file=sys.stderr
+    )
 SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=ENFORCE_HTTPS, cast=bool)
 SECURE_HSTS_SECONDS = config('SECURE_HSTS_SECONDS', default=31536000 if ENFORCE_HTTPS else 0, cast=int)
 SECURE_HSTS_INCLUDE_SUBDOMAINS = config('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=ENFORCE_HTTPS, cast=bool)
