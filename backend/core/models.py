@@ -1899,6 +1899,29 @@ class Requisicion(models.Model):
             if self.fecha_surtido < self.fecha_autorizacion:
                 errors['fecha_surtido'] = 'La fecha de surtido no puede ser anterior a la fecha de autorización.'
         
+        # ========== ISS-009 FIX (audit7): Validar coherencia de campos de firma ==========
+        # Pares usuario/fecha deben estar completos para estados terminales
+        if estado in ['surtida', 'parcial']:
+            # Surtido requiere usuario Y fecha
+            if self.usuario_firma_surtido and not self.fecha_firma_surtido:
+                errors['fecha_firma_surtido'] = 'Falta fecha de firma de surtido.'
+            if self.fecha_firma_surtido and not self.usuario_firma_surtido:
+                errors['usuario_firma_surtido'] = 'Falta usuario de firma de surtido.'
+        
+        if estado == 'entregada':
+            # Entrega requiere usuario Y fecha de recepción
+            if self.usuario_firma_recepcion and not self.fecha_firma_recepcion:
+                errors['fecha_firma_recepcion'] = 'Falta fecha de firma de recepción.'
+            if self.fecha_firma_recepcion and not self.usuario_firma_recepcion:
+                errors['usuario_firma_recepcion'] = 'Falta usuario de firma de recepción.'
+            
+            # ISS-009 FIX: Advertir si no hay evidencia de surtido en entrega
+            if not self.usuario_firma_surtido:
+                logger.warning(
+                    f"ISS-009 AUDIT: Requisición {self.numero} en estado 'entregada' "
+                    f"sin usuario de surtido registrado. Posible problema de trazabilidad."
+                )
+        
         # ========== ISS-006 FIX: Validar rutas de archivos de firma ==========
         # Campos de ruta de firma que deben ser validados
         campos_firma = [

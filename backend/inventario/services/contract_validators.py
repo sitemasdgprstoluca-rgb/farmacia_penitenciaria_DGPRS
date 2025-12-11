@@ -486,12 +486,21 @@ class RequisicionContractValidator:
     
     def validar_surtido(self) -> ContratoValidacion:
         """
-        ISS-013: Valida reglas para surtir una requisición.
+        ISS-013 + ISS-007 FIX (audit7): Valida reglas para surtir una requisición.
+        
+        ISS-007 FIX (audit7): Validaciones agregadas:
+        - Caducidad de lotes disponibles
+        - Vigencia de contratos asociados
+        - Límites por producto (advertencia)
         
         Returns:
             ContratoValidacion con resultados
         """
+        from django.utils import timezone
+        from core.models import Lote
+        
         self.contrato = ContratoValidacion()
+        hoy = timezone.now().date()
         
         # Debe estar autorizada o parcial
         if self.requisicion.estado not in self.ESTADOS_SURTIBLES:
@@ -512,6 +521,51 @@ class RequisicionContractValidator:
                 TipoValidacion.NEGOCIO,
                 'No hay productos autorizados para surtir'
             )
+        
+        # ISS-007 FIX (audit7): Validar caducidad de lotes disponibles para cada producto
+        for detalle in self.requisicion.detalles.all():
+            if not detalle.cantidad_autorizada or detalle.cantidad_autorizada <= 0:
+                continue
+                
+            # Verificar lotes disponibles para este producto en farmacia central
+            lotes_disponibles = Lote.objects.filter(
+                producto=detalle.producto,
+                centro__isnull=True,  # Farmacia central
+                activo=True,
+                cantidad_actual__gt=0,
+                fecha_caducidad__gte=hoy
+            )
+            
+            if not lotes_disponibles.exists():
+                self.contrato.agregar_error(
+                    f'producto.{detalle.producto.clave}',
+                    TipoValidacion.NEGOCIO,
+                    f'No hay lotes vigentes disponibles para {detalle.producto.nombre}'
+                )
+            else:
+                # ISS-007 FIX: Verificar contrato vigente en lotes
+                lotes_sin_contrato = lotes_disponibles.filter(
+                    numero_contrato__isnull=True
+                ).count()
+                
+                if lotes_sin_contrato > 0:
+                    self.contrato.agregar_advertencia(
+                        f'producto.{detalle.producto.clave}.contrato',
+                        TipoValidacion.NEGOCIO,
+                        f'{lotes_sin_contrato} lote(s) de {detalle.producto.nombre} sin contrato asociado'
+                    )
+                
+                # ISS-007 FIX: Advertir sobre lotes próximos a vencer (30 días)
+                lotes_prox_vencer = lotes_disponibles.filter(
+                    fecha_caducidad__lte=hoy + timezone.timedelta(days=30)
+                ).count()
+                
+                if lotes_prox_vencer > 0:
+                    self.contrato.agregar_advertencia(
+                        f'producto.{detalle.producto.clave}.caducidad',
+                        TipoValidacion.NEGOCIO,
+                        f'{lotes_prox_vencer} lote(s) de {detalle.producto.nombre} vencen en próximos 30 días'
+                    )
         
         return self.contrato
 

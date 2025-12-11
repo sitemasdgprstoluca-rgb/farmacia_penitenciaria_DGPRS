@@ -1255,12 +1255,16 @@ class RequisicionService:
     
     def _obtener_o_crear_lote_destino(self, lote_origen, centro_destino, cantidad):
         """
-        Obtiene o crea lote destino en el centro.
+        ISS-004 FIX (audit7): Obtiene o crea lote destino en el centro con validaciones.
         
         El lote en el centro es una COPIA FIEL del lote de farmacia:
         - Mismo número de lote
         - Misma fecha de caducidad
         - Vinculado a lote_origen
+        
+        ISS-004 FIX (audit7): Validaciones agregadas:
+        - Caducidad > hoy (no transferir productos vencidos)
+        - Log de auditoría en reactivaciones
         
         Args:
             lote_origen: Lote de farmacia central
@@ -1269,7 +1273,32 @@ class RequisicionService:
             
         Returns:
             Lote: Instancia del lote destino
+            
+        Raises:
+            ValidationError: Si el lote está vencido o tiene datos inválidos
         """
+        from django.core.exceptions import ValidationError
+        
+        hoy = timezone.now().date()
+        
+        # ISS-004 FIX (audit7): Validar caducidad antes de transferir
+        if lote_origen.fecha_caducidad and lote_origen.fecha_caducidad < hoy:
+            raise ValidationError({
+                'lote': (
+                    f'No se puede transferir el lote {lote_origen.numero_lote} porque está vencido '
+                    f'(caducidad: {lote_origen.fecha_caducidad}). '
+                    f'Los productos vencidos no pueden distribuirse a centros.'
+                )
+            })
+        
+        # ISS-004 FIX (audit7): Advertir si caduca pronto (próximos 30 días)
+        dias_para_vencer = (lote_origen.fecha_caducidad - hoy).days if lote_origen.fecha_caducidad else 999
+        if dias_para_vencer <= 30:
+            logger.warning(
+                f"ISS-004 AUDIT: Lote {lote_origen.numero_lote} transferido con caducidad próxima "
+                f"({dias_para_vencer} días). Producto: {lote_origen.producto.clave}"
+            )
+        
         # Buscar lote existente con mismo número en el centro
         lote_destino = Lote.objects.select_for_update().filter(
             producto=lote_origen.producto,
@@ -1297,6 +1326,13 @@ class RequisicionService:
             ).first()
             
             if lote_destino:
+                # ISS-004 FIX (audit7): Log de auditoría al reactivar lote
+                logger.info(
+                    f"ISS-004 AUDIT: Reactivando lote inactivo {lote_destino.numero_lote} "
+                    f"en centro {centro_destino.nombre}. Cantidad anterior: {lote_destino.cantidad_actual}, "
+                    f"Cantidad agregada: {cantidad}. Requisición: {self.requisicion.numero}"
+                )
+                
                 # Reactivar lote existente
                 Lote.objects.filter(pk=lote_destino.pk).update(
                     cantidad_actual=F('cantidad_actual') + cantidad,

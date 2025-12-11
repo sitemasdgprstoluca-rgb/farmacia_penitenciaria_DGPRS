@@ -178,14 +178,42 @@ class UserViewSet(viewsets.ModelViewSet):
         return bool({'FARMACIA_ADMIN', 'FARMACIA', 'ADMIN'} & group_names)
 
     def get_queryset(self):
+        """
+        ISS-005 FIX (audit7): Filtra usuarios por centro Y jerarquía de roles.
+        
+        Un usuario solo puede ver:
+        - Superusuario/Admin: Todos los usuarios
+        - Farmacia: Usuarios de menor privilegio
+        - Usuario de centro: Solo usuarios de su centro con menor o igual privilegio
+        """
         user = self.request.user
-        if user.is_superuser or self._is_farmacia_or_admin(user):
+        if user.is_superuser:
             qs = User.objects.all()
+        elif self._is_farmacia_or_admin(user):
+            # ISS-005 FIX: Farmacia ve todos excepto superusuarios
+            qs = User.objects.filter(is_superuser=False)
         else:
-            # Usuario no admin solo ve usuarios de su centro (o solo a sí mismo si no tiene centro)
+            # Usuario no admin solo ve usuarios de su centro
             if hasattr(user, 'centro') and user.centro:
                 qs = User.objects.filter(centro=user.centro)
+                
+                # ISS-005 FIX (audit7): Filtrar por jerarquía de roles
+                # Solo ver usuarios de menor o igual privilegio
+                user_level = get_role_level(user)
+                
+                # Obtener roles que este usuario puede ver (igual o menor privilegio)
+                roles_visibles = [rol for rol, nivel in ROLE_HIERARCHY.items() 
+                                  if nivel >= user_level]
+                
+                # Filtrar por roles permitidos
+                qs = qs.filter(rol__in=roles_visibles)
+                
+                logger.debug(
+                    f"ISS-005: Usuario {user.username} (nivel {user_level}) "
+                    f"puede ver roles: {roles_visibles}"
+                )
             else:
+                # Sin centro, solo ve a sí mismo
                 qs = User.objects.filter(id=user.id)
         
         # Aplicar filtros server-side

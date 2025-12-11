@@ -40,11 +40,15 @@ logger = logging.getLogger(__name__)
 # Magic bytes para formatos Excel válidos
 # XLSX/XLSM son archivos ZIP (PK\x03\x04)
 # XLS antiguo usa formato OLE2 (Compound File Binary Format)
+# ISS-008 FIX (audit7): XLSM eliminado - archivos con macros NO permitidos
 EXCEL_MAGIC_BYTES = {
     '.xlsx': b'PK\x03\x04',  # ZIP archive (Office Open XML)
-    '.xlsm': b'PK\x03\x04',  # ZIP archive with macros
+    # '.xlsm': REMOVIDO - ISS-008 FIX: No permitir archivos con macros
     '.xls': b'\xD0\xCF\x11\xE0',  # OLE2 Compound Document
 }
+
+# ISS-008 FIX (audit7): Extensiones explícitamente prohibidas por seguridad
+EXCEL_EXTENSIONS_BLOCKED = {'.xlsm', '.xlsb', '.xltm', '.xla', '.xlam'}  # Formatos con macros
 
 # ISS-006: Magic bytes y MIME types para imágenes permitidas en firmas
 IMAGE_MAGIC_BYTES = {
@@ -358,13 +362,16 @@ def validar_archivo_imagen(file, max_size_mb=2):
 
 def validar_archivo_excel(file):
     """
-    Valida archivo Excel antes de procesarlo con múltiples capas de seguridad.
+    ISS-008 FIX (audit7): Valida archivo Excel antes de procesarlo con múltiples capas de seguridad.
     
     Validaciones:
     1. Archivo presente y con nombre válido
-    2. Extensión permitida (.xlsx, .xls)
+    2. Extensión permitida (.xlsx, .xls) - NO xlsm ni otros con macros
     3. Tamaño dentro de límites
     4. Magic bytes correctos (contenido real coincide con extensión)
+    
+    ISS-008 FIX (audit7): Archivos con macros (.xlsm, .xlsb, etc) están BLOQUEADOS
+    por seguridad. Solo se permiten formatos sin código ejecutable.
     
     Retorna: (es_valido, mensaje_error)
     """
@@ -383,6 +390,18 @@ def validar_archivo_excel(file):
     # 3. Validar extensión
     if not ext:
         return False, 'El archivo debe tener una extensión (.xlsx o .xls)'
+    
+    # ISS-008 FIX (audit7): Bloquear extensiones con macros ANTES de cualquier otra validación
+    if ext in EXCEL_EXTENSIONS_BLOCKED:
+        logger.warning(
+            f"ISS-008: Archivo rechazado por extensión con macros: {nombre}. "
+            f"Extensiones bloqueadas: {EXCEL_EXTENSIONS_BLOCKED}"
+        )
+        return False, (
+            f'Extensión {ext} no permitida por seguridad. '
+            f'Los archivos con macros (.xlsm, .xlsb, etc.) están bloqueados. '
+            f'Por favor convierta a .xlsx (sin macros) antes de importar.'
+        )
     
     extensiones_permitidas = getattr(settings, 'IMPORT_ALLOWED_EXTENSIONS', ['.xlsx', '.xls'])
     if ext not in extensiones_permitidas:
