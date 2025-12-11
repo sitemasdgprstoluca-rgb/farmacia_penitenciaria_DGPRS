@@ -7,9 +7,13 @@ from core.health import health_check, readiness_check, liveness_check
 
 urlpatterns = [
     # Health checks (sin autenticación para load balancers)
+    # Disponible en raíz Y bajo /api/ para compatibilidad con frontend
     path('health/', health_check, name='health'),
     path('ready/', readiness_check, name='readiness'),
     path('alive/', liveness_check, name='liveness'),
+    path('api/health/', health_check, name='api-health'),
+    path('api/ready/', readiness_check, name='api-readiness'),
+    path('api/alive/', liveness_check, name='api-liveness'),
     
     # Admin
     path('admin/', admin.site.urls),
