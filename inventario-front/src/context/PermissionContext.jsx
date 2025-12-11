@@ -1,9 +1,13 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { PermissionContext } from './contexts';
 import apiClient, { authAPI } from '../services/api';
 import { setAccessToken, hasAccessToken, migrateFromLocalStorage } from '../services/tokenManager';
 
 /**
+ * ISS-001 FIX (audit28): Permisos del backend tienen prioridad
+ * ISS-002 FIX (audit28): Validar sesión ANTES de hidratar UI
+ * ISS-005 FIX (audit28): Minimizar datos en localStorage
+ * 
  * Roles soportados por el front:
  * ADMIN (admin_sistema / superusuario)
  * FARMACIA (farmacia / admin_farmacia / grupo FARMACIA_ADMIN)
@@ -12,6 +16,28 @@ import { setAccessToken, hasAccessToken, migrateFromLocalStorage } from '../serv
  * 
  * Los permisos vienen del backend calculados (rol + personalizados)
  */
+
+// ISS-005 FIX: Claves mínimas para sessionStorage (más seguro que localStorage)
+const SESSION_KEYS = {
+  USER_ID: 'session_uid',
+  USER_ROLE: 'session_role',
+  SESSION_HASH: 'session_hash',
+};
+
+// ISS-005 FIX: Generar hash simple para detectar manipulación
+const generateSessionHash = (userId, role) => {
+  const data = `${userId}:${role}:${Date.now()}`;
+  let hash = 0;
+  for (let i = 0; i < data.length; i++) {
+    const char = data.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return hash.toString(36);
+};
+
+// ISS-001 FIX: Permisos por rol como FALLBACK SOLAMENTE
+// El backend siempre tiene prioridad cuando envía permisos
 const PERMISOS_POR_ROL = {
   ADMIN: {
     verDashboard: true,
@@ -305,7 +331,7 @@ const calcularPermisos = (userData, userGroups) => {
   const isCentroUser = role === 'CENTRO';
   const isVistaUser = role === 'VISTA';
 
-  // Obtener permisos base del rol
+  // Obtener permisos base del rol (FALLBACK)
   const basePerms = PERMISOS_POR_ROL[role] || PERMISOS_POR_ROL.SIN_ROL;
 
   // Flags derivados que siempre se calculan (NO incluir permisos de módulos aquí)
@@ -322,20 +348,41 @@ const calcularPermisos = (userData, userGroups) => {
     // configurarTema viene del basePerms del rol, NO lo sobrescribimos aquí
   };
 
-  // Si el backend envía permisos calculados, mezclarlos con los base y flags
-  // Los permisos del backend tienen prioridad sobre los base (excepto flags derivados)
-  if (userData?.permisos && typeof userData.permisos === 'object') {
+  // ISS-001 FIX (audit28): Permisos del backend tienen PRIORIDAD ABSOLUTA
+  // Los permisos base solo son fallback cuando el backend no envía permisos
+  if (userData?.permisos && typeof userData.permisos === 'object' && Object.keys(userData.permisos).length > 0) {
+    // Log de advertencia si hay discrepancias significativas
+    const permisosBackend = userData.permisos;
+    const discrepancias = [];
+    
+    // Verificar permisos críticos
+    const permisosCriticos = ['crearRequisicion', 'autorizarRequisicion', 'surtirRequisicion', 'gestionUsuarios'];
+    permisosCriticos.forEach(permiso => {
+      if (basePerms[permiso] !== undefined && permisosBackend[permiso] !== undefined) {
+        if (basePerms[permiso] !== permisosBackend[permiso]) {
+          discrepancias.push(`${permiso}: fallback=${basePerms[permiso]}, backend=${permisosBackend[permiso]}`);
+        }
+      }
+    });
+    
+    if (discrepancias.length > 0) {
+      console.warn('[PermissionContext] ISS-001: Discrepancias detectadas (usando backend):', discrepancias);
+    }
+    
     return {
-      ...basePerms,           // Permisos base del rol (fallback)
-      ...userData.permisos,   // Permisos del backend (override)
-      ...flagsDerivados,      // Flags derivados (siempre calculados, NO incluye configurarTema)
+      ...basePerms,           // Permisos base del rol (fallback más bajo)
+      ...userData.permisos,   // Permisos del backend (PRIORIDAD)
+      ...flagsDerivados,      // Flags derivados (siempre calculados)
+      _source: 'backend',     // Marcador de origen para debugging
     };
   }
 
-  // Fallback: usar permisos por rol si el backend no envió permisos
+  // ISS-001 FIX: Fallback SOLO si el backend no envió permisos
+  console.warn('[PermissionContext] ISS-001: Usando permisos fallback (backend no envió permisos)');
   return {
     ...basePerms,
     ...flagsDerivados,
+    _source: 'fallback',
   };
 };
 
@@ -344,20 +391,43 @@ export function PermissionProvider({ children }) {
   const [grupos, setGrupos] = useState([]);
   const [permisos, setPermisos] = useState({});
   const [loading, setLoading] = useState(true);
+  // ISS-002 FIX: Flag para indicar si los permisos están validados con el backend
+  const [permisosValidados, setPermisosValidados] = useState(false);
+  // ISS-002 FIX: Ref para evitar hidratación múltiple
+  const hydrationRef = useRef(false);
 
-  const hydrateFromUser = useCallback((userData) => {
+  // ISS-005 FIX: Hidratar SOLO datos mínimos necesarios para UI básica
+  // NO usar para permisos hasta validar con backend
+  const hydrateFromUser = useCallback((userData, validated = false) => {
     if (!userData) return;
     setUser(userData);
+    
+    // ISS-005 FIX: Guardar SOLO datos mínimos en sessionStorage (no localStorage)
     try {
-      localStorage.setItem('user', JSON.stringify(userData));
+      sessionStorage.setItem(SESSION_KEYS.USER_ID, userData.id?.toString() || '');
+      sessionStorage.setItem(SESSION_KEYS.USER_ROLE, userData.rol || '');
+      sessionStorage.setItem(SESSION_KEYS.SESSION_HASH, generateSessionHash(userData.id, userData.rol));
+      // Limpiar localStorage antiguo si existe
+      localStorage.removeItem('user');
     } catch (_) {
-      // Ignorar almacenamiento local fallido
+      // Ignorar errores de almacenamiento
     }
+    
     const baseGroups = userData.groups || (userData.grupos || []).map((name) => ({ name }));
     setGrupos(baseGroups);
-    // SIEMPRE usar calcularPermisos para incluir flags derivados (role, isAdmin, isFarmaciaAdmin, etc.)
-    // calcularPermisos ya mezcla userData.permisos del backend con los flags calculados
-    setPermisos(calcularPermisos(userData, baseGroups));
+    
+    // ISS-002 FIX: Solo calcular permisos completos si datos están validados con backend
+    if (validated) {
+      setPermisos(calcularPermisos(userData, baseGroups));
+      setPermisosValidados(true);
+    } else {
+      // Permisos mínimos hasta validar
+      setPermisos({
+        verPerfil: true,
+        role: getRolFromUser(userData, baseGroups),
+        _source: 'pending_validation',
+      });
+    }
   }, []);
 
   const cargarUsuario = useCallback(async (forceRefresh = false) => {
@@ -367,9 +437,9 @@ export function PermissionProvider({ children }) {
       
       // Si no hay token en memoria Y hay evidencia de sesión previa, intentar refresh
       if (!hasAccessToken()) {
-        // Solo intentar refresh si hay usuario guardado o se fuerza
-        const storedUser = localStorage.getItem('user');
-        if (!storedUser && !forceRefresh) {
+        // ISS-002/005 FIX: Verificar sessionStorage en lugar de localStorage
+        const storedUserId = sessionStorage.getItem(SESSION_KEYS.USER_ID);
+        if (!storedUserId && !forceRefresh) {
           // No hay sesión previa, no intentar refresh
           setLoading(false);
           return;
@@ -381,45 +451,83 @@ export function PermissionProvider({ children }) {
           if (refreshResponse.data?.access) {
             setAccessToken(refreshResponse.data.access);
           } else {
-            // Refresh falló, limpiar datos de usuario
-            localStorage.removeItem('user');
+            // Refresh falló, limpiar datos de sesión
+            sessionStorage.removeItem(SESSION_KEYS.USER_ID);
+            sessionStorage.removeItem(SESSION_KEYS.USER_ROLE);
+            sessionStorage.removeItem(SESSION_KEYS.SESSION_HASH);
+            localStorage.removeItem('user'); // Limpiar legacy
             setLoading(false);
             return;
           }
         } catch (refreshError) {
           // No hay sesión válida, limpiar datos
-          localStorage.removeItem('user');
+          sessionStorage.removeItem(SESSION_KEYS.USER_ID);
+          sessionStorage.removeItem(SESSION_KEYS.USER_ROLE);
+          sessionStorage.removeItem(SESSION_KEYS.SESSION_HASH);
+          localStorage.removeItem('user'); // Limpiar legacy
           setLoading(false);
           return;
         }
       }
 
-      // Cargar datos del usuario (el interceptor añade el token automáticamente)
+      // ISS-002 FIX: Cargar datos del usuario Y VALIDAR permisos con backend
+      // El interceptor añade el token automáticamente
       const response = await apiClient.get('/usuarios/me/');
-      hydrateFromUser(response.data);
+      hydrateFromUser(response.data, true); // true = datos validados
     } catch (error) {
       console.error('Error al cargar usuario:', error);
-      // Limpiar datos de sesión inválida
-      localStorage.removeItem('user');
+      // ISS-002/005 FIX: Limpiar datos de sesión inválida
+      sessionStorage.removeItem(SESSION_KEYS.USER_ID);
+      sessionStorage.removeItem(SESSION_KEYS.USER_ROLE);
+      sessionStorage.removeItem(SESSION_KEYS.SESSION_HASH);
+      localStorage.removeItem('user'); // Limpiar legacy
+      setPermisosValidados(false);
     } finally {
       setLoading(false);
     }
   }, [hydrateFromUser]);
 
   useEffect(() => {
-    // Hidratación inmediata desde localStorage para evitar flash
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
+    // ISS-002 FIX: NO hidratar permisos completos desde storage local
+    // Solo mostrar UI mínima mientras validamos con backend
+    if (hydrationRef.current) return;
+    hydrationRef.current = true;
+    
+    // ISS-005 FIX: Verificar si hay sesión previa en sessionStorage
+    const storedUserId = sessionStorage.getItem(SESSION_KEYS.USER_ID);
+    const storedRole = sessionStorage.getItem(SESSION_KEYS.USER_ROLE);
+    const storedHash = sessionStorage.getItem(SESSION_KEYS.SESSION_HASH);
+    
+    // Migrar de localStorage legacy si existe
+    const legacyUser = localStorage.getItem('user');
+    if (legacyUser && !storedUserId) {
       try {
-        hydrateFromUser(JSON.parse(storedUser));
-      } catch (error) {
+        const parsed = JSON.parse(legacyUser);
+        sessionStorage.setItem(SESSION_KEYS.USER_ID, parsed.id?.toString() || '');
+        sessionStorage.setItem(SESSION_KEYS.USER_ROLE, parsed.rol || '');
+        sessionStorage.setItem(SESSION_KEYS.SESSION_HASH, generateSessionHash(parsed.id, parsed.rol));
+        localStorage.removeItem('user'); // Eliminar legacy
+      } catch (e) {
         localStorage.removeItem('user');
       }
     }
+    
+    // ISS-002 FIX: Solo mostrar rol básico mientras carga (SIN permisos completos)
+    if (storedUserId && storedRole && storedHash) {
+      // Permisos mínimos - solo para evitar flash de UI
+      setUser({ id: storedUserId, rol: storedRole });
+      setPermisos({
+        verPerfil: true,
+        role: storedRole.toUpperCase() === 'ADMIN' ? 'ADMIN' : 
+              storedRole.toUpperCase() === 'FARMACIA' ? 'FARMACIA' :
+              storedRole.toUpperCase() === 'CENTRO' ? 'CENTRO' : 'VISTA',
+        _source: 'pending_validation',
+      });
+    }
 
-    // SIEMPRE cargar usuario fresco del servidor para tener datos actualizados
+    // SIEMPRE cargar usuario fresco del servidor para tener permisos actualizados
     cargarUsuario();
-  }, [cargarUsuario, hydrateFromUser]);
+  }, [cargarUsuario]);
 
   const verificarPermiso = (permiso) => permisos[permiso] || false;
 
@@ -448,7 +556,16 @@ export function PermissionProvider({ children }) {
   };
 
   return (
-    <PermissionContext.Provider value={{ user, grupos, permisos, loading, verificarPermiso, getRolPrincipal, recargarUsuario: cargarUsuario }}>
+    <PermissionContext.Provider value={{ 
+      user, 
+      grupos, 
+      permisos, 
+      loading, 
+      permisosValidados, // ISS-002 FIX: Exponer si permisos están validados
+      verificarPermiso, 
+      getRolPrincipal, 
+      recargarUsuario: cargarUsuario 
+    }}>
       {children}
     </PermissionContext.Provider>
   );

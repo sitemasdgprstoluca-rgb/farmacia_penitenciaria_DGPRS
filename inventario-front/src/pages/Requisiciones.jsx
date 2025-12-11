@@ -794,7 +794,13 @@ const Requisiciones = () => {
     if (itemIndex === -1) return;
     
     const item = form.items[itemIndex];
-    const maxCantidad = item.stock_disponible || 9999;
+    // ISS-004 FIX (audit28): No usar fallback 9999, requerir stock válido
+    const maxCantidad = item.stock_disponible;
+    
+    if (!maxCantidad || maxCantidad <= 0) {
+      toast.error('Stock no disponible. Recargue el catálogo.');
+      return;
+    }
     
     if (item.cantidad_solicitada >= maxCantidad) {
       toast.error('Inventario máximo alcanzado');
@@ -872,7 +878,14 @@ const Requisiciones = () => {
     if (isSubmitting) return;
     
     const item = form.items[idx];
-    const maxCantidad = item.stock_disponible || 9999;
+    // ISS-004 FIX (audit28): No usar fallback 9999, usar stock real o bloquear
+    const maxCantidad = item.stock_disponible || 0;
+    
+    if (maxCantidad <= 0) {
+      toast.error('Stock no disponible. Recargue el catálogo.');
+      return;
+    }
+    
     const cantidad = Math.min(Math.max(1, Number(value) || 1), maxCantidad);
     setForm((prev) => {
       const items = [...prev.items];
@@ -891,31 +904,63 @@ const Requisiciones = () => {
     });
   };
 
-  // ISS-008: Verificar stock actualizado antes de enviar requisición
+  // ISS-003 FIX (audit28): Verificar stock actualizado antes de enviar requisición
   // Detecta si el stock cambió mientras el usuario armaba el carrito
+  // CRÍTICO: Usar lotesAPI.getById (no lotesAPI.get que no existe)
   const verificarStockActualizado = async () => {
     if (!form.items.length) return { ok: true, items: [] };
     
-    const itemsConProblema = [];
-    
     try {
-      // Consultar stock actual de cada lote en paralelo
-      const verificaciones = await Promise.all(
-        form.items.map(async (item) => {
-          try {
-            const resp = await lotesAPI.get(item.lote);
-            const stockActual = resp.data?.cantidad_actual ?? resp.data?.stock_actual ?? 0;
-            return {
-              ...item,
-              stock_actual: stockActual,
-              stock_cambio: stockActual !== item.stock_disponible,
-              stock_insuficiente: item.cantidad_solicitada > stockActual,
-            };
-          } catch {
-            return { ...item, stock_actual: 0, stock_cambio: true, stock_insuficiente: true };
-          }
-        })
-      );
+      // ISS-003 FIX: Consultar stock actual de cada lote en paralelo usando getById
+      // Limitar concurrencia para catálogos grandes (máx 10 simultáneas)
+      const BATCH_SIZE = 10;
+      const batches = [];
+      for (let i = 0; i < form.items.length; i += BATCH_SIZE) {
+        batches.push(form.items.slice(i, i + BATCH_SIZE));
+      }
+      
+      const verificaciones = [];
+      for (const batch of batches) {
+        const batchResults = await Promise.all(
+          batch.map(async (item) => {
+            try {
+              // ISS-003 FIX: Usar getById en lugar de get
+              const resp = await lotesAPI.getById(item.lote);
+              // Normalizar campo de stock (backend puede enviar cantidad_actual o stock_disponible)
+              const stockActual = resp.data?.cantidad_actual ?? resp.data?.stock_disponible ?? resp.data?.stock_actual;
+              
+              // ISS-004 FIX: No usar fallback 9999, requerir stock válido
+              if (stockActual === undefined || stockActual === null) {
+                console.warn(`[verificarStock] Lote ${item.lote} sin stock definido`);
+                return { 
+                  ...item, 
+                  stock_actual: 0, 
+                  stock_cambio: true, 
+                  stock_insuficiente: true,
+                  error_stock: 'Stock no disponible del servidor' 
+                };
+              }
+              
+              return {
+                ...item,
+                stock_actual: stockActual,
+                stock_cambio: stockActual !== item.stock_disponible,
+                stock_insuficiente: item.cantidad_solicitada > stockActual,
+              };
+            } catch (err) {
+              console.error(`[verificarStock] Error en lote ${item.lote}:`, err);
+              return { 
+                ...item, 
+                stock_actual: 0, 
+                stock_cambio: true, 
+                stock_insuficiente: true,
+                error_stock: 'Error consultando stock' 
+              };
+            }
+          })
+        );
+        verificaciones.push(...batchResults);
+      }
       
       // Actualizar los items con el stock fresco
       setForm((prev) => ({
@@ -2057,15 +2102,15 @@ const Requisiciones = () => {
                                     <input
                                       type="number"
                                       min="1"
-                                      max={item.stock_disponible || 9999}
+                                      max={item.stock_disponible || 1}
                                       value={item.cantidad_solicitada}
                                       onChange={(e) => actualizarCantidad(idx, e.target.value)}
-                                      disabled={isSubmitting}
+                                      disabled={isSubmitting || !item.stock_disponible}
                                       className="w-16 border rounded px-2 py-1 text-center font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                                     />
                                     <button
                                       onClick={() => actualizarCantidad(idx, item.cantidad_solicitada + 1)}
-                                      disabled={isSubmitting || item.cantidad_solicitada >= (item.stock_disponible || 9999)}
+                                      disabled={isSubmitting || !item.stock_disponible || item.cantidad_solicitada >= item.stock_disponible}
                                       className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                       <FaPlus className="text-xs" />
