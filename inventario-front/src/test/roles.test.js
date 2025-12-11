@@ -13,6 +13,7 @@ import {
   puedeVerGlobal,
   getRolPrincipal,
   normalizarRol,
+  puedeEjecutarAccionFlujo,
   ADMIN_ROLES,
   FARMACIA_ROLES,
   CENTRO_ROLES,
@@ -201,6 +202,83 @@ describe('Módulo de Roles', () => {
     it('VISTA_ROLES debe contener roles correctos', () => {
       expect(VISTA_ROLES).toContain('vista');
       expect(VISTA_ROLES).toContain('usuario_vista');
+    });
+  });
+
+  // ISS-009 FIX: Tests para puedeEjecutarAccionFlujo
+  describe('puedeEjecutarAccionFlujo (ISS-009)', () => {
+    describe('Roles de Centro', () => {
+      it('médico puede enviar_admin y confirmar_entrega', () => {
+        const medico = { rol: 'medico' };
+        expect(puedeEjecutarAccionFlujo(medico, 'enviar_admin')).toBe(true);
+        expect(puedeEjecutarAccionFlujo(medico, 'confirmar_entrega')).toBe(true);
+        expect(puedeEjecutarAccionFlujo(medico, 'reenviar')).toBe(true);
+      });
+
+      it('médico NO puede autorizar ni surtir', () => {
+        const medico = { rol: 'medico' };
+        expect(puedeEjecutarAccionFlujo(medico, 'autorizar_admin')).toBe(false);
+        expect(puedeEjecutarAccionFlujo(medico, 'surtir')).toBe(false);
+      });
+
+      it('administrador_centro puede autorizar_admin y devolver', () => {
+        const adminCentro = { rol: 'administrador_centro' };
+        expect(puedeEjecutarAccionFlujo(adminCentro, 'autorizar_admin')).toBe(true);
+        expect(puedeEjecutarAccionFlujo(adminCentro, 'devolver')).toBe(true);
+        expect(puedeEjecutarAccionFlujo(adminCentro, 'rechazar')).toBe(true);
+      });
+
+      it('director_centro puede autorizar_director', () => {
+        const director = { rol: 'director_centro' };
+        expect(puedeEjecutarAccionFlujo(director, 'autorizar_director')).toBe(true);
+        expect(puedeEjecutarAccionFlujo(director, 'devolver')).toBe(true);
+      });
+    });
+
+    describe('Roles de Farmacia', () => {
+      it('farmacia puede recibir, autorizar y surtir', () => {
+        const farmacia = { rol: 'farmacia' };
+        expect(puedeEjecutarAccionFlujo(farmacia, 'recibir_farmacia')).toBe(true);
+        expect(puedeEjecutarAccionFlujo(farmacia, 'autorizar_farmacia')).toBe(true);
+        expect(puedeEjecutarAccionFlujo(farmacia, 'surtir')).toBe(true);
+      });
+
+      it('farmacia NO puede autorizar como centro', () => {
+        const farmacia = { rol: 'farmacia' };
+        expect(puedeEjecutarAccionFlujo(farmacia, 'autorizar_admin')).toBe(false);
+        expect(puedeEjecutarAccionFlujo(farmacia, 'autorizar_director')).toBe(false);
+      });
+    });
+
+    describe('Admin y Superusuario', () => {
+      it('admin puede ejecutar todas las acciones', () => {
+        const admin = { rol: 'admin' };
+        const acciones = [
+          'enviar_admin', 'autorizar_admin', 'autorizar_director',
+          'recibir_farmacia', 'autorizar_farmacia', 'surtir',
+          'confirmar_entrega', 'devolver', 'rechazar', 'cancelar'
+        ];
+        acciones.forEach(accion => {
+          expect(puedeEjecutarAccionFlujo(admin, accion)).toBe(true);
+        });
+      });
+
+      it('superusuario puede ejecutar todas las acciones', () => {
+        const superuser = { is_superuser: true };
+        expect(puedeEjecutarAccionFlujo(superuser, 'autorizar_director')).toBe(true);
+        expect(puedeEjecutarAccionFlujo(superuser, 'surtir')).toBe(true);
+      });
+    });
+
+    describe('Seguridad', () => {
+      it('usuario nulo no puede ejecutar acciones', () => {
+        expect(puedeEjecutarAccionFlujo(null, 'surtir')).toBe(false);
+        expect(puedeEjecutarAccionFlujo(undefined, 'autorizar_admin')).toBe(false);
+      });
+
+      it('acción desconocida retorna false', () => {
+        expect(puedeEjecutarAccionFlujo({ rol: 'admin' }, 'accion_inexistente')).toBe(false);
+      });
     });
   });
 });

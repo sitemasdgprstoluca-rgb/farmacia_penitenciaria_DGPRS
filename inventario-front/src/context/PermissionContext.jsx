@@ -2,11 +2,22 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { PermissionContext } from './contexts';
 import apiClient, { authAPI } from '../services/api';
 import { setAccessToken, hasAccessToken, migrateFromLocalStorage } from '../services/tokenManager';
+// ISS-009 FIX: Usar lógica de roles centralizada
+import { 
+  getRolPrincipal as getRolFromUserCentralizado, 
+  esAdmin, 
+  esFarmacia, 
+  esFarmaciaAdmin as esFarmaciaAdminUtil, 
+  esCentro, 
+  esVista,
+  puedeEjecutarAccionFlujo,
+} from '../utils/roles';
 
 /**
  * ISS-001 FIX (audit28): Permisos del backend tienen prioridad
  * ISS-002 FIX (audit28): Validar sesión ANTES de hidratar UI
  * ISS-005 FIX (audit28): Minimizar datos en localStorage
+ * ISS-009 FIX (audit30): Lógica de roles centralizada en utils/roles.js
  * 
  * Roles soportados por el front:
  * ADMIN (admin_sistema / superusuario)
@@ -300,36 +311,21 @@ const PERMISOS_POR_ROL = {
   },
 };
 
+// ISS-009 FIX: Usar lógica centralizada de roles.js
 const getRolFromUser = (userData, userGroups) => {
-  if (!userData) return 'SIN_ROL';
-  const isSuperuser = Boolean(userData.is_superuser);
-  const isStaff = Boolean(userData.is_staff);
-  const rol = (userData.rol || '').toLowerCase();
-  const groupNames = userGroups.map((g) => (g.name || g).toUpperCase());
-
-  // Admin: superusuario o rol admin/admin_sistema/superusuario
-  if (isSuperuser || rol === 'admin' || rol === 'admin_sistema' || rol === 'superusuario') return 'ADMIN';
-  // Farmacia: rol farmacia o grupo FARMACIA_ADMIN, o staff sin rol específico
-  if (rol === 'farmacia' || rol === 'admin_farmacia' || groupNames.includes('FARMACIA_ADMIN')) return 'FARMACIA';
-  // FLUJO V2: Roles de Centro Penitenciario (médico, administrador, director)
-  // Todos mapean a CENTRO porque comparten la misma vista de módulos
-  if (rol === 'medico' || rol === 'administrador_centro' || rol === 'director_centro' ||
-      rol === 'centro' || rol === 'usuario_normal' || rol === 'usuario_centro' ||
-      groupNames.includes('CENTRO_USER')) return 'CENTRO';
-  if (rol === 'vista' || rol === 'usuario_vista' || groupNames.includes('VISTA_USER')) return 'VISTA';
-  // Staff sin rol específico = FARMACIA
-  if (isStaff) return 'FARMACIA';
-  return 'SIN_ROL';
+  return getRolFromUserCentralizado(userData, userGroups);
 };
 
 const calcularPermisos = (userData, userGroups) => {
   const role = getRolFromUser(userData, userGroups);
   const isSuperuser = Boolean(userData?.is_superuser);
   const groupNames = userGroups.map((g) => (g.name || g).toUpperCase());
-  const isAdmin = role === 'ADMIN';
-  const isFarmaciaAdmin = role === 'FARMACIA' || role === 'ADMIN';
-  const isCentroUser = role === 'CENTRO';
-  const isVistaUser = role === 'VISTA';
+  
+  // ISS-009 FIX: Usar funciones centralizadas de roles.js
+  const isAdmin = esAdmin(userData);
+  const isFarmaciaAdmin = esFarmaciaAdminUtil(userData);
+  const isCentroUser = esCentro(userData);
+  const isVistaUser = esVista(userData);
 
   // Obtener permisos base del rol (FALLBACK)
   const basePerms = PERMISOS_POR_ROL[role] || PERMISOS_POR_ROL.SIN_ROL;
@@ -345,6 +341,8 @@ const calcularPermisos = (userData, userGroups) => {
     groupNames,
     verPerfil: true, // Siempre puede ver su perfil
     esSuperusuario: isSuperuser, // Siempre calcular desde is_superuser
+    // ISS-009 FIX: Exponer función de validación de acciones del flujo
+    puedeEjecutarAccion: (accion) => puedeEjecutarAccionFlujo(userData, accion),
     // configurarTema viene del basePerms del rol, NO lo sobrescribimos aquí
   };
 
