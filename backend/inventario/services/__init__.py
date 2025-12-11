@@ -50,6 +50,9 @@ from .inventory_validation import (
     validar_stock_para_requisicion,
     validar_acceso_lote_usuario,
     reconciliar_inventario,
+    # ISS-021 FIX (audit9): Funciones centralizadas de stock
+    calcular_stock_producto,
+    calcular_stock_batch,
 )
 
 from .folio_generator import (

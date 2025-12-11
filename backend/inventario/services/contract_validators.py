@@ -176,9 +176,13 @@ class RequisicionContractValidator:
         en lugar de propiedades alias (centro_id, usuario_solicita_id) para evitar
         confusiones. El modelo tiene propiedades alias de solo lectura para compatibilidad.
         
+        ISS-018 FIX (audit9): Valida que el centro esté activo.
+        
         Returns:
             ContratoValidacion con resultados
         """
+        from core.models import Centro
+        
         self.contrato = ContratoValidacion()
         
         # ISS-001 FIX: Usar campo real centro_destino_id (no alias centro_id)
@@ -191,6 +195,23 @@ class RequisicionContractValidator:
                 'El centro destino es obligatorio para crear una requisición. '
                 'Especifique el centro que solicita los medicamentos.'
             )
+        else:
+            # ISS-018 FIX (audit9): Validar que el centro exista y esté activo
+            try:
+                centro = Centro.objects.get(pk=centro_id)
+                if not centro.activo:
+                    self.contrato.agregar_error(
+                        'centro_destino',
+                        TipoValidacion.NEGOCIO,
+                        f'El centro {centro.nombre} está inactivo. '
+                        f'No se pueden crear requisiciones para centros inactivos.'
+                    )
+            except Centro.DoesNotExist:
+                self.contrato.agregar_error(
+                    'centro_destino',
+                    TipoValidacion.REFERENCIA,
+                    f'El centro con ID {centro_id} no existe.'
+                )
         
         # ISS-001 FIX: Usar campo real solicitante_id (no alias usuario_solicita_id)
         solicitante_id = self.requisicion.solicitante_id
@@ -328,6 +349,18 @@ class RequisicionContractValidator:
                 'La requisición debe tener un centro asignado'
             )
             return
+        
+        # ISS-018 FIX (audit9): Validar que el centro esté activo
+        if not getattr(centro, 'activo', True):
+            self.contrato.agregar_error(
+                'centro.activo',
+                TipoValidacion.NEGOCIO,
+                f'El centro {centro.nombre} está inactivo. '
+                f'No se pueden enviar requisiciones desde centros inactivos.',
+                valor_actual='inactivo',
+                valor_esperado='activo'
+            )
+            return  # No continuar con otras validaciones
         
         # ISS-004 FIX: Validar vigencia del centro/convenio
         fecha_vigencia = getattr(centro, 'fecha_vigencia_convenio', None)

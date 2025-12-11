@@ -158,7 +158,11 @@ class QueryOptimizer:
 
 @dataclass
 class FiltroReporte:
-    """Configuración de filtros para un reporte."""
+    """
+    Configuración de filtros para un reporte.
+    
+    ISS-023 FIX (audit9): Incluye validación de parámetros.
+    """
     fecha_inicio: Optional[date] = None
     fecha_fin: Optional[date] = None
     centro_id: Optional[int] = None
@@ -167,8 +171,118 @@ class FiltroReporte:
     estado: Optional[str] = None
     tipo: Optional[str] = None
     
+    # ISS-023 FIX: Límites de validación
+    MAX_RANGO_DIAS: int = 365  # Máximo 1 año
+    MIN_FECHA: date = date(2020, 1, 1)  # Fecha mínima razonable
+    
+    def __post_init__(self):
+        """ISS-023 FIX (audit9): Validar parámetros automáticamente."""
+        self.validar()
+    
+    def validar(self):
+        """
+        ISS-023 FIX (audit9): Valida parámetros del reporte.
+        
+        Raises:
+            ValueError: Si los parámetros son inválidos
+        """
+        errores = []
+        
+        # Validar que fechas sean date, no datetime
+        if self.fecha_inicio and isinstance(self.fecha_inicio, datetime):
+            self.fecha_inicio = self.fecha_inicio.date()
+        if self.fecha_fin and isinstance(self.fecha_fin, datetime):
+            self.fecha_fin = self.fecha_fin.date()
+        
+        # Validar fecha_inicio < fecha_fin
+        if self.fecha_inicio and self.fecha_fin:
+            if self.fecha_inicio > self.fecha_fin:
+                errores.append(
+                    f"fecha_inicio ({self.fecha_inicio}) debe ser anterior a "
+                    f"fecha_fin ({self.fecha_fin})"
+                )
+        
+        # Validar rango no exceda límite
+        if self.fecha_inicio and self.fecha_fin:
+            dias = (self.fecha_fin - self.fecha_inicio).days
+            if dias > self.MAX_RANGO_DIAS:
+                errores.append(
+                    f"El rango de fechas ({dias} días) excede el máximo permitido "
+                    f"({self.MAX_RANGO_DIAS} días = 1 año)"
+                )
+        
+        # Validar fechas no sean anteriores al mínimo
+        if self.fecha_inicio and self.fecha_inicio < self.MIN_FECHA:
+            errores.append(
+                f"fecha_inicio ({self.fecha_inicio}) no puede ser anterior a {self.MIN_FECHA}"
+            )
+        
+        # Validar fechas no sean futuras (excepto fecha_fin que puede ser hoy)
+        hoy = date.today()
+        if self.fecha_inicio and self.fecha_inicio > hoy:
+            errores.append(
+                f"fecha_inicio ({self.fecha_inicio}) no puede ser futura"
+            )
+        
+        # Validar IDs positivos
+        if self.centro_id is not None and self.centro_id <= 0:
+            errores.append("centro_id debe ser un entero positivo")
+        if self.producto_id is not None and self.producto_id <= 0:
+            errores.append("producto_id debe ser un entero positivo")
+        if self.usuario_id is not None and self.usuario_id <= 0:
+            errores.append("usuario_id debe ser un entero positivo")
+        
+        if errores:
+            raise ValueError("; ".join(errores))
+    
     def to_dict(self) -> Dict[str, Any]:
-        return {k: v for k, v in self.__dict__.items() if v is not None}
+        return {k: v for k, v in self.__dict__.items() if v is not None and not k.startswith('_') and k not in ('MAX_RANGO_DIAS', 'MIN_FECHA')}
+    
+    @classmethod
+    def desde_request(cls, request) -> 'FiltroReporte':
+        """
+        ISS-023 FIX (audit9): Construye FiltroReporte desde request con validación.
+        
+        Args:
+            request: Request HTTP con query params
+            
+        Returns:
+            FiltroReporte validado
+            
+        Raises:
+            ValueError: Si los parámetros son inválidos
+        """
+        from django.utils.dateparse import parse_date
+        
+        params = request.query_params if hasattr(request, 'query_params') else request.GET
+        
+        def parse_int(val):
+            if val is None or val == '':
+                return None
+            try:
+                return int(val)
+            except (ValueError, TypeError):
+                return None
+        
+        def parse_fecha(val):
+            if val is None or val == '':
+                return None
+            if isinstance(val, date):
+                return val
+            parsed = parse_date(val)
+            if parsed is None:
+                raise ValueError(f"Fecha inválida: {val}. Use formato YYYY-MM-DD")
+            return parsed
+        
+        return cls(
+            fecha_inicio=parse_fecha(params.get('fecha_inicio')),
+            fecha_fin=parse_fecha(params.get('fecha_fin')),
+            centro_id=parse_int(params.get('centro_id') or params.get('centro')),
+            producto_id=parse_int(params.get('producto_id') or params.get('producto')),
+            usuario_id=parse_int(params.get('usuario_id') or params.get('usuario')),
+            estado=params.get('estado') or None,
+            tipo=params.get('tipo') or None,
+        )
 
 
 class ReportPermissionFilter:

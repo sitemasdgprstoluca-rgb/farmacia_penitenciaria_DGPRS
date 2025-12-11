@@ -610,3 +610,181 @@ def reconciliar_inventario(centro=None, global_: bool = False, solo_discrepancia
             for r in resultados
         ]
     }
+
+
+# =============================================================================
+# ISS-021 FIX (audit9): Funciones centralizadas de cálculo de stock
+# =============================================================================
+
+def calcular_stock_producto(producto, centro=None, solo_vigentes=True, incluir_comprometido=False):
+    """
+    ISS-021 FIX (audit9): Función centralizada para calcular stock de un producto.
+    
+    USAR ESTA FUNCIÓN en lugar de queries inline para evitar duplicación
+    y garantizar consistencia en el cálculo de stock.
+    
+    Args:
+        producto: Instancia de Producto o ID
+        centro: Centro para filtrar (None = farmacia central)
+        solo_vigentes: Si True, excluye lotes vencidos
+        incluir_comprometido: Si True, resta stock comprometido por requisiciones
+        
+    Returns:
+        dict: {
+            'stock_total': int,
+            'stock_disponible': int,  # stock_total - comprometido
+            'stock_comprometido': int,
+            'lotes_count': int,
+            'lotes_vigentes': int,
+            'lotes_vencidos': int,
+            'detalle_lotes': list
+        }
+    """
+    from django.db.models import Sum, Q, Value
+    from django.db.models.functions import Coalesce
+    from django.utils import timezone
+    from core.models import Lote, Producto, DetalleRequisicion
+    from core.constants import ESTADOS_COMPROMETIDOS
+    
+    hoy = timezone.now().date()
+    
+    # Normalizar producto
+    if isinstance(producto, int):
+        producto = Producto.objects.get(pk=producto)
+    
+    # Construir filtro base
+    filtro = Q(producto=producto, activo=True, cantidad_actual__gt=0)
+    
+    # Filtrar por centro
+    if centro is None:
+        filtro &= Q(centro__isnull=True)  # Farmacia central
+    else:
+        filtro &= Q(centro=centro)
+    
+    # Query de lotes
+    lotes_query = Lote.objects.filter(filtro)
+    
+    # Separar vigentes y vencidos
+    lotes_vigentes_query = lotes_query.filter(fecha_caducidad__gte=hoy)
+    lotes_vencidos_query = lotes_query.filter(fecha_caducidad__lt=hoy)
+    
+    lotes_vigentes_count = lotes_vigentes_query.count()
+    lotes_vencidos_count = lotes_vencidos_query.count()
+    
+    # Calcular stock según parámetros
+    if solo_vigentes:
+        stock_total = lotes_vigentes_query.aggregate(
+            total=Coalesce(Sum('cantidad_actual'), Value(0))
+        )['total']
+    else:
+        stock_total = lotes_query.aggregate(
+            total=Coalesce(Sum('cantidad_actual'), Value(0))
+        )['total']
+    
+    # Calcular comprometido
+    stock_comprometido = 0
+    if incluir_comprometido:
+        resultado_comprometido = DetalleRequisicion.objects.filter(
+            requisicion__estado__in=ESTADOS_COMPROMETIDOS,
+            producto=producto
+        ).aggregate(
+            total_autorizado=Coalesce(Sum('cantidad_autorizada'), Value(0)),
+            total_surtido=Coalesce(Sum('cantidad_surtida'), Value(0))
+        )
+        stock_comprometido = max(0, 
+            resultado_comprometido['total_autorizado'] - resultado_comprometido['total_surtido']
+        )
+    
+    stock_disponible = stock_total - stock_comprometido
+    
+    # Detalle de lotes (opcional, para debugging)
+    detalle_lotes = []
+    for lote in lotes_query.select_related('producto')[:10]:  # Limitar a 10
+        detalle_lotes.append({
+            'id': lote.pk,
+            'numero_lote': lote.numero_lote,
+            'cantidad': lote.cantidad_actual,
+            'fecha_caducidad': str(lote.fecha_caducidad),
+            'vigente': lote.fecha_caducidad >= hoy,
+        })
+    
+    return {
+        'stock_total': stock_total,
+        'stock_disponible': max(0, stock_disponible),
+        'stock_comprometido': stock_comprometido,
+        'lotes_count': lotes_vigentes_count + lotes_vencidos_count,
+        'lotes_vigentes': lotes_vigentes_count,
+        'lotes_vencidos': lotes_vencidos_count,
+        'detalle_lotes': detalle_lotes,
+    }
+
+
+def calcular_stock_batch(producto_ids, centro=None, solo_vigentes=True, incluir_comprometido=False):
+    """
+    ISS-021 FIX (audit9): Calcula stock para múltiples productos en una operación eficiente.
+    
+    Optimizado para evitar N+1 queries usando agregaciones batch.
+    
+    Args:
+        producto_ids: Lista de IDs de productos
+        centro: Centro para filtrar (None = farmacia central)
+        solo_vigentes: Si True, excluye lotes vencidos
+        incluir_comprometido: Si True, resta stock comprometido
+        
+    Returns:
+        dict: {producto_id: stock_info, ...}
+    """
+    from django.db.models import Sum, Q, Value
+    from django.db.models.functions import Coalesce
+    from django.utils import timezone
+    from core.models import Lote, DetalleRequisicion
+    from core.constants import ESTADOS_COMPROMETIDOS
+    
+    hoy = timezone.now().date()
+    
+    # Filtro base para todos los productos
+    filtro = Q(producto_id__in=producto_ids, activo=True, cantidad_actual__gt=0)
+    
+    if centro is None:
+        filtro &= Q(centro__isnull=True)
+    else:
+        filtro &= Q(centro=centro)
+    
+    if solo_vigentes:
+        filtro &= Q(fecha_caducidad__gte=hoy)
+    
+    # Query batch de stock por producto
+    stock_por_producto = {
+        item['producto_id']: item['total']
+        for item in Lote.objects.filter(filtro).values('producto_id').annotate(
+            total=Coalesce(Sum('cantidad_actual'), Value(0))
+        )
+    }
+    
+    # Query batch de comprometido
+    comprometido_por_producto = {}
+    if incluir_comprometido:
+        resultado = DetalleRequisicion.objects.filter(
+            requisicion__estado__in=ESTADOS_COMPROMETIDOS,
+            producto_id__in=producto_ids
+        ).values('producto_id').annotate(
+            total_autorizado=Coalesce(Sum('cantidad_autorizada'), Value(0)),
+            total_surtido=Coalesce(Sum('cantidad_surtida'), Value(0))
+        )
+        comprometido_por_producto = {
+            item['producto_id']: max(0, item['total_autorizado'] - item['total_surtido'])
+            for item in resultado
+        }
+    
+    # Construir resultado
+    result = {}
+    for pid in producto_ids:
+        stock_total = stock_por_producto.get(pid, 0)
+        stock_comprometido = comprometido_por_producto.get(pid, 0)
+        result[pid] = {
+            'stock_total': stock_total,
+            'stock_disponible': max(0, stock_total - stock_comprometido),
+            'stock_comprometido': stock_comprometido,
+        }
+    
+    return result

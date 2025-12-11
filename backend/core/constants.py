@@ -20,6 +20,73 @@ UNIDADES_MEDIDA = [
     ('GR', 'Gramo'),
 ]
 
+# ISS-024 FIX (audit9): Lista de códigos válidos para validación rápida
+UNIDADES_VALIDAS = {u[0] for u in UNIDADES_MEDIDA}
+
+# ISS-024 FIX (audit9): Mapeo de alias comunes a valores normalizados
+UNIDADES_ALIAS = {
+    # Variaciones de texto libre a normalizar
+    'pza': 'PIEZA',
+    'pz': 'PIEZA',
+    'pieza': 'PIEZA',
+    'piezas': 'PIEZA',
+    'caja': 'CAJA',
+    'cajas': 'CAJA',
+    'cj': 'CAJA',
+    'frasco': 'FRASCO',
+    'fco': 'FRASCO',
+    'frascos': 'FRASCO',
+    'sobre': 'SOBRE',
+    'sobres': 'SOBRE',
+    'sob': 'SOBRE',
+    'ampolleta': 'AMPOLLETA',
+    'amp': 'AMPOLLETA',
+    'ampolletas': 'AMPOLLETA',
+    'tableta': 'TABLETA',
+    'tab': 'TABLETA',
+    'tabl': 'TABLETA',
+    'tabletas': 'TABLETA',
+    'capsula': 'CAPSULA',
+    'cap': 'CAPSULA',
+    'caps': 'CAPSULA',
+    'capsulas': 'CAPSULA',
+    'ml': 'ML',
+    'mililitro': 'ML',
+    'mililitros': 'ML',
+    'gr': 'GR',
+    'g': 'GR',
+    'gramo': 'GR',
+    'gramos': 'GR',
+}
+
+
+def normalizar_unidad_medida(valor):
+    """
+    ISS-024 FIX (audit9): Normaliza una unidad de medida al código estándar.
+    
+    Args:
+        valor: Valor de unidad (puede ser código, nombre o alias)
+        
+    Returns:
+        str: Código normalizado o el valor original si no se reconoce
+    """
+    if not valor:
+        return valor
+    
+    valor_upper = valor.upper().strip()
+    valor_lower = valor.lower().strip()
+    
+    # Si ya es un código válido, retornarlo
+    if valor_upper in UNIDADES_VALIDAS:
+        return valor_upper
+    
+    # Buscar en alias
+    if valor_lower in UNIDADES_ALIAS:
+        return UNIDADES_ALIAS[valor_lower]
+    
+    # Retornar original si no se reconoce
+    return valor
+
 # Categorías de productos válidas
 CATEGORIAS_PRODUCTO = [
     ('medicamento', 'Medicamento'),

@@ -618,17 +618,26 @@ class ProductoSerializer(serializers.ModelSerializer):
         return nombre_limpio
     
     def validate_unidad_medida(self, value):
-        """Normaliza y valida unidad_medida contra UNIDADES_MEDIDA."""
-        from core.constants import UNIDADES_MEDIDA
+        """
+        ISS-024 FIX (audit9): Normaliza y valida unidad_medida.
+        
+        Acepta alias comunes y los normaliza al código estándar.
+        """
+        from core.constants import UNIDADES_VALIDAS, normalizar_unidad_medida
+        
         if not value:
             return 'PIEZA'  # Default
-        valor_normalizado = value.strip().upper()
-        valores_validos = dict(UNIDADES_MEDIDA).keys()
-        if valor_normalizado not in valores_validos:
+        
+        # Normalizar usando alias
+        valor_normalizado = normalizar_unidad_medida(value)
+        
+        # Validar que el resultado sea válido
+        if valor_normalizado.upper() not in UNIDADES_VALIDAS:
             raise serializers.ValidationError(
-                f'Unidad no válida: {value}. Opciones: {", ".join(valores_validos)}'
+                f'Unidad no válida: {value}. Opciones: {", ".join(sorted(UNIDADES_VALIDAS))}'
             )
-        return valor_normalizado
+        
+        return valor_normalizado.upper()
     
     def validate_categoria(self, value):
         """Normaliza y valida categoría."""
@@ -732,6 +741,51 @@ class LoteSerializer(serializers.ModelSerializer):
         if value is not None and value < 0:
             raise serializers.ValidationError('El precio unitario no puede ser negativo')
         return value
+    
+    def validate(self, attrs):
+        """
+        ISS-007 FIX (audit9): Validaciones de entrada bajo contrato.
+        
+        Si el lote tiene numero_contrato, busca el Contrato y valida:
+        1. Que el contrato esté vigente (fechas y activo)
+        2. Que la cantidad no exceda límites del ContratoProducto
+        3. Que el monto total no exceda el monto máximo del contrato
+        4. Que la fecha de caducidad sea válida
+        """
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from .models import Contrato
+        
+        numero_contrato = attrs.get('numero_contrato')
+        producto = attrs.get('producto')
+        cantidad = attrs.get('cantidad_inicial', 0)
+        fecha_caducidad = attrs.get('fecha_caducidad')
+        
+        # ISS-007: Si hay numero_contrato, buscar y validar el Contrato
+        if numero_contrato and producto and cantidad > 0:
+            try:
+                # Buscar contrato por número
+                contrato = Contrato.objects.filter(
+                    numero_contrato=numero_contrato,
+                    activo=True
+                ).first()
+                
+                if contrato:
+                    # Usar método validar_entrada del modelo Contrato
+                    contrato.validar_entrada(
+                        producto=producto,
+                        cantidad=cantidad,
+                        fecha_caducidad=fecha_caducidad
+                    )
+                # Si no existe contrato con ese número, solo es advertencia (no bloquea)
+                # porque el contrato podría estar en otro sistema o ser legacy
+                
+            except DjangoValidationError as e:
+                # Convertir ValidationError de Django a DRF
+                if hasattr(e, 'message_dict'):
+                    raise serializers.ValidationError(e.message_dict)
+                raise serializers.ValidationError({'numero_contrato': str(e)})
+        
+        return super().validate(attrs)
     
     def get_dias_para_caducar(self, obj):
         if obj.fecha_caducidad:
