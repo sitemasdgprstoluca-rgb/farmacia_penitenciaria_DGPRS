@@ -1041,7 +1041,7 @@ class RequisicionService:
             detalle.save(update_fields=['cantidad_surtida'])
             
             items_surtidos.append({
-                'producto': detalle.producto.codigo_barras or detalle.producto.nombre,
+                'producto': detalle.producto.clave or detalle.producto.nombre,
                 'cantidad_surtida': cantidad_surtida_item,
                 'lotes_usados': lotes_usados
             })
@@ -1485,14 +1485,16 @@ class RequisicionService:
     @transaction.atomic
     def cancelar_requisicion(self, motivo, forzar_reversion=False):
         """
-        ISS-001/002 FIX (audit4): Cancela una requisición con control de movimientos.
+        ISS-001/002/003 FIX (audit5): Cancela una requisición con control de movimientos.
         
         LÓGICA DE CANCELACIÓN:
         1. Estados sin movimientos (borrador, enviada, en_revision): Cancelación directa
-        2. Estados con posibles movimientos (autorizada, en_surtido, parcial):
+        2. Estados con posibles movimientos (autorizada, en_surtido, parcial, surtida):
            - Si hay movimientos: REQUIERE forzar_reversion=True y se revierten
            - Si no hay movimientos: Cancelación directa
-        3. Estados finales (surtida, entregada, vencida): NO cancelables
+        3. Estados finales NO cancelables: entregada, vencida
+        
+        ISS-003 FIX (audit5): Ahora permite cancelar 'surtida' con reversión de stock.
         
         Args:
             motivo: Motivo de cancelación (obligatorio, mínimo 10 caracteres)
@@ -1544,9 +1546,11 @@ class RequisicionService:
                 )
             })
         
-        # Estados que permiten cancelación (con o sin movimientos)
+        # ISS-003 FIX (audit5): Estados que permiten cancelación
+        # Agregado 'surtida' - cancelable con forzar_reversion=True
         estados_cancelables = ['borrador', 'pendiente_admin', 'pendiente_director', 
-                              'enviada', 'en_revision', 'autorizada', 'en_surtido', 'parcial']
+                              'enviada', 'en_revision', 'autorizada', 'en_surtido', 
+                              'parcial', 'surtida']
         
         if estado_actual not in estados_cancelables:
             raise EstadoInvalidoError(
@@ -1557,8 +1561,10 @@ class RequisicionService:
         
         movimientos_revertidos = []
         
-        # ISS-003 FIX: Si hay movimientos, revertirlos
-        if estado_actual in ['autorizada', 'parcial']:
+        # ISS-003 FIX (audit5): Estados con posibles movimientos a revertir
+        # Incluye en_surtido y surtida para permitir cancelación con reversión completa
+        estados_con_movimientos = ['autorizada', 'en_surtido', 'parcial', 'surtida']
+        if estado_actual in estados_con_movimientos and tiene_movimientos:
             # Buscar movimientos de salida asociados
             movimientos_salida = Movimiento.objects.select_for_update().filter(
                 requisicion=requisicion,

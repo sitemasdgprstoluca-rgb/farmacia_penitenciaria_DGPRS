@@ -1,3 +1,40 @@
+"""
+Modelos Django para la aplicación core de farmacia penitenciaria.
+
+ISS-005 FIX (audit5): DOCUMENTACIÓN SOBRE managed=False
+=========================================================
+
+TODOS los modelos en este archivo usan `managed = False` porque las tablas 
+ya existen en la base de datos Supabase/PostgreSQL. Esto tiene las siguientes
+implicaciones importantes:
+
+1. MIGRACIONES:
+   - Django NO creará ni modificará las tablas automáticamente
+   - Cualquier cambio de esquema debe hacerse directamente en Supabase
+   - Usar archivos SQL en docs/SQL_MIGRATIONS.md para cambios de esquema
+
+2. CONSTRAINTS Y VALIDACIONES:
+   - Django NO aplica constraints de BD (unique, foreign key, check)
+   - Las constraints se gestionan directamente en Supabase
+   - Se DEBE validar en el código Python (forms, serializers, servicios)
+   
+3. FOREIGN KEYS:
+   - on_delete NO tiene efecto en BD (solo en cascadas Django)
+   - Triggers de Supabase manejan la integridad referencial real
+   
+4. CAMPO 'estado' EN LOTES:
+   - Es una PROPIEDAD CALCULADA (@property), NO un campo de BD
+   - Se calcula desde: activo + cantidad_actual + fecha_caducidad
+   - NUNCA usar `estado__in` en querysets (causará FieldError)
+   
+5. RECOMENDACIONES:
+   - Verificar existencia de campos en Supabase antes de agregar al modelo
+   - Usar transaction.atomic() con select_for_update() para operaciones críticas
+   - Agregar validaciones explícitas en servicios/serializers
+
+Ver también: docs/SQL_MIGRATIONS.md, ARQUITECTURA.md
+"""
+
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.conf import settings
