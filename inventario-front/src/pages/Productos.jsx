@@ -50,8 +50,13 @@ import { validarProducto, normalizarProducto, sanitizeInput } from '../utils/val
 // ISS-002 FIX: Importar contratos DTO para normalización de datos
 import { getStockProducto, formatStock } from '../utils/dtoContracts';
 
+// ISS-003 FIX (audit27): Importar hook de catálogos dinámicos
+import { useCatalogos } from '../hooks/useCatalogos';
 
-const UNIDADES = [
+
+// ISS-003 FIX (audit27): Estas constantes se usan como fallback
+// El hook useCatalogos obtiene los valores actualizados del API
+const UNIDADES_FALLBACK = [
 
   'AMPOLLETA',
 
@@ -297,9 +302,9 @@ const DEFAULT_FORM = {
   imagenPreview: null,
 };
 
-// Constantes para selects de datos farmacéuticos
-const CATEGORIAS = ['medicamento', 'material_curacion', 'insumo', 'equipo', 'otro'];
-const VIAS_ADMINISTRACION = ['oral', 'intravenosa', 'intramuscular', 'subcutanea', 'topica', 'inhalatoria', 'rectal', 'oftalmico', 'otico', 'nasal', 'otra'];
+// ISS-003 FIX (audit27): Constantes removidas - ahora se obtienen del hook useCatalogos
+// Las constantes CATEGORIAS y VIAS_ADMINISTRACION ahora vienen del API
+// Ver: inventario-front/src/hooks/useCatalogos.js
 
 
 
@@ -335,6 +340,14 @@ const MOCK_PRODUCTS = Array.from({ length: 124 }).map((_, index) => {
 const Productos = () => {
 
   const { user, permisos, getRolPrincipal } = usePermissions();
+  
+  // ISS-003 FIX (audit27): Cargar catálogos dinámicos desde API
+  const { catalogos, loading: loadingCatalogos, isFromFallback } = useCatalogos({ autoLoad: true });
+  
+  // Usar catálogos del API con fallback
+  const UNIDADES = catalogos?.unidades || UNIDADES_FALLBACK;
+  const CATEGORIAS = catalogos?.categorias || ['medicamento', 'material_curacion', 'insumo', 'equipo', 'otro'];
+  const VIAS_ADMINISTRACION = catalogos?.viasAdministracion || ['oral', 'intravenosa', 'intramuscular', 'subcutanea', 'topica', 'inhalatoria', 'rectal', 'oftalmico', 'otico', 'nasal', 'otra'];
 
   const rolPrincipal = getRolPrincipal(); // ADMIN | FARMACIA | CENTRO | VISTA | SIN_ROL
   const esAdmin = rolPrincipal === 'ADMIN';

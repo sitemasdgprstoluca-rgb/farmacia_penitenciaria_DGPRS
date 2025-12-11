@@ -40,14 +40,25 @@ const FALLBACK_VIAS_ADMINISTRACION = [
 ];
 
 const FALLBACK_ESTADOS_REQUISICION = [
+  // Flujo V2 - estados jerárquicos
   'borrador',
+  'pendiente_admin',
+  'pendiente_director',
+  'enviada',
+  'en_revision',
+  'autorizada',
+  'en_surtido',
+  'surtida',
+  'entregada',
+  'rechazada',
+  'vencida',
+  'cancelada',
+  'devuelta',
+  // Legacy (compatibilidad)
   'pendiente',
   'aprobada',
   'en_proceso',
   'surtida_parcial',
-  'surtida',
-  'rechazada',
-  'cancelada',
 ];
 
 const FALLBACK_TIPOS_MOVIMIENTO = [

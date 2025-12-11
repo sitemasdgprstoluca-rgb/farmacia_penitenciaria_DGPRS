@@ -159,12 +159,16 @@ const Requisiciones = () => {
 
   const filtrosActivos = [searchTerm, filtroEstado, filtroCentro, filtroFechaDesde, filtroFechaHasta].filter(Boolean).length;
 
+  // ISS-002 FIX (audit27): Pestañas actualizadas para flujo V2
+  // Sincronizadas con REQUISICION_GRUPOS_ESTADO del backend
   const stateTabs = [
-    { key: 'todas', label: 'Todas' },
-    { key: 'pendientes', label: 'Pendientes' },
-    { key: 'aceptadas_parciales', label: 'Autorizadas' },
-    { key: 'surtidas', label: 'Surtidas' },
-    { key: 'rechazadas_canceladas', label: 'Rechazadas' },
+    { key: 'todas', label: 'Todas', grupo: null },
+    { key: 'centro', label: 'En Centro', grupo: 'pendientes', descripcion: 'Pendiente de autorización centro' },
+    { key: 'farmacia', label: 'En Farmacia', grupo: 'pendientes_farmacia', descripcion: 'En proceso en Farmacia' },
+    { key: 'proceso', label: 'En Proceso', grupo: 'en_proceso', descripcion: 'Autorizado, en surtido' },
+    { key: 'surtidas', label: 'Surtidas', grupo: 'surtidas', descripcion: 'Listas para recolección' },
+    { key: 'completadas', label: 'Completadas', grupo: 'completadas', descripcion: 'Entregadas' },
+    { key: 'finalizadas', label: 'Finalizadas', grupo: 'rechazadas_canceladas', descripcion: 'Rechazadas, canceladas, vencidas' },
   ];
 
   // Caché para evitar recargas innecesarias del catálogo
@@ -303,7 +307,13 @@ const Requisiciones = () => {
         ordering: '-fecha_solicitud',
       };
       if (filtroEstado) params.estado = filtroEstado;
-      if (grupoEstado && grupoEstado !== 'todas') params.grupo_estado = grupoEstado;
+      // ISS-002 FIX (audit27): Usar el grupo del tab seleccionado en lugar del key
+      if (grupoEstado && grupoEstado !== 'todas') {
+        const tabSeleccionado = stateTabs.find(tab => tab.key === grupoEstado);
+        if (tabSeleccionado?.grupo) {
+          params.grupo_estado = tabSeleccionado.grupo;
+        }
+      }
       if (searchTerm) params.search = searchTerm;
       // Solo aplicar filtro de centro si no es PENDING (ya validado arriba pero por claridad)
       if (filtroCentro && filtroCentro !== 'PENDING') params.centro = filtroCentro;
@@ -337,7 +347,13 @@ const Requisiciones = () => {
       const params = {};
       if (filtroCentro && filtroCentro !== 'PENDING') params.centro = filtroCentro;
       if (filtroEstado) params.estado = filtroEstado;
-      if (grupoEstado && grupoEstado !== 'todas') params.grupo_estado = grupoEstado;
+      // ISS-002 FIX (audit27): Usar el grupo del tab seleccionado
+      if (grupoEstado && grupoEstado !== 'todas') {
+        const tabSeleccionado = stateTabs.find(tab => tab.key === grupoEstado);
+        if (tabSeleccionado?.grupo) {
+          params.grupo_estado = tabSeleccionado.grupo;
+        }
+      }
       if (searchTerm) params.search = searchTerm;
       if (filtroFechaDesde) params.fecha_desde = filtroFechaDesde;
       if (filtroFechaHasta) params.fecha_hasta = filtroFechaHasta;
@@ -1153,6 +1169,132 @@ const Requisiciones = () => {
     }
   };
 
+  // ========== ISS-004 FIX (audit27): HANDLERS FLUJO V2 ==========
+  
+  // Handler genérico para acciones V2 que no requieren datos adicionales
+  const ejecutarAccionV2 = async (accion, id, config = {}) => {
+    const { mensaje, api } = config;
+    if (isSubmitting) return;
+    
+    setIsSubmitting(true);
+    setActionLoading(id);
+    try {
+      await api(id);
+      toast.success(mensaje || 'Acción completada');
+      cargarRequisiciones();
+      cargarResumenEstados();
+    } catch (error) {
+      toast.error(error.response?.data?.error || error.response?.data?.mensaje || `Error en acción`);
+    } finally {
+      setIsSubmitting(false);
+      setActionLoading(null);
+    }
+  };
+
+  // Flujo Centro → Admin → Director
+  const handleEnviarAdmin = (id) => ejecutarAccionV2('enviarAdmin', id, {
+    mensaje: 'Enviada al administrador para autorización',
+    api: requisicionesAPI.enviarAdmin,
+  });
+  
+  const handleAutorizarAdmin = (id) => ejecutarAccionV2('autorizarAdmin', id, {
+    mensaje: 'Autorizada por administrador',
+    api: requisicionesAPI.autorizarAdmin,
+  });
+  
+  const handleAutorizarDirector = (id) => ejecutarAccionV2('autorizarDirector', id, {
+    mensaje: 'Autorizada por director, enviada a farmacia',
+    api: requisicionesAPI.autorizarDirector,
+  });
+
+  // Flujo Farmacia
+  const handleRecibirFarmacia = (id) => ejecutarAccionV2('recibirFarmacia', id, {
+    mensaje: 'Requisición recibida en farmacia',
+    api: requisicionesAPI.recibirFarmacia,
+  });
+  
+  const handleAutorizarFarmacia = (id) => ejecutarAccionV2('autorizarFarmacia', id, {
+    mensaje: 'Autorizada por farmacia, lista para surtir',
+    api: requisicionesAPI.autorizarFarmacia,
+  });
+
+  // Handler para devolver con motivo
+  const [inputDevolver, setInputDevolver] = useState(null);
+  
+  const handleDevolver = (id, folio) => {
+    if (isSubmitting) return;
+    setInputDevolver({ id, folio });
+  };
+  
+  const ejecutarDevolver = async (motivo) => {
+    if (!inputDevolver || isSubmitting) return;
+    const { id } = inputDevolver;
+    
+    setIsSubmitting(true);
+    setActionLoading(id);
+    setInputDevolver(null);
+    try {
+      await requisicionesAPI.devolver(id, { observaciones: motivo });
+      toast.success('Requisición devuelta para corrección');
+      cargarRequisiciones();
+      cargarResumenEstados();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al devolver');
+    } finally {
+      setIsSubmitting(false);
+      setActionLoading(null);
+    }
+  };
+
+  // Handler para reenviar después de corrección
+  const handleReenviar = (id) => ejecutarAccionV2('reenviar', id, {
+    mensaje: 'Requisición reenviada',
+    api: requisicionesAPI.reenviar,
+  });
+
+  // Handler para confirmar entrega
+  const [confirmEntrega, setConfirmEntrega] = useState(null);
+  const [fotoFirmaEntrega, setFotoFirmaEntrega] = useState(null);
+  
+  const handleConfirmarEntrega = (id, folio) => {
+    if (isSubmitting) return;
+    setConfirmEntrega({ id, folio });
+  };
+  
+  const ejecutarConfirmarEntrega = async () => {
+    if (!confirmEntrega || isSubmitting) return;
+    const { id } = confirmEntrega;
+    
+    setIsSubmitting(true);
+    setActionLoading(id);
+    setConfirmEntrega(null);
+    try {
+      if (fotoFirmaEntrega) {
+        const formData = new FormData();
+        formData.append('foto_firma_entrega', fotoFirmaEntrega);
+        await requisicionesAPI.confirmarEntrega(id, formData);
+      } else {
+        await requisicionesAPI.confirmarEntrega(id, {});
+      }
+      setFotoFirmaEntrega(null);
+      toast.success('Entrega confirmada');
+      cargarRequisiciones();
+      cargarResumenEstados();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al confirmar entrega');
+    } finally {
+      setIsSubmitting(false);
+      setActionLoading(null);
+    }
+  };
+
+  // Handler para marcar vencida (admin/farmacia)
+  const handleMarcarVencida = (id) => ejecutarAccionV2('marcarVencida', id, {
+    mensaje: 'Requisición marcada como vencida',
+    api: requisicionesAPI.marcarVencida,
+  });
+  // ========== FIN HANDLERS FLUJO V2 ==========
+
   const handleDescargarPDF = async (id, tipo, folio) => {
     // Guard de permisos - validar ANTES de modificar cualquier estado
     if (!permisos?.descargarHojaRecoleccion) {
@@ -1218,7 +1360,8 @@ const Requisiciones = () => {
       {/* Tabs de estado y botón de filtros */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-3">
-          {stateTabs.map((tab) => (
+          {/* ISS-002 FIX (audit27): Filtrar tabs ocultos (legacy) */}
+          {stateTabs.filter(tab => !tab.hidden).map((tab) => (
             <button
               key={tab.key}
               onClick={() => setGrupoEstado(tab.key)}
