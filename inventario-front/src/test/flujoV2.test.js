@@ -50,18 +50,20 @@ describe('Constantes FLUJO V2', () => {
       expect(TRANSICIONES_REQUISICION.pendiente_director).toContain('devuelta');
     });
     
-    it('enviada puede ir a en_revision, autorizada o rechazada', () => {
+    it('enviada puede ir a en_revision o rechazada (ISS-001: no directo a autorizada)', () => {
       expect(TRANSICIONES_REQUISICION.enviada).toContain('en_revision');
-      expect(TRANSICIONES_REQUISICION.enviada).toContain('autorizada');
       expect(TRANSICIONES_REQUISICION.enviada).toContain('rechazada');
+      // ISS-001 FIX: enviada NO puede ir directo a autorizada, debe pasar por en_revision
+      expect(TRANSICIONES_REQUISICION.enviada).not.toContain('autorizada');
     });
     
     it('surtida solo puede ir a entregada o vencida', () => {
       expect(TRANSICIONES_REQUISICION.surtida).toEqual(['entregada', 'vencida']);
     });
     
-    it('devuelta puede reenviar a pendiente_admin o cancelar', () => {
-      expect(TRANSICIONES_REQUISICION.devuelta).toContain('pendiente_admin');
+    it('devuelta puede reenviar a borrador o cancelar', () => {
+      // ISS-001 FIX: devuelta regresa a borrador para que médico corrija
+      expect(TRANSICIONES_REQUISICION.devuelta).toContain('borrador');
       expect(TRANSICIONES_REQUISICION.devuelta).toContain('cancelada');
     });
   });

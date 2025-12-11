@@ -553,16 +553,23 @@ export const ESTADOS_REQUISICION = {
 
 /**
  * Transiciones permitidas por estado
+ * ISS-001: Alineado con backend/core/constants.py TRANSICIONES_REQUISICION
+ * FLUJO V2: autorizada → en_surtido OBLIGATORIO (no saltar a surtida)
  */
 export const TRANSICIONES_REQUISICION = {
-  borrador: ['enviada', 'cancelada'],
-  enviada: ['aceptada_parcial', 'autorizada', 'rechazada'],
-  aceptada_parcial: ['autorizada', 'rechazada'],
-  autorizada: ['surtida_parcial', 'surtida', 'rechazada'],
-  surtida_parcial: ['surtida', 'cancelada'],
-  surtida: ['entregada'],
+  borrador: ['pendiente_admin', 'cancelada'],
+  pendiente_admin: ['pendiente_director', 'rechazada', 'devuelta', 'cancelada'],
+  pendiente_director: ['enviada', 'rechazada', 'devuelta', 'cancelada'],
+  enviada: ['en_revision', 'rechazada', 'cancelada'],
+  en_revision: ['autorizada', 'rechazada', 'devuelta', 'cancelada'],
+  autorizada: ['en_surtido', 'cancelada'],  // ISS-001 FIX: NO puede ir directo a surtida
+  en_surtido: ['surtida', 'parcial', 'cancelada'],
+  parcial: ['en_surtido', 'surtida', 'cancelada'],
+  surtida: ['entregada', 'vencida'],  // ISS-002 FIX: NO puede cancelarse
+  devuelta: ['borrador', 'cancelada'],
   entregada: [],
   rechazada: [],
+  vencida: [],
   cancelada: [],
 };
 

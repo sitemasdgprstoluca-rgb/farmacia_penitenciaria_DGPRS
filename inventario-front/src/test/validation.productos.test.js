@@ -417,10 +417,13 @@ describe('validarItemsRequisicion', () => {
 });
 
 describe('TRANSICIONES_REQUISICION constante', () => {
-  it('debe tener todos los estados definidos', () => {
+  it('debe tener todos los estados FLUJO V2 definidos', () => {
+    // ISS-001: Estados alineados con backend/core/constants.py
     const estadosEsperados = [
-      'borrador', 'enviada', 'rechazada', 'aceptada_parcial', 
-      'autorizada', 'surtida_parcial', 'surtida', 'entregada', 'cancelada'
+      'borrador', 'pendiente_admin', 'pendiente_director',
+      'enviada', 'en_revision', 'autorizada', 'en_surtido',
+      'parcial', 'surtida', 'devuelta', 
+      'entregada', 'rechazada', 'vencida', 'cancelada'
     ];
     
     for (const estado of estadosEsperados) {
@@ -432,5 +435,6 @@ describe('TRANSICIONES_REQUISICION constante', () => {
     expect(TRANSICIONES_REQUISICION.entregada).toEqual([]);
     expect(TRANSICIONES_REQUISICION.rechazada).toEqual([]);
     expect(TRANSICIONES_REQUISICION.cancelada).toEqual([]);
+    expect(TRANSICIONES_REQUISICION.vencida).toEqual([]);
   });
 });
