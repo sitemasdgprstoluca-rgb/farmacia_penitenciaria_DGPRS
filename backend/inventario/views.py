@@ -4234,6 +4234,14 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def autorizar(self, request, pk=None):
+        """
+        ISS-004 FIX (audit18): Autorizar requisición con bloqueo para prevenir race conditions.
+        
+        Usa transaction.atomic() y select_for_update() para evitar que múltiples
+        usuarios autoricen la misma requisición simultáneamente.
+        """
+        from django.db import transaction
+        
         requisicion = self.get_object()
         # ISS-DB-002: Usar 'enviada' (valor en BD Supabase)
         if (requisicion.estado or '').lower() != 'enviada':
@@ -4252,19 +4260,56 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
 
         items_data = request.data.get('items') or request.data.get('detalles') or []
         
+        # ISS-004 FIX (audit18): Ejecutar autorización dentro de transacción atómica
+        try:
+            with transaction.atomic():
+                # Bloquear requisición para evitar modificaciones concurrentes
+                requisicion_bloqueada = Requisicion.objects.select_for_update(nowait=False).get(pk=requisicion.pk)
+                
+                # ISS-004: Re-verificar estado después del bloqueo (pudo cambiar)
+                if (requisicion_bloqueada.estado or '').lower() != 'enviada':
+                    return Response({
+                        'error': 'La requisición ya no está en estado ENVIADA (modificada concurrentemente)',
+                        'estado_actual': requisicion_bloqueada.estado
+                    }, status=status.HTTP_409_CONFLICT)
+                
+                return self._autorizar_con_bloqueo(request, requisicion_bloqueada, items_data)
+                
+        except Exception as e:
+            logger.error(f"ISS-004: Error en autorización atómica: {e}")
+            return Response({
+                'error': f'Error al autorizar: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def _autorizar_con_bloqueo(self, request, requisicion, items_data):
+        """
+        ISS-004 FIX (audit18): Lógica de autorización ejecutada dentro de transacción.
+        
+        Este método se llama desde autorizar() dentro de un bloque transaction.atomic()
+        con la requisición ya bloqueada via select_for_update().
+        """
         # ISS-003: Revalidar stock disponible en FARMACIA CENTRAL antes de autorizar
         # El stock pudo haber cambiado desde que se creó/envió la requisición
         errores_stock = []
         advertencias_stock = []
+        
+        # ISS-004 FIX: Bloquear detalles también para evitar modificaciones
+        detalles_bloqueados = DetalleRequisicion.objects.select_for_update().filter(
+            requisicion=requisicion
+        ).select_related('producto')
+        
+        # Crear mapa de detalles por ID para acceso rápido
+        detalles_map = {d.id: d for d in detalles_bloqueados}
         
         for item_data in items_data:
             item_id = item_data.get('id')
             cant_autorizada = item_data.get('cantidad_autorizada')
             if item_id is None or cant_autorizada is None:
                 continue
-            try:
-                item = requisicion.detalles.get(id=item_id)
-            except DetalleRequisicion.DoesNotExist:
+            
+            # ISS-004 FIX: Usar detalle bloqueado del mapa
+            item = detalles_map.get(item_id)
+            if item is None:
                 continue
             
             cant_autorizada = max(0, int(cant_autorizada))

@@ -560,9 +560,56 @@ class RequisicionService:
             notas_actuales = self.requisicion.notas or ''
             self.requisicion.notas = notas_actuales + registro
     
-    def validar_permisos_surtido(self, is_farmacia_or_admin_fn, get_user_centro_fn):
+    # ========== ISS-003 FIX (audit18): Funciones internas de fallback ==========
+    # Estas funciones proporcionan validación segura cuando las funciones
+    # externas fallan o no están definidas correctamente.
+    
+    @staticmethod
+    def _default_is_farmacia_or_admin(usuario) -> bool:
         """
-        ISS-003 FIX (audit2 + audit3): Valida permisos del usuario para surtir.
+        ISS-003 FIX (audit18): Fallback interno para verificar rol farmacia/admin.
+        
+        Se usa cuando is_farmacia_or_admin_fn es None o falla.
+        Implementa verificación SEGURA basada en atributos del usuario.
+        
+        Returns:
+            bool: True si el usuario tiene rol de farmacia o admin
+        """
+        if not usuario:
+            return False
+        
+        # Superusuario siempre tiene acceso
+        if getattr(usuario, 'is_superuser', False):
+            return True
+        
+        # Verificar por rol
+        user_rol = (getattr(usuario, 'rol', '') or '').lower()
+        roles_permitidos = {
+            'farmacia', 'farmaceutico', 'admin_farmacia', 
+            'usuario_farmacia', 'admin', 'admin_sistema'
+        }
+        
+        return user_rol in roles_permitidos
+    
+    @staticmethod
+    def _default_get_user_centro(usuario):
+        """
+        ISS-003 FIX (audit18): Fallback interno para obtener centro del usuario.
+        
+        Se usa cuando get_user_centro_fn es None o falla.
+        
+        Returns:
+            Centro | None: Centro del usuario o None si es farmacia central
+        """
+        if not usuario:
+            return None
+        
+        # Obtener centro directamente del usuario
+        return getattr(usuario, 'centro', None)
+    
+    def validar_permisos_surtido(self, is_farmacia_or_admin_fn=None, get_user_centro_fn=None):
+        """
+        ISS-003 FIX (audit2 + audit3 + audit18): Valida permisos del usuario para surtir.
         
         IMPORTANTE: Solo farmacia central y administradores pueden surtir.
         Los usuarios de centros NO pueden surtir, solo pueden confirmar recepción.
@@ -571,9 +618,14 @@ class RequisicionService:
         - Usuarios de farmacia deben estar adscritos a farmacia central (centro=NULL)
         - Solo pueden surtir requisiciones dentro de su ámbito
         
+        ISS-003 FIX (audit18): Fallback interno cuando funciones externas fallan:
+        - Si is_farmacia_or_admin_fn es None o falla, usa _default_is_farmacia_or_admin
+        - Si get_user_centro_fn es None o falla, usa _default_get_user_centro
+        - Loguea advertencia cuando se usa fallback
+        
         Args:
-            is_farmacia_or_admin_fn: Función que verifica si usuario es farmacia/admin
-            get_user_centro_fn: Función que obtiene el centro del usuario
+            is_farmacia_or_admin_fn: Función que verifica si usuario es farmacia/admin (opcional)
+            get_user_centro_fn: Función que obtiene el centro del usuario (opcional)
             
         Raises:
             PermisoRequisicionError: Si el usuario no tiene permiso
@@ -581,17 +633,51 @@ class RequisicionService:
         if self.usuario.is_superuser:
             return True
         
+        # ISS-003 FIX (audit18): Usar fallback si función externa es None
+        if is_farmacia_or_admin_fn is None:
+            logger.warning(
+                f"ISS-003: is_farmacia_or_admin_fn es None para usuario {self.usuario.username}. "
+                f"Usando validación interna (fallback seguro)."
+            )
+            is_farmacia_or_admin_fn = self._default_is_farmacia_or_admin
+        
+        # ISS-003 FIX (audit18): Ejecutar con manejo de errores
+        try:
+            es_farmacia_o_admin = is_farmacia_or_admin_fn(self.usuario)
+        except Exception as e:
+            logger.error(
+                f"ISS-003: is_farmacia_or_admin_fn falló: {e}. "
+                f"Usando validación interna (fallback seguro)."
+            )
+            es_farmacia_o_admin = self._default_is_farmacia_or_admin(self.usuario)
+        
         # Verificar rol farmacia/admin
-        if not is_farmacia_or_admin_fn(self.usuario):
+        if not es_farmacia_o_admin:
             # ISS-003 FIX: Usuarios de centro NO pueden surtir
             raise PermisoRequisicionError(
                 "Solo personal de farmacia central o administradores pueden surtir requisiciones. "
                 "Los usuarios de centro pueden confirmar recepción usando el endpoint correspondiente."
             )
         
+        # ISS-003 FIX (audit18): Usar fallback si función externa es None
+        if get_user_centro_fn is None:
+            logger.warning(
+                f"ISS-003: get_user_centro_fn es None para usuario {self.usuario.username}. "
+                f"Usando obtención de centro interna (fallback seguro)."
+            )
+            get_user_centro_fn = self._default_get_user_centro
+        
         # ISS-001 FIX (audit6): Validar adscripción del usuario de farmacia
         # Los usuarios de farmacia central NO deben tener centro asignado
-        user_centro = get_user_centro_fn(self.usuario)
+        try:
+            user_centro = get_user_centro_fn(self.usuario)
+        except Exception as e:
+            logger.error(
+                f"ISS-003: get_user_centro_fn falló: {e}. "
+                f"Usando obtención de centro interna (fallback seguro)."
+            )
+            user_centro = self._default_get_user_centro(self.usuario)
+        
         user_rol = (getattr(self.usuario, 'rol', '') or '').lower()
         
         # Roles de farmacia central no deben estar adscritos a un centro específico

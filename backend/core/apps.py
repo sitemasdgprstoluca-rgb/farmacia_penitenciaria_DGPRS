@@ -15,9 +15,10 @@ class CoreConfig(AppConfig):
         from . import signals  # noqa: F401
         
         # ISS-001 FIX (audit8): Validar esquemas de tablas unmanaged al iniciar
+        # ISS-005 FIX (audit18): Mejorada verificación de esquema
         # Solo ejecutar si no estamos en modo de migración o test
         import sys
-        if 'migrate' not in sys.argv and 'makemigrations' not in sys.argv:
+        if 'migrate' not in sys.argv and 'makemigrations' not in sys.argv and 'test' not in sys.argv:
             try:
                 from core.schema_validator import validate_unmanaged_schemas, check_transitions_constraint
                 
@@ -36,6 +37,10 @@ class CoreConfig(AppConfig):
                     )
                 else:
                     logger.info("ISS-001: Validación de esquema completada sin errores.")
+                
+                # ISS-005 FIX (audit18): Verificación adicional de columnas críticas
+                from core.schema_check import verificar_esquema_al_iniciar
+                verificar_esquema_al_iniciar()
                     
             except Exception as e:
                 # No bloquear inicio de la app por errores de validación
