@@ -3802,6 +3802,9 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         """
         ISS-001, ISS-004, ISS-005 FIX: Valida stock disponible con lógica clara por ubicación.
         
+        ISS-004 FIX (audit17): Optimizado para evitar N+1 queries.
+        Usa agregación en bloque en lugar de consultas individuales por producto.
+        
         ISS-005 FIX: Dos modos de validación:
         - 'informativo': Solo reporta problemas sin bloquear (para creación)
         - 'estricto': Bloquea si no hay stock suficiente (para autorización/surtido)
@@ -3825,16 +3828,19 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             list: Lista de errores/advertencias de stock
         """
         from django.utils import timezone
+        from django.db.models import Sum
+        from core.models import Lote
         
         errores = []
         today = timezone.now().date()
         
+        # ISS-004 FIX: Recopilar todos los producto_ids primero
+        producto_ids = []
+        items_validos = []
+        
         for item_data in items:
             producto_id = item_data.get('producto')
             if not producto_id:
-                continue
-            producto = Producto.objects.filter(id=producto_id).first()
-            if not producto:
                 continue
             try:
                 cantidad = int(item_data.get('cantidad_autorizada') or item_data.get('cantidad_solicitada') or 0)
@@ -3843,19 +3849,57 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             
             if cantidad <= 0:
                 continue
-
-            # ISS-001, ISS-004: Lógica clara de validación de stock
-            # SIEMPRE validamos contra stock VIGENTE (no vencido)
-            if validar_farmacia_central:
-                # Requisiciones: validar contra FARMACIA CENTRAL con lotes vigentes
-                disponible = producto.get_stock_farmacia_central(solo_vigentes=True)
-            else:
-                # Operaciones internas: validar contra stock del centro con lotes vigentes
-                if centro:
-                    disponible = producto.get_stock_centro(centro, solo_vigentes=True)
-                else:
-                    disponible = producto.get_stock_farmacia_central(solo_vigentes=True)
-
+            
+            producto_ids.append(producto_id)
+            items_validos.append({
+                'producto_id': producto_id,
+                'cantidad': cantidad,
+                'item_data': item_data
+            })
+        
+        if not producto_ids:
+            return errores
+        
+        # ISS-004 FIX: Prefetch de productos en una sola consulta
+        productos = {p.id: p for p in Producto.objects.filter(id__in=producto_ids)}
+        
+        # ISS-004 FIX: Calcular stock en bloque usando agregación
+        # Filtro base para lotes vigentes
+        lotes_filter = {
+            'activo': True,
+            'fecha_caducidad__gte': today,
+            'producto_id__in': producto_ids,
+        }
+        
+        if validar_farmacia_central:
+            # Stock de farmacia central = lotes sin centro
+            lotes_filter['centro__isnull'] = True
+        elif centro:
+            # Stock de centro específico
+            lotes_filter['centro'] = centro
+        else:
+            # Fallback a farmacia central
+            lotes_filter['centro__isnull'] = True
+        
+        # Agregar stock por producto en una sola consulta
+        stock_por_producto = dict(
+            Lote.objects.filter(**lotes_filter)
+            .values('producto_id')
+            .annotate(total=Sum('cantidad_actual'))
+            .values_list('producto_id', 'total')
+        )
+        
+        # Validar cada item
+        for item in items_validos:
+            producto_id = item['producto_id']
+            cantidad = item['cantidad']
+            producto = productos.get(producto_id)
+            
+            if not producto:
+                continue
+            
+            disponible = stock_por_producto.get(producto_id, 0) or 0
+            
             if cantidad > disponible:
                 error_item = {
                     'producto': producto.clave,
@@ -3881,7 +3925,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         
         Cada rol ve solo las requisiciones que le corresponden según su posición
         en el flujo jerárquico.
+        
+        ISS-006 FIX (audit17): Registro de auditoría para accesos privilegiados.
         """
+        from core.validators import AuditLogger
+        
         queryset = Requisicion.objects.select_related(
             'centro_origen', 'centro_destino', 'solicitante', 'autorizador',
             # FLUJO V2: Actores del flujo
@@ -3893,14 +3941,24 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         if not user or not user.is_authenticated:
             return Requisicion.objects.none()
         
+        filter_applied = False  # ISS-006: Rastrear si se aplica filtro de centro
+        
         # 1. Superusuario o Admin Global: Ve todo
         if user.is_superuser or getattr(user, 'rol', '') == 'admin':
+            # ISS-006 FIX: Registrar acceso privilegiado sin filtro
+            AuditLogger.log_privileged_access(
+                user, 
+                'requisicion', 
+                action='list_all',
+                details={'sin_filtro_centro': True}
+            )
             pass  # Sin filtro de centro
         
         # 2. Personal de Farmacia Central: Ve solo lo que ha sido enviado
         elif getattr(user, 'rol', '') == 'farmacia':
             # Farmacia NO debe ver borradores ni pendientes internos del centro
             queryset = queryset.exclude(estado__in=['borrador', 'pendiente_admin', 'pendiente_director'])
+            filter_applied = True
         
         # 3. Usuarios de Centros Penitenciarios
         else:
@@ -3932,6 +3990,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             
             # 3.4 Vista/Centro genérico: Ve todo del centro (lectura)
             # else: ya está filtrado por centro
+            filter_applied = True
         
         # Aplicar filtros adicionales de query params
         # Admin/farmacia pueden filtrar por centro específico
@@ -3941,6 +4000,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 queryset = queryset.filter(
                     Q(centro_origen_id=centro_param) | Q(centro_destino_id=centro_param)
                 )
+                filter_applied = True  # ISS-006: Ya filtraron por centro
 
         estado = self.request.query_params.get('estado')
         if estado:
@@ -3962,6 +4022,10 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         fecha_hasta = self.request.query_params.get('fecha_hasta')
         if fecha_hasta:
             queryset = queryset.filter(fecha_solicitud__date__lte=fecha_hasta)
+
+        # ISS-006 FIX: Registrar consultas globales sin filtro de centro
+        if not filter_applied:
+            AuditLogger.log_global_query(user, queryset, filter_applied=False)
 
         return queryset.order_by('-fecha_solicitud')
     
@@ -4119,6 +4183,13 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def enviar(self, request, pk=None):
+        """
+        ISS-002/ISS-007 FIX (audit17): Envía requisición con revalidación de stock.
+        
+        Antes de enviar, se revalida el stock disponible en farmacia central.
+        Si hay productos sin stock suficiente, se advierte pero permite enviar
+        (el bloqueo ocurre en autorización/surtido).
+        """
         requisicion = self.get_object()
         if (requisicion.estado or '').lower() != 'borrador':
             return Response({'error': 'Solo se pueden enviar requisiciones en estado BORRADOR', 'estado_actual': requisicion.estado}, status=status.HTTP_400_BAD_REQUEST)
@@ -4129,10 +4200,37 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 return Response({'error': 'No puedes enviar requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
         if not requisicion.detalles.exists():
             return Response({'error': 'La requisicion debe tener al menos un producto'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # ISS-002/ISS-007 FIX: Revalidar stock antes de enviar (modo informativo)
+        items_para_validar = [
+            {'producto': d.producto_id, 'cantidad_solicitada': d.cantidad_solicitada}
+            for d in requisicion.detalles.all()
+        ]
+        advertencias_stock = self._validar_stock_items(
+            items_para_validar,
+            centro=requisicion.centro_destino,
+            validar_farmacia_central=True,
+            modo='informativo'
+        )
+        
         # ISS-DB-002: Usar 'enviada' (valor en BD Supabase)
         requisicion.estado = 'enviada'
         requisicion.save(update_fields=['estado'])
-        return Response({'mensaje': 'Requisicion enviada', 'requisicion': RequisicionSerializer(requisicion).data})
+        
+        response_data = {
+            'mensaje': 'Requisicion enviada', 
+            'requisicion': RequisicionSerializer(requisicion).data
+        }
+        
+        # ISS-002: Incluir advertencias de stock si las hay
+        if advertencias_stock:
+            response_data['advertencias_stock'] = advertencias_stock
+            response_data['nota'] = (
+                'Algunos productos tienen stock insuficiente en farmacia central. '
+                'La requisición puede ser ajustada o rechazada en autorización.'
+            )
+        
+        return Response(response_data)
 
     @action(detail=True, methods=['post'])
     def autorizar(self, request, pk=None):

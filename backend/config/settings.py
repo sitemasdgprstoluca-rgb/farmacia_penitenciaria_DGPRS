@@ -18,13 +18,25 @@ LOG_TO_STDOUT = config('LOG_TO_STDOUT', default=_is_container or not DEBUG, cast
 LOG_FILE = config('LOG_FILE', default=str(BASE_DIR / 'logs' / 'django.log'))
 
 # ISS-004: Solo crear directorio de logs si no usamos stdout y manejamos errores
+# ISS-005 FIX (audit17): Mejorar manejo de errores de logging y fallback
 if not LOG_TO_STDOUT:
     try:
-        Path(LOG_FILE).parent.mkdir(parents=True, exist_ok=True)
+        log_dir = Path(LOG_FILE).parent
+        log_dir.mkdir(parents=True, exist_ok=True)
+        # Verificar que podemos escribir
+        test_file = log_dir / '.write_test'
+        test_file.touch()
+        test_file.unlink()
     except (PermissionError, OSError) as e:
-        # Si no podemos crear el directorio, forzar stdout
+        # Si no podemos crear el directorio o escribir, forzar stdout
         import sys
-        print(f"[WARNING] No se puede crear directorio de logs ({e}), usando stdout", file=sys.stderr)
+        print(
+            f"[ISS-005 WARNING] No se puede usar archivo de logs ({e}). "
+            f"Forzando LOG_TO_STDOUT=True. "
+            f"Para persistir logs, configure un agregador externo (ELK, CloudWatch, etc.) "
+            f"o corrija permisos del directorio: {LOG_FILE}",
+            file=sys.stderr
+        )
         LOG_TO_STDOUT = True
 
 # ═══════════════════════════════════════════════════════════
@@ -664,6 +676,12 @@ LOGGING = {
         'django.security': {
             'handlers': _log_handlers,
             'level': 'WARNING',
+            'propagate': False,
+        },
+        # ISS-006 FIX (audit17): Logger específico para auditoría de accesos privilegiados
+        'audit': {
+            'handlers': _log_handlers,
+            'level': 'INFO',
             'propagate': False,
         },
     },
