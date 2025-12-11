@@ -58,8 +58,23 @@ function Layout() {
       }
       // Limpiar token en memoria del tokenManager
       clearTokens();
-      // Limpiar datos de usuario (no tokens - ya están en memoria/cookie)
-      localStorage.removeItem("user");
+      
+      // ISS-003 FIX: Limpiar TODOS los datos locales relacionados con la sesión
+      const keysToRemove = [
+        'user',                    // Datos de usuario
+        'sifp_tema_cache',         // Cache de tema
+        'sifp_tema_updated_at',    // Timestamp de tema
+        'session_uid',             // ID de sesión
+        'session_role',            // Rol de sesión
+        'session_hash',            // Hash de sesión
+      ];
+      keysToRemove.forEach(key => {
+        try {
+          localStorage.removeItem(key);
+          sessionStorage.removeItem(key);
+        } catch (_) { /* Ignorar errores de storage */ }
+      });
+      
       try {
         navigate("/login");
         navegacionExitosa = true;
@@ -107,10 +122,38 @@ function Layout() {
     const cargarUnread = async () => {
       try {
         const res = await notificacionesAPI.noLeidasCount();
-        const total = res.data?.no_leidas ?? res.data?.total ?? res.data?.count ?? 0;
-        setUnreadCount(total);
-      } catch (_) {
-        // Silenciar error de conteo de notificaciones
+        // ISS-003 FIX: Validar formato de respuesta y loguear discrepancias
+        const data = res.data;
+        let total = 0;
+        
+        // Priorizar campos en orden de preferencia
+        if (typeof data?.no_leidas === 'number') {
+          total = data.no_leidas;
+        } else if (typeof data?.total === 'number') {
+          total = data.total;
+          // Log de discrepancia en desarrollo
+          if (import.meta.env.DEV) {
+            console.info('[Layout] Notificaciones: usando campo "total" en lugar de "no_leidas"');
+          }
+        } else if (typeof data?.count === 'number') {
+          total = data.count;
+          if (import.meta.env.DEV) {
+            console.info('[Layout] Notificaciones: usando campo "count" en lugar de "no_leidas"');
+          }
+        } else if (typeof data === 'number') {
+          // Backend puede retornar número directo
+          total = data;
+        } else if (import.meta.env.DEV) {
+          console.warn('[Layout] Formato de respuesta de notificaciones no reconocido:', data);
+        }
+        
+        setUnreadCount(Math.max(0, total));
+      } catch (error) {
+        // ISS-003 FIX: Mostrar error explícito en desarrollo
+        if (import.meta.env.DEV && error?.response?.status !== 401) {
+          console.warn('[Layout] Error cargando notificaciones:', error.message);
+        }
+        // Mantener contador anterior en caso de error temporal
       }
     };
     // Solo cargar si tiene usuario Y permiso de ver notificaciones

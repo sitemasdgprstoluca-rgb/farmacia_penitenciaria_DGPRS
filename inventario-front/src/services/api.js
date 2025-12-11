@@ -98,55 +98,114 @@ if (!isDev && apiBaseUrl && !apiBaseUrl.startsWith('https://')) {
 // Exportar métricas de seguridad para monitoreo
 export const getSecurityMetrics = () => securityMetrics.getMetrics();
 
-// ISS-001 FIX: Versión de API esperada y healthcheck
+// ISS-001 FIX: Configuración de healthcheck parametrizable
 const API_VERSION = import.meta.env.VITE_API_VERSION || 'v1';
+const HEALTH_ENDPOINT = import.meta.env.VITE_HEALTH_ENDPOINT || '/health/';
+const HEALTH_CHECK_ENABLED = import.meta.env.VITE_ENABLE_HEALTHCHECK !== 'false';
+const HEALTH_TIMEOUT = parseInt(import.meta.env.VITE_HEALTHCHECK_TIMEOUT || '5000', 10);
+const AUTH_ONLY_MODE = import.meta.env.VITE_AUTH_ONLY_MODE === 'true'; // Modo sin healthcheck
+
 let apiHealthy = null; // null = no verificado, true = ok, false = fallo
+let healthCheckSkipped = false; // Si se saltó por configuración
 
 /**
  * ISS-001 FIX: Verificar conectividad y compatibilidad con el backend
- * Retorna objeto con estado del backend
+ * Parametrizable via VITE_HEALTH_ENDPOINT y VITE_ENABLE_HEALTHCHECK
+ * Degrada elegantemente si el endpoint no existe (404)
+ * 
+ * @param {Object} options - Opciones de configuración
+ * @param {boolean} options.force - Forzar verificación aunque AUTH_ONLY_MODE esté activo
+ * @returns {Promise<Object>} Estado del backend
  */
-export const checkApiHealth = async () => {
+export const checkApiHealth = async (options = {}) => {
+  // Si hay error de configuración, retornar inmediatamente
   if (apiConfigError) {
-    return { healthy: false, error: apiConfigError, version: null };
+    return { healthy: false, error: apiConfigError, version: null, skipped: false };
+  }
+  
+  // ISS-001: Modo solo autenticación - saltar healthcheck
+  if ((AUTH_ONLY_MODE || !HEALTH_CHECK_ENABLED) && !options.force) {
+    healthCheckSkipped = true;
+    apiHealthy = true; // Asumir saludable en modo auth-only
+    if (isDev) {
+      console.info('[API] Health check deshabilitado (AUTH_ONLY_MODE o ENABLE_HEALTHCHECK=false)');
+    }
+    return {
+      healthy: true,
+      skipped: true,
+      mode: 'auth-only',
+      version: API_VERSION,
+      timestamp: new Date().toISOString(),
+    };
   }
   
   try {
-    // Usar endpoint público de health check
-    const response = await publicApiClient.get('/health/', { timeout: 5000 });
+    // ISS-001: Usar endpoint parametrizable
+    const response = await publicApiClient.get(HEALTH_ENDPOINT, { timeout: HEALTH_TIMEOUT });
     const data = response.data;
     
     apiHealthy = true;
     
     return {
       healthy: true,
-      version: data?.version || data?.api_version || null,
-      database: data?.database ?? 'unknown',
+      skipped: false,
+      version: data?.version || data?.api_version || API_VERSION,
+      database: data?.database ?? data?.db_status ?? 'unknown',
       timestamp: data?.timestamp || new Date().toISOString(),
+      details: data, // Incluir respuesta completa para debugging
     };
   } catch (error) {
+    const status = error.response?.status;
+    
+    // ISS-001: Degradación elegante - 404 no es fatal
+    if (status === 404) {
+      apiHealthy = true; // Backend funciona, solo no tiene /health/
+      healthCheckSkipped = true;
+      if (isDev) {
+        console.info(`[API] Health endpoint ${HEALTH_ENDPOINT} no disponible (404), degradando a modo auth-only`);
+      }
+      return {
+        healthy: true,
+        skipped: true,
+        mode: 'degraded',
+        reason: 'Health endpoint no implementado en backend',
+        version: API_VERSION,
+        timestamp: new Date().toISOString(),
+      };
+    }
+    
+    // Otros errores sí indican problemas
     apiHealthy = false;
-    const errorMsg = error.response?.status === 404 
-      ? 'Endpoint de health no disponible (404)'
-      : error.message || 'Error de conexión';
+    const errorMsg = status === 503
+      ? 'Backend en mantenimiento (503)'
+      : error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK'
+        ? 'No se puede conectar al servidor'
+        : error.message || 'Error de conexión';
     
-    console.warn('[API] Health check falló:', errorMsg);
+    console.warn('[API] Health check falló:', errorMsg, status ? `(${status})` : '');
     
-    // No es fatal si el health check falla - el backend puede no tenerlo implementado
     return {
       healthy: false,
+      skipped: false,
       error: errorMsg,
-      status: error.response?.status,
+      status: status,
       version: null,
     };
   }
 };
 
 /**
- * ISS-001 FIX: Verificar que la API está disponible antes de usarla
+ * ISS-001 FIX: Estado de salud de la API
  */
 export const isApiHealthy = () => apiHealthy;
+export const wasHealthCheckSkipped = () => healthCheckSkipped;
 export const getApiVersion = () => API_VERSION;
+export const getHealthConfig = () => ({
+  endpoint: HEALTH_ENDPOINT,
+  enabled: HEALTH_CHECK_ENABLED,
+  timeout: HEALTH_TIMEOUT,
+  authOnlyMode: AUTH_ONLY_MODE,
+});
 
 // Exportar función para verificar estado de configuración (ISS-001, ISS-003, ISS-005)
 export const getApiConfigError = () => apiConfigError;
@@ -465,7 +524,82 @@ export const usuariosAPI = {
   plantilla: () => apiClient.get('/usuarios/plantilla/', { responseType: 'blob' }),
 };
 
-// Requisiciones -  COMPLETO CON FLUJO
+// ========== ISS-002 FIX: VALIDACIÓN DE ESTADOS DE REQUISICIONES ==========
+/**
+ * Mapa de transiciones válidas V2 (estado_actual -> [acciones_permitidas])
+ * Esto previene acciones incoherentes antes de enviar al backend
+ */
+const TRANSICIONES_V2 = {
+  'BORRADOR': ['enviar', 'enviarAdmin', 'delete'],
+  'ENVIADA': ['autorizar', 'rechazar', 'cancelar'],
+  'ENVIADA_ADMIN': ['autorizarAdmin', 'rechazar', 'cancelar', 'devolver'],
+  'AUTORIZADA_ADMIN': ['autorizarDirector', 'rechazar', 'cancelar', 'devolver'],
+  'AUTORIZADA_DIRECTOR': ['recibirFarmacia', 'rechazar', 'cancelar'],
+  'RECIBIDA_FARMACIA': ['autorizarFarmacia', 'rechazar', 'devolver'],
+  'AUTORIZADA_FARMACIA': ['surtir', 'cancelar'],
+  'AUTORIZADA': ['surtir', 'rechazar', 'cancelar'], // Legacy
+  'SURTIDA': ['confirmarEntrega', 'marcarRecibida'],
+  'EN_TRANSITO': ['confirmarEntrega', 'marcarRecibida'],
+  'ENTREGADA': [], // Estado final
+  'RECIBIDA': [], // Estado final
+  'RECHAZADA': ['reenviar'],
+  'DEVUELTA': ['reenviar'],
+  'CANCELADA': [], // Estado final
+  'VENCIDA': [], // Estado final
+};
+
+/**
+ * ISS-002: Validar si una transición es permitida desde el estado actual
+ * @param {string} estadoActual - Estado actual de la requisición
+ * @param {string} accion - Acción que se quiere ejecutar
+ * @returns {boolean} - True si la transición es válida
+ */
+const esTransicionValida = (estadoActual, accion) => {
+  if (!estadoActual) return true; // Si no hay estado, dejar que backend valide
+  const estadoNorm = estadoActual.toUpperCase().replace(/ /g, '_');
+  const permitidas = TRANSICIONES_V2[estadoNorm] || [];
+  return permitidas.length === 0 || permitidas.includes(accion);
+};
+
+/**
+ * ISS-002: Crear error de transición inválida
+ */
+const crearErrorTransicion = (estadoActual, accion) => {
+  const error = new Error(
+    `Transición inválida: No se puede ejecutar "${accion}" desde estado "${estadoActual}". ` +
+    `Acciones permitidas: ${(TRANSICIONES_V2[estadoActual?.toUpperCase()] || ['ninguna']).join(', ')}`
+  );
+  error.name = 'TransicionInvalidaError';
+  error.code = 'INVALID_TRANSITION';
+  error.estadoActual = estadoActual;
+  error.accionIntentada = accion;
+  return error;
+};
+
+/**
+ * ISS-002: Wrapper para validar estado antes de ejecutar acción
+ * @param {string} accion - Nombre de la acción
+ * @param {Function} fn - Función que ejecuta la acción
+ * @param {string} estadoActual - Estado actual de la requisición (opcional)
+ */
+const conValidacionEstado = (accion, fn, estadoActual = null) => {
+  return async (...args) => {
+    // Si tenemos el estado actual, validar antes de llamar
+    if (estadoActual && !esTransicionValida(estadoActual, accion)) {
+      return Promise.reject(crearErrorTransicion(estadoActual, accion));
+    }
+    return fn(...args);
+  };
+};
+
+// Exportar utilidades de validación para uso en componentes
+export const requisicionesValidacion = {
+  TRANSICIONES_V2,
+  esTransicionValida,
+  getAccionesPermitidas: (estado) => TRANSICIONES_V2[estado?.toUpperCase()?.replace(/ /g, '_')] || [],
+};
+
+// Requisiciones -  COMPLETO CON FLUJO V2
 export const requisicionesAPI = {
   getAll: (params) => apiClient.get('/requisiciones/', { params }),
   getById: (id) => apiClient.get(`/requisiciones/${id}/`),
@@ -473,7 +607,7 @@ export const requisicionesAPI = {
   update: (id, data) => apiClient.put(`/requisiciones/${id}/`, data),
   delete: (id) => apiClient.delete(`/requisiciones/${id}/`),
   
-  // Flujo de estados (legacy - compatibilidad)
+  // ISS-002: Flujo de estados (legacy - compatibilidad, usar V2 preferentemente)
   enviar: (id) => apiClient.post(`/requisiciones/${id}/enviar/`),
   autorizar: (id, data) => apiClient.post(`/requisiciones/${id}/autorizar/`, data),
   rechazar: (id, data) => apiClient.post(`/requisiciones/${id}/rechazar/`, data),

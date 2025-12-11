@@ -16,6 +16,47 @@ const devWarn = (message, data = null) => {
 // ============================================================================
 const STORAGE_KEY_TEMA = 'sifp_tema_cache';
 const STORAGE_KEY_UPDATED = 'sifp_tema_updated_at';
+const STORAGE_KEY_VERSION = 'sifp_tema_version';
+
+// ISS-008 FIX: Configuración de expiración de cache
+const CACHE_VERSION = '2'; // Incrementar al cambiar estructura
+const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 horas
+const ALLOWED_LOGO_DOMAINS = [
+  'localhost',
+  '127.0.0.1',
+  window.location.hostname, // Dominio actual
+  // Agregar dominios permitidos según ambiente
+];
+
+/**
+ * ISS-008: Validar que una URL de logo sea de un dominio permitido
+ */
+const esUrlLogoValida = (url) => {
+  if (!url) return true; // URLs vacías son válidas (se usará fallback)
+  try {
+    const urlObj = new URL(url, window.location.origin);
+    return ALLOWED_LOGO_DOMAINS.some(domain => 
+      urlObj.hostname === domain || urlObj.hostname.endsWith(`.${domain}`)
+    );
+  } catch {
+    // Si es ruta relativa, es válida
+    return url.startsWith('/') || !url.includes('://');
+  }
+};
+
+/**
+ * ISS-008: Verificar si el cache ha expirado
+ */
+const esCacheExpirado = (updatedAt) => {
+  if (!updatedAt) return true;
+  try {
+    const cacheTime = new Date(updatedAt).getTime();
+    const ahora = Date.now();
+    return (ahora - cacheTime) > CACHE_MAX_AGE_MS;
+  } catch {
+    return true;
+  }
+};
 
 /**
  * Aplica las variables CSS al documento
@@ -37,22 +78,34 @@ const aplicarCSSVariables = (cssVariables) => {
 
 /**
  * Guarda el tema en localStorage para persistencia entre recargas
+ * ISS-008 FIX: Incluye versión de cache y valida URLs de logos
  */
 const guardarTemaEnCache = (tema) => {
   try {
     if (!tema) return;
+    
+    // ISS-008: Validar URLs de logos antes de guardar
+    const logoFields = ['favicon_url', 'logo_header_url', 'logo_login_url', 'logo_reportes_url'];
+    const temasLimpios = {};
+    logoFields.forEach(field => {
+      if (tema[field] && esUrlLogoValida(tema[field])) {
+        temasLimpios[field] = tema[field];
+      } else if (tema[field]) {
+        devWarn(`URL de logo bloqueada (dominio no permitido): ${field}`);
+      }
+    });
+    
     const cacheData = {
       css_variables: tema.css_variables,
       reporte_titulo_institucion: tema.reporte_titulo_institucion,
-      favicon_url: tema.favicon_url,
-      logo_header_url: tema.logo_header_url,
-      logo_login_url: tema.logo_login_url,
-      logo_reportes_url: tema.logo_reportes_url,
       nombre: tema.nombre,
-      updated_at: tema.updated_at || new Date().toISOString()
+      ...temasLimpios,
+      updated_at: tema.updated_at || new Date().toISOString(),
+      _cache_version: CACHE_VERSION, // ISS-008: Versión de cache
     };
     localStorage.setItem(STORAGE_KEY_TEMA, JSON.stringify(cacheData));
     localStorage.setItem(STORAGE_KEY_UPDATED, cacheData.updated_at);
+    localStorage.setItem(STORAGE_KEY_VERSION, CACHE_VERSION);
     devLog('[ThemeContext] Tema guardado en caché local');
   } catch (err) {
     devWarn('No se pudo guardar tema en localStorage:', err);
@@ -61,28 +114,48 @@ const guardarTemaEnCache = (tema) => {
 
 /**
  * Recupera el tema desde localStorage
+ * ISS-008 FIX: Verifica versión y expiración de cache
  */
 const obtenerTemaDeCache = () => {
   try {
+    // ISS-008: Verificar versión de cache
+    const storedVersion = localStorage.getItem(STORAGE_KEY_VERSION);
+    if (storedVersion !== CACHE_VERSION) {
+      devLog('[ThemeContext] Cache invalidado por cambio de versión');
+      invalidarCacheTema();
+      return null;
+    }
+    
     const cached = localStorage.getItem(STORAGE_KEY_TEMA);
     if (cached) {
       const tema = JSON.parse(cached);
+      
+      // ISS-008: Verificar expiración
+      if (esCacheExpirado(tema.updated_at)) {
+        devLog('[ThemeContext] Cache expirado (>24h)');
+        invalidarCacheTema();
+        return null;
+      }
+      
       devLog('[ThemeContext] Tema recuperado de caché local');
       return tema;
     }
   } catch (err) {
     devWarn('Error leyendo caché local:', err);
+    invalidarCacheTema(); // Limpiar cache corrupto
   }
   return null;
 };
 
 /**
  * Invalida la caché local del tema
+ * ISS-008 FIX: También limpia versión de cache
  */
 const invalidarCacheTema = () => {
   try {
     localStorage.removeItem(STORAGE_KEY_TEMA);
     localStorage.removeItem(STORAGE_KEY_UPDATED);
+    localStorage.removeItem(STORAGE_KEY_VERSION);
   } catch (err) {
     // Ignorar errores de localStorage
   }
