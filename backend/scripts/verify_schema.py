@@ -304,6 +304,213 @@ def _imprimir_resultado(nombre: str, resultado: ResultadoVerificacion):
         print(f"   ℹ️  Columnas extra en BD (no en Django): {resultado.columnas_extra}")
 
 
+# =============================================================================
+# ISS-001/003 FIX (audit22): Verificación de columnas y constraints críticos
+# =============================================================================
+
+# Columnas críticas que DEBEN existir para el funcionamiento correcto
+COLUMNAS_CRITICAS = {
+    'movimientos': ['subtipo_salida', 'numero_expediente'],
+    'detalles_requisicion': ['motivo_ajuste'],
+    'lotes': ['centro_id', 'activo', 'cantidad_actual', 'fecha_caducidad'],
+    'requisiciones': ['estado', 'centro_origen_id', 'solicitante_id'],
+}
+
+# Constraints recomendados para integridad de datos
+CONSTRAINTS_RECOMENDADOS = {
+    'lotes': [
+        ('chk_lotes_cantidad_no_negativa', 'cantidad_actual >= 0'),
+        ('chk_lotes_cantidad_inicial_positiva', 'cantidad_inicial > 0'),
+    ],
+    'movimientos': [
+        ('chk_movimientos_cantidad_positiva', 'cantidad > 0'),
+        ('chk_movimientos_tipo_valido', "tipo IN ('entrada', 'salida', 'ajuste', 'transferencia')"),
+    ],
+    'requisiciones': [
+        ('chk_requisiciones_estado_valido', "estado IN (...)"),  # Simplificado
+    ],
+}
+
+
+def verificar_columnas_criticas(verbose: bool = True) -> Dict[str, List[str]]:
+    """
+    ISS-001 FIX (audit22): Verifica que las columnas críticas existan en BD.
+    
+    Esto es esencial para entornos nuevos donde managed=False impide
+    que Django cree las columnas automáticamente.
+    
+    Returns:
+        Dict con tabla -> lista de columnas faltantes
+    """
+    from django.db import connection
+    
+    faltantes = {}
+    
+    with connection.cursor() as cursor:
+        for tabla, columnas in COLUMNAS_CRITICAS.items():
+            # Obtener columnas reales de la tabla
+            cursor.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = %s AND table_schema = 'public'
+            """, [tabla])
+            columnas_bd = {row[0] for row in cursor.fetchall()}
+            
+            if not columnas_bd:
+                faltantes[tabla] = [f"TABLA NO EXISTE: {tabla}"]
+                continue
+            
+            cols_faltantes = [c for c in columnas if c not in columnas_bd]
+            if cols_faltantes:
+                faltantes[tabla] = cols_faltantes
+                
+                if verbose:
+                    print(f"❌ {tabla}: Columnas faltantes: {cols_faltantes}")
+            elif verbose:
+                print(f"✅ {tabla}: Todas las columnas críticas presentes")
+    
+    return faltantes
+
+
+def verificar_constraints(verbose: bool = True) -> Dict[str, List[str]]:
+    """
+    ISS-003 FIX (audit22): Verifica constraints de integridad en BD.
+    
+    Returns:
+        Dict con tabla -> lista de constraints faltantes (nombres)
+    """
+    from django.db import connection
+    
+    faltantes = {}
+    
+    with connection.cursor() as cursor:
+        for tabla, constraints in CONSTRAINTS_RECOMENDADOS.items():
+            # Obtener constraints CHECK de la tabla
+            cursor.execute("""
+                SELECT con.conname
+                FROM pg_constraint con
+                JOIN pg_class rel ON rel.oid = con.conrelid
+                JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+                WHERE rel.relname = %s 
+                  AND nsp.nspname = 'public'
+                  AND con.contype = 'c'
+            """, [tabla])
+            constraints_bd = {row[0] for row in cursor.fetchall()}
+            
+            cons_faltantes = []
+            for nombre, _ in constraints:
+                # Buscar constraint por nombre o similar
+                encontrado = any(nombre in c or c.startswith(f'{tabla}_') for c in constraints_bd)
+                if not encontrado and nombre not in constraints_bd:
+                    cons_faltantes.append(nombre)
+            
+            if cons_faltantes:
+                faltantes[tabla] = cons_faltantes
+                if verbose:
+                    print(f"⚠️  {tabla}: Constraints recomendados faltantes: {cons_faltantes}")
+            elif verbose and constraints:
+                print(f"✅ {tabla}: Constraints de integridad presentes")
+    
+    return faltantes
+
+
+def verificacion_arranque(raise_on_error: bool = False) -> bool:
+    """
+    ISS-001 FIX (audit22): Verificación rápida para ejecutar al arrancar.
+    
+    Verifica solo columnas críticas, no el esquema completo.
+    Útil para integrar en AppConfig.ready() o manage.py.
+    
+    Args:
+        raise_on_error: Si True, lanza excepción en caso de error
+        
+    Returns:
+        True si todo OK, False si hay problemas
+    """
+    from django.db import connection
+    from django.conf import settings
+    
+    # Solo verificar en PostgreSQL (no SQLite de tests)
+    if 'sqlite' in settings.DATABASES.get('default', {}).get('ENGINE', ''):
+        logger.info("ISS-001: Verificación de esquema omitida (SQLite)")
+        return True
+    
+    try:
+        faltantes = verificar_columnas_criticas(verbose=False)
+        
+        if faltantes:
+            msg = f"ISS-001 ERROR: Columnas críticas faltantes en BD: {faltantes}"
+            logger.error(msg)
+            
+            if raise_on_error:
+                raise RuntimeError(msg)
+            return False
+        
+        logger.info("ISS-001: Verificación de esquema OK - Columnas críticas presentes")
+        return True
+        
+    except Exception as e:
+        logger.warning(f"ISS-001: No se pudo verificar esquema: {e}")
+        return True  # No bloquear si no hay conexión
+
+
+def generar_sql_constraints() -> str:
+    """
+    ISS-003 FIX (audit22): Genera SQL para aplicar constraints recomendados.
+    
+    Returns:
+        String con sentencias SQL para aplicar en Supabase
+    """
+    sql_lines = [
+        "-- ============================================",
+        "-- ISS-003 FIX: Constraints de integridad recomendados",
+        "-- Ejecutar en: Supabase SQL Editor",
+        "-- ============================================",
+        "",
+    ]
+    
+    # Constraints de lotes
+    sql_lines.extend([
+        "-- 1. Stock no negativo en lotes",
+        "ALTER TABLE lotes DROP CONSTRAINT IF EXISTS chk_lotes_cantidad_no_negativa;",
+        "ALTER TABLE lotes ADD CONSTRAINT chk_lotes_cantidad_no_negativa CHECK (cantidad_actual >= 0);",
+        "",
+        "-- 2. Cantidad inicial positiva",
+        "ALTER TABLE lotes DROP CONSTRAINT IF EXISTS chk_lotes_cantidad_inicial_positiva;",
+        "ALTER TABLE lotes ADD CONSTRAINT chk_lotes_cantidad_inicial_positiva CHECK (cantidad_inicial > 0);",
+        "",
+    ])
+    
+    # Constraints de movimientos
+    sql_lines.extend([
+        "-- 3. Cantidad positiva en movimientos",
+        "ALTER TABLE movimientos DROP CONSTRAINT IF EXISTS chk_movimientos_cantidad_positiva;",
+        "ALTER TABLE movimientos ADD CONSTRAINT chk_movimientos_cantidad_positiva CHECK (cantidad > 0);",
+        "",
+        "-- 4. Tipos de movimiento válidos",
+        "ALTER TABLE movimientos DROP CONSTRAINT IF EXISTS chk_movimientos_tipo_valido;",
+        "ALTER TABLE movimientos ADD CONSTRAINT chk_movimientos_tipo_valido",
+        "  CHECK (tipo IN ('entrada', 'salida', 'ajuste', 'transferencia'));",
+        "",
+    ])
+    
+    # Constraints de requisiciones
+    sql_lines.extend([
+        "-- 5. Estados de requisición válidos (Flujo V2)",
+        "ALTER TABLE requisiciones DROP CONSTRAINT IF EXISTS chk_requisiciones_estado_valido;",
+        "ALTER TABLE requisiciones ADD CONSTRAINT chk_requisiciones_estado_valido",
+        "  CHECK (estado IN (",
+        "    'borrador', 'pendiente_admin', 'pendiente_director',",
+        "    'enviada', 'en_revision', 'autorizada', 'en_surtido',",
+        "    'surtida', 'entregada', 'rechazada', 'vencida', 'cancelada',",
+        "    'devuelta', 'parcial'",
+        "  ));",
+        "",
+    ])
+    
+    return "\n".join(sql_lines)
+
+
 # Ejecutar si se importa directamente
 if __name__ == '__main__':
     import django
@@ -312,6 +519,17 @@ if __name__ == '__main__':
     django.setup()
     
     print("=" * 60)
-    print("ISS-003 FIX: Verificación de esquema BD vs modelos Django")
+    print("ISS-001/003 FIX: Verificación de esquema BD vs modelos Django")
     print("=" * 60)
+    
+    print("\n--- Verificación de esquema completa ---")
     verificar_esquema(verbose=True)
+    
+    print("\n--- Verificación de columnas críticas ---")
+    verificar_columnas_criticas(verbose=True)
+    
+    print("\n--- Verificación de constraints ---")
+    verificar_constraints(verbose=True)
+    
+    print("\n--- SQL para constraints recomendados ---")
+    print(generar_sql_constraints())
