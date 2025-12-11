@@ -406,7 +406,23 @@ class LoteQueryHelper:
 
 class ContratoValidator:
     """
-    ISS-003 FIX: Validador estricto de contratos para entradas de lotes.
+    ISS-002/ISS-003 FIX (audit19): Validador estricto de contratos para entradas de lotes.
+    
+    IMPORTANTE: Actualmente NO existe un modelo Contrato en la BD.
+    Este validador funciona con los campos existentes en Lote:
+    - numero_contrato: Referencia textual al contrato
+    - precio_unitario: Precio pactado
+    - cantidad_inicial: Cantidad máxima autorizada
+    
+    REGLAS DE NEGOCIO APLICADAS:
+    1. Para entradas formales, se EXIGE numero_contrato
+    2. Se valida vigencia mínima de caducidad (180 días por defecto)
+    3. Se controla excedente máximo sobre cantidad_inicial (10% por defecto)
+    
+    ROADMAP:
+    - Fase 1 (actual): Validación básica con campos de Lote
+    - Fase 2 (futuro): Implementar modelo Contrato con vigencia, límites, precios
+    - Fase 3 (futuro): Integración con sistema de compras/adquisiciones
     
     Convierte advertencias en errores bloqueantes para operaciones críticas.
     """
@@ -426,13 +442,18 @@ class ContratoValidator:
         strict: bool = True,
     ) -> Dict[str, Any]:
         """
-        ISS-003 FIX: Valida reglas de contrato para entrada de lotes.
+        ISS-002/ISS-003 FIX (audit19): Valida reglas de contrato para entrada de lotes.
+        
+        IMPORTANTE: Sin modelo Contrato, valida usando campos de Lote:
+        - numero_contrato: Obligatorio para entradas formales
+        - precio_unitario: Debe ser > 0 para entradas formales
+        - cantidad_inicial: Controla límite máximo de ingreso
         
         Args:
             lote: Instancia de Lote a validar
             cantidad_a_ingresar: Cantidad que se pretende ingresar
-            contrato: Objeto contrato si existe (opcional)
-            es_entrada_formal: Si True, exige número de contrato
+            contrato: Objeto contrato si existe (opcional, para futuro)
+            es_entrada_formal: Si True, exige numero_contrato y precio
             strict: Si True, convierte advertencias críticas en errores
             
         Returns:
@@ -440,19 +461,32 @@ class ContratoValidator:
                 'valido': bool,
                 'errores': list,
                 'advertencias': list,
-                'bloqueante': bool (True si hay errores que deben bloquear)
+                'bloqueante': bool (True si hay errores que deben bloquear),
+                'validacion_contrato': str ('completa', 'parcial', 'sin_contrato')
             }
         """
         errores = []
         advertencias = []
+        validacion_contrato = 'sin_contrato'
         
-        # 1. Validar número de contrato obligatorio
-        if es_entrada_formal and not lote.numero_contrato:
-            msg = 'El lote debe tener número de contrato para entradas formales.'
-            if strict:
-                errores.append(msg)
+        # 1. Validar número de contrato obligatorio para entradas formales
+        if es_entrada_formal:
+            if not lote.numero_contrato:
+                msg = 'ISS-002: El lote debe tener número de contrato para entradas formales.'
+                if strict:
+                    errores.append(msg)
+                else:
+                    advertencias.append(msg)
             else:
-                advertencias.append(msg)
+                validacion_contrato = 'parcial'
+            
+            # ISS-002 FIX (audit19): Validar precio_unitario > 0
+            if not lote.precio_unitario or lote.precio_unitario <= 0:
+                msg = 'ISS-002: El lote debe tener precio unitario válido (> 0) para entradas formales.'
+                if strict:
+                    errores.append(msg)
+                else:
+                    advertencias.append(msg)
         
         # 2. Validar vigencia de caducidad
         if lote.fecha_caducidad:
@@ -472,25 +506,39 @@ class ContratoValidator:
                     errores.append(msg)
                 else:
                     advertencias.append(msg)
+        else:
+            # ISS-002 FIX (audit19): Advertir si no hay fecha de caducidad
+            advertencias.append(
+                'ISS-002: El lote no tiene fecha de caducidad definida. '
+                'Verificar si aplica para este tipo de producto.'
+            )
         
-        # 3. Validar excedente sobre cantidad inicial
+        # 3. Validar excedente sobre cantidad inicial (límite contractual)
         if cantidad_a_ingresar and lote.cantidad_inicial:
             cantidad_proyectada = (lote.cantidad_actual or 0) + cantidad_a_ingresar
             limite_max = lote.cantidad_inicial * (1 + ContratoValidator.PORCENTAJE_EXCEDENTE_MAX / 100)
             
             if cantidad_proyectada > limite_max:
                 msg = (
-                    f'La cantidad resultante ({cantidad_proyectada}) excede el '
+                    f'ISS-002: La cantidad resultante ({cantidad_proyectada}) excede el '
                     f'{ContratoValidator.PORCENTAJE_EXCEDENTE_MAX}% del límite inicial '
-                    f'({lote.cantidad_inicial}).'
+                    f'({lote.cantidad_inicial}). Posible violación de contrato.'
                 )
                 if strict:
                     errores.append(msg)
                 else:
                     advertencias.append(msg)
+        elif es_entrada_formal and not lote.cantidad_inicial:
+            # ISS-002 FIX (audit19): Advertir si no hay cantidad inicial definida
+            advertencias.append(
+                'ISS-002: El lote no tiene cantidad inicial definida. '
+                'No se puede validar límite contractual.'
+            )
         
-        # 4. Validar contrato específico si se proporciona
+        # 4. Validar contrato específico si se proporciona (para futuro modelo Contrato)
         if contrato:
+            validacion_contrato = 'completa'
+            
             # Validar fecha de vigencia del contrato
             if hasattr(contrato, 'fecha_fin') and contrato.fecha_fin:
                 hoy = timezone.now().date()
@@ -512,6 +560,7 @@ class ContratoValidator:
             'errores': errores,
             'advertencias': advertencias,
             'bloqueante': len(errores) > 0,
+            'validacion_contrato': validacion_contrato,  # ISS-002 FIX (audit19)
         }
     
     @staticmethod

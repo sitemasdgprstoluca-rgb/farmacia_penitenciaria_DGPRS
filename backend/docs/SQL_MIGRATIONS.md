@@ -337,3 +337,109 @@ DROP FUNCTION IF EXISTS audit_stock_change();
 2. **Ejecutar en horario de baja actividad**
 3. **Probar primero en entorno de desarrollo/staging**
 4. **Las migraciones son idempotentes** (se pueden re-ejecutar sin problemas)
+
+---
+
+## ISS-005: Constraints Recomendados para Integridad
+
+**Fecha:** 2024-12  
+**Contexto:** Django usa `managed=False`, los constraints NO se aplican automáticamente.
+
+### Constraints Críticos para Lotes
+
+```sql
+-- ============================================
+-- ISS-005 FIX: Constraints para tabla lotes
+-- Ejecutar en: Supabase SQL Editor
+-- ============================================
+
+-- 1. Cantidad actual nunca negativa
+ALTER TABLE lotes 
+ADD CONSTRAINT IF NOT EXISTS chk_lote_cantidad_no_negativa 
+CHECK (cantidad_actual >= 0);
+
+-- 2. Cantidad inicial nunca negativa
+ALTER TABLE lotes 
+ADD CONSTRAINT IF NOT EXISTS chk_lote_cantidad_inicial_no_negativa 
+CHECK (cantidad_inicial >= 0);
+
+-- 3. Precio unitario no negativo
+ALTER TABLE lotes 
+ADD CONSTRAINT IF NOT EXISTS chk_lote_precio_no_negativo 
+CHECK (precio_unitario >= 0);
+
+-- 4. Fecha caducidad posterior a fabricación
+ALTER TABLE lotes 
+ADD CONSTRAINT IF NOT EXISTS chk_lote_fechas_coherentes 
+CHECK (fecha_fabricacion IS NULL OR fecha_caducidad > fecha_fabricacion);
+
+-- 5. Índices para consultas de stock
+CREATE INDEX IF NOT EXISTS idx_lotes_stock_disponible 
+ON lotes(producto_id, centro_id, activo, cantidad_actual, fecha_caducidad)
+WHERE activo = true AND cantidad_actual > 0;
+
+CREATE INDEX IF NOT EXISTS idx_lotes_farmacia_central
+ON lotes(producto_id, activo, cantidad_actual, fecha_caducidad)
+WHERE centro_id IS NULL AND activo = true;
+```
+
+### Constraints para Movimientos
+
+```sql
+-- Cantidad siempre positiva (el tipo determina si suma o resta)
+ALTER TABLE movimientos 
+ADD CONSTRAINT IF NOT EXISTS chk_movimiento_cantidad_positiva 
+CHECK (cantidad > 0);
+
+-- Tipos válidos
+ALTER TABLE movimientos 
+ADD CONSTRAINT IF NOT EXISTS chk_movimiento_tipo_valido 
+CHECK (tipo IN (
+  'entrada', 'salida', 'transferencia', 
+  'ajuste_positivo', 'ajuste_negativo', 
+  'devolucion', 'merma', 'caducidad'
+));
+```
+
+### Trigger de Auditoría para Cambios de Stock
+
+```sql
+-- Función para auditar cambios críticos
+CREATE OR REPLACE FUNCTION audit_stock_change()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.cantidad_actual != NEW.cantidad_actual THEN
+    INSERT INTO audit_log (
+      tabla, registro_id, campo, valor_anterior, valor_nuevo, 
+      fecha, descripcion
+    ) VALUES (
+      'lotes', NEW.id, 'cantidad_actual', 
+      OLD.cantidad_actual::text, NEW.cantidad_actual::text,
+      NOW(), 'Cambio de stock detectado'
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger solo si tabla audit_log existe
+-- CREATE TRIGGER trg_audit_lote_stock
+-- AFTER UPDATE ON lotes
+-- FOR EACH ROW
+-- EXECUTE FUNCTION audit_stock_change();
+```
+
+### Verificación de Constraints Aplicados
+
+```sql
+-- Listar todos los constraints de las tablas principales
+SELECT 
+  tc.table_name, 
+  tc.constraint_name, 
+  tc.constraint_type,
+  cc.check_clause
+FROM information_schema.table_constraints tc
+LEFT JOIN information_schema.check_constraints cc 
+  ON tc.constraint_name = cc.constraint_name
+WHERE tc.table_name IN ('lotes', 'movimientos', 'requisiciones')
+ORDER BY tc.table_name, tc.constraint_type;

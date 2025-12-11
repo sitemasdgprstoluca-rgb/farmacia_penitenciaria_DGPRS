@@ -627,16 +627,18 @@ class Producto(models.Model):
         """
         ISS-001 FIX (audit11): Calcula el stock actual sumando lotes disponibles.
         ISS-007 FIX (audit11): Soporte para caching opcional.
+        ISS-004 FIX (audit19): Maneja fecha_caducidad null (lotes sin caducidad).
         
         SOLO cuenta lotes con estado 'disponible', activos y no vencidos.
         Excluye lotes bloqueados, retirados, vencidos o agotados.
+        Lotes SIN fecha de caducidad se consideran vigentes (según regla de negocio).
         
         Args:
             centro: Filtrar por centro específico (None = todos)
             use_cache: Si True, usa cache de Django (default False para transacciones)
             cache_timeout: Tiempo de cache en segundos (default 60)
         """
-        from django.db.models import Sum
+        from django.db.models import Sum, Q
         from django.utils import timezone
         from django.core.cache import cache
         
@@ -648,17 +650,18 @@ class Producto(models.Model):
             if cached is not None:
                 return cached
         
-        filtros = {
-            'activo': True,
-            # ISS-004 FIX (audit14): La BD NO tiene campo 'estado' en lotes
-            # La disponibilidad se determina por activo + cantidad + fecha
-            'cantidad_actual__gt': 0,
-            'fecha_caducidad__gte': timezone.now().date(),  # ISS-001 FIX: Solo vigentes
-        }
-        if centro and centro != 'todos':
-            filtros['centro'] = centro
+        hoy = timezone.now().date()
         
-        result = self.lotes.filter(**filtros).aggregate(
+        # ISS-004 FIX (audit19): Usar Q objects para manejar caducidad null
+        # Lotes sin fecha_caducidad se consideran vigentes
+        filtro_caducidad = Q(fecha_caducidad__gte=hoy) | Q(fecha_caducidad__isnull=True)
+        
+        filtros = Q(activo=True) & Q(cantidad_actual__gt=0) & filtro_caducidad
+        
+        if centro and centro != 'todos':
+            filtros &= Q(centro=centro)
+        
+        result = self.lotes.filter(filtros).aggregate(
             total=Sum('cantidad_actual')
         )['total'] or 0
         
@@ -672,9 +675,11 @@ class Producto(models.Model):
         """
         ISS-001 FIX (audit11): Calcula stock disponible en farmacia central.
         ISS-007 FIX (audit11): Soporte para caching opcional.
+        ISS-004 FIX (audit19): Maneja fecha_caducidad null.
         
         SOLO cuenta lotes con estado 'disponible', activos y no vencidos.
         Excluye lotes bloqueados, retirados, vencidos o agotados.
+        Lotes SIN fecha de caducidad se consideran vigentes.
         
         Args:
             solo_vigentes: Si True, excluye lotes vencidos (default True)
@@ -684,7 +689,7 @@ class Producto(models.Model):
         Returns:
             int: Stock disponible
         """
-        from django.db.models import Sum
+        from django.db.models import Sum, Q
         from django.utils import timezone
         from django.core.cache import cache
         
@@ -695,17 +700,16 @@ class Producto(models.Model):
             if cached is not None:
                 return cached
         
-        filtros = {
-            'activo': True,
-            'centro__isnull': True,  # Farmacia central = sin centro asignado
-            'cantidad_actual__gt': 0,
-            # ISS-004 FIX (audit14): No usar estado__in, campo no existe en BD
-        }
+        hoy = timezone.now().date()
+        
+        # ISS-004 FIX (audit19): Usar Q objects para filtros complejos
+        filtros = Q(activo=True) & Q(centro__isnull=True) & Q(cantidad_actual__gt=0)
         
         if solo_vigentes:
-            filtros['fecha_caducidad__gte'] = timezone.now().date()
+            # Lotes sin fecha_caducidad se consideran vigentes
+            filtros &= Q(fecha_caducidad__gte=hoy) | Q(fecha_caducidad__isnull=True)
         
-        result = self.lotes.filter(**filtros).aggregate(
+        result = self.lotes.filter(filtros).aggregate(
             total=Sum('cantidad_actual')
         )['total'] or 0
         
@@ -718,9 +722,11 @@ class Producto(models.Model):
         """
         ISS-001 FIX (audit11): Calcula stock disponible en un centro específico.
         ISS-007 FIX (audit11): Soporte para caching opcional.
+        ISS-004 FIX (audit19): Maneja fecha_caducidad null.
         
         SOLO cuenta lotes con estado 'disponible', activos y no vencidos.
         Excluye lotes bloqueados, retirados, vencidos o agotados.
+        Lotes SIN fecha de caducidad se consideran vigentes.
         
         Args:
             centro: Instancia o ID del centro
@@ -731,7 +737,7 @@ class Producto(models.Model):
         Returns:
             int: Stock disponible
         """
-        from django.db.models import Sum
+        from django.db.models import Sum, Q
         from django.utils import timezone
         from django.core.cache import cache
         
@@ -744,17 +750,16 @@ class Producto(models.Model):
             if cached is not None:
                 return cached
         
-        filtros = {
-            'activo': True,
-            'centro_id': centro_id,
-            'cantidad_actual__gt': 0,
-            # ISS-004 FIX (audit14): No usar estado__in, campo no existe en BD
-        }
+        hoy = timezone.now().date()
+        
+        # ISS-004 FIX (audit19): Usar Q objects para filtros complejos
+        filtros = Q(activo=True) & Q(centro_id=centro_id) & Q(cantidad_actual__gt=0)
         
         if solo_vigentes:
-            filtros['fecha_caducidad__gte'] = timezone.now().date()
+            # Lotes sin fecha_caducidad se consideran vigentes
+            filtros &= Q(fecha_caducidad__gte=hoy) | Q(fecha_caducidad__isnull=True)
         
-        result = self.lotes.filter(**filtros).aggregate(
+        result = self.lotes.filter(filtros).aggregate(
             total=Sum('cantidad_actual')
         )['total'] or 0
         
@@ -943,13 +948,14 @@ class Lote(models.Model):
         skip_validation = kwargs.pop('skip_validation', False)
         
         # ISS-002 FIX (audit12): Registrar uso de skip_validation
+        # ISS-001 FIX (audit19): Usar campos reales, no property 'estado' 
         if skip_validation:
             if not getattr(settings, 'DEBUG', False):
                 logger = logging.getLogger(__name__)
                 logger.critical(
                     f"ISS-002 ALERTA: skip_validation usado en PRODUCCIÓN para Lote. "
-                    f"ID: {self.pk}, Producto: {self.producto_id}, Estado: {self.estado}. "
-                    "Revisar trazabilidad."
+                    f"ID: {self.pk}, Producto: {self.producto_id}, Activo: {self.activo}, "
+                    f"Cantidad: {self.cantidad_actual}. Revisar trazabilidad."
                 )
         
         if not skip_validation:
@@ -1509,7 +1515,7 @@ class Requisicion(models.Model):
     def fecha_recibido(self, value):
         self.fecha_firma_recepcion = value
     
-    # ========== ISS-004 FIX (audit6): Campo updated_by en memoria ==========
+    # ========== ISS-003 FIX (audit19): Campo updated_by en memoria ==========
     # ADVERTENCIA: Este campo NO existe en la BD (managed=False).
     # Los writes a este campo NO SE PERSISTEN.
     # 
@@ -1518,8 +1524,26 @@ class Requisicion(models.Model):
     # - cambiar_estado_con_historial() para cambios de estado persistidos
     # - Campos de actores específicos (surtidor, autorizador, receptor_farmacia)
     # 
+    # ALTERNATIVA PERSISTIDA: Usar get_ultimo_actor_modificacion() para obtener
+    # el último usuario que modificó la requisición desde el historial.
+    # 
     # TODO: Deprecar en próxima versión mayor
     _updated_by = None
+    
+    def get_ultimo_actor_modificacion(self):
+        """
+        ISS-003 FIX (audit19): Obtiene el último usuario que modificó la requisición.
+        
+        Este método LEE desde RequisicionHistorialEstados, por lo que SÍ es persistido.
+        Use este método en lugar de updated_by para auditoría confiable.
+        
+        Returns:
+            User | None: Último usuario que modificó la requisición
+        """
+        ultimo_cambio = self.historial_estados.order_by('-fecha_cambio').first()
+        if ultimo_cambio:
+            return ultimo_cambio.usuario
+        return self.solicitante  # Fallback al creador
     
     @property
     def updated_by(self):
