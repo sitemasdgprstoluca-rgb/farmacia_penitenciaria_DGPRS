@@ -16,9 +16,17 @@ import {
   ESTADOS_REQUISICION,
   TIPOS_MOVIMIENTO,
   CAMPOS_REQUERIDOS,
+  // ISS-001 FIX: Importar métricas de contrato
+  getContractMetrics,
+  resetContractMetrics,
 } from '../../utils/dtoContracts';
 
 describe('dtoContracts', () => {
+  // ISS-001 FIX: Limpiar métricas antes de cada test
+  beforeEach(() => {
+    resetContractMetrics();
+  });
+
   describe('getStockProducto', () => {
     it('obtiene stock_actual como campo canónico', () => {
       const producto = { id: 1, stock_actual: 100 };
@@ -353,6 +361,85 @@ describe('dtoContracts', () => {
       expect(TIPOS_MOVIMIENTO.SALIDA).toBe('salida');
       expect(TIPOS_MOVIMIENTO.AJUSTE).toBe('ajuste');
       expect(TIPOS_MOVIMIENTO.TRANSFERENCIA).toBe('transferencia');
+    });
+  });
+
+  // ISS-001 FIX: Tests de métricas de contrato
+  describe('Contract Metrics - ISS-001', () => {
+    it('registra uso de campos legacy', () => {
+      // Usar campo legacy debería registrar violación
+      const producto = { id: 1, stock_total: 50 };
+      getStockProducto(producto, { logWarnings: false, endpoint: 'test' });
+
+      const metrics = getContractMetrics();
+      expect(metrics.totalViolations).toBeGreaterThan(0);
+      expect(Object.keys(metrics.legacyFieldUsage).length).toBeGreaterThan(0);
+    });
+
+    it('registra violaciones de paginación', () => {
+      // Array plano debería registrar discrepancia
+      validarRespuestaPaginada([{ id: 1 }], { endpoint: 'test' });
+
+      const metrics = getContractMetrics();
+      expect(metrics.paginationDiscrepancies).toBeGreaterThan(0);
+    });
+
+    it('resetea métricas correctamente', () => {
+      // Generar algunas violaciones
+      getStockProducto({ id: 1, stock_total: 10 }, { logWarnings: false });
+      validarRespuestaPaginada([{ id: 1 }], { endpoint: 'test' });
+
+      resetContractMetrics();
+      const metrics = getContractMetrics();
+
+      expect(metrics.totalViolations).toBe(0);
+      expect(metrics.paginationDiscrepancies).toBe(0);
+    });
+
+    it('no registra violación cuando se usa campo canónico', () => {
+      resetContractMetrics();
+      
+      // Usar campo canónico NO debe registrar violación
+      const producto = { id: 1, stock_actual: 100 };
+      getStockProducto(producto, { logWarnings: false });
+
+      const metrics = getContractMetrics();
+      expect(metrics.totalViolations).toBe(0);
+    });
+  });
+
+  // ISS-003 FIX: Tests de modo estricto de paginación
+  describe('validarRespuestaPaginada - modo estricto ISS-003', () => {
+    it('rechaza array plano en modo estricto', () => {
+      const response = [{ id: 1 }, { id: 2 }];
+      const resultado = validarRespuestaPaginada(response, { strict: true, endpoint: 'test' });
+
+      expect(resultado.valido).toBe(false);
+      expect(resultado.format).toBe('array_plain');
+    });
+
+    it('rechaza formato {data} en modo estricto', () => {
+      const response = { data: [{ id: 1 }], total: 5 };
+      const resultado = validarRespuestaPaginada(response, { strict: true, endpoint: 'test' });
+
+      expect(resultado.valido).toBe(false);
+      expect(resultado.format).toBe('data_wrapper');
+    });
+
+    it('acepta formato canónico DRF en modo estricto', () => {
+      const response = { results: [{ id: 1 }], count: 1 };
+      const resultado = validarRespuestaPaginada(response, { strict: true, endpoint: 'test' });
+
+      expect(resultado.valido).toBe(true);
+      expect(resultado.format).toBe('canonical');
+    });
+
+    it('incluye warning para formatos no canónicos', () => {
+      const response = [{ id: 1 }];
+      const resultado = validarRespuestaPaginada(response, { strict: false });
+
+      expect(resultado.valido).toBe(true);
+      expect(resultado.warning).toBeDefined();
     });
   });
 });

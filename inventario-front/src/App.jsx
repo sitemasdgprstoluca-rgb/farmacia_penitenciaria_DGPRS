@@ -8,7 +8,7 @@ import { usePermissions } from './hooks/usePermissions';
 import { useInactivityLogout } from './hooks/useInactivityLogout';
 import PermissionsGuard from './components/PermissionsGuard';
 import ErrorBoundary from './components/ErrorBoundary';
-import { getApiConfigError, hasHttpWarning } from './services/api';
+import { getApiConfigError, hasHttpWarning, wasHealthCheckSkipped, checkApiHealth, isApiHealthy } from './services/api';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // LAZY LOADING - Mejora el tiempo de carga inicial dividiendo el bundle
@@ -56,6 +56,70 @@ const HttpWarningBanner = () => (
       </svg>
       ⚠️ CONEXIÓN NO SEGURA: Esta sesión usa HTTP sin cifrado. Los datos pueden estar expuestos. Solo para entornos de prueba.
     </span>
+  </div>
+);
+
+/**
+ * ISS-005 FIX: Banner de healthcheck omitido o degradado
+ * Muestra advertencia persistente cuando no se verificó compatibilidad con backend
+ */
+const HealthCheckWarningBanner = ({ reason, onDismiss, onRetry }) => (
+  <div className="fixed bottom-0 left-0 right-0 z-40 bg-amber-100 border-t border-amber-300 px-4 py-3 shadow-lg">
+    <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+      <div className="flex items-center gap-3">
+        <span className="text-xl">🔌</span>
+        <div>
+          <p className="text-sm font-medium text-amber-800">
+            Verificación de API omitida
+          </p>
+          <p className="text-xs text-amber-700">
+            {reason || 'No se pudo verificar la compatibilidad con el servidor. Algunas funciones podrían no estar disponibles.'}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onRetry}
+          className="px-3 py-1.5 text-sm font-medium rounded-lg bg-amber-200 text-amber-800 hover:bg-amber-300 transition-colors"
+        >
+          🔄 Verificar ahora
+        </button>
+        <button
+          onClick={onDismiss}
+          className="px-3 py-1.5 text-sm font-medium rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+        >
+          Ignorar
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+/**
+ * ISS-005 FIX: Banner de API no saludable
+ * Muestra error cuando el healthcheck falló
+ */
+const ApiUnhealthyBanner = ({ error, onRetry }) => (
+  <div className="fixed bottom-0 left-0 right-0 z-40 bg-red-100 border-t border-red-300 px-4 py-3 shadow-lg">
+    <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+      <div className="flex items-center gap-3">
+        <span className="text-xl">⚠️</span>
+        <div>
+          <p className="text-sm font-medium text-red-800">
+            Conexión con servidor inestable
+          </p>
+          <p className="text-xs text-red-700">
+            {error || 'No se pudo conectar al servidor. Las operaciones podrían fallar.'}
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={onRetry}
+        className="px-3 py-1.5 text-sm font-medium rounded-lg bg-red-200 text-red-800 hover:bg-red-300 transition-colors"
+      >
+        🔄 Reintentar conexión
+      </button>
+    </div>
   </div>
 );
 
@@ -133,12 +197,100 @@ function App() {
 
   // ISS-002/ISS-004: Verificar si hay advertencia de HTTP inseguro
   const showHttpWarning = hasHttpWarning();
+  
+  // ISS-005 FIX: Estado para healthcheck
+  const [healthState, setHealthState] = useState({
+    checked: false,
+    healthy: null,
+    skipped: false,
+    error: null,
+    reason: null,
+    dismissed: false,
+  });
+  
+  // ISS-005: Verificar healthcheck al montar
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const result = await checkApiHealth();
+        setHealthState({
+          checked: true,
+          healthy: result.healthy,
+          skipped: result.skipped || false,
+          error: result.error || null,
+          reason: result.mode === 'auth-only' 
+            ? 'Modo de autenticación únicamente - verificación de compatibilidad deshabilitada'
+            : result.mode === 'degraded'
+              ? 'El servidor no tiene endpoint de salud - funcionando en modo degradado'
+              : null,
+          dismissed: false,
+        });
+      } catch (err) {
+        setHealthState({
+          checked: true,
+          healthy: false,
+          skipped: false,
+          error: err.message || 'Error desconocido al verificar conexión',
+          reason: null,
+          dismissed: false,
+        });
+      }
+    };
+    
+    checkHealth();
+  }, []);
+  
+  // ISS-005: Handler para reintentar healthcheck
+  const handleRetryHealthCheck = async () => {
+    setHealthState(prev => ({ ...prev, checked: false }));
+    try {
+      const result = await checkApiHealth({ force: true });
+      setHealthState({
+        checked: true,
+        healthy: result.healthy,
+        skipped: result.skipped || false,
+        error: result.error || null,
+        reason: result.reason || null,
+        dismissed: false,
+      });
+    } catch (err) {
+      setHealthState(prev => ({
+        ...prev,
+        checked: true,
+        healthy: false,
+        error: err.message,
+      }));
+    }
+  };
+  
+  // ISS-005: Handler para descartar advertencia
+  const handleDismissHealthWarning = () => {
+    setHealthState(prev => ({ ...prev, dismissed: true }));
+  };
+  
+  // Determinar qué banner de health mostrar
+  const showHealthSkippedBanner = healthState.checked && healthState.skipped && !healthState.dismissed;
+  const showHealthErrorBanner = healthState.checked && !healthState.healthy && !healthState.skipped;
 
   return (
     <Router>
       <PermissionProvider>
         <ThemeProvider>
           {showHttpWarning && <HttpWarningBanner />}
+          {/* ISS-005 FIX: Banners de healthcheck */}
+          {showHealthSkippedBanner && (
+            <HealthCheckWarningBanner 
+              reason={healthState.reason}
+              onDismiss={handleDismissHealthWarning}
+              onRetry={handleRetryHealthCheck}
+            />
+          )}
+          {showHealthErrorBanner && (
+            <ApiUnhealthyBanner 
+              error={healthState.error}
+              onRetry={handleRetryHealthCheck}
+            />
+          )}
           <SessionManager />
           <Toaster position="top-right" />
         

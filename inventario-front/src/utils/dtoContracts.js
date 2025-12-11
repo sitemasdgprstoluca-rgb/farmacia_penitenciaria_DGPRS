@@ -9,6 +9,92 @@
  */
 
 // ============================================================================
+// ISS-001 FIX: CONFIGURACIÓN GLOBAL DE CONTRATOS
+// ============================================================================
+
+const isDev = import.meta.env.DEV || import.meta.env.MODE === 'development';
+
+/**
+ * ISS-001 FIX: Modo estricto para endpoints críticos
+ * Cuando está activo, los campos legacy generan errores visibles
+ */
+const CONFIG = {
+  // Forzar strict en producción para endpoints críticos
+  strictModeEndpoints: ['productos', 'lotes', 'requisiciones'],
+  // Habilitar logging de violaciones (siempre en dev, configurable en prod)
+  logViolations: isDev || import.meta.env.VITE_LOG_CONTRACT_VIOLATIONS === 'true',
+  // Máximo de violaciones antes de alertar
+  maxViolationsBeforeAlert: 5,
+};
+
+/**
+ * ISS-001 FIX: Métricas de violaciones de contrato
+ * Rastrea campos legacy y discrepancias para monitoreo
+ */
+const contractMetrics = {
+  violations: [],
+  legacyFieldUsage: new Map(),
+  paginationDiscrepancies: 0,
+  lastViolation: null,
+  
+  recordViolation(type, details) {
+    const entry = {
+      type,
+      details,
+      timestamp: new Date().toISOString(),
+    };
+    this.violations.push(entry);
+    this.lastViolation = entry;
+    
+    // Mantener solo últimas 100 violaciones
+    if (this.violations.length > 100) {
+      this.violations.shift();
+    }
+    
+    // Alertar si hay demasiadas violaciones
+    if (this.violations.length >= CONFIG.maxViolationsBeforeAlert && CONFIG.logViolations) {
+      console.warn(
+        `[DTO CONTRACT] ⚠️ ${this.violations.length} violaciones de contrato detectadas. ` +
+        `Revisar alineación backend-frontend.`
+      );
+    }
+  },
+  
+  recordLegacyField(campo, endpoint = 'unknown') {
+    const key = `${endpoint}:${campo}`;
+    const count = (this.legacyFieldUsage.get(key) || 0) + 1;
+    this.legacyFieldUsage.set(key, count);
+    
+    this.recordViolation('legacy_field', { campo, endpoint, count });
+  },
+  
+  recordPaginationDiscrepancy(format, endpoint = 'unknown') {
+    this.paginationDiscrepancies++;
+    this.recordViolation('pagination_format', { format, endpoint });
+  },
+  
+  getMetrics() {
+    return {
+      totalViolations: this.violations.length,
+      legacyFieldUsage: Object.fromEntries(this.legacyFieldUsage),
+      paginationDiscrepancies: this.paginationDiscrepancies,
+      lastViolation: this.lastViolation,
+    };
+  },
+  
+  reset() {
+    this.violations = [];
+    this.legacyFieldUsage.clear();
+    this.paginationDiscrepancies = 0;
+    this.lastViolation = null;
+  },
+};
+
+// Exportar métricas para monitoreo externo
+export const getContractMetrics = () => contractMetrics.getMetrics();
+export const resetContractMetrics = () => contractMetrics.reset();
+
+// ============================================================================
 // PRODUCTO DTO
 // ============================================================================
 
@@ -57,22 +143,31 @@ const CAMPOS_STOCK_LEGACY = [
 ];
 
 /**
- * ISS-002 FIX: Obtiene el stock de un producto con validación de contrato
+ * ISS-001/002 FIX: Obtiene el stock de un producto con validación de contrato
  * 
  * @param {Object} producto - Objeto producto del API
  * @param {Object} options - Opciones
  * @param {boolean} options.strict - Si true, lanza error si falta campo canónico
  * @param {boolean} options.logWarnings - Si true, loguea advertencias de campos legacy
+ * @param {string} options.endpoint - Nombre del endpoint para métricas
+ * @param {boolean} options.alertOnLegacy - Mostrar alerta visible al usuario cuando usa campos legacy
  * @returns {number} Stock del producto
  * @throws {Error} Si strict=true y no hay campo de stock válido
  */
 export const getStockProducto = (producto, options = {}) => {
-  const { strict = false, logWarnings = true } = options;
+  const { 
+    strict = false, 
+    logWarnings = true, 
+    endpoint = 'unknown',
+    alertOnLegacy = false 
+  } = options;
   
   if (!producto || typeof producto !== 'object') {
     if (strict) throw new Error('Producto inválido: debe ser un objeto');
     return 0;
   }
+
+  const productoId = producto.id || producto.clave || 'desconocido';
 
   // 1. Intentar campo canónico primero
   const stockCanonnico = producto[CAMPO_STOCK_CANONICO];
@@ -80,21 +175,33 @@ export const getStockProducto = (producto, options = {}) => {
     return stockCanonnico;
   }
 
-  // 2. Buscar en campos legacy
+  // 2. Buscar en campos legacy - REGISTRAR VIOLACIÓN
   for (const campo of CAMPOS_STOCK_LEGACY) {
     const valor = producto[campo];
     if (typeof valor === 'number' && !Number.isNaN(valor)) {
-      if (logWarnings && import.meta.env.DEV) {
+      // ISS-001 FIX: Registrar uso de campo legacy
+      contractMetrics.recordLegacyField(campo, endpoint);
+      
+      if (logWarnings && CONFIG.logViolations) {
         console.warn(
-          `[DTO] Producto ${producto.id || producto.clave} usa campo legacy '${campo}' ` +
-          `en lugar de '${CAMPO_STOCK_CANONICO}'. Actualizar backend.`
+          `[DTO CONTRACT] ⚠️ Producto ${productoId} usa campo legacy '${campo}' ` +
+          `en lugar de '${CAMPO_STOCK_CANONICO}'. Endpoint: ${endpoint}. Actualizar backend.`
         );
       }
+      
+      // ISS-001: Alerta visible si está habilitada (para endpoints críticos)
+      if (alertOnLegacy && !isDev) {
+        console.error(
+          `[STOCK CONTRACT] Producto ${productoId}: usando campo legacy '${campo}'. ` +
+          `Esto puede causar inconsistencias de inventario.`
+        );
+      }
+      
       return valor;
     }
   }
 
-  // 3. Intentar parsear strings
+  // 3. Intentar parsear strings - TAMBIÉN ES VIOLACIÓN
   const candidatos = [
     producto[CAMPO_STOCK_CANONICO],
     ...CAMPOS_STOCK_LEGACY.map(c => producto[c])
@@ -103,10 +210,17 @@ export const getStockProducto = (producto, options = {}) => {
   for (const candidato of candidatos) {
     const parsed = Number(candidato);
     if (!Number.isNaN(parsed)) {
-      if (logWarnings && import.meta.env.DEV) {
+      // ISS-001: Registrar tipo incorrecto
+      contractMetrics.recordViolation('string_as_number', { 
+        productoId, 
+        campo: 'stock', 
+        endpoint 
+      });
+      
+      if (logWarnings && CONFIG.logViolations) {
         console.warn(
-          `[DTO] Producto ${producto.id || producto.clave} tiene stock como string. ` +
-          `El API debería devolver número.`
+          `[DTO CONTRACT] ⚠️ Producto ${productoId} tiene stock como string. ` +
+          `El API debería devolver número. Endpoint: ${endpoint}`
         );
       }
       return parsed;
@@ -115,9 +229,23 @@ export const getStockProducto = (producto, options = {}) => {
 
   // 4. Sin stock válido
   if (strict) {
-    throw new Error(
-      `Contrato violado: Producto ${producto.id || producto.clave} no tiene campo de stock válido. ` +
-      `Esperado: '${CAMPO_STOCK_CANONICO}'`
+    const error = new Error(
+      `Contrato violado: Producto ${productoId} no tiene campo de stock válido. ` +
+      `Esperado: '${CAMPO_STOCK_CANONICO}'. Endpoint: ${endpoint}`
+    );
+    error.name = 'ContractViolationError';
+    error.productoId = productoId;
+    error.endpoint = endpoint;
+    throw error;
+  }
+
+  // ISS-001: Registrar ausencia de stock (solo si no es strict)
+  contractMetrics.recordViolation('missing_stock', { productoId, endpoint });
+  
+  if (logWarnings && CONFIG.logViolations) {
+    console.warn(
+      `[DTO CONTRACT] ⚠️ Producto ${productoId} sin campo de stock válido. ` +
+      `Retornando 0. Endpoint: ${endpoint}`
     );
   }
 
@@ -391,32 +519,114 @@ export const CAMPOS_REQUERIDOS = {
 };
 
 /**
- * Valida respuesta de lista paginada
+ * ISS-003 FIX: Valida respuesta de lista paginada con registro de discrepancias
+ * 
+ * FORMATO CANÓNICO ESPERADO (DRF):
+ * { results: [...], count: N, next: url|null, previous: url|null }
+ * 
+ * @param {Object|Array} response - Respuesta del API
+ * @param {Object} options - Opciones
+ * @param {string} options.endpoint - Nombre del endpoint para métricas
+ * @param {boolean} options.strict - Si true, rechaza formatos no canónicos
+ * @returns {{ valido: boolean, data: Array, count: number, warning?: string }}
  */
-export const validarRespuestaPaginada = (response) => {
-  if (Array.isArray(response)) {
-    return { valido: true, data: response, count: response.length };
-  }
-
+export const validarRespuestaPaginada = (response, options = {}) => {
+  const { endpoint = 'unknown', strict = false } = options;
+  
+  // ISS-003: Formato canónico DRF - el único válido en modo estricto
   if (response && Array.isArray(response.results)) {
     return { 
       valido: true, 
       data: response.results, 
-      count: response.count || response.results.length,
-      next: response.next,
-      previous: response.previous,
+      count: response.count ?? response.results.length,
+      next: response.next ?? null,
+      previous: response.previous ?? null,
+      format: 'canonical',
+    };
+  }
+  
+  // ISS-003: Array plano - FORMATO LEGACY
+  if (Array.isArray(response)) {
+    contractMetrics.recordPaginationDiscrepancy('array_plain', endpoint);
+    
+    if (CONFIG.logViolations) {
+      console.warn(
+        `[DTO CONTRACT] ⚠️ Endpoint ${endpoint} devuelve array plano en lugar de ` +
+        `formato paginado {results, count}. Sin información de paginación disponible.`
+      );
+    }
+    
+    if (strict) {
+      return { 
+        valido: false, 
+        data: response, 
+        count: response.length,
+        error: 'Formato no canónico: array plano sin paginación',
+        format: 'array_plain',
+      };
+    }
+    
+    return { 
+      valido: true, 
+      data: response, 
+      count: response.length,
+      warning: 'Array plano - sin información de paginación',
+      format: 'array_plain',
     };
   }
 
+  // ISS-003: Formato {data: [...]} - FORMATO ALTERNATIVO (algunos backends)
   if (response && Array.isArray(response.data)) {
+    contractMetrics.recordPaginationDiscrepancy('data_wrapper', endpoint);
+    
+    if (CONFIG.logViolations) {
+      console.warn(
+        `[DTO CONTRACT] ⚠️ Endpoint ${endpoint} usa formato {data: [...]} en lugar de ` +
+        `{results: [...]}. Considerar estandarizar al formato DRF.`
+      );
+    }
+    
+    if (strict) {
+      return {
+        valido: false,
+        data: response.data,
+        count: response.total || response.count || response.data.length,
+        error: 'Formato no canónico: wrapper data en lugar de results',
+        format: 'data_wrapper',
+      };
+    }
+    
     return {
       valido: true,
       data: response.data,
       count: response.total || response.count || response.data.length,
+      warning: 'Formato alternativo {data} - considerar migrar a {results}',
+      format: 'data_wrapper',
     };
   }
 
-  return { valido: false, data: [], count: 0, error: 'Formato de respuesta no reconocido' };
+  // ISS-003: Formato no reconocido - SIEMPRE es error
+  contractMetrics.recordViolation('unknown_pagination_format', { 
+    endpoint, 
+    responseType: typeof response,
+    hasResults: response?.results !== undefined,
+    hasData: response?.data !== undefined,
+  });
+  
+  if (CONFIG.logViolations) {
+    console.error(
+      `[DTO CONTRACT] ❌ Endpoint ${endpoint} devolvió formato de paginación no reconocido. ` +
+      `Tipo: ${typeof response}. Esperado: {results: [...], count: N}`
+    );
+  }
+
+  return { 
+    valido: false, 
+    data: [], 
+    count: 0, 
+    error: `Formato de respuesta no reconocido para endpoint ${endpoint}`,
+    format: 'unknown',
+  };
 };
 
 export default {

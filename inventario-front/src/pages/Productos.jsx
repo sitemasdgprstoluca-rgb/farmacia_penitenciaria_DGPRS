@@ -341,13 +341,23 @@ const Productos = () => {
 
   const { user, permisos, getRolPrincipal } = usePermissions();
   
-  // ISS-003 FIX (audit27): Cargar catálogos dinámicos desde API
-  const { catalogos, loading: loadingCatalogos, isFromFallback } = useCatalogos({ autoLoad: true });
+  // ISS-002 FIX (audit31): Cargar catálogos dinámicos desde API
+  // IMPORTANTE: Si el catálogo no carga, se bloquea la edición para evitar inconsistencias
+  const { catalogos, loading: loadingCatalogos, isFromFallback, error: catalogosError, refetch: refetchCatalogos } = useCatalogos({ autoLoad: true });
   
-  // Usar catálogos del API con fallback
+  // ISS-002 FIX: Estado para rastrear si el usuario reconoció la advertencia de fallback
+  const [catalogosFallbackAcknowledged, setCatalogosFallbackAcknowledged] = useState(false);
+  
+  // ISS-002 FIX: Determinar si los catálogos están en modo degradado (fallback)
+  const catalogosDegradados = isFromFallback && !catalogosFallbackAcknowledged;
+  
+  // Usar catálogos del API - en modo fallback se muestran pero con advertencia
   const UNIDADES = catalogos?.unidades || UNIDADES_FALLBACK;
   const CATEGORIAS = catalogos?.categorias || ['medicamento', 'material_curacion', 'insumo', 'equipo', 'otro'];
   const VIAS_ADMINISTRACION = catalogos?.viasAdministracion || ['oral', 'intravenosa', 'intramuscular', 'subcutanea', 'topica', 'inhalatoria', 'rectal', 'oftalmico', 'otico', 'nasal', 'otra'];
+  
+  // ISS-002 FIX: Bloquear creación/edición cuando catálogos no sincronizados
+  const catalogosSincronizados = !isFromFallback || catalogosFallbackAcknowledged;
 
   const rolPrincipal = getRolPrincipal(); // ADMIN | FARMACIA | CENTRO | VISTA | SIN_ROL
   const esAdmin = rolPrincipal === 'ADMIN';
@@ -761,7 +771,13 @@ const Productos = () => {
   const handleSubmit = async (e) => {
 
     e.preventDefault();
-
+    
+    // ISS-002 FIX: Bloquear si catálogos no sincronizados y no reconocido
+    if (isFromFallback && !catalogosFallbackAcknowledged) {
+      toast.error('Los catálogos no están sincronizados. Las unidades/categorías pueden no coincidir con el backend.');
+      return;
+    }
+    
     if (editingProduct && !puede.editar) {
 
       toast.error('No tiene permisos para editar productos');
@@ -2001,6 +2017,39 @@ const Productos = () => {
               <span className="text-sm font-semibold">{editingProduct ? editingProduct.clave : 'Nuevo'}</span>
 
             </div>
+            
+            {/* ISS-002 FIX: Banner de advertencia cuando catálogos están en fallback */}
+            {isFromFallback && (
+              <div className="mx-6 mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="text-xl">⚠️</span>
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-amber-800">Catálogos no sincronizados</h4>
+                    <p className="text-sm text-amber-700 mt-1">
+                      No se pudieron cargar los catálogos del servidor. Las unidades de medida y categorías 
+                      mostradas pueden no coincidir con el backend, lo que podría causar errores al guardar.
+                    </p>
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => refetchCatalogos(true)}
+                        disabled={loadingCatalogos}
+                        className="px-3 py-1.5 text-sm font-medium rounded-lg bg-amber-100 text-amber-800 hover:bg-amber-200 disabled:opacity-50"
+                      >
+                        {loadingCatalogos ? 'Sincronizando...' : '🔄 Reintentar sincronización'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCatalogosFallbackAcknowledged(true)}
+                        className="px-3 py-1.5 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      >
+                        Continuar de todos modos
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-4 px-6 py-6">
 
