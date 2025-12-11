@@ -1,0 +1,1238 @@
+# -*- coding: utf-8 -*-
+"""
+Módulo de ViewSet para Lotes.
+
+Contiene LoteViewSet para gestionar el CRUD completo de lotes farmacéuticos,
+incluyendo:
+- Listado con filtros por producto, caducidad, stock y centro
+- Exportación a PDF y Excel
+- Importación masiva desde Excel
+- Control de vencimientos y alertas
+- Gestión de documentos asociados (facturas, contratos, remisiones)
+- Trazabilidad y historial de movimientos
+
+Refactorización audit34: Extraído del monolítico views.py (7654 líneas)
+para mejorar mantenibilidad y organización del código.
+"""
+from datetime import datetime, date, timedelta
+import logging
+import uuid
+import os
+from io import BytesIO
+
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils import get_column_letter
+
+from rest_framework import viewsets, serializers, status
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from django.db import transaction
+from django.db.models import Q, Sum
+from django.http import HttpResponse
+from django.utils import timezone
+
+# Imports desde el módulo base
+from .base import (
+    # Clases base y utilidades
+    CustomPagination,
+    # Helpers de seguridad
+    is_farmacia_or_admin,
+    get_user_centro,
+    # Validadores de archivos
+    validar_archivo_excel,
+    cargar_workbook_seguro,
+    validar_filas_excel,
+    validar_archivo_pdf,
+    # Helper de movimientos
+    registrar_movimiento_stock,
+    # Constantes
+    logger,
+)
+
+# Modelos
+from core.models import Producto, Lote, Movimiento, Centro, LoteDocumento
+
+# Serializers
+from core.serializers import LoteSerializer, LoteDocumentoSerializer
+
+# Permisos
+from core.permissions import IsFarmaciaAdminOrReadOnly, IsFarmaciaRole, IsCentroRole
+
+
+class LoteViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestionar lotes.
+    
+    Funcionalidades:
+    - CRUD completo
+    - Filtrado por producto
+    - Filtrado por estado de caducidad
+    - Busqueda por numero de lote
+    - Validaciones de integridad
+    """
+    queryset = Lote.objects.select_related('producto').all()
+    serializer_class = LoteSerializer
+    permission_classes = [IsFarmaciaAdminOrReadOnly]
+    pagination_class = CustomPagination
+
+    def get_queryset(self):
+        """
+        Filtra lotes segun parametros.
+        
+        Parametros:
+        - producto: ID del producto
+        - activo: true/false
+        - caducidad: vencido/critico/proximo/normal
+        - search: busqueda por numero de lote
+        - centro: ID del centro o 'central' para farmacia (solo admin/farmacia/vista)
+        
+        Seguridad: Usuarios de centro solo ven lotes de su centro.
+        Admin/farmacia/vista ven todo por defecto, pueden filtrar con ?centro=.
+        """
+        queryset = Lote.objects.select_related('producto', 'centro').all()
+        
+        # SEGURIDAD: Filtrar por centro segun rol
+        user = self.request.user
+        
+        # ISS-FIX: Usuarios de centro pueden ver lotes de farmacia central
+        # cuando están creando requisiciones (para_requisicion=true)
+        para_requisicion = self.request.query_params.get('para_requisicion', '').lower() == 'true'
+        
+        if not is_farmacia_or_admin(user):
+            # Usuario de centro
+            user_centro = get_user_centro(user)
+            if not user_centro:
+                return Lote.objects.none()
+            
+            if para_requisicion:
+                # ISS-FIX: Para crear requisiciones, mostrar lotes de FARMACIA CENTRAL
+                # porque las requisiciones se surten desde farmacia central
+                queryset = queryset.filter(centro__isnull=True)
+            else:
+                # Por defecto: solo lotes de SU centro
+                queryset = queryset.filter(centro=user_centro)
+        else:
+            # Admin/farmacia/vista: pueden filtrar por centro especifico
+            centro_param = self.request.query_params.get('centro')
+            if centro_param:
+                if centro_param == 'central':
+                    # Filtrar solo farmacia central (centro=NULL)
+                    queryset = queryset.filter(centro__isnull=True)
+                else:
+                    queryset = queryset.filter(centro_id=centro_param)
+        
+        # Filtrar por producto
+        producto = self.request.query_params.get('producto')
+        if producto:
+            queryset = queryset.filter(producto_id=producto)
+        
+        # Filtrar por activo (el campo real en la BD)
+        activo = self.request.query_params.get('activo')
+        if activo is not None:
+            if activo.lower() in ['true', '1', 'si']:
+                queryset = queryset.filter(activo=True)
+            elif activo.lower() in ['false', '0', 'no']:
+                queryset = queryset.filter(activo=False)
+        
+        # Busqueda por numero de lote, clave o nombre producto (ISS-003)
+        search = self.request.query_params.get('search')
+        if search and search.strip():
+            search_term = search.strip()
+            queryset = queryset.filter(
+                Q(numero_lote__icontains=search_term) |
+                Q(producto__clave__icontains=search_term) |
+                Q(producto__nombre__icontains=search_term)
+            )
+        
+        # Filtrar por estado de caducidad segun especificacion SIFP:
+        # Normal: > 6 meses (180 dias)
+        # Proximo: 3-6 meses (90-180 dias)
+        # Critico: < 3 meses (90 dias)
+        # Vencido: < 0 dias
+        caducidad = self.request.query_params.get('caducidad')
+        if caducidad:
+            hoy = date.today()
+            
+            if caducidad == 'vencido':
+                queryset = queryset.filter(fecha_caducidad__lt=hoy)
+            elif caducidad == 'critico':
+                # Menos de 3 meses (< 90 dias) pero no vencido
+                queryset = queryset.filter(
+                    fecha_caducidad__gte=hoy,
+                    fecha_caducidad__lt=hoy + timedelta(days=90)
+                )
+            elif caducidad == 'proximo':
+                # Entre 3 y 6 meses (90-180 dias)
+                queryset = queryset.filter(
+                    fecha_caducidad__gte=hoy + timedelta(days=90),
+                    fecha_caducidad__lt=hoy + timedelta(days=180)
+                )
+            elif caducidad == 'normal':
+                # Mas de 6 meses (> 180 dias)
+                queryset = queryset.filter(fecha_caducidad__gte=hoy + timedelta(days=180))
+        
+        # Filtrar por stock minimo (para catalogo de requisiciones)
+        stock_min = self.request.query_params.get('stock_min')
+        if stock_min:
+            try:
+                queryset = queryset.filter(cantidad_actual__gte=int(stock_min))
+            except (ValueError, TypeError):
+                pass
+        
+        # Filtrar por existencia de stock (con_stock/sin_stock)
+        con_stock = self.request.query_params.get('con_stock')
+        if con_stock == 'con_stock':
+            queryset = queryset.filter(cantidad_actual__gt=0)
+        elif con_stock == 'sin_stock':
+            queryset = queryset.filter(cantidad_actual=0)
+        
+        # Filtrar solo lotes disponibles (no vencidos) para el catalogo
+        solo_disponibles = self.request.query_params.get('solo_disponibles')
+        if solo_disponibles == 'true':
+            queryset = queryset.filter(
+                activo=True,
+                fecha_caducidad__gt=date.today()
+            )
+        
+        return queryset.order_by('-created_at')
+    
+    def create(self, request, *args, **kwargs):
+        """Crea un nuevo lote con validaciones"""
+        try:
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            
+            headers = self.get_success_headers(serializer.data)
+            return Response(
+                serializer.data, 
+                status=status.HTTP_201_CREATED, 
+                headers=headers
+            )
+        except serializers.ValidationError as e:
+            return Response(
+                {'error': 'Error de validacion', 'detalles': e.detail}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            # traceback removido por seguridad (ISS-008)
+            return Response(
+                {'error': 'Error al crear lote', 'mensaje': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def update(self, request, *args, **kwargs):
+        """Actualiza un lote existente.
+        
+        ISS-010 FIX: Validación explícita de permisos para evitar IDOR.
+        Solo admin/farmacia pueden modificar lotes de farmacia central.
+        Usuarios de centro solo pueden modificar lotes de SU centro.
+        """
+        try:
+            partial = kwargs.pop('partial', False)
+            instance = self.get_object()
+            
+            # ISS-010: Validar permisos de escritura sobre este lote específico
+            user = request.user
+            if not is_farmacia_or_admin(user):
+                user_centro = get_user_centro(user)
+                lote_centro = instance.centro
+                
+                # Si el lote es de farmacia central o de otro centro, denegar
+                if lote_centro is None or (user_centro and lote_centro.pk != user_centro.pk):
+                    logger.warning(
+                        f"ISS-010: Intento de modificación no autorizada de lote. "
+                        f"Usuario={user.username}, lote={instance.numero_lote}, "
+                        f"lote_centro={lote_centro}, user_centro={user_centro}"
+                    )
+                    return Response(
+                        {'error': 'No tiene permisos para modificar este lote'},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            
+            serializer = self.get_serializer(instance, data=request.data, partial=partial)
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
+            
+            return Response(serializer.data)
+        except serializers.ValidationError as e:
+            return Response(
+                {'error': 'Error de validacion', 'detalles': e.detail}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            # traceback removido por seguridad (ISS-008)
+            return Response(
+                {'error': 'Error al actualizar lote', 'mensaje': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def destroy(self, request, *args, **kwargs):
+        """
+        Elimina un lote.
+        
+        ISS-010 FIX: Validación explícita de permisos para evitar IDOR.
+        
+        Validaciones:
+        - Permisos de escritura sobre el lote
+        - No puede eliminarse si tiene movimientos asociados
+        """
+        instance = self.get_object()
+        
+        # ISS-010: Validar permisos de escritura sobre este lote específico
+        user = request.user
+        if not is_farmacia_or_admin(user):
+            user_centro = get_user_centro(user)
+            lote_centro = instance.centro
+            
+            # Si el lote es de farmacia central o de otro centro, denegar
+            if lote_centro is None or (user_centro and lote_centro.pk != user_centro.pk):
+                logger.warning(
+                    f"ISS-010: Intento de eliminación no autorizada de lote. "
+                    f"Usuario={user.username}, lote={instance.numero_lote}, "
+                    f"lote_centro={lote_centro}, user_centro={user_centro}"
+                )
+                return Response(
+                    {'error': 'No tiene permisos para eliminar este lote'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        try:
+            # Verificar si tiene movimientos
+            if Movimiento.objects.filter(lote=instance).exists():
+                total_movimientos = Movimiento.objects.filter(lote=instance).count()
+                
+                return Response({
+                    'error': 'No se puede eliminar el lote',
+                    'razon': 'Tiene movimientos asociados',
+                    'total_movimientos': total_movimientos,
+                    'sugerencia': 'Marque el lote como inactivo en lugar de eliminarlo'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Si no tiene movimientos, se puede eliminar
+            numero_lote = instance.numero_lote
+            producto_clave = instance.producto.clave
+            instance.delete()
+            
+            return Response({
+                'mensaje': 'Lote eliminado exitosamente',
+                'lote_eliminado': numero_lote,
+                'producto': producto_clave
+            }, status=status.HTTP_204_NO_CONTENT)
+            
+        except Exception as e:
+            # traceback removido por seguridad (ISS-008)
+            return Response({
+                'error': 'Error al eliminar lote',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='exportar-pdf')
+    def exportar_pdf(self, request):
+        """
+        Genera PDF de inventario de lotes con filtros opcionales.
+        
+        Usa los mismos filtros que get_queryset para consistencia:
+        - producto: ID del producto
+        - activo: true/false
+        - search: búsqueda en número de lote o producto
+        - caducidad: vencido/critico/proximo/normal
+        - con_stock: con_stock/sin_stock
+        - centro: ID del centro o 'central'
+        
+        Respeta permisos de usuario:
+        - Usuarios de centro solo ven lotes de su centro
+        - Admin/Farmacia/Vista ven todo
+        """
+        from core.utils.pdf_reports import generar_reporte_lotes
+        
+        try:
+            # Usar get_queryset que ya aplica filtros y permisos
+            queryset = self.get_queryset()
+            
+            # Limitar a 500 lotes para PDF
+            lotes = queryset[:500]
+            
+            # Preparar datos para el PDF
+            lotes_data = []
+            for lote in lotes:
+                lotes_data.append({
+                    'producto_clave': getattr(lote.producto, 'clave', '') if lote.producto else '',
+                    'producto_nombre': getattr(lote.producto, 'nombre', '') if lote.producto else '',
+                    'numero_lote': lote.numero_lote or '',
+                    'fecha_fabricacion': lote.fecha_fabricacion.strftime('%Y-%m-%d') if lote.fecha_fabricacion else '',
+                    'fecha_caducidad': lote.fecha_caducidad.strftime('%Y-%m-%d') if lote.fecha_caducidad else '',
+                    'fecha_caducidad_raw': lote.fecha_caducidad,
+                    'cantidad_inicial': lote.cantidad_inicial,
+                    'cantidad_actual': lote.cantidad_actual,
+                    'centro_nombre': getattr(lote.centro, 'nombre', 'Farmacia Central') if lote.centro else 'Farmacia Central',
+                    'activo': lote.activo,
+                })
+            
+            # Preparar filtros para mostrar en el PDF
+            filtros = {}
+            if request.query_params.get('producto'):
+                try:
+                    producto = Producto.objects.get(pk=request.query_params.get('producto'))
+                    filtros['producto'] = f"{producto.clave} - {producto.nombre}"
+                except Producto.DoesNotExist:
+                    pass
+            if request.query_params.get('centro'):
+                centro_param = request.query_params.get('centro')
+                if centro_param == 'central':
+                    filtros['centro'] = 'Farmacia Central'
+                else:
+                    try:
+                        centro = Centro.objects.get(pk=centro_param)
+                        filtros['centro'] = centro.nombre
+                    except Centro.DoesNotExist:
+                        pass
+            if request.query_params.get('caducidad'):
+                filtros['caducidad'] = request.query_params.get('caducidad')
+            if request.query_params.get('con_stock'):
+                filtros['con_stock'] = request.query_params.get('con_stock')
+            if request.query_params.get('activo'):
+                filtros['activo'] = request.query_params.get('activo')
+            if request.query_params.get('search'):
+                filtros['busqueda'] = request.query_params.get('search')
+            
+            pdf_buffer = generar_reporte_lotes(lotes_data, filtros)
+            
+            response = HttpResponse(
+                pdf_buffer.getvalue(),
+                content_type='application/pdf'
+            )
+            response['Content-Disposition'] = f'attachment; filename="Inventario_Lotes_{timezone.now().strftime("%Y%m%d_%H%M%S")}.pdf"'
+            
+            return response
+            
+        except Exception as e:
+            # traceback removido por seguridad (ISS-008)
+            return Response({
+                'error': 'Error al generar PDF de lotes',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='exportar-excel')
+    def exportar_excel(self, request):
+        """
+        Exporta lotes aplicando los mismos filtros de listado.
+        
+        ISS-DB: Incluye todos los campos de la tabla lotes de Supabase:
+        - clave (de producto)
+        - numero_lote, fecha_fabricacion, fecha_caducidad
+        - cantidad_inicial, cantidad_actual
+        - precio_unitario, numero_contrato, marca, ubicacion
+        - centro (nombre), activo
+        """
+        try:
+            lotes = self.get_queryset()
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = 'Lotes'
+
+            ws.merge_cells('A1:L1')
+            ws['A1'] = 'REPORTE DE LOTES - SISTEMA DE INVENTARIO FARMACEUTICO PENITENCIARIO'
+            ws['A1'].font = Font(bold=True, size=14, color='632842')
+            ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+
+            ws.append([])
+            # ISS-DB: Headers alineados con esquema real de Supabase
+            headers = [
+                '#', 'Clave', 'Nombre Producto', 'Número Lote',
+                'Fecha Fabricación', 'Fecha Caducidad',
+                'Cantidad Inicial', 'Cantidad Actual',
+                'Precio Unitario', 'Número Contrato', 'Marca', 'Ubicación',
+                'Centro', 'Activo'
+            ]
+            ws.append(headers)
+            header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
+            header_font = Font(bold=True, color='FFFFFF', size=11)
+            for cell in ws[3]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+
+            for idx, lote in enumerate(lotes, 1):
+                ws.append([
+                    idx,
+                    getattr(lote.producto, 'clave', '') or '',
+                    getattr(lote.producto, 'nombre', '') or '',
+                    lote.numero_lote or '',
+                    lote.fecha_fabricacion.strftime('%Y-%m-%d') if lote.fecha_fabricacion else '',
+                    lote.fecha_caducidad.strftime('%Y-%m-%d') if lote.fecha_caducidad else '',
+                    lote.cantidad_inicial,
+                    lote.cantidad_actual,
+                    float(lote.precio_unitario) if lote.precio_unitario else 0.00,
+                    lote.numero_contrato or '',
+                    lote.marca or '',
+                    lote.ubicacion or '',
+                    getattr(lote.centro, 'nombre', 'Farmacia Central') if lote.centro else 'Farmacia Central',
+                    'Sí' if lote.activo else 'No'
+                ])
+
+            # Ajustar anchos de columna
+            column_widths = [6, 15, 25, 15, 14, 14, 12, 12, 12, 18, 15, 15, 18, 8]
+            for col_idx, width in enumerate(column_widths, 1):
+                ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+            response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            response['Content-Disposition'] = f'attachment; filename=Lotes_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+            wb.save(response)
+            return response
+        except Exception as exc:
+            # traceback removido por seguridad (ISS-008)
+            return Response({'error': 'Error al exportar lotes', 'mensaje': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], url_path='importar-excel')
+    def importar_excel(self, request):
+        """
+        Importa lotes desde Excel con validaciones.
+        
+        Columnas esperadas (en orden):
+        1. Producto (clave o nombre) - Requerido
+        2. Numero Lote - Requerido
+        3. Fecha Caducidad (YYYY-MM-DD) - Requerido
+        4. Cantidad Inicial - Requerido
+        5. Cantidad Actual (opcional, default = Cantidad Inicial)
+        6. Fecha Fabricacion (opcional, YYYY-MM-DD)
+        7. Precio Unitario (opcional, default = 0)
+        8. Numero Contrato (opcional)
+        9. Marca (opcional)
+        10. Ubicacion (opcional)
+        11. Centro ID (opcional, para asignar a un centro especifico)
+        
+        Limites de seguridad:
+        - Tamano maximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
+        - Filas maximas: configurado en IMPORT_MAX_ROWS (default 5000)
+        - Extensiones: .xlsx, .xls
+        """
+        file = request.FILES.get('file')
+        
+        # Validar archivo
+        es_valido, error_msg = validar_archivo_excel(file)
+        if not es_valido:
+            return Response({
+                'error': 'Archivo invalido',
+                'mensaje': error_msg
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # ISS-001: Usar carga segura con limite real de bytes
+            wb, error_carga = cargar_workbook_seguro(file)
+            if wb is None:
+                return Response({
+                    'error': 'Error al procesar archivo',
+                    'mensaje': error_carga
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            ws = wb.active
+            
+            # Validar numero de filas
+            filas_validas, error_filas, num_filas = validar_filas_excel(ws)
+            if not filas_validas:
+                wb.close()  # Liberar recursos en modo read_only
+                return Response({
+                    'error': 'Archivo demasiado grande',
+                    'mensaje': error_filas
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            exitos = []
+            errores = []
+
+            for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                try:
+                    # Extraer valores con padding para columnas opcionales
+                    valores = (list(row) + [None] * 11)[:11]
+                    producto_clave = valores[0]
+                    numero_lote = valores[1]
+                    fecha_cad = valores[2]
+                    cantidad_inicial = valores[3]
+                    cantidad_actual = valores[4]
+                    fecha_fab = valores[5]
+                    precio_unitario = valores[6]
+                    numero_contrato = valores[7]
+                    marca = valores[8]
+                    ubicacion = valores[9]
+                    centro_id = valores[10]
+
+                    if not producto_clave or not numero_lote:
+                        errores.append({'fila': row_idx, 'error': 'Producto y numero de lote son obligatorios'})
+                        continue
+
+                    producto = Producto.objects.filter(
+                        Q(clave__iexact=str(producto_clave).strip()) |
+                        Q(nombre__iexact=str(producto_clave).strip())
+                    ).first()
+                    if not producto:
+                        errores.append({'fila': row_idx, 'error': f'Producto no encontrado: {producto_clave}'})
+                        continue
+
+                    # Parsear fecha de caducidad
+                    try:
+                        fecha_cad_val = None
+                        if fecha_cad:
+                            if isinstance(fecha_cad, (datetime, date)):
+                                fecha_cad_val = fecha_cad.date() if hasattr(fecha_cad, 'date') else fecha_cad
+                            else:
+                                fecha_cad_val = datetime.strptime(str(fecha_cad), '%Y-%m-%d').date()
+                    except Exception:
+                        errores.append({'fila': row_idx, 'error': 'Fecha de caducidad invalida'})
+                        continue
+
+                    # Parsear fecha de fabricacion (opcional)
+                    fecha_fab_val = None
+                    if fecha_fab:
+                        try:
+                            if isinstance(fecha_fab, (datetime, date)):
+                                fecha_fab_val = fecha_fab.date() if hasattr(fecha_fab, 'date') else fecha_fab
+                            else:
+                                fecha_fab_val = datetime.strptime(str(fecha_fab), '%Y-%m-%d').date()
+                        except Exception:
+                            pass  # Ignorar fecha fabricacion invalida
+
+                    # Parsear cantidades
+                    try:
+                        cant_ini = int(cantidad_inicial) if cantidad_inicial not in [None, ''] else 0
+                        cant_act = int(cantidad_actual) if cantidad_actual not in [None, ''] else cant_ini
+                        if cant_ini <= 0 or cant_act < 0:
+                            raise ValueError
+                    except Exception:
+                        errores.append({'fila': row_idx, 'error': 'Cantidades invalidas'})
+                        continue
+
+                    # Parsear precio unitario (opcional)
+                    precio_val = 0
+                    if precio_unitario not in [None, '']:
+                        try:
+                            precio_val = float(precio_unitario)
+                            if precio_val < 0:
+                                precio_val = 0
+                        except Exception:
+                            pass  # Usar 0 si no es valido
+
+                    # Preparar defaults para update_or_create
+                    defaults = {
+                        'fecha_caducidad': fecha_cad_val or date.today(),
+                        'cantidad_inicial': cant_ini,
+                        'cantidad_actual': cant_act,
+                        'precio_unitario': precio_val,
+                        'numero_contrato': str(numero_contrato).strip()[:100] if numero_contrato else '',
+                        'marca': str(marca).strip()[:100] if marca else '',
+                        'ubicacion': str(ubicacion).strip()[:100] if ubicacion else '',
+                    }
+                    
+                    if fecha_fab_val:
+                        defaults['fecha_fabricacion'] = fecha_fab_val
+                    
+                    # Asignar centro si se proporciona
+                    if centro_id:
+                        try:
+                            centro = Centro.objects.get(pk=int(centro_id))
+                            defaults['centro'] = centro
+                        except (Centro.DoesNotExist, ValueError):
+                            pass  # Ignorar centro invalido
+
+                    lote, created = Lote.objects.update_or_create(
+                        producto=producto,
+                        numero_lote=str(numero_lote).strip().upper(),
+                        defaults=defaults
+                    )
+                    exitos.append({'fila': row_idx, 'lote_id': lote.id, 'numero_lote': lote.numero_lote, 'created': created})
+                except Exception as exc:
+                    errores.append({'fila': row_idx, 'error': str(exc)})
+
+            status_code = status.HTTP_200_OK if not errores else status.HTTP_207_MULTI_STATUS
+            return Response({
+                'mensaje': 'Importacion de lotes completada',
+                'resumen': {
+                    'exitos': len(exitos),
+                    'errores': len(errores),
+                    'total': len(exitos) + len(errores)
+                },
+                'exitos': exitos,
+                'errores': errores
+            }, status=status_code)
+        except Exception as exc:
+            # traceback removido por seguridad (ISS-008)
+            return Response({'error': 'Error al procesar archivo', 'mensaje': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'], url_path='plantilla')
+    def plantilla_lotes(self, request):
+        """
+        Descarga plantilla Excel para importación de lotes.
+        
+        Columnas (en orden):
+        1. Producto (REQUERIDO) - Clave o nombre del producto
+        2. Numero Lote (REQUERIDO) - Identificador único del lote
+        3. Fecha Caducidad (REQUERIDO, YYYY-MM-DD)
+        4. Cantidad Inicial (REQUERIDO) - Cantidad recibida
+        5. Cantidad Actual (opcional, default = Cantidad Inicial)
+        6. Fecha Fabricacion (opcional, YYYY-MM-DD)
+        7. Precio Unitario (opcional, default = 0)
+        8. Numero Contrato (opcional)
+        9. Marca (opcional)
+        10. Ubicacion (opcional)
+        11. Centro ID (opcional) - ID numérico del centro
+        """
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Lotes'
+        
+        # Headers que coinciden con importar_excel
+        headers = [
+            'Producto', 'Numero Lote', 'Fecha Caducidad', 'Cantidad Inicial',
+            'Cantidad Actual', 'Fecha Fabricacion', 'Precio Unitario',
+            'Numero Contrato', 'Marca', 'Ubicacion', 'Centro ID'
+        ]
+        ws.append(headers)
+        
+        # Filas de ejemplo con formato esperado
+        fecha_cad_ejemplo = (date.today() + timedelta(days=365)).strftime('%Y-%m-%d')
+        fecha_fab_ejemplo = date.today().strftime('%Y-%m-%d')
+        
+        ws.append([
+            'MED001', 'LOTE-2025-001', fecha_cad_ejemplo, 100,
+            100, fecha_fab_ejemplo, 25.50,
+            'CONT-2025-001', 'Laboratorio Nacional', 'Almacén A', ''
+        ])
+        ws.append([
+            'MED002', 'LOTE-2025-002', fecha_cad_ejemplo, 50,
+            50, fecha_fab_ejemplo, 18.75,
+            'CONT-2025-002', 'Farmacéutica SA', 'Almacén B', ''
+        ])
+        ws.append([
+            'INS001', 'LOTE-2025-003', fecha_cad_ejemplo, 200,
+            200, '', 5.00,
+            '', '', '', ''
+        ])
+        
+        # Aplicar formato a headers
+        header_font = Font(bold=True, color='FFFFFF')
+        header_fill = PatternFill(start_color='9F2241', end_color='9F2241', fill_type='solid')
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col)
+            cell.font = header_font
+            cell.fill = header_fill
+        
+        # Ajustar ancho de columnas
+        column_widths = {
+            'A': 15,  # Producto
+            'B': 18,  # Numero Lote
+            'C': 16,  # Fecha Caducidad
+            'D': 16,  # Cantidad Inicial
+            'E': 16,  # Cantidad Actual
+            'F': 18,  # Fecha Fabricacion
+            'G': 15,  # Precio Unitario
+            'H': 18,  # Numero Contrato
+            'I': 20,  # Marca
+            'J': 15,  # Ubicacion
+            'K': 12,  # Centro ID
+        }
+        for col_letter, width in column_widths.items():
+            ws.column_dimensions[col_letter].width = width
+        
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename=Plantilla_Lotes.xlsx'
+        wb.save(response)
+        return response
+    
+    @action(detail=False, methods=['get'])
+    def por_vencer(self, request):
+        """
+        Obtiene lotes proximos a vencer.
+        
+        Parametros:
+        - dias: numero de dias (default: 30)
+        """
+        try:
+            dias = int(request.query_params.get('dias', 30))
+            fecha_limite = date.today() + timedelta(days=dias)
+            
+            lotes = Lote.objects.select_related('producto').filter(
+                activo=True,
+                cantidad_actual__gt=0,
+                fecha_caducidad__lte=fecha_limite
+            ).order_by('fecha_caducidad')
+            
+            serializer = self.get_serializer(lotes, many=True)
+            
+            return Response({
+                'total': lotes.count(),
+                'dias_configurados': dias,
+                'fecha_limite': fecha_limite,
+                'lotes': serializer.data
+            })
+            
+        except Exception as e:
+            # traceback removido por seguridad (ISS-008)
+            return Response({
+                'error': 'Error al obtener lotes por vencer',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='por-caducar')
+    def por_caducar(self, request):
+        """Alias compatible para el frontend: lotes proximos a vencer."""
+        try:
+            dias = int(request.query_params.get('dias', 90))
+            hoy = date.today()
+            fecha_limite = hoy + timedelta(days=dias)
+            lotes = Lote.objects.select_related('producto').filter(
+                cantidad_actual__gt=0,
+                fecha_caducidad__gt=hoy,
+                fecha_caducidad__lte=fecha_limite
+            ).order_by('fecha_caducidad')
+
+            page = self.paginate_queryset(lotes)
+            if page is not None:
+                serializer = self.get_serializer(page, many=True)
+                return self.get_paginated_response(serializer.data)
+
+            serializer = self.get_serializer(lotes, many=True)
+            return Response(serializer.data)
+        except Exception as exc:
+            # traceback removido por seguridad (ISS-008)
+            return Response({'error': 'Error al obtener lotes por caducar', 'mensaje': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'])
+    def vencidos(self, request):
+        """Lotes con caducidad vencida y stock disponible."""
+        try:
+            hoy = date.today()
+            lotes = Lote.objects.select_related('producto').filter(
+                cantidad_actual__gt=0,
+                fecha_caducidad__lt=hoy
+            ).order_by('fecha_caducidad')
+
+            page = self.paginate_queryset(lotes)
+            if page is not None:
+                serializer = self.get_serializer(page, many=True)
+                return self.get_paginated_response(serializer.data)
+
+            serializer = self.get_serializer(lotes, many=True)
+            return Response(serializer.data)
+        except Exception as exc:
+            # traceback removido por seguridad (ISS-008)
+            return Response({'error': 'Error al obtener lotes vencidos', 'mensaje': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['get'])
+    def historial(self, request, pk=None):
+        """Obtiene el historial de movimientos de un lote"""
+        try:
+            lote = self.get_object()
+            
+            movimientos = Movimiento.objects.filter(lote=lote).select_related(
+                'lote__producto'
+            ).order_by('-fecha')
+            
+            total_entradas = movimientos.filter(tipo='entrada').aggregate(
+                total=Sum('cantidad')
+            )['total'] or 0
+            
+            total_salidas = movimientos.filter(tipo='salida').aggregate(
+                total=Sum('cantidad')
+            )['total'] or 0
+            
+            movimientos_data = []
+            for mov in movimientos:
+                movimientos_data.append({
+                    'id': mov.id,
+                    'tipo': mov.tipo,
+                    'cantidad': mov.cantidad,
+                    'fecha': mov.fecha,
+                    'observaciones': mov.observaciones or ''
+                })
+            
+            return Response({
+                'lote': {
+                    'id': lote.id,
+                    'numero_lote': lote.numero_lote,
+                    'producto': lote.producto.clave,
+                    'cantidad_actual': lote.cantidad_actual
+                },
+                'estadisticas': {
+                    'total_entradas': total_entradas,
+                    'total_salidas': total_salidas,
+                    'diferencia': total_entradas - total_salidas
+                },
+                'movimientos': movimientos_data,
+                'total_movimientos': len(movimientos_data)
+            })
+            
+        except Exception as e:
+            # traceback removido por seguridad (ISS-008)
+            return Response({
+                'error': 'Error al obtener historial',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'])
+    def ajustar_stock(self, request, pk=None):
+        """
+        Ajusta stock del lote y crea movimiento asociado (entrada/salida/ajuste).
+        """
+        lote = self.get_object()
+        tipo = request.data.get('tipo', 'ajuste')
+        cantidad = request.data.get('cantidad')
+        observaciones = request.data.get('observaciones', '')
+
+        try:
+            movimiento, lote_actualizado = registrar_movimiento_stock(
+                lote=lote,
+                tipo=tipo,
+                cantidad=cantidad,
+                usuario=request.user if request.user.is_authenticated else None,
+                centro=None,
+                requisicion=None,
+                observaciones=observaciones
+            )
+            return Response({
+                'mensaje': 'Stock ajustado correctamente',
+                'lote': self.get_serializer(lote_actualizado).data,
+                'movimiento_id': movimiento.id
+            })
+        except serializers.ValidationError as exc:
+            return Response({'error': 'Error de validacion', 'detalles': exc.detail}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            # traceback removido por seguridad (ISS-008)
+            return Response({'error': 'Error al ajustar stock', 'mensaje': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['get'], url_path='lotes-derivados')
+    def lotes_derivados(self, request, pk=None):
+        """
+        Obtiene los lotes derivados de un lote de farmacia (vinculados a centros).
+        
+        Solo aplica para lotes de farmacia central (centro=NULL).
+        Muestra todos los centros que tienen stock de este lote.
+        """
+        try:
+            lote = self.get_object()
+            
+            # Verificar que es un lote de farmacia
+            if lote.centro is not None:
+                return Response({
+                    'error': 'Solo los lotes de farmacia central tienen lotes derivados',
+                    'lote_id': lote.id,
+                    'centro': lote.centro.nombre if lote.centro else None
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Nota: En Supabase no hay lote_origen, se simplifica
+            # Los lotes derivados se manejan diferente
+            derivados = Lote.objects.none()
+            
+            # Calcular totales
+            total_derivados = 0
+            stock_total_centros = 0
+            
+            derivados_data = []
+            # Código original removido - lote_origen no existe en Supabase
+            
+            return Response({
+                'lote_farmacia': {
+                    'id': lote.id,
+                    'numero_lote': lote.numero_lote,
+                    'producto_clave': lote.producto.clave,
+                    'producto_nombre': lote.producto.nombre,
+                    'cantidad_actual': lote.cantidad_actual,
+                    'fecha_caducidad': lote.fecha_caducidad
+                },
+                'resumen': {
+                    'total_centros_con_stock': total_derivados,
+                    'stock_total_en_centros': stock_total_centros,
+                    'stock_farmacia': lote.cantidad_actual,
+                    'stock_total_sistema': lote.cantidad_actual + stock_total_centros
+                },
+                'lotes_derivados': derivados_data
+            })
+            
+        except Exception as e:
+            # traceback removido por seguridad (ISS-008)
+            return Response({
+                'error': 'Error al obtener lotes derivados',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['get'], url_path='trazabilidad')
+    def trazabilidad_lote(self, request, pk=None):
+        """
+        Obtiene la trazabilidad completa de un lote:
+        - Si es lote de farmacia: muestra derivados en centros
+        - Si es lote de centro: muestra origen en farmacia
+        """
+        try:
+            lote = self.get_object()
+            
+            result = {
+                'lote': {
+                    'id': lote.id,
+                    'numero_lote': lote.numero_lote,
+                    'producto_clave': lote.producto.clave,
+                    'producto_descripcion': lote.producto.descripcion,
+                    'cantidad_actual': lote.cantidad_actual,
+                    'fecha_caducidad': lote.fecha_caducidad,
+                    'es_lote_farmacia': lote.centro is None,
+                    'ubicacion': lote.centro.nombre if lote.centro else 'Farmacia Central'
+                },
+                'origen': None,
+                'derivados': []
+            }
+            
+            # En Supabase no hay lote_origen - trazabilidad simplificada
+            # Los lotes de cada centro son independientes
+            
+            # Movimientos relacionados
+            movimientos = Movimiento.objects.filter(
+                lote=lote
+            ).select_related('requisicion', 'usuario', 'centro_origen', 'centro_destino').order_by('-fecha')[:20]
+            
+            result['movimientos'] = [{
+                'id': m.id,
+                'tipo': m.tipo,
+                'cantidad': m.cantidad,
+                'fecha': m.fecha,
+                'requisicion_folio': m.requisicion.folio if m.requisicion else None,
+                'observaciones': m.observaciones
+            } for m in movimientos]
+            
+            return Response(result)
+            
+        except Exception as e:
+            # traceback removido por seguridad (ISS-008)
+            return Response({
+                'error': 'Error al obtener trazabilidad',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # =========================================================================
+    # ACCIONES DE DOCUMENTOS (facturas, contratos, remisiones)
+    # =========================================================================
+    
+    @action(detail=True, methods=['get'], url_path='documentos')
+    def listar_documentos(self, request, pk=None):
+        """
+        Lista todos los documentos asociados a un lote.
+        """
+        try:
+            lote = self.get_object()
+            documentos = LoteDocumento.objects.filter(lote=lote).order_by('-created_at')
+            serializer = LoteDocumentoSerializer(documentos, many=True)
+            return Response({
+                'lote_id': lote.id,
+                'numero_lote': lote.numero_lote,
+                'total_documentos': documentos.count(),
+                'documentos': serializer.data
+            })
+        except Exception as e:
+            return Response({
+                'error': 'Error al obtener documentos',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'], url_path='subir-documento')
+    def subir_documento(self, request, pk=None):
+        """
+        Sube un documento (PDF) asociado al lote.
+        
+        Campos requeridos:
+        - documento: archivo PDF (multipart)
+        - tipo_documento: factura/contrato/remision/otro
+        
+        Campos opcionales:
+        - numero_documento: número del documento
+        - fecha_documento: fecha del documento (YYYY-MM-DD)
+        - notas: notas adicionales
+        """
+        try:
+            lote = self.get_object()
+            
+            # Validar permisos de escritura
+            user = request.user
+            if not is_farmacia_or_admin(user):
+                user_centro = get_user_centro(user)
+                lote_centro = lote.centro
+                if lote_centro is None or (user_centro and lote_centro.pk != user_centro.pk):
+                    return Response(
+                        {'error': 'No tiene permisos para subir documentos a este lote'},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            
+            # ISS-005 FIX (audit7): Validar archivo PDF con función centralizada
+            archivo = request.FILES.get('documento')
+            if not archivo:
+                return Response(
+                    {'error': 'Debe proporcionar un archivo'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Usar validador centralizado que verifica extensión, tamaño Y magic bytes
+            es_valido, error_msg = validar_archivo_pdf(archivo)
+            if not es_valido:
+                return Response(
+                    {'error': error_msg},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validar tipo de documento
+            tipo_documento = request.data.get('tipo_documento', 'otro')
+            tipos_validos = ['factura', 'contrato', 'remision', 'otro']
+            if tipo_documento not in tipos_validos:
+                return Response(
+                    {'error': f'Tipo de documento inválido. Valores permitidos: {tipos_validos}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Generar path único para el archivo
+            timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+            unique_name = f"{tipo_documento}_{timestamp}_{uuid.uuid4().hex[:8]}.pdf"
+            archivo_path = f"lotes/documentos/{lote.id}/{unique_name}"
+            
+            # Guardar nombre del archivo original
+            nombre_archivo = getattr(archivo, 'name', unique_name)
+            
+            # ISS-001 FIX: Subir archivo al almacenamiento ANTES de crear registro
+            from inventario.services.storage_service import get_storage_service, StorageError
+            
+            storage = get_storage_service()
+            upload_result = storage.upload_file(
+                file_content=archivo,
+                file_path=archivo_path,
+                content_type='application/pdf',
+                metadata={
+                    'lote_id': lote.id,
+                    'tipo_documento': tipo_documento,
+                    'uploaded_by': user.username if user.is_authenticated else 'anonymous'
+                }
+            )
+            
+            # ISS-001 FIX: Si falla la subida, NO crear registro (rollback)
+            if not upload_result.get('success'):
+                logger.error(
+                    f"ISS-001: Fallo subida documento lote {lote.id}: {upload_result.get('error')}"
+                )
+                return Response({
+                    'error': 'Error al guardar archivo en almacenamiento',
+                    'detalle': upload_result.get('error', 'Error desconocido')
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            # Parsear fecha si viene
+            fecha_documento = None
+            if request.data.get('fecha_documento'):
+                try:
+                    fecha_documento = datetime.strptime(
+                        request.data.get('fecha_documento'), '%Y-%m-%d'
+                    ).date()
+                except ValueError:
+                    pass
+            
+            # ISS-001 FIX: Solo crear registro si la subida fue exitosa
+            try:
+                documento = LoteDocumento.objects.create(
+                    lote=lote,
+                    tipo_documento=tipo_documento,
+                    numero_documento=request.data.get('numero_documento', ''),
+                    archivo=archivo_path,
+                    nombre_archivo=nombre_archivo,
+                    fecha_documento=fecha_documento,
+                    notas=request.data.get('notas', ''),
+                    created_by=user if user.is_authenticated else None
+                )
+            except Exception as db_error:
+                # ISS-001 FIX: Si falla crear registro, eliminar archivo subido (rollback)
+                logger.error(f"ISS-001: Error BD, revirtiendo subida: {db_error}")
+                storage.delete_file(archivo_path)
+                raise
+            
+            logger.info(
+                f"ISS-001: Documento subido exitosamente - Lote: {lote.id}, "
+                f"Path: {archivo_path}, Storage: {upload_result.get('storage')}"
+            )
+            
+            serializer = LoteDocumentoSerializer(documento)
+            return Response({
+                'mensaje': 'Documento subido correctamente',
+                'documento': serializer.data,
+                'storage_info': {
+                    'path': archivo_path,
+                    'url': upload_result.get('url'),
+                    'storage_type': upload_result.get('storage')
+                }
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                'error': 'Error al subir documento',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['delete'], url_path='eliminar-documento/(?P<doc_id>[0-9]+)')
+    def eliminar_documento(self, request, pk=None, doc_id=None):
+        """
+        Elimina un documento específico del lote.
+        """
+        try:
+            lote = self.get_object()
+            
+            # Validar permisos de escritura
+            user = request.user
+            if not is_farmacia_or_admin(user):
+                user_centro = get_user_centro(user)
+                lote_centro = lote.centro
+                if lote_centro is None or (user_centro and lote_centro.pk != user_centro.pk):
+                    return Response(
+                        {'error': 'No tiene permisos para eliminar documentos de este lote'},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            
+            # Buscar documento
+            try:
+                documento = LoteDocumento.objects.get(id=doc_id, lote=lote)
+            except LoteDocumento.DoesNotExist:
+                return Response(
+                    {'error': 'Documento no encontrado'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # ISS-002 FIX: Eliminar archivo del almacenamiento ANTES de borrar registro
+            from inventario.services.storage_service import get_storage_service
+            
+            archivo_path = documento.archivo
+            nombre = documento.nombre_archivo
+            
+            storage = get_storage_service()
+            delete_result = storage.delete_file(archivo_path)
+            
+            # ISS-002 FIX: Registrar resultado de eliminación de storage
+            if not delete_result.get('success'):
+                logger.warning(
+                    f"ISS-002: No se pudo eliminar archivo '{archivo_path}' del storage: "
+                    f"{delete_result.get('error')}. Se eliminará el registro de BD igualmente."
+                )
+            else:
+                logger.info(
+                    f"ISS-002: Archivo eliminado de storage: {archivo_path}"
+                )
+            
+            # Eliminar registro de BD
+            documento.delete()
+            
+            logger.info(
+                f"ISS-002: Documento eliminado - Lote: {lote.id}, "
+                f"Archivo: {nombre}, Path: {archivo_path}"
+            )
+            
+            return Response({
+                'mensaje': 'Documento eliminado correctamente',
+                'documento_eliminado': nombre,
+                'storage_cleanup': delete_result.get('success', False)
+            })
+            
+        except Exception as e:
+            return Response({
+                'error': 'Error al eliminar documento',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

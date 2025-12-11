@@ -703,6 +703,12 @@ SESSION_COOKIE_AGE = 86400  # 24 horas
 # ═══════════════════════════════════════════════════════════
 # EMAIL CONFIGURATION (para recuperación de contraseña)
 # ═══════════════════════════════════════════════════════════
+# Variables requeridas para producción:
+#   EMAIL_HOST_USER: Cuenta de email SMTP (ej: noreply@farmacia.gob.mx)
+#   EMAIL_HOST_PASSWORD: Contraseña o App Password
+#   EMAIL_HOST: Servidor SMTP (default: smtp.gmail.com)
+#   EMAIL_PORT: Puerto SMTP (default: 587 para TLS)
+#   DEFAULT_FROM_EMAIL: Email y nombre del remitente
 EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend' if DEBUG else 'django.core.mail.backends.smtp.EmailBackend')
 EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
 EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
@@ -710,6 +716,17 @@ EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
 EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='Sistema Farmacia <noreply@farmacia.gob.mx>')
+
+# ISS-002 FIX (audit34): Advertir si email no está configurado en producción
+if not DEBUG and not EMAIL_HOST_USER and not _skip_validation:
+    import sys
+    print(
+        "[WARNING] ISS-002: EMAIL_HOST_USER no configurado. "
+        "La recuperación de contraseña por email no funcionará. "
+        "Configure EMAIL_HOST_USER y EMAIL_HOST_PASSWORD para habilitar esta funcionalidad.",
+        file=sys.stderr
+    )
+
 
 # ═══════════════════════════════════════════════════════════
 # CAPTCHA (reCAPTCHA v2/v3)
