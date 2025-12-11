@@ -19,13 +19,39 @@ import {
 // === CONFIGURACIÓN DE BASE URL CON VALIDACIÓN DE SEGURIDAD (ISS-001, ISS-005) ===
 const configuredUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
 const isDev = import.meta.env.DEV || import.meta.env.MODE === 'development';
-// ISS-003: Flag para permitir HTTP en entornos de staging/testing controlados
-const allowInsecureHttp = import.meta.env.VITE_ALLOW_INSECURE_HTTP === 'true';
+// ISS-001 FIX: En producción, HTTPS es OBLIGATORIO sin bypass
+// VITE_ALLOW_INSECURE_HTTP solo está disponible en desarrollo para testing local
+const allowInsecureHttp = isDev && import.meta.env.VITE_ALLOW_INSECURE_HTTP === 'true';
 
 // Flag para detectar configuración inválida
 let apiConfigError = null;
 let httpInsecureError = false;
 let httpInsecureWarning = false;
+
+// ISS-001 FIX: Métricas de configuración insegura (solo en desarrollo)
+const securityMetrics = {
+  httpAttempts: 0,
+  configErrors: 0,
+  lastError: null,
+  
+  recordHttpAttempt() {
+    this.httpAttempts++;
+    this.lastError = new Date().toISOString();
+    if (isDev) {
+      console.warn(`[SECURITY METRIC] HTTP attempt #${this.httpAttempts}`);
+    }
+  },
+  
+  recordConfigError(error) {
+    this.configErrors++;
+    this.lastError = new Date().toISOString();
+    console.error(`[SECURITY METRIC] Config error #${this.configErrors}: ${error}`);
+  },
+  
+  getMetrics() {
+    return { ...this };
+  }
+};
 
 // Determinar baseURL
 let apiBaseUrl;
@@ -36,37 +62,41 @@ if (configuredUrl) {
   apiBaseUrl = 'http://127.0.0.1:8000/api';
   console.info('[API] Modo desarrollo: usando', apiBaseUrl);
 } else {
-  // En producción, exigir configuración explícita (ISS-001)
-  apiConfigError = 'ERROR DE CONFIGURACIÓN: La aplicación no puede conectarse al servidor. ' +
-    'Contacte al administrador del sistema.';
+  // ISS-001 FIX: En producción, ABORTAR si VITE_API_URL falta
+  apiConfigError = 'ERROR DE CONFIGURACIÓN: La variable VITE_API_URL no está definida. ' +
+    'La aplicación no puede iniciar sin una URL de API válida.';
+  securityMetrics.recordConfigError('VITE_API_URL no definida en producción');
   console.error(
-    '[API] ERROR CRÍTICO: VITE_API_URL no está configurada en producción. ' +
+    '[API] ⛔ ABORTO CRÍTICO: VITE_API_URL no está configurada en producción. ' +
     'Configure la variable de entorno VITE_API_URL con una URL HTTPS válida.'
   );
   // Usar placeholder que fallará de forma evidente
   apiBaseUrl = 'https://api-no-configurada.error';
 }
 
-// ISS-003/ISS-005: Validar HTTPS en producción con modo degradado opcional
+// ISS-001 FIX: HTTPS OBLIGATORIO en producción - SIN BYPASS
 if (!isDev && apiBaseUrl && !apiBaseUrl.startsWith('https://')) {
-  if (allowInsecureHttp) {
-    // ISS-003: Modo degradado - permitir HTTP con advertencia visible
-    httpInsecureWarning = true;
-    console.warn(
-      '[API] ⚠️ ADVERTENCIA: Usando HTTP en entorno no-desarrollo. ' +
-      'Los datos pueden estar expuestos. Solo para staging/testing.'
-    );
-  } else {
-    // Bloquear HTTP en producción por defecto
-    httpInsecureError = true;
-    apiConfigError = 'ERROR DE SEGURIDAD: La API debe usar HTTPS en producción. ' +
-      'Los datos no están protegidos. Contacte al administrador.';
-    console.error(
-      '[API] ERROR DE SEGURIDAD: La API no usa HTTPS en producción. ' +
-      'Esto expone tokens y datos sensibles. URL actual:', apiBaseUrl
-    );
-  }
+  // Bloquear HTTP en producción SIEMPRE
+  httpInsecureError = true;
+  apiConfigError = 'ERROR DE SEGURIDAD: La API debe usar HTTPS en producción. ' +
+    'Los datos y credenciales no están protegidos. Contacte al administrador.';
+  securityMetrics.recordHttpAttempt();
+  console.error(
+    '[API] ⛔ BLOQUEADO: Intento de usar HTTP en producción. ' +
+    'Esto expone tokens y datos sensibles. URL actual:', apiBaseUrl
+  );
+} else if (isDev && allowInsecureHttp && apiBaseUrl && !apiBaseUrl.startsWith('https://')) {
+  // Solo en desarrollo: permitir HTTP con advertencia visible
+  httpInsecureWarning = true;
+  securityMetrics.recordHttpAttempt();
+  console.warn(
+    '[API] ⚠️ ADVERTENCIA DEV: Usando HTTP sin cifrado. ' +
+    'Esto está permitido SOLO en desarrollo.'
+  );
 }
+
+// Exportar métricas de seguridad para monitoreo
+export const getSecurityMetrics = () => securityMetrics.getMetrics();
 
 // Exportar función para verificar estado de configuración (ISS-001, ISS-003, ISS-005)
 export const getApiConfigError = () => apiConfigError;

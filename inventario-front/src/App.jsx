@@ -1,12 +1,13 @@
 // filepath: inventario-front/src/App.jsx
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { PermissionProvider } from './context/PermissionContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { usePermissions } from './hooks/usePermissions';
 import { useInactivityLogout } from './hooks/useInactivityLogout';
 import PermissionsGuard from './components/PermissionsGuard';
+import ErrorBoundary from './components/ErrorBoundary';
 import { getApiConfigError, hasHttpWarning } from './services/api';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -87,20 +88,40 @@ function SessionManager() {
   return null;
 }
 
+/**
+ * ISS-002 FIX: ProtectedRoute mejorado con bloqueo hasta confirmación de permisos
+ * Bloquea render hasta que el estado de autenticación esté resuelto
+ */
 function ProtectedRoute({ children }) {
-  const { user, loading } = usePermissions();
+  const { user, loading, error } = usePermissions();
+  const [isReady, setIsReady] = useState(false);
 
-  if (loading) {
+  // ISS-002: Esperar hasta que loading termine para evitar race conditions
+  useEffect(() => {
+    if (!loading) {
+      // Pequeño delay para asegurar que el estado se ha propagado
+      const timer = setTimeout(() => setIsReady(true), 50);
+      return () => clearTimeout(timer);
+    }
+  }, [loading]);
+
+  // Mostrar spinner mientras carga o aún no está listo
+  if (loading || !isReady) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background, #F5F5F5)' }}>
-        <div className="animate-spin rounded-full h-12 w-12 border-4 spinner-institucional"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 spinner-institucional mx-auto"></div>
+          <p className="mt-4 text-gray-500 text-sm">Verificando permisos...</p>
+        </div>
       </div>
     );
   }
 
+  // Si no hay usuario, redirigir al login
   if (!user) return <Navigate to="/login" replace />;
 
-  return children;
+  // ISS-002: Envolver en ErrorBoundary para capturar errores de componentes hijos
+  return <ErrorBoundary>{children}</ErrorBoundary>;
 }
 
 function App() {

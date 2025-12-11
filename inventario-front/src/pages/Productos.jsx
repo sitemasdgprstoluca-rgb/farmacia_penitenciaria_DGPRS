@@ -44,6 +44,9 @@ import { createExcelReport } from '../utils/reportExport';
 
 import { hasAccessToken } from '../services/tokenManager';
 
+// ISS-003 FIX: Importar validadores alineados con backend
+import { validarProducto, normalizarProducto, sanitizeInput } from '../utils/validation';
+
 
 
 const UNIDADES = [
@@ -730,32 +733,22 @@ const Productos = () => {
 
 
 
+  // ISS-003 FIX: Validación alineada con el backend
   const validarFormulario = (data) => {
-    const errors = {};
+    // Usar validador centralizado que conoce el contrato del backend
+    const { valido, errores, primerError } = validarProducto(data, !!editingProduct);
     
-    // Clave es obligatoria
-    if (!data.clave || data.clave.trim().length < 1 || data.clave.length > 50) {
-      errors.clave = 'La clave debe tener entre 1 y 50 caracteres';
+    // Validación adicional local: unidad_medida debe ser de la lista
+    if (data.unidad_medida && !UNIDADES.includes(data.unidad_medida)) {
+      errores.unidad_medida = 'Seleccione una unidad válida';
     }
 
-    // Nombre es obligatorio
-    if (!data.nombre || data.nombre.trim().length < 3 || data.nombre.length > 500) {
-      errors.nombre = 'El nombre debe tener entre 3 y 500 caracteres';
+    // Validación adicional local: categoria debe ser de la lista
+    if (data.categoria && !CATEGORIAS.includes(data.categoria)) {
+      errores.categoria = 'Seleccione una categoría válida';
     }
 
-    if (data.stock_minimo === '' || Number(data.stock_minimo) < 0) {
-      errors.stock_minimo = 'El stock mínimo no puede ser negativo';
-    }
-
-    if (!UNIDADES.includes(data.unidad_medida)) {
-      errors.unidad_medida = 'Seleccione una unidad válida';
-    }
-
-    if (!CATEGORIAS.includes(data.categoria)) {
-      errors.categoria = 'Seleccione una categoría válida';
-    }
-
-    return errors;
+    return errores;
   };
 
 

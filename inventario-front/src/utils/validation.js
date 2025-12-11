@@ -432,6 +432,288 @@ export const validators = {
   combine,
 };
 
+// ============================================
+// ISS-003 FIX: VALIDADORES DE DTO PRODUCTO
+// Alineados con el backend (backend/inventario/serializers.py)
+// ============================================
+
+/**
+ * Campos obligatorios para crear/editar producto
+ * Basado en el modelo Producto del backend
+ */
+export const PRODUCTO_CAMPOS_OBLIGATORIOS = ['clave', 'descripcion', 'unidad_medida', 'presentacion'];
+
+/**
+ * Valida un producto antes de enviarlo al backend
+ * @param {Object} producto - Datos del producto
+ * @param {boolean} esEdicion - Si es edición (algunos campos opcionales)
+ * @returns {Object} { valido: boolean, errores: Object, primerError: string|null }
+ */
+export const validarProducto = (producto, esEdicion = false) => {
+  const errores = {};
+  
+  // Campos obligatorios
+  if (!producto.clave?.trim()) {
+    errores.clave = 'La clave del producto es obligatoria';
+  } else if (producto.clave.length < 3) {
+    errores.clave = 'La clave debe tener al menos 3 caracteres';
+  } else if (!/^[A-Za-z0-9\-_]+$/.test(producto.clave)) {
+    errores.clave = 'La clave solo puede contener letras, números, guiones y guiones bajos';
+  }
+  
+  if (!producto.descripcion?.trim() && !producto.nombre?.trim()) {
+    errores.descripcion = 'La descripción/nombre del producto es obligatoria';
+  } else if ((producto.descripcion || producto.nombre || '').length < 3) {
+    errores.descripcion = 'La descripción debe tener al menos 3 caracteres';
+  }
+  
+  if (!producto.unidad_medida?.trim()) {
+    errores.unidad_medida = 'La unidad de medida es obligatoria';
+  }
+  
+  if (!producto.presentacion?.trim() && !esEdicion) {
+    errores.presentacion = 'La presentación es obligatoria';
+  }
+  
+  // Validar stock_minimo si se proporciona (debe ser >= 0)
+  if (producto.stock_minimo !== undefined && producto.stock_minimo !== null && producto.stock_minimo !== '') {
+    const minimo = Number(producto.stock_minimo);
+    if (isNaN(minimo)) {
+      errores.stock_minimo = 'El stock mínimo debe ser un número';
+    } else if (minimo < 0) {
+      errores.stock_minimo = 'El stock mínimo no puede ser negativo';
+    } else if (!Number.isInteger(minimo)) {
+      errores.stock_minimo = 'El stock mínimo debe ser un número entero';
+    }
+  }
+  
+  // Validar categoría si se proporciona
+  const categoriasValidas = ['medicamento', 'material_curacion', 'insumo', 'equipo', 'otro'];
+  if (producto.categoria && !categoriasValidas.includes(producto.categoria)) {
+    errores.categoria = `Categoría inválida. Opciones: ${categoriasValidas.join(', ')}`;
+  }
+  
+  const valido = Object.keys(errores).length === 0;
+  return {
+    valido,
+    errores,
+    primerError: valido ? null : Object.values(errores)[0],
+  };
+};
+
+/**
+ * Normaliza los datos de un producto del backend
+ * ISS-003: Asegura tipos correctos y campos consistentes
+ * @param {Object} producto - Datos del backend
+ * @returns {Object} Producto normalizado
+ */
+export const normalizarProducto = (producto) => {
+  if (!producto) return null;
+  
+  return {
+    ...producto,
+    id: producto.id,
+    clave: String(producto.clave || ''),
+    descripcion: String(producto.descripcion || producto.nombre || ''),
+    nombre: String(producto.nombre || producto.descripcion || ''),
+    unidad_medida: String(producto.unidad_medida || 'PIEZA'),
+    presentacion: String(producto.presentacion || ''),
+    categoria: String(producto.categoria || 'medicamento'),
+    // Normalizar números
+    stock_minimo: Number(producto.stock_minimo) || 0,
+    stock_actual: Number(producto.stock_actual ?? producto.stock_total ?? producto.inventario_total ?? 0),
+    precio_unitario: Number(producto.precio_unitario) || 0,
+    // Booleanos
+    activo: producto.activo !== false,
+    requiere_receta: producto.requiere_receta === true,
+    es_controlado: producto.es_controlado === true,
+  };
+};
+
+// ============================================
+// ISS-004 FIX: VALIDADORES DE REQUISICIÓN
+// Validación de stock y transiciones
+// ============================================
+
+/**
+ * Estados de requisición y transiciones permitidas
+ * Basado en backend/core/constants.py
+ */
+export const ESTADOS_REQUISICION = {
+  BORRADOR: 'borrador',
+  ENVIADA: 'enviada',
+  RECHAZADA: 'rechazada',
+  ACEPTADA_PARCIAL: 'aceptada_parcial',
+  AUTORIZADA: 'autorizada',
+  SURTIDA_PARCIAL: 'surtida_parcial',
+  SURTIDA: 'surtida',
+  ENTREGADA: 'entregada',
+  CANCELADA: 'cancelada',
+};
+
+/**
+ * Transiciones permitidas por estado
+ */
+export const TRANSICIONES_REQUISICION = {
+  borrador: ['enviada', 'cancelada'],
+  enviada: ['aceptada_parcial', 'autorizada', 'rechazada'],
+  aceptada_parcial: ['autorizada', 'rechazada'],
+  autorizada: ['surtida_parcial', 'surtida', 'rechazada'],
+  surtida_parcial: ['surtida', 'cancelada'],
+  surtida: ['entregada'],
+  entregada: [],
+  rechazada: [],
+  cancelada: [],
+};
+
+/**
+ * Verifica si una transición de estado es válida
+ * @param {string} estadoActual - Estado actual de la requisición
+ * @param {string} nuevoEstado - Estado al que se quiere transicionar
+ * @returns {boolean}
+ */
+export const esTransicionValida = (estadoActual, nuevoEstado) => {
+  const transicionesPermitidas = TRANSICIONES_REQUISICION[estadoActual?.toLowerCase()];
+  if (!transicionesPermitidas) return false;
+  return transicionesPermitidas.includes(nuevoEstado?.toLowerCase());
+};
+
+/**
+ * Obtiene las acciones disponibles para una requisición según su estado y rol
+ * @param {string} estado - Estado actual de la requisición
+ * @param {string} rol - Rol del usuario (ADMIN, FARMACIA, CENTRO, VISTA)
+ * @returns {Array} Lista de acciones permitidas
+ */
+export const getAccionesPermitidas = (estado, rol) => {
+  const estadoLower = estado?.toLowerCase();
+  const rolUpper = rol?.toUpperCase();
+  
+  const acciones = [];
+  
+  // Acciones por estado y rol
+  if (estadoLower === 'borrador') {
+    if (['ADMIN', 'FARMACIA', 'CENTRO'].includes(rolUpper)) {
+      acciones.push('enviar', 'editar', 'eliminar');
+    }
+  } else if (estadoLower === 'enviada') {
+    if (['ADMIN', 'FARMACIA'].includes(rolUpper)) {
+      acciones.push('aceptar', 'rechazar');
+    }
+  } else if (estadoLower === 'aceptada_parcial') {
+    if (['ADMIN', 'FARMACIA'].includes(rolUpper)) {
+      acciones.push('autorizar', 'rechazar');
+    }
+  } else if (estadoLower === 'autorizada') {
+    if (['ADMIN', 'FARMACIA'].includes(rolUpper)) {
+      acciones.push('surtir', 'rechazar');
+    }
+  } else if (estadoLower === 'surtida_parcial') {
+    if (['ADMIN', 'FARMACIA'].includes(rolUpper)) {
+      acciones.push('surtir', 'cancelar');
+    }
+  } else if (estadoLower === 'surtida') {
+    if (['ADMIN', 'FARMACIA', 'CENTRO'].includes(rolUpper)) {
+      acciones.push('confirmar_entrega');
+    }
+  }
+  
+  // Ver siempre está disponible
+  acciones.push('ver');
+  
+  return acciones;
+};
+
+/**
+ * Valida un item de requisición contra stock disponible
+ * @param {Object} item - { lote_id, cantidad, ... }
+ * @param {Object} lote - Datos del lote con stock actual
+ * @returns {Object} { valido: boolean, error: string|null }
+ */
+export const validarItemContraStock = (item, lote) => {
+  if (!item || !lote) {
+    return { valido: false, error: 'Datos incompletos' };
+  }
+  
+  const cantidad = Number(item.cantidad);
+  const stockDisponible = Number(lote.stock_actual ?? lote.cantidad_disponible ?? lote.cantidad ?? 0);
+  
+  if (isNaN(cantidad) || cantidad <= 0) {
+    return { valido: false, error: 'La cantidad debe ser un número mayor a 0' };
+  }
+  
+  if (!Number.isInteger(cantidad)) {
+    return { valido: false, error: 'La cantidad debe ser un número entero' };
+  }
+  
+  if (cantidad > stockDisponible) {
+    return { 
+      valido: false, 
+      error: `Stock insuficiente. Disponible: ${stockDisponible}, Solicitado: ${cantidad}` 
+    };
+  }
+  
+  // Validar caducidad
+  if (lote.fecha_caducidad) {
+    const fechaCaducidad = new Date(lote.fecha_caducidad);
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    
+    if (fechaCaducidad < hoy) {
+      return { valido: false, error: 'El lote ya caducó' };
+    }
+    
+    // Advertencia si caduca pronto (30 días)
+    const diasRestantes = Math.ceil((fechaCaducidad - hoy) / (1000 * 60 * 60 * 24));
+    if (diasRestantes <= 30) {
+      return { 
+        valido: true, 
+        advertencia: `El lote caduca en ${diasRestantes} días` 
+      };
+    }
+  }
+  
+  return { valido: true, error: null };
+};
+
+/**
+ * Valida todos los items de una requisición
+ * @param {Array} items - Lista de items
+ * @param {Object} lotesMap - Mapa de lote_id -> lote con stock
+ * @returns {Object} { valido: boolean, errores: Array, advertencias: Array }
+ */
+export const validarItemsRequisicion = (items, lotesMap = {}) => {
+  const errores = [];
+  const advertencias = [];
+  
+  if (!items || items.length === 0) {
+    return { valido: false, errores: ['La requisición debe tener al menos un item'], advertencias };
+  }
+  
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const lote = lotesMap[item.lote_id] || lotesMap[item.lote] || item.lote_data;
+    
+    if (!lote) {
+      errores.push(`Item ${i + 1}: No se encontró información del lote`);
+      continue;
+    }
+    
+    const resultado = validarItemContraStock(item, lote);
+    if (!resultado.valido) {
+      errores.push(`Item ${i + 1} (${lote.producto_nombre || lote.numero_lote || 'sin nombre'}): ${resultado.error}`);
+    }
+    if (resultado.advertencia) {
+      advertencias.push(`Item ${i + 1}: ${resultado.advertencia}`);
+    }
+  }
+  
+  return {
+    valido: errores.length === 0,
+    errores,
+    advertencias,
+  };
+};
+
 /**
  * Alias para schemas como validationSchemas
  */

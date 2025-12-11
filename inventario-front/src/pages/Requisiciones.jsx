@@ -38,6 +38,15 @@ import {
   FaSpinner,
 } from 'react-icons/fa';
 import { COLORS } from '../constants/theme';
+// ISS-004 FIX: Importar validadores de requisiciones
+import { 
+  validarItemContraStock, 
+  validarItemsRequisicion, 
+  esTransicionValida, 
+  getAccionesPermitidas,
+  TRANSICIONES_REQUISICION,
+  sanitizeInput 
+} from '../utils/validation';
 
 const PAGE_SIZE = 25;
 
@@ -467,18 +476,19 @@ const Requisiciones = () => {
     return false;
   };
 
-  // Validar permiso fino de enviar además de las condiciones de edición
+  // ISS-004 FIX: Validar permiso fino y transición válida de enviar
   const puedeEnviar = (req) => {
     const estadoNormalizado = req.estado?.toLowerCase();
-    return permisos.enviarRequisicion && puedeEditar(req) && estadoNormalizado === 'borrador';
+    // Usar validador de transiciones centralizado
+    if (!esTransicionValida(estadoNormalizado, 'enviada')) return false;
+    return permisos.enviarRequisicion && puedeEditar(req);
   };
 
-  // Validar si puede cancelar - similar a puedeEditar pero sin restricción de estado borrador
+  // ISS-004 FIX: Validar si puede cancelar usando transiciones válidas
   const puedeCancelar = (requisicion) => {
-    // Normalizar estado a minúsculas para evitar problemas de casing
     const estadoNormalizado = requisicion.estado?.toLowerCase();
-    // ISS-DB-002: Estados finales no se pueden cancelar (incluye 'entregada')
-    if (['surtida', 'cancelada', 'rechazada', 'entregada'].includes(estadoNormalizado)) return false;
+    // Usar validador de transiciones centralizado
+    if (!esTransicionValida(estadoNormalizado, 'cancelada')) return false;
     // Validar permiso fino
     if (!permisos.cancelarRequisicion) return false;
     // Admin/Farmacia pueden cancelar cualquiera
@@ -489,6 +499,35 @@ const Requisiciones = () => {
       return requisicion.centro === userCentro;
     }
     return false;
+  };
+
+  // ISS-004 FIX: Verificar si puede surtir usando transiciones válidas
+  const puedeSurtir = (requisicion) => {
+    const estadoNormalizado = requisicion.estado?.toLowerCase();
+    // Verificar transición válida hacia 'surtida' o 'surtida_parcial'
+    const puedeTransicionar = esTransicionValida(estadoNormalizado, 'surtida') || 
+                               esTransicionValida(estadoNormalizado, 'surtida_parcial');
+    if (!puedeTransicionar) return false;
+    // Solo admin/farmacia pueden surtir
+    return permisos.isFarmaciaAdmin && permisos.surtirRequisicion;
+  };
+
+  // ISS-004 FIX: Verificar si puede rechazar usando transiciones válidas
+  const puedeRechazar = (requisicion) => {
+    const estadoNormalizado = requisicion.estado?.toLowerCase();
+    // Verificar transición válida hacia 'rechazada'
+    if (!esTransicionValida(estadoNormalizado, 'rechazada')) return false;
+    // Solo admin/farmacia pueden rechazar
+    return permisos.isFarmaciaAdmin && permisos.rechazarRequisicion;
+  };
+
+  // ISS-004 FIX: Verificar si puede autorizar usando transiciones válidas  
+  const puedeAutorizar = (requisicion) => {
+    const estadoNormalizado = requisicion.estado?.toLowerCase();
+    // Verificar transición válida hacia 'autorizada'
+    if (!esTransicionValida(estadoNormalizado, 'autorizada')) return false;
+    // Solo admin/farmacia pueden autorizar
+    return permisos.isFarmaciaAdmin && permisos.autorizarRequisicion;
   };
 
   // Validar si puede descargar PDF - debe tener permiso Y pertenecer al centro (si es usuario de centro)
@@ -675,6 +714,7 @@ const Requisiciones = () => {
   // ==========================================
   
   // Agregar lote desde el catálogo precargado
+  // ISS-004 FIX: Validar stock y caducidad antes de agregar
   const agregarDesdeCatalogo = (lote) => {
     // Bloquear modificaciones durante envío/guardado
     if (isSubmitting) return;
@@ -687,6 +727,16 @@ const Requisiciones = () => {
     }
     
     const stockDisponible = lote.stock_actual ?? lote.cantidad_actual ?? 0;
+    
+    // ISS-004: Validar que el lote tenga stock y no esté caducado
+    const validacion = validarItemContraStock({ cantidad: 1 }, { ...lote, stock_actual: stockDisponible });
+    if (!validacion.valido) {
+      toast.error(validacion.error);
+      return;
+    }
+    if (validacion.advertencia) {
+      toast(validacion.advertencia, { icon: '⚠️', duration: 4000 });
+    }
     
     setForm((prev) => ({
       ...prev,
