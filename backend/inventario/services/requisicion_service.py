@@ -863,11 +863,16 @@ class RequisicionService:
                     f"Ya hay {movimientos_existentes.count()} movimientos registrados y 0 pendiente."
                 )
                 
-                # Actualizar estado a 'surtida'
+                # ISS-009 FIX (audit6): Actualizar estado con trazabilidad completa
                 requisicion_bloqueada.estado = 'surtida'
                 requisicion_bloqueada.surtidor = self.usuario
                 requisicion_bloqueada.fecha_surtido = timezone.now()
-                requisicion_bloqueada.save(update_fields=['estado', 'surtidor', 'fecha_surtido', 'updated_at'])
+                requisicion_bloqueada.usuario_firma_surtido = self.usuario
+                requisicion_bloqueada.fecha_firma_surtido = timezone.now()
+                requisicion_bloqueada.save(update_fields=[
+                    'estado', 'surtidor', 'fecha_surtido', 
+                    'usuario_firma_surtido', 'fecha_firma_surtido', 'updated_at'
+                ])
                 
                 # Refrescar referencia local
                 self.requisicion = requisicion_bloqueada
@@ -892,6 +897,24 @@ class RequisicionService:
         
         # 2. Validar permisos
         self.validar_permisos_surtido(is_farmacia_or_admin_fn, get_user_centro_fn)
+        
+        # 2.5 ISS-007 FIX (audit6): Validar que TODOS los detalles tengan cantidad_autorizada
+        # Esto garantiza que el flujo de autorización se completó correctamente
+        detalles_sin_autorizar = []
+        for detalle in requisicion_bloqueada.detalles.all():
+            if detalle.cantidad_autorizada is None or detalle.cantidad_autorizada == 0:
+                detalles_sin_autorizar.append({
+                    'producto': detalle.producto.clave or detalle.producto.nombre,
+                    'cantidad_solicitada': detalle.cantidad_solicitada
+                })
+        
+        if detalles_sin_autorizar:
+            raise EstadoInvalidoError(
+                f"No se puede surtir: {len(detalles_sin_autorizar)} detalle(s) sin cantidad_autorizada. "
+                f"La requisición debe ser autorizada antes de surtir. "
+                f"Detalles: {detalles_sin_autorizar[:3]}{'...' if len(detalles_sin_autorizar) > 3 else ''}",
+                estado_actual=estado_actual
+            )
         
         # 3. ISS-001 FIX + ISS-007 FIX: Validar stock CON BLOQUEO para prevenir race conditions
         # El bloqueo se mantiene hasta el final de la transacción atómica

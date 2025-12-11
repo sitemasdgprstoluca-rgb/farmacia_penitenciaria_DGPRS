@@ -1511,43 +1511,62 @@ class Requisicion(models.Model):
     def fecha_recibido(self, value):
         self.fecha_firma_recepcion = value
     
-    # ========== ISS-004 FIX: Campo updated_by en memoria ==========
-    # El campo updated_by NO existe en la BD (managed=False).
-    # Se implementa como atributo de instancia para trazabilidad temporal.
-    # Para auditoría persistente, use:
-    # - cambiar_estado_con_historial() que registra en RequisicionHistorialEstados
-    # - Los campos de actores (surtidor, receptor_farmacia, etc.) para operaciones específicas
+    # ========== ISS-004 FIX (audit6): Campo updated_by en memoria ==========
+    # ADVERTENCIA: Este campo NO existe en la BD (managed=False).
+    # Los writes a este campo NO SE PERSISTEN.
+    # 
+    # Se mantiene para compatibilidad con código existente que espera este campo,
+    # pero se DEBE migrar a:
+    # - cambiar_estado_con_historial() para cambios de estado persistidos
+    # - Campos de actores específicos (surtidor, autorizador, receptor_farmacia)
+    # 
+    # TODO: Deprecar en próxima versión mayor
     _updated_by = None
     
     @property
     def updated_by(self):
         """
-        ISS-004 FIX: Usuario que realizó la última modificación.
+        ISS-004 FIX (audit6): Usuario que realizó la última modificación.
         
-        NOTA: Este campo NO se persiste en BD. Para trazabilidad completa:
-        1. Use cambiar_estado_con_historial() para cambios de estado
-        2. Use RequisicionHistorialEstados para consultar historial
-        3. Los campos de actores (surtidor, autorizador, etc.) persisten quién ejecutó cada acción
+        ⚠️ ADVERTENCIA: Este campo NO se persiste en BD.
+        
+        Para trazabilidad que SÍ se persiste, use:
+        1. cambiar_estado_con_historial() - registra en RequisicionHistorialEstados
+        2. Campos de actores: surtidor, autorizador, receptor_farmacia, usuario_firma_*
+        3. El servicio RequisicionService que establece campos correctamente
+        
+        Returns:
+            User | None: Usuario en memoria (no persistido)
         """
+        import warnings
+        warnings.warn(
+            "ISS-004: updated_by no se persiste en BD. Use campos de actores específicos.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         return self._updated_by
     
     @updated_by.setter
     def updated_by(self, value):
         """
-        ISS-004 FIX: Registra el usuario que modifica (en memoria).
+        ISS-004 FIX (audit6): Registra el usuario que modifica (solo en memoria).
         
-        Se recomienda registrar también en log para auditoría:
-        ```
-        requisicion.updated_by = usuario
-        logger.info(f"Requisicion {requisicion.numero} modificada por {usuario.username}")
-        ```
+        ⚠️ ADVERTENCIA: Este valor NO se guardará en la BD.
+        Para auditoría persistente, use los métodos del servicio RequisicionService.
         """
+        import warnings
+        warnings.warn(
+            "ISS-004: updated_by no se persiste en BD. El valor se perderá al refrescar el objeto.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         self._updated_by = value
         # ISS-004: Log de auditoría cuando se asigna updated_by
         if value:
-            logger.info(
-                f"ISS-004 AUDIT: Requisicion {self.numero} marcada como modificada por "
-                f"usuario ID={getattr(value, 'id', 'N/A')} ({getattr(value, 'username', 'N/A')})"
+            logger.warning(
+                f"ISS-004 AUDIT: Requisicion {self.numero} - updated_by asignado a "
+                f"usuario ID={getattr(value, 'id', 'N/A')} ({getattr(value, 'username', 'N/A')}). "
+                f"NOTA: Este valor NO se persistirá en BD."
             )
     
     # ========== ISS-003: MÉTODOS DE MÁQUINA DE ESTADOS ==========
