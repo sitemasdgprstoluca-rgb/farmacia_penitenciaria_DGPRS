@@ -1159,12 +1159,20 @@ class Movimiento(models.Model):
                 errors['lote'] = f'No se puede usar el lote {self.lote.numero_lote} porque está vencido.'
         
         # Validar stock suficiente para tipos que restan
+        # ISS-001 FIX (audit20): Validar stock considerando el centro
         if tipo in self.TIPOS_RESTA_STOCK and self.lote and self.cantidad:
             if self.lote.cantidad_actual < self.cantidad:
                 errors['cantidad'] = (
                     f'Stock insuficiente en lote {self.lote.numero_lote}. '
                     f'Disponible: {self.lote.cantidad_actual}, Solicitado: {self.cantidad}'
                 )
+            # ISS-001 FIX (audit20): Validar que el lote esté en el centro origen para salidas
+            if tipo == 'salida' and self.centro_origen_id and self.lote.centro_id:
+                if self.lote.centro_id != self.centro_origen_id:
+                    errors['lote'] = (
+                        f'El lote {self.lote.numero_lote} no está en el centro de origen. '
+                        f'Lote en centro ID: {self.lote.centro_id}, Origen: {self.centro_origen_id}'
+                    )
         
         # Validar expediente obligatorio para salidas por receta
         if self.subtipo_salida == 'receta' and not self.numero_expediente:
@@ -1679,6 +1687,25 @@ class Requisicion(models.Model):
         if nuevo_estado in ['pendiente_admin', 'enviada']:
             if hasattr(self, 'detalles') and not self.detalles.exists():
                 errores.append("La requisición debe tener al menos un producto.")
+            
+            # ISS-005 FIX (audit20): Validación temprana de stock al enviar
+            # Esto advierte sobre posibles problemas antes de que llegue a farmacia
+            if hasattr(self, 'detalles') and self.detalles.exists():
+                productos_sin_stock = []
+                for detalle in self.detalles.all():
+                    if hasattr(detalle.producto, 'get_stock_farmacia_central'):
+                        stock_disponible = detalle.producto.get_stock_farmacia_central()
+                        if stock_disponible < detalle.cantidad_solicitada:
+                            productos_sin_stock.append(
+                                f"{detalle.producto.nombre} (disponible: {stock_disponible}, solicitado: {detalle.cantidad_solicitada})"
+                            )
+                
+                if productos_sin_stock:
+                    # Solo advertencia, no bloquea (el farmacéutico puede ajustar)
+                    logger.warning(
+                        f"ISS-005: Requisición {self.numero} enviada con stock insuficiente en: "
+                        f"{', '.join(productos_sin_stock[:3])}{'...' if len(productos_sin_stock) > 3 else ''}"
+                    )
         
         return errores
     
