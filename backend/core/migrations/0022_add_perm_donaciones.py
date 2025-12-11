@@ -14,6 +14,7 @@ def add_column_if_not_exists(apps, schema_editor):
     from django.db import connection
     
     columns_to_add = [
+        # Permission fields
         ('perm_donaciones', 'BOOLEAN'),
         ('perm_crear_requisicion', 'BOOLEAN'),
         ('perm_autorizar_admin', 'BOOLEAN'),
@@ -22,6 +23,8 @@ def add_column_if_not_exists(apps, schema_editor):
         ('perm_autorizar_farmacia', 'BOOLEAN'),
         ('perm_surtir', 'BOOLEAN'),
         ('perm_confirmar_entrega', 'BOOLEAN'),
+        # User status field
+        ('activo', 'BOOLEAN DEFAULT TRUE'),
     ]
     
     with connection.cursor() as cursor:
