@@ -22,6 +22,7 @@ import { COLORS, SECONDARY_GRADIENT } from '../constants/theme';
 import Pagination from '../components/Pagination';
 import { LotesSkeleton } from '../components/skeletons';
 import { usePermissions } from '../hooks/usePermissions';
+import { puedeVerGlobal as checkPuedeVerGlobal, esFarmaciaAdmin as checkEsFarmaciaAdmin } from '../utils/roles';
 
 const MOCK_PRODUCTOS = Array.from({ length: 40 }).map((_, index) => ({
   id: index + 1,
@@ -70,14 +71,15 @@ const MOCK_LOTES = Array.from({ length: 60 }).map((_, index) =>
 const Lotes = () => {
   const { getRolPrincipal, permisos, user } = usePermissions();
   const rolPrincipal = getRolPrincipal();
-  const puedeVerGlobal = ['ADMIN', 'FARMACIA', 'VISTA'].includes(rolPrincipal) || permisos?.isSuperuser;
+  // FRONT-006 FIX: Usar lógica centralizada de roles
+  const puedeVerGlobal = checkPuedeVerGlobal(user, permisos);
   // Centro del usuario para forzar filtro si no tiene permisos globales
   const centroUsuario = user?.centro?.id || user?.centro || user?.centro_id;
   // Solo ADMIN y FARMACIA pueden ver campos de contrato (para auditoría)
-  const puedeVerContrato = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
+  const puedeVerContrato = checkEsFarmaciaAdmin(user);
   
   // Permisos específicos para acciones - usar permisos finos del backend
-  const esFarmaciaAdmin = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
+  const esFarmaciaAdmin = checkEsFarmaciaAdmin(user);
   const puede = {
     // Usar permisos finos si existen, sino fallback al rol
     crear: permisos?.crearLote === true || (esFarmaciaAdmin && permisos?.crearLote !== false),

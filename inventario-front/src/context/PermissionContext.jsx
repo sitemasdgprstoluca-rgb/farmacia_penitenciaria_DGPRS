@@ -435,7 +435,10 @@ export function PermissionProvider({ children }) {
     // Luego verificar por rol específico
     if (rol === 'admin_sistema' || rol === 'superusuario' || rol === 'admin') return 'ADMIN';
     if (rol === 'farmacia' || rol === 'admin_farmacia' || grupos.some((g) => g.name === 'FARMACIA_ADMIN')) return 'FARMACIA';
-    if (rol === 'centro' || rol === 'usuario_normal' || grupos.some((g) => g.name === 'CENTRO_USER')) return 'CENTRO';
+    // FLUJO V2: Roles específicos del centro penitenciario mapean a CENTRO
+    if (rol === 'medico' || rol === 'administrador_centro' || rol === 'director_centro' ||
+        rol === 'centro' || rol === 'usuario_normal' || rol === 'usuario_centro' ||
+        grupos.some((g) => g.name === 'CENTRO_USER')) return 'CENTRO';
     if (rol === 'vista' || rol === 'usuario_vista' || grupos.some((g) => g.name === 'VISTA_USER')) return 'VISTA';
     
     // Si el usuario está autenticado pero sin rol específico, verificar permisos de staff

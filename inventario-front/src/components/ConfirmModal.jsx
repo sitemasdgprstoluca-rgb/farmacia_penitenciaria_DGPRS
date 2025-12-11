@@ -1,4 +1,6 @@
-﻿function ConfirmModal({
+﻿import PropTypes from 'prop-types';
+
+function ConfirmModal({
   open,
   title = "¿Estás seguro?",
   message = "",
@@ -55,6 +57,19 @@
     </div>
   );
 }
+
+// FRONT-004: PropTypes para validación de props
+ConfirmModal.propTypes = {
+  open: PropTypes.bool.isRequired,
+  title: PropTypes.string,
+  message: PropTypes.oneOfType([PropTypes.string, PropTypes.node]),
+  confirmText: PropTypes.string,
+  cancelText: PropTypes.string,
+  loading: PropTypes.bool,
+  onConfirm: PropTypes.func.isRequired,
+  onCancel: PropTypes.func.isRequired,
+  tone: PropTypes.oneOf(['danger', 'info']),
+};
 
 export default ConfirmModal;
 

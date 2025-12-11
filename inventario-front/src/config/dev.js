@@ -18,3 +18,15 @@ export const devLog = (message, data = null) => {
     console.info(`[DEV] ${message}`, data ?? '');
   }
 };
+
+export const devWarn = (message, data = null) => {
+  if (isDevEnv) {
+    console.warn(`[DEV] ${message}`, data ?? '');
+  }
+};
+
+export const devError = (message, data = null) => {
+  if (isDevEnv) {
+    console.error(`[DEV] ${message}`, data ?? '');
+  }
+};

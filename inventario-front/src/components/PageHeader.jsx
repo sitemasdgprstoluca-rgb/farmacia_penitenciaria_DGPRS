@@ -2,6 +2,8 @@
  * PageHeader - Encabezado de página con gradiente del tema
  * Usa variables CSS para colores dinámicos
  */
+import PropTypes from 'prop-types';
+
 const PageHeader = ({ icon: Icon, title, subtitle, badge, actions }) => {
   const renderBadge = () => {
     if (!badge) return null;
@@ -48,6 +50,15 @@ const PageHeader = ({ icon: Icon, title, subtitle, badge, actions }) => {
       </div>
     </div>
   );
+};
+
+// FRONT-004: PropTypes para validación de props
+PageHeader.propTypes = {
+  icon: PropTypes.elementType,
+  title: PropTypes.string.isRequired,
+  subtitle: PropTypes.string,
+  badge: PropTypes.oneOfType([PropTypes.string, PropTypes.node]),
+  actions: PropTypes.node,
 };
 
 export default PageHeader;

@@ -1,5 +1,6 @@
 import { useContext } from 'react';
 import { PermissionContext } from '../context/contexts';
+import { devWarn } from '../config/dev';
 
 /**
  * Hook para acceder al contexto de permisos.
@@ -14,7 +15,7 @@ export function usePermissions() {
   // Si no hay contexto, retornar un objeto seguro con valores por defecto
   // Esto evita romper la UI y permite que los componentes se degraden gracefully
   if (!context) {
-    console.warn('usePermissions: PermissionContext no disponible, usando valores por defecto');
+    devWarn('usePermissions: PermissionContext no disponible, usando valores por defecto');
     return {
       permisos: {},
       user: null,

@@ -1,3 +1,5 @@
+import PropTypes from 'prop-types';
+
 function Pagination({
   page = 1,
   totalPages = 1,
@@ -78,5 +80,15 @@ function Pagination({
     </div>
   );
 }
+
+// FRONT-004: PropTypes para validación de props
+Pagination.propTypes = {
+  page: PropTypes.number,
+  totalPages: PropTypes.number,
+  totalItems: PropTypes.number,
+  pageSize: PropTypes.number,
+  onPageChange: PropTypes.func.isRequired,
+  onPageSizeChange: PropTypes.func,
+};
 
 export default Pagination;

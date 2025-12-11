@@ -45,8 +45,8 @@ function Layout() {
     
     let navegacionExitosa = false;
     try {
-      const refresh = localStorage.getItem("refresh_token");
-      await authAPI.logout({ refresh });
+      // El refresh token está en cookie HttpOnly, no necesitamos enviarlo
+      await authAPI.logout();
     } catch (err) {
       // Ignorar errores de logout - siempre limpiar sesión local
       // El backend retorna 200 incluso si el token es inválido
@@ -58,20 +58,18 @@ function Layout() {
       }
       // Limpiar token en memoria del tokenManager
       clearTokens();
-      localStorage.removeItem("token");
-      localStorage.removeItem("refresh_token");
+      // Limpiar datos de usuario (no tokens - ya están en memoria/cookie)
       localStorage.removeItem("user");
       try {
         navigate("/login");
         navegacionExitosa = true;
       } catch (navError) {
-        // Si la navegación falla por algún motivo, forzar recarga
-        console.error("Error navegando al login:", navError);
+        // Si la navegación falla, forzar recarga
         try {
           window.location.href = "/login";
           navegacionExitosa = true;
         } catch (fallbackError) {
-          console.error("Error en fallback de navegación:", fallbackError);
+          // Silenciar - no hay más opciones
         }
       }
       // Resetear loggingOut solo si la navegación falló completamente

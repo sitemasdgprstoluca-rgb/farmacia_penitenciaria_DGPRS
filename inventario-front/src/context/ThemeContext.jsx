@@ -2,6 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { ThemeContext } from './contexts';
 import { configuracionAPI, temaGlobalAPI } from '../services/api';
 import { supabaseThemeAPI, isSupabaseAvailable } from '../services/supabase';
+import { devLog, DEV_CONFIG } from '../config/dev';
+
+// Helper para warnings solo en desarrollo
+const devWarn = (message, data = null) => {
+  if (DEV_CONFIG.IS_DEV_ENV) {
+    console.warn(`[ThemeContext] ${message}`, data ?? '');
+  }
+};
 
 // ============================================================================
 // CONSTANTES Y CLAVES DE ALMACENAMIENTO
@@ -14,7 +22,7 @@ const STORAGE_KEY_UPDATED = 'sifp_tema_updated_at';
  */
 const aplicarCSSVariables = (cssVariables) => {
   if (!cssVariables) {
-    console.warn('ThemeContext: No hay CSS variables para aplicar');
+    devWarn('No hay CSS variables para aplicar');
     return;
   }
   
@@ -24,7 +32,7 @@ const aplicarCSSVariables = (cssVariables) => {
       root.style.setProperty(variable, valor);
     }
   });
-  console.log('ThemeContext: Variables CSS aplicadas correctamente');
+  devLog('[ThemeContext] Variables CSS aplicadas correctamente');
 };
 
 /**
@@ -45,9 +53,9 @@ const guardarTemaEnCache = (tema) => {
     };
     localStorage.setItem(STORAGE_KEY_TEMA, JSON.stringify(cacheData));
     localStorage.setItem(STORAGE_KEY_UPDATED, cacheData.updated_at);
-    console.log('ThemeContext: Tema guardado en caché local');
+    devLog('[ThemeContext] Tema guardado en caché local');
   } catch (err) {
-    console.warn('ThemeContext: No se pudo guardar tema en localStorage:', err);
+    devWarn('No se pudo guardar tema en localStorage:', err);
   }
 };
 
@@ -59,11 +67,11 @@ const obtenerTemaDeCache = () => {
     const cached = localStorage.getItem(STORAGE_KEY_TEMA);
     if (cached) {
       const tema = JSON.parse(cached);
-      console.log('ThemeContext: Tema recuperado de caché local');
+      devLog('[ThemeContext] Tema recuperado de caché local');
       return tema;
     }
   } catch (err) {
-    console.warn('ThemeContext: Error leyendo caché local:', err);
+    devWarn('Error leyendo caché local:', err);
   }
   return null;
 };
@@ -167,14 +175,14 @@ const corregirColoresLegacy = (cssVars) => {
   
   for (const [variable, valorDefault] of Object.entries(correcciones)) {
     if (corregido[variable] && esColorAzulLegacy(corregido[variable])) {
-      console.warn(`ThemeContext: Corrigiendo color legacy ${variable}: ${corregido[variable]} -> ${valorDefault}`);
+      devWarn(`Corrigiendo color legacy ${variable}: ${corregido[variable]} -> ${valorDefault}`);
       corregido[variable] = valorDefault;
       huboCorreccion = true;
     }
   }
   
   if (huboCorreccion) {
-    console.log('ThemeContext: Se corrigieron colores azules legacy');
+    devLog('[ThemeContext] Se corrigieron colores azules legacy');
   }
   
   return corregido;
@@ -203,11 +211,11 @@ const normalizarTemaSupabase = (temaSupabase) => {
   // Si css_variables es un objeto con datos, usarlo TAL CUAL (sin mezclar defaults)
   if (cssVars && typeof cssVars === 'object' && Object.keys(cssVars).length > 0) {
     // Ya tenemos CSS variables válidas, no mezclar con defaults
-    console.log('ThemeContext: Usando css_variables de Supabase directamente');
+    devLog('[ThemeContext] Usando css_variables de Supabase directamente');
   } else {
     // SOLO si no hay css_variables, generarlas desde campos individuales
     // Usar colores INSTITUCIONALES (guinda) como fallback, NO azules
-    console.log('ThemeContext: Generando css_variables desde campos individuales');
+    devLog('[ThemeContext] Generando css_variables desde campos individuales');
     cssVars = {
       '--color-primary': temaSupabase.primary_color || '#9F2241',
       '--color-primary-hover': temaSupabase.primary_hover_color || '#6B1839',
@@ -355,7 +363,7 @@ export const ThemeProvider = ({ children }) => {
       let temaAplicadoDesdeCache = false;
       
       if (temaCache && temaCache.css_variables && !forzar) {
-        console.log('ThemeContext: Aplicando tema desde caché local (instantáneo)');
+        devLog('[ThemeContext] Aplicando tema desde caché local (instantáneo)');
         setTemaGlobal(temaCache);
         aplicarTemaCompleto(temaCache);
         temaAplicadoDesdeCache = true;
@@ -366,7 +374,7 @@ export const ThemeProvider = ({ children }) => {
       
       if (isSupabaseAvailable()) {
         try {
-          console.log('ThemeContext: Consultando Supabase...');
+          devLog('[ThemeContext] Consultando Supabase...');
           const temaSupabase = await supabaseThemeAPI.getActiveTheme();
           
           if (temaSupabase) {
@@ -377,22 +385,22 @@ export const ThemeProvider = ({ children }) => {
               setTemaGlobal(temaNormalizado);
               aplicarTemaCompleto(temaNormalizado);
               guardarTemaEnCache(temaNormalizado);
-              console.log('ThemeContext: Tema cargado desde Supabase ✓');
+              devLog('[ThemeContext] Tema cargado desde Supabase ✓');
               temaObtenido = true;
             }
           }
         } catch (supabaseErr) {
-          console.warn('ThemeContext: Supabase no disponible:', supabaseErr.message);
+          devWarn('Supabase no disponible:', supabaseErr.message);
           // NO retornar aquí - intentar API Django como fallback
         }
       } else {
-        console.log('ThemeContext: Supabase no configurado, usando API Django');
+        devLog('[ThemeContext] Supabase no configurado, usando API Django');
       }
       
       // PASO 3: Fallback a API Django (usa cliente PÚBLICO, no requiere auth)
       if (!temaObtenido) {
         try {
-          console.log('ThemeContext: Consultando API Django (público)...');
+          devLog('[ThemeContext] Consultando API Django (público)...');
           const response = await temaGlobalAPI.getTemaActivo();
           const tema = response.data;
           
@@ -400,20 +408,20 @@ export const ThemeProvider = ({ children }) => {
             setTemaGlobal(tema);
             aplicarTemaCompleto(tema);
             guardarTemaEnCache(tema);
-            console.log('ThemeContext: Tema cargado desde API Django ✓');
+            devLog('[ThemeContext] Tema cargado desde API Django ✓');
             temaObtenido = true;
           }
         } catch (apiErr) {
           // Error esperado si el endpoint no existe o hay problema de red
           const status = apiErr.response?.status;
-          console.warn(`ThemeContext: API Django no disponible (${status || 'red'})`);
+          devWarn(`API Django no disponible (${status || 'red'})`);
           // NO sobrescribir caché con default si ya tenemos tema aplicado
         }
       }
       
       // PASO 4: Si tenemos caché y no pudimos obtener tema del servidor, MANTENER caché
       if (!temaObtenido && temaAplicadoDesdeCache) {
-        console.log('ThemeContext: Manteniendo tema desde caché (servidor no disponible)');
+        devLog('[ThemeContext] Manteniendo tema desde caché (servidor no disponible)');
         return; // NO aplicar default, ya tenemos caché aplicada
       }
       
@@ -429,7 +437,7 @@ export const ThemeProvider = ({ children }) => {
             aplicarCSSVariables(cssVars);
             actualizarTituloDocumento(config.nombre_sistema);
             setTemaAplicado(true);
-            console.log('ThemeContext: Tema cargado desde sistema legacy');
+            devLog('[ThemeContext] Tema cargado desde sistema legacy');
             return;
           }
         } catch (legacyErr) {
@@ -437,12 +445,12 @@ export const ThemeProvider = ({ children }) => {
         }
         
         // PASO 6: Último recurso - tema por defecto (solo si no hay NADA)
-        console.warn('ThemeContext: Sin datos de tema, usando valores por defecto');
+        devWarn('Sin datos de tema, usando valores por defecto');
         aplicarCSSVariables(temaDefault.css_variables);
         setTemaAplicado(true);
       }
     } catch (err) {
-      console.error('ThemeContext: Error crítico cargando tema:', err);
+      devWarn('Error crítico cargando tema:', err);
       setError(err);
       // Solo aplicar default si no hay caché
       const temaCache = obtenerTemaDeCache();
@@ -486,7 +494,7 @@ export const ThemeProvider = ({ children }) => {
         return { success: true, data: config };
       }
     } catch (err) {
-      console.error('Error al actualizar el tema:', err);
+      devWarn('Error al actualizar el tema:', err);
       return { 
         success: false, 
         error: err.response?.data?.error || 'Error al actualizar el tema' 
@@ -501,7 +509,7 @@ export const ThemeProvider = ({ children }) => {
    */
   const actualizarTemaGlobal = async (nuevoTema) => {
     try {
-      console.log('ThemeContext: Actualizando tema...', nuevoTema);
+      devLog('[ThemeContext] Actualizando tema...', nuevoTema);
       
       // PRIMERO: Generar css_variables completas desde los datos del formulario
       // Esto asegura que SIEMPRE tengamos un objeto css_variables válido
@@ -562,7 +570,7 @@ export const ThemeProvider = ({ children }) => {
         css_variables: cssVariablesFinal,
       };
       
-      console.log('ThemeContext: CSS Variables a guardar:', cssVariablesFinal);
+      devLog('[ThemeContext] CSS Variables a guardar:', cssVariablesFinal);
       
       let temaFinal = null;
       let supabaseOk = false;
@@ -575,10 +583,10 @@ export const ThemeProvider = ({ children }) => {
           if (temaSupabase) {
             temaFinal = normalizarTemaSupabase(temaSupabase);
             supabaseOk = true;
-            console.log('ThemeContext: Tema guardado en Supabase ✓');
+            devLog('[ThemeContext] Tema guardado en Supabase ✓');
           }
         } catch (supabaseErr) {
-          console.warn('ThemeContext: Error guardando en Supabase:', supabaseErr.message);
+          devWarn('Error guardando en Supabase:', supabaseErr.message);
           // Continuar con Django aunque Supabase falle
         }
       }
@@ -595,9 +603,9 @@ export const ThemeProvider = ({ children }) => {
           temaFinal = temaDjango;
         }
         djangoOk = true;
-        console.log('ThemeContext: Tema guardado en API Django ✓');
+        devLog('[ThemeContext] Tema guardado en API Django ✓');
       } catch (djangoErr) {
-        console.warn('ThemeContext: Error guardando en Django:', djangoErr.message);
+        devWarn('Error guardando en Django:', djangoErr.message);
         // Si Supabase funcionó, no es error crítico
       }
       
@@ -612,7 +620,7 @@ export const ThemeProvider = ({ children }) => {
         const source = supabaseOk && djangoOk ? 'Supabase + Django' 
                      : supabaseOk ? 'Supabase' 
                      : 'Django';
-        console.log(`ThemeContext: Tema actualizado (${source})`);
+        devLog(`[ThemeContext] Tema actualizado (${source})`);
         
         return { success: true, data: temaFinal };
       }
@@ -620,7 +628,7 @@ export const ThemeProvider = ({ children }) => {
       // Si ambos fallaron, es un error
       throw new Error('No se pudo guardar el tema en ningún servidor');
     } catch (err) {
-      console.error('Error al actualizar tema global:', err);
+      devWarn('Error al actualizar tema global:', err);
       return { 
         success: false, 
         error: err.response?.data?.error || err.message || 'Error al actualizar el tema' 
@@ -657,12 +665,12 @@ export const ThemeProvider = ({ children }) => {
               const temaNormalizado = normalizarTemaSupabase(temaActualizado);
               setTemaGlobal(temaNormalizado);
               guardarTemaEnCache(temaNormalizado);
-              console.log(`ThemeContext: Logo ${tipo} subido a Supabase ✓`);
+              devLog(`[ThemeContext] Logo ${tipo} subido a Supabase ✓`);
               return { success: true, data: temaNormalizado };
             }
           }
         } catch (supabaseErr) {
-          console.warn('ThemeContext: Error subiendo a Supabase:', supabaseErr);
+          devWarn('Error subiendo a Supabase:', supabaseErr);
         }
       }
       
@@ -682,7 +690,7 @@ export const ThemeProvider = ({ children }) => {
       
       return { success: true, data: tema };
     } catch (err) {
-      console.error(`Error al subir logo ${tipo}:`, err);
+      devWarn(`Error al subir logo ${tipo}:`, err);
       return { 
         success: false, 
         error: err.response?.data?.error || `Error al subir el logo ${tipo}` 
@@ -708,7 +716,7 @@ export const ThemeProvider = ({ children }) => {
       
       return { success: true, data: tema };
     } catch (err) {
-      console.error(`Error al eliminar logo ${tipo}:`, err);
+      devWarn(`Error al eliminar logo ${tipo}:`, err);
       return { 
         success: false, 
         error: err.response?.data?.error || `Error al eliminar el logo ${tipo}` 
@@ -735,7 +743,7 @@ export const ThemeProvider = ({ children }) => {
       
       return { success: true, data: tema };
     } catch (err) {
-      console.error('Error al restablecer tema institucional:', err);
+      devWarn('Error al restablecer tema institucional:', err);
       return { 
         success: false, 
         error: err.response?.data?.error || 'Error al restablecer el tema' 
@@ -761,7 +769,7 @@ export const ThemeProvider = ({ children }) => {
       
       return { success: true, data: config };
     } catch (err) {
-      console.error('Error al aplicar el tema:', err);
+      devWarn('Error al aplicar el tema:', err);
       return { 
         success: false, 
         error: err.response?.data?.error || 'Error al aplicar el tema' 
@@ -787,7 +795,7 @@ export const ThemeProvider = ({ children }) => {
       
       return { success: true, data: config };
     } catch (err) {
-      console.error('Error al restablecer el tema:', err);
+      devWarn('Error al restablecer el tema:', err);
       return { 
         success: false, 
         error: err.response?.data?.error || 'Error al restablecer el tema' 
@@ -813,7 +821,7 @@ export const ThemeProvider = ({ children }) => {
       
       return { success: true, data: config };
     } catch (err) {
-      console.error('Error al subir logo header:', err);
+      devWarn('Error al subir logo header:', err);
       return { 
         success: false, 
         error: err.response?.data?.error || 'Error al subir el logo' 
@@ -839,7 +847,7 @@ export const ThemeProvider = ({ children }) => {
       
       return { success: true, data: config };
     } catch (err) {
-      console.error('Error al subir logo PDF:', err);
+      devWarn('Error al subir logo PDF:', err);
       return { 
         success: false, 
         error: err.response?.data?.error || 'Error al subir el logo' 
@@ -862,7 +870,7 @@ export const ThemeProvider = ({ children }) => {
       
       return { success: true, data: config };
     } catch (err) {
-      console.error('Error al eliminar logo header:', err);
+      devWarn('Error al eliminar logo header:', err);
       return { 
         success: false, 
         error: err.response?.data?.error || 'Error al eliminar el logo' 
@@ -885,7 +893,7 @@ export const ThemeProvider = ({ children }) => {
       
       return { success: true, data: config };
     } catch (err) {
-      console.error('Error al eliminar logo PDF:', err);
+      devWarn('Error al eliminar logo PDF:', err);
       return { 
         success: false, 
         error: err.response?.data?.error || 'Error al eliminar el logo' 
@@ -902,7 +910,7 @@ export const ThemeProvider = ({ children }) => {
   // Esto resuelve el problema de que el tema inicial puede fallar sin token
   useEffect(() => {
     const handleLoginSuccess = () => {
-      console.log('ThemeContext: Login detectado, recargando tema con autenticación...');
+      devLog('[ThemeContext] Login detectado, recargando tema con autenticación...');
       // Forzar recarga desde servidor (ignorar caché) para obtener tema más actualizado
       cargarTema(true);
     };

@@ -17,6 +17,8 @@ import {
   migrateFromLocalStorage,
   setLogoutInProgress
 } from '../services/tokenManager';
+import { devWarn } from '../config/dev';
+import { ADMIN_ROLES } from '../utils/roles';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -96,7 +98,7 @@ export function AuthProvider({ children }) {
       // ISS-003: Incluso si el logout falla (servidor inalcanzable, etc.),
       // limpiar el estado local. El flag logoutInProgress evita que el
       // interceptor intente refresh con una cookie potencialmente válida.
-      console.warn('Error en logout (limpieza local realizada):', error);
+      devWarn('Error en logout (limpieza local realizada):', error);
     }
     
     // Limpiar tokens de memoria (esto mantiene logoutInProgress=true)
@@ -106,9 +108,9 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
+  // FRONT-006 FIX: Usando ADMIN_ROLES importado al inicio
   // ISS-002: Roles are lowercase from backend (admin_sistema, farmacia, centro, vista)
   // Also support legacy roles: superusuario, admin_farmacia, usuario_normal, usuario_vista
-  const ADMIN_ROLES = ['admin_sistema', 'superusuario', 'admin_farmacia'];
   
   const hasRole = (role) => {
     if (!user) return false;

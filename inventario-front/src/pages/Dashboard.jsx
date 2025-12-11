@@ -24,6 +24,7 @@ import CentroSelector from '../components/CentroSelector';
 import '../styles/Dashboard.css';
 import { dashboardAPI } from '../services/api';
 import { hasAccessToken } from '../services/tokenManager';
+import { puedeVerGlobal as checkPuedeVerGlobal } from '../utils/roles';
 
 // Colores para gráficas - usarán variables CSS cuando sea posible
 const COLORS = ['var(--color-primary, #9F2241)', '#10B981', '#F59E0B', '#06B6D4', '#8B5CF6'];
@@ -86,14 +87,14 @@ const Dashboard = () => {
   const { getRolPrincipal, permisos, user, loading: cargandoPermisos } = usePermissions();
   const rolPrincipal = getRolPrincipal();
   
-  // Detectar tipo de usuario para control de acceso
+  // FRONT-006 FIX: Usar lógica centralizada de roles
   const esAdmin = rolPrincipal === 'ADMIN';
   const esFarmacia = rolPrincipal === 'FARMACIA';
-  const esVista = rolPrincipal === 'VISTA' || rolPrincipal === 'VISTA_USER';
+  const esVista = rolPrincipal === 'VISTA';
   const esCentro = rolPrincipal === 'CENTRO';
   
   // Usuarios con acceso global (pueden ver todos los centros)
-  const puedeVerGlobal = esAdmin || esFarmacia || esVista || permisos?.isSuperuser;
+  const puedeVerGlobal = checkPuedeVerGlobal(user, permisos);
   
   // Solo ADMIN y FARMACIA pueden usar el selector de centros para filtrar
   // VISTA puede ver todo pero NO cambiar el filtro (ve global por defecto)

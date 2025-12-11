@@ -684,7 +684,7 @@ const Productos = () => {
 
   useEffect(() => {
 
-    console.log('📦 Cargando productos...');
+    // Carga inicial de productos (devLog eliminado para producción)
 
     const timeout = setTimeout(() => {
 

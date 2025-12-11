@@ -30,6 +30,7 @@ import { COLORS } from '../constants/theme';
 import Pagination from '../components/Pagination';
 import { usePermissions } from '../hooks/usePermissions';
 import ConfirmModal from '../components/ConfirmModal';
+import { esFarmaciaAdmin as checkEsFarmaciaAdmin } from '../utils/roles';
 
 const PAGE_SIZE = 25;
 
@@ -62,7 +63,8 @@ const ESTADOS_PRODUCTO = [
 const Donaciones = () => {
   const { getRolPrincipal, permisos, user, verificarPermiso } = usePermissions();
   const rolPrincipal = getRolPrincipal();
-  const esFarmaciaAdmin = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
+  // FRONT-006 FIX: Usar lógica centralizada de roles
+  const esFarmaciaAdmin = checkEsFarmaciaAdmin(user);
   
   // Verificar permiso granular de donaciones (perm_donaciones en BD → verDonaciones en frontend)
   const tienePermisoDonaciones = verificarPermiso('verDonaciones');
