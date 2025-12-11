@@ -442,4 +442,115 @@ describe('dtoContracts', () => {
       expect(resultado.warning).toBeDefined();
     });
   });
+
+  // =========================================================================
+  // ISS-003 FIX (audit32): Tests de modo estricto de producción
+  // =========================================================================
+  describe('Modo estricto producción - ISS-003 audit32', () => {
+    it('getStockProducto rechaza campos legacy en modo estricto', () => {
+      const producto = { id: 1, stock_total: 50 }; // Campo legacy
+      
+      // En modo estricto, debe lanzar error por usar campo legacy
+      expect(() => getStockProducto(producto, { 
+        strict: true, 
+        endpoint: 'productos' 
+      })).toThrow('CONTRACT ERROR');
+    });
+
+    it('getStockProducto rechaza falta de campo canónico en modo estricto', () => {
+      const producto = { id: 1, nombre: 'Test' }; // Sin stock_actual
+      
+      expect(() => getStockProducto(producto, { 
+        strict: true, 
+        endpoint: 'productos' 
+      })).toThrow('falta campo canónico');
+    });
+
+    it('getStockProducto acepta campo canónico en modo estricto', () => {
+      const producto = { id: 1, stock_actual: 100 };
+      
+      // No debe lanzar error
+      const stock = getStockProducto(producto, { strict: true, endpoint: 'productos' });
+      expect(stock).toBe(100);
+    });
+
+    it('registra violación como crítica cuando falta campo canónico', () => {
+      resetContractMetrics();
+      
+      const producto = { id: 1, nombre: 'Test' };
+      
+      // Capturamos el error pero verificamos las métricas
+      try {
+        getStockProducto(producto, { strict: true, endpoint: 'productos' });
+      } catch (e) {
+        // Esperado
+      }
+      
+      const metrics = getContractMetrics();
+      expect(metrics.criticalViolations).toBeGreaterThan(0);
+    });
+
+    it('validarRespuestaPaginada rechaza formato no canónico en strict', () => {
+      const response = { data: [{ id: 1 }], total: 5 };
+      
+      const resultado = validarRespuestaPaginada(response, { 
+        strict: true, 
+        endpoint: 'productos' 
+      });
+      
+      expect(resultado.valido).toBe(false);
+      expect(resultado.error).toContain('no canónico');
+    });
+
+    it('getStockProducto rechaza stock como string en modo estricto', () => {
+      const producto = { id: 1, stock_actual: '100' }; // String en lugar de number
+      
+      expect(() => getStockProducto(producto, { 
+        strict: true, 
+        endpoint: 'productos' 
+      })).toThrow('CONTRACT ERROR');
+    });
+  });
+
+  // =========================================================================
+  // ISS-003 FIX (audit32): Tests de bloqueo por violaciones críticas
+  // =========================================================================
+  describe('Bloqueo de contrato - ISS-003 audit32', () => {
+    beforeEach(() => {
+      resetContractMetrics();
+    });
+
+    it('contractMetrics expone métodos de bloqueo', () => {
+      const metrics = getContractMetrics();
+      expect(typeof metrics.isBlocked).toBe('function');
+      expect(typeof metrics.block).toBe('function');
+      expect(typeof metrics.unblock).toBe('function');
+    });
+
+    it('contractMetrics registra violaciones críticas', () => {
+      // Simulamos una violación crítica
+      const producto = { id: 1 }; // Sin stock
+      
+      try {
+        getStockProducto(producto, { strict: true, endpoint: 'productos' });
+      } catch (e) {
+        // Esperado
+      }
+      
+      const metrics = getContractMetrics();
+      expect(metrics.criticalViolations).toBeGreaterThanOrEqual(1);
+    });
+
+    it('contractMetrics puede ser bloqueado y desbloqueado', () => {
+      const metrics = getContractMetrics();
+      
+      expect(metrics.isBlocked()).toBe(false);
+      
+      metrics.block('test-reason');
+      expect(metrics.isBlocked()).toBe(true);
+      
+      metrics.unblock();
+      expect(metrics.isBlocked()).toBe(false);
+    });
+  });
 });

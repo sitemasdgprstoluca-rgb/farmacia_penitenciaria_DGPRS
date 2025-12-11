@@ -15,16 +15,43 @@
 const isDev = import.meta.env.DEV || import.meta.env.MODE === 'development';
 
 /**
- * ISS-001 FIX: Modo estricto para endpoints críticos
- * Cuando está activo, los campos legacy generan errores visibles
+ * ISS-003 FIX (audit32): Modo estricto ACTIVADO en producción
+ * Los campos legacy generan errores bloqueantes, no solo warnings
  */
 const CONFIG = {
-  // Forzar strict en producción para endpoints críticos
-  strictModeEndpoints: ['productos', 'lotes', 'requisiciones'],
+  // ISS-003 FIX: En producción, strictMode está ACTIVO por defecto
+  strictModeEnabled: !isDev || import.meta.env.VITE_STRICT_CONTRACTS === 'true',
+  // Endpoints que SIEMPRE requieren validación estricta
+  strictModeEndpoints: ['productos', 'lotes', 'requisiciones', 'movimientos'],
   // Habilitar logging de violaciones (siempre en dev, configurable en prod)
   logViolations: isDev || import.meta.env.VITE_LOG_CONTRACT_VIOLATIONS === 'true',
-  // Máximo de violaciones antes de alertar
-  maxViolationsBeforeAlert: 5,
+  // Máximo de violaciones antes de alertar/bloquear
+  maxViolationsBeforeAlert: 3,
+  // ISS-003 FIX: Bloquear operaciones cuando hay violaciones críticas
+  blockOnCriticalViolation: !isDev,
+  // Callbacks para notificar a la UI de violaciones
+  onViolation: null,
+  onCriticalViolation: null,
+};
+
+/**
+ * ISS-003 FIX: Configurar callbacks de violación para la UI
+ */
+export const setContractViolationHandler = (handler) => {
+  CONFIG.onViolation = handler;
+};
+
+export const setCriticalViolationHandler = (handler) => {
+  CONFIG.onCriticalViolation = handler;
+};
+
+/**
+ * ISS-003 FIX: Verificar si modo estricto está activo para un endpoint
+ */
+export const isStrictModeActive = (endpoint = null) => {
+  if (!CONFIG.strictModeEnabled) return false;
+  if (!endpoint) return CONFIG.strictModeEnabled;
+  return CONFIG.strictModeEndpoints.includes(endpoint);
 };
 
 /**
@@ -35,16 +62,40 @@ const contractMetrics = {
   violations: [],
   legacyFieldUsage: new Map(),
   paginationDiscrepancies: 0,
+  criticalViolations: 0,
   lastViolation: null,
+  blocked: false,
   
-  recordViolation(type, details) {
+  recordViolation(type, details, isCritical = false) {
     const entry = {
       type,
       details,
+      isCritical,
       timestamp: new Date().toISOString(),
     };
     this.violations.push(entry);
     this.lastViolation = entry;
+    
+    if (isCritical) {
+      this.criticalViolations++;
+      // ISS-003 FIX: Notificar violación crítica a la UI
+      if (CONFIG.onCriticalViolation) {
+        CONFIG.onCriticalViolation(entry);
+      }
+      // Bloquear si está configurado
+      if (CONFIG.blockOnCriticalViolation && this.criticalViolations >= CONFIG.maxViolationsBeforeAlert) {
+        this.blocked = true;
+        console.error(
+          `[DTO CONTRACT] ❌ BLOQUEADO: ${this.criticalViolations} violaciones críticas. ` +
+          `Operaciones de escritura deshabilitadas hasta resolver.`
+        );
+      }
+    }
+    
+    // Notificar a la UI
+    if (CONFIG.onViolation) {
+      CONFIG.onViolation(entry);
+    }
     
     // Mantener solo últimas 100 violaciones
     if (this.violations.length > 100) {
@@ -65,34 +116,67 @@ const contractMetrics = {
     const count = (this.legacyFieldUsage.get(key) || 0) + 1;
     this.legacyFieldUsage.set(key, count);
     
-    this.recordViolation('legacy_field', { campo, endpoint, count });
+    // ISS-003 FIX: En modo estricto, campos legacy son violaciones críticas
+    const isCritical = isStrictModeActive(endpoint);
+    this.recordViolation('legacy_field', { campo, endpoint, count }, isCritical);
   },
   
   recordPaginationDiscrepancy(format, endpoint = 'unknown') {
     this.paginationDiscrepancies++;
-    this.recordViolation('pagination_format', { format, endpoint });
+    const isCritical = isStrictModeActive(endpoint);
+    this.recordViolation('pagination_format', { format, endpoint }, isCritical);
   },
   
   getMetrics() {
     return {
       totalViolations: this.violations.length,
+      criticalViolations: this.criticalViolations,
       legacyFieldUsage: Object.fromEntries(this.legacyFieldUsage),
       paginationDiscrepancies: this.paginationDiscrepancies,
       lastViolation: this.lastViolation,
+      blocked: this.blocked,
+      strictModeEnabled: CONFIG.strictModeEnabled,
     };
+  },
+  
+  isBlocked() {
+    return this.blocked;
   },
   
   reset() {
     this.violations = [];
     this.legacyFieldUsage.clear();
     this.paginationDiscrepancies = 0;
+    this.criticalViolations = 0;
     this.lastViolation = null;
+    this.blocked = false;
+  },
+  
+  // ISS-003 FIX: Desbloquear manualmente (para admin)
+  unblock() {
+    this.blocked = false;
+    this.criticalViolations = 0;
+  },
+  
+  // ISS-003 FIX (audit32): Bloquear manualmente con razón
+  block(reason = 'manual') {
+    this.blocked = true;
+    this.recordViolation('manual_block', { reason }, true);
+    console.error(`[DTO CONTRACT] ❌ BLOQUEADO: ${reason}`);
   },
 };
 
 // Exportar métricas para monitoreo externo
-export const getContractMetrics = () => contractMetrics.getMetrics();
+export const getContractMetrics = () => ({
+  ...contractMetrics.getMetrics(),
+  // ISS-003 FIX (audit32): Exponer métodos de control para tests y admin
+  isBlocked: () => contractMetrics.isBlocked(),
+  block: (reason) => contractMetrics.block(reason),
+  unblock: () => contractMetrics.unblock(),
+});
 export const resetContractMetrics = () => contractMetrics.reset();
+export const isContractBlocked = () => contractMetrics.isBlocked();
+export const unblockContract = () => contractMetrics.unblock();
 
 // ============================================================================
 // PRODUCTO DTO
@@ -143,11 +227,14 @@ const CAMPOS_STOCK_LEGACY = [
 ];
 
 /**
- * ISS-001/002 FIX: Obtiene el stock de un producto con validación de contrato
+ * ISS-001/002/003 FIX: Obtiene el stock de un producto con validación de contrato
+ * 
+ * ISS-003 (audit32): En producción, modo estricto está ACTIVO por defecto
+ * Los campos legacy generan errores y se registran como violaciones críticas
  * 
  * @param {Object} producto - Objeto producto del API
  * @param {Object} options - Opciones
- * @param {boolean} options.strict - Si true, lanza error si falta campo canónico
+ * @param {boolean} options.strict - Si true, lanza error si falta campo canónico (default: auto)
  * @param {boolean} options.logWarnings - Si true, loguea advertencias de campos legacy
  * @param {string} options.endpoint - Nombre del endpoint para métricas
  * @param {boolean} options.alertOnLegacy - Mostrar alerta visible al usuario cuando usa campos legacy
@@ -156,11 +243,20 @@ const CAMPOS_STOCK_LEGACY = [
  */
 export const getStockProducto = (producto, options = {}) => {
   const { 
-    strict = false, 
+    // ISS-003 FIX: Modo estricto AUTOMÁTICO en producción para productos
+    strict = isStrictModeActive(options.endpoint || 'productos'), 
     logWarnings = true, 
-    endpoint = 'unknown',
-    alertOnLegacy = false 
+    endpoint = 'productos',
+    alertOnLegacy = isStrictModeActive(options.endpoint || 'productos'),
   } = options;
+  
+  // ISS-003 FIX: Verificar si está bloqueado por violaciones críticas
+  if (contractMetrics.isBlocked() && strict) {
+    throw new Error(
+      `[CONTRACT BLOCKED] Operaciones bloqueadas por violaciones de contrato. ` +
+      `Contacte al administrador para revisar la alineación backend-frontend.`
+    );
+  }
   
   if (!producto || typeof producto !== 'object') {
     if (strict) throw new Error('Producto inválido: debe ser un objeto');
@@ -169,23 +265,46 @@ export const getStockProducto = (producto, options = {}) => {
 
   const productoId = producto.id || producto.clave || 'desconocido';
 
-  // 1. Intentar campo canónico primero
+  // 1. Intentar campo canónico primero - ÚNICO ACEPTADO EN MODO ESTRICTO
   const stockCanonnico = producto[CAMPO_STOCK_CANONICO];
   if (typeof stockCanonnico === 'number' && !Number.isNaN(stockCanonnico)) {
     return stockCanonnico;
   }
+  
+  // ISS-003 FIX: Si estamos en modo estricto y no hay campo canónico, es error crítico
+  if (strict && stockCanonnico === undefined) {
+    contractMetrics.recordViolation('missing_canonical_field', { 
+      productoId, 
+      campo: CAMPO_STOCK_CANONICO,
+      endpoint 
+    }, true); // Marcar como crítico
+    
+    throw new Error(
+      `[CONTRACT ERROR] Producto ${productoId}: falta campo canónico '${CAMPO_STOCK_CANONICO}'. ` +
+      `Backend debe incluir este campo. Endpoint: ${endpoint}`
+    );
+  }
 
-  // 2. Buscar en campos legacy - REGISTRAR VIOLACIÓN
+  // 2. Buscar en campos legacy - REGISTRAR VIOLACIÓN (crítica en strict mode)
   for (const campo of CAMPOS_STOCK_LEGACY) {
     const valor = producto[campo];
     if (typeof valor === 'number' && !Number.isNaN(valor)) {
-      // ISS-001 FIX: Registrar uso de campo legacy
+      // ISS-003 FIX: Registrar uso de campo legacy como violación (crítica si strict)
       contractMetrics.recordLegacyField(campo, endpoint);
       
       if (logWarnings && CONFIG.logViolations) {
         console.warn(
           `[DTO CONTRACT] ⚠️ Producto ${productoId} usa campo legacy '${campo}' ` +
           `en lugar de '${CAMPO_STOCK_CANONICO}'. Endpoint: ${endpoint}. Actualizar backend.`
+        );
+      }
+      
+      // ISS-003 FIX: En modo estricto, NO aceptar campos legacy
+      if (strict) {
+        throw new Error(
+          `[CONTRACT ERROR] Producto ${productoId}: usando campo legacy '${campo}' ` +
+          `en lugar del canónico '${CAMPO_STOCK_CANONICO}'. ` +
+          `Backend debe enviar el campo correcto. Endpoint: ${endpoint}`
         );
       }
       
@@ -210,12 +329,20 @@ export const getStockProducto = (producto, options = {}) => {
   for (const candidato of candidatos) {
     const parsed = Number(candidato);
     if (!Number.isNaN(parsed)) {
-      // ISS-001: Registrar tipo incorrecto
+      // ISS-003 FIX: Tipo incorrecto es violación crítica en strict mode
+      const isCritical = isStrictModeActive(endpoint);
       contractMetrics.recordViolation('string_as_number', { 
         productoId, 
         campo: 'stock', 
         endpoint 
-      });
+      }, isCritical);
+      
+      if (strict) {
+        throw new Error(
+          `[CONTRACT ERROR] Producto ${productoId}: stock es string ('${candidato}') ` +
+          `en lugar de number. Backend debe enviar tipo correcto. Endpoint: ${endpoint}`
+        );
+      }
       
       if (logWarnings && CONFIG.logViolations) {
         console.warn(
@@ -240,7 +367,7 @@ export const getStockProducto = (producto, options = {}) => {
   }
 
   // ISS-001: Registrar ausencia de stock (solo si no es strict)
-  contractMetrics.recordViolation('missing_stock', { productoId, endpoint });
+  contractMetrics.recordViolation('missing_stock', { productoId, endpoint }, false);
   
   if (logWarnings && CONFIG.logViolations) {
     console.warn(
@@ -519,19 +646,37 @@ export const CAMPOS_REQUERIDOS = {
 };
 
 /**
- * ISS-003 FIX: Valida respuesta de lista paginada con registro de discrepancias
+ * ISS-003 FIX (audit32): Valida respuesta de lista paginada con registro de discrepancias
  * 
  * FORMATO CANÓNICO ESPERADO (DRF):
  * { results: [...], count: N, next: url|null, previous: url|null }
  * 
+ * ISS-003: En producción, modo estricto está ACTIVO AUTOMÁTICAMENTE
+ * para endpoints críticos (productos, lotes, requisiciones)
+ * 
  * @param {Object|Array} response - Respuesta del API
  * @param {Object} options - Opciones
  * @param {string} options.endpoint - Nombre del endpoint para métricas
- * @param {boolean} options.strict - Si true, rechaza formatos no canónicos
+ * @param {boolean} options.strict - Si true, rechaza formatos no canónicos (default: auto)
  * @returns {{ valido: boolean, data: Array, count: number, warning?: string }}
  */
 export const validarRespuestaPaginada = (response, options = {}) => {
-  const { endpoint = 'unknown', strict = false } = options;
+  // ISS-003 FIX: Modo estricto AUTOMÁTICO en producción para endpoints críticos
+  const { 
+    endpoint = 'unknown', 
+    strict = isStrictModeActive(endpoint),
+  } = options;
+  
+  // ISS-003 FIX: Verificar bloqueo por violaciones críticas
+  if (contractMetrics.isBlocked() && strict) {
+    return {
+      valido: false,
+      data: [],
+      count: 0,
+      error: '[CONTRACT BLOCKED] Operaciones bloqueadas por violaciones críticas de contrato.',
+      format: 'blocked',
+    };
+  }
   
   // ISS-003: Formato canónico DRF - el único válido en modo estricto
   if (response && Array.isArray(response.results)) {

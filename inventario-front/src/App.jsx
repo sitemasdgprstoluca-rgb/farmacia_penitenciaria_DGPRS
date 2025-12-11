@@ -1,7 +1,7 @@
 // filepath: inventario-front/src/App.jsx
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState, createContext, useContext } from 'react';
 import { PermissionProvider } from './context/PermissionContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { usePermissions } from './hooks/usePermissions';
@@ -9,6 +9,32 @@ import { useInactivityLogout } from './hooks/useInactivityLogout';
 import PermissionsGuard from './components/PermissionsGuard';
 import ErrorBoundary from './components/ErrorBoundary';
 import { getApiConfigError, hasHttpWarning, wasHealthCheckSkipped, checkApiHealth, isApiHealthy } from './services/api';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ISS-001 FIX (audit32): Contexto de estado de salud para bloquear navegación
+// ═══════════════════════════════════════════════════════════════════════════════
+const HealthContext = createContext({
+  healthy: true,
+  checked: false,
+  error: null,
+});
+
+// Rutas críticas que requieren API saludable para operar
+const RUTAS_CRITICAS = [
+  '/productos',
+  '/lotes', 
+  '/requisiciones',
+  '/movimientos',
+  '/donaciones',
+];
+
+// Rutas permitidas aunque el API no esté saludable
+const RUTAS_PERMITIDAS_DEGRADADO = [
+  '/dashboard',
+  '/perfil',
+  '/configuracion-tema',
+  '/notificaciones',
+];
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // LAZY LOADING - Mejora el tiempo de carga inicial dividiendo el bundle
@@ -153,11 +179,64 @@ function SessionManager() {
 }
 
 /**
- * ISS-002 FIX: ProtectedRoute mejorado con bloqueo hasta confirmación de permisos
- * Bloquea render hasta que el estado de autenticación esté resuelto
+ * ISS-001 FIX (audit32): Componente de bloqueo cuando API no está saludable
+ * Muestra mensaje explicativo y opciones de acción
+ */
+const ApiBlockedPage = ({ error, onRetry }) => {
+  const location = useLocation();
+  
+  return (
+    <div className="min-h-[80vh] flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white rounded-lg shadow-xl p-8 text-center border border-red-200">
+        <div className="mx-auto w-16 h-16 flex items-center justify-center rounded-full bg-red-100 mb-4">
+          <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M5.636 5.636l12.728 12.728" />
+          </svg>
+        </div>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">
+          Módulo No Disponible
+        </h2>
+        <p className="text-gray-600 mb-4 text-sm">
+          La conexión con el servidor no está estable. Por seguridad, el acceso a 
+          <strong className="text-red-700"> {location.pathname}</strong> está temporalmente bloqueado 
+          para evitar inconsistencias de datos.
+        </p>
+        {error && (
+          <div className="bg-red-50 rounded-lg p-3 mb-4 text-left">
+            <p className="text-xs text-red-700 font-mono">{error}</p>
+          </div>
+        )}
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={onRetry}
+            className="w-full px-4 py-2 bg-guinda-600 text-white rounded-lg hover:bg-guinda-700 transition-colors font-medium"
+          >
+            🔄 Reintentar conexión
+          </button>
+          <button
+            onClick={() => window.location.href = '/dashboard'}
+            className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+          >
+            Ir al Dashboard
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 mt-4">
+          Si el problema persiste, contacte al administrador del sistema.
+        </p>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * ISS-002 FIX + ISS-001 FIX (audit32): ProtectedRoute mejorado
+ * - Bloquea render hasta que el estado de autenticación esté resuelto
+ * - ISS-001: Bloquea acceso a rutas críticas cuando API no está saludable
  */
 function ProtectedRoute({ children }) {
   const { user, loading, error } = usePermissions();
+  const healthState = useContext(HealthContext);
+  const location = useLocation();
   const [isReady, setIsReady] = useState(false);
 
   // ISS-002: Esperar hasta que loading termine para evitar race conditions
@@ -186,6 +265,37 @@ function ProtectedRoute({ children }) {
 
   // ISS-002: Envolver en ErrorBoundary para capturar errores de componentes hijos
   return <ErrorBoundary>{children}</ErrorBoundary>;
+}
+
+/**
+ * ISS-001 FIX (audit32): Guardia de rutas críticas por estado de salud
+ * Bloquea acceso a módulos que manipulan datos cuando API no está saludable
+ */
+function CriticalRouteGuard({ children }) {
+  const healthState = useContext(HealthContext);
+  const location = useLocation();
+  
+  // Verificar si la ruta actual es crítica
+  const esRutaCritica = RUTAS_CRITICAS.some(ruta => 
+    location.pathname.startsWith(ruta)
+  );
+  
+  // Si el healthcheck no se ha completado, permitir (se bloqueará después si falla)
+  if (!healthState.checked) {
+    return children;
+  }
+  
+  // ISS-001: Si el API no está saludable y es ruta crítica, bloquear
+  if (!healthState.healthy && esRutaCritica) {
+    return (
+      <ApiBlockedPage 
+        error={healthState.error}
+        onRetry={healthState.onRetry}
+      />
+    );
+  }
+  
+  return children;
 }
 
 function App() {
@@ -272,8 +382,15 @@ function App() {
   const showHealthSkippedBanner = healthState.checked && healthState.skipped && !healthState.dismissed;
   const showHealthErrorBanner = healthState.checked && !healthState.healthy && !healthState.skipped;
 
+  // ISS-001 FIX (audit32): Valor del contexto de health para rutas críticas
+  const healthContextValue = {
+    ...healthState,
+    onRetry: handleRetryHealthCheck,
+  };
+
   return (
     <Router>
+      <HealthContext.Provider value={healthContextValue}>
       <PermissionProvider>
         <ThemeProvider>
           {showHttpWarning && <HttpWarningBanner />}
@@ -307,26 +424,50 @@ function App() {
                 <Dashboard />
               </PermissionsGuard>
             } />
+            {/* ISS-001 FIX (audit32): Rutas críticas protegidas por CriticalRouteGuard */}
             <Route path="productos" element={
+              <CriticalRouteGuard>
               <PermissionsGuard requiredPermission="verProductos">
                 <Productos />
               </PermissionsGuard>
+              </CriticalRouteGuard>
             } />
             <Route path="lotes" element={
+              <CriticalRouteGuard>
               <PermissionsGuard requiredPermission="verLotes">
                 <Lotes />
               </PermissionsGuard>
+              </CriticalRouteGuard>
             } />
             <Route path="requisiciones" element={
+              <CriticalRouteGuard>
               <PermissionsGuard requiredPermission="verRequisiciones">
                 <Requisiciones />
               </PermissionsGuard>
+              </CriticalRouteGuard>
             } />
             <Route path="requisiciones/:id" element={
+              <CriticalRouteGuard>
               <PermissionsGuard requiredPermission="verRequisiciones">
                 <RequisicionDetalle />
               </PermissionsGuard>
+              </CriticalRouteGuard>
             } />
+            <Route path="movimientos" element={
+              <CriticalRouteGuard>
+              <PermissionsGuard requiredPermission="verMovimientos">
+                <Movimientos />
+              </PermissionsGuard>
+              </CriticalRouteGuard>
+            } />
+            <Route path="donaciones" element={
+              <CriticalRouteGuard>
+              <PermissionsGuard requiredPermission="verDonaciones">
+                <Donaciones />
+              </PermissionsGuard>
+              </CriticalRouteGuard>
+            } />
+            {/* Rutas no críticas - permitidas en modo degradado */}
             <Route path="centros" element={
               <PermissionsGuard requiredPermission="verCentros">
                 <Centros />
@@ -340,11 +481,6 @@ function App() {
             <Route path="reportes" element={
               <PermissionsGuard requiredPermission="verReportes">
                 <Reportes />
-              </PermissionsGuard>
-            } />
-            <Route path="movimientos" element={
-              <PermissionsGuard requiredPermission="verMovimientos">
-                <Movimientos />
               </PermissionsGuard>
             } />
             <Route path="trazabilidad" element={
@@ -367,11 +503,6 @@ function App() {
                 <ConfiguracionTema />
               </PermissionsGuard>
             } />
-            <Route path="donaciones" element={
-              <PermissionsGuard requiredPermission="verDonaciones">
-                <Donaciones />
-              </PermissionsGuard>
-            } />
           </Route>
           
           {/* Páginas de error */}
@@ -381,6 +512,7 @@ function App() {
           </Suspense>
         </ThemeProvider>
       </PermissionProvider>
+      </HealthContext.Provider>
     </Router>
   );
 }

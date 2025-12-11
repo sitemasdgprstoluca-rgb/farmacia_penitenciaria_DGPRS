@@ -254,6 +254,42 @@ let redirectingToLogin = false;
 let isRefreshing = false;
 let failedQueue = [];
 
+// ISS-005 FIX (audit32): Configuración de reintentos
+const RETRY_CONFIG = {
+  maxRetries: 3,              // Máximo 3 reintentos antes de fallar
+  retryDelay: 1000,           // Delay base entre reintentos (ms)
+  retryableStatusCodes: [408, 429, 502, 503, 504], // Códigos que justifican reintento
+  exponentialBackoff: true,   // Usar backoff exponencial
+};
+
+// ISS-005 FIX (audit32): Mapa de errores específicos por código de estado
+const ERROR_HANDLERS = {
+  // 409 Conflict: Estado del recurso ha cambiado (común en flujos de requisiciones)
+  409: {
+    message: 'El recurso ha sido modificado por otro usuario. Recarga la página.',
+    action: 'reload',
+    logLevel: 'warn',
+  },
+  // 422 Unprocessable Entity: Datos válidos pero no procesables por reglas de negocio
+  422: {
+    message: 'Los datos enviados no cumplen las reglas de validación.',
+    action: 'none', // Manejar en el componente
+    logLevel: 'warn',
+  },
+  // 429 Too Many Requests: Rate limiting
+  429: {
+    message: 'Demasiadas solicitudes. Espera un momento antes de continuar.',
+    action: 'none',
+    logLevel: 'warn',
+  },
+  // 423 Locked: Recurso bloqueado (e.g. requisición en proceso)
+  423: {
+    message: 'Este recurso está bloqueado temporalmente. Intenta más tarde.',
+    action: 'none',
+    logLevel: 'info',
+  },
+};
+
 // ISS-011: Sistema de debounce para evitar toasts duplicados
 const toastDebounce = {
   lastToasts: new Map(), // Map<message, timestamp>
@@ -324,6 +360,12 @@ apiClient.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // ISS-005 FIX (audit32): Inicializar contador de reintentos si no existe
+    if (typeof config._retryCount === 'undefined') {
+      config._retryCount = 0;
+    }
+    
     return config;
   },
   (error) => Promise.reject(error)
@@ -337,6 +379,29 @@ apiClient.interceptors.response.use(
     const detail = error.response?.data?.detail || error.response?.data?.error;
     const currentPath = window.location?.pathname || '';
     const now = Date.now();
+    
+    // ISS-005 FIX (audit32): Verificar límite de reintentos para errores de red/timeout
+    const isRetryableError = !status || RETRY_CONFIG.retryableStatusCodes.includes(status);
+    const retryCount = originalRequest._retryCount || 0;
+    
+    if (isRetryableError && retryCount < RETRY_CONFIG.maxRetries && !originalRequest._noRetry) {
+      originalRequest._retryCount = retryCount + 1;
+      
+      // Calcular delay con backoff exponencial si está habilitado
+      const delay = RETRY_CONFIG.exponentialBackoff 
+        ? RETRY_CONFIG.retryDelay * Math.pow(2, retryCount)
+        : RETRY_CONFIG.retryDelay;
+      
+      if (isDev) {
+        console.log(
+          `[API] Reintento ${originalRequest._retryCount}/${RETRY_CONFIG.maxRetries} ` +
+          `para ${originalRequest.url} (delay: ${delay}ms, status: ${status || 'network error'})`
+        );
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return apiClient(originalRequest);
+    }
     
     // Intentar refresh automático en caso de 401
     // ISS-003: No intentar refresh si el logout está en progreso
@@ -396,8 +461,31 @@ apiClient.interceptors.response.use(
     }
     
     // ISS-011: Usar toastDebounce para evitar toasts duplicados
+    // ISS-005 FIX (audit32): Manejo específico por código de estado
     if (status === 403) {
       toastDebounce.error('No tienes permisos para esta acción.');
+    } else if (ERROR_HANDLERS[status]) {
+      // ISS-005 FIX: Manejar códigos específicos con configuración
+      const handler = ERROR_HANDLERS[status];
+      const serverMessage = error.response?.data?.detail || error.response?.data?.error;
+      
+      // Loguear según nivel configurado
+      if (handler.logLevel === 'error') {
+        console.error(`[API ${status}]`, serverMessage || handler.message);
+      } else if (handler.logLevel === 'warn') {
+        console.warn(`[API ${status}]`, serverMessage || handler.message);
+      }
+      
+      // Mostrar toast con mensaje del servidor si existe, sino el genérico
+      toastDebounce.error(serverMessage || handler.message);
+      
+      // ISS-005: Ejecutar acción configurada
+      if (handler.action === 'reload') {
+        // Dar tiempo al usuario para leer el mensaje antes de recargar
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      }
     } else if (status >= 400 && status < 500) {
       if (detail) toastDebounce.error(detail);
     } else if (!error.response) {
