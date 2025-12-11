@@ -4425,20 +4425,72 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def cancelar(self, request, pk=None):
-        requisicion = self.get_object()
-        estado_actual = (requisicion.estado or '').lower()
-        if estado_actual in ['surtida', 'cancelada', 'rechazada']:
-            return Response({'error': f'No se puede cancelar una requisicion en estado {requisicion.estado}'}, status=status.HTTP_400_BAD_REQUEST)
-        centro_user = self._user_centro(request.user)
-        if not request.user.is_superuser:
-            if not centro_user or requisicion.centro_id != centro_user.id:
-                return Response({'error': 'No puedes cancelar requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
-        requisicion.estado = 'cancelada'
-        motivo = request.data.get('observaciones') or request.data.get('comentario')
-        if motivo:
-            requisicion.notas = motivo
-        requisicion.save(update_fields=['estado', 'notas'])
-        return Response({'mensaje': 'Requisicion cancelada', 'requisicion': RequisicionSerializer(requisicion).data})
+        """
+        ISS-RES-002 FIX (audit-final): Cancelar requisición con transacción atómica.
+        
+        Usa transaction.atomic() y select_for_update() para prevenir
+        modificaciones concurrentes durante la cancelación.
+        """
+        from django.db import transaction
+        
+        try:
+            with transaction.atomic():
+                # ISS-RES-002: Bloquear requisición para evitar modificaciones concurrentes
+                requisicion = Requisicion.objects.select_for_update(nowait=False).get(pk=pk)
+                
+                estado_actual = (requisicion.estado or '').lower()
+                
+                # Verificar estado después del bloqueo (pudo cambiar)
+                if estado_actual in ['surtida', 'cancelada', 'rechazada', 'entregada']:
+                    return Response({
+                        'error': f'No se puede cancelar una requisición en estado {requisicion.estado}',
+                        'estado_actual': requisicion.estado
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                # Validar permisos de centro
+                centro_user = self._user_centro(request.user)
+                if not request.user.is_superuser:
+                    if not centro_user or requisicion.centro_id != centro_user.id:
+                        return Response({
+                            'error': 'No puedes cancelar requisiciones de otro centro'
+                        }, status=status.HTTP_403_FORBIDDEN)
+                
+                # ISS-RES-002: Usar cambiar_estado para validaciones
+                motivo = request.data.get('observaciones') or request.data.get('comentario') or 'Cancelada por usuario'
+                
+                try:
+                    requisicion.cambiar_estado(
+                        'cancelada',
+                        usuario=request.user,
+                        motivo=motivo,
+                        validar=True
+                    )
+                    requisicion.save(update_fields=['estado', 'notas', 'updated_at'])
+                except ValidationError as e:
+                    return Response({
+                        'error': str(e.message_dict if hasattr(e, 'message_dict') else e)
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                # Log de auditoría
+                logger.info(
+                    f"ISS-RES-002: Requisición {requisicion.numero} cancelada por "
+                    f"usuario {request.user.username}. Motivo: {motivo}"
+                )
+                
+                return Response({
+                    'mensaje': 'Requisición cancelada',
+                    'requisicion': RequisicionSerializer(requisicion).data
+                })
+                
+        except Requisicion.DoesNotExist:
+            return Response({
+                'error': 'Requisición no encontrada'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"ISS-RES-002: Error cancelando requisición {pk}: {e}")
+            return Response({
+                'error': f'Error al cancelar: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['post'])
     def surtir(self, request, pk=None):

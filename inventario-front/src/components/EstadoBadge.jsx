@@ -4,6 +4,7 @@
  * Muestra el estado con colores e íconos apropiados
  */
 
+import PropTypes from 'prop-types';
 import { REQUISICION_ESTADOS } from '../constants/strings';
 
 /**
@@ -223,5 +224,32 @@ export function EstadoSelect({
     </select>
   );
 }
+
+// FRONT-RES-002: PropTypes para todos los componentes exportados
+EstadoBadge.propTypes = {
+  estado: PropTypes.string.isRequired,
+  size: PropTypes.oneOf(['sm', 'md', 'lg']),
+  showIcon: PropTypes.bool,
+  showDot: PropTypes.bool,
+  className: PropTypes.string,
+};
+
+EstadoIndicador.propTypes = {
+  estado: PropTypes.string.isRequired,
+  className: PropTypes.string,
+};
+
+EstadoSelect.propTypes = {
+  value: PropTypes.string,
+  onChange: PropTypes.func.isRequired,
+  includeAll: PropTypes.bool,
+  className: PropTypes.string,
+};
+
+TransicionEstado.propTypes = {
+  estadoAnterior: PropTypes.string,
+  estadoNuevo: PropTypes.string.isRequired,
+  showArrow: PropTypes.bool,
+};
 
 export default EstadoBadge;
