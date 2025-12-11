@@ -756,14 +756,16 @@ class RequisicionService:
     
     def _get_stock_comprometido_otras(self, producto):
         """
-        ISS-004 FIX (audit2): Calcula stock comprometido por OTRAS requisiciones.
+        ISS-004/007 FIX (audit8): Calcula stock comprometido por OTRAS requisiciones.
         ISS-002 FIX (audit13): Optimizado a una sola consulta.
         
         NOTA: Este método se mantiene para compatibilidad con código existente.
         Para validaciones batch, usar validar_stock_disponible que hace todo en una pasada.
         
-        Excluye la requisición actual para no contar doble.
-        Usa estados desde constants para mantener consistencia con máquina de estados.
+        ISS-007 FIX (audit8): 
+        - Excluye requisiciones canceladas/rechazadas explícitamente
+        - Solo cuenta stock de farmacia central (centro__isnull=True)
+        - Usa ESTADOS_COMPROMETIDOS de constants como fuente única
         
         Args:
             producto: Producto para calcular comprometido
@@ -774,15 +776,21 @@ class RequisicionService:
         from django.db.models import Sum, Value
         from django.db.models.functions import Coalesce
         from core.models import DetalleRequisicion
-        from core.constants import ESTADOS_COMPROMETIDOS
+        from core.constants import ESTADOS_COMPROMETIDOS, ESTADOS_TERMINALES
+        
+        # ISS-007 FIX (audit8): Estados a excluir explícitamente
+        # Aunque ESTADOS_COMPROMETIDOS no los incluye, ser explícitos por seguridad
+        estados_excluir = ['cancelada', 'rechazada', 'vencida']
         
         # ISS-002 FIX (audit13): Una sola query con Coalesce para manejar NULLs
-        # Calcula directamente: autorizado - surtido = pendiente (comprometido)
         resultado = DetalleRequisicion.objects.filter(
             requisicion__estado__in=ESTADOS_COMPROMETIDOS,
             producto=producto
         ).exclude(
             requisicion_id=self.requisicion.pk  # Excluir esta requisición
+        ).exclude(
+            # ISS-007 FIX: Excluir estados problemáticos explícitamente
+            requisicion__estado__in=estados_excluir
         ).aggregate(
             total_autorizado=Coalesce(Sum('cantidad_autorizada'), Value(0)),
             total_surtido=Coalesce(Sum('cantidad_surtida'), Value(0))

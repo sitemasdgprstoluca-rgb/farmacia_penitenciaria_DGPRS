@@ -580,13 +580,58 @@ class RequisicionStateMachine:
         return errores
     
     def _validar_precondiciones_recibir(self) -> List[str]:
-        """Valida precondiciones para marcar como recibida."""
+        """
+        ISS-003 FIX (audit8): Valida precondiciones para marcar como recibida/entregada.
+        
+        Validaciones:
+        1. Todos los items deben tener cantidad_surtida > 0
+        2. Deben existir movimientos de inventario correspondientes
+        3. No debe haber entregas duplicadas
+        """
+        from django.db.models import Sum
+        from core.models import Movimiento
+        
         errores = []
         
-        # Verificar que todos los items fueron surtidos (parcial o completo)
+        # 1. Verificar que todos los items fueron surtidos (parcial o completo)
         for detalle in self.requisicion.detalles.all():
             if (detalle.cantidad_surtida or 0) <= 0:
                 errores.append(f"El producto {detalle.producto.clave} no fue surtido")
+        
+        # ISS-003 FIX (audit8): Verificar existencia de movimientos de inventario
+        # Debe haber movimientos de salida (farmacia) y entrada (centro)
+        movimientos_salida = Movimiento.objects.filter(
+            requisicion=self.requisicion,
+            tipo='salida'
+        ).aggregate(total=Sum('cantidad'))['total'] or 0
+        
+        movimientos_entrada = Movimiento.objects.filter(
+            requisicion=self.requisicion,
+            tipo='entrada'
+        ).aggregate(total=Sum('cantidad'))['total'] or 0
+        
+        if movimientos_salida == 0 and movimientos_entrada == 0:
+            errores.append(
+                "No se encontraron movimientos de inventario para esta requisición. "
+                "El surtido debe completarse antes de confirmar la entrega."
+            )
+        
+        # ISS-003 FIX (audit8): Verificar balance salidas/entradas
+        # Las salidas son negativas, entradas positivas - balance debe ser ~0
+        balance = abs(movimientos_salida) - movimientos_entrada
+        if abs(balance) > 0.01:  # Pequeño margen por redondeos
+            logger.warning(
+                f"ISS-003: Inconsistencia de movimientos en requisición {self.requisicion.numero}. "
+                f"Salidas: {abs(movimientos_salida)}, Entradas: {movimientos_entrada}, Balance: {balance}"
+            )
+            errores.append(
+                f"Inconsistencia de inventario: salidas ({abs(movimientos_salida)}) "
+                f"no coinciden con entradas ({movimientos_entrada})"
+            )
+        
+        # ISS-003 FIX (audit8): Verificar que no es entrega duplicada
+        if self.requisicion.estado == 'entregada':
+            errores.append("Esta requisición ya fue marcada como entregada anteriormente")
         
         return errores
     
@@ -817,7 +862,10 @@ class RequisicionStateMachine:
         # Guardar cambios
         self.requisicion.save()
         
-        # Registrar en historial
+        # ISS-005 FIX (audit8): Persistir historial en BD para trazabilidad
+        self._persistir_historial(estado_anterior, destino_enum.value, usuario, motivo)
+        
+        # Mantener historial en memoria para compatibilidad
         self._historial.append({
             'timestamp': timezone.now(),
             'origen': estado_anterior,
@@ -833,6 +881,57 @@ class RequisicionStateMachine:
         )
         
         return True
+    
+    def _persistir_historial(self, estado_anterior, estado_nuevo, usuario, motivo):
+        """
+        ISS-005 FIX (audit8): Persiste transición de estado en tabla de historial.
+        
+        Usa RequisicionHistorialEstados para auditoría completa y persistente.
+        """
+        try:
+            from core.models import RequisicionHistorialEstados
+            
+            # Determinar acción según la transición
+            accion = self._determinar_accion_historial(estado_anterior, estado_nuevo)
+            
+            RequisicionHistorialEstados.objects.create(
+                requisicion=self.requisicion,
+                estado_anterior=estado_anterior,
+                estado_nuevo=estado_nuevo,
+                accion=accion,
+                usuario=usuario,
+                observaciones=motivo or f'Transición automática: {estado_anterior} → {estado_nuevo}',
+                ip_address=None,  # Se puede obtener del request si está disponible
+            )
+            
+            logger.debug(
+                f"ISS-005: Historial persistido para requisición {self.requisicion.numero}: "
+                f"{estado_anterior} → {estado_nuevo}"
+            )
+        except Exception as e:
+            # No bloquear la transición si falla el historial, solo advertir
+            logger.error(
+                f"ISS-005: Error persistiendo historial para requisición {self.requisicion.numero}: {e}"
+            )
+    
+    def _determinar_accion_historial(self, estado_anterior, estado_nuevo):
+        """Determina el código de acción para el historial."""
+        # Mapeo de transiciones a acciones
+        transicion_a_accion = {
+            ('borrador', 'pendiente_admin'): 'enviar_admin',
+            ('pendiente_admin', 'pendiente_director'): 'autorizar_admin',
+            ('pendiente_director', 'enviada'): 'autorizar_director',
+            ('enviada', 'en_revision'): 'recibir_farmacia',
+            ('en_revision', 'autorizada'): 'autorizar_farmacia',
+            ('autorizada', 'en_surtido'): 'iniciar_surtido',
+            ('en_surtido', 'surtida'): 'completar_surtido',
+            ('surtida', 'entregada'): 'confirmar_entrega',
+            # Estados negativos
+            ('en_revision', 'rechazada'): 'rechazar',
+            ('en_revision', 'devuelta'): 'devolver',
+        }
+        
+        return transicion_a_accion.get((estado_anterior, estado_nuevo), 'transicion')
     
     def get_historial(self) -> List[Dict]:
         """Retorna el historial de transiciones de esta sesión."""

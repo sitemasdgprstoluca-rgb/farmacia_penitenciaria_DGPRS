@@ -208,6 +208,53 @@ VITE_API_BASE_URL=https://api.farmacia.ejemplo.gob.mx/api/
 - Rotar `SECRET_KEY` periódicamente (requiere invalidar sesiones activas)
 - En Render, configurar variables en el Dashboard, no en archivos
 
+### 🔒 Checklist de Seguridad para Producción
+
+Antes de desplegar, verificar que la configuración cumple con:
+
+#### Variables Críticas
+| Configuración | Valor Requerido | Riesgo si No se Configura |
+|---------------|-----------------|---------------------------|
+| `DEBUG` | `False` | Exposición de stack traces y rutas internas |
+| `SECRET_KEY` | Único, 50+ chars | Compromiso de sesiones y tokens |
+| `ALLOWED_HOSTS` | Lista explícita | Ataques de Host header injection |
+| `SECURE_SSL_REDIRECT` | `True` | Tráfico sin cifrar interceptable |
+| `SECURE_HSTS_SECONDS` | `31536000` | Downgrade attacks a HTTP |
+| `SESSION_COOKIE_SECURE` | `True` | Robo de cookies por red |
+| `CSRF_COOKIE_SECURE` | `True` | Tokens CSRF expuestos |
+
+#### Autenticación JWT
+- Los tokens de acceso tienen expiración corta (configurado en `settings.py`)
+- Los refresh tokens se almacenan solo en cliente, nunca en localStorage
+- Rotación automática: cada refresh genera nuevo refresh token
+- Blacklist de tokens deshabilitado por rendimiento (considerar activar si hay riesgo alto)
+
+#### CORS Estricto
+```python
+# settings.py - Producción
+CORS_ALLOWED_ORIGINS = ["https://tudominio.com"]  # Lista explícita, NO wildcard
+CORS_ALLOW_CREDENTIALS = True  # Solo si usas cookies
+CORS_ALLOW_ALL_ORIGINS = False  # NUNCA True en producción
+```
+
+#### Almacenamiento de Secretos
+| Entorno | Método Recomendado |
+|---------|-------------------|
+| **Desarrollo** | Archivo `.env` local (en `.gitignore`) |
+| **Render** | Dashboard > Environment Variables |
+| **AWS** | Secrets Manager o Parameter Store |
+| **Azure** | Key Vault |
+| **GCP** | Secret Manager |
+| **Kubernetes** | Sealed Secrets o External Secrets Operator |
+
+#### Headers de Seguridad Adicionales
+El middleware de Django añade automáticamente:
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Referrer-Policy: same-origin`
+
+Para Content-Security-Policy, configurar en proxy reverso (nginx/Cloudflare).
+
 ## 📦 Despliegue
 
 El proyecto está configurado para desplegarse en **Render**. Ver `render.yaml` para la configuración de infraestructura.
