@@ -47,6 +47,8 @@ import { hasAccessToken } from '../services/tokenManager';
 // ISS-003 FIX: Importar validadores alineados con backend
 import { validarProducto, normalizarProducto, sanitizeInput } from '../utils/validation';
 
+// ISS-002 FIX: Importar contratos DTO para normalización de datos
+import { getStockProducto, formatStock } from '../utils/dtoContracts';
 
 
 const UNIDADES = [
@@ -119,70 +121,16 @@ const isDevSession = () => {
 
 
 
+// ISS-002 FIX: Usar contrato DTO centralizado para obtener stock
+// La función getStockProducto de dtoContracts.js maneja la normalización
+// y valida el contrato con el backend de forma consistente
 const getInventarioDisponible = (producto) => {
-
-  const numericCandidates = [
-
-    producto.stock_actual,
-
-    producto.stock_total,
-
-    producto.inventario_total,
-
-    producto.inventario,
-
-    producto.existencias,
-
-    producto.stock_disponible,
-
-    producto.cantidad_disponible,
-
-    producto.cantidad_total
-
-  ];
-
-
-
-  for (const candidate of numericCandidates) {
-
-    if (typeof candidate === 'number' && !Number.isNaN(candidate)) {
-
-      return candidate;
-
-    }
-
-  }
-
-
-
-  if (typeof producto.stock === 'number') {
-
-    return producto.stock;
-
-  }
-
-
-
-  const parsed = Number(producto.stock_actual ?? producto.stock_total ?? producto.stock);
-
-  return Number.isNaN(parsed) ? 0 : parsed;
-
+  return getStockProducto(producto, { strict: false, logWarnings: true });
 };
 
-
-
+// ISS-002 FIX: Usar formateo centralizado
 const formatInventario = (producto) => {
-
-  const valor = getInventarioDisponible(producto);
-
-  if (typeof valor === 'number' && !Number.isNaN(valor)) {
-
-    return valor.toLocaleString('es-MX');
-
-  }
-
-  return valor || '-';
-
+  return formatStock(producto);
 };
 
 
