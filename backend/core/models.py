@@ -956,36 +956,34 @@ class Lote(models.Model):
             self.full_clean()
         super().save(*args, **kwargs)
     
-    def validar_contrato(self, cantidad_a_ingresar=None):
+    def validar_contrato(self, cantidad_a_ingresar=None, strict=False, es_entrada_formal=False):
         """
-        ISS-006: Valida reglas de contrato para el lote.
+        ISS-003 FIX (audit15): Valida reglas de contrato para el lote.
         
         Args:
             cantidad_a_ingresar: Cantidad adicional que se pretende ingresar
+            strict: Si True, convierte advertencias críticas en errores bloqueantes
+            es_entrada_formal: Si True, exige número de contrato
             
         Returns:
-            dict: {valido: bool, errores: list, advertencias: list}
+            dict: {valido: bool, errores: list, advertencias: list, bloqueante: bool}
         """
-        errores = []
-        advertencias = []
+        from core.lote_helpers import ContratoValidator
         
-        # Validar que tenga número de contrato si es entrada formal
-        if not self.numero_contrato:
-            advertencias.append('El lote no tiene número de contrato asociado.')
-        
-        # Validar cantidad inicial vs cantidad actual
-        if cantidad_a_ingresar and self.cantidad_actual:
-            nueva_cantidad = self.cantidad_actual + cantidad_a_ingresar
-            if nueva_cantidad > self.cantidad_inicial * 1.1:  # Permitir 10% de margen
-                advertencias.append(
-                    f'La cantidad resultante ({nueva_cantidad}) excede significativamente '
-                    f'la cantidad inicial del lote ({self.cantidad_inicial}).'
-                )
+        # Delegar a ContratoValidator para validación completa
+        resultado = ContratoValidator.validar_entrada_contrato(
+            lote=self,
+            cantidad_a_ingresar=cantidad_a_ingresar or 0,
+            contrato=None,  # Se buscaría por numero_contrato si existiera modelo Contrato
+            es_entrada_formal=es_entrada_formal,
+            strict=strict,
+        )
         
         return {
-            'valido': len(errores) == 0,
-            'errores': errores,
-            'advertencias': advertencias
+            'valido': resultado['valido'],
+            'errores': resultado['errores'],
+            'advertencias': resultado['advertencias'],
+            'bloqueante': resultado.get('bloqueante', False),
         }
     
     def esta_vencido(self):

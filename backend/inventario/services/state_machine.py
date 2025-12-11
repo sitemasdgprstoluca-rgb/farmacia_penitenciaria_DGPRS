@@ -28,8 +28,8 @@ from core.constants import (
     ESTADOS_TERMINALES,
     ESTADOS_EDICION_LIMITADA,
     ESTADOS_SIN_EDICION,
-    ESTADOS_LOTE_DISPONIBLES,  # ISS-001 FIX (audit11)
 )
+from core.lote_helpers import LoteQueryHelper  # ISS-001 FIX (audit15)
 
 logger = logging.getLogger(__name__)
 
@@ -384,16 +384,12 @@ class RequisicionStateMachine:
             if cantidad_requerida <= 0:
                 continue
             
-            # ISS-001 FIX (audit11): Stock SOLO de lotes con estado 'disponible'
-            # Excluye lotes bloqueados, retirados, vencidos o agotados
-            stock_disponible = Lote.objects.filter(
-                centro__isnull=True,  # Solo farmacia central
+            # ISS-001 FIX (audit15): Usar LoteQueryHelper - NO usar estado__in
+            # El campo 'estado' es propiedad calculada, no existe en BD
+            stock_disponible = LoteQueryHelper.get_stock_disponible(
                 producto=detalle.producto,
-                activo=True,
-                cantidad_actual__gt=0,
-                fecha_caducidad__gte=hoy,
-                estado__in=ESTADOS_LOTE_DISPONIBLES,  # ISS-001 FIX (audit11)
-            ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+                solo_farmacia_central=True,
+            )
             
             if stock_disponible < cantidad_requerida:
                 errores.append(
@@ -442,27 +438,23 @@ class RequisicionStateMachine:
                 )
                 continue
             
-            # ISS-001 FIX (audit11): Solo lotes con estado 'disponible'
-            # Excluye lotes bloqueados, retirados, vencidos o agotados
-            lotes_vigentes = Lote.objects.filter(
-                centro__isnull=True,  # Solo farmacia central
+            # ISS-001 FIX (audit15): Usar LoteQueryHelper - NO usar estado__in
+            # El campo 'estado' es propiedad calculada, no existe en BD
+            validacion = LoteQueryHelper.validar_stock_surtido(
                 producto=detalle.producto,
-                activo=True,
-                cantidad_actual__gt=0,
-                fecha_caducidad__gte=hoy,
-                estado__in=ESTADOS_LOTE_DISPONIBLES,  # ISS-001 FIX (audit11)
-            ).values('id', 'numero_lote', 'cantidad_actual', 'fecha_caducidad', 'estado')
+                cantidad_requerida=cantidad_requerida,
+                solo_farmacia_central=True,
+            )
             
-            # Calcular stock total disponible
-            stock_disponible = sum(lote['cantidad_actual'] for lote in lotes_vigentes)
+            stock_disponible = validacion['stock_disponible']
             
-            if stock_disponible < cantidad_requerida:
+            if not validacion['valido']:
                 # Listar lotes disponibles para diagnóstico
                 lotes_info = [
-                    f"  - Lote {l['numero_lote']}: {l['cantidad_actual']} uds (vence: {l['fecha_caducidad']}, estado: {l['estado']})"
-                    for l in lotes_vigentes
+                    f"  - Lote {l['numero_lote']}: {l['cantidad_actual']} uds (vence: {l['fecha_caducidad']})"
+                    for l in validacion['lotes']
                 ]
-                lotes_str = "\n".join(lotes_info) if lotes_info else "  (ninguno con estado 'disponible')"
+                lotes_str = "\n".join(lotes_info) if lotes_info else "  (ninguno disponible)"
                 
                 errores.append(
                     f"Stock insuficiente para '{detalle.producto.clave}' ({detalle.producto.nombre}): "
@@ -470,18 +462,12 @@ class RequisicionStateMachine:
                     f"Lotes disponibles en farmacia central:\n{lotes_str}"
                 )
             
-            # ISS-003 FIX (audit10): Advertencia de lotes próximos a vencer
-            # Buscar lotes que vencen en menos de 30 días
-            from datetime import timedelta
-            limite_vencimiento = hoy + timedelta(days=30)
-            lotes_proximos_vencer = [l for l in lotes_vigentes if l['fecha_caducidad'] < limite_vencimiento]
-            
-            if lotes_proximos_vencer and not errores:
-                # Solo registrar warning, no bloquear
+            # ISS-003 FIX (audit15): Advertencia de lotes próximos a vencer
+            # Usar advertencias del helper
+            if validacion['advertencias'] and validacion['valido']:
                 logger.warning(
                     f"Requisición {self.requisicion.folio or self.requisicion.id}: "
-                    f"Producto {detalle.producto.clave} tiene lotes próximos a vencer: "
-                    f"{[l['numero_lote'] for l in lotes_proximos_vencer]}"
+                    f"Producto {detalle.producto.clave}: {validacion['advertencias']}"
                 )
         
         return errores
