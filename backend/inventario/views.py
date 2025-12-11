@@ -4533,15 +4533,17 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             # Refrescar requisición para serializer
             requisicion.refresh_from_db()
             
-            # ISS-NEW: Manejar foto de firma de surtido si se incluye
+            # ISS-004 FIX (audit21): Validar imagen completa (MIME, magic bytes, extensión)
             foto_firma = request.FILES.get('foto_firma_surtido') or request.FILES.get('foto_firma')
             if foto_firma:
-                # Validar tamaño (max 2MB)
-                if foto_firma.size <= 2 * 1024 * 1024:
+                es_valido, error_msg = validar_archivo_imagen(foto_firma, max_size_mb=2)
+                if es_valido:
                     requisicion.foto_firma_surtido = foto_firma
                     requisicion.fecha_firma_surtido = timezone.now()
                     requisicion.usuario_firma_surtido = request.user
                     requisicion.save(update_fields=['foto_firma_surtido', 'fecha_firma_surtido', 'usuario_firma_surtido'])
+                else:
+                    logger.warning(f"ISS-004: Firma rechazada en surtir {requisicion.folio}: {error_msg}")
             
             return Response({
                 'mensaje': 'Requisición surtida exitosamente',
@@ -5545,15 +5547,19 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         if observaciones:
             requisicion.notas = f"{requisicion.notas or ''}\n[Recepción] {observaciones}".strip()
         
-        # Manejar foto de firma si se incluye
+        # ISS-004 FIX (audit21): Validar imagen completa (MIME, magic bytes, extensión)
         foto_firma = request.FILES.get('foto_firma_recepcion') or request.FILES.get('foto_firma')
         update_fields = ['estado', 'fecha_entrega', 'lugar_entrega', 'notas']
         
-        if foto_firma and foto_firma.size <= 2 * 1024 * 1024:
-            requisicion.foto_firma_recepcion = foto_firma
-            requisicion.fecha_firma_recepcion = timezone.now()
-            requisicion.usuario_firma_recepcion = request.user
-            update_fields.extend(['foto_firma_recepcion', 'fecha_firma_recepcion', 'usuario_firma_recepcion'])
+        if foto_firma:
+            es_valido, error_msg = validar_archivo_imagen(foto_firma, max_size_mb=2)
+            if es_valido:
+                requisicion.foto_firma_recepcion = foto_firma
+                requisicion.fecha_firma_recepcion = timezone.now()
+                requisicion.usuario_firma_recepcion = request.user
+                update_fields.extend(['foto_firma_recepcion', 'fecha_firma_recepcion', 'usuario_firma_recepcion'])
+            else:
+                logger.warning(f"ISS-004: Firma rechazada en confirmar_entrega {requisicion.folio}: {error_msg}")
         
         requisicion.save(update_fields=update_fields)
         
