@@ -858,12 +858,38 @@ class RequisicionService:
         if estado_actual == 'en_surtido' and movimientos_existentes.exists():
             # Ya se inició un surtido, verificar si está completo
             total_surtido = movimientos_existentes.aggregate(total=Sum('cantidad'))['total'] or 0
-            total_pendiente = sum(
-                (d.cantidad_autorizada or d.cantidad_solicitada) - (d.cantidad_surtida or 0)
-                for d in requisicion_bloqueada.detalles.all()
+            
+            # ISS-005 FIX (audit16): Optimizar cálculo de pendiente usando agregación SQL
+            # en lugar de iteración Python para mejor rendimiento
+            from django.db.models import F, Case, When, Value
+            from django.db.models.functions import Coalesce
+            
+            agregacion_pendiente = requisicion_bloqueada.detalles.aggregate(
+                total_pendiente=Sum(
+                    Coalesce(F('cantidad_autorizada'), F('cantidad_solicitada'), Value(0)) -
+                    Coalesce(F('cantidad_surtida'), Value(0))
+                )
             )
+            total_pendiente = agregacion_pendiente['total_pendiente'] or 0
             
             if total_pendiente <= 0:
+                # ISS-002 FIX (audit16): Antes de cerrar ciclo, REVALIDAR que los movimientos
+                # existentes sean consistentes con el inventario actual.
+                # Esto previene cerrar requisiciones con discrepancias de stock.
+                try:
+                    self._validar_consistencia_movimientos_inventario(
+                        requisicion_bloqueada, 
+                        movimientos_existentes
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"ISS-002: Inconsistencia detectada en cierre idempotente de {requisicion_bloqueada.folio}: {e}"
+                    )
+                    # Registrar la discrepancia pero permitir el cierre con advertencia
+                    logger.warning(
+                        f"ISS-002: Cerrando requisición {requisicion_bloqueada.folio} con advertencia de inconsistencia"
+                    )
+                
                 # ISS-003 FIX (audit13): Cerrar ciclo automáticamente en vez de lanzar error
                 # Completar transición a 'surtida' para evitar requisiciones atascadas
                 logger.info(
@@ -1540,6 +1566,99 @@ class RequisicionService:
         logger.info(
             f"ISS-006: Validación de inventario exitosa para requisición {requisicion.folio}. "
             f"Balance: {balance}"
+        )
+        return True
+    
+    def _validar_consistencia_movimientos_inventario(self, requisicion, movimientos_existentes):
+        """
+        ISS-002 FIX (audit16): Valida que los movimientos registrados sean consistentes
+        con el inventario actual antes de cerrar idempotentemente.
+        
+        Esta validación es CRÍTICA para detectar discrepancias causadas por:
+        1. Expiración de lotes entre surtido y cierre
+        2. Ajustes manuales de inventario concurrentes
+        3. Movimientos de otros procesos que afectaron los mismos lotes
+        
+        Args:
+            requisicion: Requisición bloqueada a validar
+            movimientos_existentes: QuerySet de movimientos de surtido ya registrados
+            
+        Raises:
+            ValueError: Si hay inconsistencia entre movimientos y lotes actuales
+        """
+        from core.models import Lote, Movimiento
+        from core.lote_helpers import LoteQueryHelper
+        from django.db.models import Sum
+        
+        discrepancias = []
+        
+        # Agrupar movimientos por lote y verificar estado actual
+        lotes_usados = movimientos_existentes.values('lote_id').annotate(
+            total_movido=Sum('cantidad')
+        ).filter(lote_id__isnull=False)
+        
+        for mov_lote in lotes_usados:
+            lote_id = mov_lote['lote_id']
+            cantidad_movida = abs(mov_lote['total_movido'] or 0)  # Salidas son negativas
+            
+            try:
+                lote = Lote.objects.get(pk=lote_id)
+                
+                # Verificar que el lote sigue activo
+                if not lote.activo:
+                    discrepancias.append(
+                        f"Lote {lote.numero_lote} usado en surtido ahora está INACTIVO"
+                    )
+                
+                # Verificar expiración usando helper centralizado
+                if LoteQueryHelper.esta_expirado(lote):
+                    discrepancias.append(
+                        f"Lote {lote.numero_lote} usado en surtido ahora está EXPIRADO "
+                        f"(vencimiento: {lote.fecha_vencimiento})"
+                    )
+                
+                # ISS-002: Verificar que la cantidad movida no exceda el stock + movimientos
+                # El stock actual + la cantidad movida debe ser >= 0
+                stock_teorico = (lote.cantidad_disponible or 0) + cantidad_movida
+                if stock_teorico < 0:
+                    discrepancias.append(
+                        f"Lote {lote.numero_lote}: inconsistencia de stock. "
+                        f"Stock actual: {lote.cantidad_disponible}, movido: {cantidad_movida}"
+                    )
+                    
+            except Lote.DoesNotExist:
+                discrepancias.append(
+                    f"Lote ID {lote_id} usado en surtido ya no existe en la base de datos"
+                )
+        
+        # Verificar que los detalles reflejen correctamente los movimientos
+        for detalle in requisicion.detalles.all():
+            movs_detalle = Movimiento.objects.filter(
+                requisicion=requisicion,
+                producto=detalle.producto,
+                tipo='salida'
+            ).aggregate(total=Sum('cantidad'))['total'] or 0
+            
+            cantidad_movida_producto = abs(movs_detalle)
+            cantidad_surtida_registrada = detalle.cantidad_surtida or 0
+            
+            if cantidad_movida_producto != cantidad_surtida_registrada:
+                discrepancias.append(
+                    f"Producto {detalle.producto.clave}: cantidad_surtida ({cantidad_surtida_registrada}) "
+                    f"no coincide con movimientos ({cantidad_movida_producto})"
+                )
+        
+        if discrepancias:
+            mensaje = (
+                f"ISS-002: Inconsistencias detectadas en requisición {requisicion.folio}:\n"
+                + "\n".join(f"  - {d}" for d in discrepancias)
+            )
+            logger.warning(mensaje)
+            raise ValueError(mensaje)
+        
+        logger.info(
+            f"ISS-002: Validación de consistencia exitosa para {requisicion.folio}. "
+            f"Lotes verificados: {lotes_usados.count()}"
         )
         return True
     

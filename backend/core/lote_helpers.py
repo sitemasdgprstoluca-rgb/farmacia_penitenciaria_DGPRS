@@ -40,6 +40,75 @@ class LoteQueryHelper:
     DIAS_ALERTA_CRITICA = 90
     
     @staticmethod
+    def esta_expirado(lote) -> bool:
+        """
+        ISS-002 FIX (audit16): Verifica si un lote está expirado.
+        
+        Args:
+            lote: Instancia de Lote o dict con 'fecha_caducidad'/'fecha_vencimiento'
+            
+        Returns:
+            bool: True si el lote está expirado (fecha_caducidad < hoy)
+        """
+        hoy = timezone.now().date()
+        
+        # Soportar tanto instancia como dict
+        if hasattr(lote, 'fecha_caducidad'):
+            fecha = lote.fecha_caducidad
+        elif hasattr(lote, 'fecha_vencimiento'):
+            fecha = lote.fecha_vencimiento
+        elif isinstance(lote, dict):
+            fecha = lote.get('fecha_caducidad') or lote.get('fecha_vencimiento')
+        else:
+            return False
+        
+        if not fecha:
+            return False
+        
+        # Convertir a date si es datetime
+        if hasattr(fecha, 'date'):
+            fecha = fecha.date()
+        
+        return fecha < hoy
+    
+    @staticmethod
+    def esta_proximo_a_vencer(lote, dias: int = None) -> bool:
+        """
+        ISS-002 FIX (audit16): Verifica si un lote está próximo a vencer.
+        
+        Args:
+            lote: Instancia de Lote o dict
+            dias: Días de umbral (default: DIAS_ALERTA_VENCIMIENTO)
+            
+        Returns:
+            bool: True si vence dentro del umbral de días
+        """
+        if dias is None:
+            dias = LoteQueryHelper.DIAS_ALERTA_VENCIMIENTO
+        
+        hoy = timezone.now().date()
+        limite = hoy + timedelta(days=dias)
+        
+        # Soportar tanto instancia como dict
+        if hasattr(lote, 'fecha_caducidad'):
+            fecha = lote.fecha_caducidad
+        elif hasattr(lote, 'fecha_vencimiento'):
+            fecha = lote.fecha_vencimiento
+        elif isinstance(lote, dict):
+            fecha = lote.get('fecha_caducidad') or lote.get('fecha_vencimiento')
+        else:
+            return False
+        
+        if not fecha:
+            return False
+        
+        # Convertir a date si es datetime
+        if hasattr(fecha, 'date'):
+            fecha = fecha.date()
+        
+        return hoy <= fecha < limite
+    
+    @staticmethod
     def get_lotes_disponibles(
         producto=None,
         centro=None,
