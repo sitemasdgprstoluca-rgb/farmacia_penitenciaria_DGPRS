@@ -8,7 +8,16 @@ import { usePermissions } from './hooks/usePermissions';
 import { useInactivityLogout } from './hooks/useInactivityLogout';
 import PermissionsGuard from './components/PermissionsGuard';
 import ErrorBoundary from './components/ErrorBoundary';
-import { getApiConfigError, hasHttpWarning, wasHealthCheckSkipped, checkApiHealth, isApiHealthy } from './services/api';
+import { 
+  getApiConfigError, 
+  hasHttpWarning, 
+  wasHealthCheckSkipped, 
+  checkApiHealth, 
+  isApiHealthy,
+  hasEnvErrors,
+  getEnvErrors,
+  getEnvWarnings,
+} from './services/api';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ISS-001 FIX (audit32): Contexto de estado de salud para bloquear navegación
@@ -150,7 +159,8 @@ const ApiUnhealthyBanner = ({ error, onRetry }) => (
 );
 
 // Componente de error de configuración (ISS-001)
-const ConfigErrorPage = ({ error }) => (
+// ISS-001 FIX (audit33): Bloquea render completo con instrucciones claras y enlace a documentación
+const ConfigErrorPage = ({ error, errors = [], warnings = [] }) => (
   <div className="min-h-screen flex items-center justify-center bg-gray-100">
     <div className="max-w-lg w-full mx-4 bg-white rounded-lg shadow-xl p-8 text-center">
       <div className="mx-auto w-16 h-16 flex items-center justify-center rounded-full bg-red-100 mb-4">
@@ -160,6 +170,34 @@ const ConfigErrorPage = ({ error }) => (
       </div>
       <h1 className="text-2xl font-bold text-gray-900 mb-2">Error de Configuración</h1>
       <p className="text-gray-600 mb-4">{error}</p>
+      
+      {/* ISS-001: Mostrar errores detallados con acciones */}
+      {errors.length > 0 && (
+        <div className="bg-red-50 rounded-lg p-4 mb-4 text-left">
+          <p className="font-medium text-red-800 mb-2">Errores de configuración:</p>
+          {errors.map((err, idx) => (
+            <div key={idx} className="mb-2 text-sm">
+              <code className="bg-red-200 px-1 rounded text-red-900">{err.variable}</code>
+              <p className="text-red-700 ml-2">{err.mensaje}</p>
+              <p className="text-red-600 ml-2 text-xs italic">→ {err.accion}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      
+      {/* ISS-001: Mostrar advertencias */}
+      {warnings.length > 0 && (
+        <div className="bg-yellow-50 rounded-lg p-4 mb-4 text-left">
+          <p className="font-medium text-yellow-800 mb-2">Advertencias:</p>
+          {warnings.map((warn, idx) => (
+            <div key={idx} className="mb-2 text-sm">
+              <code className="bg-yellow-200 px-1 rounded text-yellow-900">{warn.variable}</code>
+              <p className="text-yellow-700 ml-2">{warn.mensaje}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      
       <div className="bg-gray-50 rounded p-4 text-left text-sm">
         <p className="font-medium text-gray-700 mb-2">Para resolver este problema:</p>
         <ol className="list-decimal list-inside text-gray-600 space-y-1">
@@ -168,6 +206,19 @@ const ConfigErrorPage = ({ error }) => (
           <li>Reconstruya la aplicación después de los cambios</li>
         </ol>
       </div>
+      
+      {/* ISS-001: Enlace a documentación de despliegue */}
+      <div className="mt-4 text-sm">
+        <a 
+          href="https://github.com/zaragozaalexander124-uzumaki/farmacia_penitenciaria#configuracion"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-guinda-600 hover:text-guinda-800 underline"
+        >
+          📖 Ver documentación de configuración
+        </a>
+      </div>
+      
       <p className="text-xs text-gray-400 mt-4">SIFP - Sistema de Inventario de Farmacia Penitenciaria</p>
     </div>
   </div>
@@ -230,14 +281,34 @@ const ApiBlockedPage = ({ error, onRetry }) => {
 
 /**
  * ISS-002 FIX + ISS-001 FIX (audit32): ProtectedRoute mejorado
+ * ISS-002 FIX (audit33): Timeout de carga, manejo de errores, sincronización con refresh
  * - Bloquea render hasta que el estado de autenticación esté resuelto
  * - ISS-001: Bloquea acceso a rutas críticas cuando API no está saludable
+ * - ISS-002: Timeout de carga para evitar spinner infinito
  */
+const PERMISSION_LOAD_TIMEOUT = 15000; // 15 segundos máximo
+
 function ProtectedRoute({ children }) {
-  const { user, loading, error } = usePermissions();
+  const { user, loading, error, recargarUsuario } = usePermissions();
   const healthState = useContext(HealthContext);
   const location = useLocation();
   const [isReady, setIsReady] = useState(false);
+  const [loadTimeout, setLoadTimeout] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+
+  // ISS-002 (audit33): Timeout para evitar spinner infinito
+  useEffect(() => {
+    if (loading) {
+      const timeoutId = setTimeout(() => {
+        console.warn('[ProtectedRoute] Timeout cargando permisos');
+        setLoadTimeout(true);
+      }, PERMISSION_LOAD_TIMEOUT);
+      
+      return () => clearTimeout(timeoutId);
+    } else {
+      setLoadTimeout(false);
+    }
+  }, [loading]);
 
   // ISS-002: Esperar hasta que loading termine para evitar race conditions
   useEffect(() => {
@@ -247,6 +318,86 @@ function ProtectedRoute({ children }) {
       return () => clearTimeout(timer);
     }
   }, [loading]);
+
+  // ISS-002 (audit33): Manejar timeout con opción de reintento
+  if (loadTimeout && loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="max-w-md w-full mx-4 bg-white rounded-lg shadow-lg p-8 text-center">
+          <div className="mx-auto w-16 h-16 flex items-center justify-center rounded-full bg-yellow-100 mb-4">
+            <svg className="w-8 h-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Carga lenta</h2>
+          <p className="text-gray-600 mb-4 text-sm">
+            La verificación de permisos está tardando más de lo esperado. 
+            Esto puede deberse a problemas de conexión.
+          </p>
+          <div className="flex gap-2 justify-center">
+            <button
+              onClick={() => {
+                setLoadTimeout(false);
+                setRetryCount(prev => prev + 1);
+                if (typeof recargarUsuario === 'function') {
+                  recargarUsuario();
+                }
+              }}
+              className="px-4 py-2 bg-guinda-600 text-white rounded-lg hover:bg-guinda-700 transition-colors"
+            >
+              🔄 Reintentar
+            </button>
+            <button
+              onClick={() => window.location.href = '/login'}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+            >
+              Ir al Login
+            </button>
+          </div>
+          {retryCount > 0 && (
+            <p className="text-xs text-gray-400 mt-4">Reintentos: {retryCount}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ISS-002 (audit33): Manejar estado de error de permisos
+  if (error && !loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="max-w-md w-full mx-4 bg-white rounded-lg shadow-lg p-8 text-center">
+          <div className="mx-auto w-16 h-16 flex items-center justify-center rounded-full bg-red-100 mb-4">
+            <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Error de permisos</h2>
+          <p className="text-gray-600 mb-4 text-sm">{error || 'No se pudieron cargar los permisos.'}</p>
+          <div className="flex gap-2 justify-center">
+            <button
+              onClick={() => {
+                if (typeof recargarUsuario === 'function') {
+                  recargarUsuario();
+                } else {
+                  window.location.reload();
+                }
+              }}
+              className="px-4 py-2 bg-guinda-600 text-white rounded-lg hover:bg-guinda-700 transition-colors"
+            >
+              🔄 Reintentar
+            </button>
+            <button
+              onClick={() => window.location.href = '/login'}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+            >
+              Iniciar sesión
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Mostrar spinner mientras carga o aún no está listo
   if (loading || !isReady) {
@@ -299,10 +450,21 @@ function CriticalRouteGuard({ children }) {
 }
 
 function App() {
-  // ISS-001: Verificar configuración de API antes de renderizar
+  // ISS-001 FIX (audit33): Verificar TODAS las configuraciones de API antes de renderizar
+  // BLOQUEO COMPLETO: Si hay errores de configuración, NO montar el router
   const configError = getApiConfigError();
-  if (configError) {
-    return <ConfigErrorPage error={configError} />;
+  const envErrors = getEnvErrors();
+  const envWarnings = getEnvWarnings();
+  
+  if (configError || hasEnvErrors()) {
+    // ISS-001: Bloquear render completo, incluyendo router
+    return (
+      <ConfigErrorPage 
+        error={configError || 'Hay errores de configuración que impiden iniciar la aplicación'} 
+        errors={envErrors}
+        warnings={envWarnings}
+      />
+    );
   }
 
   // ISS-002/ISS-004: Verificar si hay advertencia de HTTP inseguro

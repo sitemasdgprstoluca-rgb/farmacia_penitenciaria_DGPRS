@@ -20,6 +20,10 @@ let accessToken = null;
 // pero que el usuario ya intentó invalidar
 let logoutInProgress = false;
 
+// ISS-002 FIX (audit33): Flag para indicar que hay refresh en progreso
+// Esto coordina el hook de inactividad para no disparar logout durante refresh
+let refreshInProgress = false;
+
 // Callbacks para notificar cambios de sesión
 let onSessionChangeCallbacks = [];
 
@@ -66,6 +70,22 @@ export const setLogoutInProgress = (inProgress) => {
  */
 export const isLogoutInProgress = () => {
   return logoutInProgress;
+};
+
+/**
+ * ISS-002 FIX (audit33): Marca que el refresh está en progreso
+ * Esto coordina con el hook de inactividad
+ */
+export const setRefreshInProgress = (inProgress) => {
+  refreshInProgress = inProgress;
+};
+
+/**
+ * ISS-002 FIX (audit33): Verifica si hay refresh en progreso
+ * @returns {boolean} true si hay refresh en progreso
+ */
+export const isRefreshInProgress = () => {
+  return refreshInProgress;
 };
 
 /**
@@ -202,4 +222,6 @@ export default {
   getTokenStatus,
   setLogoutInProgress,
   isLogoutInProgress,
+  setRefreshInProgress,
+  isRefreshInProgress,
 };

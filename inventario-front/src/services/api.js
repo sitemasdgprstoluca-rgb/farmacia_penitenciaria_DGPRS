@@ -13,7 +13,8 @@ import {
   getAccessToken, 
   setAccessToken, 
   clearTokens,
-  isLogoutInProgress
+  isLogoutInProgress,
+  setRefreshInProgress,
 } from './tokenManager';
 
 // === CONFIGURACIÓN DE BASE URL CON VALIDACIÓN DE SEGURIDAD (ISS-001, ISS-005) ===
@@ -27,6 +28,57 @@ const allowInsecureHttp = isDev && import.meta.env.VITE_ALLOW_INSECURE_HTTP === 
 let apiConfigError = null;
 let httpInsecureError = false;
 let httpInsecureWarning = false;
+
+// ISS-001 FIX (audit33): Validación centralizada de TODAS las variables críticas
+const validateEnvConfig = () => {
+  const errors = [];
+  const warnings = [];
+  
+  // Variables críticas obligatorias en producción
+  if (!isDev) {
+    if (!configuredUrl) {
+      errors.push({
+        variable: 'VITE_API_URL',
+        mensaje: 'La URL de la API no está configurada',
+        accion: 'Configure VITE_API_URL en el archivo .env o en las variables de entorno del servidor',
+      });
+    } else if (!configuredUrl.startsWith('https://')) {
+      errors.push({
+        variable: 'VITE_API_URL',
+        mensaje: 'La API debe usar HTTPS en producción',
+        accion: 'Configure VITE_API_URL con una URL que comience con https://',
+      });
+    }
+  }
+  
+  // Validar consistencia de variables opcionales
+  const apiVersion = import.meta.env.VITE_API_VERSION;
+  if (apiVersion && !/^v?\d+(\.\d+)?$/.test(apiVersion)) {
+    warnings.push({
+      variable: 'VITE_API_VERSION',
+      mensaje: `Formato de versión inusual: "${apiVersion}"`,
+      accion: 'Use un formato como "v1" o "1.0"',
+    });
+  }
+  
+  const healthTimeout = import.meta.env.VITE_HEALTHCHECK_TIMEOUT;
+  if (healthTimeout && (isNaN(parseInt(healthTimeout)) || parseInt(healthTimeout) < 1000)) {
+    warnings.push({
+      variable: 'VITE_HEALTHCHECK_TIMEOUT',
+      mensaje: 'Timeout de healthcheck muy bajo o inválido',
+      accion: 'Configure un valor en milisegundos >= 1000 (ej: 5000)',
+    });
+  }
+  
+  return { errors, warnings };
+};
+
+// ISS-001: Ejecutar validación al cargar
+const envValidation = validateEnvConfig();
+export const getEnvValidation = () => envValidation;
+export const hasEnvErrors = () => envValidation.errors.length > 0;
+export const getEnvErrors = () => envValidation.errors;
+export const getEnvWarnings = () => envValidation.warnings;
 
 // ISS-001 FIX: Métricas de configuración insegura (solo en desarrollo)
 const securityMetrics = {
@@ -104,6 +156,22 @@ const HEALTH_ENDPOINT = import.meta.env.VITE_HEALTH_ENDPOINT || '/health/';
 const HEALTH_CHECK_ENABLED = import.meta.env.VITE_ENABLE_HEALTHCHECK !== 'false';
 const HEALTH_TIMEOUT = parseInt(import.meta.env.VITE_HEALTHCHECK_TIMEOUT || '5000', 10);
 const AUTH_ONLY_MODE = import.meta.env.VITE_AUTH_ONLY_MODE === 'true'; // Modo sin healthcheck
+
+// ISS-003 FIX (audit33): Configuración parametrizable de rutas de autenticación
+const AUTH_CONFIG = {
+  tokenEndpoint: import.meta.env.VITE_TOKEN_ENDPOINT || '/token/',
+  refreshEndpoint: import.meta.env.VITE_REFRESH_ENDPOINT || '/token/refresh/',
+  logoutEndpoint: import.meta.env.VITE_LOGOUT_ENDPOINT || '/logout/',
+  // ISS-003: Campo de access token en respuesta (puede variar por backend)
+  accessTokenField: import.meta.env.VITE_ACCESS_TOKEN_FIELD || 'access',
+  refreshTokenField: import.meta.env.VITE_REFRESH_TOKEN_FIELD || 'refresh',
+  // ISS-003: Modo de envío del refresh token
+  refreshInCookie: import.meta.env.VITE_REFRESH_IN_COOKIE !== 'false', // Default: cookie HttpOnly
+  refreshInBody: import.meta.env.VITE_REFRESH_IN_BODY === 'true', // Alternativo: body
+};
+
+// ISS-003: Exportar configuración para debugging
+export const getAuthConfig = () => ({ ...AUTH_CONFIG });
 
 let apiHealthy = null; // null = no verificado, true = ok, false = fallo
 let healthCheckSkipped = false; // Si se saltó por configuración
@@ -420,18 +488,45 @@ apiClient.interceptors.response.use(
 
       originalRequest._retry = true;
       isRefreshing = true;
+      // ISS-002 FIX (audit33): Notificar al tokenManager que hay refresh en progreso
+      setRefreshInProgress(true);
 
-      // El refresh token está en una cookie HttpOnly, no necesitamos enviarlo
-      // El servidor lo lee automáticamente de la cookie
+      // ISS-003 FIX (audit33): Refresh parametrizable según configuración del backend
       try {
-        // POST vacío - el servidor lee el refresh token de la cookie HttpOnly
+        // ISS-003: Construir payload según modo configurado
+        const refreshPayload = {};
+        const axiosConfig = { withCredentials: AUTH_CONFIG.refreshInCookie };
+        
+        // ISS-003: Si el backend espera refresh en body (no en cookie)
+        // obtener el refresh token del tokenManager (si está disponible)
+        if (AUTH_CONFIG.refreshInBody) {
+          const storedRefresh = localStorage.getItem('_rt'); // Solo si no es HttpOnly
+          if (storedRefresh) {
+            refreshPayload[AUTH_CONFIG.refreshTokenField] = storedRefresh;
+          }
+        }
+        
         const response = await axios.post(
-          `${apiBaseUrl}/token/refresh/`, 
-          {}, // No enviamos refresh token en el body
-          { withCredentials: true } // IMPORTANTE: incluir cookies
+          `${apiBaseUrl}${AUTH_CONFIG.refreshEndpoint}`, 
+          refreshPayload,
+          axiosConfig
         );
 
-        const newAccessToken = response.data.access;
+        // ISS-003 FIX: Buscar access token con campo parametrizado y fallbacks
+        const newAccessToken = response.data?.[AUTH_CONFIG.accessTokenField] 
+          || response.data?.access 
+          || response.data?.access_token
+          || response.data?.token;
+        
+        // ISS-003: Validar que obtuvimos un token válido
+        if (!newAccessToken || typeof newAccessToken !== 'string') {
+          console.error('[API] Refresh exitoso pero sin token válido en respuesta:', {
+            expectedField: AUTH_CONFIG.accessTokenField,
+            receivedKeys: Object.keys(response.data || {}),
+          });
+          throw new Error('Respuesta de refresh inválida: token no encontrado');
+        }
+        
         // Guardar nuevo access token en memoria
         setAccessToken(newAccessToken);
         
@@ -441,12 +536,14 @@ apiClient.interceptors.response.use(
         // Procesar cola de peticiones pendientes
         processQueue(null, newAccessToken);
         isRefreshing = false;
+        setRefreshInProgress(false); // ISS-002 FIX (audit33)
         
         // Reintentar request original
         return apiClient(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
         isRefreshing = false;
+        setRefreshInProgress(false); // ISS-002 FIX (audit33)
         
         // Cancelar timers activos
         if (window.notificationInterval) {
@@ -498,20 +595,123 @@ apiClient.interceptors.response.use(
 );
 
 /**
- * Descarga un blob como archivo local.
- * @param {Blob} blob
- * @param {string} nombreArchivo
+ * ISS-005 FIX (audit33): Descarga un blob como archivo local con validación de tipo
+ * @param {Blob|Response} blob - El blob o respuesta de axios
+ * @param {string} nombreArchivo - Nombre del archivo a descargar
+ * @returns {boolean} true si la descarga fue exitosa, false si hubo error
  */
 export const descargarArchivo = (blob, nombreArchivo) => {
-  const contenido = blob && blob.data ? blob.data : blob;
-  const url = window.URL.createObjectURL(contenido);
-  const enlace = document.createElement('a');
-  enlace.href = url;
-  enlace.download = nombreArchivo;
-  document.body.appendChild(enlace);
-  enlace.click();
-  document.body.removeChild(enlace);
-  window.URL.revokeObjectURL(url);
+  try {
+    // ISS-005: Obtener el contenido del blob correctamente
+    const contenido = blob?.data ?? blob;
+    
+    // ISS-005: Validar que tenemos un blob válido
+    if (!contenido) {
+      console.error('[descargarArchivo] No se recibió contenido');
+      toast.error('Error: No se recibió el archivo del servidor');
+      return false;
+    }
+    
+    // ISS-005: Verificar si es un error JSON en lugar de un blob
+    // Algunos backends devuelven JSON con error incluso para peticiones de blob
+    if (contenido instanceof Blob && contenido.type === 'application/json') {
+      // Intentar leer el error del JSON
+      contenido.text().then(text => {
+        try {
+          const error = JSON.parse(text);
+          const mensaje = error.detail || error.error || error.message || 'Error al generar el archivo';
+          console.error('[descargarArchivo] Error del servidor:', error);
+          toast.error(mensaje);
+        } catch {
+          toast.error('Error inesperado al descargar el archivo');
+        }
+      });
+      return false;
+    }
+    
+    // ISS-005: Validar tamaño mínimo (un archivo vacío no es válido)
+    if (contenido.size !== undefined && contenido.size === 0) {
+      console.warn('[descargarArchivo] Archivo vacío recibido');
+      toast.error('El archivo generado está vacío. Verifica los filtros.');
+      return false;
+    }
+    
+    const url = window.URL.createObjectURL(contenido);
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = nombreArchivo;
+    document.body.appendChild(enlace);
+    enlace.click();
+    document.body.removeChild(enlace);
+    window.URL.revokeObjectURL(url);
+    
+    return true;
+  } catch (error) {
+    console.error('[descargarArchivo] Error:', error);
+    toast.error('Error al descargar el archivo');
+    return false;
+  }
+};
+
+/**
+ * ISS-005 FIX (audit33): Wrapper para peticiones de exportación con manejo de errores
+ * @param {Promise} peticion - Promesa de axios con responseType: 'blob'
+ * @param {string} nombreArchivo - Nombre del archivo a descargar
+ * @param {Object} options - Opciones adicionales
+ * @returns {Promise<boolean>} true si exitoso, false si hubo error
+ */
+export const exportarConManejo = async (peticion, nombreArchivo, options = {}) => {
+  const { 
+    mensajeExito = 'Archivo descargado correctamente',
+    mensajeVacio = 'No hay datos para exportar con los filtros seleccionados',
+    mostrarExito = false,
+  } = options;
+  
+  try {
+    const response = await peticion;
+    
+    // ISS-005: Verificar código 204 (No Content)
+    if (response.status === 204) {
+      toast.error(mensajeVacio);
+      return false;
+    }
+    
+    const exito = descargarArchivo(response, nombreArchivo);
+    
+    if (exito && mostrarExito) {
+      toast.success(mensajeExito);
+    }
+    
+    return exito;
+  } catch (error) {
+    const status = error.response?.status;
+    
+    // ISS-005: Manejar códigos específicos
+    if (status === 204 || status === 404) {
+      toast.error(mensajeVacio);
+    } else if (status === 400) {
+      // Intentar extraer mensaje del servidor
+      const data = error.response?.data;
+      if (data instanceof Blob) {
+        try {
+          const text = await data.text();
+          const json = JSON.parse(text);
+          toast.error(json.detail || json.error || 'Parámetros de exportación inválidos');
+        } catch {
+          toast.error('Parámetros de exportación inválidos');
+        }
+      } else {
+        toast.error(data?.detail || 'Parámetros de exportación inválidos');
+      }
+    } else if (status === 403) {
+      toast.error('No tienes permiso para exportar este reporte');
+    } else {
+      // Error genérico manejado por el interceptor
+      console.error('[exportarConManejo] Error:', error);
+    }
+    
+    return false;
+  }
 };
 
 // Productos
@@ -547,8 +747,9 @@ export const productosAPI = {
 };
 
 // Lotes
+// ISS-006 FIX (audit33): getAll acepta config adicional para AbortController
 export const lotesAPI = {
-  getAll: (params) => apiClient.get('/lotes/', { params }),
+  getAll: (params, config = {}) => apiClient.get('/lotes/', { params, ...config }),
   getById: (id) => apiClient.get(`/lotes/${id}/`),
   create: (data) => apiClient.post('/lotes/', data),
   update: (id, data) => apiClient.put(`/lotes/${id}/`, data),
@@ -785,13 +986,38 @@ export const auditoriaAPI = {
 };
 
 // Auth -  SEGURO CON COOKIES HttpOnly
+// ISS-003 FIX (audit33): Configuración parametrizable de endpoints
 export const authAPI = {
-  // Login: recibe access token, refresh token va en cookie HttpOnly
-  login: (credentials) => apiClient.post('/token/', credentials),
-  // Refresh: el servidor lee el refresh token de la cookie HttpOnly
-  refresh: () => apiClient.post('/token/refresh/', {}),
-  // Logout: invalida la cookie del refresh token
-  logout: (data = {}) => apiClient.post('/logout/', data),
+  // ISS-003: Login con validación de respuesta
+  login: async (credentials) => {
+    const response = await apiClient.post(AUTH_CONFIG.tokenEndpoint, credentials);
+    
+    // ISS-003: Validar que la respuesta contiene el token esperado
+    const accessToken = response.data?.[AUTH_CONFIG.accessTokenField]
+      || response.data?.access
+      || response.data?.access_token
+      || response.data?.token;
+    
+    if (!accessToken && response.status === 200) {
+      console.warn('[API] Login exitoso pero sin access token en respuesta esperada:', {
+        expectedField: AUTH_CONFIG.accessTokenField,
+        receivedKeys: Object.keys(response.data || {}),
+      });
+    }
+    
+    // Normalizar respuesta para consumidores
+    return {
+      ...response,
+      data: {
+        ...response.data,
+        access: accessToken, // Siempre disponible como 'access'
+      }
+    };
+  },
+  // ISS-003: Refresh usa configuración de AUTH_CONFIG
+  refresh: () => apiClient.post(AUTH_CONFIG.refreshEndpoint, {}),
+  // ISS-003: Logout con endpoint parametrizable
+  logout: (data = {}) => apiClient.post(AUTH_CONFIG.logoutEndpoint, data),
   // Dev login (solo desarrollo)
   devLogin: (data = {}) => apiClient.post('/dev-autologin/', data),
   // Perfil del usuario autenticado
@@ -1048,8 +1274,25 @@ export const catalogosAPI = {
 };
 
 // ISS-001 FIX: Health check API
+// ISS-003 FIX (audit33): Validación flexible de respuesta
 export const healthAPI = {
-  check: () => publicApiClient.get('/health/', { timeout: 5000 }),
+  check: async () => {
+    const response = await publicApiClient.get(HEALTH_ENDPOINT, { timeout: HEALTH_TIMEOUT });
+    
+    // ISS-003: Normalizar respuesta de healthcheck
+    // Diferentes backends pueden usar version/api_version/v, db_status/database/db
+    const data = response.data || {};
+    return {
+      ...response,
+      data: {
+        ...data,
+        version: data.version || data.api_version || data.v || API_VERSION,
+        database: data.database ?? data.db_status ?? data.db ?? 'unknown',
+        healthy: data.healthy ?? data.status === 'ok' ?? response.status === 200,
+        timestamp: data.timestamp || new Date().toISOString(),
+      }
+    };
+  },
   detailed: () => apiClient.get('/health/detailed/'),
 };
 

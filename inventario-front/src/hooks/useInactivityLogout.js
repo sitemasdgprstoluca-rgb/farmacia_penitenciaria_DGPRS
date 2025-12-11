@@ -2,13 +2,17 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { setApiActivityHandler } from '../services/api';
-import { hasAccessToken, clearTokens } from '../services/tokenManager';
+import { hasAccessToken, clearTokens, isRefreshInProgress, isLogoutInProgress } from '../services/tokenManager';
 
 const parseMinutes = (value, fallback) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+/**
+ * ISS-002 FIX (audit33): Hook de logout por inactividad
+ * Mejorado para coordinarse con el refresh de tokens y evitar race conditions
+ */
 export const useInactivityLogout = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -23,6 +27,14 @@ export const useInactivityLogout = () => {
   }, []);
 
   const logout = useCallback(() => {
+    // ISS-002 FIX (audit33): No hacer logout si hay refresh en progreso
+    if (isRefreshInProgress?.() || isLogoutInProgress?.()) {
+      console.info('[useInactivityLogout] Postergando logout: refresh/logout en progreso');
+      // Reprogramar logout para cuando termine el refresh
+      timerRef.current = setTimeout(logout, 2000);
+      return;
+    }
+    
     clearTimeout(timerRef.current);
     clearSession();
     toast.error('Tu sesión ha expirado por inactividad');
@@ -30,6 +42,11 @@ export const useInactivityLogout = () => {
   }, [clearSession, navigate]);
 
   const resetTimer = useCallback(() => {
+    // ISS-002 FIX (audit33): No resetear timer si hay refresh en progreso
+    if (isRefreshInProgress?.()) {
+      return;
+    }
+    
     // Verificar sesión usando tokenManager o datos de usuario
     const hasSession = hasAccessToken() || Boolean(localStorage.getItem('user'));
 

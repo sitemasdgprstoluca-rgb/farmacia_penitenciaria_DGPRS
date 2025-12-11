@@ -6,6 +6,7 @@ import {
   centrosAPI,
   lotesAPI,
   descargarArchivo,
+  catalogosAPI,
 } from '../services/api';
 import { usePermissions } from '../hooks/usePermissions';
 import { ProtectedButton } from '../components/ProtectedAction';
@@ -144,6 +145,11 @@ const Requisiciones = () => {
   const [catalogoBusqueda, setCatalogoBusqueda] = useState('');
   const [vistaCarrito, setVistaCarrito] = useState(false); // Toggle entre catálogo y carrito
   
+  // ISS-004 FIX (audit33): Catálogo de estados desde backend
+  const [estadosBackend, setEstadosBackend] = useState(null); // null = no cargado
+  const [transicionesBackend, setTransicionesBackend] = useState(null);
+  const [loadingEstados, setLoadingEstados] = useState(false);
+  
   // Mantener compatibilidad con código existente (eliminar después)
   const [productoBusqueda, setProductoBusqueda] = useState('');
   const [productoSeleccionado, setProductoSeleccionado] = useState(null);
@@ -159,9 +165,9 @@ const Requisiciones = () => {
 
   const filtrosActivos = [searchTerm, filtroEstado, filtroCentro, filtroFechaDesde, filtroFechaHasta].filter(Boolean).length;
 
-  // ISS-002 FIX (audit27): Pestañas actualizadas para flujo V2
-  // Sincronizadas con REQUISICION_GRUPOS_ESTADO del backend
-  const stateTabs = [
+  // ISS-004 FIX (audit33): Pestañas derivadas del backend cuando esté disponible
+  // Fallback a configuración local si el backend no responde
+  const stateTabsFallback = [
     { key: 'todas', label: 'Todas', grupo: null },
     { key: 'centro', label: 'En Centro', grupo: 'pendientes', descripcion: 'Pendiente de autorización centro' },
     { key: 'farmacia', label: 'En Farmacia', grupo: 'pendientes_farmacia', descripcion: 'En proceso en Farmacia' },
@@ -170,6 +176,26 @@ const Requisiciones = () => {
     { key: 'completadas', label: 'Completadas', grupo: 'completadas', descripcion: 'Entregadas' },
     { key: 'finalizadas', label: 'Finalizadas', grupo: 'rechazadas_canceladas', descripcion: 'Rechazadas, canceladas, vencidas' },
   ];
+  
+  // ISS-004: Usar tabs del backend si están disponibles
+  const stateTabs = useMemo(() => {
+    if (!estadosBackend?.grupos) return stateTabsFallback;
+    
+    // Mapear grupos del backend a formato de tabs
+    const tabsFromBackend = [{ key: 'todas', label: 'Todas', grupo: null }];
+    
+    for (const [grupo, config] of Object.entries(estadosBackend.grupos)) {
+      tabsFromBackend.push({
+        key: grupo,
+        label: config.label || grupo,
+        grupo: grupo,
+        descripcion: config.descripcion || '',
+        estados: config.estados || [],
+      });
+    }
+    
+    return tabsFromBackend;
+  }, [estadosBackend]);
 
   // Caché para evitar recargas innecesarias del catálogo
   const [catalogoCargado, setCatalogoCargado] = useState(false);
@@ -191,11 +217,20 @@ const Requisiciones = () => {
   
   // Ref para debounce de búsqueda (ISS-003)
   const searchTimeoutRef = useRef(null);
+  // ISS-006 FIX (audit33): AbortController para cancelar peticiones en vuelo
+  const abortControllerRef = useRef(null);
   const [totalLotesDisponibles, setTotalLotesDisponibles] = useState(0);
   
   // ISS-003: Función optimizada que busca en servidor en lugar de cargar todo
+  // ISS-006 FIX (audit33): Usa AbortController para cancelar peticiones anteriores
   // IMPORTANTE: Acepta centroId como parámetro para respetar el centro seleccionado en el formulario
   const buscarLotesServidor = useCallback(async (termino = '', centroId = null) => {
+    // ISS-006: Cancelar petición anterior si existe
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    
     setLoadingCatalogo(true);
     try {
       const baseParams = {
@@ -215,7 +250,7 @@ const Requisiciones = () => {
         baseParams.search = termino.trim();
       }
       
-      const resp = await lotesAPI.getAll(baseParams);
+      const resp = await lotesAPI.getAll(baseParams, { signal: abortControllerRef.current.signal });
       const lotes = resp.data.results || resp.data || [];
       const total = resp.data.count || lotes.length;
       
@@ -223,6 +258,10 @@ const Requisiciones = () => {
       setTotalLotesDisponibles(total);
       setCatalogoCargado(true);
     } catch (error) {
+      // ISS-006: Ignorar errores de cancelación
+      if (error.name === 'CanceledError' || error.name === 'AbortError') {
+        return;
+      }
       console.error('Error buscando lotes:', error);
       toast.error('Error al buscar lotes');
       setCatalogoLotes([]);
@@ -257,11 +296,15 @@ const Requisiciones = () => {
     }, 300);
   }, [buscarLotesServidor]);
   
-  // Limpiar timeout al desmontar
+  // Limpiar timeout y AbortController al desmontar
+  // ISS-006 FIX (audit33): Cleanup adecuado de recursos
   useEffect(() => {
     return () => {
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
     };
   }, []);
@@ -278,6 +321,49 @@ const Requisiciones = () => {
       console.error('Error cargando catálogos', error);
     }
   }, []);
+  
+  // ISS-004 FIX (audit33): Cargar catálogo de estados y transiciones desde backend
+  const cargarEstadosBackend = useCallback(async () => {
+    // Solo cargar una vez
+    if (estadosBackend !== null || loadingEstados) return;
+    
+    setLoadingEstados(true);
+    try {
+      // Intentar obtener estados del catálogo
+      const [estadosResp, transicionesResp] = await Promise.allSettled([
+        catalogosAPI.estadosRequisicion(),
+        requisicionesAPI.getTransicionesDisponibles(),
+      ]);
+      
+      // Procesar estados
+      if (estadosResp.status === 'fulfilled' && estadosResp.value.data) {
+        const data = estadosResp.value.data;
+        setEstadosBackend({
+          estados: data.estados || data,
+          grupos: data.grupos || null,
+          etiquetas: data.etiquetas || {},
+        });
+        
+        if (import.meta.env.DEV) {
+          console.info('[Requisiciones] Estados cargados desde backend:', data);
+        }
+      } else {
+        // Fallback: usar configuración local
+        console.warn('[Requisiciones] No se pudieron cargar estados del backend, usando fallback');
+        setEstadosBackend({ estados: null, grupos: null });
+      }
+      
+      // Procesar transiciones
+      if (transicionesResp.status === 'fulfilled' && transicionesResp.value.data) {
+        setTransicionesBackend(transicionesResp.value.data);
+      }
+    } catch (error) {
+      console.error('Error cargando estados desde backend:', error);
+      setEstadosBackend({ estados: null, grupos: null }); // Marcar como cargado para no reintentar
+    } finally {
+      setLoadingEstados(false);
+    }
+  }, [estadosBackend, loadingEstados]);
 
   const cargarRequisiciones = useCallback(async () => {
     // BLOQUEAR carga si el centro del usuario no está resuelto
@@ -476,7 +562,9 @@ const Requisiciones = () => {
   useEffect(() => {
     cargarCatalogos();
     resetForm();
-  }, [cargarCatalogos, resetForm]);
+    // ISS-004 FIX (audit33): Cargar estados del backend al montar
+    cargarEstadosBackend();
+  }, [cargarCatalogos, resetForm, cargarEstadosBackend]);
 
   const puedeEditar = (requisicion) => {
     // Primero validar permiso fino
@@ -493,18 +581,29 @@ const Requisiciones = () => {
   };
 
   // ISS-004 FIX: Validar permiso fino y transición válida de enviar
+  // ISS-004 FIX (audit33): Usar transiciones del backend si están disponibles
+  const esTransicionPermitida = useCallback((estadoActual, accion) => {
+    // Si tenemos transiciones del backend, usarlas
+    if (transicionesBackend && transicionesBackend[estadoActual?.toUpperCase()]) {
+      const permitidas = transicionesBackend[estadoActual.toUpperCase()];
+      return Array.isArray(permitidas) && permitidas.includes(accion);
+    }
+    // Fallback a validador local
+    return esTransicionValida(estadoActual, accion);
+  }, [transicionesBackend]);
+  
   const puedeEnviar = (req) => {
     const estadoNormalizado = req.estado?.toLowerCase();
-    // Usar validador de transiciones centralizado
-    if (!esTransicionValida(estadoNormalizado, 'enviada')) return false;
+    // Usar validador de transiciones (backend primero, fallback local)
+    if (!esTransicionPermitida(estadoNormalizado, 'enviada')) return false;
     return permisos.enviarRequisicion && puedeEditar(req);
   };
 
   // ISS-004 FIX: Validar si puede cancelar usando transiciones válidas
   const puedeCancelar = (requisicion) => {
     const estadoNormalizado = requisicion.estado?.toLowerCase();
-    // Usar validador de transiciones centralizado
-    if (!esTransicionValida(estadoNormalizado, 'cancelada')) return false;
+    // Usar validador de transiciones (backend primero, fallback local)
+    if (!esTransicionPermitida(estadoNormalizado, 'cancelada')) return false;
     // Validar permiso fino
     if (!permisos.cancelarRequisicion) return false;
     // Admin/Farmacia pueden cancelar cualquiera
