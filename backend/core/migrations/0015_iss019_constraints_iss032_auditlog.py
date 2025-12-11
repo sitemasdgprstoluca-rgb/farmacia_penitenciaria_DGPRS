@@ -16,7 +16,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name='lote',
             constraint=models.CheckConstraint(
-                check=models.Q(cantidad_actual__gte=0),
+                condition=models.Q(cantidad_actual__gte=0),
                 name='ck_lote_cantidad_no_negativa',
                 violation_error_message='La cantidad actual no puede ser negativa'
             ),
@@ -26,7 +26,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name='lote',
             constraint=models.CheckConstraint(
-                check=models.Q(cantidad_inicial__gte=1),
+                condition=models.Q(cantidad_inicial__gte=1),
                 name='ck_lote_cantidad_inicial_positiva',
                 violation_error_message='La cantidad inicial debe ser al menos 1'
             ),
@@ -36,7 +36,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name='lote',
             constraint=models.CheckConstraint(
-                check=models.Q(cantidad_actual__lte=models.F('cantidad_inicial')),
+                condition=models.Q(cantidad_actual__lte=models.F('cantidad_inicial')),
                 name='ck_lote_actual_no_excede_inicial',
                 violation_error_message='La cantidad actual no puede exceder la cantidad inicial'
             ),
@@ -46,7 +46,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name='detallerequisicion',
             constraint=models.CheckConstraint(
-                check=models.Q(cantidad_solicitada__gte=1),
+                condition=models.Q(cantidad_solicitada__gte=1),
                 name='ck_detalle_cantidad_solicitada_positiva',
                 violation_error_message='La cantidad solicitada debe ser al menos 1'
             ),

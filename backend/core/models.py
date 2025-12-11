@@ -381,7 +381,8 @@ class User(AbstractUser):
         default='',
         help_text="Adscripción del usuario (centro/área/unidad de dependencia)"
     )
-    # Campo 'activo' eliminado - usar is_active de AbstractUser
+    # Campo 'activo' requerido para compatibilidad con tabla usuarios en BD
+    activo = models.BooleanField(default=True, help_text="Usuario activo (compatibilidad con BD)")
     
     # Permisos personalizados por módulo (null = usar permisos del rol por defecto)
     perm_dashboard = models.BooleanField(null=True, blank=True, help_text="Permiso para ver Dashboard")
