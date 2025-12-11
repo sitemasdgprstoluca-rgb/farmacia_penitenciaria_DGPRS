@@ -98,6 +98,56 @@ if (!isDev && apiBaseUrl && !apiBaseUrl.startsWith('https://')) {
 // Exportar métricas de seguridad para monitoreo
 export const getSecurityMetrics = () => securityMetrics.getMetrics();
 
+// ISS-001 FIX: Versión de API esperada y healthcheck
+const API_VERSION = import.meta.env.VITE_API_VERSION || 'v1';
+let apiHealthy = null; // null = no verificado, true = ok, false = fallo
+
+/**
+ * ISS-001 FIX: Verificar conectividad y compatibilidad con el backend
+ * Retorna objeto con estado del backend
+ */
+export const checkApiHealth = async () => {
+  if (apiConfigError) {
+    return { healthy: false, error: apiConfigError, version: null };
+  }
+  
+  try {
+    // Usar endpoint público de health check
+    const response = await publicApiClient.get('/health/', { timeout: 5000 });
+    const data = response.data;
+    
+    apiHealthy = true;
+    
+    return {
+      healthy: true,
+      version: data?.version || data?.api_version || null,
+      database: data?.database ?? 'unknown',
+      timestamp: data?.timestamp || new Date().toISOString(),
+    };
+  } catch (error) {
+    apiHealthy = false;
+    const errorMsg = error.response?.status === 404 
+      ? 'Endpoint de health no disponible (404)'
+      : error.message || 'Error de conexión';
+    
+    console.warn('[API] Health check falló:', errorMsg);
+    
+    // No es fatal si el health check falla - el backend puede no tenerlo implementado
+    return {
+      healthy: false,
+      error: errorMsg,
+      status: error.response?.status,
+      version: null,
+    };
+  }
+};
+
+/**
+ * ISS-001 FIX: Verificar que la API está disponible antes de usarla
+ */
+export const isApiHealthy = () => apiHealthy;
+export const getApiVersion = () => API_VERSION;
+
 // Exportar función para verificar estado de configuración (ISS-001, ISS-003, ISS-005)
 export const getApiConfigError = () => apiConfigError;
 export const isApiConfigured = () => !apiConfigError;
@@ -760,6 +810,25 @@ export const lotesDocumentosAPI = {
   porLote: (loteId) => apiClient.get('/lotes-documentos/', { 
     params: { lote: loteId } 
   }),
+};
+
+// ISS-002 FIX: API de Catálogos - Sincronizar enums con backend
+export const catalogosAPI = {
+  // Obtener todos los catálogos en una sola llamada
+  getAll: () => apiClient.get('/catalogos/'),
+  // Catálogos específicos
+  unidadesMedida: () => apiClient.get('/catalogos/unidades-medida/'),
+  categorias: () => apiClient.get('/catalogos/categorias/'),
+  viasAdministracion: () => apiClient.get('/catalogos/vias-administracion/'),
+  estadosRequisicion: () => apiClient.get('/catalogos/estados-requisicion/'),
+  tiposMovimiento: () => apiClient.get('/catalogos/tipos-movimiento/'),
+  roles: () => apiClient.get('/catalogos/roles/'),
+};
+
+// ISS-001 FIX: Health check API
+export const healthAPI = {
+  check: () => publicApiClient.get('/health/', { timeout: 5000 }),
+  detailed: () => apiClient.get('/health/detailed/'),
 };
 
 export default apiClient;
