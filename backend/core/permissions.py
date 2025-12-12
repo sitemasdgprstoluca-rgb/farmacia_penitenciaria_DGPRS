@@ -192,21 +192,58 @@ def _has_extra_perm(user, extras):
     return False
 
 
+def _infer_role_from_user(user):
+    """
+    ISS-PERMS FIX: Infiere el rol del usuario cuando el campo rol está vacío.
+    
+    Orden de inferencia:
+    1. Si is_superuser o is_staff -> admin
+    2. Si tiene centro asignado -> centro
+    3. Default -> vista (solo lectura, más seguro)
+    """
+    if not user:
+        return ''
+    
+    # Campo rol tiene valor válido
+    rol = (getattr(user, 'rol', '') or '').lower()
+    if rol and rol not in ['', 'null', 'none']:
+        return rol
+    
+    # Inferir basándose en otros campos
+    if getattr(user, 'is_superuser', False):
+        return 'admin_sistema'
+    
+    if getattr(user, 'is_staff', False):
+        return 'farmacia'  # Staff sin superuser = farmacia
+    
+    # Si tiene centro asignado, es usuario de centro
+    centro = getattr(user, 'centro', None) or getattr(user, 'centro_id', None)
+    if centro:
+        return 'centro'
+    
+    # Default: usuario vista (más restrictivo, más seguro)
+    return 'vista'
+
+
 def _has_role(user, roles):
-    """Valida roles por campo rol o por grupos heredados."""
+    """Valida roles por campo rol o por grupos heredados.
+    
+    ISS-PERMS FIX: Ahora infiere rol si el campo está vacío.
+    """
     if not user or not getattr(user, 'is_authenticated', False):
         return False
 
     if user.is_superuser:
         return True
 
-    normalized = (getattr(user, 'rol', '') or '').lower()
+    # ISS-PERMS FIX: Usar rol inferido si el campo está vacío
+    normalized = _infer_role_from_user(user)
     group_names = set(g.name.upper() for g in user.groups.all())
 
     role_aliases = {
-        'admin': {'admin_sistema', 'superusuario'},
-        'farmacia': {'farmacia', 'admin_farmacia', 'farmaceutico'},  # + FARMACEUTICO
-        'centro': {'centro', 'usuario_normal', 'solicitante'},  # + SOLICITANTE
+        'admin': {'admin_sistema', 'superusuario', 'admin'},
+        'farmacia': {'farmacia', 'admin_farmacia', 'farmaceutico'},
+        'centro': {'centro', 'usuario_normal', 'solicitante'},
         'vista': {'vista', 'usuario_vista'},
     }
 
