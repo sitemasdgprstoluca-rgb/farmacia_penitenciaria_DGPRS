@@ -32,10 +32,21 @@ export const FARMACIA_ADMIN_ROLES = [...ADMIN_ROLES, ...FARMACIA_ROLES];
 
 /**
  * Normaliza el rol a su forma canónica
+ * ISS-PERMS FIX: Usa rol_efectivo si está disponible
  * @param {string} rol - Rol del usuario
  * @returns {string} - Rol normalizado (lowercase)
  */
 export const normalizarRol = (rol) => (rol || '').toLowerCase().trim();
+
+/**
+ * ISS-PERMS FIX: Obtiene el rol efectivo del usuario (rol_efectivo o rol)
+ * @param {Object} user - Usuario
+ * @returns {string} - Rol normalizado
+ */
+export const getRolEfectivo = (user) => {
+  if (!user) return '';
+  return normalizarRol(user.rol_efectivo || user.rol);
+};
 
 /**
  * Verifica si el usuario es administrador del sistema
@@ -45,7 +56,7 @@ export const normalizarRol = (rol) => (rol || '').toLowerCase().trim();
 export const esAdmin = (user) => {
   if (!user) return false;
   if (user.is_superuser === true || user.isSuperuser === true) return true;
-  const rol = normalizarRol(user.rol);
+  const rol = getRolEfectivo(user);
   return ADMIN_ROLES.includes(rol);
 };
 
@@ -56,7 +67,7 @@ export const esAdmin = (user) => {
  */
 export const esFarmacia = (user) => {
   if (!user) return false;
-  const rol = normalizarRol(user.rol);
+  const rol = getRolEfectivo(user);
   return FARMACIA_ROLES.includes(rol);
 };
 
@@ -68,7 +79,7 @@ export const esFarmacia = (user) => {
 export const esFarmaciaAdmin = (user) => {
   if (!user) return false;
   if (user.is_superuser === true || user.isSuperuser === true) return true;
-  const rol = normalizarRol(user.rol);
+  const rol = getRolEfectivo(user);
   return FARMACIA_ADMIN_ROLES.includes(rol);
 };
 
@@ -79,8 +90,12 @@ export const esFarmaciaAdmin = (user) => {
  */
 export const esCentro = (user) => {
   if (!user) return false;
-  const rol = normalizarRol(user.rol);
-  return CENTRO_ROLES.includes(rol);
+  const rol = getRolEfectivo(user);
+  // ISS-PERMS FIX: También considerar si tiene centro asignado
+  if (CENTRO_ROLES.includes(rol)) return true;
+  // Si tiene centro pero rol vacío, es usuario de centro
+  if (!user.rol && (user.centro || user.centro_id)) return true;
+  return false;
 };
 
 /**
@@ -90,7 +105,7 @@ export const esCentro = (user) => {
  */
 export const esVista = (user) => {
   if (!user) return false;
-  const rol = normalizarRol(user.rol);
+  const rol = getRolEfectivo(user);
   return VISTA_ROLES.includes(rol);
 };
 
@@ -116,11 +131,25 @@ export const getRolPrincipal = (user, grupos = []) => {
   if (!user) return 'SIN_ROL';
   
   const isSuperuser = user.is_superuser === true;
+  // ISS-PERMS FIX: Usar rol_efectivo del backend si está disponible (ya inferido)
+  const rolEfectivo = normalizarRol(user.rol_efectivo || user.rol);
   const rol = normalizarRol(user.rol);
   const groupNames = (grupos || []).map((g) => ((g.name || g) + '').toUpperCase());
   
   // Primero verificar superusuario
   if (isSuperuser) return 'ADMIN';
+  
+  // ISS-PERMS FIX: Si el backend envió rol_efectivo, usarlo directamente
+  if (user.rol_efectivo) {
+    const efectivoUpper = user.rol_efectivo.toUpperCase();
+    if (['ADMIN', 'FARMACIA', 'CENTRO', 'VISTA', 'MEDICO', 'ADMINISTRADOR_CENTRO', 'DIRECTOR_CENTRO'].includes(efectivoUpper)) {
+      // Mapear roles específicos del flujo v2 a CENTRO para navegación
+      if (['MEDICO', 'ADMINISTRADOR_CENTRO', 'DIRECTOR_CENTRO'].includes(efectivoUpper)) {
+        return 'CENTRO';
+      }
+      return efectivoUpper;
+    }
+  }
   
   // Luego verificar por rol específico
   if (ADMIN_ROLES.includes(rol)) return 'ADMIN';
@@ -128,10 +157,16 @@ export const getRolPrincipal = (user, grupos = []) => {
   if (CENTRO_ROLES.includes(rol) || groupNames.includes('CENTRO_USER')) return 'CENTRO';
   if (VISTA_ROLES.includes(rol) || groupNames.includes('VISTA_USER')) return 'VISTA';
   
+  // ISS-PERMS FIX: Si tiene centro asignado, es usuario de centro
+  if (user.centro || user.centro_id) {
+    return 'CENTRO';
+  }
+  
   // Si el usuario está autenticado pero sin rol específico, verificar permisos de staff
   if (user.is_staff) return 'FARMACIA';
   
-  return 'SIN_ROL';
+  // ISS-PERMS FIX: Default a VISTA en lugar de SIN_ROL (más seguro y usable)
+  return 'VISTA';
 };
 
 /**
@@ -170,7 +205,7 @@ export const puedeEjecutarAccionFlujo = (user, accion) => {
   if (!user) return false;
   if (user.is_superuser === true) return true;
   
-  const rol = normalizarRol(user.rol);
+  const rol = getRolEfectivo(user);
   
   const ACCIONES_POR_ROL = {
     enviar_admin: ['medico', ...ADMIN_ROLES, ...FARMACIA_ROLES],

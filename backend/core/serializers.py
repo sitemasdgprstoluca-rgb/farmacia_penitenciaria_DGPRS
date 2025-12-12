@@ -317,16 +317,53 @@ PERMISOS_POR_ROL = {
 }
 
 
+def _infer_rol_from_user(user):
+    """
+    ISS-PERMS FIX: Infiere el rol del usuario cuando el campo rol está vacío.
+    
+    Orden de inferencia:
+    1. Si is_superuser -> admin_sistema
+    2. Si is_staff -> farmacia
+    3. Si tiene centro asignado -> centro
+    4. Default -> vista (solo lectura, más seguro)
+    """
+    if not user:
+        return ''
+    
+    # Inferir basándose en otros campos
+    if getattr(user, 'is_superuser', False):
+        return 'admin_sistema'
+    
+    if getattr(user, 'is_staff', False):
+        return 'farmacia'  # Staff sin superuser = farmacia
+    
+    # Si tiene centro asignado, es usuario de centro
+    centro = getattr(user, 'centro', None) or getattr(user, 'centro_id', None)
+    if centro:
+        return 'centro'
+    
+    # Default: usuario vista (más restrictivo, más seguro)
+    return 'vista'
+
+
 def _resolve_rol(user):
     """Resuelve el rol del usuario al formato normalizado para permisos.
     
     FLUJO V2: Incluye roles jerárquicos del centro.
+    ISS-PERMS FIX: Ahora infiere rol si el campo está vacío.
     """
     if not user:
         return 'SIN_ROL'
     if user.is_superuser:
         return 'ADMIN'
-    normalized = (user.rol or '').lower()
+    
+    # Obtener rol del campo, o inferir si está vacío
+    normalized = (user.rol or '').lower().strip()
+    
+    # Si no hay rol en el campo, inferirlo
+    if not normalized or normalized in ['null', 'none', '']:
+        normalized = _infer_rol_from_user(user)
+        logger.info(f"_resolve_rol: Rol inferido para {getattr(user, 'username', 'unknown')}: {normalized}")
     
     # Admin del sistema
     if normalized in ['admin', 'admin_sistema', 'superusuario']:
@@ -347,7 +384,13 @@ def _resolve_rol(user):
     # Solo vista
     if normalized in ['vista', 'usuario_vista']:
         return 'VISTA'
-    return 'SIN_ROL'
+    
+    # Fallback final basado en otros atributos
+    if getattr(user, 'centro', None) or getattr(user, 'centro_id', None):
+        logger.info(f"_resolve_rol: Usuario {getattr(user, 'username', 'unknown')} tiene centro, asignando CENTRO")
+        return 'CENTRO'
+    
+    return 'VISTA'  # ISS-PERMS FIX: Default a VISTA en lugar de SIN_ROL
 
 
 def build_perm_map(user):
@@ -410,12 +453,14 @@ class UserSerializer(serializers.ModelSerializer):
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, allow_null=True)
     password = serializers.CharField(write_only=True, required=False, allow_blank=True)
     permisos = serializers.SerializerMethodField()
+    # ISS-PERMS FIX: Rol efectivo (inferido si el campo está vacío)
+    rol_efectivo = serializers.SerializerMethodField()
     
     class Meta:
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name', 
-            'rol', 'centro', 'centro_id', 'centro_nombre', 'password', 
+            'rol', 'rol_efectivo', 'centro', 'centro_id', 'centro_nombre', 'password', 
             'adscripcion', 'permisos', 'is_active', 'is_superuser',
             'date_joined', 'last_login',
             # Permisos personalizados por módulo
@@ -439,6 +484,10 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_permisos(self, obj):
         return build_perm_map(obj)
+    
+    def get_rol_efectivo(self, obj):
+        """ISS-PERMS FIX: Devuelve el rol real usado para permisos (inferido si campo vacío)"""
+        return _resolve_rol(obj)
     
     def validate_username(self, value):
         if not value or len(value) < 3:
