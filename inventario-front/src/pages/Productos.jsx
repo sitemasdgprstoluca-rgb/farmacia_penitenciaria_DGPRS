@@ -306,7 +306,8 @@ const DEFAULT_FORM = {
 // Las constantes CATEGORIAS y VIAS_ADMINISTRACION ahora vienen del API
 // Ver: inventario-front/src/hooks/useCatalogos.js
 
-
+// ISS-PERMS FIX: Unidades para MOCK_PRODUCTS (fuera del componente)
+const MOCK_UNIDADES = ['TABLETA', 'CAJA', 'FRASCO', 'AMPOLLETA', 'SOBRE', 'PIEZA'];
 
 const MOCK_PRODUCTS = Array.from({ length: 124 }).map((_, index) => {
   const id = index + 1;
@@ -327,7 +328,7 @@ const MOCK_PRODUCTS = Array.from({ length: 124 }).map((_, index) => {
     id,
     clave: `MED-${String(id).padStart(3, '0')}`,
     nombre: baseNames[id % baseNames.length],
-    unidad_medida: UNIDADES[id % UNIDADES.length],
+    unidad_medida: MOCK_UNIDADES[id % MOCK_UNIDADES.length],
     stock_minimo: 25 + (id % 6) * 5,
     stock_actual: 120 + (id % 8) * 15,
     activo: id % 9 !== 0,
