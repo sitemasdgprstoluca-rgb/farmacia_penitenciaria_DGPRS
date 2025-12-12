@@ -466,17 +466,28 @@ const Requisiciones = () => {
       return;
     }
     
+    // ISS-PERMS FIX: Log de debug para verificar estructura del usuario
+    console.log('[Requisiciones] Usuario cargado:', {
+      username: user.username,
+      rol: user.rol,
+      rol_efectivo: user.rol_efectivo,
+      centro: user.centro,
+      centro_id: user.centro_id,
+      esAdminOFarmacia
+    });
+    
     if (esAdminOFarmacia) {
       // Admin/Farmacia pueden cargar (sin filtro obligatorio) - pero solo cuando user existe
       setCentroResuelto(true);
       setErrorCentroNoAsignado(false);
-    } else if (user?.centro?.id) {
+    } else if (user?.centro?.id || user?.centro_id) {
+      // ISS-PERMS FIX: Verificar tanto centro.id como centro_id
       // Usuario de centro: aplicar filtro con su centro
-      const centroId = user.centro.id.toString();
+      const centroId = (user.centro?.id || user.centro_id).toString();
       setFiltroCentro(centroId);
       setCentroResuelto(true);
       setErrorCentroNoAsignado(false);
-    } else if (user && !user.centro?.id) {
+    } else if (user && !user.centro?.id && !user.centro_id) {
       // Usuario autenticado pero SIN centro asignado - error de configuración
       // Marcar como resuelto para evitar spinner infinito, pero con error
       setCentroResuelto(true);

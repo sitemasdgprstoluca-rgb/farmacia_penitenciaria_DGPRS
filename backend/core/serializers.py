@@ -1494,21 +1494,29 @@ class ImportacionLogSerializer(serializers.ModelSerializer):
 # =============================================================================
 
 class UserMeSerializer(serializers.ModelSerializer):
+    # ISS-PERMS FIX: Serializar centro como objeto {id, nombre} para que el frontend lo lea correctamente
+    centro = CentroNestedSerializer(read_only=True)
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, default='')
     permisos = serializers.SerializerMethodField()
     telefono = serializers.SerializerMethodField()
+    # ISS-PERMS FIX: Incluir rol_efectivo para que el frontend sepa el rol real
+    rol_efectivo = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
-            'rol', 'centro', 'centro_nombre', 'adscripcion', 'permisos',
+            'rol', 'rol_efectivo', 'centro', 'centro_nombre', 'adscripcion', 'permisos',
             'is_superuser', 'is_staff', 'telefono',
         ]
         read_only_fields = ['username', 'rol', 'centro', 'is_superuser', 'is_staff']
 
     def get_permisos(self, obj):
         return build_perm_map(obj)
+    
+    def get_rol_efectivo(self, obj):
+        """ISS-PERMS FIX: Devuelve el rol real usado para permisos (inferido si campo vacío)"""
+        return _resolve_rol(obj)
 
     def get_telefono(self, obj):
         """Obtener teléfono desde UserProfile si existe."""
