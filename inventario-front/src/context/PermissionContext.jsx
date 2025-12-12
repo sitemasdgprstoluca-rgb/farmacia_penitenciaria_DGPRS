@@ -532,7 +532,8 @@ export function PermissionProvider({ children }) {
   const getRolPrincipal = () => {
     if (!user) return 'SIN_ROL';
     
-    const rol = (user.rol || '').toLowerCase();
+    // ISS-PERMS FIX: Usar rol_efectivo del backend si está disponible
+    const rol = (user.rol_efectivo || user.rol || '').toLowerCase();
     const isSuperuser = user.is_superuser === true;
     
     // Primero verificar superusuario
@@ -547,10 +548,14 @@ export function PermissionProvider({ children }) {
         grupos.some((g) => g.name === 'CENTRO_USER')) return 'CENTRO';
     if (rol === 'vista' || rol === 'usuario_vista' || grupos.some((g) => g.name === 'VISTA_USER')) return 'VISTA';
     
+    // ISS-PERMS FIX: Si tiene centro asignado, es usuario de centro
+    if (user.centro || user.centro_id) return 'CENTRO';
+    
     // Si el usuario está autenticado pero sin rol específico, verificar permisos de staff
     if (user.is_staff) return 'FARMACIA';
     
-    return 'SIN_ROL';
+    // ISS-PERMS FIX: Default a VISTA en lugar de SIN_ROL
+    return 'VISTA';
   };
 
   return (
