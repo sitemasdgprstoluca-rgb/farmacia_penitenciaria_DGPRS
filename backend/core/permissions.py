@@ -30,7 +30,8 @@ class RoleHelper:
     ROLE_ALIASES = {
         'admin': {'admin_sistema', 'superusuario'},
         'farmacia': {'farmacia', 'admin_farmacia', 'farmaceutico'},
-        'centro': {'centro', 'usuario_normal', 'solicitante'},
+        # FLUJO V2: Incluir roles jerárquicos del centro
+        'centro': {'centro', 'usuario_normal', 'solicitante', 'medico', 'administrador_centro', 'director_centro', 'usuario_centro'},
         'vista': {'vista', 'usuario_vista'},
     }
     
@@ -243,7 +244,8 @@ def _has_role(user, roles):
     role_aliases = {
         'admin': {'admin_sistema', 'superusuario', 'admin'},
         'farmacia': {'farmacia', 'admin_farmacia', 'farmaceutico'},
-        'centro': {'centro', 'usuario_normal', 'solicitante'},
+        # FLUJO V2: Incluir roles jerárquicos del centro
+        'centro': {'centro', 'usuario_normal', 'solicitante', 'medico', 'administrador_centro', 'director_centro', 'usuario_centro'},
         'vista': {'vista', 'usuario_vista'},
     }
 
