@@ -339,15 +339,24 @@ class IsVistaUserOrAdmin(permissions.BasePermission):
 
 
 class CanViewNotifications(permissions.BasePermission):
-    """Permiso para ver notificaciones."""
+    """Permiso para ver notificaciones.
+    
+    ISS-PERMS FIX: Cualquier usuario autenticado puede ver sus notificaciones.
+    El queryset filtra automáticamente por usuario.
+    """
     def has_permission(self, request, view):
-        return _has_permission(request.user, ['admin', 'farmacia', 'centro', 'vista'], ['VER_NOTIFICACIONES'])
+        # Cualquier usuario autenticado puede ver sus propias notificaciones
+        return request.user and request.user.is_authenticated
 
 
 class CanViewProfile(permissions.BasePermission):
-    """Permiso para ver/editar perfil propio."""
+    """Permiso para ver/editar perfil propio.
+    
+    ISS-PERMS FIX: Cualquier usuario autenticado puede ver su perfil.
+    """
     def has_permission(self, request, view):
-        return _has_permission(request.user, ['admin', 'farmacia', 'centro', 'vista'], ['VER_PERFIL'])
+        # Cualquier usuario autenticado puede ver su propio perfil
+        return request.user and request.user.is_authenticated
 
 
 class CanManageOwnProfile(permissions.BasePermission):
