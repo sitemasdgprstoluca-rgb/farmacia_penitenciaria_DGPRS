@@ -146,8 +146,8 @@ PERMISOS_POR_ROL = {
         'verDonaciones': False,
         'verCentros': False,
         'verUsuarios': False,
-        'verReportes': True,
-        'verTrazabilidad': True,
+        'verReportes': False,  # Centro NO ve reportes
+        'verTrazabilidad': False,  # Centro NO ve trazabilidad
         'verAuditoria': False,
         'verNotificaciones': True,
         'verPerfil': True,
@@ -182,8 +182,8 @@ PERMISOS_POR_ROL = {
         'verDonaciones': False,
         'verCentros': False,
         'verUsuarios': False,
-        'verReportes': True,
-        'verTrazabilidad': True,
+        'verReportes': False,  # Centro NO ve reportes
+        'verTrazabilidad': False,  # Centro NO ve trazabilidad
         'verAuditoria': False,
         'verNotificaciones': True,
         'verPerfil': True,
@@ -217,8 +217,8 @@ PERMISOS_POR_ROL = {
         'verDonaciones': False,
         'verCentros': False,
         'verUsuarios': False,
-        'verReportes': True,
-        'verTrazabilidad': True,
+        'verReportes': False,  # Centro NO ve reportes
+        'verTrazabilidad': False,  # Centro NO ve trazabilidad
         'verAuditoria': False,
         'verNotificaciones': True,
         'verPerfil': True,
@@ -252,8 +252,8 @@ PERMISOS_POR_ROL = {
         'verDonaciones': True,
         'verCentros': True,
         'verUsuarios': True,
-        'verReportes': True,
-        'verTrazabilidad': True,
+        'verReportes': False,  # Solo admin/farmacia pueden ver reportes
+        'verTrazabilidad': False,  # Solo admin/farmacia pueden ver trazabilidad
         'verAuditoria': False,
         'verNotificaciones': True,
         'verPerfil': True,

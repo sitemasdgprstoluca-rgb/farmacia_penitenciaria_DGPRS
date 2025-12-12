@@ -214,7 +214,7 @@ const PERMISOS_POR_ROL = {
     verRequisiciones: true,
     verCentros: true,
     verUsuarios: true,
-    verReportes: true,
+    verReportes: false,  // Restringido: solo farmacia/admin pueden ver reportes
     verTrazabilidad: false,  // Restringido: solo farmacia/admin pueden ver trazabilidad
     verAuditoria: false,  // Restringido: solo farmacia/admin pueden ver auditoría
     verNotificaciones: true,
