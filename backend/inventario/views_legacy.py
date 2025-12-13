@@ -3413,9 +3413,10 @@ class MovimientoViewSet(
         """
         queryset = Movimiento.objects.select_related('lote__producto', 'centro_origen', 'centro_destino', 'usuario')
         
-        # SEGURIDAD: Filtrar por centro segun rol
+        # ISS-019 FIX: Filtrar por centro según rol usando has_global_read_access
+        # que incluye admin, farmacia Y vista para lectura global
         user = self.request.user
-        if not is_farmacia_or_admin(user):
+        if not has_global_read_access(user):
             # Usuario de centro: forzado a su centro
             user_centro = get_user_centro(user)
             if user_centro:
@@ -4074,6 +4075,19 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             queryset = queryset.exclude(estado__in=['borrador', 'pendiente_admin', 'pendiente_director'])
             filter_applied = True
         
+        # ISS-019 FIX: 2.5 Rol Vista (Auditoría/Control): Lectura global para trazabilidad
+        elif rol == 'vista':
+            # Vista puede ver todo para auditoría, sin requerir centro asignado
+            # Excluir borradores (no son documentos oficiales aún)
+            queryset = queryset.exclude(estado='borrador')
+            AuditLogger.log_privileged_access(
+                user,
+                'requisicion',
+                action='list_audit',
+                details={'rol': 'vista', 'acceso_global': True}
+            )
+            filter_applied = True  # Marca como filtrado (excluyó borradores)
+        
         # 3. Usuarios de Centros Penitenciarios
         else:
             user_centro = self._user_centro(user)
@@ -4103,13 +4117,13 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             elif rol == 'director_centro':
                 queryset = queryset.exclude(estado='borrador')
             
-            # 3.4 Vista/Centro genérico: Ve todo del centro (lectura)
+            # 3.4 Centro genérico: Ve todo del centro (lectura)
             # else: ya está filtrado por centro
             filter_applied = True
         
         # Aplicar filtros adicionales de query params
-        # Admin/farmacia pueden filtrar por centro específico
-        if user.is_superuser or rol in ['admin', 'farmacia']:
+        # ISS-019 FIX: Admin/farmacia/vista pueden filtrar por centro específico
+        if user.is_superuser or rol in ['admin', 'farmacia', 'vista']:
             centro_param = self.request.query_params.get('centro')
             if centro_param:
                 queryset = queryset.filter(
