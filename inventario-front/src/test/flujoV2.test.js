@@ -38,33 +38,40 @@ describe('Constantes FLUJO V2', () => {
       expect(TRANSICIONES_REQUISICION.borrador).toEqual(['pendiente_admin', 'cancelada']);
     });
     
-    it('pendiente_admin puede ir a pendiente_director, rechazada o devuelta', () => {
+    it('pendiente_admin puede ir a pendiente_director, rechazada o devuelta (sin cancelada)', () => {
       expect(TRANSICIONES_REQUISICION.pendiente_admin).toContain('pendiente_director');
       expect(TRANSICIONES_REQUISICION.pendiente_admin).toContain('rechazada');
       expect(TRANSICIONES_REQUISICION.pendiente_admin).toContain('devuelta');
+      // ISS-TRANSICIONES FIX: pendiente_admin NO puede cancelarse según spec
+      expect(TRANSICIONES_REQUISICION.pendiente_admin).not.toContain('cancelada');
     });
     
-    it('pendiente_director puede ir a enviada, rechazada o devuelta', () => {
+    it('pendiente_director puede ir a enviada, rechazada o devuelta (sin cancelada)', () => {
       expect(TRANSICIONES_REQUISICION.pendiente_director).toContain('enviada');
       expect(TRANSICIONES_REQUISICION.pendiente_director).toContain('rechazada');
       expect(TRANSICIONES_REQUISICION.pendiente_director).toContain('devuelta');
+      // ISS-TRANSICIONES FIX: pendiente_director NO puede cancelarse según spec
+      expect(TRANSICIONES_REQUISICION.pendiente_director).not.toContain('cancelada');
     });
     
-    it('enviada puede ir a en_revision o rechazada (ISS-001: no directo a autorizada)', () => {
+    it('enviada puede ir a en_revision, autorizada o rechazada (spec)', () => {
       expect(TRANSICIONES_REQUISICION.enviada).toContain('en_revision');
       expect(TRANSICIONES_REQUISICION.enviada).toContain('rechazada');
-      // ISS-001 FIX: enviada NO puede ir directo a autorizada, debe pasar por en_revision
-      expect(TRANSICIONES_REQUISICION.enviada).not.toContain('autorizada');
+      // ISS-TRANSICIONES FIX: enviada SÍ puede ir directo a autorizada según spec
+      expect(TRANSICIONES_REQUISICION.enviada).toContain('autorizada');
+      // Sin cancelada según spec
+      expect(TRANSICIONES_REQUISICION.enviada).not.toContain('cancelada');
     });
     
     it('surtida solo puede ir a entregada o vencida', () => {
       expect(TRANSICIONES_REQUISICION.surtida).toEqual(['entregada', 'vencida']);
     });
     
-    it('devuelta puede reenviar a borrador o cancelar', () => {
-      // ISS-001 FIX: devuelta regresa a borrador para que médico corrija
-      expect(TRANSICIONES_REQUISICION.devuelta).toContain('borrador');
+    it('devuelta puede reenviar a pendiente_admin o cancelar (spec)', () => {
+      // ISS-TRANSICIONES FIX: devuelta regresa a pendiente_admin (NO borrador) según spec
+      expect(TRANSICIONES_REQUISICION.devuelta).toContain('pendiente_admin');
       expect(TRANSICIONES_REQUISICION.devuelta).toContain('cancelada');
+      expect(TRANSICIONES_REQUISICION.devuelta).not.toContain('borrador');
     });
   });
   

@@ -292,23 +292,32 @@ export const REQUISICION_ESTADOS = {
 export const REQUISICION_ESTADOS_OPTIONS = Object.values(REQUISICION_ESTADOS);
 
 // FLUJO V2: Transiciones permitidas por estado
-// ISS-FIX: 'cancelada' agregado a todos los estados no-finales (excepto 'surtida' que no puede cancelarse)
+// ISS-TRANSICIONES FIX: Alineado con FLUJO_REQUISICIONES_V2.md especificación
 export const TRANSICIONES_REQUISICION = {
+  // Centro Penitenciario
   borrador: ['pendiente_admin', 'cancelada'],
-  pendiente_admin: ['pendiente_director', 'rechazada', 'devuelta', 'cancelada'],
-  pendiente_director: ['enviada', 'rechazada', 'devuelta', 'cancelada'],
-  enviada: ['en_revision', 'autorizada', 'rechazada', 'cancelada'],
-  en_revision: ['autorizada', 'rechazada', 'devuelta', 'cancelada'],
+  pendiente_admin: ['pendiente_director', 'rechazada', 'devuelta'],  // Sin cancelada (spec)
+  pendiente_director: ['enviada', 'rechazada', 'devuelta'],  // Sin cancelada (spec)
+  
+  // Farmacia Central
+  enviada: ['en_revision', 'autorizada', 'rechazada'],  // Sin cancelada (spec)
+  en_revision: ['autorizada', 'rechazada', 'devuelta'],  // Sin cancelada (spec)
   autorizada: ['en_surtido', 'surtida', 'cancelada'],
   en_surtido: ['surtida', 'cancelada'],
-  parcial: ['surtida', 'cancelada'],
-  surtida: ['entregada', 'vencida'],
+  
+  surtida: ['entregada', 'vencida'],  // NO puede cancelarse
   devuelta: ['pendiente_admin', 'cancelada'],
+  
   // Estados finales
   entregada: [],
   rechazada: [],
   vencida: [],
   cancelada: [],
+};
+
+// Estado interno de surtido parcial (manejado internamente)
+export const TRANSICIONES_SURTIDO_INTERNO = {
+  parcial: ['surtida', 'cancelada'],
 };
 
 // FLUJO V2: Estados finales (no pueden cambiar)

@@ -173,22 +173,26 @@ REQUISICION_GRUPOS_ESTADO = {
 
 # Transiciones de estado válidas (para validación en backend)
 # FLUJO V2: Definición de transiciones permitidas
-# ISS-001 FIX (audit4): autorizada → en_surtido OBLIGATORIO (no saltar a surtida)
-# ISS-002 FIX (audit4): cancelada con validación de movimientos pendientes
+# ALINEADO con FLUJO_REQUISICIONES_V2.md especificación
+# ISS-TRANSICIONES FIX: Corregir diferencias entre especificación y código
 TRANSICIONES_REQUISICION = {
+    # Centro Penitenciario
     'borrador': ['pendiente_admin', 'cancelada'],
-    'pendiente_admin': ['pendiente_director', 'rechazada', 'devuelta', 'cancelada'],
-    'pendiente_director': ['enviada', 'rechazada', 'devuelta', 'cancelada'],
-    'enviada': ['en_revision', 'rechazada', 'cancelada'],  # ISS-001: Quitar autorizada directa
-    'en_revision': ['autorizada', 'rechazada', 'devuelta', 'cancelada'],
-    # ISS-001 FIX: autorizada SOLO puede ir a en_surtido, NO a surtida directamente
-    'autorizada': ['en_surtido', 'cancelada'],
-    'en_surtido': ['surtida', 'parcial', 'cancelada'],
-    'parcial': ['en_surtido', 'surtida', 'cancelada'],
+    'pendiente_admin': ['pendiente_director', 'rechazada', 'devuelta'],  # Sin cancelada (spec)
+    'pendiente_director': ['enviada', 'rechazada', 'devuelta'],  # Sin cancelada (spec)
+    
+    # Farmacia Central
+    'enviada': ['en_revision', 'autorizada', 'rechazada'],  # ISS-FIX: Agregar autorizada (spec), quitar cancelada
+    'en_revision': ['autorizada', 'rechazada', 'devuelta'],  # Sin cancelada (spec)
+    'autorizada': ['en_surtido', 'surtida', 'cancelada'],  # ISS-FIX: Agregar surtida (spec)
+    'en_surtido': ['surtida', 'cancelada'],  # Sin parcial (spec) - parcial es interno
+    
     # ISS-002 FIX: surtida NO puede cancelarse (ya hay movimientos de inventario)
     'surtida': ['entregada', 'vencida'],
-    # Devolución: regresa a borrador para que médico corrija y reinicie ciclo completo
-    'devuelta': ['borrador', 'cancelada'],
+    
+    # Devolución: regresa a pendiente_admin (spec dice pendiente_admin, NO borrador)
+    'devuelta': ['pendiente_admin', 'cancelada'],
+    
     # Estados finales - no pueden cambiar
     'entregada': [],
     'rechazada': [],
@@ -196,8 +200,31 @@ TRANSICIONES_REQUISICION = {
     'cancelada': [],
 }
 
-# ISS-002 FIX (audit4): Estados que NO permiten cancelación por tener movimientos
-ESTADOS_SIN_CANCELACION = ['surtida', 'entregada', 'parcial']
+# ISS-TRANSICIONES FIX: parcial es estado interno de surtido, no en transiciones principales
+# Se maneja dentro del proceso de surtido como estado intermedio
+ESTADOS_SURTIDO_INTERNO = ['parcial']
+
+# Transiciones extendidas que incluyen parcial (para validación interna de surtido)
+TRANSICIONES_SURTIDO_EXTENDIDAS = {
+    'en_surtido': ['surtida', 'parcial', 'cancelada'],
+    'parcial': ['en_surtido', 'surtida', 'cancelada'],
+}
+
+# ISS-TRANSICIONES FIX: Estados que NO permiten cancelación según especificación
+# La spec solo permite cancelar desde: borrador, autorizada, en_surtido, devuelta
+# Estos estados NO tienen cancelada en sus transiciones válidas:
+ESTADOS_SIN_CANCELACION = [
+    'pendiente_admin',      # Spec: solo pendiente_director, rechazada, devuelta
+    'pendiente_director',   # Spec: solo enviada, rechazada, devuelta
+    'enviada',              # Spec: solo en_revision, autorizada, rechazada
+    'en_revision',          # Spec: solo autorizada, rechazada, devuelta
+    'surtida',              # Spec: solo entregada, vencida (ya tiene movimientos)
+    'entregada',            # Estado final
+    'rechazada',            # Estado final
+    'vencida',              # Estado final
+    'cancelada',            # Estado final
+    'parcial',              # Estado interno de surtido
+]
 
 # =============================================================================
 # ISS-005 FIX: CONSTANTES DE STOCK Y ESTADOS - FUENTE ÚNICA DE VERDAD
