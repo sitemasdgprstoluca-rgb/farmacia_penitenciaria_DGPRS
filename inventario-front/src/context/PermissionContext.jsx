@@ -3,8 +3,9 @@ import { PermissionContext } from './contexts';
 import apiClient, { authAPI } from '../services/api';
 import { setAccessToken, hasAccessToken, migrateFromLocalStorage } from '../services/tokenManager';
 // ISS-009 FIX: Usar lógica de roles centralizada
+// ISS-AUDIT FIX: getRolPrincipal importado como getRolPrincipalUtil, función local getRolPrincipal para navegación
 import { 
-  getRolPrincipal as getRolFromUserCentralizado, 
+  getRolPrincipal as getRolPrincipalUtil, 
   esAdmin, 
   esFarmacia, 
   esFarmaciaAdmin as esFarmaciaAdminUtil, 
@@ -259,6 +260,154 @@ const PERMISOS_POR_ROL = {
     // Permisos de notificaciones
     gestionarNotificaciones: false,
   },
+  // ISS-AUDIT FIX: Roles específicos del centro penitenciario (FLUJO V2)
+  // Estos roles tienen permisos diferentes entre sí para el flujo jerárquico
+  MEDICO: {
+    verDashboard: true,
+    verProductos: true,  // Ve productos para crear requisiciones
+    verLotes: false,     // Médico no gestiona lotes
+    verRequisiciones: true,
+    verCentros: false,
+    verUsuarios: false,
+    verReportes: false,  // ISS-AUDIT: Centro NO ve reportes
+    verTrazabilidad: false,  // ISS-AUDIT: Centro NO ve trazabilidad
+    verAuditoria: false,
+    verNotificaciones: true,
+    verPerfil: true,
+    verMovimientos: false,  // Médico no gestiona movimientos
+    verDonaciones: false,
+    esSuperusuario: false,
+    configurarTema: false,
+    // FLUJO V2: Médico CREA requisiciones y CONFIRMA entrega
+    crearRequisicion: true,
+    editarRequisicion: true,  // Solo borradores propios
+    eliminarRequisicion: true,  // Solo borradores propios
+    enviarRequisicion: true,  // Envía a Administrador de Centro
+    autorizarRequisicion: false,
+    rechazarRequisicion: false,
+    surtirRequisicion: false,
+    cancelarRequisicion: true,
+    confirmarRecepcion: true,  // Médico confirma recepción
+    descargarHojaRecoleccion: true,
+    gestionUsuarios: false,
+    // FLUJO V2: Permisos jerárquicos específicos
+    autorizarAdmin: false,      // Médico NO autoriza como admin
+    autorizarDirector: false,   // Médico NO autoriza como director
+    recibirFarmacia: false,
+    autorizarFarmacia: false,
+    // Lotes - Solo lectura
+    crearLote: false,
+    editarLote: false,
+    eliminarLote: false,
+    exportarLotes: false,
+    importarLotes: false,
+    // Movimientos - Sin acceso
+    crearMovimiento: false,
+    exportarMovimientos: false,
+    // Productos - Solo lectura
+    crearProducto: false,
+    editarProducto: false,
+    eliminarProducto: false,
+    exportarProductos: false,
+    importarProductos: false,
+    gestionarNotificaciones: false,
+  },
+  ADMINISTRADOR_CENTRO: {
+    verDashboard: true,
+    verProductos: true,
+    verLotes: false,
+    verRequisiciones: true,
+    verCentros: false,
+    verUsuarios: false,
+    verReportes: false,  // ISS-AUDIT: Centro NO ve reportes
+    verTrazabilidad: false,  // ISS-AUDIT: Centro NO ve trazabilidad
+    verAuditoria: false,
+    verNotificaciones: true,
+    verPerfil: true,
+    verMovimientos: false,
+    verDonaciones: false,
+    esSuperusuario: false,
+    configurarTema: false,
+    // FLUJO V2: Administrador AUTORIZA y CONFIRMA
+    crearRequisicion: false,  // No crea, solo autoriza
+    editarRequisicion: false,
+    eliminarRequisicion: false,
+    enviarRequisicion: false,
+    autorizarRequisicion: false,
+    rechazarRequisicion: true,  // Puede rechazar/devolver
+    surtirRequisicion: false,
+    cancelarRequisicion: false,
+    confirmarRecepcion: true,
+    descargarHojaRecoleccion: true,
+    gestionUsuarios: false,
+    // FLUJO V2: Admin de Centro AUTORIZA en su nivel
+    autorizarAdmin: true,       // SÍ autoriza como admin de centro
+    autorizarDirector: false,   // NO autoriza como director
+    recibirFarmacia: false,
+    autorizarFarmacia: false,
+    // Sin acceso a lotes/movimientos/productos
+    crearLote: false,
+    editarLote: false,
+    eliminarLote: false,
+    exportarLotes: false,
+    importarLotes: false,
+    crearMovimiento: false,
+    exportarMovimientos: false,
+    crearProducto: false,
+    editarProducto: false,
+    eliminarProducto: false,
+    exportarProductos: false,
+    importarProductos: false,
+    gestionarNotificaciones: false,
+  },
+  DIRECTOR_CENTRO: {
+    verDashboard: true,
+    verProductos: true,
+    verLotes: false,
+    verRequisiciones: true,
+    verCentros: false,
+    verUsuarios: false,
+    verReportes: false,  // ISS-AUDIT: Centro NO ve reportes
+    verTrazabilidad: false,  // ISS-AUDIT: Centro NO ve trazabilidad
+    verAuditoria: false,
+    verNotificaciones: true,
+    verPerfil: true,
+    verMovimientos: false,
+    verDonaciones: false,
+    esSuperusuario: false,
+    configurarTema: false,
+    // FLUJO V2: Director AUTORIZA final del centro
+    crearRequisicion: false,
+    editarRequisicion: false,
+    eliminarRequisicion: false,
+    enviarRequisicion: false,
+    autorizarRequisicion: false,
+    rechazarRequisicion: true,  // Puede rechazar/devolver
+    surtirRequisicion: false,
+    cancelarRequisicion: false,
+    confirmarRecepcion: true,
+    descargarHojaRecoleccion: true,
+    gestionUsuarios: false,
+    // FLUJO V2: Director AUTORIZA en su nivel
+    autorizarAdmin: false,      // NO autoriza como admin
+    autorizarDirector: true,    // SÍ autoriza como director
+    recibirFarmacia: false,
+    autorizarFarmacia: false,
+    // Sin acceso a lotes/movimientos/productos
+    crearLote: false,
+    editarLote: false,
+    eliminarLote: false,
+    exportarLotes: false,
+    importarLotes: false,
+    crearMovimiento: false,
+    exportarMovimientos: false,
+    crearProducto: false,
+    editarProducto: false,
+    eliminarProducto: false,
+    exportarProductos: false,
+    importarProductos: false,
+    gestionarNotificaciones: false,
+  },
   SIN_ROL: {
     verDashboard: false,
     verProductos: false,
@@ -311,9 +460,64 @@ const PERMISOS_POR_ROL = {
   },
 };
 
-// ISS-009 FIX: Usar lógica centralizada de roles.js
+/**
+ * ISS-AUDIT FIX: Obtiene el rol específico para mapeo de permisos.
+ * 
+ * A diferencia de getRolPrincipal (para navegación), esta función
+ * devuelve el rol específico del centro (MEDICO, ADMINISTRADOR_CENTRO, 
+ * DIRECTOR_CENTRO) para que calcularPermisos() use los permisos correctos.
+ */
 const getRolFromUser = (userData, userGroups) => {
-  return getRolFromUserCentralizado(userData, userGroups);
+  if (!userData) return 'SIN_ROL';
+  
+  const isSuperuser = userData.is_superuser === true;
+  if (isSuperuser) return 'ADMIN';
+  
+  // ISS-AUDIT FIX: Usar rol_efectivo o rol del usuario directamente
+  const rolRaw = (userData.rol_efectivo || userData.rol || '').toLowerCase();
+  
+  // Mapear roles específicos del centro a sus claves de permisos
+  const rolMapping = {
+    // Admin roles
+    'admin': 'ADMIN',
+    'admin_sistema': 'ADMIN',
+    'superusuario': 'ADMIN',
+    // Farmacia roles
+    'farmacia': 'FARMACIA',
+    'admin_farmacia': 'FARMACIA',
+    'farmaceutico': 'FARMACIA',
+    'usuario_farmacia': 'FARMACIA',
+    // Roles específicos del centro (FLUJO V2) - Usar su propio mapeo
+    'medico': 'MEDICO',
+    'administrador_centro': 'ADMINISTRADOR_CENTRO',
+    'director_centro': 'DIRECTOR_CENTRO',
+    // Centro genérico
+    'centro': 'CENTRO',
+    'usuario_centro': 'CENTRO',
+    'usuario_normal': 'CENTRO',
+    'solicitante': 'CENTRO',
+    // Vista
+    'vista': 'VISTA',
+    'usuario_vista': 'VISTA',
+  };
+  
+  if (rolMapping[rolRaw]) {
+    return rolMapping[rolRaw];
+  }
+  
+  // Verificar por grupos
+  const groupNames = (userGroups || []).map((g) => ((g.name || g) + '').toUpperCase());
+  if (groupNames.includes('FARMACIA_ADMIN') || groupNames.includes('FARMACEUTICO')) return 'FARMACIA';
+  if (groupNames.includes('CENTRO_USER') || groupNames.includes('SOLICITANTE')) return 'CENTRO';
+  if (groupNames.includes('VISTA_USER')) return 'VISTA';
+  
+  // Si tiene centro asignado pero sin rol específico, es CENTRO genérico
+  if (userData.centro || userData.centro_id) {
+    return 'CENTRO';
+  }
+  
+  // Default: VISTA (más seguro)
+  return 'VISTA';
 };
 
 const calcularPermisos = (userData, userGroups) => {

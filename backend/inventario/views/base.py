@@ -548,16 +548,19 @@ def validar_filas_excel(ws):
 
 # ============================================================================
 # HELPERS DE SEGURIDAD - Filtrado por centro para roles no-admin
+# ISS-AUDIT FIX: Separación de funciones para claridad y seguridad
 # ============================================================================
 
 def is_farmacia_or_admin(user):
     """
-    Verifica si el usuario es farmacia, admin o vista (puede ver datos globales).
+    ISS-AUDIT FIX: Verifica si el usuario es farmacia o admin (roles de escritura).
     
-    Roles privilegiados con acceso global:
+    IMPORTANTE: Esta función NO incluye 'vista' - usar has_global_read_access()
+    para operaciones de solo lectura que incluyan vista.
+    
+    Roles con acceso de escritura:
     - admin: admin_sistema, superusuario, administrador
     - farmacia: farmacia, admin_farmacia, farmaceutico, usuario_farmacia
-    - vista: vista, usuario_vista (solo lectura global)
     """
     if not user or not user.is_authenticated:
         return False
@@ -566,24 +569,53 @@ def is_farmacia_or_admin(user):
     
     rol = (getattr(user, 'rol', '') or '').lower()
     
-    # Roles con acceso global (pueden ver todo)
-    ROLES_GLOBALES = {
+    # ISS-AUDIT FIX: Solo roles admin y farmacia (NO vista)
+    ROLES_ESCRITURA = {
         # Admin
         'admin', 'admin_sistema', 'superusuario', 'administrador',
         # Farmacia
         'farmacia', 'admin_farmacia', 'farmaceutico', 'usuario_farmacia',
-        # Vista (solo lectura pero global)
-        'vista', 'usuario_vista',
     }
     
-    if rol in ROLES_GLOBALES:
+    if rol in ROLES_ESCRITURA:
         return True
     
     # Verificar grupos (por si el rol no esta en campo directo)
     group_names = {g.name.upper() for g in user.groups.all()}
-    GRUPOS_GLOBALES = {'FARMACIA_ADMIN', 'FARMACEUTICO', 'VISTA_USER'}
+    GRUPOS_ESCRITURA = {'FARMACIA_ADMIN', 'FARMACEUTICO'}
     
-    return bool(group_names & GRUPOS_GLOBALES)
+    return bool(group_names & GRUPOS_ESCRITURA)
+
+
+def has_global_read_access(user):
+    """
+    ISS-AUDIT FIX: Verifica si el usuario puede leer datos globales (incluye vista).
+    
+    Usar esta función para operaciones de SOLO LECTURA donde el rol vista
+    debe tener acceso.
+    
+    Roles con lectura global:
+    - admin, farmacia (heredan de is_farmacia_or_admin)
+    - vista: vista, usuario_vista (solo lectura)
+    """
+    # Admin y farmacia siempre tienen acceso de lectura
+    if is_farmacia_or_admin(user):
+        return True
+    
+    if not user or not user.is_authenticated:
+        return False
+    
+    rol = (getattr(user, 'rol', '') or '').lower()
+    
+    # Roles de solo lectura global
+    ROLES_VISTA = {'vista', 'usuario_vista'}
+    
+    if rol in ROLES_VISTA:
+        return True
+    
+    # Verificar grupos
+    group_names = {g.name.upper() for g in user.groups.all()}
+    return 'VISTA_USER' in group_names
 
 
 def get_user_centro(user):

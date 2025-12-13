@@ -230,6 +230,7 @@ def _has_role(user, roles):
     """Valida roles por campo rol o por grupos heredados.
     
     ISS-PERMS FIX: Ahora infiere rol si el campo está vacío.
+    ISS-AUDIT FIX: Usa RoleHelper.ROLE_ALIASES como única fuente de verdad.
     """
     if not user or not getattr(user, 'is_authenticated', False):
         return False
@@ -241,17 +242,11 @@ def _has_role(user, roles):
     normalized = _infer_role_from_user(user)
     group_names = set(g.name.upper() for g in user.groups.all())
 
-    role_aliases = {
-        'admin': {'admin_sistema', 'superusuario', 'admin'},
-        'farmacia': {'farmacia', 'admin_farmacia', 'farmaceutico'},
-        # FLUJO V2: Incluir roles jerárquicos del centro
-        'centro': {'centro', 'usuario_normal', 'solicitante', 'medico', 'administrador_centro', 'director_centro', 'usuario_centro'},
-        'vista': {'vista', 'usuario_vista'},
-    }
-
+    # ISS-AUDIT FIX: Usar RoleHelper.ROLE_ALIASES como única fuente de verdad
+    # Esto evita duplicación y posibles divergencias
     for role in roles:
         key = role.lower()
-        if normalized in role_aliases.get(key, {key}):
+        if normalized in RoleHelper.ROLE_ALIASES.get(key, {key}):
             return True
         # Revisar grupos con aliases expandidos
         if key == 'admin' and 'FARMACIA_ADMIN' in group_names:
