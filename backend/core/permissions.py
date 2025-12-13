@@ -348,9 +348,20 @@ class IsFarmaciaRole(permissions.BasePermission):
 
 
 class IsCentroRole(permissions.BasePermission):
-    """Usuarios de centro/unidad."""
+    """
+    Usuarios de centro/unidad.
+    
+    ISS-019 FIX: El rol vista tiene acceso de solo lectura para auditoría/controles regulatorios.
+    """
     def has_permission(self, request, view):
-        return _has_permission(request.user, ['admin', 'farmacia', 'centro'], ['CAN_VIEW_ALL_REQUISICIONES'])
+        user = request.user
+        
+        # ISS-019 FIX: Para lectura, permitir también al rol vista (auditoría)
+        if request.method in permissions.SAFE_METHODS:
+            return _has_permission(user, ['admin', 'farmacia', 'centro', 'vista'], ['CAN_VIEW_ALL_REQUISICIONES'])
+        
+        # Para escritura, mantener restricción original (sin vista)
+        return _has_permission(user, ['admin', 'farmacia', 'centro'], ['CAN_VIEW_ALL_REQUISICIONES'])
 
 
 class IsCentroCanManageInventory(permissions.BasePermission):
@@ -369,6 +380,7 @@ class IsCentroCanManageInventory(permissions.BasePermission):
     
     Para operaciones de lectura (GET):
     - Todos los roles de centro pueden leer (incluyendo médico si configurado)
+    - ISS-019 FIX: vista puede leer para auditoría/trazabilidad
     """
     def has_permission(self, request, view):
         user = request.user
@@ -386,8 +398,8 @@ class IsCentroCanManageInventory(permissions.BasePermission):
             # Usar el helper centralizado
             return RoleHelper.can_manage_inventory(user)
         
-        # Para lectura, permitir a roles de centro (pero no vista)
-        return _has_permission(user, ['admin', 'farmacia', 'centro'], ['CAN_VIEW_ALL_REQUISICIONES'])
+        # ISS-019 FIX: Para lectura, permitir a roles de centro y vista (auditoría)
+        return _has_permission(user, ['admin', 'farmacia', 'centro', 'vista'], ['CAN_VIEW_ALL_REQUISICIONES'])
 
 
 class IsFarmaciaAdminOrVistaReadOnly(permissions.BasePermission):
