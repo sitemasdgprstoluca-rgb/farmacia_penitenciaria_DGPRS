@@ -19,6 +19,7 @@ import { toast } from 'react-hot-toast';
 
 /**
  * Mapeo de acciones a endpoints y permisos requeridos
+ * ISS-PERFILES FIX: Incluir roles legacy (usuario_centro, usuario_normal, admin_sistema, superusuario)
  */
 const ACCIONES_FLUJO = {
   enviar_admin: {
@@ -26,7 +27,7 @@ const ACCIONES_FLUJO = {
     label: 'Enviar a Administrador',
     estadosPermitidos: ['borrador'],
     estadoResultante: 'pendiente_admin',
-    rolesPermitidos: ['medico', 'admin', 'farmacia'],
+    rolesPermitidos: ['medico', 'usuario_centro', 'usuario_normal', 'admin', 'admin_sistema', 'superusuario', 'farmacia'],
     confirmacion: true,
     color: 'blue',
   },
@@ -35,7 +36,7 @@ const ACCIONES_FLUJO = {
     label: 'Autorizar (Admin)',
     estadosPermitidos: ['pendiente_admin'],
     estadoResultante: 'pendiente_director',
-    rolesPermitidos: ['administrador_centro', 'admin'],
+    rolesPermitidos: ['administrador_centro', 'admin', 'admin_sistema', 'superusuario'],
     confirmacion: true,
     color: 'green',
   },
@@ -44,7 +45,7 @@ const ACCIONES_FLUJO = {
     label: 'Autorizar (Director)',
     estadosPermitidos: ['pendiente_director'],
     estadoResultante: 'enviada',
-    rolesPermitidos: ['director_centro', 'admin'],
+    rolesPermitidos: ['director_centro', 'admin', 'admin_sistema', 'superusuario'],
     confirmacion: true,
     color: 'green',
   },
@@ -53,7 +54,7 @@ const ACCIONES_FLUJO = {
     label: 'Recibir en Farmacia',
     estadosPermitidos: ['enviada'],
     estadoResultante: 'en_revision',
-    rolesPermitidos: ['farmacia', 'admin', 'admin_farmacia'],
+    rolesPermitidos: ['farmacia', 'admin', 'admin_farmacia', 'admin_sistema', 'superusuario'],
     confirmacion: true,
     color: 'cyan',
   },
@@ -62,7 +63,7 @@ const ACCIONES_FLUJO = {
     label: 'Autorizar y Asignar Fecha',
     estadosPermitidos: ['en_revision', 'enviada'],
     estadoResultante: 'autorizada',
-    rolesPermitidos: ['farmacia', 'admin', 'admin_farmacia'],
+    rolesPermitidos: ['farmacia', 'admin', 'admin_farmacia', 'admin_sistema', 'superusuario'],
     requiereFechaRecoleccion: true,
     confirmacion: true,
     color: 'indigo',
@@ -72,7 +73,7 @@ const ACCIONES_FLUJO = {
     label: 'Surtir',
     estadosPermitidos: ['autorizada', 'parcial'],
     estadoResultante: 'surtida',
-    rolesPermitidos: ['farmacia', 'admin', 'admin_farmacia'],
+    rolesPermitidos: ['farmacia', 'admin', 'admin_farmacia', 'admin_sistema', 'superusuario'],
     confirmacion: true,
     color: 'violet',
   },
@@ -81,7 +82,7 @@ const ACCIONES_FLUJO = {
     label: 'Confirmar Entrega',
     estadosPermitidos: ['surtida'],
     estadoResultante: 'entregada',
-    rolesPermitidos: ['medico', 'centro', 'admin', 'farmacia'],
+    rolesPermitidos: ['medico', 'centro', 'usuario_centro', 'usuario_normal', 'admin', 'admin_sistema', 'superusuario', 'farmacia'],
     requiereLugarEntrega: true,
     confirmacion: true,
     color: 'green',
@@ -91,7 +92,7 @@ const ACCIONES_FLUJO = {
     label: 'Devolver al Centro',
     estadosPermitidos: ['pendiente_admin', 'pendiente_director', 'en_revision'],
     estadoResultante: 'devuelta',
-    rolesPermitidos: ['administrador_centro', 'director_centro', 'farmacia', 'admin'],
+    rolesPermitidos: ['administrador_centro', 'director_centro', 'farmacia', 'admin', 'admin_farmacia', 'admin_sistema', 'superusuario'],
     requiereMotivo: true,
     confirmacion: true,
     color: 'amber',
@@ -101,7 +102,7 @@ const ACCIONES_FLUJO = {
     label: 'Reenviar',
     estadosPermitidos: ['devuelta'],
     estadoResultante: 'pendiente_admin',
-    rolesPermitidos: ['medico', 'centro', 'admin'],
+    rolesPermitidos: ['medico', 'centro', 'usuario_centro', 'usuario_normal', 'admin', 'admin_sistema', 'superusuario'],
     confirmacion: true,
     color: 'blue',
   },
@@ -110,7 +111,7 @@ const ACCIONES_FLUJO = {
     label: 'Rechazar',
     estadosPermitidos: ['pendiente_admin', 'pendiente_director', 'enviada', 'en_revision'],
     estadoResultante: 'rechazada',
-    rolesPermitidos: ['administrador_centro', 'director_centro', 'farmacia', 'admin'],
+    rolesPermitidos: ['administrador_centro', 'director_centro', 'farmacia', 'admin', 'admin_farmacia', 'admin_sistema', 'superusuario'],
     requiereMotivo: true,
     confirmacion: true,
     color: 'red',
@@ -121,7 +122,7 @@ const ACCIONES_FLUJO = {
     // ISS-FIX: Alineado con backend - permite cancelar desde cualquier estado EXCEPTO finales y surtida
     estadosPermitidos: ['borrador', 'pendiente_admin', 'pendiente_director', 'enviada', 'en_revision', 'autorizada', 'en_surtido', 'devuelta', 'parcial'],
     estadoResultante: 'cancelada',
-    rolesPermitidos: ['medico', 'centro', 'farmacia', 'admin'],
+    rolesPermitidos: ['medico', 'centro', 'usuario_centro', 'usuario_normal', 'farmacia', 'admin', 'admin_sistema', 'superusuario'],
     requiereMotivo: false,
     confirmacion: true,
     color: 'gray',
@@ -146,8 +147,10 @@ export function useRequisicionFlujo() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   
+  // ISS-DIRECTOR FIX: Usar rol_efectivo del backend si está disponible
+  // rol_efectivo ya incluye inferencia de rol cuando el campo está vacío
   const rolUsuario = useMemo(() => {
-    const rol = user?.rol?.toLowerCase() || getRolPrincipal()?.toLowerCase() || '';
+    const rol = (user?.rol_efectivo || user?.rol || '').toLowerCase() || getRolPrincipal()?.toLowerCase() || '';
     return rol;
   }, [user, getRolPrincipal]);
   

@@ -114,8 +114,8 @@ export function AuthProvider({ children }) {
   
   const hasRole = (role) => {
     if (!user) return false;
-    // Normalize both to lowercase for comparison
-    const userRole = (user.rol || '').toLowerCase();
+    // ISS-DIRECTOR FIX: Usar rol_efectivo del backend que incluye inferencia de rol
+    const userRole = (user.rol_efectivo || user.rol || '').toLowerCase();
     const targetRole = role.toLowerCase();
     // Admin roles have access to everything
     if (ADMIN_ROLES.includes(userRole)) return true;
@@ -124,7 +124,8 @@ export function AuthProvider({ children }) {
 
   const hasAnyRole = (roles) => {
     if (!user) return false;
-    const userRole = (user.rol || '').toLowerCase();
+    // ISS-DIRECTOR FIX: Usar rol_efectivo del backend que incluye inferencia de rol
+    const userRole = (user.rol_efectivo || user.rol || '').toLowerCase();
     // Admin roles have access to everything
     if (ADMIN_ROLES.includes(userRole)) return true;
     return roles.some(r => r.toLowerCase() === userRole);
@@ -159,7 +160,8 @@ export function AuthProvider({ children }) {
     }
     
     // Fallback: admins tienen acceso a todo
-    const userRole = (user.rol || '').toLowerCase();
+    // ISS-DIRECTOR FIX: Usar rol_efectivo del backend que incluye inferencia de rol
+    const userRole = (user.rol_efectivo || user.rol || '').toLowerCase();
     if (ADMIN_ROLES.includes(userRole)) return true;
     
     return false;

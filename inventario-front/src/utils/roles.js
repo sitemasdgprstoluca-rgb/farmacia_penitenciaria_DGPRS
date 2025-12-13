@@ -207,18 +207,19 @@ export const puedeEjecutarAccionFlujo = (user, accion) => {
   
   const rol = getRolEfectivo(user);
   
+  // ISS-PERFILES FIX: Incluir roles legacy (usuario_centro, usuario_normal)
   const ACCIONES_POR_ROL = {
-    enviar_admin: ['medico', ...ADMIN_ROLES, ...FARMACIA_ROLES],
+    enviar_admin: ['medico', 'usuario_centro', 'usuario_normal', ...ADMIN_ROLES, ...FARMACIA_ROLES],
     autorizar_admin: ['administrador_centro', ...ADMIN_ROLES],
     autorizar_director: ['director_centro', ...ADMIN_ROLES],
     recibir_farmacia: [...FARMACIA_ROLES, ...ADMIN_ROLES],
     autorizar_farmacia: [...FARMACIA_ROLES, ...ADMIN_ROLES],
     surtir: [...FARMACIA_ROLES, ...ADMIN_ROLES],
-    confirmar_entrega: ['medico', 'centro', ...ADMIN_ROLES, ...FARMACIA_ROLES],
+    confirmar_entrega: ['medico', 'centro', 'usuario_centro', 'usuario_normal', ...ADMIN_ROLES, ...FARMACIA_ROLES],
     devolver: ['administrador_centro', 'director_centro', ...FARMACIA_ROLES, ...ADMIN_ROLES],
-    reenviar: ['medico', 'centro', ...ADMIN_ROLES],
+    reenviar: ['medico', 'centro', 'usuario_centro', 'usuario_normal', ...ADMIN_ROLES],
     rechazar: ['administrador_centro', 'director_centro', ...FARMACIA_ROLES, ...ADMIN_ROLES],
-    cancelar: ['medico', 'centro', ...FARMACIA_ROLES, ...ADMIN_ROLES],
+    cancelar: ['medico', 'centro', 'usuario_centro', 'usuario_normal', ...FARMACIA_ROLES, ...ADMIN_ROLES],
   };
   
   const rolesPermitidos = ACCIONES_POR_ROL[accion] || [];

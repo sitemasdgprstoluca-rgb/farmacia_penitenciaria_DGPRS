@@ -609,6 +609,64 @@ def get_user_centro(user):
     return getattr(user, 'centro', None) or getattr(getattr(user, 'profile', None), 'centro', None)
 
 
+def _get_rol_efectivo(user):
+    """
+    ISS-DIRECTOR FIX: Obtiene el rol efectivo del usuario para validaciones de flujo.
+    
+    Esta función debe usarse en TODAS las validaciones de permisos del flujo
+    para garantizar consistencia con lo que se envía al frontend.
+    
+    La lógica es idéntica a _resolve_rol en serializers.py pero devuelve
+    el rol en minúsculas para usar con PERMISOS_FLUJO_REQUISICION.
+    
+    IMPORTANTE: Ahora infiere roles específicos (director_centro, administrador_centro, medico)
+    basándose en los permisos personalizados del usuario cuando el campo rol está vacío.
+    
+    Returns:
+        str: Rol normalizado en minúsculas (medico, administrador_centro, director_centro, etc.)
+    """
+    if not user:
+        return 'sin_rol'
+    if user.is_superuser:
+        return 'admin'
+    
+    # Obtener rol del campo usuario
+    rol_campo = (getattr(user, 'rol', '') or '').lower().strip()
+    
+    # Si hay rol en el campo, usarlo directamente
+    if rol_campo and rol_campo not in ['null', 'none', '']:
+        return rol_campo
+    
+    # ISS-DIRECTOR FIX: Inferir rol si el campo está vacío
+    # Esto evita que usuarios con rol vacío pierdan sus permisos específicos
+    
+    # Si es staff pero no superuser, es farmacia
+    if getattr(user, 'is_staff', False):
+        return 'farmacia'
+    
+    # ISS-DIRECTOR FIX: Inferir rol específico por permisos personalizados
+    # Verificar permisos del flujo para roles de centro específicos
+    if getattr(user, 'perm_autorizar_director', None) is True:
+        return 'director_centro'
+    
+    if getattr(user, 'perm_autorizar_admin', None) is True:
+        return 'administrador_centro'
+    
+    if getattr(user, 'perm_crear_requisicion', None) is True:
+        # Usuario con permiso de crear requisiciones y centro = médico
+        centro = getattr(user, 'centro', None) or getattr(user, 'centro_id', None)
+        if centro:
+            return 'medico'
+    
+    # Si tiene centro asignado sin permisos específicos, es usuario de centro genérico
+    centro = getattr(user, 'centro', None) or getattr(user, 'centro_id', None)
+    if centro:
+        return 'centro'
+    
+    # Default: vista (más restrictivo)
+    return 'vista'
+
+
 def invalidar_cache_dashboard(centro_id=None):
     """
     ISS-005: Invalida el caché del dashboard cuando hay cambios en datos.
@@ -3979,6 +4037,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         en el flujo jerárquico.
         
         ISS-006 FIX (audit17): Registro de auditoría para accesos privilegiados.
+        ISS-DIRECTOR FIX: Usa _get_rol_efectivo para consistencia.
         """
         from core.validators import AuditLogger
         
@@ -3995,8 +4054,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         
         filter_applied = False  # ISS-006: Rastrear si se aplica filtro de centro
         
+        # ISS-DIRECTOR FIX: Usar rol efectivo para consistencia con frontend
+        rol = _get_rol_efectivo(user)
+        
         # 1. Superusuario o Admin Global: Ve todo
-        if user.is_superuser or getattr(user, 'rol', '') == 'admin':
+        if user.is_superuser or rol == 'admin':
             # ISS-006 FIX: Registrar acceso privilegiado sin filtro
             AuditLogger.log_privileged_access(
                 user, 
@@ -4007,7 +4069,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             pass  # Sin filtro de centro
         
         # 2. Personal de Farmacia Central: Ve solo lo que ha sido enviado
-        elif getattr(user, 'rol', '') == 'farmacia':
+        elif rol == 'farmacia':
             # Farmacia NO debe ver borradores ni pendientes internos del centro
             queryset = queryset.exclude(estado__in=['borrador', 'pendiente_admin', 'pendiente_director'])
             filter_applied = True
@@ -4016,14 +4078,15 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         else:
             user_centro = self._user_centro(user)
             if not user_centro:
+                # ISS-DIRECTOR FIX: Marcar que no hay centro para validación posterior
+                # El método list() validará esto y retornará 403
+                self._missing_centro = True
                 return Requisicion.objects.none()
             
             # Filtrar por centro del usuario
             queryset = queryset.filter(
                 Q(centro_origen=user_centro) | Q(centro_destino=user_centro)
             )
-            
-            rol = getattr(user, 'rol', '').lower()
             
             # 3.1 Médico: Solo sus propias requisiciones (las que creó)
             if rol == 'medico':
@@ -4046,7 +4109,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         
         # Aplicar filtros adicionales de query params
         # Admin/farmacia pueden filtrar por centro específico
-        if user.is_superuser or getattr(user, 'rol', '') in ['admin', 'farmacia']:
+        if user.is_superuser or rol in ['admin', 'farmacia']:
             centro_param = self.request.query_params.get('centro')
             if centro_param:
                 queryset = queryset.filter(
@@ -4080,6 +4143,42 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             AuditLogger.log_global_query(user, queryset, filter_applied=False)
 
         return queryset.order_by('-fecha_solicitud')
+    
+    def list(self, request, *args, **kwargs):
+        """
+        ISS-DIRECTOR FIX: Override de list para retornar 403 explícito
+        cuando un usuario de centro no tiene centro asignado.
+        
+        Esto evita que se devuelva lista vacía silenciosa, lo que puede
+        ocultar errores de configuración o intentos de acceso indebido.
+        """
+        # Resetear flag
+        self._missing_centro = False
+        
+        # Llamar get_queryset que puede setear _missing_centro
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # Verificar si falta centro
+        if getattr(self, '_missing_centro', False):
+            rol = _get_rol_efectivo(request.user)
+            logger.warning(
+                f"ISS-DIRECTOR: Usuario {request.user.username} (rol={rol}) "
+                f"intentó listar requisiciones sin centro asignado"
+            )
+            return Response({
+                'error': 'Usuario de centro sin centro asignado',
+                'detail': 'Su cuenta está configurada como usuario de centro pero no tiene un centro asignado. Contacte al administrador.',
+                'rol': rol
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Continuar con el list normal
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
     
     def create(self, request, *args, **kwargs):
         """
@@ -4306,9 +4405,10 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 return Response({'error': 'El usuario no tiene centro asignado'}, status=status.HTTP_403_FORBIDDEN)
             if requisicion.centro_id != centro_user.id:
                 return Response({'error': 'No puedes autorizar requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
-        rol = (getattr(request.user, 'rol', '') or '').lower()
-        if not request.user.is_superuser and rol not in ['admin_sistema', 'farmacia', 'admin_farmacia', 'superusuario'] and not request.user.is_staff:
-            return Response({'error': 'No tienes permiso para autorizar requisiciones'}, status=status.HTTP_403_FORBIDDEN)
+        # ISS-DIRECTOR FIX: Usar rol efectivo en lugar de rol campo directo
+        rol_efectivo = _get_rol_efectivo(request.user)
+        if not request.user.is_superuser and rol_efectivo.lower() not in ['admin_sistema', 'farmacia', 'admin_farmacia', 'superusuario'] and not request.user.is_staff:
+            return Response({'error': 'No tienes permiso para autorizar requisiciones', 'rol_actual': rol_efectivo}, status=status.HTTP_403_FORBIDDEN)
 
         items_data = request.data.get('items') or request.data.get('detalles') or []
         
@@ -5052,6 +5152,9 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         """
         Valida que el usuario tenga permiso para ejecutar una acción del flujo.
         
+        ISS-DIRECTOR FIX: Usa _get_rol_efectivo para consistencia con frontend.
+        Antes usaba user.rol directamente, lo que fallaba si el campo estaba vacío.
+        
         Args:
             user: Usuario que intenta ejecutar la acción
             accion: Clave del permiso (ej: 'puede_autorizar_admin')
@@ -5062,9 +5165,21 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         if user.is_superuser:
             return True
         
-        rol = (getattr(user, 'rol', '') or '').lower()
+        # ISS-DIRECTOR FIX: Usar rol efectivo en lugar de user.rol directo
+        # Esto garantiza que si el campo rol está vacío, se infiera correctamente
+        rol = _get_rol_efectivo(user)
         permisos_rol = PERMISOS_FLUJO_REQUISICION.get(rol, {})
-        return permisos_rol.get(accion, False)
+        
+        tiene_permiso = permisos_rol.get(accion, False)
+        
+        # Log para debugging si falla
+        if not tiene_permiso:
+            logger.debug(
+                f"_validar_permiso_flujo: Usuario {user.username} (rol={rol}, "
+                f"rol_campo={getattr(user, 'rol', 'vacío')}) no tiene permiso '{accion}'"
+            )
+        
+        return tiene_permiso
 
     @action(detail=True, methods=['post'], url_path='enviar-admin')
     @transaction.atomic
@@ -5095,9 +5210,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         
         # Validar permiso
         if not self._validar_permiso_flujo(request.user, 'puede_enviar_admin'):
+            # ISS-DIRECTOR FIX: Mostrar rol efectivo en mensaje de error
+            rol_efectivo = _get_rol_efectivo(request.user)
             return Response({
                 'error': 'No tiene permiso para enviar requisiciones al administrador',
-                'rol_actual': getattr(request.user, 'rol', 'sin_rol')
+                'rol_actual': rol_efectivo,
+                'detalle': f'El rol "{rol_efectivo}" no tiene el permiso puede_enviar_admin'
             }, status=status.HTTP_403_FORBIDDEN)
         
         # Validar que tenga detalles
@@ -5156,9 +5274,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         if not self._validar_permiso_flujo(request.user, 'puede_autorizar_admin'):
+            # ISS-DIRECTOR FIX: Mostrar rol efectivo en mensaje de error
+            rol_efectivo = _get_rol_efectivo(request.user)
             return Response({
                 'error': 'No tiene permiso para autorizar como administrador del centro',
-                'rol_actual': getattr(request.user, 'rol', 'sin_rol')
+                'rol_actual': rol_efectivo,
+                'detalle': f'El rol "{rol_efectivo}" no tiene el permiso puede_autorizar_admin'
             }, status=status.HTTP_403_FORBIDDEN)
         
         # Validar centro
@@ -5214,9 +5335,13 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         if not self._validar_permiso_flujo(request.user, 'puede_autorizar_director'):
+            # ISS-DIRECTOR FIX: Mostrar rol efectivo en mensaje de error
+            rol_efectivo = _get_rol_efectivo(request.user)
             return Response({
                 'error': 'No tiene permiso para autorizar como director del centro',
-                'rol_actual': getattr(request.user, 'rol', 'sin_rol')
+                'rol_actual': rol_efectivo,
+                'rol_campo': getattr(request.user, 'rol', '') or '(vacío)',
+                'detalle': f'El rol "{rol_efectivo}" no tiene el permiso puede_autorizar_director'
             }, status=status.HTTP_403_FORBIDDEN)
         
         centro_user = self._user_centro(request.user)
@@ -5276,9 +5401,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         
         if not self._validar_permiso_flujo(request.user, 'puede_recibir_farmacia'):
             if not is_farmacia_or_admin(request.user):
+                # ISS-DIRECTOR FIX: Mostrar rol efectivo en mensaje de error
+                rol_efectivo = _get_rol_efectivo(request.user)
                 return Response({
                     'error': 'Solo personal de farmacia puede recibir requisiciones',
-                    'rol_actual': getattr(request.user, 'rol', 'sin_rol')
+                    'rol_actual': rol_efectivo,
+                    'detalle': f'El rol "{rol_efectivo}" no tiene el permiso puede_recibir_farmacia'
                 }, status=status.HTTP_403_FORBIDDEN)
         
         observaciones = request.data.get('observaciones', '')
@@ -5331,9 +5459,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         
         if not self._validar_permiso_flujo(request.user, 'puede_autorizar_farmacia'):
             if not is_farmacia_or_admin(request.user):
+                # ISS-DIRECTOR FIX: Mostrar rol efectivo en mensaje de error
+                rol_efectivo = _get_rol_efectivo(request.user)
                 return Response({
                     'error': 'Solo personal de farmacia puede autorizar requisiciones',
-                    'rol_actual': getattr(request.user, 'rol', 'sin_rol')
+                    'rol_actual': rol_efectivo,
+                    'detalle': f'El rol "{rol_efectivo}" no tiene el permiso puede_autorizar_farmacia'
                 }, status=status.HTTP_403_FORBIDDEN)
         
         # CRÍTICO: Validar fecha límite de recolección

@@ -528,7 +528,8 @@ const RequisicionDetalle = () => {
   };
 
   // Detectar si es Farmacia/Admin
-  const rolUsuario = (user?.rol || '').toLowerCase();
+  // ISS-DIRECTOR FIX: Usar rol_efectivo del backend que incluye inferencia de rol
+  const rolUsuario = (user?.rol_efectivo || user?.rol || '').toLowerCase();
   const esFarmacia = 
     user?.is_superuser || 
     permisos?.isFarmaciaAdmin || 
@@ -912,7 +913,8 @@ const RequisicionDetalle = () => {
           </div>
 
           {/* Verificación de Integridad - Solo para Farmacia */}
-          {user?.rol === 'farmacia' && (
+          {/* ISS-DIRECTOR FIX: Usar rol_efectivo o rol */}
+          {(user?.rol_efectivo || user?.rol) === 'farmacia' && (
             <div className="bg-gray-50 rounded-lg p-4 mt-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">

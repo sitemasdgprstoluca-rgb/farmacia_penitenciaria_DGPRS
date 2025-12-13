@@ -381,7 +381,8 @@ function Perfil() {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-gray-500">Rol</span>
-              <span className="font-semibold text-gray-900">{perfil?.rol || user?.rol}</span>
+              {/* ISS-DIRECTOR FIX: Mostrar rol_efectivo para que el usuario vea su rol real inferido */}
+              <span className="font-semibold text-gray-900">{perfil?.rol_efectivo || perfil?.rol || user?.rol_efectivo || user?.rol || "—"}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-gray-500">Centro</span>
@@ -559,7 +560,8 @@ function Perfil() {
             <h3 className="text-base font-semibold text-gray-900">Permisos asignados</h3>
           </div>
           <p className="text-xs text-gray-500 mb-3">
-            Estos son los permisos activos según tu rol ({permisos?.role || user?.rol || "—"})
+            {/* ISS-DIRECTOR FIX: Mostrar rol_efectivo para que el usuario vea su rol real inferido */}
+            Estos son los permisos activos según tu rol ({permisos?.role || user?.rol_efectivo || user?.rol || "—"})
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
             {permisosVisibles.map(({ clave, etiqueta }) => (

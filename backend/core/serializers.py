@@ -320,12 +320,16 @@ PERMISOS_POR_ROL = {
 def _infer_rol_from_user(user):
     """
     ISS-PERMS FIX: Infiere el rol del usuario cuando el campo rol está vacío.
+    ISS-DIRECTOR FIX: Ahora infiere roles específicos basándose en permisos.
     
     Orden de inferencia:
     1. Si is_superuser -> admin_sistema
     2. Si is_staff -> farmacia
-    3. Si tiene centro asignado -> centro
-    4. Default -> vista (solo lectura, más seguro)
+    3. Si tiene perm_autorizar_director=True -> director_centro
+    4. Si tiene perm_autorizar_admin=True -> administrador_centro
+    5. Si tiene perm_crear_requisicion=True -> medico
+    6. Si tiene centro asignado -> centro
+    7. Default -> vista (solo lectura, más seguro)
     """
     if not user:
         return ''
@@ -337,7 +341,21 @@ def _infer_rol_from_user(user):
     if getattr(user, 'is_staff', False):
         return 'farmacia'  # Staff sin superuser = farmacia
     
-    # Si tiene centro asignado, es usuario de centro
+    # ISS-DIRECTOR FIX: Inferir rol específico por permisos personalizados
+    # Verificar permisos del flujo para roles de centro específicos
+    if getattr(user, 'perm_autorizar_director', None) is True:
+        return 'director_centro'
+    
+    if getattr(user, 'perm_autorizar_admin', None) is True:
+        return 'administrador_centro'
+    
+    if getattr(user, 'perm_crear_requisicion', None) is True:
+        # Usuario con permiso de crear requisiciones = médico
+        centro = getattr(user, 'centro', None) or getattr(user, 'centro_id', None)
+        if centro:
+            return 'medico'
+    
+    # Si tiene centro asignado sin permisos específicos, es usuario de centro genérico
     centro = getattr(user, 'centro', None) or getattr(user, 'centro_id', None)
     if centro:
         return 'centro'
