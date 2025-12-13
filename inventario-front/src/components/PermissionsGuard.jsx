@@ -3,11 +3,17 @@ import { usePermissions } from "../hooks/usePermissions";
 
 /**
  * ISS-004 FIX (audit32): Wrapper para proteger rutas o secciones por permiso/rol.
+ * ISS-MEDICO FIX: Bloquea acceso si permisos vienen de fallback para roles específicos.
  * 
  * CAMBIOS ISS-004:
  * - Ahora espera a que `permisosValidados` sea true antes de evaluar permisos
  * - Los permisos NO se hidratan desde storage local, siempre vienen del backend
  * - Muestra loader mientras permisos se validan con el servidor
+ * 
+ * CAMBIOS ISS-MEDICO:
+ * - Roles específicos (MEDICO, ADMINISTRADOR_CENTRO, DIRECTOR_CENTRO) NO pueden
+ *   acceder a rutas protegidas si los permisos no vienen del backend
+ * - Esto evita que manipulación de sessionStorage otorgue permisos indebidos
  * 
  * Muestra loader mientras carga permisos, redirige a login si no hay usuario,
  * y permite definir un fallback visual cuando falta permiso.
@@ -32,6 +38,29 @@ function PermissionsGuard({ children, requiredPermission, fallback = null, redir
 
   if (!user) {
     return <Navigate to={redirectTo} replace />;
+  }
+
+  // ISS-MEDICO FIX: Roles específicos NO pueden usar rutas si permisos no vienen del backend
+  // Esto bloquea acceso cuando hay fallback y el rol es específico
+  if (permisos?._requiresBackendValidation && permisos?._source !== 'backend') {
+    if (import.meta.env.DEV) {
+      console.warn(
+        `[PermissionsGuard] ISS-MEDICO: Rol específico '${permisos?.role}' requiere permisos del backend. ` +
+        `Fuente actual: ${permisos?._source}. Acceso denegado.`
+      );
+    }
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center text-center">
+        <p className="text-3xl font-bold text-amber-600 mb-2">Verificando permisos</p>
+        <p className="text-gray-600">Tu rol requiere validación del servidor.</p>
+        <p className="text-gray-500 text-sm mt-2">Por favor, cierra sesión e inicia de nuevo.</p>
+        {import.meta.env.DEV && (
+          <p className="mt-2 text-xs text-gray-400">
+            Rol: {permisos?.role} | Fuente: {permisos?._source}
+          </p>
+        )}
+      </div>
+    );
   }
 
   // ISS-004 FIX: Solo evaluar permisos después de validación con backend

@@ -23,7 +23,8 @@ from rest_framework.permissions import IsAuthenticated
 
 from core.models import Producto, Lote, Movimiento, Centro
 from core.serializers import MovimientoSerializer
-from core.permissions import IsFarmaciaRole, IsCentroRole
+# ISS-MEDICO FIX: Usar IsCentroCanManageInventory para excluir médico
+from core.permissions import IsFarmaciaRole, IsCentroRole, IsCentroCanManageInventory, RoleHelper
 
 from .base import (
     CustomPagination,
@@ -47,7 +48,8 @@ class MovimientoViewSet(
     
     PERMISOS:
     - Admin/Farmacia: acceso completo a todos los movimientos
-    - Centro: puede VER y CREAR movimientos en sus propios lotes (salidas/ajustes)
+    - Centro (administrador_centro, director_centro): puede VER y CREAR movimientos
+    - Medico: NO puede crear movimientos (ISS-MEDICO FIX)
     - Vista: solo lectura
     
     FILTROS (alineados con exportacin):
@@ -63,7 +65,8 @@ class MovimientoViewSet(
     """
     queryset = Movimiento.objects.select_related('lote__producto', 'centro_origen', 'centro_destino', 'usuario').all()
     serializer_class = MovimientoSerializer
-    permission_classes = [IsCentroRole]  # Centro puede operar en sus lotes
+    # ISS-MEDICO FIX: Usar permiso que excluye médico de operaciones de escritura
+    permission_classes = [IsCentroCanManageInventory]
     pagination_class = CustomPagination
     http_method_names = ['get', 'post', 'head', 'options']
 
@@ -154,11 +157,19 @@ class MovimientoViewSet(
         
         SEGURIDAD:
         - Admin/farmacia: pueden crear cualquier movimiento en cualquier lote
-        - Usuario de centro: solo pueden crear movimientos en lotes de su centro
-          y solo ciertos tipos: 'salida' (consumo), 'ajuste' (inventario fsico)
-        - Usuario de centro NO puede crear 'entrada' (solo va surtido de requisicin)
+        - Usuario de centro (administrador/director): pueden crear movimientos en lotes de su centro
+          y solo ciertos tipos: 'salida' (consumo), 'ajuste' (inventario físico)
+        - Médico: NO puede crear movimientos (ISS-MEDICO FIX)
+        - Usuario de centro NO puede crear 'entrada' (solo vía surtido de requisición)
         """
         user = self.request.user
+        
+        # ISS-MEDICO FIX: Bloquear explícitamente a médicos
+        if RoleHelper.is_medico(user):
+            raise serializers.ValidationError({
+                'detail': 'Los médicos no tienen permiso para crear movimientos de inventario. Use requisiciones para solicitar medicamentos.'
+            })
+        
         lote = serializer.validated_data.get('lote')
         tipo = serializer.validated_data.get('tipo', '').lower()
         

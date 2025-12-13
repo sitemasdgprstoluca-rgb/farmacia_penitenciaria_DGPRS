@@ -531,6 +531,10 @@ const calcularPermisos = (userData, userGroups) => {
   const isCentroUser = esCentro(userData);
   const isVistaUser = esVista(userData);
 
+  // ISS-MEDICO FIX: Detectar roles específicos que NO deben usar fallback permisivo
+  const ROLES_ESPECIFICOS = ['MEDICO', 'ADMINISTRADOR_CENTRO', 'DIRECTOR_CENTRO'];
+  const esRolEspecifico = ROLES_ESPECIFICOS.includes(role);
+
   // Obtener permisos base del rol (FALLBACK)
   const basePerms = PERMISOS_POR_ROL[role] || PERMISOS_POR_ROL.SIN_ROL;
 
@@ -547,6 +551,8 @@ const calcularPermisos = (userData, userGroups) => {
     esSuperusuario: isSuperuser, // Siempre calcular desde is_superuser
     // ISS-009 FIX: Exponer función de validación de acciones del flujo
     puedeEjecutarAccion: (accion) => puedeEjecutarAccionFlujo(userData, accion),
+    // ISS-MEDICO FIX: Marcar si es rol específico
+    _esRolEspecifico: esRolEspecifico,
     // configurarTema viene del basePerms del rol, NO lo sobrescribimos aquí
   };
 
@@ -576,6 +582,18 @@ const calcularPermisos = (userData, userGroups) => {
       ...userData.permisos,   // Permisos del backend (PRIORIDAD)
       ...flagsDerivados,      // Flags derivados (siempre calculados)
       _source: 'backend',     // Marcador de origen para debugging
+    };
+  }
+
+  // ISS-MEDICO FIX: Para roles específicos SIN permisos del backend, 
+  // NO usar fallback permisivo - usar los permisos restrictivos del rol específico
+  if (esRolEspecifico) {
+    console.warn(`[PermissionContext] ISS-MEDICO: Rol específico '${role}' sin permisos del backend. Usando permisos restrictivos del rol.`);
+    return {
+      ...basePerms,           // Permisos restrictivos del rol específico
+      ...flagsDerivados,
+      _source: 'rol_especifico_fallback',
+      _requiresBackendValidation: true,  // Indicar que se requiere validación
     };
   }
 

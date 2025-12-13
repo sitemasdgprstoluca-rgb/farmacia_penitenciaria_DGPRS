@@ -416,3 +416,511 @@ class TestBuildPermMapForMedico:
         assert permisos.get('verTrazabilidad') is False
         assert permisos.get('autorizarAdmin') is False
         assert permisos.get('surtirRequisicion') is False
+
+
+# =============================================================================
+# ISS-MEDICO FIX: Tests para bloqueo de médico en MovimientoViewSet
+# =============================================================================
+
+class TestMedicoMovimientoBlocked:
+    """
+    ISS-MEDICO FIX: Tests para verificar que médicos NO pueden crear movimientos.
+    
+    El rol 'medico' está diseñado para:
+    - Ver y crear requisiciones ✓
+    - NO crear movimientos de inventario ✗
+    - NO gestionar stock ✗
+    
+    Esta es una brecha de seguridad crítica donde el permiso IsCentroRole
+    agrupaba todos los subroles de centro sin distinción.
+    """
+    
+    def test_rolehelper_is_medico_true_for_medico_role(self):
+        """RoleHelper.is_medico() debe retornar True para rol medico"""
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'medico'
+        user.groups.all.return_value = []
+        
+        assert RoleHelper.is_medico(user) is True
+    
+    def test_rolehelper_is_medico_false_for_centro_role(self):
+        """RoleHelper.is_medico() debe retornar False para rol centro genérico"""
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'centro'
+        user.groups.all.return_value = []
+        
+        assert RoleHelper.is_medico(user) is False
+    
+    def test_rolehelper_is_medico_false_for_administrador_centro(self):
+        """RoleHelper.is_medico() debe retornar False para administrador_centro"""
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'administrador_centro'
+        user.groups.all.return_value = []
+        
+        assert RoleHelper.is_medico(user) is False
+    
+    def test_rolehelper_is_medico_false_for_director_centro(self):
+        """RoleHelper.is_medico() debe retornar False para director_centro"""
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'director_centro'
+        user.groups.all.return_value = []
+        
+        assert RoleHelper.is_medico(user) is False
+    
+    def test_can_manage_inventory_false_for_medico(self):
+        """RoleHelper.can_manage_inventory() debe retornar False para médico"""
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'medico'
+        user.groups.all.return_value = []
+        
+        assert RoleHelper.can_manage_inventory(user) is False
+    
+    def test_can_manage_inventory_true_for_centro(self):
+        """RoleHelper.can_manage_inventory() debe retornar True para centro genérico"""
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'centro'
+        user.groups.all.return_value = []
+        
+        assert RoleHelper.can_manage_inventory(user) is True
+    
+    def test_can_manage_inventory_true_for_administrador_centro(self):
+        """RoleHelper.can_manage_inventory() debe retornar True para administrador_centro"""
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'administrador_centro'
+        user.groups.all.return_value = []
+        
+        assert RoleHelper.can_manage_inventory(user) is True
+    
+    def test_can_manage_inventory_true_for_director_centro(self):
+        """RoleHelper.can_manage_inventory() debe retornar True para director_centro"""
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'director_centro'
+        user.groups.all.return_value = []
+        
+        assert RoleHelper.can_manage_inventory(user) is True
+    
+    def test_can_manage_inventory_true_for_farmacia(self):
+        """RoleHelper.can_manage_inventory() debe retornar True para farmacia"""
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'farmacia'
+        user.groups.all.return_value = []
+        
+        assert RoleHelper.can_manage_inventory(user) is True
+    
+    def test_can_manage_inventory_false_for_vista(self):
+        """RoleHelper.can_manage_inventory() debe retornar False para vista"""
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'vista'
+        user.groups.all.return_value = []
+        
+        assert RoleHelper.can_manage_inventory(user) is False
+
+
+class TestIsCentroCanManageInventoryPermission:
+    """
+    ISS-MEDICO FIX: Tests para el permiso IsCentroCanManageInventory.
+    
+    Este permiso reemplaza IsCentroRole en MovimientoViewSet para
+    bloquear específicamente a médicos de operaciones de escritura.
+    """
+    
+    def test_permission_allows_get_for_medico(self):
+        """Médico puede hacer GET (lectura)"""
+        from core.permissions import IsCentroCanManageInventory
+        
+        permission = IsCentroCanManageInventory()
+        
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'medico'
+        user.groups.all.return_value = []
+        
+        request = Mock()
+        request.user = user
+        request.method = 'GET'
+        
+        view = Mock()
+        
+        assert permission.has_permission(request, view) is True
+    
+    def test_permission_blocks_post_for_medico(self):
+        """Médico NO puede hacer POST (escritura)"""
+        from core.permissions import IsCentroCanManageInventory
+        
+        permission = IsCentroCanManageInventory()
+        
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'medico'
+        user.groups.all.return_value = []
+        
+        request = Mock()
+        request.user = user
+        request.method = 'POST'
+        
+        view = Mock()
+        
+        assert permission.has_permission(request, view) is False
+    
+    def test_permission_allows_post_for_administrador_centro(self):
+        """Administrador de centro puede hacer POST"""
+        from core.permissions import IsCentroCanManageInventory
+        
+        permission = IsCentroCanManageInventory()
+        
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'administrador_centro'
+        user.groups.all.return_value = []
+        
+        request = Mock()
+        request.user = user
+        request.method = 'POST'
+        
+        view = Mock()
+        
+        assert permission.has_permission(request, view) is True
+    
+    def test_permission_allows_post_for_director_centro(self):
+        """Director de centro puede hacer POST"""
+        from core.permissions import IsCentroCanManageInventory
+        
+        permission = IsCentroCanManageInventory()
+        
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'director_centro'
+        user.groups.all.return_value = []
+        
+        request = Mock()
+        request.user = user
+        request.method = 'POST'
+        
+        view = Mock()
+        
+        assert permission.has_permission(request, view) is True
+    
+    def test_permission_allows_post_for_farmacia(self):
+        """Farmacia puede hacer POST"""
+        from core.permissions import IsCentroCanManageInventory
+        
+        permission = IsCentroCanManageInventory()
+        
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'farmacia'
+        user.groups.all.return_value = []
+        
+        request = Mock()
+        request.user = user
+        request.method = 'POST'
+        
+        view = Mock()
+        
+        assert permission.has_permission(request, view) is True
+    
+    def test_permission_blocks_post_for_vista(self):
+        """Vista NO puede hacer POST"""
+        from core.permissions import IsCentroCanManageInventory
+        
+        permission = IsCentroCanManageInventory()
+        
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'vista'
+        user.groups.all.return_value = []
+        
+        request = Mock()
+        request.user = user
+        request.method = 'POST'
+        
+        view = Mock()
+        
+        assert permission.has_permission(request, view) is False
+    
+    def test_permission_always_allows_superuser(self):
+        """Superusuario siempre tiene permiso"""
+        from core.permissions import IsCentroCanManageInventory
+        
+        permission = IsCentroCanManageInventory()
+        
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = True
+        user.rol = ''
+        user.groups.all.return_value = []
+        
+        request = Mock()
+        request.user = user
+        request.method = 'POST'
+        
+        view = Mock()
+        
+        assert permission.has_permission(request, view) is True
+
+
+# =============================================================================
+# ISS-MEDICO FIX: Tests para permisos de catálogos globales
+# =============================================================================
+
+class TestIsFarmaciaAdminOrVistaReadOnlyPermission:
+    """
+    ISS-MEDICO FIX: Tests para IsFarmaciaAdminOrVistaReadOnly.
+    
+    Este permiso bloquea a roles de centro (incluyendo médico) de ver
+    catálogos globales como Centros.
+    """
+    
+    def test_permission_allows_get_for_admin(self):
+        """Admin puede hacer GET"""
+        from core.permissions import IsFarmaciaAdminOrVistaReadOnly
+        
+        permission = IsFarmaciaAdminOrVistaReadOnly()
+        
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'admin'
+        user.groups.all.return_value = []
+        
+        request = Mock()
+        request.user = user
+        request.method = 'GET'
+        
+        view = Mock()
+        
+        assert permission.has_permission(request, view) is True
+    
+    def test_permission_allows_get_for_farmacia(self):
+        """Farmacia puede hacer GET"""
+        from core.permissions import IsFarmaciaAdminOrVistaReadOnly
+        
+        permission = IsFarmaciaAdminOrVistaReadOnly()
+        
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'farmacia'
+        user.groups.all.return_value = []
+        
+        request = Mock()
+        request.user = user
+        request.method = 'GET'
+        
+        view = Mock()
+        
+        assert permission.has_permission(request, view) is True
+    
+    def test_permission_allows_get_for_vista(self):
+        """Vista puede hacer GET"""
+        from core.permissions import IsFarmaciaAdminOrVistaReadOnly
+        
+        permission = IsFarmaciaAdminOrVistaReadOnly()
+        
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'vista'
+        user.groups.all.return_value = []
+        
+        request = Mock()
+        request.user = user
+        request.method = 'GET'
+        
+        view = Mock()
+        
+        assert permission.has_permission(request, view) is True
+    
+    def test_permission_blocks_get_for_medico(self):
+        """Médico NO puede hacer GET a catálogos globales (403)"""
+        from core.permissions import IsFarmaciaAdminOrVistaReadOnly
+        
+        permission = IsFarmaciaAdminOrVistaReadOnly()
+        
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'medico'
+        user.groups.all.return_value = []
+        
+        request = Mock()
+        request.user = user
+        request.method = 'GET'
+        
+        view = Mock()
+        
+        assert permission.has_permission(request, view) is False
+    
+    def test_permission_blocks_get_for_centro(self):
+        """Centro genérico NO puede hacer GET a catálogos globales (403)"""
+        from core.permissions import IsFarmaciaAdminOrVistaReadOnly
+        
+        permission = IsFarmaciaAdminOrVistaReadOnly()
+        
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'centro'
+        user.groups.all.return_value = []
+        
+        request = Mock()
+        request.user = user
+        request.method = 'GET'
+        
+        view = Mock()
+        
+        assert permission.has_permission(request, view) is False
+    
+    def test_permission_blocks_post_for_vista(self):
+        """Vista NO puede hacer POST"""
+        from core.permissions import IsFarmaciaAdminOrVistaReadOnly
+        
+        permission = IsFarmaciaAdminOrVistaReadOnly()
+        
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'vista'
+        user.groups.all.return_value = []
+        
+        request = Mock()
+        request.user = user
+        request.method = 'POST'
+        
+        view = Mock()
+        
+        assert permission.has_permission(request, view) is False
+    
+    def test_permission_allows_post_for_admin(self):
+        """Admin puede hacer POST"""
+        from core.permissions import IsFarmaciaAdminOrVistaReadOnly
+        
+        permission = IsFarmaciaAdminOrVistaReadOnly()
+        
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'admin'
+        user.groups.all.return_value = []
+        
+        request = Mock()
+        request.user = user
+        request.method = 'POST'
+        
+        view = Mock()
+        
+        assert permission.has_permission(request, view) is True
+
+
+class TestIsCentroOwnResourcesOnlyPermission:
+    """
+    ISS-MEDICO FIX: Tests para IsCentroOwnResourcesOnly.
+    
+    Este permiso permite lectura a roles de centro pero bloquea escritura para médico.
+    """
+    
+    def test_permission_allows_get_for_medico(self):
+        """Médico puede hacer GET (lectura de lotes para requisiciones)"""
+        from core.permissions import IsCentroOwnResourcesOnly
+        
+        permission = IsCentroOwnResourcesOnly()
+        
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'medico'
+        user.groups.all.return_value = []
+        
+        request = Mock()
+        request.user = user
+        request.method = 'GET'
+        
+        view = Mock()
+        
+        assert permission.has_permission(request, view) is True
+    
+    def test_permission_blocks_post_for_medico(self):
+        """Médico NO puede hacer POST (no puede crear lotes)"""
+        from core.permissions import IsCentroOwnResourcesOnly
+        
+        permission = IsCentroOwnResourcesOnly()
+        
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'medico'
+        user.groups.all.return_value = []
+        
+        request = Mock()
+        request.user = user
+        request.method = 'POST'
+        
+        view = Mock()
+        
+        assert permission.has_permission(request, view) is False
+    
+    def test_permission_allows_post_for_centro(self):
+        """Centro genérico puede hacer POST"""
+        from core.permissions import IsCentroOwnResourcesOnly
+        
+        permission = IsCentroOwnResourcesOnly()
+        
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'centro'
+        user.groups.all.return_value = []
+        
+        request = Mock()
+        request.user = user
+        request.method = 'POST'
+        
+        view = Mock()
+        
+        assert permission.has_permission(request, view) is True
+    
+    def test_permission_allows_post_for_administrador_centro(self):
+        """Administrador de centro puede hacer POST"""
+        from core.permissions import IsCentroOwnResourcesOnly
+        
+        permission = IsCentroOwnResourcesOnly()
+        
+        user = Mock()
+        user.is_authenticated = True
+        user.is_superuser = False
+        user.rol = 'administrador_centro'
+        user.groups.all.return_value = []
+        
+        request = Mock()
+        request.user = user
+        request.method = 'POST'
+        
+        view = Mock()
+        
+        assert permission.has_permission(request, view) is True

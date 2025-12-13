@@ -515,7 +515,9 @@ from core.serializers import (
 from django.contrib.auth import get_user_model
 from core.permissions import (
     IsAdminRole, IsFarmaciaRole, IsCentroRole, IsVistaRole,
-    IsFarmaciaAdminOrReadOnly, CanAuthorizeRequisicion
+    IsFarmaciaAdminOrReadOnly, CanAuthorizeRequisicion,
+    IsCentroCanManageInventory, RoleHelper,  # ISS-MEDICO FIX
+    IsFarmaciaAdminOrVistaReadOnly, IsCentroOwnResourcesOnly  # ISS-MEDICO FIX: permisos restrictivos
 )
 from core.constants import (
     ESTADOS_REQUISICION,
@@ -1484,10 +1486,14 @@ class CentroViewSet(viewsets.ModelViewSet):
     - Exportar a Excel con formato profesional
     - Importar desde Excel con validaciones
     - Obtener requisiciones por centro
+    
+    ISS-MEDICO FIX: Roles de centro (medico, etc.) reciben 403 en GET.
+    Solo admin/farmacia/vista pueden ver el catálogo de centros.
     """
     queryset = Centro.objects.all()
     serializer_class = CentroSerializer
-    permission_classes = [IsFarmaciaAdminOrReadOnly]
+    # ISS-MEDICO FIX: Bloquear acceso a roles de centro (incluyendo médico)
+    permission_classes = [IsFarmaciaAdminOrVistaReadOnly]
     pagination_class = CustomPagination
 
     def _user_centro(self, user):
@@ -2116,10 +2122,14 @@ class LoteViewSet(viewsets.ModelViewSet):
     - Filtrado por estado de caducidad
     - Busqueda por numero de lote
     - Validaciones de integridad
+    
+    ISS-MEDICO FIX: Médicos pueden ver lotes (para crear requisiciones)
+    pero NO pueden crear/editar/eliminar lotes.
     """
     queryset = Lote.objects.select_related('producto').all()
     serializer_class = LoteSerializer
-    permission_classes = [IsFarmaciaAdminOrReadOnly]
+    # ISS-MEDICO FIX: Médico puede leer pero NO escribir
+    permission_classes = [IsCentroOwnResourcesOnly]
     pagination_class = CustomPagination
 
     def get_queryset(self):
@@ -3305,7 +3315,8 @@ class MovimientoViewSet(
     
     PERMISOS:
     - Admin/Farmacia: acceso completo a todos los movimientos
-    - Centro: puede VER y CREAR movimientos en sus propios lotes (salidas/ajustes)
+    - Centro (administrador_centro, director_centro): puede VER y CREAR movimientos
+    - Medico: NO puede crear movimientos (ISS-MEDICO FIX)
     - Vista: solo lectura
     
     FILTROS (alineados con exportacin):
@@ -3321,7 +3332,8 @@ class MovimientoViewSet(
     """
     queryset = Movimiento.objects.select_related('lote__producto', 'centro_origen', 'centro_destino', 'usuario').all()
     serializer_class = MovimientoSerializer
-    permission_classes = [IsCentroRole]  # Centro puede operar en sus lotes
+    # ISS-MEDICO FIX: Usar permiso que excluye médico de operaciones de escritura
+    permission_classes = [IsCentroCanManageInventory]
     pagination_class = CustomPagination
     http_method_names = ['get', 'post', 'head', 'options']
 
@@ -3412,11 +3424,19 @@ class MovimientoViewSet(
         
         SEGURIDAD:
         - Admin/farmacia: pueden crear cualquier movimiento en cualquier lote
-        - Usuario de centro: solo pueden crear movimientos en lotes de su centro
-          y solo ciertos tipos: 'salida' (consumo), 'ajuste' (inventario fsico)
-        - Usuario de centro NO puede crear 'entrada' (solo va surtido de requisicin)
+        - Usuario de centro (administrador/director): pueden crear movimientos en lotes de su centro
+          y solo ciertos tipos: 'salida' (consumo), 'ajuste' (inventario físico)
+        - Médico: NO puede crear movimientos (ISS-MEDICO FIX)
+        - Usuario de centro NO puede crear 'entrada' (solo vía surtido de requisición)
         """
         user = self.request.user
+        
+        # ISS-MEDICO FIX: Bloquear explícitamente a médicos
+        if RoleHelper.is_medico(user):
+            raise serializers.ValidationError({
+                'detail': 'Los médicos no tienen permiso para crear movimientos de inventario. Use requisiciones para solicitar medicamentos.'
+            })
+        
         lote = serializer.validated_data.get('lote')
         tipo = serializer.validated_data.get('tipo', '').lower()
         

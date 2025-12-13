@@ -50,6 +50,7 @@ from inventario.views_legacy import (
     # Helpers y utilidades
     CustomPagination,
     is_farmacia_or_admin,
+    has_global_read_access,  # ISS-AUDIT FIX
     get_user_centro,
     registrar_movimiento_stock,
     validar_archivo_excel,
@@ -58,6 +59,9 @@ from inventario.views_legacy import (
     cargar_workbook_seguro,
     validar_filas_excel,
     invalidar_cache_dashboard,
+    # Constantes usadas en tests
+    EXCEL_MAGIC_BYTES,
+    leer_archivo_con_limite,
 )
 
 __all__ = [
@@ -86,6 +90,7 @@ __all__ = [
     # Helpers
     'CustomPagination',
     'is_farmacia_or_admin',
+    'has_global_read_access',  # ISS-AUDIT FIX
     'get_user_centro',
     'registrar_movimiento_stock',
     'validar_archivo_excel',
@@ -94,5 +99,8 @@ __all__ = [
     'cargar_workbook_seguro',
     'validar_filas_excel',
     'invalidar_cache_dashboard',
+    # Constantes
+    'EXCEL_MAGIC_BYTES',
+    'leer_archivo_con_limite',
 ]
 

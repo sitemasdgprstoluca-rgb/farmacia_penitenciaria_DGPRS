@@ -126,6 +126,68 @@ class RoleHelper:
         """ISS-004 FIX: Verifica si usuario es solo vista."""
         return cls.has_role(user, ['vista'])
     
+    # =========================================================================
+    # ISS-MEDICO FIX: Helpers para subroles específicos de centro
+    # =========================================================================
+    
+    @classmethod
+    def is_medico(cls, user):
+        """
+        ISS-MEDICO FIX: Verifica si usuario es específicamente médico.
+        
+        El rol médico tiene restricciones adicionales:
+        - NO puede crear movimientos de inventario
+        - NO puede ver historial de movimientos
+        - Solo puede crear requisiciones
+        """
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        normalized = cls.get_user_role(user)
+        return normalized == 'medico'
+    
+    @classmethod
+    def is_administrador_centro(cls, user):
+        """ISS-MEDICO FIX: Verifica si usuario es administrador de centro."""
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        normalized = cls.get_user_role(user)
+        return normalized == 'administrador_centro'
+    
+    @classmethod
+    def is_director_centro(cls, user):
+        """ISS-MEDICO FIX: Verifica si usuario es director de centro."""
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        normalized = cls.get_user_role(user)
+        return normalized == 'director_centro'
+    
+    @classmethod
+    def can_manage_inventory(cls, user):
+        """
+        ISS-MEDICO FIX: Verifica si usuario puede gestionar inventario (movimientos).
+        
+        Roles permitidos:
+        - admin, farmacia: Siempre pueden
+        - centro, usuario_centro, administrador_centro, director_centro: Pueden
+        - medico: NO puede (solo requisiciones)
+        - vista: NO puede
+        """
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        if user.is_superuser:
+            return True
+        
+        # Médico específicamente NO puede
+        if cls.is_medico(user):
+            return False
+        
+        # Vista NO puede
+        if cls.is_vista(user):
+            return False
+        
+        # Admin, farmacia y otros roles de centro SÍ pueden
+        return cls.has_role(user, ['admin', 'farmacia', 'centro'])
+    
     @classmethod
     def can_surtir(cls, user):
         """ISS-004 FIX: Verifica si usuario puede surtir requisiciones."""
@@ -289,6 +351,124 @@ class IsCentroRole(permissions.BasePermission):
     """Usuarios de centro/unidad."""
     def has_permission(self, request, view):
         return _has_permission(request.user, ['admin', 'farmacia', 'centro'], ['CAN_VIEW_ALL_REQUISICIONES'])
+
+
+class IsCentroCanManageInventory(permissions.BasePermission):
+    """
+    ISS-MEDICO FIX: Permiso para gestión de inventario (movimientos).
+    
+    Este permiso EXCLUYE específicamente al rol médico, que solo puede:
+    - Ver y crear requisiciones
+    - NO puede crear/modificar movimientos de inventario
+    
+    Para operaciones de escritura (POST, PUT, PATCH, DELETE):
+    - admin, farmacia: Permitido
+    - centro, administrador_centro, director_centro: Permitido
+    - medico: DENEGADO
+    - vista: DENEGADO
+    
+    Para operaciones de lectura (GET):
+    - Todos los roles de centro pueden leer (incluyendo médico si configurado)
+    """
+    def has_permission(self, request, view):
+        user = request.user
+        
+        # Primero verificar autenticación básica
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        
+        # Superusuarios siempre tienen acceso
+        if user.is_superuser:
+            return True
+        
+        # Para operaciones de escritura, verificar que NO sea médico
+        if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
+            # Usar el helper centralizado
+            return RoleHelper.can_manage_inventory(user)
+        
+        # Para lectura, permitir a roles de centro (pero no vista)
+        return _has_permission(user, ['admin', 'farmacia', 'centro'], ['CAN_VIEW_ALL_REQUISICIONES'])
+
+
+class IsFarmaciaAdminOrVistaReadOnly(permissions.BasePermission):
+    """
+    ISS-MEDICO FIX: Permiso para catálogos globales (Centros, Lotes).
+    
+    Este permiso BLOQUEA a roles de centro (incluyendo médico) de ver
+    catálogos globales que no necesitan para su operación.
+    
+    Lectura (GET):
+    - admin, farmacia, vista: Permitido
+    - centro, medico, administrador_centro, director_centro: DENEGADO (403)
+    
+    Escritura (POST, PUT, DELETE):
+    - admin, farmacia: Permitido
+    - Todos los demás: DENEGADO
+    
+    Esto evita exposición de datos innecesarios a roles de centro.
+    """
+    def has_permission(self, request, view):
+        user = request.user
+        
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        
+        if user.is_superuser:
+            return True
+        
+        # Para lectura: solo admin, farmacia y vista
+        if request.method in permissions.SAFE_METHODS:
+            return _has_role(user, ['admin', 'farmacia', 'vista'])
+        
+        # Para escritura: solo admin y farmacia
+        return _has_role(user, ['admin', 'farmacia'])
+
+
+class IsCentroOwnResourcesOnly(permissions.BasePermission):
+    """
+    ISS-MEDICO FIX: Permiso para recursos propios del centro.
+    
+    Permite a usuarios de centro (incluyendo médico) acceder SOLO a recursos
+    de su propio centro. Para catálogos globales, retorna 403.
+    
+    Este permiso requiere que la vista implemente get_queryset() con filtrado
+    por centro, o que el recurso tenga un campo 'centro' relacionado.
+    
+    Lectura:
+    - admin, farmacia, vista: Acceso completo
+    - centro, medico: Solo recursos de su centro
+    
+    Escritura:
+    - admin, farmacia: Acceso completo
+    - centro (no médico): Solo en su centro
+    - medico: DENEGADO (403) - solo puede crear requisiciones
+    """
+    def has_permission(self, request, view):
+        user = request.user
+        
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        
+        if user.is_superuser:
+            return True
+        
+        # Admin/farmacia/vista tienen acceso
+        if _has_role(user, ['admin', 'farmacia', 'vista']):
+            return True
+        
+        # Médico: solo lectura de recursos de su centro, NO escritura
+        if RoleHelper.is_medico(user):
+            if request.method in permissions.SAFE_METHODS:
+                # Permitir lectura, el queryset filtrará por centro
+                return True
+            # Médico no puede escribir en lotes/centros
+            return False
+        
+        # Otros roles de centro: lectura sí, escritura solo en su centro
+        if _has_role(user, ['centro']):
+            return True
+        
+        return False
 
 
 class IsVistaRole(permissions.BasePermission):
