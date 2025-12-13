@@ -154,8 +154,12 @@ export const getSecurityMetrics = () => securityMetrics.getMetrics();
 const API_VERSION = import.meta.env.VITE_API_VERSION || 'v1';
 const HEALTH_ENDPOINT = import.meta.env.VITE_HEALTH_ENDPOINT || '/health/';
 const HEALTH_CHECK_ENABLED = import.meta.env.VITE_ENABLE_HEALTHCHECK !== 'false';
-const HEALTH_TIMEOUT = parseInt(import.meta.env.VITE_HEALTHCHECK_TIMEOUT || '5000', 10);
+// ISS-FIX: Aumentar timeout default a 30s para cold starts de Render/Heroku
+const HEALTH_TIMEOUT = parseInt(import.meta.env.VITE_HEALTHCHECK_TIMEOUT || '30000', 10);
 const AUTH_ONLY_MODE = import.meta.env.VITE_AUTH_ONLY_MODE === 'true'; // Modo sin healthcheck
+// ISS-FIX: Configuración de reintentos para cold starts
+const HEALTH_RETRIES = parseInt(import.meta.env.VITE_HEALTHCHECK_RETRIES || '3', 10);
+const HEALTH_RETRY_DELAY = parseInt(import.meta.env.VITE_HEALTHCHECK_RETRY_DELAY || '2000', 10);
 
 // ISS-003 FIX (audit33): Configuración parametrizable de rutas de autenticación
 const AUTH_CONFIG = {
@@ -177,12 +181,19 @@ let apiHealthy = null; // null = no verificado, true = ok, false = fallo
 let healthCheckSkipped = false; // Si se saltó por configuración
 
 /**
+ * ISS-FIX: Helper para esperar con delay (usado en reintentos)
+ */
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
  * ISS-001 FIX: Verificar conectividad y compatibilidad con el backend
  * Parametrizable via VITE_HEALTH_ENDPOINT y VITE_ENABLE_HEALTHCHECK
  * Degrada elegantemente si el endpoint no existe (404)
+ * ISS-FIX: Añadido soporte para reintentos automáticos (cold starts de Render)
  * 
  * @param {Object} options - Opciones de configuración
  * @param {boolean} options.force - Forzar verificación aunque AUTH_ONLY_MODE esté activo
+ * @param {number} options.retries - Número de reintentos (default: HEALTH_RETRIES)
  * @returns {Promise<Object>} Estado del backend
  */
 export const checkApiHealth = async (options = {}) => {
@@ -207,59 +218,90 @@ export const checkApiHealth = async (options = {}) => {
     };
   }
   
-  try {
-    // ISS-001: Usar endpoint parametrizable
-    const response = await publicApiClient.get(HEALTH_ENDPOINT, { timeout: HEALTH_TIMEOUT });
-    const data = response.data;
-    
-    apiHealthy = true;
-    
-    return {
-      healthy: true,
-      skipped: false,
-      version: data?.version || data?.api_version || API_VERSION,
-      database: data?.database ?? data?.db_status ?? 'unknown',
-      timestamp: data?.timestamp || new Date().toISOString(),
-      details: data, // Incluir respuesta completa para debugging
-    };
-  } catch (error) {
-    const status = error.response?.status;
-    
-    // ISS-001: Degradación elegante - 404 no es fatal
-    if (status === 404) {
-      apiHealthy = true; // Backend funciona, solo no tiene /health/
-      healthCheckSkipped = true;
-      if (isDev) {
-        console.info(`[API] Health endpoint ${HEALTH_ENDPOINT} no disponible (404), degradando a modo auth-only`);
+  const maxRetries = options.retries ?? HEALTH_RETRIES;
+  let lastError = null;
+  
+  // ISS-FIX: Intentar con reintentos para manejar cold starts
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 0) {
+        console.info(`[API] Health check reintento ${attempt}/${maxRetries}...`);
+        await sleep(HEALTH_RETRY_DELAY * attempt); // Backoff exponencial simple
       }
+      
+      // ISS-001: Usar endpoint parametrizable
+      const response = await publicApiClient.get(HEALTH_ENDPOINT, { timeout: HEALTH_TIMEOUT });
+      const data = response.data;
+      
+      apiHealthy = true;
+      
       return {
         healthy: true,
-        skipped: true,
-        mode: 'degraded',
-        reason: 'Health endpoint no implementado en backend',
-        version: API_VERSION,
-        timestamp: new Date().toISOString(),
+        skipped: false,
+        version: data?.version || data?.api_version || API_VERSION,
+        database: data?.database ?? data?.db_status ?? 'unknown',
+        timestamp: data?.timestamp || new Date().toISOString(),
+        details: data,
+        attempts: attempt + 1,
       };
+    } catch (error) {
+      lastError = error;
+      const status = error.response?.status;
+      
+      // ISS-001: Degradación elegante - 404 no es fatal
+      if (status === 404) {
+        apiHealthy = true; // Backend funciona, solo no tiene /health/
+        healthCheckSkipped = true;
+        if (isDev) {
+          console.info(`[API] Health endpoint ${HEALTH_ENDPOINT} no disponible (404), degradando a modo auth-only`);
+        }
+        return {
+          healthy: true,
+          skipped: true,
+          mode: 'degraded',
+          reason: 'Health endpoint no implementado en backend',
+          version: API_VERSION,
+          timestamp: new Date().toISOString(),
+        };
+      }
+      
+      // ISS-FIX: Si es timeout y quedan reintentos, continuar
+      const isTimeout = error.code === 'ECONNABORTED' || error.message?.includes('timeout');
+      const isNetworkError = error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK';
+      
+      if ((isTimeout || isNetworkError) && attempt < maxRetries) {
+        console.warn(`[API] Health check timeout/error en intento ${attempt + 1}, reintentando...`);
+        continue;
+      }
+      
+      // Sin más reintentos o error no recuperable
+      break;
     }
-    
-    // Otros errores sí indican problemas
-    apiHealthy = false;
-    const errorMsg = status === 503
-      ? 'Backend en mantenimiento (503)'
-      : error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK'
-        ? 'No se puede conectar al servidor'
-        : error.message || 'Error de conexión';
-    
-    console.warn('[API] Health check falló:', errorMsg, status ? `(${status})` : '');
-    
-    return {
-      healthy: false,
-      skipped: false,
-      error: errorMsg,
-      status: status,
-      version: null,
-    };
   }
+  
+  // Todos los reintentos fallaron
+  apiHealthy = false;
+  const status = lastError?.response?.status;
+  const isTimeout = lastError?.code === 'ECONNABORTED' || lastError?.message?.includes('timeout');
+  
+  const errorMsg = status === 503
+    ? 'Backend en mantenimiento (503)'
+    : isTimeout
+      ? 'El servidor está iniciando, por favor espere unos segundos'
+      : lastError?.code === 'ECONNREFUSED' || lastError?.code === 'ERR_NETWORK'
+        ? 'No se puede conectar al servidor'
+        : lastError?.message || 'Error de conexión';
+  
+  console.warn('[API] Health check falló después de reintentos:', errorMsg, status ? `(${status})` : '');
+  
+  return {
+    healthy: false,
+    skipped: false,
+    error: errorMsg,
+    status: status,
+    version: null,
+    isServerStarting: isTimeout,
+  };
 };
 
 /**

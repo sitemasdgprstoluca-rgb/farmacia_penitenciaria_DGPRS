@@ -133,24 +133,27 @@ const HealthCheckWarningBanner = ({ reason, onDismiss, onRetry }) => (
 /**
  * ISS-005 FIX: Banner de API no saludable
  * Muestra error cuando el healthcheck falló
+ * ISS-FIX: Mejorado para mostrar mensaje amigable en cold starts
  */
-const ApiUnhealthyBanner = ({ error, onRetry }) => (
-  <div className="fixed bottom-0 left-0 right-0 z-40 bg-red-100 border-t border-red-300 px-4 py-3 shadow-lg">
+const ApiUnhealthyBanner = ({ error, onRetry, isServerStarting }) => (
+  <div className={`fixed bottom-0 left-0 right-0 z-40 ${isServerStarting ? 'bg-amber-100 border-amber-300' : 'bg-red-100 border-red-300'} border-t px-4 py-3 shadow-lg`}>
     <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
       <div className="flex items-center gap-3">
-        <span className="text-xl">⚠️</span>
+        <span className="text-xl">{isServerStarting ? '⏳' : '⚠️'}</span>
         <div>
-          <p className="text-sm font-medium text-red-800">
-            Conexión con servidor inestable
+          <p className={`text-sm font-medium ${isServerStarting ? 'text-amber-800' : 'text-red-800'}`}>
+            {isServerStarting ? 'Servidor iniciando...' : 'Conexión con servidor inestable'}
           </p>
-          <p className="text-xs text-red-700">
-            {error || 'No se pudo conectar al servidor. Las operaciones podrían fallar.'}
+          <p className={`text-xs ${isServerStarting ? 'text-amber-700' : 'text-red-700'}`}>
+            {isServerStarting 
+              ? 'El servidor está despertando. Esto puede tomar hasta 60 segundos en servicios gratuitos.'
+              : error || 'No se pudo conectar al servidor. Las operaciones podrían fallar.'}
           </p>
         </div>
       </div>
       <button
         onClick={onRetry}
-        className="px-3 py-1.5 text-sm font-medium rounded-lg bg-red-200 text-red-800 hover:bg-red-300 transition-colors"
+        className={`px-3 py-1.5 text-sm font-medium rounded-lg ${isServerStarting ? 'bg-amber-200 text-amber-800 hover:bg-amber-300' : 'bg-red-200 text-red-800 hover:bg-red-300'} transition-colors`}
       >
         🔄 Reintentar conexión
       </button>
@@ -478,6 +481,7 @@ function App() {
     error: null,
     reason: null,
     dismissed: false,
+    isServerStarting: false,
   });
   
   // ISS-005: Verificar healthcheck al montar
@@ -496,6 +500,7 @@ function App() {
               ? 'El servidor no tiene endpoint de salud - funcionando en modo degradado'
               : null,
           dismissed: false,
+          isServerStarting: result.isServerStarting || false,
         });
       } catch (err) {
         setHealthState({
@@ -505,6 +510,7 @@ function App() {
           error: err.message || 'Error desconocido al verificar conexión',
           reason: null,
           dismissed: false,
+          isServerStarting: false,
         });
       }
     };
@@ -514,7 +520,7 @@ function App() {
   
   // ISS-005: Handler para reintentar healthcheck
   const handleRetryHealthCheck = async () => {
-    setHealthState(prev => ({ ...prev, checked: false }));
+    setHealthState(prev => ({ ...prev, checked: false, isServerStarting: false }));
     try {
       const result = await checkApiHealth({ force: true });
       setHealthState({
@@ -524,6 +530,7 @@ function App() {
         error: result.error || null,
         reason: result.reason || null,
         dismissed: false,
+        isServerStarting: result.isServerStarting || false,
       });
     } catch (err) {
       setHealthState(prev => ({
@@ -531,6 +538,7 @@ function App() {
         checked: true,
         healthy: false,
         error: err.message,
+        isServerStarting: false,
       }));
     }
   };
@@ -568,6 +576,7 @@ function App() {
             <ApiUnhealthyBanner 
               error={healthState.error}
               onRetry={handleRetryHealthCheck}
+              isServerStarting={healthState.isServerStarting}
             />
           )}
           <SessionManager />
