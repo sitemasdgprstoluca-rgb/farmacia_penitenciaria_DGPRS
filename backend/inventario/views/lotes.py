@@ -662,32 +662,19 @@ class LoteViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='plantilla')
     def plantilla_lotes(self, request):
         """
-        Descarga plantilla Excel para importación de lotes.
+        Descarga plantilla Excel actualizada para importación de lotes.
         
-        Columnas (en orden):
-        1. Producto (REQUERIDO) - Clave o nombre del producto
-        2. Numero Lote (REQUERIDO) - Identificador único del lote
-        3. Fecha Caducidad (REQUERIDO, YYYY-MM-DD)
-        4. Cantidad Inicial (REQUERIDO) - Cantidad recibida
-        5. Cantidad Actual (opcional, default = Cantidad Inicial)
-        6. Fecha Fabricacion (opcional, YYYY-MM-DD)
-        7. Precio Unitario (opcional, default = 0)
-        8. Numero Contrato (opcional)
-        9. Marca (opcional)
-        10. Ubicacion (opcional)
-        11. Centro ID (opcional) - ID numérico del centro
+        Usa el generador estandarizado con el esquema real de la base de datos.
         """
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = 'Lotes'
+        from core.utils.excel_templates import generar_plantilla_lotes
         
-        # Headers que coinciden con importar_excel
-        headers = [
-            'Producto', 'Numero Lote', 'Fecha Caducidad', 'Cantidad Inicial',
-            'Cantidad Actual', 'Fecha Fabricacion', 'Precio Unitario',
-            'Numero Contrato', 'Marca', 'Ubicacion', 'Centro ID'
-        ]
-        ws.append(headers)
+        # Obtener centro del usuario si aplica
+        user = request.user
+        centro = None
+        if not is_farmacia_or_admin(user):
+            centro = get_user_centro(user)
+        
+        return generar_plantilla_lotes(centro=centro)
         
         # Filas de ejemplo con formato esperado
         fecha_cad_ejemplo = (date.today() + timedelta(days=365)).strftime('%Y-%m-%d')
