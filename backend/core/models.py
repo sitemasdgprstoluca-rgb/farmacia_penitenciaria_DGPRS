@@ -311,7 +311,7 @@ class User(AbstractUser):
         'administrador_centro': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': False,
             'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
-            'perm_reportes': True, 'perm_trazabilidad': True, 'perm_auditoria': False,
+            'perm_reportes': False, 'perm_trazabilidad': False, 'perm_auditoria': False,  # ISS-FIX: Centro NO ve reportes/trazabilidad
             'perm_notificaciones': True, 'perm_movimientos': False, 'perm_donaciones': False,
             # Permisos flujo V2
             'perm_crear_requisicion': False, 'perm_autorizar_admin': True,
@@ -321,7 +321,7 @@ class User(AbstractUser):
         'director_centro': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': False,
             'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
-            'perm_reportes': True, 'perm_trazabilidad': True, 'perm_auditoria': False,
+            'perm_reportes': False, 'perm_trazabilidad': False, 'perm_auditoria': False,  # ISS-FIX: Centro NO ve reportes/trazabilidad
             'perm_notificaciones': True, 'perm_movimientos': False, 'perm_donaciones': False,
             # Permisos flujo V2
             'perm_crear_requisicion': False, 'perm_autorizar_admin': False,
@@ -331,7 +331,7 @@ class User(AbstractUser):
         'centro': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': True,
             'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
-            'perm_reportes': True, 'perm_trazabilidad': True, 'perm_auditoria': False,
+            'perm_reportes': False, 'perm_trazabilidad': False, 'perm_auditoria': False,  # ISS-FIX: Centro NO ve reportes/trazabilidad
             'perm_notificaciones': True, 'perm_movimientos': True, 'perm_donaciones': True,
             # Permisos flujo V2 - Solo consulta
             'perm_crear_requisicion': False, 'perm_autorizar_admin': False,
@@ -343,7 +343,7 @@ class User(AbstractUser):
         'usuario_centro': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': True,
             'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
-            'perm_reportes': True, 'perm_trazabilidad': True, 'perm_auditoria': False,
+            'perm_reportes': False, 'perm_trazabilidad': False, 'perm_auditoria': False,  # ISS-FIX: Centro NO ve reportes/trazabilidad
             'perm_notificaciones': True, 'perm_movimientos': True, 'perm_donaciones': True,
             'perm_crear_requisicion': True, 'perm_autorizar_admin': False,
             'perm_autorizar_director': False, 'perm_recibir_farmacia': False,
