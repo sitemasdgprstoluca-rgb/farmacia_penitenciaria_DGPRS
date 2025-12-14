@@ -638,14 +638,19 @@ export function PermissionProvider({ children }) {
     
     // ISS-002 FIX: Solo calcular permisos completos si datos están validados con backend
     if (validated) {
-      setPermisos(calcularPermisos(userData, baseGroups));
+      const permisosCompletos = calcularPermisos(userData, baseGroups);
+      // ISS-009 FIX: Marcar que permisos están validados y NO están en validación
+      setPermisos({
+        ...permisosCompletos,
+        _isValidating: false,  // Crucial: desactivar flag de validación
+      });
       setPermisosValidados(true);
     } else {
-      // Permisos mínimos hasta validar
+      // ISS-009 FIX: Permisos mínimos hasta validar - NO incluir rol
       setPermisos({
         verPerfil: true,
-        role: getRolFromUser(userData, baseGroups),
         _source: 'pending_validation',
+        _isValidating: true,
       });
     }
   }, []);
@@ -732,16 +737,16 @@ export function PermissionProvider({ children }) {
       }
     }
     
-    // ISS-002 FIX: Solo mostrar rol básico mientras carga (SIN permisos completos)
-    if (storedUserId && storedRole && storedHash) {
-      // Permisos mínimos - solo para evitar flash de UI
-      setUser({ id: storedUserId, rol: storedRole });
+    // ISS-009 FIX: NO asignar rol durante pending_validation para prevenir escalación de privilegios
+    // Solo mostrar ID mínimo, sin permisos de UI hasta que backend valide
+    if (storedUserId && storedHash) {
+      // Solo ID para tracking, SIN rol ni permisos inferidos
+      setUser({ id: storedUserId });
       setPermisos({
+        // Solo permiso de perfil básico, NO módulos
         verPerfil: true,
-        role: storedRole.toUpperCase() === 'ADMIN' ? 'ADMIN' : 
-              storedRole.toUpperCase() === 'FARMACIA' ? 'FARMACIA' :
-              storedRole.toUpperCase() === 'CENTRO' ? 'CENTRO' : 'VISTA',
         _source: 'pending_validation',
+        _isValidating: true,  // Flag para ocultar menús hasta validación
       });
     }
 
@@ -752,6 +757,12 @@ export function PermissionProvider({ children }) {
   const verificarPermiso = (permiso) => permisos[permiso] || false;
 
   const getRolPrincipal = () => {
+    // ISS-009 FIX: NO retornar rol durante validación pendiente
+    // Esto previene que UI muestre opciones basadas en rol manipulado en storage
+    if (permisos?._isValidating || permisos?._source === 'pending_validation') {
+      return 'VALIDANDO';
+    }
+    
     if (!user) return 'SIN_ROL';
     
     // ISS-PERMS FIX: Usar rol_efectivo del backend si está disponible

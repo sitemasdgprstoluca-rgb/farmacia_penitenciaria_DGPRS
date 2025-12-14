@@ -88,18 +88,29 @@ class TestISS002TransicionesBD(TestCase):
         assert not faltantes, f"Estados faltantes en ESTADOS_REQUISICION: {faltantes}"
     
     def test_transiciones_sin_saltos(self):
-        """Verifica que no hay transiciones que salten pasos obligatorios."""
+        """FLUJO V2: Verifica transiciones permitidas según especificación.
+        
+        ISS-TRANSICIONES FIX: La especificación V2 PERMITE:
+        - autorizada → surtida (directa, sin pasar por en_surtido)
+        - enviada → autorizada (directa, sin pasar por en_revision)
+        
+        Esto agiliza el proceso cuando no se requiere el paso intermedio.
+        """
         from core.constants import TRANSICIONES_REQUISICION
         
-        # ISS-001 FIX: autorizada NO debe poder ir directamente a surtida
+        # FLUJO V2: autorizada PUEDE ir directamente a surtida (proceso ágil)
         trans_autorizada = TRANSICIONES_REQUISICION.get('autorizada', [])
-        assert 'surtida' not in trans_autorizada, \
-            "autorizada NO debe transicionar directamente a surtida (debe pasar por en_surtido)"
+        assert 'surtida' in trans_autorizada, \
+            "autorizada DEBE poder transicionar directamente a surtida (spec V2)"
+        assert 'en_surtido' in trans_autorizada, \
+            "autorizada también puede ir a en_surtido (proceso detallado)"
         
-        # ISS-001 FIX: enviada NO debe poder ir directamente a autorizada
+        # FLUJO V2: enviada PUEDE ir directamente a autorizada (proceso ágil)
         trans_enviada = TRANSICIONES_REQUISICION.get('enviada', [])
-        assert 'autorizada' not in trans_enviada, \
-            "enviada NO debe transicionar directamente a autorizada (debe pasar por en_revision)"
+        assert 'autorizada' in trans_enviada, \
+            "enviada DEBE poder transicionar directamente a autorizada (spec V2)"
+        assert 'en_revision' in trans_enviada, \
+            "enviada también puede ir a en_revision (proceso detallado)"
 
 
 class TestISS003VerificacionEsquema(TestCase):

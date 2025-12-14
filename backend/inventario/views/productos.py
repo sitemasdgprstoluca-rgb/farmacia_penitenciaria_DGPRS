@@ -463,21 +463,18 @@ class ProductoViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='importar-excel')
     def importar_excel(self, request):
         """
-        Importa productos desde un archivo Excel.
+        Importa productos desde archivo Excel usando el importador actualizado.
         
-        Formato esperado:
-        Fila 1: Encabezados (se ignora)
-        Columnas: Clave | Nombre | Unidad | Stock Mínimo | Categoría | 
-                  Sustancia Activa | Presentación | Concentración | Vía Admin |
-                  Requiere Receta | Controlado | Estado
-        
-        Nota: Las primeras 4 columnas son requeridas, el resto son opcionales.
+        Usa core.utils.excel_importer que maneja el esquema real de la BD.
+        Formato esperado alineado con la plantilla descargable.
         
         Límites de seguridad:
-        - Tamaño máximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
-        - Filas máximas: configurado en IMPORT_MAX_ROWS (default 5000)
-        - Extensiones: .xlsx, .xls
+        - Tamaño máximo: 10MB
+        - Filas máximas: 10,000
+        - Extensiones: .xlsx
         """
+        from core.utils.excel_importer import importar_productos_desde_excel, crear_log_importacion
+        
         file = request.FILES.get('file')
         
         # Validar archivo
@@ -489,219 +486,56 @@ class ProductoViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            # ISS-001: Usar carga segura con límite real de bytes
-            wb, error_carga = cargar_workbook_seguro(file)
-            if wb is None:
-                return Response({
-                    'error': 'Error al procesar archivo',
-                    'mensaje': error_carga
-                }, status=status.HTTP_400_BAD_REQUEST)
+            # Ejecutar importación
+            resultado = importar_productos_desde_excel(file, request.user)
             
-            ws = wb.active
+            # Crear log de importación
+            crear_log_importacion(
+                usuario=request.user,
+                tipo='Producto',
+                archivo_nombre=file.name,
+                resultado_dict=resultado
+            )
             
-            # Validar número de filas
-            filas_validas, error_filas, num_filas = validar_filas_excel(ws)
-            if not filas_validas:
-                wb.close()  # Liberar recursos en modo read_only
-                return Response({
-                    'error': 'Archivo demasiado grande',
-                    'mensaje': error_filas
-                }, status=status.HTTP_400_BAD_REQUEST)
+            # Determinar status code
+            if resultado['exitosa']:
+                status_code = status.HTTP_200_OK
+            elif resultado['registros_exitosos'] > 0:
+                status_code = status.HTTP_206_PARTIAL_CONTENT
+            else:
+                status_code = status.HTTP_400_BAD_REQUEST
             
-            creados = 0
-            actualizados = 0
-            errores = []
-            exitos = []
-            
-            # ISS-019: Envolver en transacción atómica para evitar estados parciales
-            # Si hay errores críticos, se hace rollback automático
-            with transaction.atomic():
-                # Procesar cada fila (empezando desde la fila 2)
-                # Formato esperado (columnas): Clave | Nombre | Unidad | Stock Min | Categoría | 
-                #                              Sust Activa | Presentación | Concentración | Vía Admin | 
-                #                              Req Receta | Controlado | Estado
-                for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-                    try:
-                        # Extraer valores (asegurarse de tener al menos 12 columnas)
-                        valores = list(row) + [None] * 12
-                        clave = valores[0]
-                        nombre = valores[1]
-                        unidad_medida = valores[2]
-                        stock_minimo = valores[3]
-                        categoria = valores[4]
-                        sustancia_activa = valores[5]
-                        presentacion = valores[6]
-                        concentracion = valores[7]
-                        via_administracion = valores[8]
-                        requiere_receta = valores[9]
-                        es_controlado = valores[10]
-                        estado = valores[11]
-                        
-                        # Validar campo requerido: clave y nombre
-                        if not clave:
-                            errores.append({'fila': row_idx, 'error': 'Clave es obligatoria'})
-                            continue
-                        if not nombre:
-                            errores.append({'fila': row_idx, 'error': 'Nombre es obligatorio'})
-                            continue
-                        
-                        # Validar unidad
-                        unidad_limpia = str(unidad_medida).strip().upper() if unidad_medida else 'PIEZA'
-                        if unidad_limpia not in dict(UNIDADES_MEDIDA):
-                            errores.append({'fila': row_idx, 'error': f'Unidad no válida: {unidad_limpia}'})
-                            continue
-
-                        try:
-                            stock_min = int(stock_minimo) if stock_minimo not in [None, ''] else 10
-                            if stock_min < 0:
-                                raise ValueError
-                        except Exception:
-                            errores.append({'fila': row_idx, 'error': 'Stock mínimo inválido'})
-                            continue
-
-                        # Parsear campos booleanos
-                        def parse_bool(val):
-                            if val is None:
-                                return False
-                            return str(val).lower() in ['sí', 'si', 'true', '1', 'yes', 's', 'x']
-
-                        # Validar y normalizar categoría (usar constante centralizada)
-                        from core.constants import CATEGORIAS_VALIDAS
-                        categoria_limpia = str(categoria).strip().lower() if categoria else 'medicamento'
-                        if categoria_limpia not in CATEGORIAS_VALIDAS:
-                            categoria_limpia = 'medicamento'  # Default si no es válida
-
-                        # Limpiar y preparar datos alineados con schema real
-                        datos = {
-                            'nombre': str(nombre).strip()[:500],
-                            'unidad_medida': unidad_limpia,
-                            'stock_minimo': stock_min,
-                            'categoria': categoria_limpia,
-                            'sustancia_activa': str(sustancia_activa).strip()[:200] if sustancia_activa else '',
-                            'presentacion': str(presentacion).strip()[:200] if presentacion else '',
-                            'concentracion': str(concentracion).strip()[:100] if concentracion else '',
-                            'via_administracion': str(via_administracion).strip()[:50] if via_administracion else '',
-                            'requiere_receta': parse_bool(requiere_receta),
-                            'es_controlado': parse_bool(es_controlado),
-                            'activo': str(estado).lower() in ['activo', 'sí', 'si', 'true', '1', 'yes', 's'] if estado else True
-                        }
-                        
-                        # Crear o actualizar producto usando clave como identificador
-                        clave_limpia = str(clave).strip()[:50].upper()  # También normalizar a mayúsculas
-                        
-                        producto, created = Producto.objects.update_or_create(
-                            clave=clave_limpia,
-                            defaults=datos
-                        )
-                        
-                        if created:
-                            creados += 1
-                        else:
-                            actualizados += 1
-                        exitos.append({'fila': row_idx, 'producto_id': producto.id, 'clave': producto.clave})
-                            
-                    except Exception as e:
-                        errores.append({'fila': row_idx, 'error': str(e)})
-            # Fin del bloque transaction.atomic
-            
-            return Response({
-                'mensaje': 'Importación completada',
-                'resumen': {
-                    'creados': creados,
-                    'actualizados': actualizados,
-                    'total_procesados': creados + actualizados,
-                    'total_errores': len(errores)
-                },
-                'exitos': exitos,
-                'errores': errores,
-                'exito': len(errores) == 0
-            }, status=status.HTTP_200_OK if len(errores) == 0 else status.HTTP_207_MULTI_STATUS)
+            return Response(resultado, status=status_code)
             
         except Exception as e:
-            # traceback removido por seguridad (ISS-008)
+            logger.exception(f"Error en importación de productos: {e}")
             return Response({
                 'error': 'Error al procesar archivo',
-                'mensaje': str(e),
-                'sugerencia': 'Verifique que el archivo tenga el formato correcto: Clave, Nombre, Unidad, Stock Mínimo, Categoría, Sustancia Activa, Presentación, Concentración, Vía Admin, Requiere Receta, Controlado, Estado'
-            }, status=status.HTTP_400_BAD_REQUEST)
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['get'], url_path='plantilla')
     def plantilla_productos(self, request):
         """
-        Descarga plantilla Excel para importación de productos.
+        Descarga plantilla Excel actualizada para importación de productos.
         
-        Columnas:
-        - Clave (REQUERIDO, único) - Código identificador del producto
-        - Nombre (REQUERIDO) - Nombre del medicamento o insumo
-        - Unidad (opcional) - Unidad de medida (PIEZA, CAJA, FRASCO, SOBRE, AMPOLLETA, TABLETA, CAPSULA, ML, GR)
-        - Stock Mínimo (opcional, default: 10) - Cantidad mínima de alerta
-        - Categoría (opcional) - medicamento, material_curacion, insumo, equipo, otro
-        - Sustancia Activa (opcional) - Principio activo
-        - Presentación (opcional) - Forma farmacéutica
-        - Concentración (opcional) - Dosis del principio activo
-        - Vía Admin (opcional) - Vía de administración
-        - Requiere Receta (opcional) - Sí/No
-        - Controlado (opcional) - Sí/No
-        - Estado (opcional, default: Activo) - Activo/Inactivo
+        Usa el generador estandarizado con el esquema real de la base de datos.
         """
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = 'Productos'
-        
-        # Headers que coinciden con importar_excel
-        headers = [
-            'Clave', 'Nombre', 'Unidad', 'Stock Mínimo', 'Categoría',
-            'Sustancia Activa', 'Presentación', 'Concentración', 
-            'Vía Admin', 'Requiere Receta', 'Controlado', 'Estado'
-        ]
-        ws.append(headers)
-        
-        # Filas de ejemplo (unidades en mayúsculas como las espera el sistema)
-        ws.append([
-            'MED001', 'Paracetamol 500mg', 'CAJA', 50, 'medicamento',
-            'Paracetamol', 'Tableta', '500 mg',
-            'oral', 'No', 'No', 'Activo'
-        ])
-        ws.append([
-            'MED002', 'Ibuprofeno 400mg', 'FRASCO', 30, 'medicamento',
-            'Ibuprofeno', 'Cápsula', '400 mg',
-            'oral', 'No', 'No', 'Activo'
-        ])
-        ws.append([
-            'INS001', 'Jeringa 10ml', 'PIEZA', 100, 'material_curacion',
-            '', '', '',
-            '', 'No', 'No', 'Activo'
-        ])
-        
-        # Aplicar formato a headers
-        header_font = Font(bold=True, color='FFFFFF')
-        header_fill = PatternFill(start_color='9F2241', end_color='9F2241', fill_type='solid')
-        for col in range(1, len(headers) + 1):
-            cell = ws.cell(row=1, column=col)
-            cell.font = header_font
-            cell.fill = header_fill
-        
-        # Ajustar ancho de columnas
-        column_widths = {
-            'A': 12,  # Clave
-            'B': 35,  # Nombre
-            'C': 12,  # Unidad
-            'D': 14,  # Stock Mínimo
-            'E': 18,  # Categoría
-            'F': 20,  # Sustancia Activa
-            'G': 15,  # Presentación
-            'H': 15,  # Concentración
-            'I': 12,  # Vía Admin
-            'J': 15,  # Requiere Receta
-            'K': 12,  # Controlado
-            'L': 10,  # Estado
-        }
-        for col_letter, width in column_widths.items():
-            ws.column_dimensions[col_letter].width = width
-        
-        response = HttpResponse(
-            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-        response['Content-Disposition'] = 'attachment; filename=Plantilla_Productos.xlsx'
-        wb.save(response)
-        return response
+        # HALLAZGO #5: Manejo robusto de errores en generación de plantilla
+        try:
+            from core.utils.excel_templates import generar_plantilla_productos
+            return generar_plantilla_productos()
+        except ImportError as exc:
+            logger.error(f'Error al importar generador de plantilla: {exc}')
+            return Response(
+                {'error': 'Módulo de generación de plantillas no disponible'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as exc:
+            logger.exception(f'Error al generar plantilla de productos: {exc}')
+            return Response(
+                {'error': 'No se pudo generar la plantilla', 'mensaje': str(exc)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+

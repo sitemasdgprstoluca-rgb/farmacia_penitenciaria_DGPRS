@@ -1300,11 +1300,21 @@ class Movimiento(models.Model):
                         )
                     })
             
-            # Aplicar el cambio de stock
+            # HALLAZGO #4: Aplicar el cambio de stock de forma atómica usando F()
+            # Esto previene race conditions en operaciones concurrentes
+            from django.db.models import F
+            
             if tipo in self.TIPOS_RESTA_STOCK:
-                lote_bloqueado.cantidad_actual -= self.cantidad
+                Lote.objects.filter(pk=lote_bloqueado.pk).update(
+                    cantidad_actual=F('cantidad_actual') - self.cantidad
+                )
             elif tipo in self.TIPOS_SUMA_STOCK:
-                lote_bloqueado.cantidad_actual += self.cantidad
+                Lote.objects.filter(pk=lote_bloqueado.pk).update(
+                    cantidad_actual=F('cantidad_actual') + self.cantidad
+                )
+            
+            # Refrescar instancia para obtener el valor actualizado
+            lote_bloqueado.refresh_from_db(fields=['cantidad_actual'])
             
             # ISS-001 FIX: Validar que no quede negativo (doble check)
             if lote_bloqueado.cantidad_actual < 0:

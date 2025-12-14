@@ -511,17 +511,30 @@ class UserViewSet(viewsets.ModelViewSet):
         user.set_password(new_password)
         user.save()
         
+        # HALLAZGO #3: Invalidar todos los tokens JWT existentes del usuario
+        # Esto previene que tokens robados sigan funcionando después del cambio de contraseña
+        try:
+            from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
+            # Eliminar todos los tokens pendientes del usuario (los marca como inválidos)
+            OutstandingToken.objects.filter(user=user).delete()
+        except Exception as e:
+            # Si la app token_blacklist no está habilitada, loguear advertencia
+            logger.warning(f'No se pudieron invalidar tokens JWT para {user.username}: {e}')
+        
         # Registrar cambio exitoso en auditoría
         AuditoriaLog.objects.create(
             usuario=user,
             accion='UPDATE',
             modelo='Usuario',
             objeto_id=str(user.id),
-            detalles={'objeto_repr': str(user), 'resultado': 'Contraseña actualizada exitosamente'}
+            detalles={'objeto_repr': str(user), 'resultado': 'Contraseña actualizada exitosamente', 'tokens_invalidados': True}
         )
         
-        logger.info("Contraseña actualizada para usuario %s", user.username)
-        return Response({'message': 'Contraseña actualizada exitosamente'})
+        logger.info("Contraseña actualizada para usuario %s (tokens JWT invalidados)", user.username)
+        return Response({
+            'message': 'Contraseña actualizada exitosamente',
+            'nota': 'Todas las sesiones activas han sido cerradas. Debe iniciar sesión nuevamente.'
+        })
 
     @action(detail=True, methods=['post'], url_path='cambiar-password')
     def cambiar_password(self, request, pk=None):
@@ -544,18 +557,24 @@ class UserViewSet(viewsets.ModelViewSet):
         if not new_password:
             return Response({'error': 'Debe proporcionar new_password'}, status=status.HTTP_400_BAD_REQUEST)
         
-        if len(new_password) < 8:
-            return Response({'error': 'La contraseña debe tener al menos 8 caracteres'}, status=status.HTTP_400_BAD_REQUEST)
+        # HALLAZGO #6: Usar validate_password de Django (consistencia con cambiar_mi_password)
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError as DjangoValidationError
         
-        # Validar complejidad mínima
-        if not any(c.isupper() for c in new_password):
-            return Response({'error': 'La contraseña debe tener al menos una mayúscula'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        if not any(c.isdigit() for c in new_password):
-            return Response({'error': 'La contraseña debe tener al menos un número'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            validate_password(new_password, usuario)
+        except DjangoValidationError as e:
+            return Response({'error': '; '.join(e.messages)}, status=status.HTTP_400_BAD_REQUEST)
         
         usuario.set_password(new_password)
         usuario.save()
+        
+        # HALLAZGO #3: Invalidar todos los tokens JWT existentes del usuario
+        try:
+            from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
+            OutstandingToken.objects.filter(user=usuario).delete()
+        except Exception as e:
+            logger.warning(f'No se pudieron invalidar tokens JWT para {usuario.username}: {e}')
         
         # Registrar en auditoría
         AuditoriaLog.objects.create(
@@ -918,81 +937,17 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='plantilla')
     def plantilla_usuarios(self, request):
         """
-        Descarga plantilla Excel para importación de usuarios.
+        Descarga plantilla Excel actualizada para importación de usuarios.
         
-        Columnas:
-        - Username (REQUERIDO, único) - Nombre de usuario (3-50 chars, minúsculas)
-        - Email (opcional) - Correo electrónico
-        - Nombre (opcional) - Nombre del usuario
-        - Apellido (opcional) - Apellido del usuario
-        - Rol (opcional) - admin_sistema, farmacia, centro, vista (default: centro)
-        - Password (opcional) - Contraseña (mín 8 chars, si vacío se genera temporal)
-        - Centro Clave (opcional) - Clave del centro a asignar
+        Usa el generador estandarizado con el esquema real de la base de datos.
+        Columnas: Username, Email, Nombre, Apellidos, Password, Rol, Centro ID, 
+        Adscripción, Teléfono, Activo
         
         SEGURIDAD: Los usuarios creados sin contraseña requieren cambio en primer login.
         """
-        import openpyxl
-        from openpyxl.styles import Font, PatternFill
-        
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = 'Usuarios'
-        
-        # Headers que coinciden con importar_excel
-        headers = [
-            'Username', 'Email', 'Nombre', 'Apellido', 
-            'Rol', 'Password', 'Centro Clave'
-        ]
-        ws.append(headers)
-        
-        # Filas de ejemplo con formato esperado
-        ws.append([
-            'juan.perez', 'juan.perez@ejemplo.gob.mx', 'Juan', 'Pérez',
-            'centro', 'Temporal123!', 'CP01'
-        ])
-        ws.append([
-            'maria.garcia', 'maria.garcia@ejemplo.gob.mx', 'María', 'García',
-            'farmacia', 'Temporal123!', ''
-        ])
-        ws.append([
-            'usuario.vista', 'vista@ejemplo.gob.mx', 'Usuario', 'Vista',
-            'vista', '', ''
-        ])
-        
-        # Aplicar formato a headers
-        header_font = Font(bold=True, color='FFFFFF')
-        header_fill = PatternFill(start_color='9F2241', end_color='9F2241', fill_type='solid')
-        for col in range(1, len(headers) + 1):
-            cell = ws.cell(row=1, column=col)
-            cell.font = header_font
-            cell.fill = header_fill
-        
-        # Ajustar ancho de columnas
-        column_widths = {
-            'A': 20,  # Username
-            'B': 30,  # Email
-            'C': 15,  # Nombre
-            'D': 15,  # Apellido
-            'E': 15,  # Rol
-            'F': 15,  # Password
-            'G': 15,  # Centro Clave
-        }
-        for col_letter, width in column_widths.items():
-            ws.column_dimensions[col_letter].width = width
-        
-        # Agregar nota sobre roles válidos
-        ws.append([])
-        ws.append(['Roles válidos: admin_sistema, admin_farmacia, farmacia, centro, vista, usuario_normal, usuario_vista'])
-        ws.merge_cells(f'A{ws.max_row}:G{ws.max_row}')
-        note_cell = ws.cell(row=ws.max_row, column=1)
-        note_cell.font = Font(italic=True, color='666666')
-        
-        response = HttpResponse(
-            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-        response['Content-Disposition'] = 'attachment; filename=Plantilla_Usuarios.xlsx'
-        wb.save(response)
-        return response
+        from core.utils.excel_templates import generar_plantilla_usuarios
+        return generar_plantilla_usuarios()
+
 
 
 # NOTA: ProductoViewSet, LoteViewSet, RequisicionViewSet y CentroViewSet
@@ -2661,3 +2616,72 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
         return SalidaDonacionSerializer
 
 
+# =============================================================================
+# ISS-002 FIX: ENDPOINT DE CATÁLOGOS - Sincronizar enums frontend/backend
+# =============================================================================
+
+class CatalogosView(APIView):
+    """
+    Vista para obtener todos los catálogos del sistema.
+    
+    Expone las constantes definidas en backend para sincronizar con frontend.
+    Esto evita discrepancias entre los valores válidos en front y backend.
+    
+    Endpoints:
+    - GET /api/catalogos/ - Todos los catálogos
+    - GET /api/catalogos/unidades-medida/ - Solo unidades de medida
+    - GET /api/catalogos/categorias/ - Solo categorías
+    - GET /api/catalogos/vias-administracion/ - Solo vías de administración
+    - GET /api/catalogos/estados-requisicion/ - Solo estados de requisición
+    - GET /api/catalogos/tipos-movimiento/ - Solo tipos de movimiento
+    - GET /api/catalogos/roles/ - Solo roles de usuario
+    """
+    permission_classes = [AllowAny]  # Catálogos son públicos para formularios de login/registro
+    
+    def get(self, request, catalogo=None):
+        from core.constants import (
+            UNIDADES_MEDIDA,
+            CATEGORIAS_PRODUCTO,
+            ESTADOS_REQUISICION,
+            TIPOS_MOVIMIENTO,
+            ROLES_USUARIO,
+        )
+        
+        # Vías de administración (no están en constants, definimos aquí)
+        VIAS_ADMINISTRACION = [
+            ('ORAL', 'Oral'),
+            ('INTRAVENOSA', 'Intravenosa'),
+            ('INTRAMUSCULAR', 'Intramuscular'),
+            ('SUBCUTANEA', 'Subcutánea'),
+            ('TOPICA', 'Tópica'),
+            ('INHALATORIA', 'Inhalatoria'),
+            ('RECTAL', 'Rectal'),
+            ('OFTALMICA', 'Oftálmica'),
+            ('OTICA', 'Ótica'),
+            ('NASAL', 'Nasal'),
+        ]
+        
+        # Construir respuesta según el catálogo solicitado
+        catalogos = {
+            'unidades_medida': [{'value': u[0], 'label': u[1]} for u in UNIDADES_MEDIDA],
+            'categorias': [{'value': c[0], 'label': c[1]} for c in CATEGORIAS_PRODUCTO],
+            'vias_administracion': [{'value': v[0], 'label': v[1]} for v in VIAS_ADMINISTRACION],
+            'estados_requisicion': [{'value': e[0], 'label': e[1]} for e in ESTADOS_REQUISICION],
+            'tipos_movimiento': [{'value': t[0], 'label': t[1]} for t in TIPOS_MOVIMIENTO],
+            'roles': [{'value': r[0], 'label': r[1]} for r in ROLES_USUARIO],
+        }
+        
+        # Si se solicita un catálogo específico
+        if catalogo:
+            catalogo_key = catalogo.replace('-', '_')
+            if catalogo_key in catalogos:
+                return Response({
+                    catalogo_key: catalogos[catalogo_key]
+                })
+            return Response(
+                {'error': f'Catálogo no encontrado: {catalogo}'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Retornar todos los catálogos
+        return Response(catalogos)

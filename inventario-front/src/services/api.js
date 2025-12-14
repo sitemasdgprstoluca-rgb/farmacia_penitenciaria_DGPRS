@@ -502,6 +502,7 @@ apiClient.interceptors.response.use(
         ? RETRY_CONFIG.retryDelay * Math.pow(2, retryCount)
         : RETRY_CONFIG.retryDelay;
       
+      // HALLAZGO #5: Solo loguear en desarrollo para evitar fuga de información
       if (isDev) {
         console.log(
           `[API] Reintento ${originalRequest._retryCount}/${RETRY_CONFIG.maxRetries} ` +

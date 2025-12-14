@@ -2,28 +2,32 @@
  * ISS-002 FIX: Hook para sincronizar catálogos con el backend
  * Obtiene unidades, categorías y otros catálogos de la API
  * Incluye fallbacks locales para cuando el endpoint no esté disponible
+ * 
+ * NOTA: Los fallbacks deben coincidir con backend/core/constants.py
  */
 import { useState, useEffect, useCallback } from 'react';
 import { catalogosAPI } from '../services/api';
 
-// Fallbacks locales - Se usan si el endpoint no está disponible
+// Fallbacks locales - ALINEADOS con backend/core/constants.py
+// Si modificas estos valores, actualiza también el backend
 const FALLBACK_UNIDADES = [
-  'AMPOLLETA',
-  'CAJA',
-  'CAPSULA',
-  'FRASCO',
-  'GR',
-  'ML',
   'PIEZA',
+  'CAJA',
+  'FRASCO',
   'SOBRE',
+  'AMPOLLETA',
   'TABLETA',
+  'CAPSULA',
+  'ML',
+  'GR',
 ];
 
 const FALLBACK_CATEGORIAS = [
   'medicamento',
   'material_curacion',
-  'equipo_medico',
   'insumo',
+  'equipo',
+  'otro',
 ];
 
 const FALLBACK_VIAS_ADMINISTRACION = [
@@ -40,7 +44,7 @@ const FALLBACK_VIAS_ADMINISTRACION = [
 ];
 
 const FALLBACK_ESTADOS_REQUISICION = [
-  // Flujo V2 - estados jerárquicos
+  // Flujo V2 - estados jerárquicos (alineado con backend)
   'borrador',
   'pendiente_admin',
   'pendiente_director',
@@ -54,20 +58,18 @@ const FALLBACK_ESTADOS_REQUISICION = [
   'vencida',
   'cancelada',
   'devuelta',
-  // Legacy (compatibilidad)
-  'pendiente',
-  'aprobada',
-  'en_proceso',
-  'surtida_parcial',
+  'parcial',  // Legacy - surtido parcial
 ];
 
 const FALLBACK_TIPOS_MOVIMIENTO = [
   'entrada',
   'salida',
-  'ajuste',
   'transferencia',
-  'merma',
+  'ajuste_positivo',
+  'ajuste_negativo',
   'devolucion',
+  'merma',
+  'caducidad',
 ];
 
 // Cache global para evitar múltiples llamadas
@@ -115,12 +117,21 @@ export const useCatalogos = (options = {}) => {
       const response = await catalogosAPI.getAll();
       const data = response.data;
 
+      // ISS-002 FIX: Normalizar respuesta del backend
+      // El backend puede enviar [{value, label}] o [string]
+      // Siempre extraer solo los values para compatibilidad con formularios
+      const normalizar = (arr) => {
+        if (!arr || !Array.isArray(arr)) return null;
+        // Si es array de objetos, extraer value; si es array de strings, usar directo
+        return arr.map(item => typeof item === 'object' ? item.value : item);
+      };
+
       const nuevosCatalogos = {
-        unidades: data?.unidades_medida || data?.unidades || FALLBACK_UNIDADES,
-        categorias: data?.categorias || FALLBACK_CATEGORIAS,
-        viasAdministracion: data?.vias_administracion || FALLBACK_VIAS_ADMINISTRACION,
-        estadosRequisicion: data?.estados_requisicion || FALLBACK_ESTADOS_REQUISICION,
-        tiposMovimiento: data?.tipos_movimiento || FALLBACK_TIPOS_MOVIMIENTO,
+        unidades: normalizar(data?.unidades_medida) || normalizar(data?.unidades) || FALLBACK_UNIDADES,
+        categorias: normalizar(data?.categorias) || FALLBACK_CATEGORIAS,
+        viasAdministracion: normalizar(data?.vias_administracion) || FALLBACK_VIAS_ADMINISTRACION,
+        estadosRequisicion: normalizar(data?.estados_requisicion) || FALLBACK_ESTADOS_REQUISICION,
+        tiposMovimiento: normalizar(data?.tipos_movimiento) || FALLBACK_TIPOS_MOVIMIENTO,
       };
 
       // Actualizar cache
@@ -150,22 +161,22 @@ export const useCatalogos = (options = {}) => {
           catalogosAPI.tiposMovimiento(),
         ]);
 
+        // ISS-002 FIX: Normalizar respuestas individuales también
+        const normalizarResultado = (resultado, fallback) => {
+          if (resultado.status !== 'fulfilled') return fallback;
+          const data = resultado.value.data;
+          // Extraer del objeto {catalogo_key: [...]} si viene así
+          const arr = Array.isArray(data) ? data : Object.values(data)[0];
+          if (!arr || !Array.isArray(arr)) return fallback;
+          return arr.map(item => typeof item === 'object' ? item.value : item);
+        };
+
         const nuevosCatalogos = {
-          unidades: resultados[0].status === 'fulfilled' 
-            ? resultados[0].value.data 
-            : FALLBACK_UNIDADES,
-          categorias: resultados[1].status === 'fulfilled' 
-            ? resultados[1].value.data 
-            : FALLBACK_CATEGORIAS,
-          viasAdministracion: resultados[2].status === 'fulfilled' 
-            ? resultados[2].value.data 
-            : FALLBACK_VIAS_ADMINISTRACION,
-          estadosRequisicion: resultados[3].status === 'fulfilled' 
-            ? resultados[3].value.data 
-            : FALLBACK_ESTADOS_REQUISICION,
-          tiposMovimiento: resultados[4].status === 'fulfilled' 
-            ? resultados[4].value.data 
-            : FALLBACK_TIPOS_MOVIMIENTO,
+          unidades: normalizarResultado(resultados[0], FALLBACK_UNIDADES),
+          categorias: normalizarResultado(resultados[1], FALLBACK_CATEGORIAS),
+          viasAdministracion: normalizarResultado(resultados[2], FALLBACK_VIAS_ADMINISTRACION),
+          estadosRequisicion: normalizarResultado(resultados[3], FALLBACK_ESTADOS_REQUISICION),
+          tiposMovimiento: normalizarResultado(resultados[4], FALLBACK_TIPOS_MOVIMIENTO),
         };
 
         // Actualizar cache si al menos uno tuvo éxito

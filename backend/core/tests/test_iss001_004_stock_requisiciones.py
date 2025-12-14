@@ -255,29 +255,36 @@ class TestISS002MaquinaEstadosUnificada:
         assert service.TRANSICIONES_VALIDAS == Requisicion.TRANSICIONES_VALIDAS
     
     def test_transiciones_borrador(self):
-        """Desde borrador solo se puede ir a enviada o cancelada."""
+        """FLUJO V2: Desde borrador se puede ir a pendiente_admin o cancelada."""
         transiciones = Requisicion.TRANSICIONES_VALIDAS['borrador']
         
-        assert 'enviada' in transiciones
+        # ISS-TRANSICIONES FIX: borrador → pendiente_admin (no enviada directa)
+        assert 'pendiente_admin' in transiciones
         assert 'cancelada' in transiciones
         assert len(transiciones) == 2
     
     def test_transiciones_enviada(self):
-        """Desde enviada se puede autorizar, rechazar, parcial o cancelar."""
+        """FLUJO V2: Desde enviada se puede ir a en_revision, autorizada o rechazada."""
         transiciones = Requisicion.TRANSICIONES_VALIDAS['enviada']
         
+        # ISS-TRANSICIONES FIX: enviada permite autorizada directa (sin pasar por en_revision)
+        assert 'en_revision' in transiciones
         assert 'autorizada' in transiciones
-        assert 'parcial' in transiciones
         assert 'rechazada' in transiciones
-        assert 'cancelada' in transiciones
+        # Spec V2: enviada NO permite parcial ni cancelada
+        assert 'parcial' not in transiciones
+        assert 'cancelada' not in transiciones
     
     def test_transiciones_autorizada(self):
-        """Desde autorizada se puede surtir, ir a parcial o cancelar."""
+        """FLUJO V2: Desde autorizada se puede ir a en_surtido, surtida o cancelada."""
         transiciones = Requisicion.TRANSICIONES_VALIDAS['autorizada']
         
+        # ISS-TRANSICIONES FIX: autorizada permite surtida directa
+        assert 'en_surtido' in transiciones
         assert 'surtida' in transiciones
-        assert 'parcial' in transiciones
         assert 'cancelada' in transiciones
+        # Spec V2: parcial es estado interno del surtido, no transición principal
+        assert 'parcial' not in transiciones
     
     def test_transicion_rechazada_permite_reenvio(self):
         """ISS-002: Desde rechazada se puede volver a borrador para correcciones."""

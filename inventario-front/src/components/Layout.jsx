@@ -110,7 +110,12 @@ function Layout() {
     { path: "/configuracion-tema", icon: FaPalette, label: "Personalizar Tema", permission: "configurarTema" },
   ];
 
-  const visibleMenuItems = menuItems.filter((item) => !item.permission || permisos[item.permission]);
+  // ISS-009 FIX: NO mostrar menús sensibles durante validación pendiente
+  // Solo mostrar perfil mientras se valida con backend para prevenir escalación de privilegios
+  const isValidating = permisos?._isValidating || permisos?._source === 'pending_validation';
+  const visibleMenuItems = isValidating 
+    ? menuItems.filter(item => item.path === "/perfil") // Solo perfil durante validación
+    : menuItems.filter((item) => !item.permission || permisos[item.permission]);
 
   useEffect(() => {
     setSidebarOpen(window.innerWidth >= 1024);

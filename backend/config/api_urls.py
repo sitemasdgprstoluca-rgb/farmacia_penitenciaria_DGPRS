@@ -12,7 +12,8 @@ from core.views import (
     DetalleRequisicionViewSet, NotificacionViewSet, ConfiguracionSistemaViewSet,
     TemaGlobalViewSet,
     ProductoImagenViewSet, LoteDocumentoViewSet, DonacionViewSet, DetalleDonacionViewSet,
-    SalidaDonacionViewSet
+    SalidaDonacionViewSet,
+    CatalogosView,  # ISS-002 FIX: Endpoint de catálogos
 )
 # JWT Views seguros (cookies HttpOnly para refresh token)
 from core.serializers_jwt import (
@@ -98,6 +99,11 @@ urlpatterns = [
     path('tema/subir-logo/<str:tipo>/', TemaGlobalViewSet.as_view({
         'post': 'subir_logo'
     }), name='tema-subir-logo'),
+    
+    # ISS-002 FIX: Catálogos del sistema (unidades, categorías, estados, etc.)
+    # Públicos para sincronizar formularios frontend/backend
+    path('catalogos/', CatalogosView.as_view(), name='catalogos'),
+    path('catalogos/<str:catalogo>/', CatalogosView.as_view(), name='catalogos-detalle'),
     
     # Router (incluye /usuarios/me/ como accion del UserViewSet)
     path('', include(router.urls)),

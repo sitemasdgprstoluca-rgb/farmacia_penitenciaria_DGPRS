@@ -5,9 +5,13 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# SECURITY - definir DEBUG primero para usarlo en logging
-SECRET_KEY = config('SECRET_KEY', default='' if not config('DEBUG', default=False, cast=bool) else 'dev-only-insecure-key-not-for-production')
+# HALLAZGO #1/#2: Definir DEBUG primero para evitar lógica circular
 DEBUG = config('DEBUG', default=False, cast=bool)
+
+# HALLAZGO #1: SECRET_KEY con fallback seguro según entorno
+# - En producción (DEBUG=False): debe estar configurada o falla
+# - En desarrollo (DEBUG=True): usa clave temporal si no está configurada
+SECRET_KEY = config('SECRET_KEY', default='dev-only-insecure-key-not-for-production' if DEBUG else '')
 
 # Logging defaults (can be overridden by env)
 LOG_LEVEL = config('LOG_LEVEL', default='INFO')
@@ -66,6 +70,16 @@ _offline_commands = {'migrate', 'makemigrations', 'collectstatic', 'check', 'sho
                      'dbshell', 'shell', 'createsuperuser', 'test', 'flush', 'dumpdata', 'loaddata'}
 _is_offline_command = _is_management_command and len(sys.argv) > 1 and sys.argv[1] in _offline_commands
 
+# ISS-QA-001 FIX: Detectar pytest para permitir ejecución de tests sin SECRET_KEY de producción
+# Múltiples métodos de detección para cubrir todos los casos (pytest directo, IDE, CI)
+_is_pytest = (
+    'pytest' in sys.modules or  # pytest ya importado
+    '_pytest' in sys.modules or  # pytest internals
+    'py.test' in sys.modules or  # pytest alternativo
+    (sys.argv and any('pytest' in str(arg) for arg in sys.argv)) or  # pytest en argumentos
+    'test' in sys.argv  # manage.py test
+)
+
 # Variables de entorno para CI/CD pipelines
 RUNNING_MIGRATIONS = config('RUNNING_MIGRATIONS', default=False, cast=bool)
 RUNNING_COLLECTSTATIC = config('RUNNING_COLLECTSTATIC', default=False, cast=bool)
@@ -77,6 +91,7 @@ CI_ENVIRONMENT = config('CI', default=False, cast=bool) or config('CI_ENVIRONMEN
 _skip_validation = (
     DEBUG or  # En desarrollo se permite todo
     _is_offline_command or  # Comandos de gestión offline
+    _is_pytest or  # ISS-QA-001 FIX: pytest tests
     RUNNING_MIGRATIONS or  # Pipeline de migraciones
     RUNNING_COLLECTSTATIC or  # Pipeline de collectstatic
     CI_ENVIRONMENT  # Entorno de CI (tests)
@@ -84,9 +99,15 @@ _skip_validation = (
 # ISS-001 FIX: MAINTENANCE_MODE ya NO permite bypass de validación de seguridad
 # Solo se usa para otras funciones de mantenimiento, no para arranque inseguro
 
+# ISS-QA-001 FIX: Para testing, usar SECRET_KEY segura temporal si no está definida
+# Esto permite correr pytest sin configurar variables de entorno
+if _is_pytest or CI_ENVIRONMENT:
+    if not SECRET_KEY or SECRET_KEY == 'dev-only-insecure-key-not-for-production':
+        SECRET_KEY = 'pytest-temporary-secret-key-only-for-testing-not-for-production-use-12345678901234567890'
+
 # ISS-001 FIX (audit10): Validaciones CRÍTICAS que SIEMPRE se ejecutan en producción
-# Incluso si _skip_validation es True, SECRET_KEY y HTTPS se validan SIEMPRE
-if not DEBUG:
+# ISS-QA-001 FIX: NO validar en entorno de testing (pytest, CI)
+if not DEBUG and not _is_pytest and not CI_ENVIRONMENT:
     _critical_errors = []
     
     # CRÍTICO 1: SECRET_KEY NUNCA puede estar vacía o ser insegura en producción
@@ -309,9 +330,9 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # DATABASE
 DATABASE_URL = config('DATABASE_URL', default=None)
 
-# Forzar SQLite para tests (ignora DATABASE_URL)
-import sys
-TESTING = 'test' in sys.argv or 'pytest' in sys.modules
+# ISS-QA-001 FIX: Forzar SQLite para tests usando detección unificada
+# Usa _is_pytest que ya detecta pytest/test de múltiples formas
+TESTING = _is_pytest or CI_ENVIRONMENT
 
 if TESTING:
     # Tests siempre usan SQLite en memoria para velocidad y aislamiento

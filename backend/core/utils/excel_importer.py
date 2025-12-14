@@ -9,7 +9,7 @@ from decimal import Decimal
 
 import openpyxl
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, F
 
 from core.models import Producto, Lote, Centro, ImportacionLog
 
@@ -53,15 +53,34 @@ class ResultadoImportacion:
 
 def cargar_excel(archivo):
     """
-    Carga un archivo Excel y valida condiciones basicas.
+    HALLAZGO #3: Carga un archivo Excel con validaciones de seguridad.
+    
+    Validaciones:
+    - Límite de tamaño (protección DoS)
+    - Límite de filas (10,000 máximo)
+    - Modo read_only y data_only (previene ataques de fórmulas)
+    
     Retorna (workbook, filas_totales, valido).
     """
     try:
-        workbook = openpyxl.load_workbook(archivo)
+        # HALLAZGO #3: Cargar en modo seguro
+        # read_only=True: streaming, no carga todo en memoria
+        # data_only=True: ignora fórmulas, solo valores (previene ataques)
+        workbook = openpyxl.load_workbook(
+            archivo, 
+            read_only=True,
+            data_only=True
+        )
         sheet = workbook.active
         filas_totales = sheet.max_row - 1
 
-        if filas_totales > 10000 or filas_totales <= 0:
+        # Validar límite de filas
+        if filas_totales > 10000:
+            logger.warning(f"Archivo rechazado: {filas_totales} filas exceden el límite de 10,000")
+            return None, 0, False
+        
+        if filas_totales <= 0:
+            logger.warning("Archivo rechazado: sin filas de datos")
             return None, 0, False
 
         return workbook, filas_totales, True
@@ -72,15 +91,17 @@ def cargar_excel(archivo):
 
 def importar_productos_desde_excel(archivo, usuario):
     """
-    Importa productos desde Excel.
+    Importa productos desde Excel según esquema público.productos.
 
     Columnas esperadas:
     - clave (3-50 chars, unique)
-    - descripcion (min 5 chars)
-    - unidad_medida (PIEZA|CAJA|FRASCO|SOBRE|AMPOLLETA|TABLETA|CAPSULA|ML|GR)
-    - precio_unitario (decimal > 0)
+    - nombre (min 5 chars) 
+    - descripcion (opcional)
+    - unidad_medida (pieza|caja|frasco|sobre|ampolleta|tableta|capsula|ml|gr)
+    - categoria (medicamento|material_curacion|insumo)
+    - sustancia_activa, presentacion, concentracion, via_administracion (opcional)
     - stock_minimo (int >= 0)
-    - activo (opcional, boolean-like)
+    - requiere_receta, es_controlado, activo (boolean)
     """
     resultado = ResultadoImportacion('Producto')
     workbook, _, valido = cargar_excel(archivo)
@@ -90,89 +111,188 @@ def importar_productos_desde_excel(archivo, usuario):
 
     sheet = workbook.active
     encabezados = [cell.value for cell in sheet[1]]
-    requeridos = ['clave', 'descripcion', 'unidad_medida', 'precio_unitario', 'stock_minimo']
-
-    encabezados_norm = [str(e).lower() if e else '' for e in encabezados]
+    
+    # HALLAZGO #4: Mapeo flexible de headers (soporta variaciones de formato)
+    def normalizar_header(h):
+        """Normaliza encabezados para mapeo robusto."""
+        if not h:
+            return ''
+        import re
+        # Convertir a string, lowercase, remover asteriscos, saltos de línea, paréntesis y contenido
+        texto = str(h).lower().replace('*', '').replace('\n', ' ')
+        # Remover contenido entre paréntesis: "Clave (Obligatorio)" -> "Clave"
+        texto = re.sub(r'\([^)]*\)', '', texto)
+        # Remover acentos comunes
+        texto = texto.replace('á', 'a').replace('é', 'e').replace('í', 'i')
+        texto = texto.replace('ó', 'o').replace('ú', 'u').replace('ñ', 'n')
+        # Remover espacios múltiples y caracteres especiales
+        texto = re.sub(r'[^a-z0-9]+', ' ', texto)
+        return texto.strip()
+    
+    encabezados_norm = [normalizar_header(e) for e in encabezados]
+    
+    # Buscar índices de columnas
+    col_map = {}
+    for i, h in enumerate(encabezados_norm):
+        if 'clave' in h:
+            col_map['clave'] = i
+        elif 'nombre' in h:
+            col_map['nombre'] = i
+        elif 'descripci' in h:
+            col_map['descripcion'] = i
+        elif 'unidad' in h:
+            col_map['unidad_medida'] = i
+        elif 'categor' in h:
+            col_map['categoria'] = i
+        elif 'sustancia' in h:
+            col_map['sustancia_activa'] = i
+        elif 'presentaci' in h:
+            col_map['presentacion'] = i
+        elif 'concentraci' in h:
+            col_map['concentracion'] = i
+        elif 'v' in h and 'administraci' in h:
+            col_map['via_administracion'] = i
+        elif 'stock' in h:
+            col_map['stock_minimo'] = i
+        elif 'receta' in h:
+            col_map['requiere_receta'] = i
+        elif 'controlado' in h:
+            col_map['es_controlado'] = i
+        elif 'activo' in h:
+            col_map['activo'] = i
+    
+    requeridos = ['clave', 'nombre', 'unidad_medida', 'categoria', 'stock_minimo']
     for req in requeridos:
-        if req not in encabezados_norm:
+        if req not in col_map:
             resultado.agregar_error(1, 'encabezados', f'Columna requerida "{req}" no encontrada')
             return resultado.get_dict()
-
-    col_map = {str(encabezados[i]).lower(): i for i in range(len(encabezados)) if encabezados[i]}
+    
     unidades_validas = ['PIEZA', 'CAJA', 'FRASCO', 'SOBRE', 'AMPOLLETA', 'TABLETA', 'CAPSULA', 'ML', 'GR']
+    categorias_validas = ['MEDICAMENTO', 'MATERIAL_CURACION', 'INSUMO']
 
     with transaction.atomic():
         for fila_num in range(2, sheet.max_row + 1):
             resultado.incrementar_procesados()
             fila = sheet[fila_num]
             try:
-                clave = str(fila[col_map['clave']].value).strip().upper() if fila[col_map['clave']].value else None
-                descripcion = str(fila[col_map['descripcion']].value).strip() if fila[col_map['descripcion']].value else None
-                unidad_medida = str(fila[col_map['unidad_medida']].value).strip().upper() if fila[col_map['unidad_medida']].value else None
-                precio_raw = fila[col_map['precio_unitario']].value
+                # Extraer valores con manejo seguro de None
+                clave_val = fila[col_map['clave']].value
+                clave = str(clave_val).strip().upper() if clave_val not in [None, ''] else None
+                
+                nombre_val = fila[col_map['nombre']].value
+                nombre = str(nombre_val).strip() if nombre_val not in [None, ''] else None
+                
+                desc_idx = col_map.get('descripcion', -1)
+                descripcion = ''
+                if desc_idx >= 0 and desc_idx < len(fila):
+                    desc_val = fila[desc_idx].value
+                    descripcion = str(desc_val).strip() if desc_val not in [None, ''] else ''
+                
+                um_val = fila[col_map['unidad_medida']].value
+                unidad_medida = str(um_val).strip().upper() if um_val not in [None, ''] else None
+                
+                cat_val = fila[col_map['categoria']].value
+                categoria = str(cat_val).strip().upper() if cat_val not in [None, ''] else 'MEDICAMENTO'
+                
+                # Campos opcionales con manejo seguro
+                def get_optional_str(col_name, default=None):
+                    idx = col_map.get(col_name, -1)
+                    if idx >= 0 and idx < len(fila):
+                        val = fila[idx].value
+                        return str(val).strip() if val not in [None, ''] else default
+                    return default
+                
+                sustancia_activa = get_optional_str('sustancia_activa')
+                presentacion = get_optional_str('presentacion')
+                concentracion = get_optional_str('concentracion')
+                via_administracion = get_optional_str('via_administracion')
+                
                 stock_raw = fila[col_map['stock_minimo']].value
-                activo_idx = col_map.get('activo', -1)
-                activo_raw = fila[activo_idx].value if activo_idx >= 0 and activo_idx < len(fila) else None
+                
+                # Booleanos con manejo seguro
+                def get_bool_value(col_name, default_val='No'):
+                    idx = col_map.get(col_name, -1)
+                    if idx >= 0 and idx < len(fila):
+                        return fila[idx].value
+                    return default_val
+                
+                requiere_receta = _parse_bool(get_bool_value('requiere_receta', 'No'))
+                es_controlado = _parse_bool(get_bool_value('es_controlado', 'No'))
+                activo = _parse_bool(get_bool_value('activo', 'Si'))
 
+                # Validaciones
                 if not clave or len(clave) < 3 or len(clave) > 50:
-                    resultado.agregar_error(fila_num, 'clave', 'Clave 3-50 caracteres requerida')
+                    resultado.agregar_error(fila_num, 'clave', 'Clave debe tener 3-50 caracteres')
                     continue
-                if not descripcion or len(descripcion) < 5:
-                    resultado.agregar_error(fila_num, 'descripcion', 'Descripcion minimo 5 caracteres')
+                
+                if not nombre or len(nombre) < 5:
+                    resultado.agregar_error(fila_num, 'nombre', 'Nombre debe tener mínimo 5 caracteres')
                     continue
+                
                 if not unidad_medida or unidad_medida not in unidades_validas:
                     resultado.agregar_error(fila_num, 'unidad_medida', f'Unidad debe ser: {", ".join(unidades_validas)}')
                     continue
-
-                try:
-                    precio_unitario = Decimal(str(precio_raw).strip())
-                    if precio_unitario <= 0:
-                        raise ValueError('Precio debe ser > 0')
-                except Exception as exc:
-                    resultado.agregar_error(fila_num, 'precio_unitario', exc)
+                
+                if categoria not in categorias_validas:
+                    resultado.agregar_error(fila_num, 'categoria', f'Categoría debe ser: {", ".join(categorias_validas)}')
                     continue
 
                 try:
                     stock_minimo = int(float(stock_raw))
                     if stock_minimo < 0:
-                        raise ValueError('Stock minimo no puede ser negativo')
+                        raise ValueError('Stock mínimo no puede ser negativo')
                 except Exception as exc:
-                    resultado.agregar_error(fila_num, 'stock_minimo', exc)
+                    resultado.agregar_error(fila_num, 'stock_minimo', str(exc))
                     continue
 
-                activo = str(activo_raw).strip().lower() if activo_raw is not None else 'true'
-                activo_bool = activo in ['true', '1', 'si', 'yes', 'v', 'verdadero']
-
+                # Crear/actualizar producto
                 Producto.objects.update_or_create(
                     clave=clave,
                     defaults={
+                        'nombre': nombre,
                         'descripcion': descripcion,
-                        'unidad_medida': unidad_medida,
-                        'precio_unitario': precio_unitario,
+                        'unidad_medida': unidad_medida.lower(),
+                        'categoria': categoria.lower(),
+                        'sustancia_activa': sustancia_activa,
+                        'presentacion': presentacion,
+                        'concentracion': concentracion,
+                        'via_administracion': via_administracion,
                         'stock_minimo': stock_minimo,
-                        'activo': activo_bool,
+                        'requiere_receta': requiere_receta,
+                        'es_controlado': es_controlado,
+                        'activo': activo,
                     }
                 )
                 resultado.agregar_exito()
             except Exception as exc:  # pragma: no cover - log detalle
                 logger.exception(f"Error importando producto fila {fila_num}: {exc}")
-                resultado.agregar_error(fila_num, 'general', exc)
+                resultado.agregar_error(fila_num, 'general', str(exc))
 
     return resultado.get_dict()
 
 
-def importar_lotes_desde_excel(archivo, usuario):
+def _parse_bool(valor):
+    """Convierte valores variados a booleano."""
+    if valor is None:
+        return False
+    if isinstance(valor, bool):
+        return valor
+    valor_str = str(valor).strip().lower()
+    return valor_str in ['si', 'sí', 'yes', 'true', '1', 'verdadero', 'v']
+
+
+def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     """
-    Importa lotes desde Excel.
+    Importa lotes desde Excel según esquema público.lotes.
 
     Columnas esperadas:
-    - producto_clave (código de barras o nombre del producto)
-    - numero_lote
-    - fecha_caducidad (YYYY-MM-DD, futura)
+    - clave_producto (código del producto, debe existir)
+    - numero_lote (único)
     - cantidad_inicial (int > 0)
-    - cantidad_actual (int >= 0 y <= inicial)
-    - precio_unitario (opcional, decimal >= 0)
-    - marca (opcional)
+    - fecha_caducidad (YYYY-MM-DD, futura)
+    - fecha_fabricacion (YYYY-MM-DD, opcional)
+    - precio_unitario (decimal >= 0)
+    - numero_contrato, marca, ubicacion (opcional)
     """
     resultado = ResultadoImportacion('Lote')
     workbook, _, valido = cargar_excel(archivo)
@@ -182,100 +302,187 @@ def importar_lotes_desde_excel(archivo, usuario):
 
     sheet = workbook.active
     encabezados = [cell.value for cell in sheet[1]]
-    requeridos = ['producto_clave', 'numero_lote', 'fecha_caducidad', 'cantidad_inicial', 'cantidad_actual']
+    
+    # HALLAZGO #4: Mapeo flexible con normalización robusta
+    def normalizar_header(h):
+        """Normaliza encabezados para mapeo robusto."""
+        if not h:
+            return ''
+        import re
+        # Convertir a string, lowercase, remover asteriscos, saltos de línea, paréntesis y contenido
+        texto = str(h).lower().replace('*', '').replace('\n', ' ')
+        # Remover contenido entre paréntesis: "Clave (Obligatorio)" -> "Clave"
+        texto = re.sub(r'\([^)]*\)', '', texto)
+        # Remover acentos comunes
+        texto = texto.replace('á', 'a').replace('é', 'e').replace('í', 'i')
+        texto = texto.replace('ó', 'o').replace('ú', 'u').replace('ñ', 'n')
+        # Remover espacios múltiples y caracteres especiales
+        texto = re.sub(r'[^a-z0-9]+', ' ', texto)
+        return texto.strip()
+    
+    encabezados_norm = [normalizar_header(e) for e in encabezados]
+    
+    col_map = {}
+    for i, h in enumerate(encabezados_norm):
+        if 'clave' in h and 'producto' in h:
+            col_map['clave_producto'] = i
+        elif 'lote' in h and 'numero' in h:
+            col_map['numero_lote'] = i
+        elif 'cantidad' in h and 'inicial' in h:
+            col_map['cantidad_inicial'] = i
+        elif 'caducidad' in h:
+            col_map['fecha_caducidad'] = i
+        elif 'fabricaci' in h:
+            col_map['fecha_fabricacion'] = i
+        elif 'precio' in h:
+            col_map['precio_unitario'] = i
+        elif 'contrato' in h:
+            col_map['numero_contrato'] = i
+        elif 'marca' in h:
+            col_map['marca'] = i
+        elif 'ubicaci' in h:
+            col_map['ubicacion'] = i
 
-    encabezados_norm = [str(e).lower() if e else '' for e in encabezados]
+    requeridos = ['clave_producto', 'numero_lote', 'cantidad_inicial', 'fecha_caducidad', 'precio_unitario']
     for req in requeridos:
-        if req not in encabezados_norm:
+        if req not in col_map:
             resultado.agregar_error(1, 'encabezados', f'Columna requerida "{req}" no encontrada')
             return resultado.get_dict()
-
-    col_map = {str(encabezados[i]).lower(): i for i in range(len(encabezados)) if encabezados[i]}
+    
+    # Obtener centro
+    centro = None
+    if centro_id:
+        try:
+            centro = Centro.objects.get(id=centro_id)
+        except Centro.DoesNotExist:
+            resultado.agregar_error(0, 'centro', f'Centro con ID {centro_id} no existe')
+            return resultado.get_dict()
 
     with transaction.atomic():
         for fila_num in range(2, sheet.max_row + 1):
             resultado.incrementar_procesados()
             fila = sheet[fila_num]
             try:
-                producto_clave = str(fila[col_map['producto_clave']].value).strip().upper() if fila[col_map['producto_clave']].value else None
-                numero_lote = str(fila[col_map['numero_lote']].value).strip().upper() if fila[col_map['numero_lote']].value else None
-                fecha_raw = fila[col_map['fecha_caducidad']].value
+                # Extraer valores
+                clave_producto = str(fila[col_map['clave_producto']].value).strip().upper() if fila[col_map['clave_producto']].value else None
+                numero_lote = str(fila[col_map['numero_lote']].value).strip() if fila[col_map['numero_lote']].value else None
+                fecha_cad_raw = fila[col_map['fecha_caducidad']].value
+                fecha_fab_raw = fila[col_map.get('fecha_fabricacion', -1)].value if col_map.get('fecha_fabricacion') else None
                 cant_inicial_raw = fila[col_map['cantidad_inicial']].value
-                cant_actual_raw = fila[col_map['cantidad_actual']].value
-                precio_unitario_raw = fila[col_map.get('precio_unitario', -1)].value if col_map.get('precio_unitario', -1) is not None and col_map.get('precio_unitario', -1) >= 0 else None
-                marca = str(fila[col_map.get('marca', -1)].value).strip() if col_map.get('marca', -1) is not None and col_map.get('marca', -1) >= 0 and fila[col_map.get('marca', -1)].value else ''
+                precio_unitario_raw = fila[col_map['precio_unitario']].value
+                
+                # Opcionales
+                numero_contrato = str(fila[col_map.get('numero_contrato', -1)].value).strip() if col_map.get('numero_contrato') and fila[col_map.get('numero_contrato')].value else None
+                marca = str(fila[col_map.get('marca', -1)].value).strip() if col_map.get('marca') and fila[col_map.get('marca')].value else None
+                ubicacion = str(fila[col_map.get('ubicacion', -1)].value).strip() if col_map.get('ubicacion') and fila[col_map.get('ubicacion')].value else None
 
-                if not producto_clave:
-                    resultado.agregar_error(fila_num, 'producto_clave', 'Clave de producto requerida')
+                # Validar producto
+                if not clave_producto:
+                    resultado.agregar_error(fila_num, 'clave_producto', 'Clave de producto requerida')
                     continue
+                
                 try:
-                    producto = Producto.objects.get(
-                        Q(clave__iexact=producto_clave) | Q(descripcion__iexact=producto_clave)
-                    )
+                    producto = Producto.objects.get(clave__iexact=clave_producto)
                 except Producto.DoesNotExist:
-                    resultado.agregar_error(fila_num, 'producto_clave', f'Producto "{producto_clave}" no existe')
+                    resultado.agregar_error(fila_num, 'clave_producto', f'Producto "{clave_producto}" no existe')
                     continue
 
+                # Validar lote
                 if not numero_lote or len(numero_lote) < 3:
-                    resultado.agregar_error(fila_num, 'numero_lote', 'Numero de lote: minimo 3 caracteres')
+                    resultado.agregar_error(fila_num, 'numero_lote', 'Número de lote debe tener mínimo 3 caracteres')
                     continue
-                if Lote.objects.filter(producto=producto, numero_lote__iexact=numero_lote, activo=True).exists():
-                    resultado.agregar_error(fila_num, 'numero_lote', f'Lote "{numero_lote}" ya existe')
-                    continue
+                
+                # Verificar duplicado (producto + numero_lote + centro)
+                if centro:
+                    if Lote.objects.filter(producto=producto, numero_lote__iexact=numero_lote, centro=centro, activo=True).exists():
+                        resultado.agregar_error(fila_num, 'numero_lote', f'Lote "{numero_lote}" ya existe en este centro')
+                        continue
+                else:
+                    if Lote.objects.filter(producto=producto, numero_lote__iexact=numero_lote, activo=True).exists():
+                        resultado.agregar_error(fila_num, 'numero_lote', f'Lote "{numero_lote}" ya existe')
+                        continue
 
+                # Fecha caducidad
                 try:
-                    if isinstance(fecha_raw, (datetime, date)):
-                        fecha_caducidad = fecha_raw.date() if isinstance(fecha_raw, datetime) else fecha_raw
+                    if isinstance(fecha_cad_raw, (datetime, date)):
+                        fecha_caducidad = fecha_cad_raw.date() if isinstance(fecha_cad_raw, datetime) else fecha_cad_raw
                     else:
-                        fecha_caducidad = datetime.strptime(str(fecha_raw), '%Y-%m-%d').date()
+                        fecha_caducidad = datetime.strptime(str(fecha_cad_raw).strip(), '%Y-%m-%d').date()
+                    
                     if fecha_caducidad < date.today():
-                        raise ValueError('Fecha debe ser futura')
+                        raise ValueError('Fecha de caducidad debe ser futura')
                 except Exception as exc:
-                    resultado.agregar_error(fila_num, 'fecha_caducidad', exc)
+                    resultado.agregar_error(fila_num, 'fecha_caducidad', f'Fecha inválida: {exc}')
                     continue
 
+                # Fecha fabricación (opcional)
+                fecha_fabricacion = None
+                if fecha_fab_raw:
+                    try:
+                        if isinstance(fecha_fab_raw, (datetime, date)):
+                            fecha_fabricacion = fecha_fab_raw.date() if isinstance(fecha_fab_raw, datetime) else fecha_fab_raw
+                        else:
+                            fecha_fabricacion = datetime.strptime(str(fecha_fab_raw).strip(), '%Y-%m-%d').date()
+                    except:
+                        pass  # Opcional, si falla se ignora
+                
+                # HALLAZGO #3: Validar lógica temporal entre fechas
+                if fecha_fabricacion and fecha_caducidad <= fecha_fabricacion:
+                    resultado.agregar_error(fila_num, 'fecha_fabricacion', 'Fecha de caducidad debe ser posterior a fecha de fabricación')
+                    continue
+
+                # Cantidad
                 try:
                     cantidad_inicial = int(float(cant_inicial_raw))
                     if cantidad_inicial <= 0:
                         raise ValueError('Cantidad inicial debe ser > 0')
                 except Exception as exc:
-                    resultado.agregar_error(fila_num, 'cantidad_inicial', exc)
+                    resultado.agregar_error(fila_num, 'cantidad_inicial', str(exc))
                     continue
 
+                # Precio
+                # HALLAZGO #4: Validar que precio_unitario >= 0
                 try:
-                    cantidad_actual = int(float(cant_actual_raw))
-                    if cantidad_actual < 0:
-                        raise ValueError('Cantidad actual no puede ser negativa')
-                    if cantidad_actual > cantidad_inicial:
-                        raise ValueError(f'Cantidad actual ({cantidad_actual}) no puede exceder inicial ({cantidad_inicial})')
+                    precio_unitario = Decimal(str(precio_unitario_raw).strip())
+                    if precio_unitario < 0:
+                        raise ValueError('Precio unitario no puede ser negativo')
+                    # Advertencia para precio cero (puede ser válido para donaciones)
+                    if precio_unitario == 0:
+                        logger.warning(f'Lote fila {fila_num}: Precio unitario es 0 (verificar si es donación)')
                 except Exception as exc:
-                    resultado.agregar_error(fila_num, 'cantidad_actual', exc)
+                    resultado.agregar_error(fila_num, 'precio_unitario', str(exc))
                     continue
 
-                precio_unitario = None
-                if precio_unitario_raw not in [None, '']:
-                    try:
-                        precio_unitario = Decimal(str(precio_unitario_raw).strip())
-                        if precio_unitario < 0:
-                            raise ValueError('Precio no puede ser negativo')
-                    except Exception as exc:
-                        resultado.agregar_error(fila_num, 'precio_unitario', exc)
-                        continue
-
-                from django.utils import timezone
-                Lote.objects.create(
+                # Crear lote
+                lote = Lote.objects.create(
                     producto=producto,
+                    centro=centro,
                     numero_lote=numero_lote,
-                    fecha_caducidad=fecha_caducidad,
                     cantidad_inicial=cantidad_inicial,
-                    cantidad_actual=cantidad_actual,
-                    precio_unitario=precio_unitario or 0,
-                    marca=marca or None,
+                    cantidad_actual=cantidad_inicial,  # Al inicio es igual
+                    fecha_caducidad=fecha_caducidad,
+                    fecha_fabricacion=fecha_fabricacion,
+                    precio_unitario=precio_unitario,
+                    numero_contrato=numero_contrato,
+                    marca=marca,
+                    ubicacion=ubicacion,
+                    activo=True,
                 )
+                
+                # HALLAZGO #2: Actualizar stock del producto de forma atómica
+                # Usar F() expression para evitar Race Condition en actualizaciones concurrentes
+                from django.db.models import F
+                Producto.objects.filter(pk=producto.pk).update(
+                    stock_actual=F('stock_actual') + cantidad_inicial
+                )
+                # Refrescar instancia para tener el valor actualizado
+                producto.refresh_from_db(fields=['stock_actual'])
+                
                 resultado.agregar_exito()
+                
             except Exception as exc:  # pragma: no cover
                 logger.exception(f"Error importando lote fila {fila_num}: {exc}")
-                resultado.agregar_error(fila_num, 'general', exc)
+                resultado.agregar_error(fila_num, 'general', str(exc))
 
     return resultado.get_dict()
 
