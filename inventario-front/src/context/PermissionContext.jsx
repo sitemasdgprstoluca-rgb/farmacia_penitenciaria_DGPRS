@@ -638,7 +638,12 @@ export function PermissionProvider({ children }) {
     
     // ISS-002 FIX: Solo calcular permisos completos si datos están validados con backend
     if (validated) {
-      setPermisos(calcularPermisos(userData, baseGroups));
+      const permisosCompletos = calcularPermisos(userData, baseGroups);
+      // ISS-009 FIX: Marcar que permisos están validados y NO están en validación
+      setPermisos({
+        ...permisosCompletos,
+        _isValidating: false,  // Crucial: desactivar flag de validación
+      });
       setPermisosValidados(true);
     } else {
       // ISS-009 FIX: Permisos mínimos hasta validar - NO incluir rol
