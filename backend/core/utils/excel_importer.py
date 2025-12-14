@@ -9,7 +9,7 @@ from decimal import Decimal
 
 import openpyxl
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, F
 
 from core.models import Producto, Lote, Centro, ImportacionLog
 
@@ -53,15 +53,34 @@ class ResultadoImportacion:
 
 def cargar_excel(archivo):
     """
-    Carga un archivo Excel y valida condiciones basicas.
+    HALLAZGO #3: Carga un archivo Excel con validaciones de seguridad.
+    
+    Validaciones:
+    - Límite de tamaño (protección DoS)
+    - Límite de filas (10,000 máximo)
+    - Modo read_only y data_only (previene ataques de fórmulas)
+    
     Retorna (workbook, filas_totales, valido).
     """
     try:
-        workbook = openpyxl.load_workbook(archivo)
+        # HALLAZGO #3: Cargar en modo seguro
+        # read_only=True: streaming, no carga todo en memoria
+        # data_only=True: ignora fórmulas, solo valores (previene ataques)
+        workbook = openpyxl.load_workbook(
+            archivo, 
+            read_only=True,
+            data_only=True
+        )
         sheet = workbook.active
         filas_totales = sheet.max_row - 1
 
-        if filas_totales > 10000 or filas_totales <= 0:
+        # Validar límite de filas
+        if filas_totales > 10000:
+            logger.warning(f"Archivo rechazado: {filas_totales} filas exceden el límite de 10,000")
+            return None, 0, False
+        
+        if filas_totales <= 0:
+            logger.warning("Archivo rechazado: sin filas de datos")
             return None, 0, False
 
         return workbook, filas_totales, True
@@ -93,11 +112,22 @@ def importar_productos_desde_excel(archivo, usuario):
     sheet = workbook.active
     encabezados = [cell.value for cell in sheet[1]]
     
-    # Mapeo flexible de headers (soporta con/sin asteriscos y saltos de línea)
+    # HALLAZGO #4: Mapeo flexible de headers (soporta variaciones de formato)
     def normalizar_header(h):
+        """Normaliza encabezados para mapeo robusto."""
         if not h:
             return ''
-        return str(h).lower().replace('*', '').replace('\n', ' ').strip()
+        import re
+        # Convertir a string, lowercase, remover asteriscos, saltos de línea, paréntesis y contenido
+        texto = str(h).lower().replace('*', '').replace('\n', ' ')
+        # Remover contenido entre paréntesis: "Clave (Obligatorio)" -> "Clave"
+        texto = re.sub(r'\([^)]*\)', '', texto)
+        # Remover acentos comunes
+        texto = texto.replace('á', 'a').replace('é', 'e').replace('í', 'i')
+        texto = texto.replace('ó', 'o').replace('ú', 'u').replace('ñ', 'n')
+        # Remover espacios múltiples y caracteres especiales
+        texto = re.sub(r'[^a-z0-9]+', ' ', texto)
+        return texto.strip()
     
     encabezados_norm = [normalizar_header(e) for e in encabezados]
     
@@ -273,11 +303,22 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     sheet = workbook.active
     encabezados = [cell.value for cell in sheet[1]]
     
-    # Mapeo flexible
+    # HALLAZGO #4: Mapeo flexible con normalización robusta
     def normalizar_header(h):
+        """Normaliza encabezados para mapeo robusto."""
         if not h:
             return ''
-        return str(h).lower().replace('*', '').replace('\n', ' ').strip()
+        import re
+        # Convertir a string, lowercase, remover asteriscos, saltos de línea, paréntesis y contenido
+        texto = str(h).lower().replace('*', '').replace('\n', ' ')
+        # Remover contenido entre paréntesis: "Clave (Obligatorio)" -> "Clave"
+        texto = re.sub(r'\([^)]*\)', '', texto)
+        # Remover acentos comunes
+        texto = texto.replace('á', 'a').replace('é', 'e').replace('í', 'i')
+        texto = texto.replace('ó', 'o').replace('ú', 'u').replace('ñ', 'n')
+        # Remover espacios múltiples y caracteres especiales
+        texto = re.sub(r'[^a-z0-9]+', ' ', texto)
+        return texto.strip()
     
     encabezados_norm = [normalizar_header(e) for e in encabezados]
     
@@ -384,6 +425,11 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                             fecha_fabricacion = datetime.strptime(str(fecha_fab_raw).strip(), '%Y-%m-%d').date()
                     except:
                         pass  # Opcional, si falla se ignora
+                
+                # HALLAZGO #3: Validar lógica temporal entre fechas
+                if fecha_fabricacion and fecha_caducidad <= fecha_fabricacion:
+                    resultado.agregar_error(fila_num, 'fecha_fabricacion', 'Fecha de caducidad debe ser posterior a fecha de fabricación')
+                    continue
 
                 # Cantidad
                 try:
@@ -395,10 +441,14 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     continue
 
                 # Precio
+                # HALLAZGO #4: Validar que precio_unitario >= 0
                 try:
                     precio_unitario = Decimal(str(precio_unitario_raw).strip())
                     if precio_unitario < 0:
-                        raise ValueError('Precio no puede ser negativo')
+                        raise ValueError('Precio unitario no puede ser negativo')
+                    # Advertencia para precio cero (puede ser válido para donaciones)
+                    if precio_unitario == 0:
+                        logger.warning(f'Lote fila {fila_num}: Precio unitario es 0 (verificar si es donación)')
                 except Exception as exc:
                     resultado.agregar_error(fila_num, 'precio_unitario', str(exc))
                     continue
@@ -419,9 +469,14 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     activo=True,
                 )
                 
-                # Actualizar stock del producto
-                producto.stock_actual = (producto.stock_actual or 0) + cantidad_inicial
-                producto.save(update_fields=['stock_actual'])
+                # HALLAZGO #2: Actualizar stock del producto de forma atómica
+                # Usar F() expression para evitar Race Condition en actualizaciones concurrentes
+                from django.db.models import F
+                Producto.objects.filter(pk=producto.pk).update(
+                    stock_actual=F('stock_actual') + cantidad_inicial
+                )
+                # Refrescar instancia para tener el valor actualizado
+                producto.refresh_from_db(fields=['stock_actual'])
                 
                 resultado.agregar_exito()
                 

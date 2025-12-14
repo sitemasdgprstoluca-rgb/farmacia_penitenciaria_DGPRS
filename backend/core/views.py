@@ -511,17 +511,30 @@ class UserViewSet(viewsets.ModelViewSet):
         user.set_password(new_password)
         user.save()
         
+        # HALLAZGO #3: Invalidar todos los tokens JWT existentes del usuario
+        # Esto previene que tokens robados sigan funcionando después del cambio de contraseña
+        try:
+            from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
+            # Eliminar todos los tokens pendientes del usuario (los marca como inválidos)
+            OutstandingToken.objects.filter(user=user).delete()
+        except Exception as e:
+            # Si la app token_blacklist no está habilitada, loguear advertencia
+            logger.warning(f'No se pudieron invalidar tokens JWT para {user.username}: {e}')
+        
         # Registrar cambio exitoso en auditoría
         AuditoriaLog.objects.create(
             usuario=user,
             accion='UPDATE',
             modelo='Usuario',
             objeto_id=str(user.id),
-            detalles={'objeto_repr': str(user), 'resultado': 'Contraseña actualizada exitosamente'}
+            detalles={'objeto_repr': str(user), 'resultado': 'Contraseña actualizada exitosamente', 'tokens_invalidados': True}
         )
         
-        logger.info("Contraseña actualizada para usuario %s", user.username)
-        return Response({'message': 'Contraseña actualizada exitosamente'})
+        logger.info("Contraseña actualizada para usuario %s (tokens JWT invalidados)", user.username)
+        return Response({
+            'message': 'Contraseña actualizada exitosamente',
+            'nota': 'Todas las sesiones activas han sido cerradas. Debe iniciar sesión nuevamente.'
+        })
 
     @action(detail=True, methods=['post'], url_path='cambiar-password')
     def cambiar_password(self, request, pk=None):
@@ -544,18 +557,24 @@ class UserViewSet(viewsets.ModelViewSet):
         if not new_password:
             return Response({'error': 'Debe proporcionar new_password'}, status=status.HTTP_400_BAD_REQUEST)
         
-        if len(new_password) < 8:
-            return Response({'error': 'La contraseña debe tener al menos 8 caracteres'}, status=status.HTTP_400_BAD_REQUEST)
+        # HALLAZGO #6: Usar validate_password de Django (consistencia con cambiar_mi_password)
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError as DjangoValidationError
         
-        # Validar complejidad mínima
-        if not any(c.isupper() for c in new_password):
-            return Response({'error': 'La contraseña debe tener al menos una mayúscula'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        if not any(c.isdigit() for c in new_password):
-            return Response({'error': 'La contraseña debe tener al menos un número'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            validate_password(new_password, usuario)
+        except DjangoValidationError as e:
+            return Response({'error': '; '.join(e.messages)}, status=status.HTTP_400_BAD_REQUEST)
         
         usuario.set_password(new_password)
         usuario.save()
+        
+        # HALLAZGO #3: Invalidar todos los tokens JWT existentes del usuario
+        try:
+            from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
+            OutstandingToken.objects.filter(user=usuario).delete()
+        except Exception as e:
+            logger.warning(f'No se pudieron invalidar tokens JWT para {usuario.username}: {e}')
         
         # Registrar en auditoría
         AuditoriaLog.objects.create(

@@ -1,6 +1,19 @@
 """
 Generador de plantillas Excel actualizadas para carga masiva.
 Basado en el esquema real de la base de datos (public.productos, public.lotes, public.usuarios).
+
+HALLAZGO #6 - Manejo de Memoria:
+- Los archivos Excel se generan completamente en memoria (sin archivos temporales)
+- Para volúmenes actuales (<1000 filas de ejemplo), el consumo de RAM es aceptable (~2-5 MB por plantilla)
+- Si se requieren plantillas con miles de filas o validaciones complejas (listas desplegables),
+  considerar usar openpyxl en modo write_only para reducir consumo de memoria
+- Las plantillas actuales no dejan archivos temporales en el servidor
+- El workbook se serializa directamente al HttpResponse y se libera automáticamente
+
+Límites recomendados por plantilla:
+- Filas de ejemplo: < 100
+- Hojas: < 5
+- Tamaño máximo del archivo generado: < 10 MB
 """
 
 import openpyxl
@@ -120,6 +133,7 @@ def generar_plantilla_productos():
     )
     response['Content-Disposition'] = 'attachment; filename=Plantilla_Productos.xlsx'
     wb.save(response)
+    wb.close()  # HALLAZGO #6: Liberar recursos explícitamente
     return response
 
 
@@ -201,6 +215,7 @@ def generar_plantilla_lotes(centro=None):
     )
     response['Content-Disposition'] = 'attachment; filename=Plantilla_Lotes_Inventario.xlsx'
     wb.save(response)
+    wb.close()  # HALLAZGO #6: Liberar recursos explícitamente
     return response
 
 
@@ -310,4 +325,5 @@ def generar_plantilla_usuarios():
     )
     response['Content-Disposition'] = 'attachment; filename=Plantilla_Usuarios.xlsx'
     wb.save(response)
+    wb.close()  # HALLAZGO #6: Liberar recursos explícitamente
     return response

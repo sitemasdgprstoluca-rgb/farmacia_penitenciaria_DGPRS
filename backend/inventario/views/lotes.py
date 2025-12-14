@@ -666,15 +666,29 @@ class LoteViewSet(viewsets.ModelViewSet):
         
         Usa el generador estandarizado con el esquema real de la base de datos.
         """
-        from core.utils.excel_templates import generar_plantilla_lotes
-        
-        # Obtener centro del usuario si aplica
-        user = request.user
-        centro = None
-        if not is_farmacia_or_admin(user):
-            centro = get_user_centro(user)
-        
-        return generar_plantilla_lotes(centro=centro)
+        # HALLAZGO #5: Manejo robusto de errores en generación de plantilla
+        try:
+            from core.utils.excel_templates import generar_plantilla_lotes
+            
+            # Obtener centro del usuario si aplica
+            user = request.user
+            centro = None
+            if not is_farmacia_or_admin(user):
+                centro = get_user_centro(user)
+            
+            return generar_plantilla_lotes(centro=centro)
+        except ImportError as exc:
+            logger.error(f'Error al importar generador de plantilla: {exc}')
+            return Response(
+                {'error': 'Módulo de generación de plantillas no disponible'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as exc:
+            logger.exception(f'Error al generar plantilla de lotes: {exc}')
+            return Response(
+                {'error': 'No se pudo generar la plantilla', 'mensaje': str(exc)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
         
         # Filas de ejemplo con formato esperado
         fecha_cad_ejemplo = (date.today() + timedelta(days=365)).strftime('%Y-%m-%d')

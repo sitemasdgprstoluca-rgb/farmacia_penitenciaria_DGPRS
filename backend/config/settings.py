@@ -5,9 +5,13 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# SECURITY - definir DEBUG primero para usarlo en logging
-SECRET_KEY = config('SECRET_KEY', default='' if not config('DEBUG', default=False, cast=bool) else 'dev-only-insecure-key-not-for-production')
+# HALLAZGO #1/#2: Definir DEBUG primero para evitar lógica circular
 DEBUG = config('DEBUG', default=False, cast=bool)
+
+# HALLAZGO #1: SECRET_KEY con fallback seguro según entorno
+# - En producción (DEBUG=False): debe estar configurada o falla
+# - En desarrollo (DEBUG=True): usa clave temporal si no está configurada
+SECRET_KEY = config('SECRET_KEY', default='dev-only-insecure-key-not-for-production' if DEBUG else '')
 
 # Logging defaults (can be overridden by env)
 LOG_LEVEL = config('LOG_LEVEL', default='INFO')

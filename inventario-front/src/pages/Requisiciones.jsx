@@ -466,15 +466,9 @@ const Requisiciones = () => {
       return;
     }
     
-    // ISS-PERMS FIX: Log de debug para verificar estructura del usuario
-    console.log('[Requisiciones] Usuario cargado:', {
-      username: user.username,
-      rol: user.rol,
-      rol_efectivo: user.rol_efectivo,
-      centro: user.centro,
-      centro_id: user.centro_id,
-      esAdminOFarmacia
-    });
+    // HALLAZGO #5: Console.log removido para evitar fuga de información en producción
+    // Solo descomentar para debugging local:
+    // console.log('[Requisiciones] Usuario cargado:', { username: user.username, rol: user.rol });
     
     if (esAdminOFarmacia) {
       // Admin/Farmacia pueden cargar (sin filtro obligatorio) - pero solo cuando user existe
