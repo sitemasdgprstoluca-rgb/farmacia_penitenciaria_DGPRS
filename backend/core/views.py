@@ -220,6 +220,24 @@ class UserViewSet(viewsets.ModelViewSet):
         qs = self._apply_filters(qs, self.request.query_params)
         
         return qs.select_related('centro')
+    
+    def get_object(self):
+        """
+        HALLAZGO #7 FIX: Prevenir IDOR validando que el objeto solicitado
+        esté en el queryset filtrado del usuario.
+        """
+        obj = super().get_object()
+        
+        # Verificar que el usuario tiene permiso para ver este objeto específico
+        # (ya está validado por get_queryset, pero double-check por seguridad)
+        if not self.request.user.is_superuser and not self._is_farmacia_or_admin(self.request.user):
+            # Usuario de centro: verificar que sea del mismo centro
+            if hasattr(self.request.user, 'centro') and self.request.user.centro:
+                if hasattr(obj, 'centro') and obj.centro != self.request.user.centro:
+                    from rest_framework.exceptions import PermissionDenied
+                    raise PermissionDenied('No tiene permiso para acceder a este usuario.')
+        
+        return obj
 
     def _validate_role_hierarchy(self, requesting_user, target_role, target_user=None):
         """
@@ -957,10 +975,13 @@ class UserViewSet(viewsets.ModelViewSet):
 
 class DetalleRequisicionViewSet(viewsets.ModelViewSet):
     """ViewSet para detalles de requisiciones"""
-    queryset = DetalleRequisicion.objects.all()
+    queryset = DetalleRequisicion.objects.select_related(
+        'requisicion', 'requisicion__centro', 'requisicion__solicitante',
+        'producto', 'lote', 'lote__producto', 'lote__centro'
+    ).all()  # HALLAZGO #8 FIX: Prevenir N+1 queries
     serializer_class = DetalleRequisicionSerializer
     permission_classes = [IsAuthenticated]
-    pagination_class = StandardResultsSetPagination
+    pagination_class = StandardResultsSetPagination  # HALLAZGO #9: Paginación forzada
 
 
 class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):

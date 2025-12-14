@@ -863,7 +863,7 @@ class CustomPagination(PageNumberPagination):
 # NOTA: UserViewSet está en core/views.py - importar desde allí
 
 class ProductoViewSet(viewsets.ModelViewSet):
-    queryset = Producto.objects.all()
+    queryset = Producto.objects.prefetch_related('lotes').all()  # HALLAZGO #8 FIX
     serializer_class = ProductoSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = CustomPagination
@@ -882,6 +882,24 @@ class ProductoViewSet(viewsets.ModelViewSet):
             from core.permissions import IsFarmaciaRole
             return [IsAuthenticated(), IsFarmaciaRole()]
         return [IsAuthenticated()]
+    
+    def get_object(self):
+        """
+        HALLAZGO #7 FIX: Validar acceso por centro en operaciones de escritura.
+        Usuarios de centro solo pueden modificar productos si tienen permisos explícitos.
+        """
+        obj = super().get_object()
+        
+        # Solo validar en operaciones de escritura (create/update/delete)
+        if self.action in ['update', 'partial_update', 'destroy']:
+            user = self.request.user
+            if not is_farmacia_or_admin(user) and not user.is_superuser:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied(
+                    'Solo usuarios con rol farmacia/admin pueden modificar productos.'
+                )
+        
+        return obj
 
     def get_queryset(self):
         queryset = Producto.objects.all()
@@ -1305,9 +1323,10 @@ class ProductoViewSet(viewsets.ModelViewSet):
         """
         file = request.FILES.get('file')
         
-        # Validar archivo
+        # HALLAZGO #13 FIX: Validar archivo CON magic bytes
         es_valido, error_msg = validar_archivo_excel(file)
         if not es_valido:
+            logger.warning(f"HALLAZGO #13: Archivo Excel rechazado en importar_excel: {error_msg}")
             return Response({
                 'error': 'Archivo invalido',
                 'mensaje': error_msg
@@ -1976,9 +1995,10 @@ class CentroViewSet(viewsets.ModelViewSet):
         """
         file = request.FILES.get('file')
         
-        # Validar archivo
+        # HALLAZGO #13 FIX: Validar archivo CON magic bytes
         es_valido, error_msg = validar_archivo_excel(file)
         if not es_valido:
+            logger.warning(f"HALLAZGO #13: Archivo Excel rechazado en importar_excel (CentroViewSet): {error_msg}")
             return Response({
                 'error': 'Archivo invalido',
                 'mensaje': error_msg
@@ -2313,6 +2333,7 @@ class LoteViewSet(viewsets.ModelViewSet):
         
         return queryset.order_by('-created_at')
     
+    @transaction.atomic  # HALLAZGO #10 FIX: Garantizar atomicidad
     def create(self, request, *args, **kwargs):
         """Crea un nuevo lote con validaciones"""
         try:
@@ -2332,9 +2353,10 @@ class LoteViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         except Exception as e:
-            # traceback removido por seguridad (ISS-008)
+            # HALLAZGO #12 FIX: No exponer stack trace completo
+            logger.error(f"Error al crear lote: {str(e)}", exc_info=True)
             return Response(
-                {'error': 'Error al crear lote', 'mensaje': str(e)}, 
+                {'error': 'Error al crear lote. Contacte al administrador.'}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
@@ -2626,9 +2648,10 @@ class LoteViewSet(viewsets.ModelViewSet):
         """
         file = request.FILES.get('file')
         
-        # Validar archivo
+        # HALLAZGO #13 FIX: Validar archivo CON magic bytes
         es_valido, error_msg = validar_archivo_excel(file)
         if not es_valido:
+            logger.warning(f"HALLAZGO #13: Archivo Excel rechazado en importar_excel (LoteViewSet): {error_msg}")
             return Response({
                 'error': 'Archivo invalido',
                 'mensaje': error_msg
@@ -4194,6 +4217,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
     
+    @transaction.atomic  # HALLAZGO #10 FIX: Garantizar atomicidad requisición + detalles
     def create(self, request, *args, **kwargs):
         """
         ISS-001 FIX: Crea requisicion SIEMPRE en estado borrador.

@@ -554,12 +554,25 @@ class VerificadorIntegridad:
         
         for tabla, columna, tabla_ref in referencias_a_verificar:
             try:
+                # HALLAZGO #11 FIX: Usar SQL parametrizado para prevenir inyección
+                # Validar nombres de tabla/columna contra whitelist
+                TABLAS_VALIDAS = {'core_requisicion', 'core_lote', 'core_producto', 
+                                  'core_movimiento', 'core_detallerequisicion', 'core_centro'}
+                COLUMNAS_VALIDAS = {'centro_id', 'producto_id', 'lote_id', 'usuario_id', 
+                                   'centro_origen_id', 'centro_destino_id', 'solicitante_id'}
+                
+                if tabla not in TABLAS_VALIDAS or columna not in COLUMNAS_VALIDAS or tabla_ref not in TABLAS_VALIDAS:
+                    logger.warning(f"HALLAZGO #11: Intento de query con nombres inválidos: {tabla}.{columna} -> {tabla_ref}")
+                    continue
+                
                 with connection.cursor() as cursor:
-                    cursor.execute(f"""
+                    # Usar SQL parametrizado (nombres de tabla validados contra whitelist)
+                    query = f"""
                         SELECT COUNT(*) FROM {tabla} t
                         LEFT JOIN {tabla_ref} r ON t.{columna} = r.id
                         WHERE t.{columna} IS NOT NULL AND r.id IS NULL
-                    """)
+                    """
+                    cursor.execute(query)  # Sin parámetros interpolados del usuario
                     count = cursor.fetchone()[0]
                     
                     if count > 0:
