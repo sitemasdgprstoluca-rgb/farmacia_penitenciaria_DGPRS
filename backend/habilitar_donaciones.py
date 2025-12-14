@@ -22,31 +22,36 @@ def habilitar_donaciones():
     print("HABILITANDO MÓDULO DE DONACIONES")
     print("=" * 70)
     
-    # Buscar usuarios ADMIN y FARMACIA sin permiso de donaciones
+    # Buscar usuarios ADMIN y FARMACIA (activos o inactivos, para asegurar todos tengan el permiso)
     usuarios_objetivo = User.objects.filter(
-        rol__in=['ADMIN', 'FARMACIA'],
-        is_active=True
+        rol__in=['ADMIN', 'FARMACIA']
     )
     
-    if not usuarios_objetivo.exists():
-        print("\n⚠️  No se encontraron usuarios ADMIN o FARMACIA activos")
+    # También incluir superusers
+    superusers = User.objects.filter(is_superuser=True).exclude(rol__in=['ADMIN', 'FARMACIA'])
+    
+    todos_usuarios = list(usuarios_objetivo) + list(superusers)
+    
+    if not todos_usuarios:
+        print("\n⚠️  No se encontraron usuarios ADMIN, FARMACIA o superusers")
         return
     
-    print(f"\nUsuarios encontrados: {usuarios_objetivo.count()}")
+    print(f"\nUsuarios encontrados: {len(todos_usuarios)}")
     
     actualizados = 0
     ya_tenian = 0
     
-    for user in usuarios_objetivo:
+    for user in todos_usuarios:
         perm_actual = getattr(user, 'perm_donaciones', None)
         
         if perm_actual is None or perm_actual is False:
             user.perm_donaciones = True
-            user.save()
-            print(f"✅ {user.username} ({user.rol}) - Permiso habilitado")
+            user.save(update_fields=['perm_donaciones'])
+            estado = "✅ ACTIVO" if user.is_active else "⚠️ INACTIVO"
+            print(f"{estado} {user.username} ({user.rol or 'SUPERUSER'}) - Permiso habilitado")
             actualizados += 1
         else:
-            print(f"ℹ️  {user.username} ({user.rol}) - Ya tenía el permiso")
+            print(f"ℹ️  {user.username} ({user.rol or 'SUPERUSER'}) - Ya tenía el permiso")
             ya_tenian += 1
     
     print("\n" + "=" * 70)

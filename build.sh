@@ -18,4 +18,7 @@ python manage.py migrate --no-input
 echo "=== Setting admin password ==="
 python set_admin_password.py
 
+echo "=== Enabling donations module ==="
+python habilitar_donaciones.py
+
 echo "=== Build complete ==="

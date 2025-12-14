@@ -23,4 +23,7 @@ echo "=== Setting admin password (PostgreSQL only) ==="
 # HALLAZGO #8: Solo ejecutar en PostgreSQL, no en SQLite fallback
 python set_admin_password.py
 
+echo "=== Enabling donations module for ADMIN and FARMACIA users ==="
+python habilitar_donaciones.py
+
 echo "=== Build complete ==="
