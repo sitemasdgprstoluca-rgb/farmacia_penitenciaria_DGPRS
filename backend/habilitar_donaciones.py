@@ -13,11 +13,19 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 
 User = get_user_model()
 
 def habilitar_donaciones():
     """Habilitar permiso de donaciones para usuarios ADMIN y FARMACIA"""
+    
+    # IMPORTANTE: Solo ejecutar en PostgreSQL (producción), no en SQLite (build)
+    if connection.vendor != 'postgresql':
+        print("\n⚠️  Script omitido: Solo se ejecuta en PostgreSQL (producción)")
+        print(f"   Base de datos actual: {connection.vendor}")
+        return
+    
     print("=" * 70)
     print("HABILITANDO MÓDULO DE DONACIONES")
     print("=" * 70)
