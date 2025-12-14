@@ -25,7 +25,7 @@ services:
     rootDir: backend
     
     # Comando de build
-    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate && python set_admin_password.py
+    buildCommand: chmod +x build.sh && ./build.sh
     
     # Comando para iniciar el servidor
     startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2

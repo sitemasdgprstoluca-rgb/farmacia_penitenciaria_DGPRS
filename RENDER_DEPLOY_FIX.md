@@ -27,7 +27,7 @@ El buildCommand en el dashboard de Render debe actualizarse manualmente (render.
    
    Por este **COMANDO NUEVO**:
    ```bash
-   pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate && python set_admin_password.py
+   chmod +x build.sh && ./build.sh
    ```
 
 6. **Guardar cambios** (botón "Save Changes" al final de la página)
