@@ -12,48 +12,65 @@ from django.db import migrations
 
 
 def table_exists(schema_editor, table_name):
-    """Verifica si una tabla existe en la base de datos."""
+    """
+    Verifica si una tabla existe en la base de datos.
+    HALLAZGO #7: Compatible con PostgreSQL, SQLite y MySQL.
+    """
     cursor = schema_editor.connection.cursor()
-    if schema_editor.connection.vendor == 'postgresql':
+    vendor = schema_editor.connection.vendor
+    
+    if vendor == 'postgresql':
         cursor.execute(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = %s)",
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = %s)",
             [table_name]
         )
         return cursor.fetchone()[0]
-    else:
-        # SQLite - usar %s en lugar de ?
+    elif vendor == 'sqlite':
         cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name=%s",
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
             [table_name]
         )
+        return cursor.fetchone() is not None
+    else:
+        # MySQL/MariaDB
+        cursor.execute("SHOW TABLES LIKE %s", [table_name])
         return cursor.fetchone() is not None
 
 
 def create_index_if_not_exists(schema_editor, table_name, index_name, columns):
     """
     Crea un índice solo si no existe Y si la tabla existe.
-    Compatible con PostgreSQL y SQLite.
+    HALLAZGO #7: Compatible con PostgreSQL, SQLite y MySQL.
     """
     # Verificar primero si la tabla existe
     if not table_exists(schema_editor, table_name):
         return  # No crear índice si la tabla no existe
     
-    if schema_editor.connection.vendor == 'postgresql':
+    vendor = schema_editor.connection.vendor
+    cursor = schema_editor.connection.cursor()
+    columns_sql = ', '.join(columns)
+    
+    if vendor == 'postgresql':
         # PostgreSQL soporta IF NOT EXISTS
-        columns_sql = ', '.join(columns)
         sql = f'CREATE INDEX IF NOT EXISTS "{index_name}" ON "{table_name}" ({columns_sql})'
         schema_editor.execute(sql)
-    else:
-        # SQLite: verificar si existe primero
-        cursor = schema_editor.connection.cursor()
+    elif vendor == 'sqlite':
+        # SQLite: verificar si existe primero (usa ? para parámetros)
         cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name=%s",
+            "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
             [index_name]
         )
         if not cursor.fetchone():
-            columns_sql = ', '.join(columns)
             sql = f'CREATE INDEX "{index_name}" ON "{table_name}" ({columns_sql})'
             schema_editor.execute(sql)
+    else:
+        # MySQL/MariaDB: usar IF NOT EXISTS
+        sql = f'CREATE INDEX {index_name} ON {table_name} ({columns_sql})'
+        try:
+            schema_editor.execute(sql)
+        except Exception:
+            # Índice ya existe, ignorar
+            pass
 
 
 def add_performance_indexes(apps, schema_editor):
