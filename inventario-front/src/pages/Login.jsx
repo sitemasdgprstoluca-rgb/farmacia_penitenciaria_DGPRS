@@ -16,15 +16,14 @@ function Login() {
   const { temaGlobal, logoLoginUrl, nombreSistema } = useTheme();
 
   const persistSession = (user, accessToken) => {
+    // ISS-009 FIX: NO persistir usuario completo en localStorage (manipulable)
     // Access token se guarda en memoria (tokenManager) para seguridad
     if (accessToken) {
       setAccessToken(accessToken);
     }
     // Refresh token se maneja automáticamente via cookie HttpOnly
-    // Solo guardamos datos del usuario en localStorage (no sensible)
-    if (user) {
-      localStorage.setItem('user', JSON.stringify(user));
-    }
+    // NO guardar datos de usuario - PermissionProvider los cargará del backend
+    // Esto previene que datos manipulados otorguen permisos en UI
   };
 
   const loginWithBackend = async (creds) => {
