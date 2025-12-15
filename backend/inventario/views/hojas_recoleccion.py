@@ -99,25 +99,33 @@ class HojaRecoleccionViewSet(viewsets.ReadOnlyModelViewSet):
         """
         Obtiene la hoja de recolección asociada a una requisición.
         Usado por el frontend para verificar si existe una hoja para una requisición.
+        
+        ISS-FIX: Devolver 200 con existe=false en lugar de 404 para evitar errores en consola
         """
         try:
             requisicion_id = int(requisicion_id)
         except (ValueError, TypeError):
             return Response({
-                'error': 'ID de requisición inválido'
+                'error': 'ID de requisición inválido',
+                'existe': False
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Buscar hoja asociada a la requisición
         hoja = self.get_queryset().filter(requisicion_id=requisicion_id).first()
         
         if not hoja:
+            # ISS-FIX: Devolver 200 con existe=false para que el frontend no muestre error
             return Response({
-                'error': 'No existe hoja de recolección para esta requisición',
-                'requisicion_id': requisicion_id
-            }, status=status.HTTP_404_NOT_FOUND)
+                'existe': False,
+                'requisicion_id': requisicion_id,
+                'mensaje': 'No existe hoja de recolección para esta requisición'
+            }, status=status.HTTP_200_OK)
         
         serializer = self.get_serializer(hoja)
-        return Response(serializer.data)
+        return Response({
+            'existe': True,
+            'hoja': serializer.data
+        })
 
     @action(detail=True, methods=['post'], url_path='registrar-impresion')
     def registrar_impresion(self, request, pk=None):
