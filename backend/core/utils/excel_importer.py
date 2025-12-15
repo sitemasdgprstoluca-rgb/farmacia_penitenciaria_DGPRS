@@ -91,17 +91,27 @@ def cargar_excel(archivo):
 
 def importar_productos_desde_excel(archivo, usuario):
     """
-    Importa productos desde Excel según esquema público.productos.
-
-    Columnas esperadas:
-    - clave (3-50 chars, unique)
-    - nombre (min 5 chars) 
-    - descripcion (opcional)
-    - unidad_medida (pieza|caja|frasco|sobre|ampolleta|tableta|capsula|ml|gr)
-    - categoria (medicamento|material_curacion|insumo)
-    - sustancia_activa, presentacion, concentracion, via_administracion (opcional)
-    - stock_minimo (int >= 0)
-    - requiere_receta, es_controlado, activo (boolean)
+    Importa productos desde Excel con mapeo FLEXIBLE de columnas.
+    
+    Soporta múltiples formatos de Excel incluyendo:
+    - Formato oficial de plantilla del sistema
+    - Formatos institucionales con columnas como "NOMBRE GENÉRICO", "MARCA", etc.
+    - Archivos con numeración en primera columna
+    
+    Columnas reconocidas (con múltiples sinónimos):
+    - clave/codigo/id/numero/no/num/cve
+    - nombre/descripcion/nombre generico/medicamento/producto
+    - unidad/unidad medida/um
+    - categoria/tipo/clasificacion (opcional, default: medicamento)
+    - presentacion/forma farmaceutica
+    - marca/marca referencial/laboratorio
+    - sustancia activa/principio activo/formula
+    - concentracion/dosis
+    - via administracion/via
+    - stock minimo/minimo/stock (opcional, default: 0)
+    - requiere receta/receta (opcional)
+    - es controlado/controlado (opcional)
+    - activo/estado/estatus (opcional, default: Si)
     """
     resultado = ResultadoImportacion('Producto')
     workbook, _, valido = cargar_excel(archivo)
@@ -112,163 +122,226 @@ def importar_productos_desde_excel(archivo, usuario):
     sheet = workbook.active
     encabezados = [cell.value for cell in sheet[1]]
     
-    # HALLAZGO #4: Mapeo flexible de headers (soporta variaciones de formato)
+    # Normalizar headers para mapeo robusto
     def normalizar_header(h):
         """Normaliza encabezados para mapeo robusto."""
         if not h:
             return ''
         import re
-        # Convertir a string, lowercase, remover asteriscos, saltos de línea, paréntesis y contenido
         texto = str(h).lower().replace('*', '').replace('\n', ' ')
-        # Remover contenido entre paréntesis: "Clave (Obligatorio)" -> "Clave"
         texto = re.sub(r'\([^)]*\)', '', texto)
-        # Remover acentos comunes
-        texto = texto.replace('á', 'a').replace('é', 'e').replace('í', 'i')
-        texto = texto.replace('ó', 'o').replace('ú', 'u').replace('ñ', 'n')
-        # Remover espacios múltiples y caracteres especiales
+        # Remover acentos
+        acentos = {'á':'a', 'é':'e', 'í':'i', 'ó':'o', 'ú':'u', 'ñ':'n', 'ü':'u'}
+        for ac, rep in acentos.items():
+            texto = texto.replace(ac, rep)
         texto = re.sub(r'[^a-z0-9]+', ' ', texto)
         return texto.strip()
     
     encabezados_norm = [normalizar_header(e) for e in encabezados]
+    logger.info(f"Encabezados detectados: {encabezados_norm}")
     
-    # Buscar índices de columnas
+    # Mapeo flexible con múltiples sinónimos por campo
+    SINONIMOS = {
+        'clave': ['clave', 'codigo', 'code', 'id', 'numero', 'no', 'num', 'cve', 'sku', 'ref', 'referencia'],
+        'nombre': ['nombre', 'descripcion', 'nombre generico', 'medicamento', 'producto', 
+                   'nombre del medicamento', 'generico', 'articulo', 'item', 'denominacion'],
+        'unidad_medida': ['unidad', 'unidad medida', 'um', 'unidad de medida', 'medida'],
+        'categoria': ['categoria', 'tipo', 'clasificacion', 'clase', 'grupo', 'familia'],
+        'presentacion': ['presentacion', 'forma farmaceutica', 'forma', 'envase', 'empaque'],
+        'marca': ['marca', 'marca referencial', 'laboratorio', 'fabricante', 'proveedor'],
+        'sustancia_activa': ['sustancia activa', 'principio activo', 'formula', 'activo', 
+                             'componente', 'ingrediente activo', 'composicion'],
+        'concentracion': ['concentracion', 'dosis', 'potencia', 'gramaje', 'miligramos', 'mg'],
+        'via_administracion': ['via administracion', 'via', 'ruta', 'administracion'],
+        'stock_minimo': ['stock minimo', 'minimo', 'stock', 'min', 'inventario minimo'],
+        'requiere_receta': ['requiere receta', 'receta', 'prescripcion'],
+        'es_controlado': ['es controlado', 'controlado', 'control'],
+        'activo': ['activo', 'estado', 'estatus', 'status', 'habilitado'],
+    }
+    
+    def buscar_columna(sinonimos_lista, encabezados_norm):
+        """Busca la primera columna que coincida con algún sinónimo."""
+        for i, h in enumerate(encabezados_norm):
+            for sinonimo in sinonimos_lista:
+                # Coincidencia exacta o contenida
+                if sinonimo == h or sinonimo in h:
+                    return i
+        return -1
+    
     col_map = {}
-    for i, h in enumerate(encabezados_norm):
-        if 'clave' in h:
+    for campo, sinonimos in SINONIMOS.items():
+        idx = buscar_columna(sinonimos, encabezados_norm)
+        if idx >= 0:
+            col_map[campo] = idx
+    
+    logger.info(f"Mapeo de columnas detectado: {col_map}")
+    
+    # Si no encontramos clave pero hay columnas numéricas, intentar auto-detectar
+    if 'clave' not in col_map:
+        # Buscar primera columna que parezca tener códigos/claves
+        for i, h in enumerate(encabezados_norm):
+            # Si el header está vacío o es solo un número, puede ser índice - saltar
+            if not h or h.isdigit():
+                continue
+            # Verificar si las primeras filas tienen valores tipo código
             col_map['clave'] = i
-        elif 'nombre' in h:
-            col_map['nombre'] = i
-        elif 'descripci' in h:
-            col_map['descripcion'] = i
-        elif 'unidad' in h:
-            col_map['unidad_medida'] = i
-        elif 'categor' in h:
-            col_map['categoria'] = i
-        elif 'sustancia' in h:
-            col_map['sustancia_activa'] = i
-        elif 'presentaci' in h:
-            col_map['presentacion'] = i
-        elif 'concentraci' in h:
-            col_map['concentracion'] = i
-        elif 'v' in h and 'administraci' in h:
-            col_map['via_administracion'] = i
-        elif 'stock' in h:
-            col_map['stock_minimo'] = i
-        elif 'receta' in h:
-            col_map['requiere_receta'] = i
-        elif 'controlado' in h:
-            col_map['es_controlado'] = i
-        elif 'activo' in h:
-            col_map['activo'] = i
+            break
     
-    requeridos = ['clave', 'nombre', 'unidad_medida', 'categoria', 'stock_minimo']
-    for req in requeridos:
-        if req not in col_map:
-            resultado.agregar_error(1, 'encabezados', f'Columna requerida "{req}" no encontrada')
-            return resultado.get_dict()
+    # Si no encontramos nombre, usar la segunda o tercera columna útil
+    if 'nombre' not in col_map and 'clave' in col_map:
+        # Buscar siguiente columna con texto largo
+        for i in range(col_map['clave'] + 1, len(encabezados_norm)):
+            if encabezados_norm[i] and len(encabezados_norm[i]) > 2:
+                col_map['nombre'] = i
+                break
     
-    unidades_validas = ['PIEZA', 'CAJA', 'FRASCO', 'SOBRE', 'AMPOLLETA', 'TABLETA', 'CAPSULA', 'ML', 'GR']
+    # Validar columnas mínimas requeridas (ahora más flexible)
+    if 'clave' not in col_map:
+        resultado.agregar_error(1, 'encabezados', 
+            f'No se encontró columna de clave/código. Columnas detectadas: {encabezados}')
+        return resultado.get_dict()
+    
+    if 'nombre' not in col_map:
+        resultado.agregar_error(1, 'encabezados', 
+            f'No se encontró columna de nombre/descripción. Columnas detectadas: {encabezados}')
+        return resultado.get_dict()
+    
+    # Unidades válidas expandidas
+    unidades_validas = ['PIEZA', 'CAJA', 'FRASCO', 'SOBRE', 'AMPOLLETA', 'TABLETA', 
+                        'CAPSULA', 'ML', 'GR', 'TUBO', 'BOLSA', 'PAQUETE', 'UNIDAD',
+                        'LITRO', 'KILOGRAMO', 'KG', 'L', 'PZA', 'PZ']
+    unidades_alias = {
+        'PZA': 'PIEZA', 'PZ': 'PIEZA', 'UNIDAD': 'PIEZA', 'UN': 'PIEZA',
+        'TAB': 'TABLETA', 'TABS': 'TABLETA', 'CAP': 'CAPSULA', 'CAPS': 'CAPSULA',
+        'AMP': 'AMPOLLETA', 'FCO': 'FRASCO', 'KG': 'GR', 'KILOGRAMO': 'GR',
+        'LT': 'ML', 'LITRO': 'ML', 'L': 'ML'
+    }
+    
     categorias_validas = ['MEDICAMENTO', 'MATERIAL_CURACION', 'INSUMO']
+    
+    creados = 0
+    actualizados = 0
 
     with transaction.atomic():
         for fila_num in range(2, sheet.max_row + 1):
             resultado.incrementar_procesados()
             fila = sheet[fila_num]
             try:
-                # Extraer valores con manejo seguro de None
-                clave_val = fila[col_map['clave']].value
-                clave = str(clave_val).strip().upper() if clave_val not in [None, ''] else None
-                
-                nombre_val = fila[col_map['nombre']].value
-                nombre = str(nombre_val).strip() if nombre_val not in [None, ''] else None
-                
-                desc_idx = col_map.get('descripcion', -1)
-                descripcion = ''
-                if desc_idx >= 0 and desc_idx < len(fila):
-                    desc_val = fila[desc_idx].value
-                    descripcion = str(desc_val).strip() if desc_val not in [None, ''] else ''
-                
-                um_val = fila[col_map['unidad_medida']].value
-                unidad_medida = str(um_val).strip().upper() if um_val not in [None, ''] else None
-                
-                cat_val = fila[col_map['categoria']].value
-                categoria = str(cat_val).strip().upper() if cat_val not in [None, ''] else 'MEDICAMENTO'
-                
-                # Campos opcionales con manejo seguro
-                def get_optional_str(col_name, default=None):
+                # Función helper para obtener valor de celda
+                def get_val(col_name, default=None):
                     idx = col_map.get(col_name, -1)
                     if idx >= 0 and idx < len(fila):
                         val = fila[idx].value
-                        return str(val).strip() if val not in [None, ''] else default
+                        if val is not None and str(val).strip():
+                            return str(val).strip()
                     return default
                 
-                sustancia_activa = get_optional_str('sustancia_activa')
-                presentacion = get_optional_str('presentacion')
-                concentracion = get_optional_str('concentracion')
-                via_administracion = get_optional_str('via_administracion')
-                
-                stock_raw = fila[col_map['stock_minimo']].value
-                
-                # Booleanos con manejo seguro
-                def get_bool_value(col_name, default_val='No'):
-                    idx = col_map.get(col_name, -1)
-                    if idx >= 0 and idx < len(fila):
-                        return fila[idx].value
-                    return default_val
-                
-                requiere_receta = _parse_bool(get_bool_value('requiere_receta', 'No'))
-                es_controlado = _parse_bool(get_bool_value('es_controlado', 'No'))
-                activo = _parse_bool(get_bool_value('activo', 'Si'))
-
-                # Validaciones
-                if not clave or len(clave) < 3 or len(clave) > 50:
-                    resultado.agregar_error(fila_num, 'clave', 'Clave debe tener 3-50 caracteres')
+                # Extraer clave - validar que no esté vacía
+                clave_raw = get_val('clave')
+                if not clave_raw:
+                    # Fila vacía, saltar silenciosamente
+                    resultado.total_procesados -= 1
                     continue
                 
-                if not nombre or len(nombre) < 5:
-                    resultado.agregar_error(fila_num, 'nombre', 'Nombre debe tener mínimo 5 caracteres')
-                    continue
+                clave = str(clave_raw).strip().upper()[:50]  # Truncar si es muy largo
                 
-                if not unidad_medida or unidad_medida not in unidades_validas:
-                    resultado.agregar_error(fila_num, 'unidad_medida', f'Unidad debe ser: {", ".join(unidades_validas)}')
-                    continue
+                # Si la clave es solo números y muy corta, prefijar
+                if clave.isdigit() and len(clave) < 3:
+                    clave = f"PROD-{clave.zfill(4)}"
+                elif len(clave) < 3:
+                    clave = f"P-{clave}"
                 
+                # Extraer nombre
+                nombre_raw = get_val('nombre')
+                if not nombre_raw:
+                    resultado.agregar_error(fila_num, 'nombre', 'Nombre vacío')
+                    continue
+                nombre = nombre_raw[:500]  # Truncar si es muy largo
+                
+                # Si nombre es muy corto, intentar combinar con presentación
+                if len(nombre) < 5:
+                    presentacion_extra = get_val('presentacion', '')
+                    if presentacion_extra:
+                        nombre = f"{nombre} {presentacion_extra}"
+                    if len(nombre) < 5:
+                        nombre = f"{nombre} (PRODUCTO)"
+                
+                # Unidad de medida - con valor por defecto
+                unidad_raw = get_val('unidad_medida', 'PIEZA')
+                unidad_medida = unidad_raw.upper()
+                
+                # Aplicar alias de unidades
+                if unidad_medida in unidades_alias:
+                    unidad_medida = unidades_alias[unidad_medida]
+                
+                # Si no es una unidad válida, usar PIEZA como default
+                if unidad_medida not in unidades_validas:
+                    logger.warning(f"Fila {fila_num}: Unidad '{unidad_raw}' no reconocida, usando PIEZA")
+                    unidad_medida = 'PIEZA'
+                
+                # Categoría - con valor por defecto
+                categoria_raw = get_val('categoria', 'MEDICAMENTO')
+                categoria = categoria_raw.upper().replace(' ', '_')
                 if categoria not in categorias_validas:
-                    resultado.agregar_error(fila_num, 'categoria', f'Categoría debe ser: {", ".join(categorias_validas)}')
-                    continue
-
+                    categoria = 'MEDICAMENTO'
+                
+                # Campos opcionales
+                descripcion = get_val('presentacion', '') or ''  # Usar presentación como descripción
+                marca = get_val('marca', '')
+                sustancia_activa = get_val('sustancia_activa', '')
+                presentacion = get_val('presentacion', '')
+                concentracion = get_val('concentracion', '')
+                via_administracion = get_val('via_administracion', '')
+                
+                # Construir descripción completa si hay datos adicionales
+                desc_parts = [p for p in [descripcion, marca, concentracion] if p]
+                descripcion_completa = ', '.join(desc_parts) if desc_parts else ''
+                
+                # Stock mínimo - con valor por defecto
+                stock_raw = get_val('stock_minimo', '0')
                 try:
-                    stock_minimo = int(float(stock_raw))
-                    if stock_minimo < 0:
-                        raise ValueError('Stock mínimo no puede ser negativo')
-                except Exception as exc:
-                    resultado.agregar_error(fila_num, 'stock_minimo', str(exc))
-                    continue
+                    stock_minimo = max(0, int(float(stock_raw)))
+                except (ValueError, TypeError):
+                    stock_minimo = 0
+                
+                # Booleanos
+                requiere_receta = _parse_bool(get_val('requiere_receta', 'No'))
+                es_controlado = _parse_bool(get_val('es_controlado', 'No'))
+                activo = _parse_bool(get_val('activo', 'Si'))
 
                 # Crear/actualizar producto
-                Producto.objects.update_or_create(
+                obj, created = Producto.objects.update_or_create(
                     clave=clave,
                     defaults={
                         'nombre': nombre,
-                        'descripcion': descripcion,
+                        'descripcion': descripcion_completa,
                         'unidad_medida': unidad_medida.lower(),
                         'categoria': categoria.lower(),
-                        'sustancia_activa': sustancia_activa,
-                        'presentacion': presentacion,
-                        'concentracion': concentracion,
-                        'via_administracion': via_administracion,
+                        'sustancia_activa': sustancia_activa or None,
+                        'presentacion': presentacion or None,
+                        'concentracion': concentracion or None,
+                        'via_administracion': via_administracion or None,
                         'stock_minimo': stock_minimo,
                         'requiere_receta': requiere_receta,
                         'es_controlado': es_controlado,
                         'activo': activo,
                     }
                 )
+                if created:
+                    creados += 1
+                else:
+                    actualizados += 1
                 resultado.agregar_exito()
-            except Exception as exc:  # pragma: no cover - log detalle
+                
+            except Exception as exc:
                 logger.exception(f"Error importando producto fila {fila_num}: {exc}")
                 resultado.agregar_error(fila_num, 'general', str(exc))
 
-    return resultado.get_dict()
+    # Agregar info de creados/actualizados al resultado
+    result = resultado.get_dict()
+    result['creados'] = creados
+    result['actualizados'] = actualizados
+    return result
 
 
 def _parse_bool(valor):
