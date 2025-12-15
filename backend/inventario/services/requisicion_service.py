@@ -1526,16 +1526,21 @@ class RequisicionService:
                 f"({dias_para_vencer} días). Producto: {lote_origen.producto.clave}"
             )
         
-        # Buscar lote existente con mismo número en el centro
+        # ISS-FIX: Buscar CUALQUIER lote existente (activo o inactivo) antes de crear
+        # Esto evita el error de unique_together cuando ya existe un lote
         lote_destino = Lote.objects.select_for_update().filter(
             producto=lote_origen.producto,
             numero_lote=lote_origen.numero_lote,
             centro=centro_destino,
-            activo=True
         ).first()
         
         if lote_destino:
-            # Actualizar cantidad (ya está activo)
+            # Lote existe (activo o inactivo) - actualizar cantidad y reactivar
+            logger.info(
+                f"ISS-FIX: Actualizando lote existente {lote_destino.numero_lote} "
+                f"en centro {centro_destino.nombre}. Activo: {lote_destino.activo}, "
+                f"Cantidad anterior: {lote_destino.cantidad_actual}, Agregando: {cantidad}"
+            )
             Lote.objects.filter(pk=lote_destino.pk).update(
                 cantidad_actual=F('cantidad_actual') + cantidad,
                 cantidad_inicial=F('cantidad_inicial') + cantidad,
@@ -1544,44 +1549,24 @@ class RequisicionService:
             )
             lote_destino.refresh_from_db()
         else:
-            # Buscar lote inactivo que podamos reactivar
-            lote_destino = Lote.objects.select_for_update().filter(
+            # No existe lote en este centro - crear uno nuevo
+            logger.info(
+                f"ISS-FIX: Creando nuevo lote {lote_origen.numero_lote} "
+                f"en centro {centro_destino.nombre}. Cantidad: {cantidad}"
+            )
+            # Crear nuevo lote: COPIA FIEL del lote de farmacia
+            lote_destino = Lote.objects.create(
                 producto=lote_origen.producto,
                 numero_lote=lote_origen.numero_lote,
                 centro=centro_destino,
-                activo=False
-            ).first()
-            
-            if lote_destino:
-                # ISS-004 FIX (audit7): Log de auditoría al reactivar lote
-                logger.info(
-                    f"ISS-004 AUDIT: Reactivando lote inactivo {lote_destino.numero_lote} "
-                    f"en centro {centro_destino.nombre}. Cantidad anterior: {lote_destino.cantidad_actual}, "
-                    f"Cantidad agregada: {cantidad}. Requisición: {self.requisicion.numero}"
-                )
-                
-                # Reactivar lote existente
-                Lote.objects.filter(pk=lote_destino.pk).update(
-                    cantidad_actual=F('cantidad_actual') + cantidad,
-                    cantidad_inicial=F('cantidad_inicial') + cantidad,
-                    activo=True,
-                    updated_at=timezone.now()
-                )
-                lote_destino.refresh_from_db()
-            else:
-                # Crear nuevo lote: COPIA FIEL del lote de farmacia
-                lote_destino = Lote.objects.create(
-                    producto=lote_origen.producto,
-                    numero_lote=lote_origen.numero_lote,
-                    centro=centro_destino,
-                    fecha_caducidad=lote_origen.fecha_caducidad,
-                    cantidad_inicial=cantidad,
-                    cantidad_actual=cantidad,
-                    activo=True,
-                    precio_unitario=lote_origen.precio_unitario,
-                    marca=lote_origen.marca,
-                    ubicacion=f'Transferido via REQ-{self.requisicion.numero}'
-                )
+                fecha_caducidad=lote_origen.fecha_caducidad,
+                cantidad_inicial=cantidad,
+                cantidad_actual=cantidad,
+                activo=True,
+                precio_unitario=lote_origen.precio_unitario,
+                marca=lote_origen.marca,
+                ubicacion=f'Transferido via REQ-{self.requisicion.numero}'
+            )
         
         return lote_destino
     

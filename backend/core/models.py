@@ -896,7 +896,8 @@ class Lote(models.Model):
     class Meta:
         db_table = 'lotes'
         managed = False  # Tabla en Supabase
-        unique_together = [['numero_lote', 'producto']]  # lote_producto_unique constraint
+        # ISS-FIX: Incluir centro en unique_together para permitir mismo lote en diferentes centros
+        unique_together = [['numero_lote', 'producto', 'centro']]
 
     def __str__(self):
         return f"{self.numero_lote} - {self.producto}"
