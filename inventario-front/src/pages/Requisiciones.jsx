@@ -311,16 +311,37 @@ const Requisiciones = () => {
 
   const cargarCatalogos = useCallback(async () => {
     try {
-      const [prodResp, centrosResp] = await Promise.all([
+      // ISS-MEDICO FIX: Cargar catálogos según el rol
+      // Los usuarios de centro NO tienen permiso para ver todos los centros
+      // pero sí pueden ver productos
+      const promises = [
         productosAPI.getAll({ page_size: 500, ordering: 'descripcion' }),
-        centrosAPI.getAll({ page_size: 100, ordering: 'nombre' }),
-      ]);
-      setProductos(prodResp.data.results || prodResp.data);
-      setCentros(centrosResp.data.results || centrosResp.data);
+      ];
+      
+      // Solo admin/farmacia pueden cargar la lista completa de centros
+      // Los usuarios de centro ya tienen su centro en user.centro
+      if (esAdminOFarmacia) {
+        promises.push(centrosAPI.getAll({ page_size: 100, ordering: 'nombre' }));
+      }
+      
+      const results = await Promise.all(promises);
+      
+      // Siempre cargar productos
+      setProductos(results[0].data.results || results[0].data);
+      
+      // Cargar centros solo si se solicitaron (admin/farmacia)
+      if (esAdminOFarmacia && results[1]) {
+        setCentros(results[1].data.results || results[1].data);
+      } else {
+        // Para usuarios de centro, usar solo su centro asignado
+        if (user?.centro) {
+          setCentros([user.centro]);
+        }
+      }
     } catch (error) {
       console.error('Error cargando catálogos', error);
     }
-  }, []);
+  }, [esAdminOFarmacia, user?.centro]);
   
   // ISS-004 FIX (audit33): Cargar catálogo de estados y transiciones desde backend
   const cargarEstadosBackend = useCallback(async () => {

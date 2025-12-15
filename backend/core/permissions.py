@@ -308,7 +308,8 @@ def _has_role(user, roles):
     # Esto evita duplicación y posibles divergencias
     for role in roles:
         key = role.lower()
-        if normalized in RoleHelper.ROLE_ALIASES.get(key, {key}):
+        aliases = RoleHelper.ROLE_ALIASES.get(key, {key})
+        if normalized in aliases:
             return True
         # Revisar grupos con aliases expandidos
         if key == 'admin' and 'FARMACIA_ADMIN' in group_names:
@@ -352,6 +353,7 @@ class IsCentroRole(permissions.BasePermission):
     Usuarios de centro/unidad.
     
     ISS-019 FIX: El rol vista tiene acceso de solo lectura para auditoría/controles regulatorios.
+    ISS-MEDICO FIX: El rol 'medico' está incluido en 'centro' via ROLE_ALIASES.
     """
     def has_permission(self, request, view):
         user = request.user
