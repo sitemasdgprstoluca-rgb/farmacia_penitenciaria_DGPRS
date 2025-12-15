@@ -103,23 +103,34 @@ class RequisicionService:
         self._movimientos_creados = []
         self._lotes_actualizados = []
     
-    def validar_transicion_estado(self, nuevo_estado):
+    # ISS-003 QA-FIX: Transiciones que requieren validación de stock
+    TRANSICIONES_VALIDAR_STOCK = {
+        ('autorizada', 'en_surtido'),   # Al iniciar surtido, validar stock disponible
+        ('en_surtido', 'surtida'),      # Al completar surtido, validar stock
+        ('en_surtido', 'parcial'),      # Al surtir parcialmente, validar stock
+    }
+    
+    def validar_transicion_estado(self, nuevo_estado, validar_stock=True):
         """
         ISS-004 FIX (audit3): Valida transición con registro de actor/fecha.
         ISS-003 FIX (audit4): Valida pertenencia al centro/contrato.
+        ISS-003 QA-FIX: Valida disponibilidad de stock en transiciones críticas.
         
         Validaciones:
         1. Transición permitida según máquina de estados
         2. Rol del usuario autorizado para esta transición
         3. ISS-003 FIX: Pertenencia al centro para transiciones críticas
-        4. Registro de quién/cuándo para auditoría
+        4. ISS-003 QA-FIX: Stock disponible para transiciones de surtido
+        5. Registro de quién/cuándo para auditoría
         
         Args:
             nuevo_estado: Estado destino
+            validar_stock: Si True, valida stock en transiciones de surtido (default True)
             
         Raises:
             EstadoInvalidoError: Si la transición no es válida
             PermisoRequisicionError: Si el rol no está autorizado o no pertenece al centro
+            StockInsuficienteError: Si no hay stock suficiente para transiciones de surtido
         """
         estado_actual = (self.requisicion.estado or 'borrador').lower()
         nuevo_estado_lower = nuevo_estado.lower()
@@ -169,7 +180,23 @@ class RequisicionService:
         # 3. ISS-003 FIX (audit4): Validar pertenencia al centro/contrato
         self._validar_pertenencia_centro_transicion(estado_actual, nuevo_estado_lower)
         
-        # 4. ISS-004 FIX: Registrar transición para auditoría
+        # 4. ISS-003 QA-FIX: Validar stock en transiciones de surtido
+        transicion_key = (estado_actual, nuevo_estado_lower)
+        if validar_stock and transicion_key in self.TRANSICIONES_VALIDAR_STOCK:
+            logger.info(
+                f"ISS-003 QA: Validando stock para transición {estado_actual} → {nuevo_estado}"
+            )
+            try:
+                # Validar stock sin bloqueo (informativo antes de commit)
+                self.validar_stock_disponible(usar_bloqueo=False)
+            except StockInsuficienteError as e:
+                logger.warning(
+                    f"ISS-003 QA: Stock insuficiente para transición {estado_actual} → {nuevo_estado}: "
+                    f"{e.detalles_stock}"
+                )
+                raise  # Re-lanzar para que la transición falle
+        
+        # 5. ISS-004 FIX: Registrar transición para auditoría
         logger.info(
             f"ISS-004 TRANSICIÓN: {self.requisicion.folio} | "
             f"{estado_actual} → {nuevo_estado} | "
