@@ -151,7 +151,7 @@ PERMISOS_POR_ROL = {
         'verAuditoria': False,
         'verNotificaciones': True,
         'verPerfil': True,
-        'verMovimientos': False,
+        'verMovimientos': True,  # ISS-FIX: Admin Centro puede VER movimientos (solo lectura)
         'configurarTema': False,
         'crearRequisicion': False,
         'editarRequisicion': False,
@@ -187,7 +187,7 @@ PERMISOS_POR_ROL = {
         'verAuditoria': False,
         'verNotificaciones': True,
         'verPerfil': True,
-        'verMovimientos': False,
+        'verMovimientos': True,  # ISS-FIX: Director puede VER movimientos (solo lectura)
         'configurarTema': False,
         'crearRequisicion': False,
         'editarRequisicion': False,

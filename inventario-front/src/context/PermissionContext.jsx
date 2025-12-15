@@ -324,7 +324,7 @@ const PERMISOS_POR_ROL = {
     verAuditoria: false,
     verNotificaciones: true,
     verPerfil: true,
-    verMovimientos: false,
+    verMovimientos: true,  // ISS-FIX: Admin Centro puede VER movimientos de su centro
     verDonaciones: false,
     esSuperusuario: false,
     configurarTema: false,
@@ -372,7 +372,7 @@ const PERMISOS_POR_ROL = {
     verAuditoria: false,
     verNotificaciones: true,
     verPerfil: true,
-    verMovimientos: false,
+    verMovimientos: true,  // ISS-FIX: Director puede VER movimientos de su centro
     verDonaciones: false,
     esSuperusuario: false,
     configurarTema: false,

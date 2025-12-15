@@ -296,27 +296,45 @@ def generar_hoja_recoleccion(requisicion):
     # Obtener nombres de los participantes del flujo
     solicitante_nombre = ''
     if requisicion.solicitante:
-        solicitante_nombre = requisicion.solicitante.get_full_name() or requisicion.solicitante.username
+        try:
+            solicitante_nombre = requisicion.solicitante.get_full_name() or requisicion.solicitante.username
+        except Exception:
+            solicitante_nombre = ''
     
-    # Admin Centro (usuario que autorizó en pendiente_admin)
+    # Admin Centro (campo: administrador_centro)
     admin_centro_nombre = ''
-    if hasattr(requisicion, 'usuario_autoriza_admin') and requisicion.usuario_autoriza_admin:
-        admin_centro_nombre = requisicion.usuario_autoriza_admin.get_full_name()
+    if hasattr(requisicion, 'administrador_centro') and requisicion.administrador_centro:
+        try:
+            admin_centro_nombre = requisicion.administrador_centro.get_full_name() or requisicion.administrador_centro.username
+        except Exception:
+            admin_centro_nombre = ''
     
-    # Director Centro (usuario que autorizó en pendiente_director)  
+    # Director Centro (campo: director_centro)
     director_nombre = ''
-    if hasattr(requisicion, 'usuario_autoriza_director') and requisicion.usuario_autoriza_director:
-        director_nombre = requisicion.usuario_autoriza_director.get_full_name()
+    if hasattr(requisicion, 'director_centro') and requisicion.director_centro:
+        try:
+            director_nombre = requisicion.director_centro.get_full_name() or requisicion.director_centro.username
+        except Exception:
+            director_nombre = ''
     elif requisicion.autorizador:
         # Fallback: usar autorizador general si no hay director específico
-        director_nombre = requisicion.autorizador.get_full_name()
+        try:
+            director_nombre = requisicion.autorizador.get_full_name() or requisicion.autorizador.username
+        except Exception:
+            director_nombre = ''
     
-    # Farmacia (usuario que surtió)
+    # Farmacia (campo: surtidor o autorizador_farmacia)
     farmacia_nombre = ''
-    if hasattr(requisicion, 'usuario_surte') and requisicion.usuario_surte:
-        farmacia_nombre = requisicion.usuario_surte.get_full_name()
-    elif hasattr(requisicion, 'usuario_firma_surtido') and requisicion.usuario_firma_surtido:
-        farmacia_nombre = requisicion.usuario_firma_surtido.get_full_name()
+    if hasattr(requisicion, 'surtidor') and requisicion.surtidor:
+        try:
+            farmacia_nombre = requisicion.surtidor.get_full_name() or requisicion.surtidor.username
+        except Exception:
+            farmacia_nombre = ''
+    elif hasattr(requisicion, 'autorizador_farmacia') and requisicion.autorizador_farmacia:
+        try:
+            farmacia_nombre = requisicion.autorizador_farmacia.get_full_name() or requisicion.autorizador_farmacia.username
+        except Exception:
+            farmacia_nombre = ''
     
     # Primera fila de firmas: Solicitante (Médico) y Admin Centro
     firmas_parte1 = [
