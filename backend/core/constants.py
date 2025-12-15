@@ -541,7 +541,7 @@ NIVELES_STOCK = {
 
 # Configuración de paginación
 PAGINATION_DEFAULT_PAGE_SIZE = 25
-PAGINATION_MAX_PAGE_SIZE = 100
+PAGINATION_MAX_PAGE_SIZE = 500  # ISS-FIX: Aumentado de 100 a 500 para mostrar todos los lotes en requisiciones
 
 # Configuración de importación
 IMPORT_MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB

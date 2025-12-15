@@ -237,7 +237,7 @@ const Requisiciones = () => {
         stock_min: 1,
         solo_disponibles: 'true',
         ordering: 'producto__descripcion,fecha_caducidad',
-        page_size: 200, // Aumentado para mostrar más lotes (antes 50)
+        page_size: 500, // ISS-FIX: Aumentado para mostrar todos los lotes disponibles
         para_requisicion: true,  // ISS-FIX: Mostrar lotes de farmacia central para requisiciones
       };
       
