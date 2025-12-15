@@ -549,6 +549,8 @@ class UserSerializer(serializers.ModelSerializer):
         return attrs
     
     def create(self, validated_data):
+        from django.db import transaction
+        
         password = validated_data.pop('password', None)
         # Extraer centro_id y asignarlo al campo centro
         centro_id = validated_data.pop('centro_id', None)
@@ -556,50 +558,85 @@ class UserSerializer(serializers.ModelSerializer):
         logger.info(f"UserSerializer.create - validated_data: {validated_data}, centro_id: {centro_id}")
         logger.info(f"UserSerializer.create - password received: {'YES (length=' + str(len(password)) + ')' if password else 'NO'}")
         
-        user = User(**validated_data)
-        # Asignar centro directamente usando el ID
-        if centro_id is not None:
-            user.centro_id = centro_id
-        
-        if password:
-            user.set_password(password)
-            logger.info(f"UserSerializer.create - Password set for user {user.username}")
-        else:
-            user.set_unusable_password()
-            logger.warning(f"UserSerializer.create - NO PASSWORD SET for user {user.username} - user won't be able to login!")
-        user.save()
-        
-        # Verificar que la contraseña se guardó correctamente
-        if password:
-            user.refresh_from_db()
-            can_auth = user.check_password(password)
-            logger.info(f"UserSerializer.create - Password verification after save: {can_auth}")
-            if not can_auth:
-                logger.error(f"UserSerializer.create - PASSWORD VERIFICATION FAILED for {user.username}!")
+        # ISS-PASSWORD FIX: Usar transacción para asegurar integridad
+        with transaction.atomic():
+            user = User(**validated_data)
+            # Asignar centro directamente usando el ID
+            if centro_id is not None:
+                user.centro_id = centro_id
+            
+            if password:
+                user.set_password(password)
+                logger.info(f"UserSerializer.create - Password set for user {user.username}")
+            else:
+                user.set_unusable_password()
+                logger.warning(f"UserSerializer.create - NO PASSWORD SET for user {user.username} - user won't be able to login!")
+            user.save()
+            
+            # ISS-PASSWORD FIX: Verificar que la contraseña se guardó correctamente
+            if password:
+                user.refresh_from_db()
+                can_auth = user.check_password(password)
+                logger.info(f"UserSerializer.create - Password verification after save: {can_auth}")
+                if not can_auth:
+                    logger.error(f"UserSerializer.create - PASSWORD VERIFICATION FAILED for {user.username}!")
+                    # Reintentar el guardado de la contraseña
+                    user.set_password(password)
+                    user.save(update_fields=['password'])
+                    user.refresh_from_db()
+                    # Verificar de nuevo
+                    if not user.check_password(password):
+                        raise serializers.ValidationError(
+                            {'password': 'Error crítico: No se pudo guardar la contraseña. Contacte al administrador.'}
+                        )
+                    logger.info(f"UserSerializer.create - Password fixed on retry for {user.username}")
         
         logger.info(f"UserSerializer.create - User saved: id={user.id}, centro_id={user.centro_id}, is_active={user.is_active}")
         return user
     
     def update(self, instance, validated_data):
+        from django.db import transaction
+        
         password = validated_data.pop('password', None)
         # Extraer centro_id
         centro_id = validated_data.pop('centro_id', None)
         
         logger.info(f"UserSerializer.update - validated_data: {validated_data}, centro_id: {centro_id}")
         
-        # Actualizar campos normales
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
+        # ISS-PASSWORD FIX: Usar transacción para asegurar integridad
+        with transaction.atomic():
+            # Actualizar campos normales
+            for attr, value in validated_data.items():
+                setattr(instance, attr, value)
+            
+            # Asignar centro_id explícitamente (incluso si es None para quitar asignación)
+            if 'centro_id' in self.initial_data:
+                instance.centro_id = centro_id
+                logger.info(f"UserSerializer.update - Setting centro_id to: {centro_id}")
+            
+            if password:
+                instance.set_password(password)
+                logger.info(f"UserSerializer.update - Setting new password for {instance.username}")
+            
+            instance.save()
+            
+            # ISS-PASSWORD FIX: Verificar que la contraseña se guardó si se cambió
+            if password:
+                instance.refresh_from_db()
+                can_auth = instance.check_password(password)
+                logger.info(f"UserSerializer.update - Password verification: {can_auth}")
+                if not can_auth:
+                    logger.error(f"UserSerializer.update - PASSWORD VERIFICATION FAILED for {instance.username}!")
+                    # Reintentar
+                    instance.set_password(password)
+                    instance.save(update_fields=['password'])
+                    instance.refresh_from_db()
+                    if not instance.check_password(password):
+                        raise serializers.ValidationError(
+                            {'password': 'Error crítico: No se pudo guardar la contraseña. Contacte al administrador.'}
+                        )
+                    logger.info(f"UserSerializer.update - Password fixed on retry for {instance.username}")
         
-        # Asignar centro_id explícitamente (incluso si es None para quitar asignación)
-        if 'centro_id' in self.initial_data:
-            instance.centro_id = centro_id
-            logger.info(f"UserSerializer.update - Setting centro_id to: {centro_id}")
-        
-        if password:
-            instance.set_password(password)
-        
-        instance.save()
         logger.info(f"UserSerializer.update - User saved: id={instance.id}, centro_id={instance.centro_id}")
         return instance
 

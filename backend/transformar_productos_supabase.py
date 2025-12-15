@@ -162,10 +162,10 @@ def limpiar_texto(valor):
 
 def transformar_excel_a_supabase(archivo_excel, hoja=None):
     """
-    Transforma un archivo Excel al formato compatible con Supabase.
+    Transforma un archivo Excel o CSV al formato compatible con Supabase.
     
     Args:
-        archivo_excel: Ruta al archivo Excel
+        archivo_excel: Ruta al archivo Excel o CSV
         hoja: Nombre de la hoja (opcional, usa la primera por defecto)
     
     Returns:
@@ -173,11 +173,23 @@ def transformar_excel_a_supabase(archivo_excel, hoja=None):
     """
     print(f"📂 Leyendo archivo: {archivo_excel}")
     
-    # Leer Excel
-    if hoja:
-        df = pd.read_excel(archivo_excel, sheet_name=hoja)
+    # Detectar tipo de archivo
+    archivo_lower = archivo_excel.lower()
+    
+    # Leer según extensión
+    if archivo_lower.endswith('.csv'):
+        df = pd.read_csv(archivo_excel, encoding='utf-8')
+    elif archivo_lower.endswith(('.xlsx', '.xls')):
+        if hoja:
+            df = pd.read_excel(archivo_excel, sheet_name=hoja)
+        else:
+            df = pd.read_excel(archivo_excel)
     else:
-        df = pd.read_excel(archivo_excel)
+        # Intentar como CSV por defecto
+        try:
+            df = pd.read_csv(archivo_excel, encoding='utf-8')
+        except:
+            df = pd.read_excel(archivo_excel)
     
     print(f"✓ {len(df)} filas leídas")
     print(f"\nColumnas encontradas: {list(df.columns)}")

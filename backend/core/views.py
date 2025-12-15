@@ -490,7 +490,11 @@ class UserViewSet(viewsets.ModelViewSet):
         - Al menos una mayúscula
         - Al menos un número
         - Diferente a la anterior
+        
+        ISS-PASSWORD FIX: Incluye verificación post-guardado.
         """
+        from django.db import transaction
+        
         user = request.user
         old_password = request.data.get('old_password')
         new_password = request.data.get('new_password')
@@ -526,8 +530,28 @@ class UserViewSet(viewsets.ModelViewSet):
         if old_password == new_password:
             return Response({'error': 'La nueva contraseña debe ser diferente a la anterior'}, status=status.HTTP_400_BAD_REQUEST)
 
-        user.set_password(new_password)
-        user.save()
+        # ISS-PASSWORD FIX: Usar transacción y verificar post-guardado
+        try:
+            with transaction.atomic():
+                user.set_password(new_password)
+                user.save()
+                
+                # Verificar que la contraseña se guardó correctamente
+                user.refresh_from_db()
+                if not user.check_password(new_password):
+                    logger.error(f"me_change_password - PASSWORD VERIFICATION FAILED for {user.username}!")
+                    # Reintentar
+                    user.set_password(new_password)
+                    user.save(update_fields=['password'])
+                    user.refresh_from_db()
+                    if not user.check_password(new_password):
+                        raise Exception("No se pudo guardar la contraseña después de reintentar")
+                    logger.info(f"me_change_password - Password fixed on retry for {user.username}")
+        except Exception as e:
+            logger.error(f"me_change_password - Error crítico al guardar contraseña: {e}")
+            return Response({
+                'error': f'Error crítico al guardar contraseña. Contacte al administrador.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         # HALLAZGO #3: Invalidar todos los tokens JWT existentes del usuario
         # Esto previene que tokens robados sigan funcionando después del cambio de contraseña
@@ -548,7 +572,7 @@ class UserViewSet(viewsets.ModelViewSet):
             detalles={'objeto_repr': str(user), 'resultado': 'Contraseña actualizada exitosamente', 'tokens_invalidados': True}
         )
         
-        logger.info("Contraseña actualizada para usuario %s (tokens JWT invalidados)", user.username)
+        logger.info("Contraseña actualizada para usuario %s (verificada, tokens JWT invalidados)", user.username)
         return Response({
             'message': 'Contraseña actualizada exitosamente',
             'nota': 'Todas las sesiones activas han sido cerradas. Debe iniciar sesión nuevamente.'
@@ -556,7 +580,13 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='cambiar-password')
     def cambiar_password(self, request, pk=None):
-        """POST /api/usuarios/{id}/cambiar-password/ - Admin cambia password de otro usuario"""
+        """POST /api/usuarios/{id}/cambiar-password/ - Admin cambia password de otro usuario
+        
+        ISS-PASSWORD FIX: Incluye verificación post-guardado para asegurar que la contraseña
+        se guardó correctamente y es funcional.
+        """
+        from django.db import transaction
+        
         # Solo superusuarios o farmacia pueden cambiar passwords de otros
         if not request.user.is_superuser and request.user.rol not in ['admin_sistema', 'farmacia', 'admin_farmacia']:
             return Response({'error': 'No tiene permisos para cambiar contraseñas de otros usuarios'}, status=status.HTTP_403_FORBIDDEN)
@@ -584,8 +614,28 @@ class UserViewSet(viewsets.ModelViewSet):
         except DjangoValidationError as e:
             return Response({'error': '; '.join(e.messages)}, status=status.HTTP_400_BAD_REQUEST)
         
-        usuario.set_password(new_password)
-        usuario.save()
+        # ISS-PASSWORD FIX: Usar transacción y verificar post-guardado
+        try:
+            with transaction.atomic():
+                usuario.set_password(new_password)
+                usuario.save()
+                
+                # Verificar que la contraseña se guardó correctamente
+                usuario.refresh_from_db()
+                if not usuario.check_password(new_password):
+                    logger.error(f"cambiar_password - PASSWORD VERIFICATION FAILED for {usuario.username}!")
+                    # Reintentar
+                    usuario.set_password(new_password)
+                    usuario.save(update_fields=['password'])
+                    usuario.refresh_from_db()
+                    if not usuario.check_password(new_password):
+                        raise Exception("No se pudo guardar la contraseña después de reintentar")
+                    logger.info(f"cambiar_password - Password fixed on retry for {usuario.username}")
+        except Exception as e:
+            logger.error(f"cambiar_password - Error crítico al guardar contraseña: {e}")
+            return Response({
+                'error': f'Error crítico al guardar contraseña: {str(e)}. Contacte al administrador.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         # HALLAZGO #3: Invalidar todos los tokens JWT existentes del usuario
         try:
@@ -600,11 +650,11 @@ class UserViewSet(viewsets.ModelViewSet):
             accion='UPDATE',
             modelo='User',
             objeto_id=str(usuario.id),
-            detalles={'objeto_repr': usuario.username, 'cambiado_por': request.user.username},
+            detalles={'objeto_repr': usuario.username, 'cambiado_por': request.user.username, 'cambio': 'password'},
             ip_address=request.META.get('REMOTE_ADDR')
         )
         
-        logger.info("Contraseña de usuario %s actualizada por %s", usuario.username, request.user.username)
+        logger.info("Contraseña de usuario %s actualizada por %s (verificada)", usuario.username, request.user.username)
         return Response({'message': f'Contraseña de {usuario.username} actualizada exitosamente'})
 
     @action(detail=False, methods=['get'], url_path='exportar-excel')
