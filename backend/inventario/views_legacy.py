@@ -4313,9 +4313,13 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
 
             return Response(response_data, status=status.HTTP_201_CREATED)
         except serializers.ValidationError as exc:
+            logger.error(f"[RequisicionViewSet.create] ValidationError: {exc.detail}")
             return Response({'error': 'Error de validacion', 'detalles': exc.detail}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
-            # traceback removido por seguridad (ISS-008)
+            # ISS-FIX: Log completo del error para diagnóstico
+            import traceback
+            logger.error(f"[RequisicionViewSet.create] Exception: {str(exc)}")
+            logger.error(f"[RequisicionViewSet.create] Traceback: {traceback.format_exc()}")
             return Response({'error': 'Error al crear requisicion', 'mensaje': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def update(self, request, *args, **kwargs):

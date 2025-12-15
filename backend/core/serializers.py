@@ -1056,6 +1056,7 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['created_at', 'updated_at']
         extra_kwargs = {
+            'lote': {'required': False, 'allow_null': True},  # ISS-FIX: Lote puede ser null
             'notas': {'required': False, 'allow_null': True, 'allow_blank': True},
             'cantidad_autorizada': {'required': False, 'allow_null': True},
             'cantidad_recibida': {'required': False, 'allow_null': True},
