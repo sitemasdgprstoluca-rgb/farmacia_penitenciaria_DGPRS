@@ -1042,15 +1042,31 @@ class RequisicionService:
                 )
                 
                 # ISS-009 FIX (audit6): Actualizar estado con trazabilidad completa
+                # ISS-FIX: Manejar campos que pueden no existir en BD
                 requisicion_bloqueada.estado = 'surtida'
-                requisicion_bloqueada.surtidor = self.usuario
                 requisicion_bloqueada.fecha_surtido = timezone.now()
-                requisicion_bloqueada.usuario_firma_surtido = self.usuario
-                requisicion_bloqueada.fecha_firma_surtido = timezone.now()
-                requisicion_bloqueada.save(update_fields=[
-                    'estado', 'surtidor', 'fecha_surtido', 
-                    'usuario_firma_surtido', 'fecha_firma_surtido', 'updated_at'
-                ])
+                
+                update_fields = ['estado', 'fecha_surtido', 'updated_at']
+                
+                # Intentar setear campos opcionales de forma segura
+                try:
+                    if hasattr(requisicion_bloqueada, 'surtidor'):
+                        requisicion_bloqueada.surtidor = self.usuario
+                        update_fields.append('surtidor')
+                except Exception:
+                    pass
+                
+                try:
+                    if hasattr(requisicion_bloqueada, 'usuario_firma_surtido'):
+                        requisicion_bloqueada.usuario_firma_surtido = self.usuario
+                        update_fields.append('usuario_firma_surtido')
+                    if hasattr(requisicion_bloqueada, 'fecha_firma_surtido'):
+                        requisicion_bloqueada.fecha_firma_surtido = timezone.now()
+                        update_fields.append('fecha_firma_surtido')
+                except Exception:
+                    pass
+                
+                requisicion_bloqueada.save(update_fields=update_fields)
                 
                 # Refrescar referencia local
                 self.requisicion = requisicion_bloqueada
@@ -1262,9 +1278,31 @@ class RequisicionService:
         nuevo_estado = 'surtida' if completada else 'parcial'
         self.requisicion.estado = nuevo_estado
         self.requisicion.fecha_surtido = timezone.now()
-        self.requisicion.usuario_firma_surtido = self.usuario
-        self.requisicion.fecha_firma_surtido = timezone.now()
-        self.requisicion.save(update_fields=['estado', 'fecha_surtido', 'usuario_firma_surtido', 'fecha_firma_surtido', 'updated_at'])
+        
+        # ISS-FIX: Actualizar campos de trazabilidad de forma segura
+        # (algunos campos pueden no existir en BD de producción)
+        update_fields = ['estado', 'fecha_surtido', 'updated_at']
+        
+        # Intentar setear surtidor si el campo existe
+        try:
+            if hasattr(self.requisicion, 'surtidor'):
+                self.requisicion.surtidor = self.usuario
+                update_fields.append('surtidor')
+        except Exception:
+            pass
+        
+        # Intentar setear campos de firma si existen
+        try:
+            if hasattr(self.requisicion, 'usuario_firma_surtido'):
+                self.requisicion.usuario_firma_surtido = self.usuario
+                update_fields.append('usuario_firma_surtido')
+            if hasattr(self.requisicion, 'fecha_firma_surtido'):
+                self.requisicion.fecha_firma_surtido = timezone.now()
+                update_fields.append('fecha_firma_surtido')
+        except Exception:
+            pass
+        
+        self.requisicion.save(update_fields=update_fields)
         
         logger.info(
             f"Requisición {self.requisicion.folio} surtida exitosamente por {self.usuario.username}. "
