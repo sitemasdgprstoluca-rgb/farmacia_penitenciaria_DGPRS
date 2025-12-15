@@ -4732,6 +4732,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         
         NUEVO: Soporta foto de firma de surtido vía multipart/form-data
         """
+        import traceback
         from inventario.services import (
             RequisicionService,
             StockInsuficienteError,
@@ -4739,15 +4740,31 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             PermisoRequisicionError
         )
         
-        requisicion = self.get_object()
+        # DEBUG: Log inicio de surtido
+        logger.info(f"SURTIR: Iniciando surtido para requisición pk={pk}, usuario={request.user.username}")
+        
+        try:
+            requisicion = self.get_object()
+            logger.info(f"SURTIR: Requisición obtenida: {requisicion.folio}, estado={requisicion.estado}")
+        except Exception as e:
+            logger.exception(f"SURTIR: Error al obtener requisición: {e}")
+            return Response({
+                'error': 'No se pudo obtener la requisición',
+                'detalle': str(e),
+                'tipo_error': type(e).__name__
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         try:
             # ISS-011, ISS-021: Usar servicio transaccional
+            logger.info(f"SURTIR: Creando servicio para {requisicion.folio}")
             service = RequisicionService(requisicion, request.user)
+            
+            logger.info(f"SURTIR: Llamando service.surtir() para {requisicion.folio}")
             resultado = service.surtir(
                 is_farmacia_or_admin_fn=is_farmacia_or_admin,
                 get_user_centro_fn=get_user_centro
             )
+            logger.info(f"SURTIR: Surtido exitoso para {requisicion.folio}")
             
             # Refrescar requisición para serializer
             requisicion.refresh_from_db()

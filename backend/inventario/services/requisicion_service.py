@@ -978,10 +978,13 @@ class RequisicionService:
         from core.models import Requisicion as RequisicionModel, DetalleRequisicion
         
         hoy = timezone.now().date()
+        logger.info(f"SURTIR SERVICE: Iniciando surtido de {self.requisicion.folio}")
         
         # ISS-003 FIX: Bloquear requisición PRIMERO para evitar doble surtido
         # Esto previene race conditions donde dos procesos intentan surtir simultáneamente
+        logger.info(f"SURTIR SERVICE: Bloqueando requisición {self.requisicion.pk}")
         requisicion_bloqueada = RequisicionModel.objects.select_for_update().get(pk=self.requisicion.pk)
+        logger.info(f"SURTIR SERVICE: Requisición bloqueada, estado={requisicion_bloqueada.estado}")
         
         # ISS-003 FIX: Revalidar estado DESPUÉS del bloqueo
         estado_actual = (requisicion_bloqueada.estado or '').lower()
@@ -992,6 +995,7 @@ class RequisicionService:
                 estado_actual=estado_actual
             )
         
+        logger.info(f"SURTIR SERVICE: Estado válido, verificando idempotencia")
         # ISS-004 FIX (audit7): Verificar idempotencia - detectar surtido en progreso o duplicado
         # Si ya hay movimientos de salida para esta requisición, es un reintento potencialmente duplicado
         movimientos_existentes = Movimiento.objects.filter(
@@ -1090,7 +1094,9 @@ class RequisicionService:
         self.requisicion = requisicion_bloqueada
         
         # 2. Validar permisos
+        logger.info(f"SURTIR SERVICE: Validando permisos para usuario {self.usuario.username}")
         self.validar_permisos_surtido(is_farmacia_or_admin_fn, get_user_centro_fn)
+        logger.info(f"SURTIR SERVICE: Permisos OK")
         
         # 2.5 ISS-007 FIX (audit6): Validar que TODOS los detalles tengan cantidad_autorizada
         # Esto garantiza que el flujo de autorización se completó correctamente
@@ -1111,18 +1117,22 @@ class RequisicionService:
             )
         
         # 3. ISS-001 FIX + ISS-007 FIX: Validar stock CON BLOQUEO para prevenir race conditions
+        logger.info(f"SURTIR SERVICE: Validando stock disponible")
         # El bloqueo se mantiene hasta el final de la transacción atómica
         # ISS-001 FIX (audit-final): Revalidar con flag post_lock=True para indicar
         # que ya tenemos los locks y no intentar re-bloquear
         self.validar_stock_disponible(usar_bloqueo=True, revalidacion_post_lock=True)
+        logger.info(f"SURTIR SERVICE: Stock OK")
         
         centro_requisicion = self.requisicion.centro
+        logger.info(f"SURTIR SERVICE: Centro requisición: {centro_requisicion}")
         items_surtidos = []
         
         # ISS-003 FIX + ISS-005 FIX: Bloquear detalles para evitar modificaciones concurrentes
         detalles_bloqueados = DetalleRequisicion.objects.select_for_update().filter(
             requisicion=self.requisicion
         ).select_related('producto')
+        logger.info(f"SURTIR SERVICE: Detalles bloqueados: {detalles_bloqueados.count()}")
         
         # 4. Procesar cada detalle
         for detalle in detalles_bloqueados:
