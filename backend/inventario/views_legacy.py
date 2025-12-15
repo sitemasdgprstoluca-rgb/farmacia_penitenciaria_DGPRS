@@ -4136,16 +4136,24 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             if rol == 'medico':
                 queryset = queryset.filter(solicitante=user)
             
-            # 3.2 Administrador Centro: Ve todo del centro excepto borradores de otros
+            # 3.2 Administrador Centro: Ve desde pendiente_admin en adelante
+            # FLUJO V2: Admin NO ve borradores de otros ni pendiente_director (eso es del director)
             elif rol == 'administrador_centro':
-                # Borradores: solo los propios; el resto: todos del centro
+                # Puede ver: pendiente_admin (para autorizar) + todo lo que ya pasó esa etapa
+                # NO ve: borradores de otros
                 queryset = queryset.exclude(
                     Q(estado='borrador') & ~Q(solicitante=user)
                 )
             
-            # 3.3 Director Centro: Ve todo excepto borradores
+            # 3.3 Director Centro: Ve SOLO desde pendiente_director en adelante
+            # FLUJO V2: Director NO debe ver pendiente_admin (eso es del Admin)
             elif rol == 'director_centro':
-                queryset = queryset.exclude(estado='borrador')
+                # Estados que el director puede ver:
+                # - pendiente_director: para autorizar
+                # - enviada, autorizada, parcial, surtida, entregada: ya autorizados
+                # - rechazada, cancelada, vencida: finalizados
+                # NO ve: borrador, pendiente_admin (aún no llegó a su etapa)
+                queryset = queryset.exclude(estado__in=['borrador', 'pendiente_admin'])
             
             # 3.4 Centro genérico: Ve todo del centro (lectura)
             # else: ya está filtrado por centro

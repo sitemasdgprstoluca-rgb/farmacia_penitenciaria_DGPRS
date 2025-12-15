@@ -109,7 +109,7 @@ const PERMISOS_POR_ROL = {
     verLotes: true,
     verRequisiciones: true,
     verCentros: true,
-    verUsuarios: true,
+    verUsuarios: false,  // ISS-FIX: Farmacia NO gestiona usuarios
     verReportes: true,
     verTrazabilidad: true,
     verAuditoria: false,  // Solo admin/superuser
@@ -118,7 +118,7 @@ const PERMISOS_POR_ROL = {
     verMovimientos: true,
     verDonaciones: true,  // Farmacia puede gestionar donaciones
     esSuperusuario: false,
-    configurarTema: true, // FARMACIA puede personalizar tema junto con Admin
+    configurarTema: false, // ISS-FIX: Solo admin puede personalizar tema
     // Permisos granulares de requisiciones
     crearRequisicion: false,  // Farmacia no crea requisiciones
     editarRequisicion: true,
@@ -136,7 +136,7 @@ const PERMISOS_POR_ROL = {
     recibirFarmacia: true,      // Puede recibir requisiciones en Farmacia
     autorizarFarmacia: true,    // Puede autorizar en Farmacia
     // Permisos de gestión de usuarios
-    gestionUsuarios: true,
+    gestionUsuarios: false,  // ISS-FIX: Farmacia NO gestiona usuarios
     // Permisos granulares de lotes
     crearLote: true,
     editarLote: true,

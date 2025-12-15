@@ -36,7 +36,8 @@ const ACCIONES_FLUJO = {
     label: 'Autorizar (Admin)',
     estadosPermitidos: ['pendiente_admin'],
     estadoResultante: 'pendiente_director',
-    rolesPermitidos: ['administrador_centro', 'admin', 'admin_sistema', 'superusuario'],
+    // ISS-FIX: Incluir 'centro' para usuarios adminCentro que tienen ese rol
+    rolesPermitidos: ['administrador_centro', 'centro', 'admin', 'admin_sistema', 'superusuario'],
     confirmacion: true,
     color: 'green',
   },
@@ -45,7 +46,8 @@ const ACCIONES_FLUJO = {
     label: 'Autorizar (Director)',
     estadosPermitidos: ['pendiente_director'],
     estadoResultante: 'enviada',
-    rolesPermitidos: ['director_centro', 'admin', 'admin_sistema', 'superusuario'],
+    // ISS-FIX: Incluir 'centro' para usuarios directorCentro que pueden tener ese rol
+    rolesPermitidos: ['director_centro', 'centro', 'admin', 'admin_sistema', 'superusuario'],
     confirmacion: true,
     color: 'green',
   },
@@ -92,7 +94,8 @@ const ACCIONES_FLUJO = {
     label: 'Devolver al Centro',
     estadosPermitidos: ['pendiente_admin', 'pendiente_director', 'en_revision'],
     estadoResultante: 'devuelta',
-    rolesPermitidos: ['administrador_centro', 'director_centro', 'farmacia', 'admin', 'admin_farmacia', 'admin_sistema', 'superusuario'],
+    // ISS-FIX: Incluir 'centro' para usuarios que pueden tener ese rol genérico
+    rolesPermitidos: ['administrador_centro', 'director_centro', 'centro', 'farmacia', 'admin', 'admin_farmacia', 'admin_sistema', 'superusuario'],
     requiereMotivo: true,
     confirmacion: true,
     color: 'amber',
@@ -111,7 +114,8 @@ const ACCIONES_FLUJO = {
     label: 'Rechazar',
     estadosPermitidos: ['pendiente_admin', 'pendiente_director', 'enviada', 'en_revision'],
     estadoResultante: 'rechazada',
-    rolesPermitidos: ['administrador_centro', 'director_centro', 'farmacia', 'admin', 'admin_farmacia', 'admin_sistema', 'superusuario'],
+    // ISS-FIX: Incluir 'centro' para usuarios con ese rol genérico
+    rolesPermitidos: ['administrador_centro', 'director_centro', 'centro', 'farmacia', 'admin', 'admin_farmacia', 'admin_sistema', 'superusuario'],
     requiereMotivo: true,
     confirmacion: true,
     color: 'red',

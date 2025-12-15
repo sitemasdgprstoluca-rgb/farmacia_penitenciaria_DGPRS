@@ -4,6 +4,7 @@ import { requisicionesAPI, hojasRecoleccionAPI, descargarArchivo } from '../serv
 import { usePermissions } from '../hooks/usePermissions';
 import { getEstadoBadgeClasses, getEstadoLabel } from '../components/EstadoBadge';
 import RequisicionHistorial from '../components/RequisicionHistorial';
+import { RequisicionAcciones } from '../components/RequisicionAcciones';
 import { toast } from 'react-hot-toast';
 import InputModal from '../components/InputModal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -983,7 +984,7 @@ const RequisicionDetalle = () => {
         )}
       </div>
 
-      {/* Acciones */}
+      {/* Acciones - FLUJO V2: Usar componente centralizado */}
       <div className="bg-white rounded-xl shadow-lg p-6">
         <h2 className="text-lg font-bold mb-4 text-theme-primary">Acciones</h2>
         
@@ -1008,56 +1009,15 @@ const RequisicionDetalle = () => {
             </>
           ) : (
             <>
-              {puedeEnviar && (
-                <button
-                  onClick={iniciarEnviar}
-                  disabled={procesando}
-                  className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity bg-theme-primary"
-                >
-                  <FaPaperPlane /> Enviar para autorización
-                </button>
-              )}
+              {/* FLUJO V2: Acciones del flujo según rol y estado */}
+              <RequisicionAcciones
+                requisicion={requisicion}
+                onAccionCompletada={() => cargarRequisicion()}
+                mostrarHistorial={false}
+                size="lg"
+              />
 
-              {puedeAutorizar && (
-                <button
-                  onClick={iniciarAutorizacion}
-                  disabled={procesando}
-                  className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 font-semibold hover:opacity-90 transition-opacity bg-theme-primary"
-                >
-                  <FaEdit /> Revisar Cantidades
-                </button>
-              )}
-
-              {puedeRechazar && (
-                <button
-                  onClick={iniciarRechazar}
-                  disabled={procesando}
-                  className="flex items-center gap-2 px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
-                >
-                  <FaTimes /> Rechazar
-                </button>
-              )}
-
-              {puedeSurtir && (
-                <button
-                  onClick={iniciarSurtir}
-                  disabled={procesando}
-                  className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity bg-theme-primary"
-                >
-                  <FaBoxOpen /> Surtir y descontar inventario
-                </button>
-              )}
-
-              {puedeMarcarRecibida && (
-                <button
-                  onClick={iniciarConfirmarRecepcion}
-                  disabled={procesando}
-                  className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity bg-blue-600 hover:bg-blue-700"
-                >
-                  <FaCheckCircle /> Confirmar recepción
-                </button>
-              )}
-
+              {/* Acciones adicionales que no están en el flujo V2 */}
               {puedeDescargarHoja && (
                 <button
                   onClick={() => handleDescargarPDF('aceptacion')}
@@ -1075,16 +1035,6 @@ const RequisicionDetalle = () => {
                   className="flex items-center gap-2 px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
                 >
                   <FaDownload /> PDF de rechazo
-                </button>
-              )}
-
-              {puedeCancelar && (
-                <button
-                  onClick={iniciarCancelar}
-                  disabled={procesando}
-                  className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
-                >
-                  <FaBan /> Cancelar requisición
                 </button>
               )}
             </>
