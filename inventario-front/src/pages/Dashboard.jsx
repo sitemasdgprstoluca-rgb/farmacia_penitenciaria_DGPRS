@@ -102,6 +102,7 @@ const Dashboard = () => {
   
   // Centro del usuario (para usuarios de CENTRO restringidos a su centro)
   const centroUsuario = user?.centro?.id || user?.centro;
+  const nombreCentroUsuario = user?.centro?.nombre || user?.centro_nombre || '';
   
   // Usuario restringido a un centro específico (CENTRO users)
   const esCentroRestringido = esCentro || (!puedeVerGlobal && centroUsuario);
@@ -475,7 +476,9 @@ const Dashboard = () => {
       {/* Indicador de centro fijo para usuarios restringidos a centro (no pueden cambiar) */}
       {esCentroRestringido && centroUsuario && (
         <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2">
-          <span className="text-blue-600 font-medium">📍 Mostrando datos de tu centro asignado</span>
+          <span className="text-blue-600 font-medium">
+            📍 Mostrando datos de: <strong>{nombreCentroUsuario || 'Tu centro asignado'}</strong>
+          </span>
         </div>
       )}
 

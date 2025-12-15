@@ -301,8 +301,8 @@ const PERMISOS_POR_ROL = {
     eliminarLote: false,
     exportarLotes: false,
     importarLotes: false,
-    // Movimientos - Sin acceso
-    crearMovimiento: false,
+    // Movimientos - ISS-FIX: Médico puede crear movimientos de salida en su centro
+    crearMovimiento: true,
     exportarMovimientos: false,
     // Productos - Solo lectura
     crearProducto: false,

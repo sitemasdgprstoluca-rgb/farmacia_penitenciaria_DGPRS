@@ -225,22 +225,35 @@ def generar_hoja_recoleccion(requisicion):
     
     for idx, detalle in enumerate(requisicion.detalles.all(), start=1):
         # Buscar lote con stock disponible para este producto
-        lote_asignado = detalle.producto.lotes.filter(
-            activo=True,
-            cantidad_actual__gt=0
-        ).order_by('fecha_caducidad').first()
+        lote_asignado = None
+        try:
+            lote_asignado = detalle.producto.lotes.filter(
+                activo=True,
+                cantidad_actual__gt=0
+            ).order_by('fecha_caducidad').first()
+        except Exception:
+            pass
         
-        # Usar Paragraph para que la descripción haga word-wrap automático
-        descripcion_paragraph = Paragraph(detalle.producto.descripcion, celda_texto_style)
+        # ISS-PDF FIX: Manejar descripcion None
+        descripcion_texto = detalle.producto.descripcion or detalle.producto.nombre or 'N/A'
+        descripcion_paragraph = Paragraph(descripcion_texto, celda_texto_style)
+        
+        # ISS-PDF FIX: Manejar cantidad_autorizada None
+        cantidad = detalle.cantidad_solicitada or 0
+        if detalle.cantidad_autorizada is not None and detalle.cantidad_autorizada > 0:
+            cantidad = detalle.cantidad_autorizada
+        
+        # ISS-PDF FIX: unidad_medida es CharField simple, no tiene choices
+        unidad = getattr(detalle.producto, 'unidad_medida', None) or 'UND'
         
         productos_data.append([
             str(idx),
-            detalle.producto.clave,
+            detalle.producto.clave or 'N/A',
             descripcion_paragraph,
             lote_asignado.numero_lote if lote_asignado else 'SIN LOTE',
-            lote_asignado.fecha_caducidad.strftime('%d/%m/%Y') if lote_asignado else 'N/A',
-            str(detalle.cantidad_autorizada if detalle.cantidad_autorizada > 0 else detalle.cantidad_solicitada),
-            detalle.producto.get_unidad_medida_display()
+            lote_asignado.fecha_caducidad.strftime('%d/%m/%Y') if lote_asignado and lote_asignado.fecha_caducidad else 'N/A',
+            str(cantidad),
+            unidad
         ])
     
     # Ajustar anchos para mejor distribución (total ~7.5 pulgadas disponibles)
@@ -452,14 +465,17 @@ def generar_pdf_rechazo(requisicion):
     ]
 
     for idx, detalle in enumerate(requisicion.detalles.all(), start=1):
-        # Usar Paragraph para word-wrap automático
-        descripcion_paragraph = Paragraph(detalle.producto.descripcion, celda_rechazo_style)
+        # ISS-PDF FIX: Manejar descripcion None
+        descripcion_texto = detalle.producto.descripcion or detalle.producto.nombre or 'N/A'
+        descripcion_paragraph = Paragraph(descripcion_texto, celda_rechazo_style)
+        # ISS-PDF FIX: unidad_medida es CharField simple
+        unidad = getattr(detalle.producto, 'unidad_medida', None) or 'UND'
         productos_data.append([
             str(idx),
-            detalle.producto.clave,
+            detalle.producto.clave or 'N/A',
             descripcion_paragraph,
-            str(detalle.cantidad_solicitada),
-            detalle.producto.get_unidad_medida_display() if hasattr(detalle.producto, 'get_unidad_medida_display') else getattr(detalle.producto, 'unidad_medida', 'UND')
+            str(detalle.cantidad_solicitada or 0),
+            unidad
         ])
 
     productos_table = Table(
