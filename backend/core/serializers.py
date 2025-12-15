@@ -698,7 +698,12 @@ class ProductoSerializer(serializers.ModelSerializer):
         return getattr(obj, 'stock_calculado', None) or obj.stock_actual or 0
     
     def get_lotes_activos(self, obj):
-        # Filtrar por activo=True
+        # ISS-FIX: Priorizar lotes_centro_count (anotación por centro) sobre conteo global
+        # Esto asegura que usuarios de centro vean solo SUS lotes
+        lotes_centro = getattr(obj, 'lotes_centro_count', None)
+        if lotes_centro is not None:
+            return lotes_centro
+        # Fallback: conteo global (para casos donde no hay anotación)
         return obj.lotes.filter(activo=True, cantidad_actual__gt=0).count()
     
     def validate_clave(self, value):

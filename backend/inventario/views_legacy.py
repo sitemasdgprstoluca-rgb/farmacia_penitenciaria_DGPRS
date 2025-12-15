@@ -930,6 +930,15 @@ class ProductoViewSet(viewsets.ModelViewSet):
                             )
                         ),
                         0
+                    ),
+                    # ISS-FIX: Contar lotes del centro específico del usuario
+                    lotes_centro_count=Count(
+                        'lotes',
+                        filter=Q(
+                            lotes__activo=True,
+                            lotes__cantidad_actual__gt=0,
+                            lotes__centro=user_centro
+                        )
                     )
                 )
                 # ISS-FIX: Usuarios de centro SOLO ven productos con stock > 0 en su centro
@@ -938,7 +947,8 @@ class ProductoViewSet(viewsets.ModelViewSet):
             else:
                 # Usuario sin centro asignado - no ve ningún producto
                 queryset = queryset.annotate(
-                    stock_calculado=Coalesce(Sum('lotes__cantidad_actual', filter=Q(pk__isnull=True)), 0)
+                    stock_calculado=Coalesce(Sum('lotes__cantidad_actual', filter=Q(pk__isnull=True)), 0),
+                    lotes_centro_count=Count('lotes', filter=Q(pk__isnull=True))
                 ).filter(stock_calculado__gt=0)  # Filtro imposible = 0 resultados
         else:
             # Admin/Farmacia/Vista - pueden ver stock global o por centro específico
@@ -956,6 +966,14 @@ class ProductoViewSet(viewsets.ModelViewSet):
                                 )
                             ),
                             0
+                        ),
+                        lotes_centro_count=Count(
+                            'lotes',
+                            filter=Q(
+                                lotes__activo=True,
+                                lotes__cantidad_actual__gt=0,
+                                lotes__centro__isnull=True
+                            )
                         )
                     )
                 else:
@@ -971,6 +989,14 @@ class ProductoViewSet(viewsets.ModelViewSet):
                                 )
                             ),
                             0
+                        ),
+                        lotes_centro_count=Count(
+                            'lotes',
+                            filter=Q(
+                                lotes__activo=True,
+                                lotes__cantidad_actual__gt=0,
+                                lotes__centro_id=centro_param
+                            )
                         )
                     )
             else:
@@ -986,6 +1012,14 @@ class ProductoViewSet(viewsets.ModelViewSet):
                             )
                         ),
                         0
+                    ),
+                    lotes_centro_count=Count(
+                        'lotes',
+                        filter=Q(
+                            lotes__activo=True,
+                            lotes__cantidad_actual__gt=0,
+                            lotes__centro__isnull=True
+                        )
                     )
                 )
         
