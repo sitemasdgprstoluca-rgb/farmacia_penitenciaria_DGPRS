@@ -1203,8 +1203,15 @@ const Requisiciones = () => {
       cargarRequisiciones();
       cargarResumenEstados();
     } catch (error) {
-      console.error(error);
-      toast.error('No se pudo guardar la requisición');
+      console.error('Error guardando requisición:', error);
+      // Mostrar mensaje de error detallado del servidor
+      const errorMsg = error.response?.data?.mensaje 
+        || error.response?.data?.error 
+        || error.response?.data?.detail
+        || JSON.stringify(error.response?.data?.detalles || {})
+        || error.message 
+        || 'Error desconocido';
+      toast.error(`No se pudo guardar: ${errorMsg}`, { duration: 8000 });
     } finally {
       setIsSubmitting(false);
     }
