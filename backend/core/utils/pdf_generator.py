@@ -286,43 +286,90 @@ def generar_hoja_recoleccion(requisicion):
     ]))
     
     story.append(productos_table)
-    story.append(Spacer(1, 0.4*inch))
+    story.append(Spacer(1, 0.3*inch))
     
-    # Sección de firmas
-    # ISS-PDF FIX: Usar campos correctos del modelo
-    responsable_centro = ''
-    if requisicion.centro_destino and hasattr(requisicion.centro_destino, 'responsable'):
-        responsable_centro = requisicion.centro_destino.responsable or ''
+    # ==========================================================================
+    # SECCIÓN DE FIRMAS - FLUJO COMPLETO V2
+    # Médico (Solicitante) → Admin Centro → Director Centro → Farmacia
+    # ==========================================================================
     
-    firmas_data = [
+    # Obtener nombres de los participantes del flujo
+    solicitante_nombre = ''
+    if requisicion.solicitante:
+        solicitante_nombre = requisicion.solicitante.get_full_name() or requisicion.solicitante.username
+    
+    # Admin Centro (usuario que autorizó en pendiente_admin)
+    admin_centro_nombre = ''
+    if hasattr(requisicion, 'usuario_autoriza_admin') and requisicion.usuario_autoriza_admin:
+        admin_centro_nombre = requisicion.usuario_autoriza_admin.get_full_name()
+    
+    # Director Centro (usuario que autorizó en pendiente_director)  
+    director_nombre = ''
+    if hasattr(requisicion, 'usuario_autoriza_director') and requisicion.usuario_autoriza_director:
+        director_nombre = requisicion.usuario_autoriza_director.get_full_name()
+    elif requisicion.autorizador:
+        # Fallback: usar autorizador general si no hay director específico
+        director_nombre = requisicion.autorizador.get_full_name()
+    
+    # Farmacia (usuario que surtió)
+    farmacia_nombre = ''
+    if hasattr(requisicion, 'usuario_surte') and requisicion.usuario_surte:
+        farmacia_nombre = requisicion.usuario_surte.get_full_name()
+    elif hasattr(requisicion, 'usuario_firma_surtido') and requisicion.usuario_firma_surtido:
+        farmacia_nombre = requisicion.usuario_firma_surtido.get_full_name()
+    
+    # Primera fila de firmas: Solicitante (Médico) y Admin Centro
+    firmas_parte1 = [
+        ['SOLICITANTE (MÉDICO):', 'ADMINISTRADOR CENTRO:'],
         ['', ''],
-        ['AUTORIZADO POR:', 'ENTREGADO POR:'],
-        ['', ''],
-        ['_' * 40, '_' * 40],
-        [requisicion.autorizador.get_full_name() if requisicion.autorizador else '', ''],
+        ['_' * 35, '_' * 35],
+        [solicitante_nombre, admin_centro_nombre],
         ['Nombre y Firma', 'Nombre y Firma'],
+    ]
+    
+    # Segunda fila de firmas: Director y Farmacia
+    firmas_parte2 = [
+        ['', ''],
+        ['DIRECTOR CENTRO:', 'FARMACIA CENTRAL:'],
+        ['', ''],
+        ['_' * 35, '_' * 35],
+        [director_nombre, farmacia_nombre],
+        ['Nombre y Firma', 'Nombre y Firma'],
+    ]
+    
+    # Tercera fila: Recepción
+    firmas_parte3 = [
         ['', ''],
         ['RECIBIDO POR:', 'FECHA Y HORA DE ENTREGA:'],
         ['', ''],
-        ['_' * 40, '_' * 40],
-        [responsable_centro, ''],
+        ['_' * 35, '_' * 35],
+        ['', ''],
         ['Nombre y Firma', ''],
     ]
     
-    firmas_table = Table(firmas_data, colWidths=[3.5*inch, 3.5*inch])
-    firmas_table.setStyle(TableStyle([
+    # Estilo común para tablas de firmas
+    firma_style = TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
-        ('FONTNAME', (0, 7), (-1, 7), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('FONTSIZE', (0, 4), (-1, 4), 10),
-        ('FONTSIZE', (0, 10), (-1, 10), 10),
-        ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#1f2937')),
-        ('TOPPADDING', (0, 0), (-1, -1), 3),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-    ]))
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('FONTSIZE', (0, 3), (-1, 3), 9),
+        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ])
     
-    story.append(firmas_table)
+    firmas_table1 = Table(firmas_parte1, colWidths=[3.5*inch, 3.5*inch])
+    firmas_table1.setStyle(firma_style)
+    story.append(firmas_table1)
+    
+    firmas_table2 = Table(firmas_parte2, colWidths=[3.5*inch, 3.5*inch])
+    firmas_table2.setStyle(firma_style)
+    story.append(firmas_table2)
+    
+    firmas_table3 = Table(firmas_parte3, colWidths=[3.5*inch, 3.5*inch])
+    firmas_table3.setStyle(firma_style)
+    story.append(firmas_table3)
+    
     story.append(Spacer(1, 0.2*inch))
     
     # Construir PDF con canvas de fondo oficial

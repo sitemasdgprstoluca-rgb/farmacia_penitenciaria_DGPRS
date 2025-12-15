@@ -707,20 +707,25 @@ class RequisicionService:
         
         user_rol = (getattr(self.usuario, 'rol', '') or '').lower()
         
-        # Roles de farmacia central no deben estar adscritos a un centro específico
+        # Roles de farmacia central no deben estar adscritos a un centro penitenciario
+        # PERO pueden estar en "Almacén Central" o "Farmacia Central" (centros de farmacia)
         roles_farmacia_central = {'farmacia', 'farmaceutico', 'admin_farmacia', 'usuario_farmacia'}
         if user_rol in roles_farmacia_central and user_centro is not None:
-            # ISS-001 FIX: BLOQUEAR operaciones de farmacia con centro asignado
-            # Antes solo advertía, ahora rechaza para mantener segregación
-            logger.error(
-                f"ISS-001: Usuario farmacia {self.usuario.username} tiene centro asignado "
-                f"({user_centro.pk}). Operación bloqueada por seguridad."
-            )
-            raise PermisoRequisicionError(
-                f"El usuario '{self.usuario.username}' tiene rol de farmacia pero está adscrito "
-                f"al centro '{user_centro}'. Los usuarios de farmacia central no deben tener "
-                f"centro asignado. Contacte al administrador para corregir su adscripción."
-            )
+            # ISS-FIX: Permitir si el centro es "Almacén Central", "Farmacia Central" o similar
+            centro_nombre = (getattr(user_centro, 'nombre', '') or '').lower()
+            centros_farmacia_validos = {'almacén central', 'almacen central', 'farmacia central', 'farmacia'}
+            
+            if not any(valido in centro_nombre for valido in centros_farmacia_validos):
+                # Solo bloquear si está asignado a un centro penitenciario
+                logger.error(
+                    f"ISS-001: Usuario farmacia {self.usuario.username} tiene centro asignado "
+                    f"({user_centro.pk}). Operación bloqueada por seguridad."
+                )
+                raise PermisoRequisicionError(
+                    f"El usuario '{self.usuario.username}' tiene rol de farmacia pero está adscrito "
+                    f"al centro '{user_centro}'. Los usuarios de farmacia central no deben tener "
+                    f"centro asignado. Contacte al administrador para corregir su adscripción."
+                )
         
         # Validar que la requisición pertenece a un centro válido
         requisicion_centro = getattr(self.requisicion, 'centro', None)
