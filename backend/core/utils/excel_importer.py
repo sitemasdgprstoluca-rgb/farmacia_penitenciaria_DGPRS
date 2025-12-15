@@ -134,18 +134,24 @@ def importar_productos_desde_excel(archivo, usuario):
         acentos = {'á':'a', 'é':'e', 'í':'i', 'ó':'o', 'ú':'u', 'ñ':'n', 'ü':'u'}
         for ac, rep in acentos.items():
             texto = texto.replace(ac, rep)
+        # Preservar # como símbolo especial antes de limpiar
+        texto = texto.replace('#', ' numeral ')
         texto = re.sub(r'[^a-z0-9]+', ' ', texto)
         return texto.strip()
     
     encabezados_norm = [normalizar_header(e) for e in encabezados]
     logger.info(f"Encabezados detectados: {encabezados_norm}")
+    logger.info(f"Encabezados originales: {encabezados}")
     
     # Mapeo flexible con múltiples sinónimos por campo
+    # IMPORTANTE: 'numeral' es la normalización de '#' (columna de clave institucional)
     SINONIMOS = {
-        'clave': ['clave', 'codigo', 'code', 'id', 'numero', 'no', 'num', 'cve', 'sku', 'ref', 'referencia'],
-        'nombre': ['nombre', 'descripcion', 'nombre generico', 'medicamento', 'producto', 
-                   'nombre del medicamento', 'generico', 'articulo', 'item', 'denominacion'],
-        'unidad_medida': ['unidad', 'unidad medida', 'um', 'unidad de medida', 'medida'],
+        'clave': ['clave', 'codigo', 'code', 'id', 'numero', 'no', 'num', 'cve', 'sku', 'ref', 
+                  'referencia', 'numeral', 'n'],  # 'numeral' = '#'
+        'nombre': ['nombre', 'descripcion', 'nombre generico', 'nombre generico del medicamento',
+                   'medicamento', 'producto', 'nombre del medicamento', 'generico', 
+                   'articulo', 'item', 'denominacion'],
+        'unidad_medida': ['unidad', 'unidad medida', 'um', 'unidad de medida', 'medida', 'pieza'],
         'categoria': ['categoria', 'tipo', 'clasificacion', 'clase', 'grupo', 'familia'],
         'presentacion': ['presentacion', 'forma farmaceutica', 'forma', 'envase', 'empaque'],
         'marca': ['marca', 'marca referencial', 'laboratorio', 'fabricante', 'proveedor'],
@@ -243,13 +249,13 @@ def importar_productos_desde_excel(archivo, usuario):
                     resultado.total_procesados -= 1
                     continue
                 
+                # Limpiar y normalizar clave (mantener tal cual viene del Excel)
                 clave = str(clave_raw).strip().upper()[:50]  # Truncar si es muy largo
                 
-                # Si la clave es solo números y muy corta, prefijar
-                if clave.isdigit() and len(clave) < 3:
-                    clave = f"PROD-{clave.zfill(4)}"
-                elif len(clave) < 3:
-                    clave = f"P-{clave}"
+                # Permitir claves cortas del formato institucional (1, 1A, 2, etc.)
+                # Solo prefijar si es SOLO un dígito aislado para evitar colisiones
+                if clave.isdigit() and len(clave) == 1:
+                    clave = f"MED-{clave.zfill(3)}"
                 
                 # Extraer nombre
                 nombre_raw = get_val('nombre')
