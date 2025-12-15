@@ -4792,9 +4792,14 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             
         except Exception as e:
             logger.exception(f"Error inesperado al surtir requisición {requisicion.folio}: {e}")
+            # ISS-DEBUG: Retornar error detallado para diagnóstico
+            import traceback
+            error_detalle = traceback.format_exc()
             return Response({
                 'error': 'Error interno al procesar el surtido. Por favor intente nuevamente.',
-                'codigo': 'error_interno'
+                'codigo': 'error_interno',
+                'detalle': str(e),
+                'tipo_error': type(e).__name__
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['post'], url_path='marcar-recibida')
