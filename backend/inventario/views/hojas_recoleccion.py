@@ -93,3 +93,41 @@ class HojaRecoleccionViewSet(viewsets.ReadOnlyModelViewSet):
                 'error': 'Error al generar PDF',
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='por-requisicion/(?P<requisicion_id>[^/.]+)')
+    def por_requisicion(self, request, requisicion_id=None):
+        """
+        Obtiene la hoja de recolección asociada a una requisición.
+        Usado por el frontend para verificar si existe una hoja para una requisición.
+        """
+        try:
+            requisicion_id = int(requisicion_id)
+        except (ValueError, TypeError):
+            return Response({
+                'error': 'ID de requisición inválido'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Buscar hoja asociada a la requisición
+        hoja = self.get_queryset().filter(requisicion_id=requisicion_id).first()
+        
+        if not hoja:
+            return Response({
+                'error': 'No existe hoja de recolección para esta requisición',
+                'requisicion_id': requisicion_id
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = self.get_serializer(hoja)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='registrar-impresion')
+    def registrar_impresion(self, request, pk=None):
+        """Registra que se imprimió la hoja de recolección."""
+        hoja = self.get_object()
+        # Incrementar contador de impresiones si existe el campo
+        if hasattr(hoja, 'veces_impresa'):
+            hoja.veces_impresa = (hoja.veces_impresa or 0) + 1
+            hoja.save(update_fields=['veces_impresa'])
+        return Response({
+            'mensaje': 'Impresión registrada',
+            'folio': hoja.numero
+        })

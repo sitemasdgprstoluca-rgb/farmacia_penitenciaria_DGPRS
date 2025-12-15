@@ -71,16 +71,16 @@ PERMISOS_POR_ROL = {
         'verProductos': True,
         'verLotes': True,
         'verRequisiciones': True,
-        'verDonaciones': True,
+        'verDonaciones': False,  # ISS-FIX: Farmacia NO gestiona donaciones
         'verCentros': True,
-        'verUsuarios': True,
+        'verUsuarios': False,  # ISS-FIX: Farmacia NO gestiona usuarios
         'verReportes': True,
         'verTrazabilidad': True,
         'verAuditoria': False,
         'verNotificaciones': True,
         'verPerfil': True,
         'verMovimientos': True,
-        'configurarTema': True,
+        'configurarTema': False,  # ISS-FIX: Solo admin puede personalizar tema
         'crearRequisicion': False,
         'editarRequisicion': False,
         'eliminarRequisicion': False,

@@ -170,6 +170,7 @@ export function useRequisicionFlujo() {
   
   /**
    * Verifica si el usuario puede ejecutar una acción
+   * FLUJO V2: Restricciones específicas por rol y estado
    */
   const puedeEjecutarAccion = useCallback((accionKey, estadoActual) => {
     if (esSuperuser) return true;
@@ -180,6 +181,27 @@ export function useRequisicionFlujo() {
     // Verificar estado
     if (!accion.estadosPermitidos.includes(estadoActual)) {
       return false;
+    }
+    
+    // FLUJO V2: Restricciones específicas por rol y estado
+    // Administrador Centro: Solo actúa en pendiente_admin
+    if (rolUsuario === 'administrador_centro' || rolUsuario === 'centro') {
+      // Acciones de Admin Centro solo en pendiente_admin
+      if (['autorizar_admin', 'devolver', 'rechazar'].includes(accionKey)) {
+        if (estadoActual !== 'pendiente_admin') {
+          return false;
+        }
+      }
+    }
+    
+    // Director Centro: Solo actúa en pendiente_director
+    if (rolUsuario === 'director_centro') {
+      // Acciones de Director solo en pendiente_director
+      if (['autorizar_director', 'devolver', 'rechazar'].includes(accionKey)) {
+        if (estadoActual !== 'pendiente_director') {
+          return false;
+        }
+      }
     }
     
     // Verificar rol
