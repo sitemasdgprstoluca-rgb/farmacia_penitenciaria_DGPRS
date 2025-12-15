@@ -17,6 +17,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 import os
 import logging
+import random  # ISS-FIX: Necesario para generar números de requisición
 from io import BytesIO
 
 # ISS-004 FIX (audit9): Pillow para validación profunda de imágenes
