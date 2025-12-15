@@ -1211,10 +1211,11 @@ class RequisicionService:
                 lote_info = self._descontar_lote_atomico(lote, usar)
                 
                 # Registrar movimiento de salida (pasando stock_previo para validación)
+                # ISS-FIX: cantidad debe ser POSITIVA, el tipo='salida' indica que resta
                 movimiento_salida = self._crear_movimiento(
                     lote=lote,
                     tipo='salida',
-                    cantidad=-usar,
+                    cantidad=usar,  # Positivo - el modelo valida cantidad > 0
                     centro=lote.centro,
                     observaciones=f'SALIDA_POR_REQUISICION {self.requisicion.folio}',
                     stock_previo=stock_previo
