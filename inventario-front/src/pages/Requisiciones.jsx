@@ -760,9 +760,10 @@ const Requisiciones = () => {
     setShowModal(true);
 
     // Cargar stock actualizado para los items existentes
+    // ISS-FIX: Pasar para_requisicion=true para acceder a lotes de farmacia central
     const fetchStockPromises = items.map(item => {
       if (item.lote) {
-        return lotesAPI.getById(item.lote).then(resp => ({
+        return lotesAPI.getById(item.lote, { para_requisicion: true }).then(resp => ({
           loteId: item.lote,
           stock_actual: resp.data.stock_actual ?? resp.data.cantidad_actual ?? 0,
         })).catch(() => null);
@@ -1050,7 +1051,8 @@ const Requisiciones = () => {
           batch.map(async (item) => {
             try {
               // ISS-003 FIX: Usar getById en lugar de get
-              const resp = await lotesAPI.getById(item.lote);
+              // ISS-FIX: Pasar para_requisicion=true para acceder a lotes de farmacia central
+              const resp = await lotesAPI.getById(item.lote, { para_requisicion: true });
               // Normalizar campo de stock (backend puede enviar cantidad_actual o stock_disponible)
               const stockActual = resp.data?.cantidad_actual ?? resp.data?.stock_disponible ?? resp.data?.stock_actual;
               

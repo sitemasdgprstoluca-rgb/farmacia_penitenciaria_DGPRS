@@ -198,6 +198,41 @@ class LoteViewSet(viewsets.ModelViewSet):
         
         return queryset.order_by('-created_at')
     
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Obtiene un lote específico por ID.
+        
+        ISS-FIX: Usuarios de centro pueden consultar lotes de farmacia central
+        cuando están verificando stock para requisiciones (para_requisicion=true).
+        Esto es necesario porque las requisiciones se surten desde farmacia central.
+        """
+        para_requisicion = request.query_params.get('para_requisicion', '').lower() == 'true'
+        user = request.user
+        
+        # Si es para requisición y el usuario es de centro, buscar el lote sin filtro de centro
+        if para_requisicion and not is_farmacia_or_admin(user):
+            try:
+                # Buscar el lote directamente (sin filtro de centro)
+                lote = Lote.objects.select_related('producto', 'centro').get(pk=kwargs['pk'])
+                
+                # Solo permitir ver lotes de farmacia central (para requisiciones)
+                if lote.centro is not None:
+                    return Response(
+                        {'error': 'Solo puede consultar lotes de farmacia central para requisiciones'},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+                
+                serializer = self.get_serializer(lote)
+                return Response(serializer.data)
+            except Lote.DoesNotExist:
+                return Response(
+                    {'error': 'Lote no encontrado'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        
+        # Comportamiento normal: usa get_queryset() con filtros de seguridad
+        return super().retrieve(request, *args, **kwargs)
+    
     def create(self, request, *args, **kwargs):
         """Crea un nuevo lote con validaciones"""
         try:
