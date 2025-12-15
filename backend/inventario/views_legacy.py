@@ -5779,10 +5779,10 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     @transaction.atomic
     def confirmar_entrega(self, request, pk=None):
         """
-        FLUJO V2: Centro confirma la recepción de los medicamentos.
+        FLUJO V2: Farmacia confirma la entrega de los medicamentos al centro.
         
         Transición: surtida → entregada
-        Permiso: puede_confirmar_entrega (médico del centro)
+        Permiso: Solo FARMACIA puede confirmar (ellos entregan físicamente)
         
         IMPORTANTE: Debe confirmar antes de fecha_recoleccion_limite
         """
@@ -5800,6 +5800,15 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'error': 'Transición de estado no permitida'
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        # ISS-FIX: Solo FARMACIA puede confirmar entrega (ellos entregan físicamente al centro)
+        user_rol = getattr(request.user, 'rol', '') or ''
+        roles_permitidos = ['farmacia', 'admin', 'admin_sistema', 'superusuario']
+        if user_rol.lower() not in roles_permitidos and not request.user.is_superuser:
+            return Response({
+                'error': 'Solo el personal de Farmacia puede confirmar la entrega de medicamentos',
+                'detalle': 'El centro recibirá los medicamentos cuando Farmacia confirme la entrega'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
         # Verificar fecha límite
         if requisicion.fecha_recoleccion_limite:
             if timezone.now() > requisicion.fecha_recoleccion_limite:
@@ -5807,14 +5816,6 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                     'error': 'La fecha límite de recolección ha expirado. La requisición será marcada como vencida.',
                     'fecha_limite': requisicion.fecha_recoleccion_limite.isoformat()
                 }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Validar permisos
-        if not self._validar_permiso_flujo(request.user, 'puede_confirmar_entrega'):
-            centro_user = self._user_centro(request.user)
-            if not centro_user or requisicion.centro_destino_id != centro_user.id:
-                return Response({
-                    'error': 'Solo personal del centro receptor puede confirmar la entrega'
-                }, status=status.HTTP_403_FORBIDDEN)
         
         lugar_entrega = request.data.get('lugar_entrega', '')
         observaciones = request.data.get('observaciones', '')

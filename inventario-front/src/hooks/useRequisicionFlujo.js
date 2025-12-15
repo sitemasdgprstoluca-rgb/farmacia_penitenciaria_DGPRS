@@ -84,7 +84,8 @@ const ACCIONES_FLUJO = {
     label: 'Confirmar Entrega',
     estadosPermitidos: ['surtida'],
     estadoResultante: 'entregada',
-    rolesPermitidos: ['medico', 'centro', 'usuario_centro', 'usuario_normal', 'admin', 'admin_sistema', 'superusuario', 'farmacia'],
+    // ISS-FIX: Solo FARMACIA puede confirmar entrega (ellos entregan físicamente al centro)
+    rolesPermitidos: ['farmacia', 'admin', 'admin_sistema', 'superusuario'],
     requiereLugarEntrega: true,
     confirmacion: true,
     color: 'green',
