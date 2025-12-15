@@ -1168,11 +1168,16 @@ class Movimiento(models.Model):
         
         # Validar stock suficiente para tipos que restan
         # ISS-001 FIX (audit20): Validar stock considerando el centro
+        # ISS-FIX: Si _stock_pre_movimiento está definido, usar ese valor en lugar de
+        # lote.cantidad_actual, porque el stock ya fue descontado por RequisicionService
         if tipo in self.TIPOS_RESTA_STOCK and self.lote and self.cantidad:
-            if self.lote.cantidad_actual < self.cantidad:
+            stock_a_validar = getattr(self, '_stock_pre_movimiento', None)
+            if stock_a_validar is None:
+                stock_a_validar = self.lote.cantidad_actual
+            if stock_a_validar < self.cantidad:
                 errors['cantidad'] = (
                     f'Stock insuficiente en lote {self.lote.numero_lote}. '
-                    f'Disponible: {self.lote.cantidad_actual}, Solicitado: {self.cantidad}'
+                    f'Disponible: {stock_a_validar}, Solicitado: {self.cantidad}'
                 )
             # ISS-001 FIX (audit20): Validar que el lote esté en el centro origen para salidas
             if tipo == 'salida' and self.centro_origen_id and self.lote.centro_id:
