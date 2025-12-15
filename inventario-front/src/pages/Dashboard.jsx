@@ -348,6 +348,26 @@ const Dashboard = () => {
     );
   }
 
+  // ISS-CENTRO: Mostrar aviso si es usuario de centro sin centro asignado
+  if (esCentro && !centroUsuario) {
+    return (
+      <div className="dashboard-container">
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg">
+          <div className="flex items-center">
+            <FaExclamationTriangle className="text-yellow-400 mr-3 text-xl" />
+            <div>
+              <h3 className="text-lg font-semibold text-yellow-800">Centro no asignado</h3>
+              <p className="text-yellow-700 mt-1">
+                Tu cuenta está configurada como usuario de Centro pero no tienes un centro asignado.
+                Por favor contacta al administrador para que te asigne un centro.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="dashboard-container">

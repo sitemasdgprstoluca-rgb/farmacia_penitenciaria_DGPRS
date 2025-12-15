@@ -4,7 +4,7 @@ import { toast } from "react-hot-toast";
 import Pagination from "../components/Pagination";
 import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, descargarArchivo } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
-import { FaFilter, FaChevronDown, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle } from "react-icons/fa";
+import { FaFilter, FaChevronDown, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle } from "react-icons/fa";
 import { COLORS } from "../constants/theme";
 
 const PAGE_SIZE = 25;
@@ -494,6 +494,22 @@ const Movimientos = () => {
             <p className="text-xs text-blue-600">
               Estás viendo solo los movimientos relacionados a tu centro.
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* ISS-CENTRO: Aviso si usuario de centro no tiene centro asignado */}
+      {esCentroUser && !centroUsuario && (
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg">
+          <div className="flex items-center">
+            <FaExclamationTriangle className="text-yellow-400 mr-3 text-xl" />
+            <div>
+              <h3 className="text-lg font-semibold text-yellow-800">Centro no asignado</h3>
+              <p className="text-yellow-700 mt-1">
+                Tu cuenta está configurada como usuario de Centro pero no tienes un centro asignado.
+                Por favor contacta al administrador para que te asigne un centro.
+              </p>
+            </div>
           </div>
         </div>
       )}

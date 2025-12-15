@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { notificacionesAPI } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
@@ -11,6 +12,7 @@ const BELL_PAGE_SIZE = 10; // Límite de notificaciones en el dropdown
  * Recibe opcionalmente un contador externo desde Layout para evitar doble polling.
  */
 const NotificacionesBell = ({ externalCount, onCountChange }) => {
+  const navigate = useNavigate();
   const { user, permisos } = usePermissions();
   const [notificaciones, setNotificaciones] = useState([]);
   const [sinLeer, setSinLeer] = useState(0);
@@ -156,6 +158,21 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
     }
   };
 
+  // ISS-NOTIF: Navegar al recurso asociado a la notificación
+  const handleNotificationClick = async (notif) => {
+    // Si tiene URL, navegar a ella
+    const url = notif.url || (notif.datos?.requisicion_id ? `/requisiciones/${notif.datos.requisicion_id}` : null);
+    
+    if (url) {
+      // Marcar como leída si no lo está
+      if (!notif.leida) {
+        await marcarLeida(notif.id);
+      }
+      setAbierto(false);
+      navigate(url);
+    }
+  };
+
   // No renderizar si no hay usuario O no tiene permiso de ver notificaciones
   if (!user || !tienePermiso) return null;
 
@@ -207,10 +224,17 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
             {!notificaciones.length && (
               <div className="px-4 py-8 text-center text-gray-500 text-sm">No hay notificaciones</div>
             )}
-            {notificaciones.map((notif) => (
+            {notificaciones.map((notif) => {
+              // Determinar si la notificación tiene un enlace navegable
+              const tieneEnlace = notif.url || notif.datos?.requisicion_id;
+              
+              return (
               <div
                 key={notif.id}
-                className={`px-4 py-3 border-b border-gray-100 ${!notif.leida ? "bg-blue-50" : "bg-white"}`}
+                className={`px-4 py-3 border-b border-gray-100 ${!notif.leida ? "bg-blue-50" : "bg-white"} ${tieneEnlace ? "cursor-pointer hover:bg-gray-50" : ""}`}
+                onClick={tieneEnlace ? () => handleNotificationClick(notif) : undefined}
+                role={tieneEnlace ? "button" : undefined}
+                tabIndex={tieneEnlace ? 0 : undefined}
               >
                 <div className="flex items-start gap-3">
                   <div className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${
@@ -235,7 +259,7 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
                         : ""}
                     </p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                     {!notif.leida && (
                       <button
                         onClick={() => marcarLeida(notif.id)}
@@ -257,7 +281,8 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
                   </div>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         </div>
       )}

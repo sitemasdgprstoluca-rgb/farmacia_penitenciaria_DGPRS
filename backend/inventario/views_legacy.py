@@ -3448,16 +3448,26 @@ class MovimientoViewSet(
         user = self.request.user
         if not has_global_read_access(user):
             # Usuario de centro: forzado a su centro
+            # ISS-CENTRO FIX: Incluir movimientos donde el centro es origen, destino O el lote pertenece al centro
             user_centro = get_user_centro(user)
             if user_centro:
-                queryset = queryset.filter(lote__centro=user_centro)
+                queryset = queryset.filter(
+                    Q(lote__centro=user_centro) | 
+                    Q(centro_origen=user_centro) | 
+                    Q(centro_destino=user_centro)
+                )
             else:
                 return Movimiento.objects.none()
         else:
             # Admin/farmacia/vista: pueden filtrar por centro especifico
             centro_param = self.request.query_params.get('centro')
             if centro_param:
-                queryset = queryset.filter(lote__centro_id=centro_param)
+                # ISS-CENTRO FIX: Filtrar por centro origen, destino O lote
+                queryset = queryset.filter(
+                    Q(lote__centro_id=centro_param) | 
+                    Q(centro_origen_id=centro_param) | 
+                    Q(centro_destino_id=centro_param)
+                )
         
         # Filtro por tipo
         tipo = self.request.query_params.get('tipo')
