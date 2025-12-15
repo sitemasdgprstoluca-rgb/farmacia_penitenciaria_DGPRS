@@ -787,6 +787,8 @@ export const productosAPI = {
   }),
   plantilla: () => apiClient.get('/productos/plantilla/', { responseType: 'blob' }),
   auditoria: (id) => apiClient.get(`/productos/${id}/auditoria/`),
+  // ISS-FIX: Obtener lotes de un producto específico con semáforo de caducidad
+  lotes: (id) => apiClient.get(`/productos/${id}/lotes/`),
 };
 
 // Lotes

@@ -26,15 +26,13 @@ import {
 
   FaLayerGroup,
 
-  FaCalendarAlt,
-
-  FaExclamationTriangle
+  FaCalendarAlt
 
 } from 'react-icons/fa';
 
 import { toast } from 'react-hot-toast';
 
-import { productosAPI, lotesAPI } from '../services/api';
+import { productosAPI } from '../services/api';
 
 import { DEV_CONFIG } from '../config/dev';
 
@@ -409,10 +407,6 @@ const Productos = () => {
 
 
   const [productos, setProductos] = useState([]);
-  // ISS-FIX: Estado para vista de lotes (solo CENTRO)
-  const [vistaLotes, setVistaLotes] = useState(false);
-  const [lotesCentro, setLotesCentro] = useState([]);
-  const [loadingLotes, setLoadingLotes] = useState(false);
 
   const [loading, setLoading] = useState(false); // Estado para carga de tabla
   const [savingProduct, setSavingProduct] = useState(false); // Estado separado para guardar en modal
@@ -442,7 +436,10 @@ const Productos = () => {
 
   const [auditoriaData, setAuditoriaData] = useState(null);
 
-
+  // ISS-FIX: Estado para modal de lotes de un producto específico
+  const [lotesModalVisible, setLotesModalVisible] = useState(false);
+  const [lotesModalLoading, setLotesModalLoading] = useState(false);
+  const [lotesModalData, setLotesModalData] = useState(null);
 
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -680,66 +677,6 @@ const Productos = () => {
     return () => clearTimeout(timeout);
 
   }, [fetchProductos]);
-
-  // ISS-FIX: Función para cargar lotes del centro (vista detallada con fechas de caducidad)
-  const fetchLotesCentro = useCallback(async () => {
-    if (!esCentroUser) return;
-    
-    setLoadingLotes(true);
-    try {
-      const centroId = user?.centro?.id || user?.centro_id;
-      const params = {
-        page: currentPage,
-        page_size: PAGE_SIZE,
-        activo: 'true',
-      };
-      
-      if (centroId) {
-        params.centro = centroId;
-      }
-      
-      if (filters.search) params.search = filters.search;
-      
-      const response = await lotesAPI.getAll(params);
-      const data = response.data;
-      const results = data.results || [];
-      
-      // Enriquecer con información de alerta de caducidad
-      const enriched = results.map(lote => {
-        const fechaCaducidad = new Date(lote.fecha_caducidad);
-        const hoy = new Date();
-        const diasParaCaducar = Math.ceil((fechaCaducidad - hoy) / (1000 * 60 * 60 * 24));
-        
-        let alertaCaducidad = 'normal';
-        if (diasParaCaducar < 0) alertaCaducidad = 'vencido';
-        else if (diasParaCaducar <= 30) alertaCaducidad = 'critico';
-        else if (diasParaCaducar <= 90) alertaCaducidad = 'proximo';
-        
-        return {
-          ...lote,
-          dias_para_caducar: diasParaCaducar,
-          alerta_caducidad: alertaCaducidad,
-        };
-      });
-      
-      setLotesCentro(enriched);
-      const total = data.count || enriched.length;
-      setTotalProductos(total);
-      setTotalPages(Math.max(1, Math.ceil(total / PAGE_SIZE)));
-    } catch (err) {
-      console.error('Error al cargar lotes del centro', err);
-      toast.error('Error al cargar inventario detallado');
-    } finally {
-      setLoadingLotes(false);
-    }
-  }, [esCentroUser, user, currentPage, filters.search]);
-
-  // Cargar lotes cuando se activa la vista de lotes
-  useEffect(() => {
-    if (vistaLotes && esCentroUser) {
-      fetchLotesCentro();
-    }
-  }, [vistaLotes, esCentroUser, fetchLotesCentro]);
 
 
   const limpiarFiltros = useCallback(() => {
@@ -1436,6 +1373,27 @@ const Productos = () => {
 
   };
 
+  // ISS-FIX: Función para ver lotes de un producto específico
+  const verLotesProducto = async (producto) => {
+    setLotesModalVisible(true);
+    setLotesModalLoading(true);
+    try {
+      const response = await productosAPI.lotes(producto.id);
+      setLotesModalData(response.data);
+    } catch (err) {
+      console.error('Error al cargar lotes del producto', err);
+      toast.error(err.response?.data?.error || 'No se pudo cargar los lotes');
+      setLotesModalVisible(false);
+    } finally {
+      setLotesModalLoading(false);
+    }
+  };
+
+  const cerrarLotesModal = () => {
+    setLotesModalVisible(false);
+    setLotesModalData(null);
+  };
+
   const formatFecha = (valor) => {
 
     if (!valor) return '-';
@@ -1456,91 +1414,6 @@ const Productos = () => {
 
     }
 
-  };
-
-  // ISS-FIX: Función para renderizar tabla de lotes (vista detallada para CENTRO)
-  const renderTablaLotes = () => {
-    if (loadingLotes) {
-      return <ProductosSkeleton />;
-    }
-
-    if (!lotesCentro.length) {
-      return (
-        <div className="py-12 text-center text-gray-500">
-          {filters.search 
-            ? 'No hay lotes que coincidan con la búsqueda.'
-            : 'No hay lotes disponibles en tu inventario.'}
-        </div>
-      );
-    }
-
-    const formatFecha = (fecha) => {
-      if (!fecha) return '-';
-      return new Date(fecha).toLocaleDateString('es-MX', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      });
-    };
-
-    const renderAlertaCaducidad = (alerta, dias) => {
-      const configs = {
-        vencido: { bg: 'bg-red-100', text: 'text-red-800', label: 'VENCIDO' },
-        critico: { bg: 'bg-orange-100', text: 'text-orange-800', label: `${dias} días` },
-        proximo: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: `${dias} días` },
-        normal: { bg: 'bg-green-100', text: 'text-green-800', label: `${dias} días` },
-      };
-      const config = configs[alerta] || configs.normal;
-      return (
-        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${config.bg} ${config.text}`}>
-          {alerta === 'vencido' || alerta === 'critico' ? <FaExclamationTriangle className="inline mr-1" /> : null}
-          {config.label}
-        </span>
-      );
-    };
-
-    return (
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-theme-gradient">
-            <tr>
-              {['#', 'Clave', 'Producto', 'Lote', 'Caducidad', 'Días Rest.', 'Cantidad', 'Unidad'].map((col) => (
-                <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
-                  {col}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-100">
-            {lotesCentro.map((lote, idx) => {
-              const consecutivo = (currentPage - 1) * PAGE_SIZE + idx + 1;
-              return (
-                <tr
-                  key={lote.id}
-                  className={`transition ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100 ${lote.alerta_caducidad === 'vencido' ? 'bg-red-50' : lote.alerta_caducidad === 'critico' ? 'bg-orange-50' : ''}`}
-                >
-                  <td className="px-3 py-3 text-sm font-semibold text-gray-500">{consecutivo}</td>
-                  <td className="px-4 py-3 text-sm font-semibold text-gray-800">{lote.producto_clave || '-'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{lote.producto_nombre || lote.producto?.nombre || '-'}</td>
-                  <td className="px-4 py-3 text-sm font-mono text-gray-700">{lote.numero_lote}</td>
-                  <td className="px-4 py-3 text-sm">
-                    <div className="flex items-center gap-1">
-                      <FaCalendarAlt className="text-gray-400" />
-                      {formatFecha(lote.fecha_caducidad)}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm">
-                    {renderAlertaCaducidad(lote.alerta_caducidad, lote.dias_para_caducar)}
-                  </td>
-                  <td className="px-4 py-3 text-sm font-semibold">{lote.cantidad_actual}</td>
-                  <td className="px-4 py-3 text-sm">{lote.producto_unidad || lote.producto?.unidad_medida || '-'}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    );
   };
 
 
@@ -1627,6 +1500,8 @@ const Productos = () => {
 
                 'Inventario',
 
+                'Lotes',
+
                 'Inv. Mínimo',
 
                 'Estado',
@@ -1659,6 +1534,9 @@ const Productos = () => {
 
               const nivelStock = resolveNivelStock(producto);
 
+              // ISS-FIX: Usar lotes_activos que viene del serializer del backend
+              const numLotes = producto.lotes_activos ?? producto.lotes_count ?? producto.num_lotes ?? '-';
+
               return (
 
               <tr
@@ -1678,6 +1556,18 @@ const Productos = () => {
                 <td className="px-4 py-3 text-sm">{producto.unidad_medida}</td>
 
                 <td className="px-4 py-3 text-sm">{formatInventario(producto)}</td>
+
+                <td className="px-4 py-3 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => verLotesProducto(producto)}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
+                    title="Ver detalle de lotes"
+                  >
+                    <FaLayerGroup className="text-xs" />
+                    <span className="font-semibold">{numLotes !== null ? numLotes : '?'}</span>
+                  </button>
+                </td>
 
                 <td className="px-4 py-3 text-sm">{producto.stock_minimo}</td>
 
@@ -1912,33 +1802,17 @@ const Productos = () => {
 
       {/* ISS-FIX: Banner para usuarios CENTRO indicando que ven su inventario local */}
       {esCentroUser && centroNombre && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="bg-blue-100 p-2 rounded-lg">
-              <FaBoxOpen className="text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-blue-800">
-                Inventario de: {centroNombre}
-              </p>
-              <p className="text-xs text-blue-600">
-                {vistaLotes 
-                  ? 'Vista por lotes - Incluye fechas de caducidad individuales'
-                  : 'Vista por productos - Inventario consolidado'}
-              </p>
-            </div>
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-3">
+          <div className="bg-blue-100 p-2 rounded-lg">
+            <FaBoxOpen className="text-blue-600" />
           </div>
-          {/* Toggle para cambiar entre vista de productos y lotes */}
-          <div className="flex items-center gap-2">
-            <span className={`text-xs font-medium ${!vistaLotes ? 'text-blue-800' : 'text-gray-500'}`}>Productos</span>
-            <button
-              type="button"
-              onClick={() => setVistaLotes(!vistaLotes)}
-              className={`relative w-12 h-6 rounded-full transition-colors ${vistaLotes ? 'bg-blue-600' : 'bg-gray-300'}`}
-            >
-              <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${vistaLotes ? 'translate-x-7' : 'translate-x-1'}`} />
-            </button>
-            <span className={`text-xs font-medium ${vistaLotes ? 'text-blue-800' : 'text-gray-500'}`}>Lotes</span>
+          <div>
+            <p className="text-sm font-semibold text-blue-800">
+              Inventario de: {centroNombre}
+            </p>
+            <p className="text-xs text-blue-600">
+              Haz clic en el número de lotes para ver el detalle con fechas de caducidad
+            </p>
           </div>
         </div>
       )}
@@ -2148,12 +2022,7 @@ const Productos = () => {
       {/* Validación explícita de puede.ver para tabla y paginación */}
       {puede.ver ? (
         <>
-          {/* ISS-FIX: Mostrar tabla de lotes si el usuario CENTRO activó vistaLotes */}
-          {esCentroUser && vistaLotes ? (
-            renderTablaLotes()
-          ) : (
-            renderTabla()
-          )}
+          {renderTabla()}
 
           <Pagination
             page={currentPage}
@@ -2683,6 +2552,123 @@ const Productos = () => {
 
         </div>
 
+      )}
+
+      {/* Modal de Lotes del Producto */}
+      {lotesModalVisible && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl max-h-[85vh] overflow-hidden">
+            <div
+              className="flex items-center justify-between rounded-t-2xl px-6 py-4 text-white bg-theme-gradient sticky top-0"
+            >
+              <div>
+                <h3 className="text-xl font-bold flex items-center gap-2">
+                  <FaLayerGroup />
+                  Lotes del Producto
+                </h3>
+                <p className="text-sm text-white/80">
+                  {lotesModalData?.producto?.clave} - {lotesModalData?.producto?.nombre}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm font-semibold">{lotesModalData?.total_lotes || 0} lotes</p>
+                <p className="text-xs text-white/80">Stock total: {lotesModalData?.total_stock || 0} {lotesModalData?.producto?.unidad_medida}</p>
+              </div>
+            </div>
+            <div className="overflow-y-auto max-h-[60vh]">
+              {lotesModalLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+                  <span className="ml-3 text-gray-600">Cargando lotes...</span>
+                </div>
+              ) : lotesModalData?.lotes?.length ? (
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Lote</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Cantidad</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Caducidad</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Días Rest.</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Estado</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Ubicación</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {lotesModalData.lotes.map((lote, idx) => {
+                      // Semáforo de caducidad
+                      const semaforoConfig = {
+                        vencido: { bg: 'bg-red-100', text: 'text-red-800', label: 'VENCIDO', icon: '🔴' },
+                        critico: { bg: 'bg-orange-100', text: 'text-orange-800', label: 'CRÍTICO', icon: '🟠' },
+                        proximo: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'PRÓXIMO', icon: '🟡' },
+                        normal: { bg: 'bg-green-100', text: 'text-green-800', label: 'OK', icon: '🟢' },
+                        sin_fecha: { bg: 'bg-gray-100', text: 'text-gray-600', label: 'S/F', icon: '⚪' },
+                      };
+                      const semaforo = semaforoConfig[lote.alerta_caducidad] || semaforoConfig.normal;
+                      
+                      return (
+                        <tr
+                          key={lote.id}
+                          className={`transition hover:bg-gray-50 ${lote.alerta_caducidad === 'vencido' ? 'bg-red-50' : lote.alerta_caducidad === 'critico' ? 'bg-orange-50' : ''}`}
+                        >
+                          <td className="px-4 py-3 text-sm font-mono font-semibold text-gray-800">
+                            {lote.numero_lote}
+                          </td>
+                          <td className="px-4 py-3 text-sm font-bold text-gray-900">
+                            {lote.cantidad_actual}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            <div className="flex items-center gap-1">
+                              <FaCalendarAlt className="text-gray-400" />
+                              {lote.fecha_caducidad 
+                                ? new Date(lote.fecha_caducidad).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' })
+                                : 'Sin fecha'}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            {lote.dias_para_caducar !== null ? (
+                              <span className={`font-semibold ${lote.dias_para_caducar < 0 ? 'text-red-600' : lote.dias_para_caducar <= 30 ? 'text-orange-600' : lote.dias_para_caducar <= 90 ? 'text-yellow-600' : 'text-green-600'}`}>
+                                {lote.dias_para_caducar < 0 ? `${Math.abs(lote.dias_para_caducar)} vencido` : `${lote.dias_para_caducar} días`}
+                              </span>
+                            ) : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${semaforo.bg} ${semaforo.text}`}>
+                              <span>{semaforo.icon}</span>
+                              {semaforo.label}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {lote.centro_nombre || 'Farmacia Central'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="py-12 text-center text-gray-500">
+                  <FaBoxOpen className="mx-auto text-4xl mb-3 text-gray-300" />
+                  <p>Este producto no tiene lotes con stock disponible.</p>
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 bg-gray-50 border-t flex justify-between items-center">
+              <div className="text-xs text-gray-500">
+                <span className="inline-flex items-center gap-1 mr-3">🟢 &gt;90 días</span>
+                <span className="inline-flex items-center gap-1 mr-3">🟡 31-90 días</span>
+                <span className="inline-flex items-center gap-1 mr-3">🟠 1-30 días</span>
+                <span className="inline-flex items-center gap-1">🔴 Vencido</span>
+              </div>
+              <button
+                type="button"
+                onClick={cerrarLotesModal}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-white bg-theme-gradient hover:opacity-90"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

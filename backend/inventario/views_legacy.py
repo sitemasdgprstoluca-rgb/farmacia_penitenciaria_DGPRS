@@ -1212,6 +1212,83 @@ class ProductoViewSet(viewsets.ModelViewSet):
             logger.error(f"Error en auditoria: {str(e)}", exc_info=True)
             return Response({'error': 'Error al obtener auditoría'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
+    @action(detail=True, methods=['get'], url_path='lotes')
+    def lotes(self, request, pk=None):
+        """
+        Obtiene los lotes de un producto específico con información de caducidad.
+        GET /api/productos/{id}/lotes/
+        
+        Retorna:
+        - Lista de lotes con cantidad, número de lote, fecha de caducidad y semáforo de alerta
+        """
+        from datetime import date, timedelta
+        try:
+            producto = self.get_object()
+            user = request.user
+            
+            # Obtener lotes del producto
+            lotes_queryset = producto.lotes.filter(
+                activo=True,
+                cantidad_actual__gt=0
+            )
+            
+            # ISS-FIX: Si es usuario de centro, filtrar solo lotes de su centro
+            if not is_farmacia_or_admin(user) and not user.is_superuser:
+                user_centro = get_user_centro(user)
+                if user_centro:
+                    lotes_queryset = lotes_queryset.filter(centro=user_centro)
+                else:
+                    lotes_queryset = lotes_queryset.none()
+            
+            # Ordenar por fecha de caducidad (más próximos a vencer primero)
+            lotes_queryset = lotes_queryset.order_by('fecha_caducidad')
+            
+            hoy = date.today()
+            lotes_data = []
+            
+            for lote in lotes_queryset:
+                dias_para_caducar = (lote.fecha_caducidad - hoy).days if lote.fecha_caducidad else None
+                
+                # Determinar semáforo de caducidad
+                if dias_para_caducar is None:
+                    alerta_caducidad = 'sin_fecha'
+                elif dias_para_caducar < 0:
+                    alerta_caducidad = 'vencido'
+                elif dias_para_caducar <= 30:
+                    alerta_caducidad = 'critico'
+                elif dias_para_caducar <= 90:
+                    alerta_caducidad = 'proximo'
+                else:
+                    alerta_caducidad = 'normal'
+                
+                lotes_data.append({
+                    'id': lote.id,
+                    'numero_lote': lote.numero_lote,
+                    'cantidad_actual': lote.cantidad_actual,
+                    'fecha_caducidad': lote.fecha_caducidad.isoformat() if lote.fecha_caducidad else None,
+                    'dias_para_caducar': dias_para_caducar,
+                    'alerta_caducidad': alerta_caducidad,
+                    'centro_id': lote.centro_id,
+                    'centro_nombre': lote.centro.nombre if lote.centro else 'Farmacia Central',
+                })
+            
+            return Response({
+                'producto': {
+                    'id': producto.id,
+                    'clave': producto.clave,
+                    'nombre': producto.nombre,
+                    'unidad_medida': producto.unidad_medida,
+                },
+                'lotes': lotes_data,
+                'total_lotes': len(lotes_data),
+                'total_stock': sum(l['cantidad_actual'] for l in lotes_data),
+            })
+        except Producto.DoesNotExist:
+            return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"Error en lotes: {str(e)}", exc_info=True)
+            return Response({'error': 'Error al obtener lotes'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
     @action(detail=False, methods=['get'], url_path='exportar-excel')
     def exportar_excel(self, request):
         """
