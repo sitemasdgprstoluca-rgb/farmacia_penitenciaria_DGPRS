@@ -1176,11 +1176,16 @@ const Requisiciones = () => {
           lote: i.lote || null,
           cantidad_solicitada: i.cantidad_solicitada,
         })),
-        comentario: form.comentario,
-        es_urgente: form.es_urgente,
-        motivo_urgencia: form.es_urgente ? form.motivo_urgencia : '',
-        prioridad: form.es_urgente ? 'urgente' : 'normal',
+        comentario: form.comentario || '',
       };
+      
+      // Solo agregar campos de urgencia si es urgente
+      if (form.es_urgente) {
+        payload.es_urgente = true;
+        payload.motivo_urgencia = form.motivo_urgencia;
+        payload.prioridad = 'alta';  // Usar 'alta' en lugar de 'urgente' para compatibilidad BD
+      }
+      
       let resp;
       if (editRequisicion) {
         resp = await requisicionesAPI.update(editRequisicion.id, payload);
@@ -2003,12 +2008,10 @@ const Requisiciones = () => {
                     className="w-full border rounded-lg px-3 py-2"
                   />
                 </div>
-              </div>
-              
-              {/* Sección de Urgencia */}
-              <div className="mb-4 flex-shrink-0 p-3 bg-gray-50 rounded-lg border">
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-2 cursor-pointer">
+                
+                {/* Opción de Urgencia - discreta */}
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-600 hover:text-gray-800">
                     <input
                       type="checkbox"
                       checked={form.es_urgente}
@@ -2017,33 +2020,23 @@ const Requisiciones = () => {
                         es_urgente: e.target.checked,
                         motivo_urgencia: e.target.checked ? prev.motivo_urgencia : ''
                       }))}
-                      className="w-5 h-5 text-red-600 rounded focus:ring-red-500"
+                      className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500"
                     />
-                    <span className="font-semibold text-red-700 flex items-center gap-1">
-                      🚨 Pedido URGENTE
-                    </span>
+                    <span>Marcar como urgente</span>
                   </label>
                   {form.es_urgente && (
-                    <span className="text-xs text-red-600 bg-red-100 px-2 py-1 rounded">
-                      Esta requisición tendrá prioridad alta
-                    </span>
+                    <div className="mt-2 ml-6">
+                      <input
+                        type="text"
+                        value={form.motivo_urgencia}
+                        onChange={(e) => setForm((prev) => ({ ...prev, motivo_urgencia: e.target.value }))}
+                        placeholder="Motivo de urgencia (obligatorio)"
+                        className="w-full border border-amber-300 rounded px-2 py-1 text-sm focus:ring-amber-500 focus:border-amber-500"
+                        required
+                      />
+                    </div>
                   )}
                 </div>
-                {form.es_urgente && (
-                  <div className="mt-3">
-                    <label className="block text-sm font-semibold mb-1 text-red-700">
-                      Motivo de urgencia (obligatorio)
-                    </label>
-                    <textarea
-                      value={form.motivo_urgencia}
-                      onChange={(e) => setForm((prev) => ({ ...prev, motivo_urgencia: e.target.value }))}
-                      placeholder="Explica por qué es urgente este pedido..."
-                      className="w-full border border-red-300 rounded-lg px-3 py-2 text-sm focus:ring-red-500 focus:border-red-500"
-                      rows={2}
-                      required
-                    />
-                  </div>
-                )}
               </div>
 
               {/* Vista de Catálogo */}
