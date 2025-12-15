@@ -274,7 +274,7 @@ const PERMISOS_POR_ROL = {
     verAuditoria: false,
     verNotificaciones: true,
     verPerfil: true,
-    verMovimientos: false,  // Médico no gestiona movimientos
+    verMovimientos: true,  // ISS-FIX: Médico PUEDE ver movimientos de su centro (salidas/consumos)
     verDonaciones: false,
     esSuperusuario: false,
     configurarTema: false,

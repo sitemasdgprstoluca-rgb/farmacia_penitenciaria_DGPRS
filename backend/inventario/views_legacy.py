@@ -6217,7 +6217,17 @@ def dashboard_resumen(request):
         
         if cached_kpi is None:
             # === PRODUCTOS ===
-            total_productos = Producto.objects.filter(activo=True).count()
+            # ISS-FIX: Para usuarios de centro, contar solo productos que tienen lotes en SU centro
+            if filtrar_por_centro and user_centro:
+                # Contar productos distintos que tienen lotes activos con stock en el centro
+                total_productos = Producto.objects.filter(
+                    activo=True,
+                    lotes__centro=user_centro,
+                    lotes__activo=True,
+                    lotes__cantidad_actual__gt=0
+                ).distinct().count()
+            else:
+                total_productos = Producto.objects.filter(activo=True).count()
             
             # === LOTES ===
             lotes_query = Lote.objects.filter(

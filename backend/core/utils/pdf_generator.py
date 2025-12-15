@@ -183,15 +183,20 @@ def generar_hoja_recoleccion(requisicion):
     story.append(Spacer(1, 0.15*inch))
     
     # Información de la requisición con colores institucionales
+    # ISS-PDF FIX: Usar campos correctos del modelo (centro_destino, solicitante, autorizador)
+    centro_nombre = requisicion.centro_destino.nombre if requisicion.centro_destino else 'N/A'
+    solicitante_nombre = requisicion.solicitante.get_full_name() if requisicion.solicitante else 'N/A'
+    autorizador_nombre = requisicion.autorizador.get_full_name() if requisicion.autorizador else ''
+    
     info_data = [
-        ['Folio:', requisicion.folio, 'Fecha de Solicitud:', requisicion.fecha_solicitud.strftime('%d/%m/%Y')],
-        ['Centro Solicitante:', requisicion.centro.nombre, 'Estado:', requisicion.estado.upper()],
-        ['Solicitante:', requisicion.usuario_solicita.get_full_name(), 'Fecha de Autorización:', 
+        ['Folio:', requisicion.folio or f'REQ-{requisicion.id}', 'Fecha de Solicitud:', requisicion.fecha_solicitud.strftime('%d/%m/%Y') if requisicion.fecha_solicitud else 'N/A'],
+        ['Centro Solicitante:', centro_nombre, 'Estado:', (requisicion.estado or '').upper()],
+        ['Solicitante:', solicitante_nombre, 'Fecha de Autorización:', 
          requisicion.fecha_autorizacion.strftime('%d/%m/%Y %H:%M') if requisicion.fecha_autorizacion else 'N/A'],
     ]
     
-    if requisicion.usuario_autoriza:
-        info_data.append(['Autorizado por:', requisicion.usuario_autoriza.get_full_name(), '', ''])
+    if requisicion.autorizador:
+        info_data.append(['Autorizado por:', autorizador_nombre, '', ''])
     
     info_table = Table(info_data, colWidths=[1.5*inch, 2.5*inch, 1.5*inch, 2*inch])
     info_table.setStyle(TableStyle([
@@ -271,18 +276,23 @@ def generar_hoja_recoleccion(requisicion):
     story.append(Spacer(1, 0.4*inch))
     
     # Sección de firmas
+    # ISS-PDF FIX: Usar campos correctos del modelo
+    responsable_centro = ''
+    if requisicion.centro_destino and hasattr(requisicion.centro_destino, 'responsable'):
+        responsable_centro = requisicion.centro_destino.responsable or ''
+    
     firmas_data = [
         ['', ''],
         ['AUTORIZADO POR:', 'ENTREGADO POR:'],
         ['', ''],
         ['_' * 40, '_' * 40],
-        [requisicion.usuario_autoriza.get_full_name() if requisicion.usuario_autoriza else '', ''],
+        [requisicion.autorizador.get_full_name() if requisicion.autorizador else '', ''],
         ['Nombre y Firma', 'Nombre y Firma'],
         ['', ''],
         ['RECIBIDO POR:', 'FECHA Y HORA DE ENTREGA:'],
         ['', ''],
         ['_' * 40, '_' * 40],
-        [requisicion.centro.responsable if requisicion.centro.responsable else '', ''],
+        [responsable_centro, ''],
         ['Nombre y Firma', ''],
     ]
     
@@ -364,12 +374,16 @@ def generar_pdf_rechazo(requisicion):
     story.append(titulo)
     story.append(Spacer(1, 0.2 * inch))
 
+    # ISS-PDF FIX: Usar campos correctos del modelo
+    centro_nombre = requisicion.centro_destino.nombre if requisicion.centro_destino else 'N/A'
+    solicitante_nombre = requisicion.solicitante.get_full_name() if requisicion.solicitante else 'N/A'
+    
     info_data = [
-        ['Folio:', requisicion.folio, 'Fecha de Solicitud:', requisicion.fecha_solicitud.strftime('%d/%m/%Y')],
-        ['Centro Solicitante:', requisicion.centro.nombre, 'Estado:', 'RECHAZADA'],
-        ['Solicitante:', requisicion.usuario_solicita.get_full_name(), 'Fecha de Rechazo:',
+        ['Folio:', requisicion.folio or f'REQ-{requisicion.id}', 'Fecha de Solicitud:', requisicion.fecha_solicitud.strftime('%d/%m/%Y') if requisicion.fecha_solicitud else 'N/A'],
+        ['Centro Solicitante:', centro_nombre, 'Estado:', 'RECHAZADA'],
+        ['Solicitante:', solicitante_nombre, 'Fecha de Rechazo:',
          requisicion.fecha_autorizacion.strftime('%d/%m/%Y %H:%M') if requisicion.fecha_autorizacion else 'N/A'],
-        ['Rechazado por:', requisicion.usuario_autoriza.get_full_name() if requisicion.usuario_autoriza else 'N/A', '', ''],
+        ['Rechazado por:', requisicion.autorizador.get_full_name() if requisicion.autorizador else 'N/A', '', ''],
     ]
 
     info_table = Table(info_data, colWidths=[1.5 * inch, 2.5 * inch, 1.5 * inch, 2 * inch])

@@ -115,7 +115,7 @@ PERMISOS_POR_ROL = {
         'verAuditoria': False,
         'verNotificaciones': True,
         'verPerfil': True,
-        'verMovimientos': False,
+        'verMovimientos': True,  # ISS-FIX: Médico PUEDE ver movimientos de su centro (salidas/consumos)
         'configurarTema': False,
         'crearRequisicion': True,
         'editarRequisicion': True,
