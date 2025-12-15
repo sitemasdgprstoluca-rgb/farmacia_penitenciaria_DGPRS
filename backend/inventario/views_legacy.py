@@ -5239,65 +5239,77 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         Transición: borrador → pendiente_admin
         Permiso requerido: puede_enviar_admin (rol: medico)
         """
-        requisicion = self.get_object()
-        estado_actual = (requisicion.estado or '').lower()
-        
-        # Validar estado
-        if estado_actual != 'borrador':
-            return Response({
-                'error': 'Solo se pueden enviar a administrador las requisiciones en BORRADOR',
-                'estado_actual': requisicion.estado
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Validar transición
-        if not self._validar_transicion(estado_actual, 'pendiente_admin'):
-            return Response({
-                'error': 'Transición de estado no permitida',
-                'estado_actual': estado_actual,
-                'estado_destino': 'pendiente_admin'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Validar permiso
-        if not self._validar_permiso_flujo(request.user, 'puede_enviar_admin'):
-            # ISS-DIRECTOR FIX: Mostrar rol efectivo en mensaje de error
-            rol_efectivo = _get_rol_efectivo(request.user)
-            return Response({
-                'error': 'No tiene permiso para enviar requisiciones al administrador',
-                'rol_actual': rol_efectivo,
-                'detalle': f'El rol "{rol_efectivo}" no tiene el permiso puede_enviar_admin'
-            }, status=status.HTTP_403_FORBIDDEN)
-        
-        # Validar que tenga detalles
-        if not requisicion.detalles.exists():
-            return Response({
-                'error': 'La requisición debe tener al menos un producto'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Validar centro
-        centro_user = self._user_centro(request.user)
-        if not request.user.is_superuser and centro_user:
-            if requisicion.centro_destino_id != centro_user.id:
+        try:
+            requisicion = self.get_object()
+            estado_actual = (requisicion.estado or '').lower()
+            
+            # Validar estado
+            if estado_actual != 'borrador':
                 return Response({
-                    'error': 'No puede enviar requisiciones de otro centro'
+                    'error': 'Solo se pueden enviar a administrador las requisiciones en BORRADOR',
+                    'estado_actual': requisicion.estado
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Validar transición
+            if not self._validar_transicion(estado_actual, 'pendiente_admin'):
+                return Response({
+                    'error': 'Transición de estado no permitida',
+                    'estado_actual': estado_actual,
+                    'estado_destino': 'pendiente_admin'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Validar permiso
+            if not self._validar_permiso_flujo(request.user, 'puede_enviar_admin'):
+                # ISS-DIRECTOR FIX: Mostrar rol efectivo en mensaje de error
+                rol_efectivo = _get_rol_efectivo(request.user)
+                return Response({
+                    'error': 'No tiene permiso para enviar requisiciones al administrador',
+                    'rol_actual': rol_efectivo,
+                    'detalle': f'El rol "{rol_efectivo}" no tiene el permiso puede_enviar_admin'
                 }, status=status.HTTP_403_FORBIDDEN)
-        
-        # Ejecutar transición
-        estado_anterior = requisicion.estado
-        requisicion.estado = 'pendiente_admin'
-        requisicion.fecha_envio_admin = timezone.now()
-        requisicion.save(update_fields=['estado', 'fecha_envio_admin'])
-        
-        # Registrar en historial
-        self._registrar_historial(
-            requisicion, estado_anterior, 'pendiente_admin',
-            request.user, 'enviar_a_administrador', request,
-            datos_adicionales={'centro_id': centro_user.id if centro_user else None}
-        )
-        
-        return Response({
-            'mensaje': 'Requisición enviada al administrador',
-            'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
-        })
+            
+            # Validar que tenga detalles
+            if not requisicion.detalles.exists():
+                return Response({
+                    'error': 'La requisición debe tener al menos un producto'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Validar centro
+            centro_user = self._user_centro(request.user)
+            if not request.user.is_superuser and centro_user:
+                if requisicion.centro_destino_id != centro_user.id:
+                    return Response({
+                        'error': 'No puede enviar requisiciones de otro centro'
+                    }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Ejecutar transición
+            estado_anterior = requisicion.estado
+            requisicion.estado = 'pendiente_admin'
+            requisicion.fecha_envio_admin = timezone.now()
+            requisicion.save(update_fields=['estado', 'fecha_envio_admin', 'updated_at'])
+            
+            # Registrar en historial (no crítico, no debe fallar la transición)
+            try:
+                self._registrar_historial(
+                    requisicion, estado_anterior, 'pendiente_admin',
+                    request.user, 'enviar_a_administrador', request,
+                    datos_adicionales={'centro_id': centro_user.id if centro_user else None}
+                )
+            except Exception as hist_err:
+                logger.warning(f"Error registrando historial (no crítico): {hist_err}")
+            
+            return Response({
+                'mensaje': 'Requisición enviada al administrador',
+                'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
+            })
+        except Exception as e:
+            import traceback
+            logger.error(f"[enviar_admin] Error: {str(e)}")
+            logger.error(f"[enviar_admin] Traceback: {traceback.format_exc()}")
+            return Response({
+                'error': 'Error al enviar requisición',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['post'], url_path='autorizar-admin')
     @transaction.atomic
