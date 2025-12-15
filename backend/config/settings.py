@@ -20,28 +20,58 @@ LOG_LEVEL = config('LOG_LEVEL', default='INFO')
 _is_container = config('RENDER', default=False, cast=bool) or config('DYNO', default='') or config('KUBERNETES_SERVICE_HOST', default='')
 LOG_TO_STDOUT = config('LOG_TO_STDOUT', default=_is_container or not DEBUG, cast=bool)
 LOG_FILE = config('LOG_FILE', default=str(BASE_DIR / 'logs' / 'django.log'))
+# ISS-004 FIX: Ruta alternativa segura para logs si la principal falla
+LOG_FILE_FALLBACK = config('LOG_FILE_FALLBACK', default=str(Path('/tmp') / 'farmacia_penitenciaria.log'))
 
-# ISS-004: Solo crear directorio de logs si no usamos stdout y manejamos errores
-# ISS-005 FIX (audit17): Mejorar manejo de errores de logging y fallback
+# ISS-004 FIX: Mejorar robustez del fallback de logging
+# Estrategia: 1) Intentar ruta principal, 2) Intentar ruta alternativa, 3) Forzar stdout
+_logging_fallback_activated = False
+_logging_fallback_reason = None
+
 if not LOG_TO_STDOUT:
-    try:
-        log_dir = Path(LOG_FILE).parent
-        log_dir.mkdir(parents=True, exist_ok=True)
-        # Verificar que podemos escribir
-        test_file = log_dir / '.write_test'
-        test_file.touch()
-        test_file.unlink()
-    except (PermissionError, OSError) as e:
-        # Si no podemos crear el directorio o escribir, forzar stdout
+    _log_paths_to_try = [
+        ('principal', LOG_FILE),
+        ('alternativa', LOG_FILE_FALLBACK),
+    ]
+    
+    _log_file_ok = False
+    for path_name, log_path in _log_paths_to_try:
+        try:
+            log_dir = Path(log_path).parent
+            log_dir.mkdir(parents=True, exist_ok=True)
+            # Verificar que podemos escribir
+            test_file = log_dir / '.write_test'
+            test_file.touch()
+            test_file.unlink()
+            # Si llegamos aquí, la ruta funciona
+            if path_name == 'alternativa':
+                LOG_FILE = log_path  # Usar ruta alternativa
+                _logging_fallback_activated = True
+                _logging_fallback_reason = f"Ruta principal no accesible, usando: {log_path}"
+            _log_file_ok = True
+            break
+        except (PermissionError, OSError) as e:
+            _logging_fallback_reason = str(e)
+            continue
+    
+    if not _log_file_ok:
+        # Ninguna ruta de archivo funciona, forzar stdout
         import sys
         print(
-            f"[ISS-005 WARNING] No se puede usar archivo de logs ({e}). "
+            f"[ISS-004 WARNING] No se puede escribir logs en disco ({_logging_fallback_reason}). "
             f"Forzando LOG_TO_STDOUT=True. "
-            f"Para persistir logs, configure un agregador externo (ELK, CloudWatch, etc.) "
-            f"o corrija permisos del directorio: {LOG_FILE}",
+            f"Para persistir logs en producción, configure un agregador externo "
+            f"(ELK, CloudWatch, Datadog, etc.) o use un volumen persistente.",
             file=sys.stderr
         )
         LOG_TO_STDOUT = True
+        _logging_fallback_activated = True
+    elif _logging_fallback_activated:
+        import sys
+        print(
+            f"[ISS-004 INFO] {_logging_fallback_reason}",
+            file=sys.stderr
+        )
 
 # ═══════════════════════════════════════════════════════════
 # VALIDACIÓN ESTRICTA EN PRODUCCIÓN

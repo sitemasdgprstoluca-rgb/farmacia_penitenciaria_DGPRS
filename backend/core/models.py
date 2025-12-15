@@ -75,15 +75,22 @@ def validate_image_max_size(value, max_size_kb=500):
 
 
 def validate_logo_size(value):
-    """Validador especÃ­fico para logos (max 500KB)"""
+    """Validador específico para logos (max 500KB)"""
     validate_image_max_size(value, max_size_kb=500)
 
 
 def validate_image_size(value):
-    """Valida que la imagen no exceda 2MB"""
+    """
+    ISS-002 FIX: Valida que la imagen no exceda 2MB.
+    
+    Corrige bug donde no se verificaba si value es None antes de
+    acceder a value.size, causando AttributeError en campos opcionales.
+    """
+    if not value:
+        return  # ISS-002 FIX: Retornar temprano si valor es None/vacío
     max_size = 2 * 1024 * 1024  # 2 MB
     if value.size > max_size:
-        raise ValidationError(f'La imagen no puede exceder 2MB. TamaÃ±o actual: {value.size/1024/1024:.1f}MB')
+        raise ValidationError(f'La imagen no puede exceder 2MB. Tamaño actual: {value.size/1024/1024:.1f}MB')
 
 
 def producto_imagen_path(instance, filename):

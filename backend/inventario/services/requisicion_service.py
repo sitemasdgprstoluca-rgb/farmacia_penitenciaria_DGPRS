@@ -768,6 +768,32 @@ class RequisicionService:
         if not detalles:
             return []
         
+        # ISS-003 FIX: Validar que TODOS los detalles tengan producto_id
+        # Rechazar requisiciones con detalles incompletos antes de continuar
+        detalles_sin_producto = [d for d in detalles if not d.producto_id]
+        if detalles_sin_producto:
+            detalles_info = [
+                f"Detalle #{d.pk or 'nuevo'} (cantidad: {d.cantidad_solicitada or 0})"
+                for d in detalles_sin_producto[:5]  # Limitar a 5 para no saturar mensaje
+            ]
+            total_invalidos = len(detalles_sin_producto)
+            mensaje_extra = f" y {total_invalidos - 5} más" if total_invalidos > 5 else ""
+            
+            logger.error(
+                f"ISS-003: Requisición {self.requisicion.folio} tiene {total_invalidos} "
+                f"detalle(s) sin producto_id: {detalles_info}"
+            )
+            raise RequisicionServiceError(
+                f"La requisición tiene {total_invalidos} detalle(s) sin producto asignado. "
+                f"Todos los detalles deben tener un producto válido antes de validar stock.",
+                details={
+                    'codigo': 'detalles_sin_producto',
+                    'detalles_invalidos': detalles_info,
+                    'total_invalidos': total_invalidos
+                },
+                code='validacion_datos'
+            )
+        
         # ISS-001 FIX (perf): Extraer IDs de productos para consultas batch
         producto_ids = [d.producto_id for d in detalles if d.producto_id]
         
