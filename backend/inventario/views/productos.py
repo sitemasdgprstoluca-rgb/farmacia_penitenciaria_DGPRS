@@ -63,11 +63,14 @@ class ProductoViewSet(viewsets.ModelViewSet):
         user = self.request.user
         
         # ISS-FIX: Determinar el centro para filtrar stock
-        # Usuarios CENTRO solo ven stock de SU centro (lo que farmacia les ha surtido)
+        # Usuarios CENTRO solo ven productos con stock en SU centro (lo que farmacia les ha surtido)
         # Admin/Farmacia/Vista ven stock de farmacia central por defecto
         centro_param = self.request.query_params.get('centro')
         
-        if not is_farmacia_or_admin(user) and not user.is_superuser:
+        # ISS-FIX: Flag para determinar si el usuario es de centro
+        es_usuario_centro = not is_farmacia_or_admin(user) and not user.is_superuser
+        
+        if es_usuario_centro:
             # Usuario de centro - filtrar stock solo por su centro
             user_centro = get_user_centro(user)
             if user_centro:
@@ -85,11 +88,14 @@ class ProductoViewSet(viewsets.ModelViewSet):
                         0
                     )
                 )
+                # ISS-FIX: Usuarios de centro SOLO ven productos con stock > 0 en su centro
+                # Ya no ven todos los 76 productos con stock = 0
+                queryset = queryset.filter(stock_calculado__gt=0)
             else:
-                # Usuario sin centro asignado - stock = 0
+                # Usuario sin centro asignado - no ve ningún producto
                 queryset = queryset.annotate(
                     stock_calculado=Coalesce(Sum('lotes__cantidad_actual', filter=Q(pk__isnull=True)), 0)
-                )
+                ).filter(stock_calculado__gt=0)  # Filtro imposible = 0 resultados
         else:
             # Admin/Farmacia/Vista - pueden ver stock global o por centro específico
             if centro_param:
