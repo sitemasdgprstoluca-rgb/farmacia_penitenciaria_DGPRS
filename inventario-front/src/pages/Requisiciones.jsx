@@ -679,20 +679,16 @@ const Requisiciones = () => {
       return;
     }
     
-    // Validación adicional: verificar estado del centro en backend
-    // Esto previene desalineación front/back si el centro fue desactivado
-    if (!esAdminOFarmacia && user?.centro?.id) {
-      try {
-        const resp = await centrosAPI.getById(user.centro.id);
-        const centro = resp.data;
-        if (!centro || centro.activo === false) {
-          toast.error('Tu centro está desactivado. Contacta al administrador.');
-          return;
-        }
-      } catch (error) {
-        // Si no puede verificar el centro, mejor prevenir la acción
-        toast.error('No se pudo verificar el estado de tu centro');
-        console.error('Error verificando centro:', error);
+    // Validación para usuarios de centro: verificar que tienen centro asignado
+    if (!esAdminOFarmacia) {
+      // El usuario debe tener un centro asignado
+      if (!user?.centro?.id) {
+        toast.error('No tienes un centro asignado. Contacta al administrador.');
+        return;
+      }
+      // Verificar que el centro esté activo (usamos la info del usuario, no llamamos a API)
+      if (user?.centro?.activo === false) {
+        toast.error('Tu centro está desactivado. Contacta al administrador.');
         return;
       }
     }

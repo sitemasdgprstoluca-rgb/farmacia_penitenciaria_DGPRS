@@ -99,14 +99,9 @@ const Movimientos = () => {
         // Admin/Farmacia/Vista: ver todos los centros
         const centroResp = await centrosAPI.getAll({ page_size: 100, ordering: "nombre", activo: true });
         setCentros(centroResp.data.results || centroResp.data || []);
-      } else if (centroUsuario) {
-        // Usuario de centro: solo su centro
-        try {
-          const centroResp = await centrosAPI.getById(centroUsuario);
-          setCentros([centroResp.data]);
-        } catch {
-          setCentros([]);
-        }
+      } else if (centroUsuario && user?.centro) {
+        // Usuario de centro: usar info del usuario directamente (evita llamada API)
+        setCentros([user.centro]);
       } else {
         setCentros([]);
       }
@@ -119,7 +114,7 @@ const Movimientos = () => {
     } catch (err) {
       console.warn("No se pudieron cargar catálogos", err.message);
     }
-  }, [puedeVerTodosCentros, centroUsuario]);
+  }, [puedeVerTodosCentros, centroUsuario, user?.centro]);
 
   const calcularStats = (data) => {
     let entradas = 0;
