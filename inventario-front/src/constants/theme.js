@@ -19,6 +19,7 @@ const getCSSVar = (varName, fallback) => {
 export const COLORS = {
   // Colores principales del tema - se actualizan via CSS variables
   get vino() { return getCSSVar('--color-primary', '#9F2241'); },
+  get primary() { return getCSSVar('--color-primary', '#9F2241'); }, // Alias de vino para compatibilidad
   get guinda() { return getCSSVar('--color-primary-hover', '#6B1839'); },
   get vinoOscuro() { return getCSSVar('--color-primary-hover', '#6B1839'); },
   get vinoLight() { return `color-mix(in srgb, ${getCSSVar('--color-primary', '#9F2241')} 15%, transparent)`; },
