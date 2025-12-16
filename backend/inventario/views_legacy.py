@@ -4502,9 +4502,13 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             solicitante = request.user if request.user.is_authenticated else None
             es_privilegiado = False
             
-            # ISS-FIX: Mapear 'centro' del frontend a 'centro_destino' para consistencia
-            if 'centro' in data and 'centro_destino' not in data:
-                data['centro_destino'] = data.pop('centro')
+            # ISS-FIX-CENTRO: Corregir semántica de centros
+            # centro_origen = centro del usuario que SOLICITA (de donde sale la requisición)
+            # centro_destino = farmacia central (NULL) - a donde va la requisición
+            # El frontend envía 'centro' que es el centro del solicitante → debe ir en centro_origen
+            if 'centro' in data:
+                # El centro del frontend es el centro ORIGEN (quien solicita)
+                data['centro_origen'] = data.pop('centro')
             
             # ISS-FIX: Mapear 'comentario' del frontend a 'notas' para consistencia
             if 'comentario' in data and 'notas' not in data:
@@ -4515,25 +4519,31 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 centro_user = self._user_centro(solicitante)
                 es_privilegiado = is_farmacia_or_admin(solicitante)
                 if centro_user and not es_privilegiado:
-                    if data.get('centro_destino') and int(data.get('centro_destino')) != centro_user.id and not solicitante.is_superuser:
+                    # Validar que el centro enviado sea el del usuario
+                    if data.get('centro_origen') and int(data.get('centro_origen')) != centro_user.id and not solicitante.is_superuser:
                         return Response({'error': 'No puedes crear requisiciones para otro centro'}, status=status.HTTP_403_FORBIDDEN)
-                    data['centro_destino'] = centro_user.id
+                    # Asignar centro_origen = centro del usuario solicitante
+                    data['centro_origen'] = centro_user.id
+                    # centro_destino = NULL (farmacia central, no tiene centro)
+                    data['centro_destino'] = None
                 elif not centro_user and not es_privilegiado and not solicitante.is_superuser:
                     return Response({'error': 'El usuario no tiene centro asignado'}, status=status.HTTP_403_FORBIDDEN)
-                elif not data.get('centro_destino') and centro_user:
-                    data['centro_destino'] = centro_user.id
+                elif not data.get('centro_origen') and centro_user:
+                    data['centro_origen'] = centro_user.id
+                    data['centro_destino'] = None
 
             items_data = request.data.get('items', []) or request.data.get('detalles', []) or []
-            centro = Centro.objects.filter(id=data.get('centro_destino')).first() if data.get('centro_destino') else None
-            if not centro and solicitante and not solicitante.is_superuser:
-                return Response({'error': 'No se encontro el centro para validar stock'}, status=status.HTTP_400_BAD_REQUEST)
+            # ISS-FIX-CENTRO: Usar centro_origen para obtener info del centro solicitante
+            centro_origen = Centro.objects.filter(id=data.get('centro_origen')).first() if data.get('centro_origen') else None
+            if not centro_origen and solicitante and not solicitante.is_superuser and not es_privilegiado:
+                return Response({'error': 'No se encontró el centro origen para la requisición'}, status=status.HTTP_400_BAD_REQUEST)
             
             # ISS-001, ISS-004, ISS-005 FIX: Validación INFORMATIVA de stock en creación
             # Las requisiciones solicitan medicamentos que serán surtidos desde farmacia central
             # En creación solo advertimos, no bloqueamos (modo='informativo')
             advertencias_stock = self._validar_stock_items(
                 items_data, 
-                centro=centro,
+                centro=centro_origen,  # Pasamos centro_origen para referencia
                 validar_farmacia_central=True,
                 modo='informativo'  # ISS-005: Solo advertir en creación
             )

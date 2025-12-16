@@ -1107,18 +1107,20 @@ class RequisicionSerializer(serializers.ModelSerializer):
     
     # ISS-DB: Alias para compatibilidad con frontend (campos calculados/read_only)
     folio = serializers.CharField(source='numero', read_only=True)  # Alias de numero
-    centro_nombre = serializers.CharField(source='centro_destino.nombre', read_only=True, allow_null=True)  # Alias de centro_destino_nombre
+    # ISS-FIX-CENTRO: 'centro_nombre' debe mostrar centro_origen (el centro que SOLICITA)
+    centro_nombre = serializers.CharField(source='centro_origen.nombre', read_only=True, allow_null=True)
     usuario_solicita_nombre = serializers.SerializerMethodField()  # Alias de solicitante_nombre
     usuario_autoriza_nombre = serializers.SerializerMethodField()  # Alias de autorizador_nombre
     observaciones = serializers.CharField(source='notas', read_only=True, allow_null=True)  # Alias de notas
     # motivo_rechazo es ahora un campo real en la BD (FLUJO V2), no un alias
     total_items = serializers.SerializerMethodField()  # Alias de total_productos
     
-    # Campo 'centro' para compatibilidad con frontend (alias de centro_destino)
+    # ISS-FIX-CENTRO: Campo 'centro' para compatibilidad con frontend
+    # Representa el centro que SOLICITA la requisición (centro_origen)
     # NOTA: Se usa SerializerMethodField para lectura y se sobreescribe en create/update para escritura
-    centro = serializers.SerializerMethodField(read_only=True)  # Para lectura (devuelve centro_destino_id)
+    centro = serializers.SerializerMethodField(read_only=True)  # Para lectura (devuelve centro_origen_id)
     centro_write = serializers.PrimaryKeyRelatedField(
-        source='centro_destino', queryset=Centro.objects.all(), 
+        source='centro_origen', queryset=Centro.objects.all(), 
         required=False, allow_null=True, write_only=True
     )
     # Campo 'comentario' para compatibilidad con frontend (alias de notas)
@@ -1241,8 +1243,8 @@ class RequisicionSerializer(serializers.ModelSerializer):
         return None
     
     def get_centro(self, obj):
-        """Alias de centro_destino_id para compatibilidad con frontend."""
-        return obj.centro_destino_id
+        """ISS-FIX-CENTRO: Devuelve centro_origen_id (el centro que SOLICITA)."""
+        return obj.centro_origen_id
     
     def get_comentario(self, obj):
         """Alias de notas para compatibilidad con frontend (lectura)."""
@@ -1293,13 +1295,13 @@ class RequisicionSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         """
         Mapea campos del frontend a campos internos antes de validación.
-        El frontend envía 'centro' y 'comentario', pero internamente usamos
-        'centro_destino' y 'notas'.
+        ISS-FIX-CENTRO: El frontend envía 'centro' que representa el centro
+        que SOLICITA la requisición, mapeamos a 'centro_origen'.
         """
         # Crear copia mutable de los datos
         data = data.copy() if hasattr(data, 'copy') else dict(data)
         
-        # Mapear 'centro' → 'centro_write' (que tiene source='centro_destino')
+        # ISS-FIX-CENTRO: Mapear 'centro' → 'centro_write' (que tiene source='centro_origen')
         if 'centro' in data and 'centro_write' not in data:
             data['centro_write'] = data.pop('centro')
         
