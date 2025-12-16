@@ -58,11 +58,22 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
         notificacionesAPI.noLeidasCount()
       ]);
       const data = notifRes.data?.results || notifRes.data || [];
-      setNotificaciones(Array.isArray(data) ? data : []);
-      const count = countRes.data?.no_leidas ?? 0;
-      setSinLeer(count);
+      const notificacionesArray = Array.isArray(data) ? data : [];
+      setNotificaciones(notificacionesArray);
+      
+      // ISS-FIX: Sincronizar contador con notificaciones reales no leídas
+      // El contador del backend puede estar desincronizado si hubo cambios de sesión
+      const noLeidasEnLista = notificacionesArray.filter(n => !n.leida).length;
+      const countBackend = countRes.data?.no_leidas ?? 0;
+      
+      // Usar el mayor de los dos para evitar mostrar "1 sin leer" pero lista vacía
+      // Si hay notificaciones, usar el count de las no leídas reales
+      // Si no hay notificaciones pero backend dice que hay, puede ser paginación o error
+      const countFinal = notificacionesArray.length > 0 ? countBackend : Math.min(countBackend, noLeidasEnLista);
+      
+      setSinLeer(countFinal);
       // Notificar al padre si existe callback
-      if (onCountChange) onCountChange(count);
+      if (onCountChange) onCountChange(countFinal);
     } catch (err) {
       const msg = err.response?.data?.detail || err.message;
       if (msg) toast.error(msg);
@@ -173,6 +184,16 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
     }
   };
 
+  // ISS-FIX: Recargar notificaciones al abrir el dropdown para asegurar datos frescos
+  const handleToggleDropdown = () => {
+    const nuevoEstado = !abierto;
+    setAbierto(nuevoEstado);
+    // Al abrir, recargar notificaciones frescas
+    if (nuevoEstado && !cargando) {
+      cargar();
+    }
+  };
+
   // No renderizar si no hay usuario O no tiene permiso de ver notificaciones
   if (!user || !tienePermiso) return null;
 
@@ -180,7 +201,7 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
     <div className="relative">
       <button
         ref={botonRef}
-        onClick={() => setAbierto((v) => !v)}
+        onClick={handleToggleDropdown}
         className="relative p-2 text-white hover:text-white/80 transition"
         aria-label="Notificaciones"
       >
@@ -221,10 +242,16 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
           </div>
 
           <div className="flex-1 overflow-y-auto">
-            {!notificaciones.length && (
+            {cargando && (
+              <div className="px-4 py-8 text-center text-gray-500 text-sm">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-400 border-t-primary-600 mx-auto mb-2" />
+                Cargando notificaciones...
+              </div>
+            )}
+            {!cargando && !notificaciones.length && (
               <div className="px-4 py-8 text-center text-gray-500 text-sm">No hay notificaciones</div>
             )}
-            {notificaciones.map((notif) => {
+            {!cargando && notificaciones.map((notif) => {
               // Determinar si la notificación tiene un enlace navegable
               const tieneEnlace = notif.url || notif.datos?.requisicion_id;
               
