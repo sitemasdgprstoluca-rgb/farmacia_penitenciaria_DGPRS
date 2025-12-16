@@ -5818,6 +5818,9 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                     fecha_recoleccion = timezone.make_aware(
                         datetime.combine(fecha_date, time(17, 0, 0))
                     )
+            # ISS-FIX: Asegurar que la fecha siempre sea timezone-aware
+            elif timezone.is_naive(fecha_recoleccion):
+                fecha_recoleccion = timezone.make_aware(fecha_recoleccion)
         except Exception:
             return Response({
                 'error': 'Formato de fecha inválido. Use YYYY-MM-DD o YYYY-MM-DDTHH:MM:SS'
