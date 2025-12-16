@@ -128,9 +128,10 @@ export function RequisicionAcciones({
       return;
     }
     
+    // ISS-FIX: Lugar de entrega automático = Centro solicitante
     if (accion.requiereLugarEntrega && !datosExtra.lugar_entrega) {
-      setModalData({ accion, tipo: 'lugar_entrega' });
-      return;
+      const nombreCentro = requisicion?.centro?.nombre || requisicion?.centro_nombre || 'Centro Penitenciario';
+      datosExtra.lugar_entrega = nombreCentro;
     }
     
     // Ejecutar acción
@@ -227,12 +228,6 @@ function ModalDatosAdicionales({ tipo, accion, onConfirm, onCancel }) {
         return;
       }
       datos.motivo = valor.trim();
-    } else if (tipo === 'lugar_entrega') {
-      if (!valor || valor.trim().length < 3) {
-        toast.error('Debe indicar el lugar de entrega');
-        return;
-      }
-      datos.lugar_entrega = valor.trim();
     }
     
     onConfirm(datos);
@@ -244,8 +239,6 @@ function ModalDatosAdicionales({ tipo, accion, onConfirm, onCancel }) {
         return 'Asignar Fecha Límite de Recolección';
       case 'motivo':
         return accion.key === 'devolver' ? 'Motivo de Devolución' : 'Motivo de Rechazo';
-      case 'lugar_entrega':
-        return 'Lugar de Entrega';
       default:
         return 'Datos Adicionales';
     }
@@ -296,22 +289,6 @@ function ModalDatosAdicionales({ tipo, accion, onConfirm, onCancel }) {
                 placeholder="Explique el motivo (mínimo 10 caracteres)..."
                 required
                 minLength={10}
-              />
-            </>
-          )}
-          
-          {tipo === 'lugar_entrega' && (
-            <>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Lugar de entrega *
-              </label>
-              <input
-                type="text"
-                value={valor}
-                onChange={(e) => setValor(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500"
-                placeholder="Ej: Almacén del Centro, Consultorio 3..."
-                required
               />
             </>
           )}

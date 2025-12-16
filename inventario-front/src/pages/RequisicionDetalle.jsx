@@ -40,12 +40,6 @@ const RequisicionDetalle = () => {
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState(false);
   
-  // Modal para confirmar recepción
-  // eslint-disable-next-line no-unused-vars
-  const [showRecepcionModal, setShowRecepcionModal] = useState(false);
-  const [recepcionData, setRecepcionData] = useState({ lugar: '', observaciones: '' });
-  const [showConfirmRecepcion, setShowConfirmRecepcion] = useState(false);
-  
   // Modales para acciones con validación de permisos
   const [showEnviarModal, setShowEnviarModal] = useState(false);
   const [showAutorizarModal, setShowAutorizarModal] = useState(false);
@@ -404,8 +398,8 @@ const RequisicionDetalle = () => {
     }
   };
 
-  // Iniciar flujo de confirmación de recepción con modal
-  const iniciarConfirmarRecepcion = () => {
+  // Ejecutar confirmación de recepción directamente (sin modal)
+  const iniciarConfirmarRecepcion = async () => {
     // Validación interna de permisos (no depender solo del renderizado)
     if (!permisos?.confirmarRecepcion) {
       toast.error('No tienes permisos para confirmar recepción');
@@ -421,23 +415,16 @@ const RequisicionDetalle = () => {
       return;
     }
     
-    setRecepcionData({ lugar: '', observaciones: '' });
-    setShowConfirmRecepcion(true);
-  };
-
-  // Ejecutar confirmación de recepción
-  const ejecutarConfirmarRecepcion = async () => {
-    if (!recepcionData.lugar.trim()) {
-      toast.error('El lugar de entrega es requerido');
-      return;
-    }
-    
+    // Ejecutar directamente sin mostrar modal
     try {
       setProcesando(true);
-      setShowConfirmRecepcion(false);
+      
+      // ISS-FIX: Lugar de entrega automático = Centro solicitante
+      const nombreCentro = requisicion?.centro?.nombre || requisicion?.centro_nombre || 'Centro Penitenciario';
+      
       await requisicionesAPI.marcarRecibida(id, { 
-        lugar_entrega: recepcionData.lugar.trim(), 
-        observaciones_recepcion: recepcionData.observaciones.trim() 
+        lugar_entrega: nombreCentro, 
+        observaciones_recepcion: '' 
       });
       toast.success('Requisición marcada como recibida');
       cargarRequisicion();
@@ -1178,78 +1165,7 @@ const RequisicionDetalle = () => {
         tone="danger"
       />
 
-      {/* Modal de confirmación de recepción */}
-      {showConfirmRecepcion && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <div className="absolute inset-0 bg-black/50" onClick={() => !procesando && setShowConfirmRecepcion(false)} />
-          <div className="relative w-full max-w-md bg-white rounded-lg shadow-xl p-6">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <FaCheckCircle className="text-blue-600" />
-              Confirmar recepción - {requisicion?.folio}
-            </h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Esta acción indica que los medicamentos fueron entregados físicamente.
-            </p>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Lugar de entrega/recepción <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={recepcionData.lugar}
-                  onChange={(e) => setRecepcionData(prev => ({ ...prev, lugar: e.target.value }))}
-                  placeholder="Ej: Almacén central, Farmacia del centro..."
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  disabled={procesando}
-                  autoFocus
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Observaciones (opcional)
-                </label>
-                <textarea
-                  value={recepcionData.observaciones}
-                  onChange={(e) => setRecepcionData(prev => ({ ...prev, observaciones: e.target.value }))}
-                  placeholder="Observaciones adicionales..."
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  rows={3}
-                  disabled={procesando}
-                />
-              </div>
-            </div>
 
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => setShowConfirmRecepcion(false)}
-                disabled={procesando}
-                className="px-4 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={ejecutarConfirmarRecepcion}
-                disabled={procesando || !recepcionData.lugar.trim()}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
-              >
-                {procesando ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                    Procesando...
-                  </>
-                ) : (
-                  <>
-                    <FaCheckCircle /> Confirmar recepción
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
