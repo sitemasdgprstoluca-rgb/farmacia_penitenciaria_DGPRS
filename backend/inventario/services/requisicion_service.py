@@ -1341,7 +1341,8 @@ class RequisicionService:
                         }]
                     )
                 
-                if lote.fecha_caducidad < hoy:
+                # ISS-FIX: Validar fecha_caducidad solo si no es NULL
+                if lote.fecha_caducidad is not None and lote.fecha_caducidad < hoy:
                     raise StockInsuficienteError(
                         f"El lote {lote.numero_lote} está vencido (caducidad: {lote.fecha_caducidad})",
                         detalles_stock=[{
@@ -1435,7 +1436,10 @@ class RequisicionService:
                     # Revalidar estado del lote DESPUÉS del lock
                     lote.refresh_from_db()
                     
-                    if not lote.activo or lote.cantidad_actual <= 0 or lote.fecha_caducidad < hoy:
+                    # ISS-FIX: Validar fecha_caducidad solo si no es NULL
+                    if not lote.activo or lote.cantidad_actual <= 0:
+                        continue
+                    if lote.fecha_caducidad is not None and lote.fecha_caducidad < hoy:
                         continue
                     
                     usar = min(pendiente, lote.cantidad_actual)
