@@ -1011,6 +1011,10 @@ export const requisicionesAPI = {
   downloadPDFRechazo: (id) => apiClient.get(`/requisiciones/${id}/pdf-rechazo/`, {
     responseType: 'blob'
   }),
+  // ISS-HOJA-V2: Hoja de consulta para centro (con sello SURTIDA, sin firmas)
+  downloadHojaConsulta: (id) => apiClient.get(`/requisiciones/${id}/hoja-consulta/`, {
+    responseType: 'blob'
+  }),
 
   // Compatibilidad hacia atras
   getHojaRecoleccion: (id) => apiClient.get(`/requisiciones/${id}/hoja-recoleccion/`, {

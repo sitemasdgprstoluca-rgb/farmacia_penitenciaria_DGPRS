@@ -5618,6 +5618,47 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=True, methods=['get'], url_path='hoja-consulta')
+    def hoja_consulta(self, request, pk=None):
+        """
+        Genera y descarga el PDF de hoja de consulta simplificada para centros.
+        Esta versión tiene un sello "SURTIDA" y NO muestra firmas completas.
+        Solo disponible para requisiciones surtidas o entregadas.
+        Para uso exclusivo de roles de centro (médico, usuario_centro, etc.)
+        """
+        from core.utils.pdf_generator import generar_hoja_consulta
+        
+        requisicion = self.get_object()
+        estado = (requisicion.estado or '').lower()
+        
+        # Solo para estados surtida o entregada
+        if estado not in ['surtida', 'entregada']:
+            return Response({
+                'error': 'La hoja de consulta solo está disponible para requisiciones surtidas o entregadas',
+                'estado_actual': requisicion.estado
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Generar el PDF de consulta con sello SURTIDA
+            pdf_buffer = generar_hoja_consulta(requisicion)
+            
+            # Crear respuesta HTTP con el PDF
+            response = HttpResponse(
+                pdf_buffer.getvalue(),
+                content_type='application/pdf'
+            )
+            folio_safe = (requisicion.folio or f'REQ-{requisicion.id}').replace('/', '-')
+            response['Content-Disposition'] = f'attachment; filename="Consulta_Requisicion_{folio_safe}.pdf"'
+            
+            return response
+            
+        except Exception as e:
+            # traceback removido por seguridad (ISS-008)
+            return Response({
+                'error': 'Error al generar la hoja de consulta',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @action(detail=True, methods=['get'], url_path='pdf-rechazo')
     def pdf_rechazo(self, request, pk=None):
         """

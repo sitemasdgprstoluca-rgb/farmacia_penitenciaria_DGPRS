@@ -79,12 +79,21 @@ const RequisicionDetalle = () => {
       
       // Cargar hoja de recolección si existe
       // ISS-DB-002: Estados que permiten ver hoja de recolección
-      // ISS-HOJA-FIX: Solo cargar hoja para roles de FARMACIA (no admin_centro/director_centro)
+      // ISS-HOJA-V2: Médico puede ver hoja en 'autorizada' para llevarla a firmar
+      // Después de surtida, centro ve versión simplificada con sello
       const rolActual = (user?.rol_efectivo || user?.rol || '').toLowerCase();
       const esFarmaciaRol = user?.is_superuser || 
         ['farmacia', 'admin_farmacia', 'admin_sistema', 'superusuario'].includes(rolActual);
+      // ISS-HOJA-FIX: Solo médico y centro pueden ver hoja de recolección (NO admin ni director)
+      const esCentroRol = ['medico', 'centro', 'usuario_centro'].includes(rolActual);
       
-      if (['autorizada', 'en_surtido', 'parcial', 'surtida'].includes(data.estado) && esFarmaciaRol) {
+      // Farmacia: siempre puede ver hoja en estos estados
+      // Centro: puede ver hoja en 'autorizada' (para firmas) y 'surtida' (consulta con sello)
+      const estadosHojaFarmacia = ['autorizada', 'en_surtido', 'parcial', 'surtida', 'entregada'];
+      const estadosHojaCentro = ['autorizada', 'surtida', 'entregada'];
+      
+      if ((esFarmaciaRol && estadosHojaFarmacia.includes(data.estado)) ||
+          (esCentroRol && estadosHojaCentro.includes(data.estado))) {
         cargarHojaRecoleccion();
       }
     } catch (error) {
@@ -451,20 +460,34 @@ const RequisicionDetalle = () => {
       let response;
       let nombreArchivo;
 
-      if (tipo === 'aceptacion' && hojaRecoleccion) {
-        // Usar la API de hojas de recolección con seguridad
-        response = await hojasRecoleccionAPI.descargarPDF(hojaRecoleccion.id);
-        nombreArchivo = `Hoja_Recoleccion_${hojaRecoleccion.folio_hoja}.pdf`;
-        // Registrar impresión
-        try {
-          await hojasRecoleccionAPI.registrarImpresion(hojaRecoleccion.id);
-        } catch (e) {
-          console.warn('No se pudo registrar impresión:', e);
+      if (tipo === 'aceptacion') {
+        // ISS-HOJA-V2: Lógica diferenciada según rol y estado
+        const estadoActual = requisicion?.estado?.toLowerCase();
+        // ISS-HOJA-FIX: Solo médico y centro usan hoja de consulta en surtida
+        const rolActual = (user?.rol_efectivo || user?.rol || '').toLowerCase();
+        const esRolMedicoCentro = ['medico', 'centro', 'usuario_centro'].includes(rolActual);
+        
+        // Médico/Centro en estado surtida/entregada: descargar hoja de CONSULTA con sello
+        if (esRolMedicoCentro && !esFarmacia && ['surtida', 'entregada'].includes(estadoActual)) {
+          response = await requisicionesAPI.downloadHojaConsulta(id);
+          nombreArchivo = `Consulta_Requisicion_${requisicion.folio}.pdf`;
+          toast.success('Hoja de consulta descargada');
+        } 
+        // Farmacia o Médico/Centro en autorizada: descargar hoja de recolección normal
+        else if (hojaRecoleccion) {
+          response = await hojasRecoleccionAPI.descargarPDF(hojaRecoleccion.id);
+          nombreArchivo = `Hoja_Recoleccion_${hojaRecoleccion.folio_hoja}.pdf`;
+          // Registrar impresión
+          try {
+            await hojasRecoleccionAPI.registrarImpresion(hojaRecoleccion.id);
+          } catch (e) {
+            console.warn('No se pudo registrar impresión:', e);
+          }
+        } else {
+          // Fallback a la API antigua
+          response = await requisicionesAPI.downloadPDFAceptacion(id);
+          nombreArchivo = `Hoja_Recoleccion_${requisicion.folio}.pdf`;
         }
-      } else if (tipo === 'aceptacion') {
-        // Fallback a la API antigua
-        response = await requisicionesAPI.downloadPDFAceptacion(id);
-        nombreArchivo = `Hoja_Recoleccion_${requisicion.folio}.pdf`;
       } else {
         response = await requisicionesAPI.downloadPDFRechazo(id);
         nombreArchivo = `requisicion_rechazada_${requisicion.folio}.pdf`;
@@ -472,10 +495,9 @@ const RequisicionDetalle = () => {
 
       const blob = new Blob([response.data], { type: 'application/pdf' });
       descargarArchivo(blob, nombreArchivo);
-      toast.success('PDF descargado');
       
       // Recargar hoja para actualizar contadores
-      if (tipo === 'aceptacion') {
+      if (tipo === 'aceptacion' && hojaRecoleccion) {
         cargarHojaRecoleccion();
       }
     } catch (error) {
@@ -566,11 +588,29 @@ const RequisicionDetalle = () => {
     
   // Descargas: validar centro para usuarios no privilegiados (aislamiento de datos)
   // ISS-DB-002: Estados que permiten descarga
-  // ISS-HOJA-FIX: Solo FARMACIA puede descargar hoja de recolección oficial
-  // Admin/Director centro NO deben ver/descargar la hoja oficial - solo farmacia la imprime para firmas
-  const puedeDescargarHoja = ['autorizada', 'en_surtido', 'parcial', 'surtida', 'entregada'].includes(requisicion?.estado) && 
+  // ISS-HOJA-V2: Lógica de descarga según rol y estado:
+  // - Médico/Centro en 'autorizada': Descarga hoja con firmas vacías para llevar a firmar
+  // - Médico/Centro en 'surtida/entregada': Descarga hoja de CONSULTA con sello "SURTIDA"
+  // - Farmacia: Siempre puede descargar hoja completa
+  // ISS-HOJA-FIX: Solo médico y centro (NO admin ni director) pueden descargar hoja
+  const rolParaHoja = (user?.rol_efectivo || user?.rol || '').toLowerCase();
+  const esCentroParaHoja = ['medico', 'centro', 'usuario_centro'].includes(rolParaHoja) && tieneAccesoPorCentro;
+  const esCentro = !esFarmacia && tieneAccesoPorCentro;
+  const estadoAutorizada = requisicion?.estado === 'autorizada';
+  const estadoSurtidaOEntregada = ['surtida', 'entregada'].includes(requisicion?.estado);
+  
+  // Centro: puede descargar en autorizada (para firmas) o surtida/entregada (consulta)
+  // ISS-HOJA-FIX: Solo médico y centro (NO admin ni director)
+  const puedeDescargarHojaCentro = esCentroParaHoja && 
     permisos?.descargarHojaRecoleccion &&
-    esFarmacia; // Solo FARMACIA puede descargar, no admin_centro/director_centro
+    (estadoAutorizada || estadoSurtidaOEntregada);
+  
+  // Farmacia: puede descargar en cualquier estado permitido
+  const puedeDescargarHojaFarmacia = esFarmacia && 
+    permisos?.descargarHojaRecoleccion &&
+    ['autorizada', 'en_surtido', 'parcial', 'surtida', 'entregada'].includes(requisicion?.estado);
+  
+  const puedeDescargarHoja = puedeDescargarHojaCentro || puedeDescargarHojaFarmacia;
     
   const puedeDescargarRechazo = requisicion?.estado === 'rechazada' && 
     permisos?.descargarHojaRecoleccion &&

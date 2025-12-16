@@ -6,7 +6,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, KeepTogether
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.pdfgen import canvas
 from django.conf import settings
@@ -386,17 +386,26 @@ def generar_hoja_recoleccion(requisicion):
     
     firmas_table1 = Table(firmas_parte1, colWidths=[3.5*inch, 3.5*inch])
     firmas_table1.setStyle(firma_style)
-    story.append(firmas_table1)
     
     firmas_table2 = Table(firmas_parte2, colWidths=[3.5*inch, 3.5*inch])
     firmas_table2.setStyle(firma_style)
-    story.append(firmas_table2)
     
     firmas_table3 = Table(firmas_parte3, colWidths=[3.5*inch, 3.5*inch])
     firmas_table3.setStyle(firma_style)
-    story.append(firmas_table3)
     
-    story.append(Spacer(1, 0.2*inch))
+    # ISS-PDF-FIX: Usar KeepTogether para que TODA la sección de firmas
+    # quede en la misma página y no se corte entre páginas
+    seccion_firmas = KeepTogether([
+        Paragraph("<b>FIRMAS DE AUTORIZACIÓN Y RECEPCIÓN</b>", ParagraphStyle(
+            'FirmasTitle', fontSize=10, textColor=COLOR_GUINDA, 
+            alignment=TA_CENTER, spaceAfter=10
+        )),
+        firmas_table1,
+        firmas_table2,
+        firmas_table3,
+        Spacer(1, 0.2*inch)
+    ])
+    story.append(seccion_firmas)
     
     # Construir PDF con canvas de fondo oficial
     def make_canvas(*args, **kwargs):
@@ -600,4 +609,206 @@ def generar_pdf_rechazo(requisicion):
     doc.build(story, canvasmaker=make_canvas)
     buffer.seek(0)
     logger.info(f"PDF de rechazo generado para requisicion {requisicion.folio}")
+    return buffer
+
+
+def generar_hoja_consulta(requisicion):
+    """
+    Genera PDF de hoja de consulta simplificada para centros.
+    Esta versión tiene un sello "SURTIDA" y NO muestra las firmas completas.
+    Solo para requisiciones en estado surtida o entregada.
+    
+    Args:
+        requisicion: Objeto Requisicion
+    
+    Returns:
+        BytesIO: Buffer con PDF generado
+    """
+    buffer = BytesIO()
+    
+    fondo_institucional = get_fondo_institucional_path()
+    fondo_path = str(fondo_institucional) if fondo_institucional else None
+    
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=letter,
+        topMargin=1*inch,
+        bottomMargin=0.8*inch,
+        leftMargin=0.5*inch,
+        rightMargin=0.5*inch
+    )
+    story = []
+    styles = getSampleStyleSheet()
+    
+    # Estilo para título
+    titulo_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=16,
+        textColor=COLOR_GUINDA,
+        spaceAfter=10,
+        spaceBefore=10,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
+    )
+    
+    # Estilo para subtítulo de SURTIDA
+    surtida_style = ParagraphStyle(
+        'SurtidaTitle',
+        parent=styles['Heading1'],
+        fontSize=20,
+        textColor=colors.HexColor('#16a34a'),  # Verde
+        spaceAfter=20,
+        spaceBefore=5,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
+    )
+    
+    # Estilo para subtítulos
+    subtitulo_style = ParagraphStyle(
+        'CustomSubtitle',
+        parent=styles['Heading2'],
+        fontSize=11,
+        textColor=COLOR_GUINDA,
+        spaceAfter=10,
+        fontName='Helvetica-Bold'
+    )
+    
+    # Estilo para celdas con texto largo
+    celda_texto_style = ParagraphStyle(
+        'CeldaTexto',
+        parent=styles['Normal'],
+        fontSize=8,
+        leading=10,
+        wordWrap='CJK',
+        alignment=TA_LEFT,
+    )
+    
+    # Título principal
+    titulo = Paragraph("HOJA DE CONSULTA - REQUISICIÓN DE MEDICAMENTOS", titulo_style)
+    story.append(titulo)
+    
+    # SELLO DE SURTIDA
+    surtida_stamp = Paragraph("✓ SURTIDA", surtida_style)
+    story.append(surtida_stamp)
+    story.append(Spacer(1, 0.1*inch))
+    
+    # Información de la requisición
+    centro_obj = requisicion.centro_origen or requisicion.centro_destino
+    centro_nombre = centro_obj.nombre if centro_obj else 'N/A'
+    solicitante_nombre = requisicion.solicitante.get_full_name() if requisicion.solicitante else 'N/A'
+    
+    # Fechas
+    fecha_surtido_texto = 'N/A'
+    if hasattr(requisicion, 'fecha_surtido') and requisicion.fecha_surtido:
+        fecha_surtido_texto = requisicion.fecha_surtido.strftime('%d/%m/%Y %H:%M')
+    
+    fecha_entrega_texto = 'N/A'
+    if hasattr(requisicion, 'fecha_entrega') and requisicion.fecha_entrega:
+        fecha_entrega_texto = requisicion.fecha_entrega.strftime('%d/%m/%Y %H:%M')
+    
+    info_data = [
+        ['Folio:', requisicion.folio or f'REQ-{requisicion.id}', 'Estado:', (requisicion.estado or '').upper()],
+        ['Centro Solicitante:', centro_nombre, 'Fecha de Solicitud:', 
+         requisicion.fecha_solicitud.strftime('%d/%m/%Y') if requisicion.fecha_solicitud else 'N/A'],
+        ['Solicitante:', solicitante_nombre, 'Fecha de Surtido:', fecha_surtido_texto],
+        ['', '', 'Fecha de Entrega:', fecha_entrega_texto],
+    ]
+    
+    info_table = Table(info_data, colWidths=[1.5*inch, 2.5*inch, 1.5*inch, 2*inch])
+    info_table.setStyle(TableStyle([
+        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+    ]))
+    
+    story.append(info_table)
+    story.append(Spacer(1, 0.25*inch))
+    
+    # Subtítulo de productos
+    productos_titulo = Paragraph("PRODUCTOS SURTIDOS", subtitulo_style)
+    story.append(productos_titulo)
+    story.append(Spacer(1, 0.1*inch))
+    
+    # Tabla de productos con cantidad surtida
+    productos_data = [
+        ['#', 'Clave', 'Descripción', 'Solicitado', 'Surtido', 'Unidad']
+    ]
+    
+    for idx, detalle in enumerate(requisicion.detalles.all(), start=1):
+        descripcion_texto = detalle.producto.descripcion or detalle.producto.nombre or 'N/A'
+        descripcion_paragraph = Paragraph(descripcion_texto, celda_texto_style)
+        
+        cantidad_solicitada = detalle.cantidad_solicitada or 0
+        cantidad_surtida = detalle.cantidad_entregada or detalle.cantidad_autorizada or 0
+        unidad = getattr(detalle.producto, 'unidad_medida', None) or 'UND'
+        
+        productos_data.append([
+            str(idx),
+            detalle.producto.clave or 'N/A',
+            descripcion_paragraph,
+            str(cantidad_solicitada),
+            str(cantidad_surtida),
+            unidad
+        ])
+    
+    productos_table = Table(
+        productos_data, 
+        colWidths=[0.4*inch, 0.8*inch, 3.2*inch, 0.8*inch, 0.8*inch, 0.7*inch]
+    )
+    productos_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+        ('TOPPADDING', (0, 0), (-1, 0), 8),
+        ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
+        ('ALIGN', (0, 1), (0, -1), 'CENTER'),
+        ('ALIGN', (3, 1), (5, -1), 'CENTER'),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 1), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
+    ]))
+    
+    story.append(productos_table)
+    story.append(Spacer(1, 0.3*inch))
+    
+    # Nota informativa en lugar de firmas
+    nota_style = ParagraphStyle(
+        'NotaStyle',
+        parent=styles['Normal'],
+        fontSize=9,
+        textColor=COLOR_GRIS,
+        alignment=TA_CENTER,
+        spaceBefore=10,
+        spaceAfter=10,
+    )
+    
+    nota = Paragraph(
+        "Este documento es una copia de consulta. "
+        "El documento original con firmas está en resguardo de Farmacia Central.",
+        nota_style
+    )
+    story.append(nota)
+    
+    # Construir PDF con canvas de fondo oficial
+    def make_canvas(*args, **kwargs):
+        return RequisicionCanvas(*args, fondo_path=fondo_path, **kwargs)
+    
+    doc.build(story, canvasmaker=make_canvas)
+    
+    buffer.seek(0)
+    logger.info(f"Hoja de consulta generada para requisición {requisicion.folio}")
     return buffer
