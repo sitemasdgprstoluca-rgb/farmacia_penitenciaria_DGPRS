@@ -85,7 +85,12 @@ const RequisicionDetalle = () => {
       
       // Cargar hoja de recolección si existe
       // ISS-DB-002: Estados que permiten ver hoja de recolección
-      if (['autorizada', 'en_surtido', 'parcial', 'surtida'].includes(data.estado)) {
+      // ISS-HOJA-FIX: Solo cargar hoja para roles de FARMACIA (no admin_centro/director_centro)
+      const rolActual = (user?.rol_efectivo || user?.rol || '').toLowerCase();
+      const esFarmaciaRol = user?.is_superuser || 
+        ['farmacia', 'admin_farmacia', 'admin_sistema', 'superusuario'].includes(rolActual);
+      
+      if (['autorizada', 'en_surtido', 'parcial', 'surtida'].includes(data.estado) && esFarmaciaRol) {
         cargarHojaRecoleccion();
       }
     } catch (error) {
@@ -574,9 +579,11 @@ const RequisicionDetalle = () => {
     
   // Descargas: validar centro para usuarios no privilegiados (aislamiento de datos)
   // ISS-DB-002: Estados que permiten descarga
+  // ISS-HOJA-FIX: Solo FARMACIA puede descargar hoja de recolección oficial
+  // Admin/Director centro NO deben ver/descargar la hoja oficial - solo farmacia la imprime para firmas
   const puedeDescargarHoja = ['autorizada', 'en_surtido', 'parcial', 'surtida', 'entregada'].includes(requisicion?.estado) && 
     permisos?.descargarHojaRecoleccion &&
-    tieneAccesoPorCentro; // Usuarios de centro solo descargan hojas de su centro
+    esFarmacia; // Solo FARMACIA puede descargar, no admin_centro/director_centro
     
   const puedeDescargarRechazo = requisicion?.estado === 'rechazada' && 
     permisos?.descargarHojaRecoleccion &&
@@ -672,6 +679,24 @@ const RequisicionDetalle = () => {
               </div>
             </div>
           )}
+
+          {/* FLUJO V2: Fecha límite de recolección - visible para centros */}
+          {requisicion.fecha_recoleccion_limite && (
+            <div className="flex items-start gap-3">
+              <FaCalendar className="text-orange-500 mt-1" />
+              <div>
+                <p className="text-sm text-gray-500">Fecha Límite Recolección</p>
+                <p className="font-semibold text-orange-600">
+                  {formatFecha(requisicion.fecha_recoleccion_limite)}
+                </p>
+                <p className="text-xs text-gray-400">
+                  {new Date(requisicion.fecha_recoleccion_limite) < new Date() 
+                    ? '⚠️ Plazo vencido' 
+                    : '✓ Dentro del plazo'}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {requisicion.observaciones && (
@@ -681,6 +706,17 @@ const RequisicionDetalle = () => {
               <span className="text-sm font-semibold">Observaciones</span>
             </div>
             <p className="text-gray-700">{requisicion.observaciones}</p>
+          </div>
+        )}
+
+        {/* FLUJO V2: Observaciones de farmacia */}
+        {requisicion.observaciones_farmacia && (
+          <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="flex items-center gap-2 text-blue-600 mb-1">
+              <FaInfoCircle />
+              <span className="text-sm font-semibold">Observaciones de Farmacia</span>
+            </div>
+            <p className="text-blue-700">{requisicion.observaciones_farmacia}</p>
           </div>
         )}
 
@@ -870,8 +906,9 @@ const RequisicionDetalle = () => {
         </div>
       </div>
 
-      {/* Hoja de Recolección - Solo visible para requisiciones autorizadas/surtidas/finalizadas */}
-      {hojaRecoleccion && (
+      {/* Hoja de Recolección - Solo visible para FARMACIA (no admin_centro/director_centro) */}
+      {/* ISS-HOJA-FIX: Admin/Director centro NO deben ver la hoja - solo farmacia la maneja */}
+      {hojaRecoleccion && esFarmacia && (
         <div className="bg-white rounded-xl shadow-lg p-6 mb-6 border-l-4 border-blue-500">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold flex items-center gap-2 text-theme-primary">

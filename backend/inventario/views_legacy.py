@@ -5841,6 +5841,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         
         # Procesar ajustes de cantidades si se envían
         items_data = request.data.get('items') or request.data.get('detalles') or []
+        items_procesados = set()
+        
         for item_data in items_data:
             item_id = item_data.get('id')
             cant_autorizada = item_data.get('cantidad_autorizada')
@@ -5857,8 +5859,19 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                     }, status=status.HTTP_400_BAD_REQUEST)
                 item.motivo_ajuste = motivo_ajuste
                 item.save()
+                items_procesados.add(item_id)
             except DetalleRequisicion.DoesNotExist:
                 continue
+        
+        # ISS-SURTIR-FIX: Si NO se enviaron items explícitos, autorizar TODOS los detalles
+        # con cantidad_autorizada = cantidad_solicitada (aprobación total)
+        if not items_procesados:
+            logger.info(f"autorizar_farmacia: No se enviaron items, autorizando todos los detalles con cantidad solicitada")
+            for detalle in requisicion.detalles.all():
+                if detalle.cantidad_autorizada is None or detalle.cantidad_autorizada == 0:
+                    detalle.cantidad_autorizada = detalle.cantidad_solicitada
+                    detalle.save()
+                    logger.info(f"  - Detalle {detalle.id}: autorizado {detalle.cantidad_autorizada} unidades de {detalle.producto.clave}")
         
         estado_anterior = requisicion.estado
         requisicion.estado = 'autorizada'
@@ -5878,16 +5891,21 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         # Django manejará qué campos actualizar basándose en los cambios detectados
         try:
             requisicion.save()
+            logger.info(f"Requisición {requisicion.folio} guardada exitosamente con fecha_recoleccion_limite={fecha_recoleccion}")
         except Exception as save_error:
             logger.error(f"Error al guardar requisición autorizada: {save_error}")
-            # Si falla, intentar guardar solo el estado como mínimo
+            # Si falla, intentar guardar con update() directo incluyendo TODOS los campos importantes
             try:
                 Requisicion.objects.filter(pk=requisicion.pk).update(
                     estado='autorizada',
-                    fecha_autorizacion=timezone.now()
+                    fecha_autorizacion=timezone.now(),
+                    fecha_autorizacion_farmacia=timezone.now(),
+                    fecha_recoleccion_limite=fecha_recoleccion,
+                    autorizador_farmacia=request.user,
+                    autorizador=request.user
                 )
                 requisicion.refresh_from_db()
-                logger.info("Guardado exitoso via update() directo")
+                logger.info(f"Guardado exitoso via update() directo con fecha_recoleccion_limite={fecha_recoleccion}")
             except Exception as fallback_error:
                 logger.error(f"Error en fallback update: {fallback_error}")
                 raise
@@ -8190,6 +8208,29 @@ class HojaRecoleccionViewSet(viewsets.ReadOnlyModelViewSet):
                 'error': 'Error al generar PDF',
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='por-requisicion/(?P<requisicion_id>[^/.]+)')
+    def por_requisicion(self, request, requisicion_id=None):
+        """
+        Obtiene la hoja de recolección asociada a una requisición específica.
+        """
+        try:
+            hoja = self.get_queryset().filter(requisicion_id=requisicion_id).first()
+            if hoja:
+                return Response({
+                    'existe': True,
+                    'hoja': HojaRecoleccionSerializer(hoja, context={'request': request}).data
+                })
+            return Response({
+                'existe': False,
+                'hoja': None
+            })
+        except Exception as e:
+            logger.error(f"Error obteniendo hoja por requisición {requisicion_id}: {e}")
+            return Response({
+                'existe': False,
+                'error': str(e)
+            }, status=status.HTTP_200_OK)  # No es error crítico
 
 
 
