@@ -106,7 +106,8 @@ export function RequisicionAcciones({
   const { 
     getAccionesDisponibles, 
     ejecutarAccion, 
-    loading: hookLoading 
+    loading: hookLoading,
+    rolUsuario
   } = useRequisicionFlujo();
   
   const [loadingAccion, setLoadingAccion] = useState(null);
@@ -153,7 +154,7 @@ export function RequisicionAcciones({
     }
   };
   
-  // DEBUG: Mostrar info cuando no hay acciones disponibles
+  // Mostrar info cuando no hay acciones disponibles
   if (acciones.length === 0) {
     const estadoActual = requisicion?.estado?.toLowerCase() || 'desconocido';
     const estadosFinales = ['entregada', 'rechazada', 'cancelada', 'vencida'];
@@ -161,14 +162,15 @@ export function RequisicionAcciones({
     if (estadosFinales.includes(estadoActual)) {
       return (
         <div className="text-sm text-gray-500 italic">
-          Requisición en estado final: <span className="font-medium">{estadoActual}</span>
+          Requisición finalizada ({estadoActual})
         </div>
       );
     }
     
+    // Info para estados intermedios sin acciones para este rol
     return (
-      <div className="text-sm text-amber-600 italic">
-        Estado actual: <span className="font-medium">{estadoActual}</span> - No hay acciones disponibles para tu rol
+      <div className="text-sm text-gray-500 italic">
+        Estado: {estadoActual} — Esperando acción de otro rol
       </div>
     );
   }

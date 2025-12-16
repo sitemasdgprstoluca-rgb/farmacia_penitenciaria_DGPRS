@@ -174,48 +174,85 @@ export function useRequisicionFlujo() {
   }, []);
   
   /**
-   * Verifica si el usuario puede ejecutar una acción
-   * SIMPLIFICADO: Solo verifica estado y rol, la validación de transición es redundante
-   * porque estadoResultante ya está definido correctamente en ACCIONES_FLUJO
+   * FLUJO V2: Verifica si el usuario puede ejecutar una acción
+   * Validación estricta por rol Y estado
    */
   const puedeEjecutarAccion = useCallback((accionKey, estadoActual) => {
-    if (esSuperuser) return true;
-    
     const accion = ACCIONES_FLUJO[accionKey];
     if (!accion) return false;
     
-    // Verificar estado
+    // 1. Verificar que el estado actual permite esta acción
     if (!accion.estadosPermitidos.includes(estadoActual)) {
       return false;
     }
     
-    // Verificar rol - simplificado
-    const rolesPermitidos = accion.rolesPermitidos || [];
+    // 2. Superuser puede todo
+    if (esSuperuser) return true;
+    
     const rolLower = rolUsuario.toLowerCase();
     
-    // Verificar rol directo o normalizado
-    if (rolesPermitidos.includes(rolLower)) {
-      return true;
+    // 3. FLUJO V2: Validación ESTRICTA por rol y acción específica
+    // Cada acción solo la puede hacer el rol correspondiente
+    
+    switch (accionKey) {
+      // === ACCIONES DEL CENTRO PENITENCIARIO ===
+      case 'enviar_admin':
+        // Solo médicos/usuarios del centro pueden enviar a admin
+        return ['medico', 'usuario_centro', 'usuario_normal'].includes(rolLower);
+      
+      case 'autorizar_admin':
+        // Solo administrador del centro en estado pendiente_admin
+        return ['administrador_centro', 'admin_centro'].includes(rolLower) && estadoActual === 'pendiente_admin';
+      
+      case 'autorizar_director':
+        // Solo director del centro en estado pendiente_director
+        return ['director_centro', 'director'].includes(rolLower) && estadoActual === 'pendiente_director';
+      
+      // === ACCIONES DE FARMACIA ===
+      case 'recibir_farmacia':
+        // Solo farmacia cuando llega la requisición (enviada)
+        return ['farmacia', 'admin_farmacia'].includes(rolLower) && estadoActual === 'enviada';
+      
+      case 'autorizar_farmacia':
+        // Farmacia autoriza en en_revision o enviada (si omite recibir)
+        return ['farmacia', 'admin_farmacia'].includes(rolLower) && 
+               ['en_revision', 'enviada'].includes(estadoActual);
+      
+      case 'surtir':
+        // Farmacia surte cuando está autorizada, en_surtido o parcial
+        return ['farmacia', 'admin_farmacia'].includes(rolLower) && 
+               ['autorizada', 'en_surtido', 'parcial'].includes(estadoActual);
+      
+      // === ACCIONES DE DEVOLUCIÓN/RECHAZO ===
+      case 'devolver':
+        // Admin/Director/Farmacia pueden devolver según el estado
+        if (estadoActual === 'pendiente_admin' && ['administrador_centro', 'admin_centro'].includes(rolLower)) return true;
+        if (estadoActual === 'pendiente_director' && ['director_centro', 'director'].includes(rolLower)) return true;
+        if (estadoActual === 'en_revision' && ['farmacia', 'admin_farmacia'].includes(rolLower)) return true;
+        return false;
+      
+      case 'reenviar':
+        // El solicitante original puede reenviar desde devuelta
+        return ['medico', 'usuario_centro', 'usuario_normal'].includes(rolLower) && estadoActual === 'devuelta';
+      
+      case 'rechazar':
+        // Cada rol rechaza en su etapa específica
+        if (estadoActual === 'pendiente_admin' && ['administrador_centro', 'admin_centro'].includes(rolLower)) return true;
+        if (estadoActual === 'pendiente_director' && ['director_centro', 'director'].includes(rolLower)) return true;
+        if (['enviada', 'en_revision'].includes(estadoActual) && ['farmacia', 'admin_farmacia'].includes(rolLower)) return true;
+        return false;
+      
+      case 'cancelar':
+        // Quien creó puede cancelar en estados tempranos, farmacia en estados de farmacia
+        if (['borrador', 'devuelta'].includes(estadoActual) && 
+            ['medico', 'usuario_centro', 'usuario_normal'].includes(rolLower)) return true;
+        if (['autorizada', 'en_surtido'].includes(estadoActual) && 
+            ['farmacia', 'admin_farmacia'].includes(rolLower)) return true;
+        return false;
+      
+      default:
+        return false;
     }
-    
-    // Mapeo de roles legacy/alternativos
-    const rolesEquivalentes = {
-      'admin_sistema': ['admin', 'superusuario'],
-      'superusuario': ['admin', 'admin_sistema'],
-      'admin_farmacia': ['farmacia', 'admin'],
-      'usuario_normal': ['centro', 'medico'],
-      'administrador_centro': ['centro', 'admin'],
-      'director_centro': ['centro', 'director'],
-    };
-    
-    const equivalentes = rolesEquivalentes[rolLower] || [];
-    for (const equiv of equivalentes) {
-      if (rolesPermitidos.includes(equiv)) {
-        return true;
-      }
-    }
-    
-    return false;
   }, [rolUsuario, esSuperuser]);
   
   /**
