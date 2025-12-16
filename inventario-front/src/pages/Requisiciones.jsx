@@ -646,13 +646,11 @@ const Requisiciones = () => {
     return false;
   };
 
-  // ISS-004 FIX: Verificar si puede surtir usando transiciones válidas
+  // ISS-FIX-SURTIR: Verificar si puede surtir - simplificado, solo desde 'autorizada'
   const puedeSurtir = (requisicion) => {
     const estadoNormalizado = requisicion.estado?.toLowerCase();
-    // Verificar transición válida hacia 'surtida' o 'surtida_parcial'
-    const puedeTransicionar = esTransicionValida(estadoNormalizado, 'surtida') || 
-                               esTransicionValida(estadoNormalizado, 'surtida_parcial');
-    if (!puedeTransicionar) return false;
+    // Solo se puede surtir desde 'autorizada' - va directo a 'entregada'
+    if (estadoNormalizado !== 'autorizada') return false;
     // Solo admin/farmacia pueden surtir
     return permisos.isFarmaciaAdmin && permisos.surtirRequisicion;
   };
@@ -2431,11 +2429,11 @@ const Requisiciones = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
             <div className="rounded-t-2xl px-6 py-4 text-white bg-theme-gradient">
-              <h2 className="text-xl font-bold">Surtir requisición</h2>
+              <h2 className="text-xl font-bold">Surtir y Entregar</h2>
             </div>
             <div className="px-6 py-4 space-y-4">
               <p className="text-gray-700">
-                ¿Confirma SURTIR la requisición <strong>{confirmSurtir?.folio || confirmSurtir?.id}</strong>?
+                ¿Confirma SURTIR Y ENTREGAR la requisición <strong>{confirmSurtir?.folio || confirmSurtir?.id}</strong>?
               </p>
               <p className="text-sm text-blue-700 bg-blue-50 p-2 rounded-lg flex items-center gap-2">
                 <FaExclamationTriangle /> Esta acción descontará el inventario de farmacia y lo agregará automáticamente al inventario del centro. La requisición pasará a ENTREGADA.
@@ -2494,7 +2492,7 @@ const Requisiciones = () => {
                 className="rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50 flex items-center gap-2 bg-theme-gradient"
               >
                 {isSubmitting && <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />}
-                {isSubmitting ? 'Surtiendo...' : 'Confirmar Surtido'}
+                {isSubmitting ? 'Procesando...' : 'Surtir y Entregar'}
               </button>
             </div>
           </div>

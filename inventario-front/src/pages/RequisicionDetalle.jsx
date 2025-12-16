@@ -353,7 +353,7 @@ const RequisicionDetalle = () => {
     try {
       setProcesando(true);
       await requisicionesAPI.surtir(id);
-      toast.success('Requisición surtida - Inventario actualizado');
+      toast.success('✅ Requisición surtida y entregada - Inventario actualizado');
       cargarRequisicion();
     } catch (error) {
       const errorMsg = error.response?.data?.error || 'Error al surtir';
@@ -572,13 +572,12 @@ const RequisicionDetalle = () => {
   // ISS-DB-002: Estados alineados con BD Supabase
   const puedeAutorizar = requisicion?.estado === 'enviada' && esFarmacia && permisos?.autorizarRequisicion;
   const puedeRechazar = requisicion?.estado === 'enviada' && esFarmacia && permisos?.rechazarRequisicion;
-  const puedeSurtir = (requisicion?.estado === 'autorizada' || requisicion?.estado === 'parcial') && esFarmacia && permisos?.surtirRequisicion;
+  // ISS-FIX-SURTIR: Solo desde 'autorizada' - surtir SIEMPRE termina en 'entregada'
+  const puedeSurtir = requisicion?.estado === 'autorizada' && esFarmacia && permisos?.surtirRequisicion;
   
-  // puedeMarcarRecibida: estado surtida + (superuser O del mismo centro) + tener permiso específico confirmarRecepcion
-  // Se valida tanto el centro como el permiso fino para evitar acciones no autorizadas
-  const puedeMarcarRecibida = requisicion?.estado === 'surtida' && 
-    tieneAccesoPorCentro &&
-    permisos?.confirmarRecepcion === true; // Debe tener permiso específico de confirmar recepción
+  // ISS-FIX-SURTIR: Ya no hay estado intermedio 'surtida' - el surtido va directo a 'entregada'
+  // puedeMarcarRecibida ya no es necesario porque el surtido completa automáticamente
+  const puedeMarcarRecibida = false; // Deshabilitado - flujo simplificado
   
   // Cancelar: validar centro para usuarios no privilegiados
   // ISS-DB-002: Estados terminales
@@ -1179,14 +1178,14 @@ const RequisicionDetalle = () => {
         tone="danger"
       />
 
-      {/* Modal de confirmación para surtir */}
+      {/* Modal de confirmación para surtir y entregar */}
       <ConfirmModal
         open={showSurtirModal}
         onCancel={() => setShowSurtirModal(false)}
         onConfirm={ejecutarSurtir}
-        title="Surtir requisición"
-        message={`¿Marcar la requisición ${requisicion?.folio || ''} como surtida? Se descontará el inventario automáticamente.`}
-        confirmText="Surtir"
+        title="Surtir y Entregar"
+        message={`¿Surtir y entregar la requisición ${requisicion?.folio || ''}? Se descontará el inventario de farmacia y se agregará al centro destino automáticamente.`}
+        confirmText="Surtir y Entregar"
         cancelText="Cancelar"
         tone="info"
       />
