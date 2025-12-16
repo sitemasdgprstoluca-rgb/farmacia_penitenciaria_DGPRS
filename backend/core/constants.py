@@ -530,6 +530,31 @@ PERMISOS_FLUJO_REQUISICION = {
         'puede_surtir': False,
         'puede_confirmar_entrega': True,
     },
+    # =========================================================================
+    # ALIASES DE ROLES - Variantes usadas en BD que mapean a permisos estándar
+    # =========================================================================
+    # ISS-ROL-FIX: Agregar alias 'admin_centro' que mapea a administrador_centro
+    'admin_centro': {
+        'puede_crear': False,
+        'puede_enviar_admin': False,
+        'puede_autorizar_admin': True,
+        'puede_autorizar_director': False,
+        'puede_recibir_farmacia': False,
+        'puede_autorizar_farmacia': False,
+        'puede_surtir': False,
+        'puede_confirmar_entrega': True,
+    },
+    # ISS-ROL-FIX: Agregar alias 'director' que mapea a director_centro
+    'director': {
+        'puede_crear': False,
+        'puede_enviar_admin': False,
+        'puede_autorizar_admin': False,
+        'puede_autorizar_director': True,
+        'puede_recibir_farmacia': False,
+        'puede_autorizar_farmacia': False,
+        'puede_surtir': False,
+        'puede_confirmar_entrega': True,
+    },
 }
 
 # Niveles de stock

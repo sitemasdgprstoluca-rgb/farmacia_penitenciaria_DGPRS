@@ -4373,7 +4373,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             
             # 3.2 Administrador Centro: Ve desde pendiente_admin en adelante
             # FLUJO V2: Admin NO ve borradores de otros ni pendiente_director (eso es del director)
-            elif rol == 'administrador_centro':
+            # ISS-ROL-FIX: Incluir alias 'admin_centro' para compatibilidad
+            elif rol in ['administrador_centro', 'admin_centro']:
                 # Puede ver: pendiente_admin (para autorizar) + todo lo que ya pasó esa etapa
                 # NO ve: borradores de otros
                 queryset = queryset.exclude(
@@ -4382,12 +4383,14 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             
             # 3.3 Director Centro: Ve SOLO desde pendiente_director en adelante
             # FLUJO V2: Director NO debe ver pendiente_admin (eso es del Admin)
-            elif rol == 'director_centro':
+            # ISS-ROL-FIX: Incluir alias 'director' para compatibilidad
+            elif rol in ['director_centro', 'director']:
                 # Estados que el director puede ver:
                 # - pendiente_director: para autorizar
                 # - enviada, autorizada, parcial, surtida, entregada: ya autorizados
                 # - rechazada, cancelada, vencida: finalizados
                 # NO ve: borrador, pendiente_admin (aún no llegó a su etapa)
+                queryset = queryset.exclude(estado__in=['borrador', 'pendiente_admin'])
                 queryset = queryset.exclude(estado__in=['borrador', 'pendiente_admin'])
             
             # 3.4 Centro genérico: Ve todo del centro (lectura)
