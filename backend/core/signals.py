@@ -177,15 +177,32 @@ def auditar_cambios_requisicion(sender, instance, created, **kwargs):
     )
 
     # =========================================================================
-    # SISTEMA DE NOTIFICACIONES BIDIRECCIONAL
+    # SISTEMA DE NOTIFICACIONES BIDIRECCIONAL - FLUJO V2
     # =========================================================================
     
-    # Caso 1: Centro ENVÍA requisición → Notificar a usuarios de Farmacia
+    # FLUJO V2: Notificaciones según estado
+    
+    # Caso 1: Médico envía a Admin del Centro
+    if instance.estado == 'pendiente_admin':
+        _notificar_admin_centro(instance)
+        return
+    
+    # Caso 2: Admin envía a Director del Centro
+    if instance.estado == 'pendiente_director':
+        _notificar_director_centro(instance)
+        return
+    
+    # Caso 3: Director envía a Farmacia (en_revision)
+    if instance.estado == 'en_revision':
+        _notificar_farmacia_nueva_requisicion(instance)
+        return
+    
+    # Caso 4: Centro ENVÍA requisición directamente a Farmacia (legacy)
     if instance.estado == 'enviada':
         _notificar_farmacia_nueva_requisicion(instance)
         return
     
-    # Caso 2: Farmacia PROCESA requisición → Notificar al solicitante (Centro)
+    # Caso 5: Farmacia PROCESA requisición → Notificar al solicitante (Centro)
     mensajes_para_solicitante = {
         'autorizada': ('success', 'Requisición AUTORIZADA', 
                        f'Su requisición {instance.numero} ha sido autorizada por Farmacia.'),
@@ -200,11 +217,106 @@ def auditar_cambios_requisicion(sender, instance, created, **kwargs):
                      f'La requisición {instance.numero} ha sido entregada al centro.'),
         'cancelada': ('warning', 'Requisición CANCELADA', 
                       f'Su requisición {instance.numero} ha sido cancelada.'),
+        # FLUJO V2: Notificar devoluciones
+        'devuelta': ('warning', 'Requisición DEVUELTA', 
+                     f'Su requisición {instance.numero} ha sido devuelta para correcciones.'),
     }
 
     if instance.estado in mensajes_para_solicitante:
         tipo, titulo, mensaje = mensajes_para_solicitante[instance.estado]
         _notificar_solicitante(instance, tipo, titulo, mensaje)
+
+
+def _notificar_admin_centro(requisicion):
+    """
+    FLUJO V2: Notifica al Administrador del Centro cuando un médico envía una requisición.
+    """
+    from .models import User
+    
+    centro = requisicion.centro_destino or requisicion.centro_origen
+    if not centro:
+        logger.warning(f"No se puede notificar admin: requisición {requisicion.numero} sin centro")
+        return
+    
+    # Buscar usuarios con rol de administrador en el mismo centro
+    # Roles válidos: administrador_centro (FLUJO V2) o admin (legacy)
+    admins_centro = User.objects.filter(
+        centro=centro,
+        rol__in=['administrador_centro', 'admin_centro', 'admin'],
+        is_active=True
+    )
+    
+    if not admins_centro.exists():
+        logger.warning(f"No hay administradores en el centro {centro.nombre} para notificar")
+        return
+    
+    solicitante_nombre = requisicion.solicitante.get_full_name() or requisicion.solicitante.username if requisicion.solicitante else 'Usuario'
+    
+    for admin in admins_centro:
+        try:
+            Notificacion.objects.create(
+                usuario=admin,
+                tipo='info',
+                titulo='Nueva Requisición para Autorizar',
+                mensaje=f'{solicitante_nombre} ha enviado la requisición {requisicion.numero} para su autorización.',
+                datos={
+                    'requisicion_id': requisicion.pk,
+                    'numero': requisicion.numero,
+                    'solicitante': requisicion.solicitante.username if requisicion.solicitante else None,
+                    'estado': 'pendiente_admin'
+                },
+                url=f'/requisiciones/{requisicion.pk}'
+            )
+            logger.debug(f"Notificación enviada a admin {admin.username}: Requisición {requisicion.numero}")
+        except Exception as exc:
+            logger.error(f"Error creando notificación para admin {admin.username}: {exc}")
+    
+    logger.info(f"Notificaciones enviadas a {admins_centro.count()} admin(s) del centro {centro.nombre}")
+
+
+def _notificar_director_centro(requisicion):
+    """
+    FLUJO V2: Notifica al Director del Centro cuando el admin autoriza una requisición.
+    """
+    from .models import User
+    
+    centro = requisicion.centro_destino or requisicion.centro_origen
+    if not centro:
+        logger.warning(f"No se puede notificar director: requisición {requisicion.numero} sin centro")
+        return
+    
+    # Buscar usuarios con rol de director en el mismo centro
+    # Roles válidos: director_centro (FLUJO V2) o director (legacy)
+    directores_centro = User.objects.filter(
+        centro=centro,
+        rol__in=['director_centro', 'director'],
+        is_active=True
+    )
+    
+    if not directores_centro.exists():
+        logger.warning(f"No hay directores en el centro {centro.nombre} para notificar")
+        return
+    
+    for director in directores_centro:
+        try:
+            Notificacion.objects.create(
+                usuario=director,
+                tipo='info',
+                titulo='Requisición Pendiente de Autorización',
+                mensaje=f'La requisición {requisicion.numero} requiere su autorización como Director.',
+                datos={
+                    'requisicion_id': requisicion.pk,
+                    'numero': requisicion.numero,
+                    'solicitante': requisicion.solicitante.username if requisicion.solicitante else None,
+                    'estado': 'pendiente_director'
+                },
+                url=f'/requisiciones/{requisicion.pk}'
+            )
+            logger.debug(f"Notificación enviada a director {director.username}: Requisición {requisicion.numero}")
+        except Exception as exc:
+            logger.error(f"Error creando notificación para director {director.username}: {exc}")
+    
+    logger.info(f"Notificaciones enviadas a {directores_centro.count()} director(es) del centro {centro.nombre}")
 
 
 def _notificar_farmacia_nueva_requisicion(requisicion):
@@ -215,8 +327,7 @@ def _notificar_farmacia_nueva_requisicion(requisicion):
     
     # Obtener usuarios de farmacia y admin que deben recibir notificaciones
     usuarios_farmacia = User.objects.filter(
-        rol__in=['farmacia', 'admin_sistema', 'admin_farmacia', 'superusuario'],
-        activo=True,
+        rol__in=['farmacia', 'admin_sistema', 'admin_farmacia', 'superusuario', 'FARMACIA', 'ADMIN'],
         is_active=True
     )
     

@@ -5856,18 +5856,61 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         
         estado_anterior = requisicion.estado
         requisicion.estado = 'autorizada'
-        requisicion.fecha_autorizacion_farmacia = timezone.now()
-        requisicion.fecha_autorizacion = timezone.now()  # Campo legacy
-        requisicion.fecha_recoleccion_limite = fecha_recoleccion
-        requisicion.autorizador_farmacia = request.user
-        requisicion.autorizador = request.user  # Campo legacy
+        
+        # ISS-FIX: Construir update_fields dinámicamente para manejar columnas que pueden no existir en BD
+        update_fields = ['estado']
+        
+        # Campos obligatorios del flujo
+        try:
+            requisicion.fecha_autorizacion_farmacia = timezone.now()
+            update_fields.append('fecha_autorizacion_farmacia')
+        except Exception as e:
+            logger.warning(f"Campo fecha_autorizacion_farmacia no disponible: {e}")
+        
+        try:
+            requisicion.fecha_autorizacion = timezone.now()  # Campo legacy
+            update_fields.append('fecha_autorizacion')
+        except Exception as e:
+            logger.warning(f"Campo fecha_autorizacion no disponible: {e}")
+        
+        try:
+            requisicion.fecha_recoleccion_limite = fecha_recoleccion
+            update_fields.append('fecha_recoleccion_limite')
+        except Exception as e:
+            logger.warning(f"Campo fecha_recoleccion_limite no disponible: {e}")
+        
+        try:
+            requisicion.autorizador_farmacia = request.user
+            update_fields.append('autorizador_farmacia')
+        except Exception as e:
+            logger.warning(f"Campo autorizador_farmacia no disponible: {e}")
+        
+        try:
+            requisicion.autorizador = request.user  # Campo legacy
+            update_fields.append('autorizador')
+        except Exception as e:
+            logger.warning(f"Campo autorizador no disponible: {e}")
+        
         if observaciones:
-            requisicion.observaciones_farmacia = f"{requisicion.observaciones_farmacia or ''}\n{observaciones}".strip()
-        requisicion.save(update_fields=[
-            'estado', 'fecha_autorizacion_farmacia', 'fecha_autorizacion',
-            'fecha_recoleccion_limite', 'autorizador_farmacia', 'autorizador',
-            'observaciones_farmacia'
-        ])
+            try:
+                requisicion.observaciones_farmacia = f"{requisicion.observaciones_farmacia or ''}\n{observaciones}".strip()
+                update_fields.append('observaciones_farmacia')
+            except Exception as e:
+                logger.warning(f"Campo observaciones_farmacia no disponible: {e}")
+        
+        # ISS-FIX: Guardar con manejo de errores de columna
+        try:
+            requisicion.save(update_fields=update_fields)
+        except Exception as save_error:
+            logger.error(f"Error al guardar con update_fields={update_fields}: {save_error}")
+            # Intentar guardar sin update_fields específicos
+            try:
+                requisicion.estado = 'autorizada'
+                requisicion.save()
+                logger.info("Guardado exitoso sin update_fields específicos")
+            except Exception as fallback_error:
+                logger.error(f"Error en fallback save: {fallback_error}")
+                raise
         
         self._registrar_historial(
             requisicion, estado_anterior, 'autorizada',
