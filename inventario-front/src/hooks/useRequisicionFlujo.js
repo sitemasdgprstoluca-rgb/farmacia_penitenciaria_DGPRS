@@ -72,24 +72,28 @@ const ACCIONES_FLUJO = {
   },
   surtir: {
     endpoint: 'surtir',
-    label: 'Surtir',
-    estadosPermitidos: ['autorizada', 'parcial'],
-    estadoResultante: 'surtida',
+    label: 'Surtir y Entregar',
+    estadosPermitidos: ['autorizada', 'parcial', 'en_surtido'],
+    // CAMBIO CRÍTICO: Surtir ahora va directo a ENTREGADA (sin paso intermedio)
+    estadoResultante: 'entregada',
     rolesPermitidos: ['farmacia', 'admin', 'admin_farmacia', 'admin_sistema', 'superusuario'],
     confirmacion: true,
-    color: 'violet',
+    color: 'green',
   },
+  // DEPRECATED: confirmar_entrega ya no se usa - surtir entrega automáticamente
+  // Se mantiene comentado por si se necesita revertir
+  /*
   confirmar_entrega: {
     endpoint: 'confirmarEntrega',
     label: 'Confirmar Entrega',
     estadosPermitidos: ['surtida'],
     estadoResultante: 'entregada',
-    // ISS-FIX: Solo FARMACIA puede confirmar entrega (ellos entregan físicamente al centro)
     rolesPermitidos: ['farmacia', 'admin', 'admin_sistema', 'superusuario'],
     requiereLugarEntrega: true,
     confirmacion: true,
     color: 'green',
   },
+  */
   devolver: {
     endpoint: 'devolver',
     label: 'Devolver al Centro',
