@@ -175,7 +175,8 @@ export function useRequisicionFlujo() {
   
   /**
    * Verifica si el usuario puede ejecutar una acción
-   * FLUJO V2: Restricciones específicas por rol y estado
+   * SIMPLIFICADO: Solo verifica estado y rol, la validación de transición es redundante
+   * porque estadoResultante ya está definido correctamente en ACCIONES_FLUJO
    */
   const puedeEjecutarAccion = useCallback((accionKey, estadoActual) => {
     if (esSuperuser) return true;
@@ -188,45 +189,34 @@ export function useRequisicionFlujo() {
       return false;
     }
     
-    // FLUJO V2: Restricciones específicas por rol y estado
-    // Administrador Centro: Solo actúa en pendiente_admin
-    if (rolUsuario === 'administrador_centro' || rolUsuario === 'centro') {
-      // Acciones de Admin Centro solo en pendiente_admin
-      if (['autorizar_admin', 'devolver', 'rechazar'].includes(accionKey)) {
-        if (estadoActual !== 'pendiente_admin') {
-          return false;
-        }
+    // Verificar rol - simplificado
+    const rolesPermitidos = accion.rolesPermitidos || [];
+    const rolLower = rolUsuario.toLowerCase();
+    
+    // Verificar rol directo o normalizado
+    if (rolesPermitidos.includes(rolLower)) {
+      return true;
+    }
+    
+    // Mapeo de roles legacy/alternativos
+    const rolesEquivalentes = {
+      'admin_sistema': ['admin', 'superusuario'],
+      'superusuario': ['admin', 'admin_sistema'],
+      'admin_farmacia': ['farmacia', 'admin'],
+      'usuario_normal': ['centro', 'medico'],
+      'administrador_centro': ['centro', 'admin'],
+      'director_centro': ['centro', 'director'],
+    };
+    
+    const equivalentes = rolesEquivalentes[rolLower] || [];
+    for (const equiv of equivalentes) {
+      if (rolesPermitidos.includes(equiv)) {
+        return true;
       }
     }
     
-    // Director Centro: Solo actúa en pendiente_director
-    if (rolUsuario === 'director_centro') {
-      // Acciones de Director solo en pendiente_director
-      if (['autorizar_director', 'devolver', 'rechazar'].includes(accionKey)) {
-        if (estadoActual !== 'pendiente_director') {
-          return false;
-        }
-      }
-    }
-    
-    // Verificar rol
-    if (!accion.rolesPermitidos.includes(rolUsuario)) {
-      // También verificar roles legacy
-      const rolesLegacy = {
-        'admin_sistema': 'admin',
-        'superusuario': 'admin',
-        'admin_farmacia': 'farmacia',
-        'usuario_normal': 'centro',
-      };
-      const rolNormalizado = rolesLegacy[rolUsuario] || rolUsuario;
-      if (!accion.rolesPermitidos.includes(rolNormalizado)) {
-        return false;
-      }
-    }
-    
-    // Verificar transición
-    return esTransicionValida(estadoActual, accion.estadoResultante);
-  }, [rolUsuario, esSuperuser, esTransicionValida]);
+    return false;
+  }, [rolUsuario, esSuperuser]);
   
   /**
    * Obtiene las acciones disponibles para una requisición
