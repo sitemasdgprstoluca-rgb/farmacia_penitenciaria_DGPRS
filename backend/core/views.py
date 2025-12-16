@@ -1385,6 +1385,58 @@ class NotificacionViewSet(
             logger.warning(f"Error contando notificaciones no leídas: {e}")
             return Response({'no_leidas': 0})
     
+    @action(detail=False, methods=['get'], url_path='diagnostico')
+    def diagnostico(self, request):
+        """
+        ISS-DEBUG: Endpoint de diagnóstico para notificaciones.
+        
+        Retorna información detallada sobre las notificaciones del usuario
+        para ayudar a identificar problemas.
+        """
+        try:
+            # Obtener todas las notificaciones del usuario (sin filtros)
+            todas = Notificacion.objects.filter(usuario=request.user)
+            no_leidas = todas.filter(leida=False)
+            
+            # Obtener las últimas 10 notificaciones con todos sus campos
+            ultimas = todas.order_by('-created_at')[:10]
+            
+            return Response({
+                'usuario': {
+                    'id': request.user.pk,
+                    'username': request.user.username,
+                    'email': request.user.email,
+                },
+                'estadisticas': {
+                    'total': todas.count(),
+                    'no_leidas': no_leidas.count(),
+                    'leidas': todas.filter(leida=True).count(),
+                },
+                'ultimas_notificaciones': [
+                    {
+                        'id': n.pk,
+                        'titulo': n.titulo,
+                        'mensaje': n.mensaje,
+                        'tipo': n.tipo,
+                        'leida': n.leida,
+                        'url': n.url,
+                        'datos': n.datos,
+                        'created_at': n.created_at.isoformat() if n.created_at else None,
+                        # Verificar si mensaje está vacío
+                        'mensaje_vacio': not bool(n.mensaje),
+                        'titulo_vacio': not bool(n.titulo),
+                    }
+                    for n in ultimas
+                ],
+                'consulta_sql': str(todas.query),
+            })
+        except Exception as e:
+            logger.exception(f"Error en diagnóstico de notificaciones: {e}")
+            return Response({
+                'error': str(e),
+                'tipo_error': type(e).__name__,
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
     def destroy(self, request, *args, **kwargs):
         """
         Eliminar notificación propia.

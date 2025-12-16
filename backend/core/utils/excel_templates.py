@@ -54,44 +54,47 @@ def generar_plantilla_productos():
     ws = wb.active
     ws.title = "Productos"
 
-    # Columnas basadas en el esquema real de public.productos
+    # Columnas EXACTAS que coinciden con la plantilla descargable
+    # IMPORTANTE: Estos nombres deben coincidir con los sinónimos en excel_importer.py
     headers = [
-        "Clave*\n(Único, 3-50 chars)",
-        "Nombre*\n(Min 5 chars)",
-        "Descripción",
-        "Unidad Medida*\n(pieza/caja/frasco/sobre/ampolleta/tableta/capsula/ml/gr)",
-        "Categoría*\n(medicamento/material_curacion/insumo)",
+        "Clave",
+        "Nombre",
+        "Unidad",
+        "Stock Minimo",
+        "Categoria",
         "Sustancia Activa",
-        "Presentación",
-        "Concentración",
-        "Vía Administración",
-        "Stock Mínimo*\n(Número)",
-        "Requiere Receta\n(Si/No)",
-        "Es Controlado\n(Si/No)",
-        "Activo\n(Si/No, default: Si)"
+        "Presentacion",
+        "Concentracion",
+        "Via Admin",
+        "Requiere Receta",
+        "Controlado",
+        "Estado"
     ]
 
+    # Anchos personalizados por columna para mejor legibilidad
+    column_widths = [15, 40, 15, 15, 20, 25, 25, 20, 20, 18, 15, 12]
+    
     for col_num, header in enumerate(headers, 1):
         ws.cell(row=1, column=col_num, value=header)
-        ws.column_dimensions[openpyxl.utils.get_column_letter(col_num)].width = 18
+        if col_num <= len(column_widths):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col_num)].width = column_widths[col_num - 1]
     
     aplicar_estilos_header(ws, len(headers))
 
-    # Fila de ejemplo
+    # Fila de ejemplo que coincide con el formato actualizado
     ws.append([
-        "PAR-500",
-        "Paracetamol 500mg",
-        "Analgésico y antipirético",
-        "caja",
+        "615",
+        "PARACETAMOL",
+        "CAJA",
+        10,
         "medicamento",
         "Paracetamol",
         "Tabletas",
         "500mg",
         "Oral",
-        10,
         "No",
         "No",
-        "Si"
+        "Activo"
     ])
 
     # Instrucciones en hoja separada

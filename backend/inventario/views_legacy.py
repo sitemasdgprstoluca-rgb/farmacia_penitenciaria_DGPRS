@@ -4942,6 +4942,184 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'error': f'Error al cancelar: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=True, methods=['get'], url_path='diagnostico-surtido')
+    def diagnostico_surtido(self, request, pk=None):
+        """
+        ISS-DEBUG: Endpoint de diagnóstico para verificar si una requisición puede ser surtida.
+        
+        Retorna información detallada sobre:
+        - Estado de la requisición
+        - Detalles y sus productos
+        - Stock disponible en farmacia central
+        - Problemas detectados
+        
+        Este endpoint es de solo lectura, no modifica datos.
+        """
+        from django.utils import timezone
+        from django.db.models import Sum
+        
+        hoy = timezone.now().date()
+        
+        try:
+            requisicion = self.get_object()
+        except Exception as e:
+            return Response({
+                'error': f'No se pudo obtener la requisición: {str(e)}'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        ESTADOS_SURTIBLES = {'autorizada', 'autorizada_farmacia', 'en_surtido', 'parcial'}
+        estado_actual = (requisicion.estado or '').lower()
+        
+        diagnostico = {
+            'requisicion': {
+                'id': requisicion.pk,
+                'numero': requisicion.numero,
+                'folio': getattr(requisicion, 'folio', requisicion.numero),
+                'estado': requisicion.estado,
+                'centro': requisicion.centro.nombre if requisicion.centro else None,
+                'centro_id': requisicion.centro_id,
+                'solicitante': requisicion.solicitante.username if requisicion.solicitante else None,
+                'fecha_creacion': requisicion.created_at.isoformat() if requisicion.created_at else None,
+            },
+            'estado_surtible': estado_actual in ESTADOS_SURTIBLES,
+            'estados_validos': list(ESTADOS_SURTIBLES),
+            'detalles': [],
+            'errores': [],
+            'advertencias': [],
+            'puede_surtirse': True,
+        }
+        
+        if estado_actual not in ESTADOS_SURTIBLES:
+            diagnostico['errores'].append(
+                f"Estado '{requisicion.estado}' no es surtible. Estados válidos: {ESTADOS_SURTIBLES}"
+            )
+            diagnostico['puede_surtirse'] = False
+        
+        detalles = requisicion.detalles.select_related('producto', 'lote').all()
+        
+        if not detalles:
+            diagnostico['errores'].append("La requisición no tiene detalles")
+            diagnostico['puede_surtirse'] = False
+            return Response(diagnostico)
+        
+        for det in detalles:
+            detalle_info = {
+                'id': det.pk,
+                'producto_id': det.producto_id,
+                'producto_clave': det.producto.clave if det.producto else None,
+                'producto_nombre': (det.producto.nombre[:50] + '...') if det.producto and len(det.producto.nombre) > 50 else (det.producto.nombre if det.producto else None),
+                'cantidad_solicitada': det.cantidad_solicitada,
+                'cantidad_autorizada': det.cantidad_autorizada,
+                'cantidad_surtida': det.cantidad_surtida,
+                'pendiente': 0,
+                'lote_especifico': None,
+                'stock_farmacia': 0,
+                'lotes_disponibles': [],
+                'puede_surtirse': True,
+                'errores': [],
+            }
+            
+            if not det.producto_id:
+                detalle_info['errores'].append("Sin producto asignado")
+                detalle_info['puede_surtirse'] = False
+                diagnostico['puede_surtirse'] = False
+                diagnostico['detalles'].append(detalle_info)
+                continue
+            
+            # Calcular pendiente
+            pendiente = (det.cantidad_autorizada or det.cantidad_solicitada or 0) - (det.cantidad_surtida or 0)
+            detalle_info['pendiente'] = pendiente
+            
+            if pendiente <= 0:
+                detalle_info['puede_surtirse'] = True  # Ya surtido
+                diagnostico['detalles'].append(detalle_info)
+                continue
+            
+            # Verificar cantidad autorizada
+            if det.cantidad_autorizada is None or det.cantidad_autorizada == 0:
+                diagnostico['advertencias'].append(
+                    f"Detalle {det.pk} ({det.producto.clave}): cantidad_autorizada es NULL/0, "
+                    f"se usará cantidad_solicitada={det.cantidad_solicitada}"
+                )
+            
+            # Verificar lote específico vs FEFO
+            if det.lote_id is not None:
+                lote = det.lote
+                detalle_info['lote_especifico'] = {
+                    'id': lote.pk if lote else det.lote_id,
+                    'numero': lote.numero_lote if lote else 'N/A',
+                    'stock': lote.cantidad_actual if lote else 0,
+                    'activo': lote.activo if lote else False,
+                    'caducidad': str(lote.fecha_caducidad) if lote and lote.fecha_caducidad else None,
+                    'centro': lote.centro.nombre if lote and lote.centro else 'Farmacia Central',
+                }
+                
+                if not lote:
+                    detalle_info['errores'].append(f"Lote referenciado {det.lote_id} no existe")
+                    detalle_info['puede_surtirse'] = False
+                elif not lote.activo:
+                    detalle_info['errores'].append(f"Lote {lote.numero_lote} está inactivo")
+                    detalle_info['puede_surtirse'] = False
+                elif lote.cantidad_actual < pendiente:
+                    detalle_info['errores'].append(
+                        f"Stock insuficiente en lote {lote.numero_lote}: "
+                        f"disponible={lote.cantidad_actual}, requerido={pendiente}"
+                    )
+                    detalle_info['puede_surtirse'] = False
+                elif lote.fecha_caducidad and lote.fecha_caducidad < hoy:
+                    detalle_info['errores'].append(f"Lote {lote.numero_lote} está vencido")
+                    detalle_info['puede_surtirse'] = False
+            else:
+                # FEFO automático - buscar lotes en farmacia central
+                lotes_disponibles = Lote.objects.filter(
+                    centro__isnull=True,  # Farmacia central
+                    producto=det.producto,
+                    activo=True,
+                    cantidad_actual__gt=0,
+                    fecha_caducidad__gte=hoy
+                ).order_by('fecha_caducidad')[:5]  # Limitar a 5 para respuesta
+                
+                stock_total = Lote.objects.filter(
+                    centro__isnull=True,
+                    producto=det.producto,
+                    activo=True,
+                    cantidad_actual__gt=0,
+                    fecha_caducidad__gte=hoy
+                ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+                
+                detalle_info['stock_farmacia'] = stock_total
+                detalle_info['lotes_disponibles'] = [
+                    {
+                        'id': l.pk,
+                        'numero': l.numero_lote,
+                        'stock': l.cantidad_actual,
+                        'caducidad': str(l.fecha_caducidad) if l.fecha_caducidad else None,
+                    }
+                    for l in lotes_disponibles
+                ]
+                
+                if stock_total < pendiente:
+                    detalle_info['errores'].append(
+                        f"Stock insuficiente en farmacia: disponible={stock_total}, requerido={pendiente}"
+                    )
+                    detalle_info['puede_surtirse'] = False
+            
+            if not detalle_info['puede_surtirse']:
+                diagnostico['puede_surtirse'] = False
+            
+            diagnostico['detalles'].append(detalle_info)
+        
+        # Resumen
+        total_detalles = len(diagnostico['detalles'])
+        detalles_ok = sum(1 for d in diagnostico['detalles'] if d['puede_surtirse'])
+        diagnostico['resumen'] = {
+            'total_detalles': total_detalles,
+            'detalles_listos': detalles_ok,
+            'detalles_con_problemas': total_detalles - detalles_ok,
+        }
+        
+        return Response(diagnostico)
+
     @action(detail=True, methods=['post'])
     def surtir(self, request, pk=None):
         """
