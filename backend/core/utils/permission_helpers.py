@@ -64,6 +64,9 @@ def es_centro_user(usuario):
 def puede_ver_requisicion(usuario, requisicion):
     """
     Verifica si el usuario puede ver una requisicion especifica.
+    
+    ISS-FIX: Usar centro_origen (quien hizo la requisición), no centro (alias de centro_destino).
+    Los usuarios de centro pueden ver requisiciones que ELLOS crearon (centro_origen = su centro).
     """
     if es_superuser(usuario):
         return True
@@ -71,7 +74,8 @@ def puede_ver_requisicion(usuario, requisicion):
         return True
     if es_centro_user(usuario):
         if usuario.centro:
-            return requisicion.centro == usuario.centro
+            # ISS-FIX: centro_origen es el centro que HIZO la requisición
+            return requisicion.centro_origen == usuario.centro
         return False
     return requisicion.usuario_solicita == usuario
 

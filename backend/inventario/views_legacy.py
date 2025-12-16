@@ -5352,11 +5352,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                     })
                     
                     # ISS-002: Registrar movimiento de ajuste por divergencia
-                    if diferencia > 0 and requisicion.centro:
+                    # ISS-FIX: Usar centro_origen (quien hizo la requisición), no centro (alias de centro_destino)
+                    if diferencia > 0 and requisicion.centro_origen:
                         # Faltante: registrar ajuste negativo en centro
                         lotes_centro = Lote.objects.filter(
                             producto=detalle.producto,
-                            centro=requisicion.centro,
+                            centro=requisicion.centro_origen,
                             activo=True,
                             cantidad_actual__gt=0
                         ).order_by('fecha_caducidad')
@@ -5372,7 +5373,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                                 tipo='ajuste',
                                 cantidad=-ajustar,
                                 usuario=user,
-                                centro=requisicion.centro,
+                                centro=requisicion.centro_origen,
                                 requisicion=requisicion,
                                 observaciones=f'AJUSTE_RECEPCION: Faltante en recepción REQ-{requisicion.numero}. {observacion_item}',
                                 skip_centro_check=True

@@ -447,6 +447,9 @@ def verificar_stock_preflight(requisicion, usuario=None) -> PreflightResult:
     """
     ISS-005: Función helper para verificación rápida de preflight.
     
+    ISS-FIX: Las requisiciones se surten desde FARMACIA CENTRAL, por lo que
+    el preflight debe verificar stock en centro=None (farmacia central).
+    
     Args:
         requisicion: Requisición a verificar
         usuario: Usuario que realiza la operación
@@ -454,8 +457,10 @@ def verificar_stock_preflight(requisicion, usuario=None) -> PreflightResult:
     Returns:
         PreflightResult
     """
+    # ISS-FIX: Siempre verificar contra farmacia central (None) porque
+    # las requisiciones se surten desde ahí
     checker = PreflightStockCheck(
-        centro=requisicion.centro,
+        centro=None,  # Farmacia central
         usuario=usuario
     )
     return checker.verificar_requisicion(requisicion)

@@ -1246,8 +1246,11 @@ class RequisicionService:
         self.validar_stock_disponible(usar_bloqueo=True, revalidacion_post_lock=True)
         logger.info(f"SURTIR SERVICE: Stock OK")
         
-        centro_requisicion = self.requisicion.centro
-        logger.info(f"SURTIR SERVICE: Centro requisición: {centro_requisicion}")
+        # ISS-FIX (critical): centro_origen es quien HIZO la requisición (el centro médico)
+        # centro_destino es NULL (farmacia central de donde se surte)
+        # La property 'centro' devuelve centro_destino, lo cual es INCORRECTO para este caso
+        centro_requisicion = self.requisicion.centro_origen
+        logger.info(f"SURTIR SERVICE: Centro requisición (centro_origen): {centro_requisicion}")
         items_surtidos = []
         
         # ISS-003 FIX + ISS-005 FIX: Bloquear detalles para evitar modificaciones concurrentes
@@ -1918,9 +1921,11 @@ class RequisicionService:
                 "El usuario debe pertenecer a un centro para confirmar recepción"
             )
         
-        if user_centro and requisicion.centro_id != user_centro.pk and not self.usuario.is_superuser:
+        # ISS-FIX: Usar centro_origen (quien hizo la requisición), no centro (alias de centro_destino)
+        if user_centro and requisicion.centro_origen_id != user_centro.pk and not self.usuario.is_superuser:
+            centro_nombre = requisicion.centro_origen.nombre if requisicion.centro_origen else 'Desconocido'
             raise PermisoRequisicionError(
-                f"Solo usuarios del centro {requisicion.centro.nombre} pueden confirmar esta recepción"
+                f"Solo usuarios del centro {centro_nombre} pueden confirmar esta recepción"
             )
         
         # ISS-006 FIX (audit4): Validar consistencia de inventario

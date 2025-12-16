@@ -543,10 +543,16 @@ def validar_stock_para_requisicion(requisicion, solo_autorizados: bool = False) 
     """
     Valida stock para una requisición.
     
+    ISS-FIX: Las requisiciones se surten desde FARMACIA CENTRAL, por lo que
+    la validación de stock debe ser contra centro=None (farmacia central).
+    No usamos requisicion.centro porque es alias de centro_destino.
+    
     Returns:
         Lista de errores (vacía si válido)
     """
-    validator = StockValidationService(requisicion.centro)
+    # ISS-FIX: Siempre validar contra farmacia central (None) porque
+    # las requisiciones se surten desde ahí, independientemente del centro_origen
+    validator = StockValidationService(None)
     errores = validator.validar_requisicion(requisicion, solo_autorizados)
     
     return [
