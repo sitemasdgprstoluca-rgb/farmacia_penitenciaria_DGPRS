@@ -215,7 +215,9 @@ export const puedeEjecutarAccionFlujo = (user, accion) => {
     recibir_farmacia: [...FARMACIA_ROLES, ...ADMIN_ROLES],
     autorizar_farmacia: [...FARMACIA_ROLES, ...ADMIN_ROLES],
     surtir: [...FARMACIA_ROLES, ...ADMIN_ROLES],
-    confirmar_entrega: ['medico', 'centro', 'usuario_centro', 'usuario_normal', ...ADMIN_ROLES, ...FARMACIA_ROLES],
+    // DEPRECATED: confirmar_entrega ya no se usa (surtir entrega automáticamente)
+    // confirmar_entrega: Solo farmacia (aunque no se usa)
+    confirmar_entrega: [...FARMACIA_ROLES, ...ADMIN_ROLES],
     devolver: ['administrador_centro', 'director_centro', ...FARMACIA_ROLES, ...ADMIN_ROLES],
     reenviar: ['medico', 'centro', 'usuario_centro', 'usuario_normal', ...ADMIN_ROLES],
     rechazar: ['administrador_centro', 'director_centro', ...FARMACIA_ROLES, ...ADMIN_ROLES],

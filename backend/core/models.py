@@ -310,30 +310,30 @@ class User(AbstractUser):
             'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
             'perm_reportes': False, 'perm_trazabilidad': False, 'perm_auditoria': False,
             'perm_notificaciones': True, 'perm_movimientos': False, 'perm_donaciones': False,
-            # Permisos flujo V2
+            # Permisos flujo V2 - CENTRO NO CONFIRMA NADA (automático al surtir)
             'perm_crear_requisicion': True, 'perm_autorizar_admin': False,
             'perm_autorizar_director': False, 'perm_recibir_farmacia': False,
-            'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': True,
+            'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': False,
         },
         'administrador_centro': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': False,
             'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
             'perm_reportes': False, 'perm_trazabilidad': False, 'perm_auditoria': False,  # ISS-FIX: Centro NO ve reportes/trazabilidad
             'perm_notificaciones': True, 'perm_movimientos': False, 'perm_donaciones': False,
-            # Permisos flujo V2
+            # Permisos flujo V2 - CENTRO NO CONFIRMA NADA (automático al surtir)
             'perm_crear_requisicion': False, 'perm_autorizar_admin': True,
             'perm_autorizar_director': False, 'perm_recibir_farmacia': False,
-            'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': True,
+            'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': False,
         },
         'director_centro': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': False,
             'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
             'perm_reportes': False, 'perm_trazabilidad': False, 'perm_auditoria': False,  # ISS-FIX: Centro NO ve reportes/trazabilidad
             'perm_notificaciones': True, 'perm_movimientos': False, 'perm_donaciones': False,
-            # Permisos flujo V2
+            # Permisos flujo V2 - CENTRO NO CONFIRMA NADA (automático al surtir)
             'perm_crear_requisicion': False, 'perm_autorizar_admin': False,
             'perm_autorizar_director': True, 'perm_recibir_farmacia': False,
-            'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': True,
+            'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': False,
         },
         'centro': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': True,
@@ -352,18 +352,20 @@ class User(AbstractUser):
             'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
             'perm_reportes': False, 'perm_trazabilidad': False, 'perm_auditoria': False,  # ISS-FIX: Centro NO ve reportes/trazabilidad
             'perm_notificaciones': True, 'perm_movimientos': True, 'perm_donaciones': True,
+            # CENTRO NO CONFIRMA NADA (automático al surtir por farmacia)
             'perm_crear_requisicion': True, 'perm_autorizar_admin': False,
             'perm_autorizar_director': False, 'perm_recibir_farmacia': False,
-            'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': True,
+            'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': False,
         },
         'usuario_normal': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': False,
             'perm_requisiciones': True, 'perm_centros': False, 'perm_usuarios': False,
             'perm_reportes': False, 'perm_trazabilidad': False, 'perm_auditoria': False,
             'perm_notificaciones': True, 'perm_movimientos': False, 'perm_donaciones': False,
+            # CENTRO NO CONFIRMA NADA (automático al surtir por farmacia)
             'perm_crear_requisicion': True, 'perm_autorizar_admin': False,
             'perm_autorizar_director': False, 'perm_recibir_farmacia': False,
-            'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': True,
+            'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': False,
         },
     }
     

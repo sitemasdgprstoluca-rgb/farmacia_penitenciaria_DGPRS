@@ -1316,7 +1316,7 @@ const Requisiciones = () => {
         await requisicionesAPI.surtir(id);
       }
       setFotoFirmaSurtido(null);
-      toast.success('Requisición surtida correctamente');
+      toast.success('Requisición surtida y entregada automáticamente. Inventario actualizado.');
       cargarRequisiciones();
       cargarResumenEstados();
     } catch (error) {
@@ -1444,41 +1444,41 @@ const Requisiciones = () => {
     api: requisicionesAPI.reenviar,
   });
 
-  // Handler para confirmar entrega
-  const [confirmEntrega, setConfirmEntrega] = useState(null);
-  const [fotoFirmaEntrega, setFotoFirmaEntrega] = useState(null);
+  // DEPRECATED: Handler para confirmar entrega (ya no se usa - surtir entrega automáticamente)
+  // const [confirmEntrega, setConfirmEntrega] = useState(null);
+  // const [fotoFirmaEntrega, setFotoFirmaEntrega] = useState(null);
   
-  const handleConfirmarEntrega = (id, folio) => {
-    if (isSubmitting) return;
-    setConfirmEntrega({ id, folio });
-  };
+  // const handleConfirmarEntrega = (id, folio) => {
+  //   if (isSubmitting) return;
+  //   setConfirmEntrega({ id, folio });
+  // };
   
-  const ejecutarConfirmarEntrega = async () => {
-    if (!confirmEntrega || isSubmitting) return;
-    const { id } = confirmEntrega;
-    
-    setIsSubmitting(true);
-    setActionLoading(id);
-    setConfirmEntrega(null);
-    try {
-      if (fotoFirmaEntrega) {
-        const formData = new FormData();
-        formData.append('foto_firma_entrega', fotoFirmaEntrega);
-        await requisicionesAPI.confirmarEntrega(id, formData);
-      } else {
-        await requisicionesAPI.confirmarEntrega(id, {});
-      }
-      setFotoFirmaEntrega(null);
-      toast.success('Entrega confirmada');
-      cargarRequisiciones();
-      cargarResumenEstados();
-    } catch (error) {
-      toast.error(error.response?.data?.error || 'Error al confirmar entrega');
-    } finally {
-      setIsSubmitting(false);
-      setActionLoading(null);
-    }
-  };
+  // const ejecutarConfirmarEntrega = async () => {
+  //   if (!confirmEntrega || isSubmitting) return;
+  //   const { id } = confirmEntrega;
+  //   
+  //   setIsSubmitting(true);
+  //   setActionLoading(id);
+  //   setConfirmEntrega(null);
+  //   try {
+  //     if (fotoFirmaEntrega) {
+  //       const formData = new FormData();
+  //       formData.append('foto_firma_entrega', fotoFirmaEntrega);
+  //       await requisicionesAPI.confirmarEntrega(id, formData);
+  //     } else {
+  //       await requisicionesAPI.confirmarEntrega(id, {});
+  //     }
+  //     setFotoFirmaEntrega(null);
+  //     toast.success('Entrega confirmada');
+  //     cargarRequisiciones();
+  //     cargarResumenEstados();
+  //   } catch (error) {
+  //     toast.error(error.response?.data?.error || 'Error al confirmar entrega');
+  //   } finally {
+  //     setIsSubmitting(false);
+  //     setActionLoading(null);
+  //   }
+  // };
 
   // Handler para marcar vencida (admin/farmacia)
   const handleMarcarVencida = (id) => ejecutarAccionV2('marcarVencida', id, {
@@ -2437,8 +2437,8 @@ const Requisiciones = () => {
               <p className="text-gray-700">
                 ¿Confirma SURTIR la requisición <strong>{confirmSurtir?.folio || confirmSurtir?.id}</strong>?
               </p>
-              <p className="text-sm text-yellow-700 bg-yellow-50 p-2 rounded-lg flex items-center gap-2">
-                <FaExclamationTriangle /> Esta acción descontará el inventario de los lotes.
+              <p className="text-sm text-blue-700 bg-blue-50 p-2 rounded-lg flex items-center gap-2">
+                <FaExclamationTriangle /> Esta acción descontará el inventario de farmacia y lo agregará automáticamente al inventario del centro. La requisición pasará a ENTREGADA.
               </p>
               
               {/* Campo para foto de firma (opcional) */}

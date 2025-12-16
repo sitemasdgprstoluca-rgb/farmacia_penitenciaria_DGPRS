@@ -125,7 +125,7 @@ PERMISOS_POR_ROL = {
         'rechazarRequisicion': False,
         'surtirRequisicion': False,
         'cancelarRequisicion': True,
-        'confirmarRecepcion': True,
+        'confirmarRecepcion': False,  # ELIMINAR: Automático al surtir
         'descargarHojaRecoleccion': True,
         # FLUJO V2: Solo puede crear y enviar
         'autorizarAdmin': False,
@@ -161,7 +161,7 @@ PERMISOS_POR_ROL = {
         'rechazarRequisicion': True,
         'surtirRequisicion': False,
         'cancelarRequisicion': False,
-        'confirmarRecepcion': True,
+        'confirmarRecepcion': False,  # ELIMINAR: Automático al surtir
         'descargarHojaRecoleccion': True,
         # FLUJO V2: Puede autorizar como administrador
         'autorizarAdmin': True,
@@ -197,7 +197,7 @@ PERMISOS_POR_ROL = {
         'rechazarRequisicion': True,
         'surtirRequisicion': False,
         'cancelarRequisicion': False,
-        'confirmarRecepcion': True,
+        'confirmarRecepcion': False,  # ELIMINAR: Automático al surtir
         'descargarHojaRecoleccion': True,
         # FLUJO V2: Puede autorizar como director
         'autorizarAdmin': False,
@@ -232,7 +232,7 @@ PERMISOS_POR_ROL = {
         'rechazarRequisicion': False,
         'surtirRequisicion': False,
         'cancelarRequisicion': True,
-        'confirmarRecepcion': True,
+        'confirmarRecepcion': False,  # ELIMINAR: Automático al surtir
         'descargarHojaRecoleccion': True,
         # FLUJO V2
         'autorizarAdmin': False,

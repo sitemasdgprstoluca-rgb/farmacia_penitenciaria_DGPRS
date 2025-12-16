@@ -1503,14 +1503,26 @@ class RequisicionService:
             for d in detalles_actualizados
         )
         
-        # ISS-DB-002: Usar parcial para surtido incompleto
-        nuevo_estado = 'surtida' if completada else 'parcial'
+        # CAMBIO CRÍTICO: Al surtir, pasar DIRECTAMENTE a 'entregada'
+        # No requiere confirmación del centro (automático)
+        # - Si completada → 'entregada' (todo surtido)
+        # - Si parcial → 'parcial' (aún faltan productos)
+        # El inventario YA se actualizó en farmacia y centro durante el surtido
+        nuevo_estado = 'entregada' if completada else 'parcial'
         self.requisicion.estado = nuevo_estado
         self.requisicion.fecha_surtido = timezone.now()
+        
+        # Si está completada, también marcar como entregada
+        if completada:
+            self.requisicion.fecha_entrega = timezone.now()
+            self.requisicion.fecha_firma_recepcion = timezone.now()
         
         # ISS-FIX: Actualizar campos de trazabilidad de forma segura
         # (algunos campos pueden no existir en BD de producción)
         update_fields = ['estado', 'fecha_surtido', 'updated_at']
+        
+        if completada:
+            update_fields.extend(['fecha_entrega', 'fecha_firma_recepcion'])
         
         # Intentar setear surtidor si el campo existe
         try:
@@ -1528,13 +1540,17 @@ class RequisicionService:
             if hasattr(self.requisicion, 'fecha_firma_surtido'):
                 self.requisicion.fecha_firma_surtido = timezone.now()
                 update_fields.append('fecha_firma_surtido')
+            # Si está completada, también marcar receptor (automático)
+            if completada and hasattr(self.requisicion, 'usuario_firma_recepcion'):
+                self.requisicion.usuario_firma_recepcion = self.usuario
+                update_fields.append('usuario_firma_recepcion')
         except Exception:
             pass
         
         self.requisicion.save(update_fields=update_fields)
         
         logger.info(
-            f"Requisición {self.requisicion.folio} surtida exitosamente por {self.usuario.username}. "
+            f"Requisición {self.requisicion.folio} surtida y {'ENTREGADA automáticamente' if completada else 'marcada como parcial'} por {self.usuario.username}. "
             f"Estado: {nuevo_estado}. Items: {len(items_surtidos)}"
         )
         

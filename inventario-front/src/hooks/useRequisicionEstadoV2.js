@@ -190,6 +190,7 @@ const TRANSICIONES_V2 = {
       ACCIONES_REQUISICION.IMPRIMIR,
     ],
     transiciones: {
+      // FLUJO CORREGIDO: Al iniciar surtido se puede completar y entregar automáticamente
       [ACCIONES_REQUISICION.INICIAR_SURTIDO]: ESTADOS_REQUISICION.EN_SURTIDO,
     },
     grupo: 'farmacia',
@@ -202,20 +203,23 @@ const TRANSICIONES_V2 = {
       ACCIONES_REQUISICION.IMPRIMIR,
     ],
     transiciones: {
-      [ACCIONES_REQUISICION.SURTIR]: ESTADOS_REQUISICION.SURTIDA,
+      // FLUJO CORREGIDO: Al surtir se entrega automáticamente (sin confirmación del centro)
+      [ACCIONES_REQUISICION.SURTIR]: ESTADOS_REQUISICION.ENTREGADA,
     },
     grupo: 'farmacia',
   },
   
   [ESTADOS_REQUISICION.SURTIDA]: {
+    // ESTADO LEGACY: Se mantiene por compatibilidad pero sin acción de centro
+    // NUEVO FLUJO: Ya NO se usa este estado (se pasa directo a ENTREGADA)
     acciones: [
-      ACCIONES_REQUISICION.CONFIRMAR_ENTREGA,
+      // ELIMINADO: CONFIRMAR_ENTREGA (automático al surtir)
       ACCIONES_REQUISICION.MARCAR_VENCIDA,
       ACCIONES_REQUISICION.VER,
       ACCIONES_REQUISICION.IMPRIMIR,
     ],
     transiciones: {
-      [ACCIONES_REQUISICION.CONFIRMAR_ENTREGA]: ESTADOS_REQUISICION.ENTREGADA,
+      // ELIMINADO: CONFIRMAR_ENTREGA (automático)
       [ACCIONES_REQUISICION.MARCAR_VENCIDA]: ESTADOS_REQUISICION.VENCIDA,
     },
     grupo: 'farmacia',
@@ -278,7 +282,8 @@ const PERMISOS_ACCIONES_V2 = {
   [ACCIONES_REQUISICION.AUTORIZAR_FARMACIA]: 'autorizarFarmaciaRequisicion',
   [ACCIONES_REQUISICION.INICIAR_SURTIDO]: 'surtirRequisicion',
   [ACCIONES_REQUISICION.SURTIR]: 'surtirRequisicion',
-  [ACCIONES_REQUISICION.CONFIRMAR_ENTREGA]: 'confirmarEntregaRequisicion',
+  // DEPRECATED: Ya no se usa (surtir entrega automáticamente)
+  // [ACCIONES_REQUISICION.CONFIRMAR_ENTREGA]: 'confirmarEntregaRequisicion',
   
   // Especiales
   [ACCIONES_REQUISICION.DEVOLVER]: 'devolverRequisicion',

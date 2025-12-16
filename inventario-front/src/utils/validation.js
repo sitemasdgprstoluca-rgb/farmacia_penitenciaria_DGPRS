@@ -629,9 +629,10 @@ export const getAccionesPermitidas = (estado, rol) => {
       acciones.push('surtir', 'cancelar');
     }
   } else if (estadoLower === 'surtida') {
-    if (['ADMIN', 'FARMACIA', 'CENTRO'].includes(rolUpper)) {
-      acciones.push('confirmar_entrega');
-    }
+    // DEPRECATED: Estado legacy - ya no se usa (surtir entrega automáticamente)
+    // if (['ADMIN', 'FARMACIA', 'CENTRO'].includes(rolUpper)) {
+    //   acciones.push('confirmar_entrega');
+    // }
   }
   
   // Ver siempre está disponible
