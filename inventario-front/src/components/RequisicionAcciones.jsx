@@ -153,8 +153,24 @@ export function RequisicionAcciones({
     }
   };
   
+  // DEBUG: Mostrar info cuando no hay acciones disponibles
   if (acciones.length === 0) {
-    return null;
+    const estadoActual = requisicion?.estado?.toLowerCase() || 'desconocido';
+    const estadosFinales = ['entregada', 'rechazada', 'cancelada', 'vencida'];
+    
+    if (estadosFinales.includes(estadoActual)) {
+      return (
+        <div className="text-sm text-gray-500 italic">
+          Requisición en estado final: <span className="font-medium">{estadoActual}</span>
+        </div>
+      );
+    }
+    
+    return (
+      <div className="text-sm text-amber-600 italic">
+        Estado actual: <span className="font-medium">{estadoActual}</span> - No hay acciones disponibles para tu rol
+      </div>
+    );
   }
   
   const layoutClasses = {
