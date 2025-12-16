@@ -184,8 +184,8 @@ TRANSICIONES_REQUISICION = {
     # Farmacia Central
     'enviada': ['en_revision', 'autorizada', 'rechazada'],  # ISS-FIX: Agregar autorizada (spec), quitar cancelada
     'en_revision': ['autorizada', 'rechazada', 'devuelta'],  # Sin cancelada (spec)
-    'autorizada': ['en_surtido', 'surtida', 'cancelada'],  # ISS-FIX: Agregar surtida (spec)
-    'en_surtido': ['surtida', 'cancelada'],  # Sin parcial (spec) - parcial es interno
+    'autorizada': ['en_surtido', 'surtida', 'entregada', 'cancelada'],  # entregada: surtir directo V2
+    'en_surtido': ['surtida', 'entregada', 'cancelada'],  # entregada: surtido completo V2
     
     # ISS-002 FIX: surtida NO puede cancelarse (ya hay movimientos de inventario)
     'surtida': ['entregada', 'vencida'],

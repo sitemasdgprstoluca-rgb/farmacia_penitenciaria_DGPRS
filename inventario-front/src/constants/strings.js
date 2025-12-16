@@ -302,8 +302,8 @@ export const TRANSICIONES_REQUISICION = {
   // Farmacia Central
   enviada: ['en_revision', 'autorizada', 'rechazada'],  // Sin cancelada (spec)
   en_revision: ['autorizada', 'rechazada', 'devuelta'],  // Sin cancelada (spec)
-  autorizada: ['en_surtido', 'surtida', 'cancelada'],
-  en_surtido: ['surtida', 'cancelada'],
+  autorizada: ['en_surtido', 'surtida', 'entregada', 'cancelada'],  // entregada: surtir directo V2
+  en_surtido: ['surtida', 'entregada', 'cancelada'],  // entregada: surtido completo V2
   
   surtida: ['entregada', 'vencida'],  // NO puede cancelarse
   devuelta: ['pendiente_admin', 'cancelada'],

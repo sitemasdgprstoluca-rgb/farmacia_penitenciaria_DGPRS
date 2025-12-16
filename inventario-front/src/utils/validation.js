@@ -565,8 +565,8 @@ export const TRANSICIONES_REQUISICION = {
   // Farmacia Central
   enviada: ['en_revision', 'autorizada', 'rechazada'],  // ISS-FIX: Agregar autorizada, quitar cancelada
   en_revision: ['autorizada', 'rechazada', 'devuelta'],  // Sin cancelada (spec)
-  autorizada: ['en_surtido', 'surtida', 'cancelada'],  // ISS-FIX: Agregar surtida
-  en_surtido: ['surtida', 'cancelada'],  // Sin parcial (spec)
+  autorizada: ['en_surtido', 'surtida', 'entregada', 'cancelada'],  // entregada: surtir directo V2
+  en_surtido: ['surtida', 'entregada', 'cancelada'],  // entregada: surtido completo V2
   
   surtida: ['entregada', 'vencida'],  // ISS-002 FIX: NO puede cancelarse
   devuelta: ['pendiente_admin', 'cancelada'],  // ISS-FIX: Regresa a pendiente_admin (spec)
