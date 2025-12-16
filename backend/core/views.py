@@ -1295,23 +1295,26 @@ class NotificacionViewSet(
     serializer_class = NotificacionSerializer
     permission_classes = [IsAuthenticated, CanViewNotifications]
     pagination_class = StandardResultsSetPagination
-    filter_backends = [filters.OrderingFilter]
-    # ISS-FIX: Alias fecha_creacion -> created_at para compatibilidad con frontend
-    ordering_fields = ['created_at', 'fecha_creacion']
+    # ISS-FIX: Desactivar OrderingFilter de DRF, manejamos ordering manualmente
+    filter_backends = []
     ordering = ['-created_at']
 
     def get_queryset(self):
         try:
             queryset = Notificacion.objects.filter(usuario=self.request.user)
             
-            # ISS-FIX: Manejar ordering con alias fecha_creacion
-            ordering = self.request.query_params.get('ordering', '')
+            # ISS-FIX: Manejar ordering manualmente con alias fecha_creacion -> created_at
+            ordering = self.request.query_params.get('ordering', '-created_at')
             if 'fecha_creacion' in ordering:
-                # Reemplazar fecha_creacion por created_at en el queryset
-                if ordering.startswith('-'):
-                    queryset = queryset.order_by('-created_at')
-                else:
-                    queryset = queryset.order_by('created_at')
+                # Reemplazar fecha_creacion por created_at
+                ordering = ordering.replace('fecha_creacion', 'created_at')
+            
+            # Aplicar ordering solo si es un campo válido
+            valid_fields = ['created_at', '-created_at', 'leida', '-leida']
+            if ordering in valid_fields:
+                queryset = queryset.order_by(ordering)
+            else:
+                queryset = queryset.order_by('-created_at')
             
             tipo = self.request.query_params.get('tipo')
             if tipo:
