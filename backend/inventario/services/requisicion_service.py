@@ -730,21 +730,23 @@ class RequisicionService:
         
         # Validar que la requisición pertenece a un centro válido
         # ISS-FIX: Usar centro_origen (el centro que HACE la requisición)
-        # NO usar la property 'centro' que devuelve centro_destino (farmacia central = NULL)
-        requisicion_centro = getattr(self.requisicion, 'centro_origen', None)
-        if requisicion_centro is None and getattr(self.requisicion, 'centro_origen_id', None):
+        # FALLBACK: si centro_origen es NULL (datos viejos), usar centro_destino
+        requisicion_centro_id = getattr(self.requisicion, 'centro_origen_id', None) or getattr(self.requisicion, 'centro_destino_id', None)
+        requisicion_centro = getattr(self.requisicion, 'centro_origen', None) or getattr(self.requisicion, 'centro_destino', None)
+        
+        if requisicion_centro is None and requisicion_centro_id:
             # Cargar centro si solo tenemos el ID
             from core.models import Centro
             try:
-                requisicion_centro = Centro.objects.get(pk=self.requisicion.centro_origen_id)
+                requisicion_centro = Centro.objects.get(pk=requisicion_centro_id)
             except Centro.DoesNotExist:
                 raise PermisoRequisicionError(
-                    f"Centro de requisición no válido: {self.requisicion.centro_origen_id}"
+                    f"Centro de requisición no válido: {requisicion_centro_id}"
                 )
         
         if requisicion_centro is None:
             raise PermisoRequisicionError(
-                "La requisición no tiene centro origen asignado. No se puede surtir."
+                "La requisición no tiene centro asignado. No se puede surtir."
             )
         
         # ISS-003 FIX (audit3): Registrar quién realiza el surtido para auditoría

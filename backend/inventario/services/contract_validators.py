@@ -186,13 +186,13 @@ class RequisicionContractValidator:
         self.contrato = ContratoValidacion()
         
         # ISS-FIX-CENTRO: Usar centro_origen_id (el centro que SOLICITA)
-        # El centro origen es obligatorio - es el centro que solicita los medicamentos
-        centro_id = self.requisicion.centro_origen_id
+        # FALLBACK: si centro_origen es NULL (datos viejos), usar centro_destino
+        centro_id = self.requisicion.centro_origen_id or self.requisicion.centro_destino_id
         if not centro_id:
             self.contrato.agregar_error(
-                'centro_origen',
+                'centro',
                 TipoValidacion.REQUERIDO,
-                'El centro origen es obligatorio para crear una requisición. '
+                'El centro es obligatorio para crear una requisición. '
                 'Especifique el centro que solicita los medicamentos.'
             )
         else:
@@ -201,14 +201,14 @@ class RequisicionContractValidator:
                 centro = Centro.objects.get(pk=centro_id)
                 if not centro.activo:
                     self.contrato.agregar_error(
-                        'centro_origen',
+                        'centro',
                         TipoValidacion.NEGOCIO,
                         f'El centro {centro.nombre} está inactivo. '
                         f'No se pueden crear requisiciones para centros inactivos.'
                     )
             except Centro.DoesNotExist:
                 self.contrato.agregar_error(
-                    'centro_destino',
+                    'centro',
                     TipoValidacion.REFERENCIA,
                     f'El centro con ID {centro_id} no existe.'
                 )

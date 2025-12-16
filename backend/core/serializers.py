@@ -1243,8 +1243,9 @@ class RequisicionSerializer(serializers.ModelSerializer):
         return None
     
     def get_centro(self, obj):
-        """ISS-FIX-CENTRO: Devuelve centro_origen_id (el centro que SOLICITA)."""
-        return obj.centro_origen_id
+        """ISS-FIX-CENTRO: Devuelve centro_origen_id (el centro que SOLICITA).
+        FALLBACK: si centro_origen es NULL (datos viejos), usar centro_destino."""
+        return obj.centro_origen_id or obj.centro_destino_id
     
     def get_comentario(self, obj):
         """Alias de notas para compatibilidad con frontend (lectura)."""

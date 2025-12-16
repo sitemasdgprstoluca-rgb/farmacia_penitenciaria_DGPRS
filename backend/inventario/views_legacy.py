@@ -5769,9 +5769,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             # Validar centro - ISS-FIX-CENTRO: usar centro_origen (el centro que solicita)
+            # FALLBACK: si centro_origen es NULL (datos viejos), usar centro_destino
             centro_user = self._user_centro(request.user)
+            requisicion_centro_id = requisicion.centro_origen_id or requisicion.centro_destino_id
             if not request.user.is_superuser and centro_user:
-                if requisicion.centro_origen_id != centro_user.id:
+                if requisicion_centro_id != centro_user.id:
                     return Response({
                         'error': 'No puede enviar requisiciones de otro centro'
                     }, status=status.HTTP_403_FORBIDDEN)
@@ -5838,9 +5840,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             }, status=status.HTTP_403_FORBIDDEN)
         
         # Validar centro - ISS-FIX-CENTRO: usar centro_origen (el centro que solicita)
+        # FALLBACK: si centro_origen es NULL (datos viejos), usar centro_destino
         centro_user = self._user_centro(request.user)
+        requisicion_centro_id = requisicion.centro_origen_id or requisicion.centro_destino_id
         if not request.user.is_superuser and centro_user:
-            if requisicion.centro_origen_id != centro_user.id:
+            if requisicion_centro_id != centro_user.id:
                 return Response({
                     'error': 'No puede autorizar requisiciones de otro centro'
                 }, status=status.HTTP_403_FORBIDDEN)
@@ -5900,9 +5904,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             }, status=status.HTTP_403_FORBIDDEN)
         
         # ISS-FIX-CENTRO: usar centro_origen (el centro que solicita)
+        # FALLBACK: si centro_origen es NULL (datos viejos), usar centro_destino
         centro_user = self._user_centro(request.user)
+        requisicion_centro_id = requisicion.centro_origen_id or requisicion.centro_destino_id
         if not request.user.is_superuser and centro_user:
-            if requisicion.centro_origen_id != centro_user.id:
+            if requisicion_centro_id != centro_user.id:
                 return Response({
                     'error': 'No puede autorizar requisiciones de otro centro'
                 }, status=status.HTTP_403_FORBIDDEN)
@@ -6240,10 +6246,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         
         # Validar que sea el solicitante original o admin
         # ISS-FIX-CENTRO: usar centro_origen (el centro que solicita)
+        # FALLBACK: si centro_origen es NULL (datos viejos), usar centro_destino
         if not request.user.is_superuser:
             if requisicion.solicitante_id != request.user.id:
                 centro_user = self._user_centro(request.user)
-                if not centro_user or requisicion.centro_origen_id != centro_user.id:
+                requisicion_centro_id = requisicion.centro_origen_id or requisicion.centro_destino_id
+                if not centro_user or requisicion_centro_id != centro_user.id:
                     return Response({
                         'error': 'Solo el solicitante original puede reenviar la requisición'
                     }, status=status.HTTP_403_FORBIDDEN)
@@ -6413,9 +6421,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         requisicion = self.get_object()
         
         # Validar acceso - ISS-FIX-CENTRO: usar centro_origen (el centro que solicita)
+        # FALLBACK: si centro_origen es NULL (datos viejos), usar centro_destino
         if not request.user.is_superuser and not is_farmacia_or_admin(request.user):
             centro_user = self._user_centro(request.user)
-            if not centro_user or requisicion.centro_origen_id != centro_user.id:
+            requisicion_centro_id = requisicion.centro_origen_id or requisicion.centro_destino_id
+            if not centro_user or requisicion_centro_id != centro_user.id:
                 return Response({
                     'error': 'No tiene acceso al historial de esta requisición'
                 }, status=status.HTTP_403_FORBIDDEN)
@@ -6668,12 +6678,14 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                         pass
             
             # FIX: Aplicar filtro de búsqueda (search)
+            # ISS-FIX-CENTRO: buscar en centro_origen (datos nuevos) y centro_destino (datos viejos)
             search = request.query_params.get('search', '').strip()
             if search:
                 base_queryset = base_queryset.filter(
                     Q(numero__icontains=search) |
                     Q(solicitante__first_name__icontains=search) |
                     Q(solicitante__last_name__icontains=search) |
+                    Q(centro_origen__nombre__icontains=search) |
                     Q(centro_destino__nombre__icontains=search)
                 )
             

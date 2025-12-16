@@ -184,7 +184,9 @@ def generar_hoja_recoleccion(requisicion):
     
     # Información de la requisición con colores institucionales
     # ISS-FIX-CENTRO: Usar centro_origen (el centro que SOLICITA)
-    centro_nombre = requisicion.centro_origen.nombre if requisicion.centro_origen else 'N/A'
+    # FALLBACK: si centro_origen es NULL (datos viejos), usar centro_destino
+    centro_obj = requisicion.centro_origen or requisicion.centro_destino
+    centro_nombre = centro_obj.nombre if centro_obj else 'N/A'
     solicitante_nombre = requisicion.solicitante.get_full_name() if requisicion.solicitante else 'N/A'
     autorizador_nombre = requisicion.autorizador.get_full_name() if requisicion.autorizador else ''
     
@@ -459,7 +461,9 @@ def generar_pdf_rechazo(requisicion):
     story.append(Spacer(1, 0.2 * inch))
 
     # ISS-FIX-CENTRO: Usar centro_origen (el centro que SOLICITA)
-    centro_nombre = requisicion.centro_origen.nombre if requisicion.centro_origen else 'N/A'
+    # FALLBACK: si centro_origen es NULL (datos viejos), usar centro_destino
+    centro_obj = requisicion.centro_origen or requisicion.centro_destino
+    centro_nombre = centro_obj.nombre if centro_obj else 'N/A'
     solicitante_nombre = requisicion.solicitante.get_full_name() if requisicion.solicitante else 'N/A'
     
     info_data = [
