@@ -652,12 +652,21 @@ def generar_hoja_consulta(requisicion):
         fontName='Helvetica-Bold'
     )
     
-    # Estilo para subtítulo de SURTIDA
+    # Determinar el sello según el estado
+    estado = (requisicion.estado or '').lower()
+    if estado == 'entregada':
+        sello_texto = "✓ ENTREGADA"
+        sello_color = colors.HexColor('#16a34a')  # Verde
+    else:
+        sello_texto = "✓ SURTIDA"
+        sello_color = colors.HexColor('#2563eb')  # Azul
+    
+    # Estilo para subtítulo de estado
     surtida_style = ParagraphStyle(
         'SurtidaTitle',
         parent=styles['Heading1'],
         fontSize=20,
-        textColor=colors.HexColor('#16a34a'),  # Verde
+        textColor=sello_color,
         spaceAfter=20,
         spaceBefore=5,
         alignment=TA_CENTER,
@@ -688,8 +697,8 @@ def generar_hoja_consulta(requisicion):
     titulo = Paragraph("HOJA DE CONSULTA - REQUISICIÓN DE MEDICAMENTOS", titulo_style)
     story.append(titulo)
     
-    # SELLO DE SURTIDA
-    surtida_stamp = Paragraph("✓ SURTIDA", surtida_style)
+    # SELLO DINÁMICO DE ESTADO (SURTIDA o ENTREGADA)
+    surtida_stamp = Paragraph(sello_texto, surtida_style)
     story.append(surtida_stamp)
     story.append(Spacer(1, 0.1*inch))
     

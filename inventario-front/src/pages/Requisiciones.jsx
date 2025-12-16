@@ -1485,7 +1485,7 @@ const Requisiciones = () => {
   });
   // ========== FIN HANDLERS FLUJO V2 ==========
 
-  const handleDescargarPDF = async (id, tipo, folio) => {
+  const handleDescargarPDF = async (id, tipo, folio, estado) => {
     // Guard de permisos - validar ANTES de modificar cualquier estado
     if (!permisos?.descargarHojaRecoleccion) {
       toast.error('No tienes permiso para descargar PDFs');
@@ -1500,8 +1500,16 @@ const Requisiciones = () => {
       let nombreArchivo;
 
       if (tipo === 'aceptacion') {
-        response = await requisicionesAPI.downloadPDFAceptacion(id);
-        nombreArchivo = `Hoja_Recoleccion_${folio || id}.pdf`;
+        // Para estados finales (surtida/entregada) usar hoja-consulta con sello
+        // Para estados intermedios usar hoja-recoleccion
+        const estadoNorm = (estado || '').toLowerCase();
+        if (['surtida', 'entregada'].includes(estadoNorm)) {
+          response = await requisicionesAPI.downloadHojaConsulta(id);
+          nombreArchivo = `Consulta_Requisicion_${folio || id}.pdf`;
+        } else {
+          response = await requisicionesAPI.downloadPDFAceptacion(id);
+          nombreArchivo = `Hoja_Recoleccion_${folio || id}.pdf`;
+        }
       } else {
         response = await requisicionesAPI.downloadPDFRechazo(id);
         nombreArchivo = `requisicion_rechazada_${folio || id}.pdf`;
@@ -1871,7 +1879,7 @@ const Requisiciones = () => {
                   {['autorizada', 'en_surtido', 'parcial', 'surtida', 'entregada'].includes(req.estado) &&
                     puedeDescargarPDF(req) && (
                       <button
-                        onClick={() => handleDescargarPDF(req.id, 'aceptacion', req.folio)}
+                        onClick={() => handleDescargarPDF(req.id, 'aceptacion', req.folio, req.estado)}
                         disabled={actionLoading === `pdf-${req.id}`}
                         className="bg-green-100 text-green-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-green-200 border border-green-300 font-semibold disabled:opacity-50"
                       >
