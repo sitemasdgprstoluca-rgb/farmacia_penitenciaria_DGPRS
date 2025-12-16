@@ -266,7 +266,8 @@ class RequisicionService:
         
         user_centro = getattr(self.usuario, 'centro', None)
         user_rol = (getattr(self.usuario, 'rol', '') or '').lower()
-        requisicion_centro = self.requisicion.centro
+        # ISS-FIX: Usar centro_origen, NO la property 'centro' que devuelve centro_destino (NULL)
+        requisicion_centro = self.requisicion.centro_origen
         
         # Transiciones que requieren pertenecer al CENTRO de la requisición
         transiciones_centro = {
@@ -728,20 +729,22 @@ class RequisicionService:
                 )
         
         # Validar que la requisición pertenece a un centro válido
-        requisicion_centro = getattr(self.requisicion, 'centro', None)
-        if requisicion_centro is None and getattr(self.requisicion, 'centro_id', None):
+        # ISS-FIX: Usar centro_origen (el centro que HACE la requisición)
+        # NO usar la property 'centro' que devuelve centro_destino (farmacia central = NULL)
+        requisicion_centro = getattr(self.requisicion, 'centro_origen', None)
+        if requisicion_centro is None and getattr(self.requisicion, 'centro_origen_id', None):
             # Cargar centro si solo tenemos el ID
             from core.models import Centro
             try:
-                requisicion_centro = Centro.objects.get(pk=self.requisicion.centro_id)
+                requisicion_centro = Centro.objects.get(pk=self.requisicion.centro_origen_id)
             except Centro.DoesNotExist:
                 raise PermisoRequisicionError(
-                    f"Centro de requisición no válido: {self.requisicion.centro_id}"
+                    f"Centro de requisición no válido: {self.requisicion.centro_origen_id}"
                 )
         
         if requisicion_centro is None:
             raise PermisoRequisicionError(
-                "La requisición no tiene centro destino asignado. No se puede surtir."
+                "La requisición no tiene centro origen asignado. No se puede surtir."
             )
         
         # ISS-003 FIX (audit3): Registrar quién realiza el surtido para auditoría

@@ -341,12 +341,13 @@ class RequisicionContractValidator:
         """
         from datetime import timedelta
         
-        centro = self.requisicion.centro
+        # ISS-FIX: Usar centro_origen, NO la property 'centro' que devuelve centro_destino (NULL)
+        centro = self.requisicion.centro_origen
         if not centro:
             self.contrato.agregar_error(
                 'centro',
                 TipoValidacion.REQUERIDO,
-                'La requisición debe tener un centro asignado'
+                'La requisición debe tener un centro origen asignado'
             )
             return
         

@@ -1490,12 +1490,24 @@ class Requisicion(models.Model):
     
     @property
     def centro(self):
-        return self.centro_destino
+        """
+        ISS-FIX: Devuelve centro_origen (el centro que HACE la requisición).
+        
+        IMPORTANTE: Anteriormente devolvía centro_destino que es NULL para
+        requisiciones a farmacia central, causando errores de permisos.
+        
+        El "centro de la requisición" semánticamente es el centro que la origina.
+        """
+        return self.centro_origen
     
     @property
     def centro_id(self):
-        """Alias para centro_destino_id (compatibilidad)"""
-        return self.centro_destino_id
+        """
+        ISS-FIX: Alias para centro_origen_id (compatibilidad).
+        
+        CAMBIO: Antes devolvía centro_destino_id, ahora centro_origen_id.
+        """
+        return self.centro_origen_id
     
     @property
     def usuario_solicita(self):
