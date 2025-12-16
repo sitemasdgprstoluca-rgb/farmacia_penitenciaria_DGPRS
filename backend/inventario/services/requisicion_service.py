@@ -1147,8 +1147,25 @@ class RequisicionService:
         self.validar_permisos_surtido(is_farmacia_or_admin_fn, get_user_centro_fn)
         logger.info(f"SURTIR SERVICE: Permisos OK")
         
-        # 2.5 ISS-007 FIX (audit6): Validar que TODOS los detalles tengan cantidad_autorizada
-        # Esto garantiza que el flujo de autorización se completó correctamente
+        # 2.5 ISS-FIX-SURTIR: Auto-asignar cantidad_autorizada si falta
+        # Esto permite surtir requisiciones legacy autorizadas antes del fix
+        # que tengan cantidad_autorizada = NULL
+        from django.db.models import Q
+        detalles_sin_autorizar_qs = requisicion_bloqueada.detalles.select_for_update().filter(
+            Q(cantidad_autorizada__isnull=True) | Q(cantidad_autorizada=0)
+        )
+        if detalles_sin_autorizar_qs.exists():
+            logger.info(
+                f"ISS-FIX-SURTIR: Auto-asignando cantidad_autorizada para "
+                f"{detalles_sin_autorizar_qs.count()} detalles de {requisicion_bloqueada.folio}"
+            )
+            for detalle in detalles_sin_autorizar_qs:
+                detalle.cantidad_autorizada = detalle.cantidad_solicitada
+                detalle.save(update_fields=['cantidad_autorizada'])
+            logger.info(f"ISS-FIX-SURTIR: cantidad_autorizada asignada correctamente")
+        
+        # 2.6 ISS-007 FIX (audit6): RE-Validar que TODOS los detalles tengan cantidad_autorizada
+        # (Después del auto-asign, esto debería pasar siempre)
         detalles_sin_autorizar = []
         for detalle in requisicion_bloqueada.detalles.all():
             if detalle.cantidad_autorizada is None or detalle.cantidad_autorizada == 0:

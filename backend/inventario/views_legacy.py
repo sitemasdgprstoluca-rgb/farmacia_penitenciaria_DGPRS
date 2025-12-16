@@ -4985,17 +4985,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'tipo_error': type(e).__name__
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
-        # ISS-FIX-SURTIR: Auto-asignar cantidad_autorizada si falta
-        # Esto permite surtir requisiciones autorizadas antes del fix
-        detalles_sin_autorizar = requisicion.detalles.filter(
-            Q(cantidad_autorizada__isnull=True) | Q(cantidad_autorizada=0)
-        )
-        if detalles_sin_autorizar.exists():
-            logger.info(f"SURTIR: Auto-asignando cantidad_autorizada para {detalles_sin_autorizar.count()} detalles")
-            for detalle in detalles_sin_autorizar:
-                detalle.cantidad_autorizada = detalle.cantidad_solicitada
-                detalle.save(update_fields=['cantidad_autorizada'])
-            logger.info(f"SURTIR: cantidad_autorizada asignada correctamente")
+        # ISS-FIX-SURTIR: Auto-asignación de cantidad_autorizada movida al servicio
+        # para que ocurra dentro de la transacción atómica
         
         try:
             # ISS-011, ISS-021: Usar servicio transaccional
