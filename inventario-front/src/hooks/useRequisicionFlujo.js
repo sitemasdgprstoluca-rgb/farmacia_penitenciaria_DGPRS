@@ -21,13 +21,26 @@ import { toast } from 'react-hot-toast';
  * Mapeo de acciones a endpoints y permisos requeridos
  * ISS-PERFILES FIX: Incluir roles legacy (usuario_centro, usuario_normal, admin_sistema, superusuario)
  */
+/**
+ * Mapeo de acciones a endpoints y configuración
+ * 
+ * NOTA IMPORTANTE: Los rolesPermitidos son referencia/documentación.
+ * La validación REAL se hace en puedeEjecutarAccion() con un switch estricto.
+ * 
+ * SEPARACIÓN ESTRICTA DE ROLES:
+ * - medico/usuario_centro: enviar_admin, reenviar, cancelar (borrador/devuelta)
+ * - administrador_centro: autorizar_admin, devolver, rechazar (pendiente_admin)
+ * - director_centro: autorizar_director, devolver, rechazar (pendiente_director)
+ * - farmacia: recibir, autorizar_farmacia, surtir, devolver, rechazar (estados farmacia)
+ */
 const ACCIONES_FLUJO = {
   enviar_admin: {
     endpoint: 'enviarAdmin',
     label: 'Enviar a Administrador',
     estadosPermitidos: ['borrador'],
     estadoResultante: 'pendiente_admin',
-    rolesPermitidos: ['medico', 'usuario_centro', 'usuario_normal', 'admin', 'admin_sistema', 'superusuario', 'farmacia'],
+    // SOLO médicos/usuarios del centro pueden enviar
+    rolesPermitidos: ['medico', 'usuario_centro', 'usuario_normal'],
     confirmacion: true,
     color: 'blue',
   },
@@ -36,8 +49,8 @@ const ACCIONES_FLUJO = {
     label: 'Autorizar (Admin)',
     estadosPermitidos: ['pendiente_admin'],
     estadoResultante: 'pendiente_director',
-    // ISS-FIX: Incluir 'centro' para usuarios adminCentro que tienen ese rol
-    rolesPermitidos: ['administrador_centro', 'centro', 'admin', 'admin_sistema', 'superusuario'],
+    // EXCLUSIVO administrador del centro
+    rolesPermitidos: ['administrador_centro', 'admin_centro'],
     confirmacion: true,
     color: 'green',
   },
@@ -46,8 +59,8 @@ const ACCIONES_FLUJO = {
     label: 'Autorizar (Director)',
     estadosPermitidos: ['pendiente_director'],
     estadoResultante: 'enviada',
-    // ISS-FIX: Incluir 'centro' para usuarios directorCentro que pueden tener ese rol
-    rolesPermitidos: ['director_centro', 'centro', 'admin', 'admin_sistema', 'superusuario'],
+    // EXCLUSIVO director del centro
+    rolesPermitidos: ['director_centro', 'director'],
     confirmacion: true,
     color: 'green',
   },
@@ -56,7 +69,8 @@ const ACCIONES_FLUJO = {
     label: 'Recibir en Farmacia',
     estadosPermitidos: ['enviada'],
     estadoResultante: 'en_revision',
-    rolesPermitidos: ['farmacia', 'admin', 'admin_farmacia', 'admin_sistema', 'superusuario'],
+    // EXCLUSIVO farmacia
+    rolesPermitidos: ['farmacia', 'admin_farmacia'],
     confirmacion: true,
     color: 'cyan',
   },
@@ -65,7 +79,8 @@ const ACCIONES_FLUJO = {
     label: 'Autorizar y Asignar Fecha',
     estadosPermitidos: ['en_revision', 'enviada'],
     estadoResultante: 'autorizada',
-    rolesPermitidos: ['farmacia', 'admin', 'admin_farmacia', 'admin_sistema', 'superusuario'],
+    // EXCLUSIVO farmacia
+    rolesPermitidos: ['farmacia', 'admin_farmacia'],
     requiereFechaRecoleccion: true,
     confirmacion: true,
     color: 'indigo',
@@ -74,33 +89,19 @@ const ACCIONES_FLUJO = {
     endpoint: 'surtir',
     label: 'Surtir y Entregar',
     estadosPermitidos: ['autorizada', 'parcial', 'en_surtido'],
-    // CAMBIO CRÍTICO: Surtir ahora va directo a ENTREGADA (sin paso intermedio)
     estadoResultante: 'entregada',
-    rolesPermitidos: ['farmacia', 'admin', 'admin_farmacia', 'admin_sistema', 'superusuario'],
+    // EXCLUSIVO farmacia
+    rolesPermitidos: ['farmacia', 'admin_farmacia'],
     confirmacion: true,
     color: 'green',
   },
-  // DEPRECATED: confirmar_entrega ya no se usa - surtir entrega automáticamente
-  // Se mantiene comentado por si se necesita revertir
-  /*
-  confirmar_entrega: {
-    endpoint: 'confirmarEntrega',
-    label: 'Confirmar Entrega',
-    estadosPermitidos: ['surtida'],
-    estadoResultante: 'entregada',
-    rolesPermitidos: ['farmacia', 'admin', 'admin_sistema', 'superusuario'],
-    requiereLugarEntrega: true,
-    confirmacion: true,
-    color: 'green',
-  },
-  */
   devolver: {
     endpoint: 'devolver',
     label: 'Devolver al Centro',
     estadosPermitidos: ['pendiente_admin', 'pendiente_director', 'en_revision'],
     estadoResultante: 'devuelta',
-    // ISS-FIX: Incluir 'centro' para usuarios que pueden tener ese rol genérico
-    rolesPermitidos: ['administrador_centro', 'director_centro', 'centro', 'farmacia', 'admin', 'admin_farmacia', 'admin_sistema', 'superusuario'],
+    // Cada rol devuelve EN SU ETAPA (validado en puedeEjecutarAccion)
+    rolesPermitidos: ['administrador_centro', 'admin_centro', 'director_centro', 'director', 'farmacia', 'admin_farmacia'],
     requiereMotivo: true,
     confirmacion: true,
     color: 'amber',
@@ -110,7 +111,8 @@ const ACCIONES_FLUJO = {
     label: 'Reenviar',
     estadosPermitidos: ['devuelta'],
     estadoResultante: 'pendiente_admin',
-    rolesPermitidos: ['medico', 'centro', 'usuario_centro', 'usuario_normal', 'admin', 'admin_sistema', 'superusuario'],
+    // SOLO quien creó la requisición puede reenviar
+    rolesPermitidos: ['medico', 'usuario_centro', 'usuario_normal'],
     confirmacion: true,
     color: 'blue',
   },
@@ -119,8 +121,8 @@ const ACCIONES_FLUJO = {
     label: 'Rechazar',
     estadosPermitidos: ['pendiente_admin', 'pendiente_director', 'enviada', 'en_revision'],
     estadoResultante: 'rechazada',
-    // ISS-FIX: Incluir 'centro' para usuarios con ese rol genérico
-    rolesPermitidos: ['administrador_centro', 'director_centro', 'centro', 'farmacia', 'admin', 'admin_farmacia', 'admin_sistema', 'superusuario'],
+    // Cada rol rechaza EN SU ETAPA (validado en puedeEjecutarAccion)
+    rolesPermitidos: ['administrador_centro', 'admin_centro', 'director_centro', 'director', 'farmacia', 'admin_farmacia'],
     requiereMotivo: true,
     confirmacion: true,
     color: 'red',
@@ -128,10 +130,10 @@ const ACCIONES_FLUJO = {
   cancelar: {
     endpoint: 'cancelar',
     label: 'Cancelar',
-    // ISS-TRANSICIONES FIX: Según spec, cancelar solo desde borrador, autorizada, en_surtido, devuelta
     estadosPermitidos: ['borrador', 'autorizada', 'en_surtido', 'devuelta'],
     estadoResultante: 'cancelada',
-    rolesPermitidos: ['medico', 'centro', 'usuario_centro', 'usuario_normal', 'farmacia', 'admin', 'admin_sistema', 'superusuario'],
+    // Médico cancela borrador/devuelta, farmacia cancela autorizada/en_surtido
+    rolesPermitidos: ['medico', 'usuario_centro', 'usuario_normal', 'farmacia', 'admin_farmacia'],
     requiereMotivo: false,
     confirmacion: true,
     color: 'gray',
@@ -141,6 +143,7 @@ const ACCIONES_FLUJO = {
     label: 'Marcar como Vencida',
     estadosPermitidos: ['surtida'],
     estadoResultante: 'vencida',
+    // SOLO admin del sistema
     rolesPermitidos: ['admin'],
     requiereMotivo: false,
     confirmacion: true,

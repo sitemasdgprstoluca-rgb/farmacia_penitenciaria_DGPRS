@@ -452,12 +452,12 @@ PERMISOS_FLUJO_REQUISICION = {
     },
     # ISS-PERFILES FIX: Agregar roles faltantes para completar matriz de permisos
     'centro': {
-        # ISS-FIX: Usuario de centro con permisos de autorización si es admin/director
-        # Los usuarios adminCentro y directorCentro pueden tener rol 'centro' en BD
+        # ISS-FIX: Usuario genérico de centro - NO puede autorizar
+        # Los permisos de autorización son EXCLUSIVOS de administrador_centro y director_centro
         'puede_crear': False,
         'puede_enviar_admin': True,  # Puede enviar requisiciones de su centro
-        'puede_autorizar_admin': True,  # Si es adminCentro
-        'puede_autorizar_director': True,  # Si es directorCentro
+        'puede_autorizar_admin': False,  # SOLO administrador_centro
+        'puede_autorizar_director': False,  # SOLO director_centro
         'puede_recibir_farmacia': False,
         'puede_autorizar_farmacia': False,
         'puede_surtir': False,
