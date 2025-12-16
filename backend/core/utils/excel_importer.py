@@ -18,6 +18,7 @@ from decimal import Decimal
 import openpyxl
 from django.db import transaction
 from django.db.models import F
+from django.utils import timezone
 
 from core.models import Producto, Lote, Centro, ImportacionLog
 
@@ -576,17 +577,25 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
 
 
 def crear_log_importacion(usuario, tipo, archivo_nombre, resultado_dict):
-    """Crea registro de ImportacionLog."""
+    """
+    Crea registro de ImportacionLog con los campos correctos de la BD.
+    
+    Campos de la tabla importacion_logs:
+    - archivo, tipo_importacion, usuario_id, registros_totales,
+    - registros_exitosos, registros_fallidos, errores (jsonb),
+    - estado, fecha_inicio, fecha_fin
+    """
     try:
         ImportacionLog.objects.create(
             usuario=usuario if usuario and getattr(usuario, 'is_authenticated', False) else None,
-            archivo_nombre=archivo_nombre,
-            modelo=tipo,
-            total_registros=resultado_dict.get('total_registros', 0),
+            archivo=archivo_nombre[:255],  # Max 255 chars
+            tipo_importacion=tipo[:50],  # Max 50 chars
+            registros_totales=resultado_dict.get('total_registros', 0),
             registros_exitosos=resultado_dict.get('registros_exitosos', 0),
             registros_fallidos=resultado_dict.get('registros_fallidos', 0),
-            estado='exitosa' if resultado_dict.get('exitosa') else ('parcial' if resultado_dict.get('registros_exitosos', 0) > 0 else 'fallida'),
-            resultado_procesamiento=resultado_dict,
+            errores=resultado_dict.get('errores', []),  # Campo JSONField
+            estado='procesando' if resultado_dict.get('exitosa') else ('parcial' if resultado_dict.get('registros_exitosos', 0) > 0 else 'fallida'),
+            fecha_fin=timezone.now(),  # Marcar como completado
         )
     except Exception as exc:
         logger.error(f"Error creando ImportacionLog: {exc}")

@@ -2662,6 +2662,74 @@ class DonacionViewSet(viewsets.ModelViewSet):
         
         from core.serializers import DonacionSerializer
         return Response(DonacionSerializer(donacion).data)
+    
+    @action(detail=False, methods=['get'], url_path='diagnostico')
+    def diagnostico(self, request):
+        """
+        ISS-DEBUG: Endpoint de diagnóstico para el módulo de donaciones.
+        
+        Retorna información sobre:
+        - Estadísticas de donaciones
+        - Posibles errores de datos
+        - Estado de la tabla
+        """
+        from core.models import Donacion, DetalleDonacion
+        from django.db import connection
+        
+        try:
+            # Verificar si la tabla existe
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM donaciones")
+                total_raw = cursor.fetchone()[0]
+            
+            # Estadísticas via ORM
+            todas = Donacion.objects.all()
+            por_estado = {}
+            for estado in ['pendiente', 'recibida', 'procesada', 'rechazada']:
+                por_estado[estado] = todas.filter(estado=estado).count()
+            
+            # Últimas 5 donaciones
+            ultimas = todas.order_by('-created_at')[:5]
+            ultimas_data = [
+                {
+                    'id': d.pk,
+                    'numero': d.numero,
+                    'donante_nombre': d.donante_nombre,
+                    'estado': d.estado,
+                    'centro_destino': d.centro_destino.nombre if d.centro_destino else None,
+                    'detalles_count': d.detalles.count(),
+                    'created_at': d.created_at.isoformat() if d.created_at else None,
+                }
+                for d in ultimas
+            ]
+            
+            # Verificar detalles
+            total_detalles = DetalleDonacion.objects.count()
+            detalles_sin_producto = DetalleDonacion.objects.filter(producto__isnull=True).count()
+            
+            return Response({
+                'tabla_existe': True,
+                'total_donaciones_raw': total_raw,
+                'total_donaciones_orm': todas.count(),
+                'por_estado': por_estado,
+                'ultimas_donaciones': ultimas_data,
+                'detalles': {
+                    'total': total_detalles,
+                    'sin_producto': detalles_sin_producto,
+                },
+                'usuario': {
+                    'id': request.user.pk,
+                    'username': request.user.username,
+                    'rol': getattr(request.user, 'rol', 'N/A'),
+                }
+            })
+        except Exception as e:
+            logger.exception(f"Error en diagnóstico de donaciones: {e}")
+            return Response({
+                'error': str(e),
+                'tipo_error': type(e).__name__,
+                'tabla_existe': False,
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # =============================================================================
