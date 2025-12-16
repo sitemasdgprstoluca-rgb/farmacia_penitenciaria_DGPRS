@@ -1515,51 +1515,67 @@ class RequisicionService:
             for d in detalles_actualizados
         )
         
-        # CAMBIO CRÍTICO: Al surtir, pasar DIRECTAMENTE a 'entregada'
-        # No requiere confirmación del centro (automático)
-        # - Si completada → 'entregada' (todo surtido)
-        # - Si parcial → 'parcial' (aún faltan productos)
-        # El inventario YA se actualizó en farmacia y centro durante el surtido
-        nuevo_estado = 'entregada' if completada else 'parcial'
-        self.requisicion.estado = nuevo_estado
+        # ISS-FIX-TRANSICION: El trigger de BD requiere transiciones en pasos:
+        # en_surtido -> surtida -> entregada
+        # No podemos saltar directamente a 'entregada' desde 'en_surtido'
+        
+        # PASO 1: Marcar como 'surtida' primero (transición válida desde en_surtido)
+        self.requisicion.estado = 'surtida'
         self.requisicion.fecha_surtido = timezone.now()
         
-        # Si está completada, también marcar como entregada
-        if completada:
-            self.requisicion.fecha_entrega = timezone.now()
-            self.requisicion.fecha_firma_recepcion = timezone.now()
-        
         # ISS-FIX: Actualizar campos de trazabilidad de forma segura
-        # (algunos campos pueden no existir en BD de producción)
-        update_fields = ['estado', 'fecha_surtido', 'updated_at']
-        
-        if completada:
-            update_fields.extend(['fecha_entrega', 'fecha_firma_recepcion'])
+        update_fields_surtida = ['estado', 'fecha_surtido', 'updated_at']
         
         # Intentar setear surtidor si el campo existe
         try:
             if hasattr(self.requisicion, 'surtidor'):
                 self.requisicion.surtidor = self.usuario
-                update_fields.append('surtidor')
+                update_fields_surtida.append('surtidor')
         except Exception:
             pass
         
-        # Intentar setear campos de firma si existen
+        # Intentar setear campos de firma de surtido si existen
         try:
             if hasattr(self.requisicion, 'usuario_firma_surtido'):
                 self.requisicion.usuario_firma_surtido = self.usuario
-                update_fields.append('usuario_firma_surtido')
+                update_fields_surtida.append('usuario_firma_surtido')
             if hasattr(self.requisicion, 'fecha_firma_surtido'):
                 self.requisicion.fecha_firma_surtido = timezone.now()
-                update_fields.append('fecha_firma_surtido')
-            # Si está completada, también marcar receptor (automático)
-            if completada and hasattr(self.requisicion, 'usuario_firma_recepcion'):
-                self.requisicion.usuario_firma_recepcion = self.usuario
-                update_fields.append('usuario_firma_recepcion')
+                update_fields_surtida.append('fecha_firma_surtido')
         except Exception:
             pass
         
-        self.requisicion.save(update_fields=update_fields)
+        # Guardar estado 'surtida' primero
+        self.requisicion.save(update_fields=update_fields_surtida)
+        logger.info(f"ISS-FIX-TRANSICION: Requisición {self.requisicion.folio} marcada como 'surtida'")
+        
+        # PASO 2: Si completada, transicionar a 'entregada' (válido desde surtida)
+        if completada:
+            self.requisicion.estado = 'entregada'
+            self.requisicion.fecha_entrega = timezone.now()
+            
+            update_fields_entregada = ['estado', 'fecha_entrega', 'updated_at']
+            
+            # Marcar recepción automática
+            try:
+                if hasattr(self.requisicion, 'fecha_firma_recepcion'):
+                    self.requisicion.fecha_firma_recepcion = timezone.now()
+                    update_fields_entregada.append('fecha_firma_recepcion')
+                if hasattr(self.requisicion, 'usuario_firma_recepcion'):
+                    self.requisicion.usuario_firma_recepcion = self.usuario
+                    update_fields_entregada.append('usuario_firma_recepcion')
+            except Exception:
+                pass
+            
+            self.requisicion.save(update_fields=update_fields_entregada)
+            logger.info(f"ISS-FIX-TRANSICION: Requisición {self.requisicion.folio} entregada automáticamente")
+            nuevo_estado = 'entregada'
+        else:
+            # Si parcial, quedarse en 'surtida' o marcar como 'parcial'
+            # Nota: 'parcial' no está en las transiciones válidas de la BD,
+            # así que nos quedamos en 'surtida' para surtidos parciales
+            nuevo_estado = 'surtida'
+            logger.info(f"ISS-FIX-TRANSICION: Requisición {self.requisicion.folio} parcialmente surtida, estado: surtida")
         
         logger.info(
             f"Requisición {self.requisicion.folio} surtida y {'ENTREGADA automáticamente' if completada else 'marcada como parcial'} por {self.usuario.username}. "
