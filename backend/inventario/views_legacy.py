@@ -5163,6 +5163,36 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'tipo_error': type(e).__name__
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
+        # ISS-FIX-FECHA-VENCIDA: Verificación adicional de fecha límite antes de surtir
+        # Si la fecha ya venció, marcar como vencida y retornar error
+        fecha_limite = getattr(requisicion, 'fecha_recoleccion_limite', None)
+        if fecha_limite and timezone.now() > fecha_limite:
+            logger.warning(
+                f"SURTIR: Requisición {requisicion.folio} tiene fecha límite vencida: {fecha_limite}"
+            )
+            # Marcar como vencida
+            estado_anterior = requisicion.estado
+            requisicion.estado = 'vencida'
+            requisicion.fecha_vencimiento = timezone.now()
+            requisicion.motivo_vencimiento = (
+                f"Fecha límite de recolección vencida: {fecha_limite.strftime('%Y-%m-%d %H:%M')}"
+            )
+            requisicion.save(update_fields=['estado', 'fecha_vencimiento', 'motivo_vencimiento', 'updated_at'])
+            
+            # Registrar en historial
+            self._registrar_historial(
+                requisicion, estado_anterior, 'vencida',
+                request.user, 'vencer_automatico', request,
+                datos_adicionales={'motivo': requisicion.motivo_vencimiento}
+            )
+            
+            return Response({
+                'error': 'No se puede surtir: La fecha límite de recolección ya venció',
+                'fecha_limite': fecha_limite.isoformat(),
+                'estado_actual': 'vencida',
+                'mensaje': 'La requisición ha sido marcada como vencida automáticamente'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
         # ISS-FIX-SURTIR: Auto-asignación de cantidad_autorizada movida al servicio
         # para que ocurra dentro de la transacción atómica
         

@@ -1044,6 +1044,62 @@ class RequisicionService:
                 estado_actual=estado_actual
             )
         
+        # ISS-FIX-FECHA-VENCIDA: Validar que la fecha de recolección no haya vencido
+        # Si ya venció, marcar como vencida automáticamente
+        fecha_limite = getattr(requisicion_bloqueada, 'fecha_recoleccion_limite', None)
+        if fecha_limite and timezone.now() > fecha_limite:
+            logger.warning(
+                f"ISS-FIX-FECHA-VENCIDA: Requisición {requisicion_bloqueada.folio} "
+                f"tiene fecha límite vencida: {fecha_limite}"
+            )
+            requisicion_bloqueada.estado = 'vencida'
+            requisicion_bloqueada.fecha_vencimiento = timezone.now()
+            requisicion_bloqueada.motivo_vencimiento = (
+                f"Fecha límite de recolección vencida: {fecha_limite.strftime('%Y-%m-%d %H:%M')}"
+            )
+            update_fields_vencida = ['estado', 'fecha_vencimiento', 'motivo_vencimiento', 'updated_at']
+            requisicion_bloqueada.save(update_fields=update_fields_vencida)
+            
+            raise EstadoInvalidoError(
+                f"No se puede surtir: La fecha límite de recolección ({fecha_limite.strftime('%Y-%m-%d %H:%M')}) "
+                f"ya venció. La requisición ha sido marcada como vencida automáticamente.",
+                estado_actual='vencida'
+            )
+        
+        # ISS-FIX-SURTIR-ESTADO: Auto-transición de 'autorizada' a 'en_surtido'
+        # Si la requisición está en estado 'autorizada', primero hacemos la transición
+        # a 'en_surtido' antes de proceder con el surtido
+        if estado_actual == 'autorizada':
+            logger.info(
+                f"ISS-FIX-SURTIR-ESTADO: Requisición {requisicion_bloqueada.folio} "
+                f"en estado 'autorizada'. Transicionando automáticamente a 'en_surtido'"
+            )
+            
+            # ISS-FIX-FECHA-RECOLECCION: Si la requisición NO tiene fecha de recolección límite
+            # (requisiciones legacy autorizadas antes del fix), asignar una fecha por defecto
+            if not getattr(requisicion_bloqueada, 'fecha_recoleccion_limite', None):
+                from datetime import timedelta
+                fecha_default = timezone.now() + timedelta(days=7)
+                logger.warning(
+                    f"ISS-FIX-FECHA-RECOLECCION: Requisición {requisicion_bloqueada.folio} "
+                    f"sin fecha_recoleccion_limite. Asignando fecha por defecto: {fecha_default}"
+                )
+                requisicion_bloqueada.fecha_recoleccion_limite = fecha_default
+            
+            requisicion_bloqueada.estado = 'en_surtido'
+            
+            # Guardar con los campos necesarios
+            update_fields = ['estado', 'updated_at']
+            if hasattr(requisicion_bloqueada, 'fecha_recoleccion_limite'):
+                update_fields.append('fecha_recoleccion_limite')
+            
+            requisicion_bloqueada.save(update_fields=update_fields)
+            estado_actual = 'en_surtido'
+            logger.info(
+                f"ISS-FIX-SURTIR-ESTADO: Transición automática completada. "
+                f"Nuevo estado: {estado_actual}"
+            )
+        
         logger.info(f"SURTIR SERVICE: Estado válido, verificando idempotencia")
         # ISS-004 FIX (audit7): Verificar idempotencia - detectar surtido en progreso o duplicado
         # Si ya hay movimientos de salida para esta requisición, es un reintento potencialmente duplicado
@@ -1195,10 +1251,11 @@ class RequisicionService:
         items_surtidos = []
         
         # ISS-003 FIX + ISS-005 FIX: Bloquear detalles para evitar modificaciones concurrentes
-        # ISS-FIX-LOTE: Incluir lote relacionado en el select para respetar lote específico
+        # ISS-FIX-LOTE: Solo incluir producto en select_related porque lote puede ser NULL
+        # y PostgreSQL no permite FOR UPDATE en el lado nullable de un outer join
         detalles_bloqueados = DetalleRequisicion.objects.select_for_update().filter(
             requisicion=self.requisicion
-        ).select_related('producto', 'lote')
+        ).select_related('producto')
         logger.info(f"SURTIR SERVICE: Detalles bloqueados: {detalles_bloqueados.count()}")
         
         # 4. Procesar cada detalle

@@ -146,40 +146,60 @@ def generar_plantilla_lotes(centro=None):
     """
     Genera plantilla Excel para carga masiva de lotes/inventario inicial.
     Basado en tabla: public.lotes
+    
+    Columnas:
+    - Clave Producto* (o ID Producto*): Identificador del producto
+    - Nombre Producto: Referencia (opcional si se usa Clave/ID)
+    - Número Lote*: Identificador único del lote
+    - Fecha Fabricación: Fecha de fabricación (opcional)
+    - Fecha Caducidad*: Fecha de caducidad (obligatorio)
+    - Cantidad Inicial*: Cantidad de unidades (obligatorio)
+    - Precio Unitario*: Precio por unidad (default 0)
+    - Número Contrato: Número de contrato (opcional)
+    - Marca: Marca o laboratorio (opcional)
+    - Ubicación: Ubicación física (opcional)
+    - Centro: Nombre del centro (opcional)
+    - Activo: Estado del lote (opcional, default Activo)
     """
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Lotes Inventario"
 
     headers = [
-        "Clave Producto*\n(Debe existir)",
-        "Número Lote*\n(Único)",
-        "Cantidad Inicial*",
-        "Fecha Caducidad*\n(YYYY-MM-DD)",
-        "Fecha Fabricación\n(YYYY-MM-DD)",
-        "Precio Unitario*\n(Decimal)",
+        "Clave Producto",
+        "Nombre Producto",
+        "Número Lote",
+        "Fecha Fabricación",
+        "Fecha Caducidad",
+        "Cantidad Inicial",
+        "Precio Unitario",
         "Número Contrato",
         "Marca",
-        "Ubicación\n(Ej: Estante A1)"
+        "Ubicación",
+        "Centro",
+        "Activo"
     ]
 
     for col_num, header in enumerate(headers, 1):
         ws.cell(row=1, column=col_num, value=header)
-        ws.column_dimensions[openpyxl.utils.get_column_letter(col_num)].width = 20
+        ws.column_dimensions[openpyxl.utils.get_column_letter(col_num)].width = 18
     
     aplicar_estilos_header(ws, len(headers))
 
     # Ejemplo
     ws.append([
         "PAR-500",
+        "PARACETAMOL 500MG",
         "LOTE-2024-ABC-001",
-        100,
-        "2026-12-31",
         "2024-01-15",
+        "2026-12-31",
+        100,
         15.50,
         "CTR-2024-001",
         "Laboratorios XYZ",
-        "Estante A1-Nivel 2"
+        "Estante A1-Nivel 2",
+        "Farmacia Central",
+        "Activo"
     ])
 
     # Instrucciones
@@ -187,26 +207,36 @@ def generar_plantilla_lotes(centro=None):
     instrucciones = [
         ["INSTRUCCIONES DE LLENADO DE PLANTILLA - LOTES"],
         [""],
-        ["Campos obligatorios marcados con asterisco (*)"],
+        ["IDENTIFICACIÓN DEL PRODUCTO (Usar al menos UNO):"],
+        ["  • Clave Producto: Código alfanumérico del producto (ej: PAR-500)"],
+        ["  • O bien usar ID numérico si lo conoce en la columna 'Clave Producto'"],
+        ["  • Nombre Producto es referencia visual (opcional)"],
         [""],
-        ["CLAVE PRODUCTO*:", "Debe coincidir con una clave existente en el catálogo de productos"],
-        ["NÚMERO LOTE*:", "Identificador único del lote proporcionado por el fabricante"],
-        ["CANTIDAD INICIAL*:", "Cantidad de unidades del lote (número entero positivo)"],
-        ["FECHA CADUCIDAD*:", "Formato: YYYY-MM-DD (Ej: 2026-12-31)"],
-        ["FECHA FABRICACIÓN:", "Formato: YYYY-MM-DD (Ej: 2024-01-15) - opcional"],
-        ["PRECIO UNITARIO*:", "Precio por unidad (decimal, ej: 15.50)"],
-        ["NÚMERO CONTRATO:", "Número del contrato de adquisición (opcional)"],
-        ["MARCA:", "Marca o laboratorio fabricante (opcional)"],
-        ["UBICACIÓN:", "Ubicación física en almacén (opcional, ej: Estante A1)"],
+        ["CAMPOS OBLIGATORIOS:"],
+        ["  Número Lote*:", "Identificador único del lote del fabricante"],
+        ["  Fecha Caducidad*:", "Formato: YYYY-MM-DD (Ej: 2026-12-31)"],
+        ["  Cantidad Inicial*:", "Cantidad de unidades del lote (número entero positivo)"],
+        ["  Precio Unitario*:", "Precio por unidad (decimal, ej: 15.50) - usar 0 si no aplica"],
         [""],
-        [f"CENTRO ASIGNADO:", centro.nombre if centro else "Se asignará automáticamente"],
+        ["CAMPOS OPCIONALES:"],
+        ["  Fecha Fabricación:", "Formato: YYYY-MM-DD (Ej: 2024-01-15)"],
+        ["  Número Contrato:", "Número del contrato de adquisición"],
+        ["  Marca:", "Marca o laboratorio fabricante"],
+        ["  Ubicación:", "Ubicación física en almacén (ej: Estante A1)"],
+        ["  Centro:", "Nombre del centro donde se almacena el lote"],
+        ["  Activo:", "Estado: Activo/Inactivo (default: Activo)"],
+        [""],
+        [f"CENTRO ASIGNADO:", centro.nombre if centro else "Se asignará automáticamente o desde columna Centro"],
         [""],
         ["NOTAS IMPORTANTES:"],
         ["• El producto debe existir antes de cargar lotes"],
+        ["• Puede usar Clave, ID o Nombre del producto para identificarlo"],
+        ["• El sistema detecta automáticamente la fila de encabezados"],
         ["• La cantidad_actual se inicializa igual a cantidad_inicial"],
         ["• El stock del producto se actualiza automáticamente"],
         ["• Las fechas deben estar en formato ISO: YYYY-MM-DD"],
-        ["• Elimine esta hoja antes de subir el archivo"],
+        ["• Si el lote ya existe, se omitirá (no se duplica)"],
+        ["• Elimine esta hoja de instrucciones antes de subir el archivo"],
     ]
     
     for row_data in instrucciones:

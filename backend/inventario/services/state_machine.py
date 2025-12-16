@@ -363,6 +363,7 @@ class RequisicionStateMachine:
         ISS-002 FIX: Solo considera lotes NO caducados.
         ISS-001 FIX (audit4): Requiere estado en_surtido, NO puede venir de autorizada directamente.
         ISS-001 FIX (audit11): Solo cuenta lotes con estado 'disponible'.
+        ISS-FIX-SURTIR-ESTADO: Si viene desde autorizada, la transición automática ya se habrá hecho
         """
         from django.db.models import Sum
         from django.utils import timezone
@@ -372,9 +373,10 @@ class RequisicionStateMachine:
         errores = []
         
         # ISS-001 FIX (audit4): Validar que viene de en_surtido
-        if self.estado_actual != EstadoRequisicion.EN_SURTIDO:
+        # ISS-FIX-SURTIR-ESTADO: Permitir también autorizada porque hay auto-transición
+        if self.estado_actual not in [EstadoRequisicion.EN_SURTIDO, EstadoRequisicion.AUTORIZADA]:
             errores.append(
-                f"Solo se puede surtir desde estado 'en_surtido'. "
+                f"Solo se puede surtir desde estado 'en_surtido' o 'autorizada'. "
                 f"Estado actual: '{self.estado_actual.value}'"
             )
             return errores

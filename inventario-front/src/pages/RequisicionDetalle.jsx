@@ -729,6 +729,21 @@ const RequisicionDetalle = () => {
             <p className="text-red-700">{requisicion.motivo_rechazo}</p>
           </div>
         )}
+
+        {requisicion.motivo_vencimiento && (
+          <div className="mt-4 p-3 bg-red-50 rounded-lg border border-red-200">
+            <div className="flex items-center gap-2 text-red-600 mb-1">
+              <FaCalendar />
+              <span className="text-sm font-semibold">Motivo de Vencimiento</span>
+            </div>
+            <p className="text-red-700">{requisicion.motivo_vencimiento}</p>
+            {requisicion.fecha_vencimiento && (
+              <p className="text-xs text-red-600 mt-1">
+                Marcada como vencida el {formatFecha(requisicion.fecha_vencimiento)}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Banner de acción para requisiciones pendientes - SOLO FARMACIA/ADMIN */}

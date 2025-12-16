@@ -424,8 +424,9 @@ def auditar_cambios_producto(sender, instance, created, **kwargs):
         cambios['descripcion'] = (anterior.descripcion, instance.descripcion)
     if anterior.unidad_medida != instance.unidad_medida:
         cambios['unidad_medida'] = (anterior.unidad_medida, instance.unidad_medida)
-    if anterior.precio_unitario != instance.precio_unitario:
-        cambios['precio_unitario'] = (str(anterior.precio_unitario), str(instance.precio_unitario))
+    # ISS-FIX: precio_unitario NO existe en Producto (está en Lote)
+    # if anterior.precio_unitario != instance.precio_unitario:
+    #     cambios['precio_unitario'] = (str(anterior.precio_unitario), str(instance.precio_unitario))
     if anterior.stock_minimo != instance.stock_minimo:
         cambios['stock_minimo'] = (anterior.stock_minimo, instance.stock_minimo)
     if anterior.activo != instance.activo:

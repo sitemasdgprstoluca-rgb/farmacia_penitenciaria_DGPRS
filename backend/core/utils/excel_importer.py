@@ -354,13 +354,16 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     Importa lotes desde Excel.
     
     Columnas soportadas:
-    - Clave/Producto (REQUERIDO): código del producto
+    - Clave/ID/Nombre Producto (REQUERIDO): código o ID del producto
     - Lote (REQUERIDO): número de lote
-    - Cantidad (REQUERIDO): cantidad inicial
-    - Caducidad (REQUERIDO): fecha de vencimiento
-    - Precio: precio unitario (opcional)
+    - Cantidad Inicial (REQUERIDO): cantidad inicial
+    - Fecha Caducidad (REQUERIDO): fecha de vencimiento
+    - Precio Unitario: precio unitario (opcional, default 0)
     - Marca: laboratorio (opcional)
     - Ubicacion: ubicación física (opcional)
+    - Centro: nombre del centro (opcional)
+    
+    Detecta automáticamente la fila de encabezados.
     """
     resultado = ResultadoImportacion('Lote')
     workbook, _, valido = cargar_excel(archivo)
@@ -369,27 +372,48 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
         return resultado.get_dict()
 
     sheet = workbook.active
-    encabezados = [cell.value for cell in sheet[1]]
+    
+    # Detectar fila de encabezados (puede estar en fila 1, 2 o 3)
+    fila_inicio_datos = 2
+    encabezados = []
+    for fila_num in range(1, min(5, sheet.max_row + 1)):
+        temp_headers = [cell.value for cell in sheet[fila_num]]
+        # Si encuentra columnas con "lote" o "producto", esa es la fila de encabezados
+        if any(h and ('lote' in str(h).lower() or 'producto' in str(h).lower()) for h in temp_headers):
+            encabezados = temp_headers
+            fila_inicio_datos = fila_num + 1
+            logger.info(f"Lotes - Encabezados detectados en fila {fila_num}: {encabezados}")
+            break
+    
+    if not encabezados or not any(h for h in encabezados):
+        encabezados = [cell.value for cell in sheet[1]]
+        fila_inicio_datos = 2
+    
     encabezados_norm = [normalizar_header(e) for e in encabezados]
     
     logger.info(f"Lotes - Encabezados: {encabezados}")
     logger.info(f"Lotes - Normalizados: {encabezados_norm}")
     
     SINONIMOS_LOTE = {
-        'producto': ['clave', 'clave producto', 'producto', 'codigo', 'codigo producto', 
-                     'id producto', 'sku', 'key'],
+        'producto_clave': ['clave producto', 'producto', 'codigo', 'codigo producto', 
+                           'id producto', 'sku', 'key', 'clave'],
+        'producto_id': ['id', 'product id', 'producto id', 'id_producto'],
+        'producto_nombre': ['nombre producto', 'nombre', 'descripcion', 'producto nombre'],
         'numero_lote': ['lote', 'numero lote', 'num lote', 'no lote', 'numero de lote', 
                         'n lote', 'nro lote', 'batch'],
-        'cantidad': ['cantidad', 'cantidad inicial', 'cant', 'stock', 'existencia', 
-                     'qty', 'unidades', 'piezas'],
+        'cantidad_inicial': ['cantidad inicial', 'cantidad', 'cant inicial', 'stock', 'existencia', 
+                             'qty', 'unidades', 'piezas', 'cant'],
+        'cantidad_actual': ['cantidad actual', 'cant actual', 'stock actual'],
         'caducidad': ['caducidad', 'fecha caducidad', 'vencimiento', 'fecha vencimiento', 
                       'expira', 'fec cad', 'expiracion', 'fecha expiracion'],
         'fabricacion': ['fabricacion', 'fecha fabricacion', 'elaboracion', 
                         'fecha elaboracion', 'fec fab'],
-        'precio': ['precio', 'precio unitario', 'costo', 'valor', 'precio unit', 'pu'],
+        'precio': ['precio unitario', 'precio', 'costo', 'valor', 'precio unit', 'pu'],
         'contrato': ['contrato', 'numero contrato', 'no contrato', 'num contrato'],
         'marca': ['marca', 'laboratorio', 'fabricante', 'proveedor', 'lab'],
         'ubicacion': ['ubicacion', 'almacen', 'bodega', 'estante', 'localizacion'],
+        'centro': ['centro', 'centro nombre', 'nombre centro', 'centro destino'],
+        'activo': ['activo', 'estado', 'status', 'active'],
     }
     
     def buscar_columna(sinonimos_lista):
@@ -409,13 +433,25 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     
     logger.info(f"Lotes - Mapeo: {col_map}")
     
-    # Validar columnas mínimas
-    requeridos = ['producto', 'numero_lote', 'cantidad', 'caducidad']
-    faltantes = [r for r in requeridos if r not in col_map]
-    if faltantes:
-        nombres_requeridos = "Clave/Producto, Lote, Cantidad, Caducidad"
+    # Validar columnas mínimas - aceptar múltiples formas de identificar producto
+    tiene_producto = ('producto_clave' in col_map or 'producto_id' in col_map or 'producto_nombre' in col_map)
+    tiene_lote = 'numero_lote' in col_map
+    tiene_cantidad = 'cantidad_inicial' in col_map
+    tiene_caducidad = 'caducidad' in col_map
+    
+    if not (tiene_producto and tiene_lote and tiene_cantidad and tiene_caducidad):
+        faltantes = []
+        if not tiene_producto:
+            faltantes.append('Clave/ID/Nombre Producto')
+        if not tiene_lote:
+            faltantes.append('Número Lote')
+        if not tiene_cantidad:
+            faltantes.append('Cantidad Inicial')
+        if not tiene_caducidad:
+            faltantes.append('Fecha Caducidad')
+        
         resultado.agregar_error(1, 'encabezados', 
-            f'Columnas faltantes: {faltantes}. Se requieren: {nombres_requeridos}. Detectadas: {encabezados}')
+            f'Columnas faltantes: {", ".join(faltantes)}. Detectadas: {encabezados}')
         return resultado.get_dict()
     
     # Obtener centro si se especificó
@@ -430,7 +466,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     creados = 0
     
     with transaction.atomic():
-        for fila_num in range(2, sheet.max_row + 1):
+        for fila_num in range(fila_inicio_datos, sheet.max_row + 1):
             resultado.incrementar_procesados()
             fila = list(sheet[fila_num])
             
@@ -443,19 +479,50 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                             return str(val).strip()
                     return default
                 
-                # ========== PRODUCTO (requerido) ==========
-                clave_producto = get_val('producto')
-                if not clave_producto:
-                    resultado.total_procesados -= 1
-                    continue
+                # ========== PRODUCTO (requerido - soporta 3 formas) ==========
+                producto = None
+                producto_ref = None
                 
-                clave_producto = str(clave_producto).strip().upper()
+                # Intentar por Clave alfanumérica
+                if 'producto_clave' in col_map:
+                    clave_producto = get_val('producto_clave')
+                    if clave_producto:
+                        producto_ref = clave_producto.upper()
+                        try:
+                            producto = Producto.objects.get(clave__iexact=clave_producto)
+                        except Producto.DoesNotExist:
+                            pass
                 
-                try:
-                    producto = Producto.objects.get(clave__iexact=clave_producto)
-                except Producto.DoesNotExist:
+                # Intentar por ID numérico
+                if not producto and 'producto_id' in col_map:
+                    id_producto_raw = get_val('producto_id')
+                    if id_producto_raw:
+                        try:
+                            producto_id = int(float(id_producto_raw))
+                            producto_ref = f"ID:{producto_id}"
+                            producto = Producto.objects.get(id=producto_id)
+                        except (ValueError, Producto.DoesNotExist):
+                            pass
+                
+                # Intentar por nombre
+                if not producto and 'producto_nombre' in col_map:
+                    nombre_producto = get_val('producto_nombre')
+                    if nombre_producto:
+                        producto_ref = nombre_producto
+                        try:
+                            producto = Producto.objects.get(nombre__iexact=nombre_producto)
+                        except Producto.DoesNotExist:
+                            # Intentar búsqueda aproximada
+                            productos_match = Producto.objects.filter(nombre__icontains=nombre_producto)
+                            if productos_match.count() == 1:
+                                producto = productos_match.first()
+                
+                if not producto:
+                    if not producto_ref:
+                        resultado.total_procesados -= 1
+                        continue
                     resultado.agregar_error(fila_num, 'producto', 
-                        f'Producto no encontrado: {clave_producto}')
+                        f'Producto no encontrado: {producto_ref}')
                     continue
                 
                 # ========== NUMERO LOTE (requerido) ==========
@@ -479,13 +546,16 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         f'Lote {numero_lote} ya existe para producto {clave_producto}')
                     continue
                 
-                # ========== CANTIDAD (requerido) ==========
-                cant_raw = get_val('cantidad', '0')
+                # ========== CANTIDAD INICIAL (requerido) ==========
+                cant_raw = get_val('cantidad_inicial', '0')
                 try:
                     cantidad_inicial = max(1, int(float(cant_raw)))
                 except:
                     resultado.agregar_error(fila_num, 'cantidad', f'Cantidad inválida: {cant_raw}')
                     continue
+                
+                # Nota: cantidad_actual se ignora del archivo y se iguala a cantidad_inicial
+                # según lógica de negocio
                 
                 # ========== FECHA CADUCIDAD (requerido) ==========
                 idx_cad = col_map['caducidad']
@@ -543,10 +613,31 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 marca = get_val('marca')
                 ubicacion = get_val('ubicacion')
                 
+                # ========== CENTRO (opcional desde columna o parámetro) ==========
+                centro_lote = centro  # Default del parámetro
+                if 'centro' in col_map:
+                    nombre_centro = get_val('centro')
+                    if nombre_centro:
+                        try:
+                            centro_lote = Centro.objects.get(nombre__iexact=nombre_centro)
+                        except Centro.DoesNotExist:
+                            # Intentar búsqueda aproximada
+                            centros_match = Centro.objects.filter(nombre__icontains=nombre_centro)
+                            if centros_match.count() == 1:
+                                centro_lote = centros_match.first()
+                            else:
+                                logger.warning(f"Fila {fila_num}: Centro '{nombre_centro}' no encontrado, usando default")
+                
+                # ========== ACTIVO (opcional) ==========
+                activo = True
+                if 'activo' in col_map:
+                    activo_raw = get_val('activo', 'activo')
+                    activo = _parse_bool(activo_raw)
+                
                 # Crear lote
                 Lote.objects.create(
                     producto=producto,
-                    centro=centro,
+                    centro=centro_lote,
                     numero_lote=numero_lote,
                     cantidad_inicial=cantidad_inicial,
                     cantidad_actual=cantidad_inicial,
@@ -556,7 +647,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     numero_contrato=numero_contrato,
                     marca=marca,
                     ubicacion=ubicacion,
-                    activo=True,
+                    activo=activo,
                 )
                 
                 # Actualizar stock del producto

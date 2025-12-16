@@ -1827,6 +1827,11 @@ const Requisiciones = () => {
                       <strong>Motivo de rechazo:</strong> {req.motivo_rechazo}
                     </p>
                   )}
+                  {req.motivo_vencimiento && (
+                    <p className="text-sm text-red-600 mt-1">
+                      <strong>⏰ Motivo de vencimiento:</strong> {req.motivo_vencimiento}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap gap-2">

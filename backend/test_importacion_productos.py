@@ -73,58 +73,39 @@ def probar_importacion(ruta_archivo):
         print(f"❌ Error al obtener usuario: {e}")
         return False
     
-    # Abrir archivo
+    # Usar la ruta del archivo directamente - openpyxl puede abrirlo
     try:
-        with open(ruta_archivo, 'rb') as f:
-            # Simular objeto de archivo de Django
-            class FakeFile:
-                def __init__(self, file_obj, name):
-                    self.file = file_obj
-                    self.name = name
-                    self.size = os.path.getsize(ruta_archivo)
-                
-                def read(self, *args):
-                    return self.file.read(*args)
-                
-                def seek(self, *args):
-                    return self.file.seek(*args)
-                
-                def tell(self):
-                    return self.file.tell()
+        print(f"\n⏳ Importando productos...")
+        resultado = importar_productos_desde_excel(ruta_archivo, usuario)
+        
+        print(f"\n{'='*80}")
+        print(f"RESULTADO DE LA IMPORTACIÓN")
+        print(f"{'='*80}\n")
+        
+        print(f"✅ Exitosa: {'SÍ' if resultado['exitosa'] else 'NO'}")
+        print(f"📊 Total registros: {resultado['total_registros']}")
+        print(f"✓  Exitosos: {resultado['registros_exitosos']}")
+        print(f"✗  Fallidos: {resultado['registros_fallidos']}")
+        print(f"📈 Tasa de éxito: {resultado['tasa_exito']}%")
+        
+        if 'creados' in resultado:
+            print(f"🆕 Creados: {resultado['creados']}")
+        if 'actualizados' in resultado:
+            print(f"🔄 Actualizados: {resultado['actualizados']}")
+        
+        if resultado['errores']:
+            print(f"\n⚠️  ERRORES ({len(resultado['errores'])}):")
+            for i, error in enumerate(resultado['errores'][:10], 1):
+                print(f"\n  Error #{i}:")
+                print(f"    Fila: {error.get('fila', 'N/A')}")
+                print(f"    Campo: {error.get('campo', 'N/A')}")
+                print(f"    Detalle: {error.get('error', 'N/A')}")
             
-            fake_file = FakeFile(f, os.path.basename(ruta_archivo))
-            
-            print(f"\n⏳ Importando productos...")
-            resultado = importar_productos_desde_excel(fake_file, usuario)
-            
-            print(f"\n{'='*80}")
-            print(f"RESULTADO DE LA IMPORTACIÓN")
-            print(f"{'='*80}\n")
-            
-            print(f"✅ Exitosa: {'SÍ' if resultado['exitosa'] else 'NO'}")
-            print(f"📊 Total registros: {resultado['total_registros']}")
-            print(f"✓  Exitosos: {resultado['registros_exitosos']}")
-            print(f"✗  Fallidos: {resultado['registros_fallidos']}")
-            print(f"📈 Tasa de éxito: {resultado['tasa_exito']}%")
-            
-            if 'creados' in resultado:
-                print(f"🆕 Creados: {resultado['creados']}")
-            if 'actualizados' in resultado:
-                print(f"🔄 Actualizados: {resultado['actualizados']}")
-            
-            if resultado['errores']:
-                print(f"\n⚠️  ERRORES ({len(resultado['errores'])}):")
-                for i, error in enumerate(resultado['errores'][:10], 1):
-                    print(f"\n  Error #{i}:")
-                    print(f"    Fila: {error.get('fila', 'N/A')}")
-                    print(f"    Campo: {error.get('campo', 'N/A')}")
-                    print(f"    Detalle: {error.get('error', 'N/A')}")
-                
-                if len(resultado['errores']) > 10:
-                    print(f"\n  ... y {len(resultado['errores']) - 10} errores más")
-            
-            return resultado['exitosa'] or resultado['registros_exitosos'] > 0
-            
+            if len(resultado['errores']) > 10:
+                print(f"\n  ... y {len(resultado['errores']) - 10} errores más")
+        
+        return resultado['exitosa'] or resultado['registros_exitosos'] > 0
+        
     except Exception as e:
         print(f"\n❌ Error durante la importación: {e}")
         import traceback

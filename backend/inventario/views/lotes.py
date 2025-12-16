@@ -623,175 +623,73 @@ class LoteViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='importar-excel')
     def importar_excel(self, request):
         """
-        Importa lotes desde Excel con validaciones.
+        Importa lotes desde Excel usando el importador estandarizado.
         
-        Columnas esperadas (en orden):
-        1. Producto (clave o nombre) - Requerido
-        2. Numero Lote - Requerido
-        3. Fecha Caducidad (YYYY-MM-DD) - Requerido
-        4. Cantidad Inicial - Requerido
-        5. Cantidad Actual (opcional, default = Cantidad Inicial)
-        6. Fecha Fabricacion (opcional, YYYY-MM-DD)
-        7. Precio Unitario (opcional, default = 0)
-        8. Numero Contrato (opcional)
-        9. Marca (opcional)
-        10. Ubicacion (opcional)
-        11. Centro ID (opcional, para asignar a un centro especifico)
+        Soporta múltiples formatos de columnas:
+        - Clave/ID/Nombre Producto (OBLIGATORIO)
+        - Número Lote (OBLIGATORIO)
+        - Cantidad Inicial (OBLIGATORIO)
+        - Fecha Caducidad (OBLIGATORIO)
+        - Fecha Fabricación (opcional)
+        - Precio Unitario (opcional, default 0)
+        - Número Contrato (opcional)
+        - Marca (opcional)
+        - Ubicación (opcional)
+        - Centro (opcional - nombre del centro)
+        - Activo (opcional, default Activo)
         
-        Limites de seguridad:
-        - Tamano maximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
-        - Filas maximas: configurado en IMPORT_MAX_ROWS (default 5000)
+        Detecta automáticamente la fila de encabezados.
+        Soporta archivos con encabezados en fila 1, 2 o 3.
+        
+        Límites de seguridad:
+        - Tamaño máximo: 10MB
         - Extensiones: .xlsx, .xls
         """
+        from core.utils.excel_importer import importar_lotes_desde_excel, crear_log_importacion
+        
         file = request.FILES.get('file')
         
         # Validar archivo
         es_valido, error_msg = validar_archivo_excel(file)
         if not es_valido:
             return Response({
-                'error': 'Archivo invalido',
+                'error': 'Archivo inválido',
                 'mensaje': error_msg
             }, status=status.HTTP_400_BAD_REQUEST)
-
+        
         try:
-            # ISS-001: Usar carga segura con limite real de bytes
-            wb, error_carga = cargar_workbook_seguro(file)
-            if wb is None:
-                return Response({
-                    'error': 'Error al procesar archivo',
-                    'mensaje': error_carga
-                }, status=status.HTTP_400_BAD_REQUEST)
+            # Obtener centro del usuario si aplica
+            centro_id = None
+            if hasattr(request.user, 'centro') and request.user.centro:
+                centro_id = request.user.centro.id
             
-            ws = wb.active
+            # Ejecutar importación
+            resultado = importar_lotes_desde_excel(file, request.user, centro_id=centro_id)
             
-            # Validar numero de filas
-            filas_validas, error_filas, num_filas = validar_filas_excel(ws)
-            if not filas_validas:
-                wb.close()  # Liberar recursos en modo read_only
-                return Response({
-                    'error': 'Archivo demasiado grande',
-                    'mensaje': error_filas
-                }, status=status.HTTP_400_BAD_REQUEST)
+            # Crear log de importación
+            crear_log_importacion(
+                usuario=request.user,
+                tipo='Lote',
+                archivo_nombre=file.name,
+                resultado_dict=resultado
+            )
             
-            exitos = []
-            errores = []
-
-            for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-                try:
-                    # Extraer valores con padding para columnas opcionales
-                    valores = (list(row) + [None] * 11)[:11]
-                    producto_clave = valores[0]
-                    numero_lote = valores[1]
-                    fecha_cad = valores[2]
-                    cantidad_inicial = valores[3]
-                    cantidad_actual = valores[4]
-                    fecha_fab = valores[5]
-                    precio_unitario = valores[6]
-                    numero_contrato = valores[7]
-                    marca = valores[8]
-                    ubicacion = valores[9]
-                    centro_id = valores[10]
-
-                    if not producto_clave or not numero_lote:
-                        errores.append({'fila': row_idx, 'error': 'Producto y numero de lote son obligatorios'})
-                        continue
-
-                    producto = Producto.objects.filter(
-                        Q(clave__iexact=str(producto_clave).strip()) |
-                        Q(nombre__iexact=str(producto_clave).strip())
-                    ).first()
-                    if not producto:
-                        errores.append({'fila': row_idx, 'error': f'Producto no encontrado: {producto_clave}'})
-                        continue
-
-                    # Parsear fecha de caducidad
-                    try:
-                        fecha_cad_val = None
-                        if fecha_cad:
-                            if isinstance(fecha_cad, (datetime, date)):
-                                fecha_cad_val = fecha_cad.date() if hasattr(fecha_cad, 'date') else fecha_cad
-                            else:
-                                fecha_cad_val = datetime.strptime(str(fecha_cad), '%Y-%m-%d').date()
-                    except Exception:
-                        errores.append({'fila': row_idx, 'error': 'Fecha de caducidad invalida'})
-                        continue
-
-                    # Parsear fecha de fabricacion (opcional)
-                    fecha_fab_val = None
-                    if fecha_fab:
-                        try:
-                            if isinstance(fecha_fab, (datetime, date)):
-                                fecha_fab_val = fecha_fab.date() if hasattr(fecha_fab, 'date') else fecha_fab
-                            else:
-                                fecha_fab_val = datetime.strptime(str(fecha_fab), '%Y-%m-%d').date()
-                        except Exception:
-                            pass  # Ignorar fecha fabricacion invalida
-
-                    # Parsear cantidades
-                    try:
-                        cant_ini = int(cantidad_inicial) if cantidad_inicial not in [None, ''] else 0
-                        cant_act = int(cantidad_actual) if cantidad_actual not in [None, ''] else cant_ini
-                        if cant_ini <= 0 or cant_act < 0:
-                            raise ValueError
-                    except Exception:
-                        errores.append({'fila': row_idx, 'error': 'Cantidades invalidas'})
-                        continue
-
-                    # Parsear precio unitario (opcional)
-                    precio_val = 0
-                    if precio_unitario not in [None, '']:
-                        try:
-                            precio_val = float(precio_unitario)
-                            if precio_val < 0:
-                                precio_val = 0
-                        except Exception:
-                            pass  # Usar 0 si no es valido
-
-                    # Preparar defaults para update_or_create
-                    defaults = {
-                        'fecha_caducidad': fecha_cad_val or date.today(),
-                        'cantidad_inicial': cant_ini,
-                        'cantidad_actual': cant_act,
-                        'precio_unitario': precio_val,
-                        'numero_contrato': str(numero_contrato).strip()[:100] if numero_contrato else '',
-                        'marca': str(marca).strip()[:100] if marca else '',
-                        'ubicacion': str(ubicacion).strip()[:100] if ubicacion else '',
-                    }
-                    
-                    if fecha_fab_val:
-                        defaults['fecha_fabricacion'] = fecha_fab_val
-                    
-                    # Asignar centro si se proporciona
-                    if centro_id:
-                        try:
-                            centro = Centro.objects.get(pk=int(centro_id))
-                            defaults['centro'] = centro
-                        except (Centro.DoesNotExist, ValueError):
-                            pass  # Ignorar centro invalido
-
-                    lote, created = Lote.objects.update_or_create(
-                        producto=producto,
-                        numero_lote=str(numero_lote).strip().upper(),
-                        defaults=defaults
-                    )
-                    exitos.append({'fila': row_idx, 'lote_id': lote.id, 'numero_lote': lote.numero_lote, 'created': created})
-                except Exception as exc:
-                    errores.append({'fila': row_idx, 'error': str(exc)})
-
-            status_code = status.HTTP_200_OK if not errores else status.HTTP_207_MULTI_STATUS
+            # Determinar status code
+            if resultado['exitosa']:
+                status_code = status.HTTP_200_OK
+            elif resultado['registros_exitosos'] > 0:
+                status_code = status.HTTP_206_PARTIAL_CONTENT
+            else:
+                status_code = status.HTTP_400_BAD_REQUEST
+            
+            return Response(resultado, status=status_code)
+            
+        except Exception as e:
+            logger.exception(f"Error en importación de lotes: {e}")
             return Response({
-                'mensaje': 'Importacion de lotes completada',
-                'resumen': {
-                    'exitos': len(exitos),
-                    'errores': len(errores),
-                    'total': len(exitos) + len(errores)
-                },
-                'exitos': exitos,
-                'errores': errores
-            }, status=status_code)
-        except Exception as exc:
-            # traceback removido por seguridad (ISS-008)
-            return Response({'error': 'Error al procesar archivo', 'mensaje': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                'error': 'Error al procesar archivo',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['get'], url_path='plantilla')
     def plantilla_lotes(self, request):
