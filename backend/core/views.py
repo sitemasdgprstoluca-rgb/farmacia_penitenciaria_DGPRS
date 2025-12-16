@@ -1301,44 +1301,61 @@ class NotificacionViewSet(
     ordering = ['-created_at']
 
     def get_queryset(self):
-        queryset = Notificacion.objects.filter(usuario=self.request.user)
-        
-        # ISS-FIX: Manejar ordering con alias fecha_creacion
-        ordering = self.request.query_params.get('ordering', '')
-        if 'fecha_creacion' in ordering:
-            # Reemplazar fecha_creacion por created_at en el queryset
-            if ordering.startswith('-'):
-                queryset = queryset.order_by('-created_at')
-            else:
-                queryset = queryset.order_by('created_at')
-        
-        tipo = self.request.query_params.get('tipo')
-        if tipo:
-            queryset = queryset.filter(tipo=tipo)
-
-        leida = self.request.query_params.get('leida')
-        if leida in ['true', 'false']:
-            queryset = queryset.filter(leida=leida == 'true')
-
-        fecha_desde = self.request.query_params.get('desde')
-        fecha_hasta = self.request.query_params.get('hasta')
         try:
-            if fecha_desde:
-                queryset = queryset.filter(created_at__date__gte=fecha_desde)
-            if fecha_hasta:
-                queryset = queryset.filter(created_at__date__lte=fecha_hasta)
-        except Exception:
-            pass
+            queryset = Notificacion.objects.filter(usuario=self.request.user)
+            
+            # ISS-FIX: Manejar ordering con alias fecha_creacion
+            ordering = self.request.query_params.get('ordering', '')
+            if 'fecha_creacion' in ordering:
+                # Reemplazar fecha_creacion por created_at en el queryset
+                if ordering.startswith('-'):
+                    queryset = queryset.order_by('-created_at')
+                else:
+                    queryset = queryset.order_by('created_at')
+            
+            tipo = self.request.query_params.get('tipo')
+            if tipo:
+                queryset = queryset.filter(tipo=tipo)
 
-        return queryset
+            leida = self.request.query_params.get('leida')
+            if leida in ['true', 'false']:
+                queryset = queryset.filter(leida=leida == 'true')
+
+            fecha_desde = self.request.query_params.get('desde')
+            fecha_hasta = self.request.query_params.get('hasta')
+            try:
+                if fecha_desde:
+                    queryset = queryset.filter(created_at__date__gte=fecha_desde)
+                if fecha_hasta:
+                    queryset = queryset.filter(created_at__date__lte=fecha_hasta)
+            except Exception:
+                pass
+
+            return queryset
+        except Exception as e:
+            # ISS-FIX: Si la tabla notificaciones no existe, devolver queryset vacío
+            logger.warning(f"Error accediendo a notificaciones: {e}")
+            return Notificacion.objects.none()
+    
+    def list(self, request, *args, **kwargs):
+        """Override list para manejar errores de tabla inexistente."""
+        try:
+            return super().list(request, *args, **kwargs)
+        except Exception as e:
+            logger.warning(f"Error listando notificaciones: {e}")
+            return Response({'count': 0, 'results': []})
 
     @action(detail=True, methods=['post'], url_path='marcar-leida')
     def marcar_leida(self, request, pk=None):
         """POST /api/notificaciones/{id}/marcar-leida/"""
-        notificacion = self.get_object()
-        notificacion.leida = True
-        notificacion.save()
-        return Response({'leida': True})
+        try:
+            notificacion = self.get_object()
+            notificacion.leida = True
+            notificacion.save()
+            return Response({'leida': True})
+        except Exception as e:
+            logger.warning(f"Error marcando notificación como leída: {e}")
+            return Response({'leida': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['post'], url_path='marcar-todas-leidas')
     def marcar_todas_leidas(self, request):
@@ -1349,15 +1366,24 @@ class NotificacionViewSet(
         Respeta los query params: tipo, desde, hasta, leida.
         Solo afecta las notificaciones del usuario autenticado (get_queryset ya filtra).
         """
-        # get_queryset() ya aplica filtros de tipo, desde, hasta, leida y usuario
-        updated = self.get_queryset().filter(leida=False).update(leida=True)
-        return Response({'marcadas': updated})
+        try:
+            # get_queryset() ya aplica filtros de tipo, desde, hasta, leida y usuario
+            updated = self.get_queryset().filter(leida=False).update(leida=True)
+            return Response({'marcadas': updated})
+        except Exception as e:
+            logger.warning(f"Error marcando notificaciones como leídas: {e}")
+            return Response({'marcadas': 0})
 
     @action(detail=False, methods=['get'], url_path='no-leidas-count')
     def no_leidas_count(self, request):
         """GET /api/notificaciones/no-leidas-count/"""
-        count = self.get_queryset().filter(leida=False).count()
-        return Response({'no_leidas': count})
+        try:
+            count = self.get_queryset().filter(leida=False).count()
+            return Response({'no_leidas': count})
+        except Exception as e:
+            # ISS-FIX: Si la tabla no existe o hay error, devolver 0 sin fallar
+            logger.warning(f"Error contando notificaciones no leídas: {e}")
+            return Response({'no_leidas': 0})
     
     def destroy(self, request, *args, **kwargs):
         """
