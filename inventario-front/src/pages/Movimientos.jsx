@@ -106,10 +106,26 @@ const Movimientos = () => {
         setCentros([]);
       }
       
-      // Cargar lotes según permisos (el backend ya filtra por centro del usuario)
-      const lotesResp = await lotesAPI.getAll({ page_size: 500, ordering: "-fecha_caducidad", estado: "disponible" });
+      // ISS-FIX (lotes-centro): Cargar lotes con filtro explícito de centro
+      // El backend ya filtra por centro del usuario, pero enviamos el parámetro
+      // para asegurar consistencia y logging
+      const lotesParams = { 
+        page_size: 500, 
+        ordering: "-fecha_caducidad", 
+        activo: true,  // ISS-FIX: Solo lotes activos
+        con_stock: "con_stock",  // ISS-FIX: Solo lotes con stock > 0
+      };
+      
+      // ISS-FIX: Si usuario de centro, el backend filtra automáticamente
+      // pero podemos agregar el centro explícitamente si está disponible
+      if (!puedeVerTodosCentros && centroUsuario) {
+        lotesParams.centro = centroUsuario;
+      }
+      
+      const lotesResp = await lotesAPI.getAll(lotesParams);
       const lotesData = lotesResp.data.results || lotesResp.data || [];
       setLotes(lotesData);
+      // ISS-FIX: El filtro ya viene del backend, solo confirmar cantidad > 0
       setLotesDisponibles(lotesData.filter(l => l.cantidad_actual > 0));
     } catch (err) {
       console.warn("No se pudieron cargar catálogos", err.message);
@@ -793,15 +809,33 @@ const Movimientos = () => {
                     ))}
                   </select>
                 </div>
+                {/* ISS-FIX (lotes-centro): Mejorar filtro de lote con select y búsqueda por texto */}
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold text-gray-700">Lote</label>
-                  <input
-                    type="text"
+                  <select
                     value={filtros.lote}
                     onChange={(e) => handleFiltro("lote", e.target.value)}
                     className="border rounded-lg px-3 py-2"
-                    placeholder="Número de lote"
-                  />
+                  >
+                    <option value="">Todos los lotes</option>
+                    {/* Filtrar lotes por producto seleccionado si hay uno */}
+                    {(filtros.producto 
+                      ? lotes.filter(l => l.producto === parseInt(filtros.producto))
+                      : lotes
+                    ).map((l) => {
+                      const prod = productos.find(p => p.id === l.producto);
+                      const fechaCad = l.fecha_caducidad ? new Date(l.fecha_caducidad).toLocaleDateString('es-MX', { month: 'short', year: 'numeric' }) : 'S/F';
+                      return (
+                        <option key={l.id} value={l.id}>
+                          {l.numero_lote} - {prod?.clave || 'Prod'} (Stock: {l.cantidad_actual}, Cad: {fechaCad})
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <p className="text-xs text-gray-400">
+                    {lotes.length} lote(s) disponible(s)
+                    {filtros.producto && ` (filtrado por producto)`}
+                  </p>
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold text-gray-700">Buscar</label>

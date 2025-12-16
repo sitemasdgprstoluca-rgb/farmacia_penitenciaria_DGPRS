@@ -1252,6 +1252,8 @@ class ProductoViewSet(viewsets.ModelViewSet):
         Obtiene los lotes de un producto específico con información de caducidad.
         GET /api/productos/{id}/lotes/
         
+        ISS-FIX (lotes-centro): Mejorado para diagnóstico de problemas de lotes por centro.
+        
         Retorna:
         - Lista de lotes con cantidad, número de lote, fecha de caducidad y semáforo de alerta
         """
@@ -1259,6 +1261,12 @@ class ProductoViewSet(viewsets.ModelViewSet):
         try:
             producto = self.get_object()
             user = request.user
+            
+            # ISS-FIX: Logging para diagnóstico
+            logger.info(
+                f"ISS-LOTES-PROD: Consultando lotes de producto {producto.clave} (ID: {producto.pk}). "
+                f"Usuario: {user.username}, Rol: {getattr(user, 'rol', 'N/A')}"
+            )
             
             # Obtener lotes del producto
             lotes_queryset = producto.lotes.filter(
@@ -1270,9 +1278,26 @@ class ProductoViewSet(viewsets.ModelViewSet):
             if not is_farmacia_or_admin(user) and not user.is_superuser:
                 user_centro = get_user_centro(user)
                 if user_centro:
+                    # ISS-FIX: Log del filtro aplicado
+                    lotes_antes = lotes_queryset.count()
                     lotes_queryset = lotes_queryset.filter(centro=user_centro)
+                    lotes_despues = lotes_queryset.count()
+                    logger.info(
+                        f"ISS-LOTES-PROD: Filtrado por centro {user_centro.nombre} (ID: {user_centro.pk}). "
+                        f"Lotes antes: {lotes_antes}, después: {lotes_despues}"
+                    )
                 else:
+                    logger.warning(
+                        f"ISS-LOTES-PROD: Usuario {user.username} sin centro asignado. "
+                        f"Retornando 0 lotes."
+                    )
                     lotes_queryset = lotes_queryset.none()
+            else:
+                # ISS-FIX: Admin/farmacia ven todos los lotes
+                logger.info(
+                    f"ISS-LOTES-PROD: Usuario admin/farmacia, mostrando todos los lotes. "
+                    f"Total: {lotes_queryset.count()}"
+                )
             
             # Ordenar por fecha de caducidad (más próximos a vencer primero)
             lotes_queryset = lotes_queryset.order_by('fecha_caducidad')
@@ -1305,6 +1330,18 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     'centro_id': lote.centro_id,
                     'centro_nombre': lote.centro.nombre if lote.centro else 'Farmacia Central',
                 })
+                
+                # ISS-FIX: Log detallado de cada lote
+                logger.debug(
+                    f"ISS-LOTES-PROD: Lote ID={lote.id}, NumLote={lote.numero_lote}, "
+                    f"Cantidad={lote.cantidad_actual}, Centro={lote.centro_id}"
+                )
+            
+            # ISS-FIX: Log del resultado final
+            logger.info(
+                f"ISS-LOTES-PROD: Retornando {len(lotes_data)} lotes para producto {producto.clave}. "
+                f"Stock total: {sum(l['cantidad_actual'] for l in lotes_data)}"
+            )
             
             return Response({
                 'producto': {
@@ -1323,6 +1360,83 @@ class ProductoViewSet(viewsets.ModelViewSet):
             logger.error(f"Error en lotes: {str(e)}", exc_info=True)
             return Response({'error': 'Error al obtener lotes'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
+    @action(detail=True, methods=['get'], url_path='lotes-diagnostico')
+    def lotes_diagnostico(self, request, pk=None):
+        """
+        ISS-FIX (lotes-centro): Endpoint de diagnóstico para problemas de lotes.
+        GET /api/productos/{id}/lotes-diagnostico/
+        
+        Solo accesible para admin/farmacia. Muestra TODOS los lotes del producto
+        sin filtros de centro para diagnóstico.
+        """
+        from datetime import date
+        
+        # Solo admin/farmacia puede usar este endpoint
+        if not is_farmacia_or_admin(request.user) and not request.user.is_superuser:
+            return Response({
+                'error': 'Este endpoint solo está disponible para administradores'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        try:
+            producto = self.get_object()
+            
+            # Obtener TODOS los lotes del producto (incluyendo inactivos y sin stock)
+            todos_lotes = producto.lotes.all().order_by('centro_id', 'numero_lote')
+            
+            hoy = date.today()
+            lotes_data = []
+            
+            for lote in todos_lotes:
+                lotes_data.append({
+                    'id': lote.id,
+                    'numero_lote': lote.numero_lote,
+                    'cantidad_inicial': lote.cantidad_inicial,
+                    'cantidad_actual': lote.cantidad_actual,
+                    'fecha_caducidad': lote.fecha_caducidad.isoformat() if lote.fecha_caducidad else None,
+                    'activo': lote.activo,
+                    'centro_id': lote.centro_id,
+                    'centro_nombre': lote.centro.nombre if lote.centro else 'Farmacia Central (NULL)',
+                    'created_at': lote.created_at.isoformat() if lote.created_at else None,
+                    'updated_at': lote.updated_at.isoformat() if lote.updated_at else None,
+                })
+            
+            # Agrupar por centro
+            lotes_por_centro = {}
+            for lote in lotes_data:
+                centro_key = lote['centro_nombre']
+                if centro_key not in lotes_por_centro:
+                    lotes_por_centro[centro_key] = {
+                        'centro_id': lote['centro_id'],
+                        'lotes': [],
+                        'total_stock': 0,
+                        'total_lotes': 0,
+                    }
+                lotes_por_centro[centro_key]['lotes'].append(lote)
+                lotes_por_centro[centro_key]['total_stock'] += lote['cantidad_actual']
+                lotes_por_centro[centro_key]['total_lotes'] += 1
+            
+            return Response({
+                'producto': {
+                    'id': producto.id,
+                    'clave': producto.clave,
+                    'nombre': producto.nombre,
+                },
+                'diagnostico': {
+                    'total_lotes_bd': len(lotes_data),
+                    'total_stock_global': sum(l['cantidad_actual'] for l in lotes_data),
+                    'lotes_activos': sum(1 for l in lotes_data if l['activo']),
+                    'lotes_con_stock': sum(1 for l in lotes_data if l['cantidad_actual'] > 0),
+                },
+                'lotes_por_centro': lotes_por_centro,
+                'todos_los_lotes': lotes_data,
+            })
+            
+        except Producto.DoesNotExist:
+            return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"Error en lotes_diagnostico: {str(e)}", exc_info=True)
+            return Response({'error': f'Error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @action(detail=False, methods=['get'], url_path='exportar-excel')
     def exportar_excel(self, request):
         """

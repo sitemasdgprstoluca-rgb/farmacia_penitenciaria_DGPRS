@@ -364,6 +364,105 @@ class LoteViewSet(viewsets.ModelViewSet):
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=False, methods=['get'], url_path='diagnostico-centro')
+    def diagnostico_centro(self, request):
+        """
+        ISS-FIX (lotes-centro): Endpoint de diagnóstico de lotes por centro.
+        GET /api/lotes/diagnostico-centro/?producto_id={id}
+        
+        Solo accesible para admin/farmacia. Muestra distribución de lotes
+        de un producto específico entre todos los centros.
+        """
+        # Solo admin/farmacia puede usar este endpoint
+        if not is_farmacia_or_admin(request.user) and not request.user.is_superuser:
+            return Response({
+                'error': 'Este endpoint solo está disponible para administradores'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        producto_id = request.query_params.get('producto_id')
+        if not producto_id:
+            return Response({
+                'error': 'Se requiere el parámetro producto_id'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            producto = Producto.objects.get(pk=producto_id)
+        except Producto.DoesNotExist:
+            return Response({
+                'error': f'Producto con ID {producto_id} no encontrado'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        try:
+            # Obtener TODOS los lotes del producto (sin filtros de centro)
+            todos_lotes = Lote.objects.filter(
+                producto=producto
+            ).select_related('centro').order_by('centro_id', 'numero_lote')
+            
+            # Agrupar por centro
+            centros_info = {}
+            for lote in todos_lotes:
+                centro_key = lote.centro_id if lote.centro else 'central'
+                centro_nombre = lote.centro.nombre if lote.centro else 'Farmacia Central'
+                
+                if centro_key not in centros_info:
+                    centros_info[centro_key] = {
+                        'centro_id': centro_key,
+                        'centro_nombre': centro_nombre,
+                        'lotes': [],
+                        'total_stock': 0,
+                        'total_lotes': 0,
+                        'lotes_activos': 0,
+                        'lotes_con_stock': 0,
+                    }
+                
+                lote_info = {
+                    'id': lote.id,
+                    'numero_lote': lote.numero_lote,
+                    'cantidad_inicial': lote.cantidad_inicial,
+                    'cantidad_actual': lote.cantidad_actual,
+                    'fecha_caducidad': lote.fecha_caducidad.isoformat() if lote.fecha_caducidad else None,
+                    'activo': lote.activo,
+                    'created_at': lote.created_at.isoformat() if hasattr(lote, 'created_at') and lote.created_at else None,
+                }
+                
+                centros_info[centro_key]['lotes'].append(lote_info)
+                centros_info[centro_key]['total_stock'] += lote.cantidad_actual
+                centros_info[centro_key]['total_lotes'] += 1
+                if lote.activo:
+                    centros_info[centro_key]['lotes_activos'] += 1
+                if lote.cantidad_actual > 0:
+                    centros_info[centro_key]['lotes_con_stock'] += 1
+            
+            # Listar todos los centros del sistema para ver cuáles NO tienen lotes
+            from core.models import Centro
+            all_centros = list(Centro.objects.values('id', 'nombre'))
+            centros_sin_lotes = [
+                c for c in all_centros 
+                if c['id'] not in centros_info and 'central' not in centros_info
+            ]
+            
+            return Response({
+                'producto': {
+                    'id': producto.id,
+                    'clave': producto.clave,
+                    'nombre': producto.nombre,
+                },
+                'resumen_global': {
+                    'total_lotes': todos_lotes.count(),
+                    'total_stock_global': sum(l.cantidad_actual for l in todos_lotes),
+                    'centros_con_lotes': len(centros_info),
+                    'centros_sin_lotes': len(centros_sin_lotes),
+                },
+                'distribucion_por_centro': centros_info,
+                'centros_sin_lotes': centros_sin_lotes,
+            })
+            
+        except Exception as e:
+            logger.error(f"Error en diagnostico_centro: {str(e)}", exc_info=True)
+            return Response({
+                'error': f'Error: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @action(detail=False, methods=['get'], url_path='exportar-pdf')
     def exportar_pdf(self, request):
         """

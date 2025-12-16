@@ -1493,6 +1493,9 @@ class RequisicionService:
         - Caducidad > hoy (no transferir productos vencidos)
         - Log de auditoría en reactivaciones
         
+        ISS-FIX (lotes-centro): Manejo robusto de IntegrityError por constraint
+        de Supabase que puede diferir del modelo Django.
+        
         Args:
             lote_origen: Lote de farmacia central
             centro_destino: Centro donde crear/actualizar lote
@@ -1505,6 +1508,7 @@ class RequisicionService:
             ValidationError: Si el lote está vencido o tiene datos inválidos
         """
         from django.core.exceptions import ValidationError
+        from django.db import IntegrityError
         
         hoy = timezone.now().date()
         
@@ -1526,6 +1530,15 @@ class RequisicionService:
                 f"({dias_para_vencer} días). Producto: {lote_origen.producto.clave}"
             )
         
+        # ISS-FIX (lotes-centro): Log detallado para diagnóstico
+        logger.info(
+            f"ISS-LOTES: Buscando/creando lote destino. "
+            f"Producto: {lote_origen.producto.clave} (ID: {lote_origen.producto_id}), "
+            f"NumLote: {lote_origen.numero_lote}, "
+            f"Centro destino: {centro_destino.nombre} (ID: {centro_destino.pk}), "
+            f"Cantidad a agregar: {cantidad}"
+        )
+        
         # ISS-FIX: Buscar CUALQUIER lote existente (activo o inactivo) antes de crear
         # Esto evita el error de unique_together cuando ya existe un lote
         lote_destino = Lote.objects.select_for_update().filter(
@@ -1537,9 +1550,9 @@ class RequisicionService:
         if lote_destino:
             # Lote existe (activo o inactivo) - actualizar cantidad y reactivar
             logger.info(
-                f"ISS-FIX: Actualizando lote existente {lote_destino.numero_lote} "
-                f"en centro {centro_destino.nombre}. Activo: {lote_destino.activo}, "
-                f"Cantidad anterior: {lote_destino.cantidad_actual}, Agregando: {cantidad}"
+                f"ISS-LOTES: Actualizando lote existente ID={lote_destino.pk}, "
+                f"NumLote={lote_destino.numero_lote}, Activo={lote_destino.activo}, "
+                f"Cantidad anterior={lote_destino.cantidad_actual}, Agregando={cantidad}"
             )
             Lote.objects.filter(pk=lote_destino.pk).update(
                 cantidad_actual=F('cantidad_actual') + cantidad,
@@ -1548,25 +1561,77 @@ class RequisicionService:
                 updated_at=timezone.now()
             )
             lote_destino.refresh_from_db()
+            logger.info(
+                f"ISS-LOTES: Lote actualizado. ID={lote_destino.pk}, "
+                f"Nueva cantidad={lote_destino.cantidad_actual}"
+            )
         else:
             # No existe lote en este centro - crear uno nuevo
             logger.info(
-                f"ISS-FIX: Creando nuevo lote {lote_origen.numero_lote} "
-                f"en centro {centro_destino.nombre}. Cantidad: {cantidad}"
+                f"ISS-LOTES: No existe lote, creando nuevo. "
+                f"NumLote={lote_origen.numero_lote}, Centro={centro_destino.nombre}"
             )
-            # Crear nuevo lote: COPIA FIEL del lote de farmacia
-            lote_destino = Lote.objects.create(
-                producto=lote_origen.producto,
-                numero_lote=lote_origen.numero_lote,
-                centro=centro_destino,
-                fecha_caducidad=lote_origen.fecha_caducidad,
-                cantidad_inicial=cantidad,
-                cantidad_actual=cantidad,
-                activo=True,
-                precio_unitario=lote_origen.precio_unitario,
-                marca=lote_origen.marca,
-                ubicacion=f'Transferido via REQ-{self.requisicion.numero}'
-            )
+            try:
+                # Crear nuevo lote: COPIA FIEL del lote de farmacia
+                lote_destino = Lote.objects.create(
+                    producto=lote_origen.producto,
+                    numero_lote=lote_origen.numero_lote,
+                    centro=centro_destino,
+                    fecha_caducidad=lote_origen.fecha_caducidad,
+                    cantidad_inicial=cantidad,
+                    cantidad_actual=cantidad,
+                    activo=True,
+                    precio_unitario=lote_origen.precio_unitario,
+                    marca=lote_origen.marca,
+                    ubicacion=f'Transferido via REQ-{self.requisicion.numero}'
+                )
+                logger.info(
+                    f"ISS-LOTES: Lote creado exitosamente. ID={lote_destino.pk}, "
+                    f"NumLote={lote_destino.numero_lote}, Centro={centro_destino.nombre}"
+                )
+            except IntegrityError as e:
+                # ISS-FIX (lotes-centro): Si hay error de constraint, intentar encontrar
+                # el lote existente que puede tener un constraint diferente en Supabase
+                logger.warning(
+                    f"ISS-LOTES: IntegrityError al crear lote. Error: {e}. "
+                    f"Buscando lote existente con constraint alternativo..."
+                )
+                
+                # Buscar sin centro (por si el constraint en Supabase no incluye centro)
+                lote_existente = Lote.objects.select_for_update().filter(
+                    producto=lote_origen.producto,
+                    numero_lote=lote_origen.numero_lote,
+                ).first()
+                
+                if lote_existente:
+                    # Si encontramos el lote pero con otro centro o sin centro,
+                    # actualizar su centro y cantidad
+                    logger.warning(
+                        f"ISS-LOTES: Encontrado lote con constraint diferente. "
+                        f"ID={lote_existente.pk}, Centro actual={lote_existente.centro_id}. "
+                        f"Actualizando a centro={centro_destino.pk} y agregando cantidad={cantidad}"
+                    )
+                    Lote.objects.filter(pk=lote_existente.pk).update(
+                        centro=centro_destino,
+                        cantidad_actual=F('cantidad_actual') + cantidad,
+                        cantidad_inicial=F('cantidad_inicial') + cantidad,
+                        activo=True,
+                        updated_at=timezone.now()
+                    )
+                    lote_existente.refresh_from_db()
+                    lote_destino = lote_existente
+                else:
+                    # No pudimos encontrar ni crear el lote - error crítico
+                    logger.error(
+                        f"ISS-LOTES: ERROR CRÍTICO - No se pudo crear ni encontrar lote. "
+                        f"Producto={lote_origen.producto.clave}, NumLote={lote_origen.numero_lote}"
+                    )
+                    raise ValidationError({
+                        'lote': (
+                            f'No se pudo crear el lote {lote_origen.numero_lote} en el centro destino. '
+                            f'Error de integridad de datos. Contacte al administrador.'
+                        )
+                    })
         
         return lote_destino
     
