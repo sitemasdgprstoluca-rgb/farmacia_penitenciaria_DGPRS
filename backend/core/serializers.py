@@ -71,7 +71,7 @@ PERMISOS_POR_ROL = {
         'verProductos': True,
         'verLotes': True,
         'verRequisiciones': True,
-        'verDonaciones': False,  # ISS-FIX: Farmacia NO gestiona donaciones
+        'verDonaciones': True,  # ISS-FIX: Farmacia SÍ puede ver/gestionar donaciones
         'verCentros': True,
         'verUsuarios': False,  # ISS-FIX: Farmacia NO gestiona usuarios
         'verReportes': True,
