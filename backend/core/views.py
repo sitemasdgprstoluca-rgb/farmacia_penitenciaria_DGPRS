@@ -1296,11 +1296,22 @@ class NotificacionViewSet(
     permission_classes = [IsAuthenticated, CanViewNotifications]
     pagination_class = StandardResultsSetPagination
     filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['created_at']
+    # ISS-FIX: Alias fecha_creacion -> created_at para compatibilidad con frontend
+    ordering_fields = ['created_at', 'fecha_creacion']
     ordering = ['-created_at']
 
     def get_queryset(self):
         queryset = Notificacion.objects.filter(usuario=self.request.user)
+        
+        # ISS-FIX: Manejar ordering con alias fecha_creacion
+        ordering = self.request.query_params.get('ordering', '')
+        if 'fecha_creacion' in ordering:
+            # Reemplazar fecha_creacion por created_at en el queryset
+            if ordering.startswith('-'):
+                queryset = queryset.order_by('-created_at')
+            else:
+                queryset = queryset.order_by('created_at')
+        
         tipo = self.request.query_params.get('tipo')
         if tipo:
             queryset = queryset.filter(tipo=tipo)

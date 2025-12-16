@@ -188,11 +188,17 @@ def generar_hoja_recoleccion(requisicion):
     solicitante_nombre = requisicion.solicitante.get_full_name() if requisicion.solicitante else 'N/A'
     autorizador_nombre = requisicion.autorizador.get_full_name() if requisicion.autorizador else ''
     
+    # ISS-FIX: Obtener fecha límite de recolección
+    fecha_limite_texto = 'N/A'
+    if hasattr(requisicion, 'fecha_recoleccion_limite') and requisicion.fecha_recoleccion_limite:
+        fecha_limite_texto = requisicion.fecha_recoleccion_limite.strftime('%d/%m/%Y %H:%M')
+    
     info_data = [
         ['Folio:', requisicion.folio or f'REQ-{requisicion.id}', 'Fecha de Solicitud:', requisicion.fecha_solicitud.strftime('%d/%m/%Y') if requisicion.fecha_solicitud else 'N/A'],
         ['Centro Solicitante:', centro_nombre, 'Estado:', (requisicion.estado or '').upper()],
         ['Solicitante:', solicitante_nombre, 'Fecha de Autorización:', 
          requisicion.fecha_autorizacion.strftime('%d/%m/%Y %H:%M') if requisicion.fecha_autorizacion else 'N/A'],
+        ['Fecha Límite de Recolección:', fecha_limite_texto, '', ''],
     ]
     
     if requisicion.autorizador:
