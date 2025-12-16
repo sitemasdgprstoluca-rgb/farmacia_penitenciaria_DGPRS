@@ -759,6 +759,7 @@ class RequisicionService:
         ISS-002 FIX: Solo considera lotes NO caducados.
         ISS-004 FIX (audit2): Descuenta stock comprometido por otras requisiciones.
         ISS-007 FIX: Opcionalmente aplica select_for_update para prevenir race conditions.
+        ISS-FIX-LOTE: Si el detalle tiene lote específico, valida ESE lote únicamente.
         
         IMPORTANTE: Las requisiciones SOLO se surten desde farmacia central.
         El stock del centro destino NO debe considerarse para validación,
@@ -794,8 +795,8 @@ class RequisicionService:
         hoy = timezone.now().date()
         errores_stock = []
         
-        # ISS-001 FIX (perf): Obtener todos los detalles con sus productos en una sola query
-        detalles = list(self.requisicion.detalles.select_related('producto').all())
+        # ISS-FIX-LOTE: Obtener todos los detalles con sus productos Y lotes en una sola query
+        detalles = list(self.requisicion.detalles.select_related('producto', 'lote').all())
         
         if not detalles:
             return []
@@ -868,27 +869,75 @@ class RequisicionService:
         }
         
         # ISS-001 FIX: Validar cada detalle usando datos pre-calculados
+        # ISS-FIX-LOTE: Distinguir entre detalles con lote específico y sin lote
         for detalle in detalles:
             requerido = (detalle.cantidad_autorizada or detalle.cantidad_solicitada) - (detalle.cantidad_surtida or 0)
             if requerido <= 0:
                 continue
             
             producto_id = detalle.producto_id
-            stock_farmacia = stock_por_producto.get(producto_id, 0)
-            stock_comprometido = comprometido_por_producto.get(producto_id, 0)
-            disponible = stock_farmacia - stock_comprometido
             
-            if disponible < requerido:
-                errores_stock.append({
-                    'producto': detalle.producto.clave,
-                    'producto_nombre': (detalle.producto.nombre or '')[:50],
-                    'requerido': requerido,
-                    'disponible': disponible,
-                    'stock_farmacia': stock_farmacia,
-                    'stock_comprometido': stock_comprometido,
-                    'deficit': requerido - disponible,
-                    'validacion_tipo': 'post_lock' if revalidacion_post_lock else 'pre_check'
-                })
+            # =====================================================================
+            # ISS-FIX-LOTE: VALIDAR LOTE ESPECÍFICO SI ESTÁ DEFINIDO
+            # =====================================================================
+            if detalle.lote_id is not None and detalle.lote is not None:
+                # CASO 1: Lote específico - validar stock de ESE lote únicamente
+                lote = detalle.lote
+                
+                # Verificar que el lote exista y sea válido
+                if not lote.activo:
+                    errores_stock.append({
+                        'producto': detalle.producto.clave,
+                        'producto_nombre': (detalle.producto.nombre or '')[:50],
+                        'lote': lote.numero_lote,
+                        'requerido': requerido,
+                        'disponible': 0,
+                        'error': 'Lote inactivo',
+                        'validacion_tipo': 'lote_especifico'
+                    })
+                    continue
+                
+                if lote.fecha_caducidad and lote.fecha_caducidad < hoy:
+                    errores_stock.append({
+                        'producto': detalle.producto.clave,
+                        'producto_nombre': (detalle.producto.nombre or '')[:50],
+                        'lote': lote.numero_lote,
+                        'requerido': requerido,
+                        'disponible': 0,
+                        'error': f'Lote vencido (caducidad: {lote.fecha_caducidad})',
+                        'validacion_tipo': 'lote_especifico'
+                    })
+                    continue
+                
+                disponible_lote = lote.cantidad_actual or 0
+                if disponible_lote < requerido:
+                    errores_stock.append({
+                        'producto': detalle.producto.clave,
+                        'producto_nombre': (detalle.producto.nombre or '')[:50],
+                        'lote': lote.numero_lote,
+                        'requerido': requerido,
+                        'disponible': disponible_lote,
+                        'deficit': requerido - disponible_lote,
+                        'error': 'Stock insuficiente en lote específico',
+                        'validacion_tipo': 'lote_especifico'
+                    })
+            else:
+                # CASO 2: Sin lote específico - validar stock total del producto (FEFO)
+                stock_farmacia = stock_por_producto.get(producto_id, 0)
+                stock_comprometido = comprometido_por_producto.get(producto_id, 0)
+                disponible = stock_farmacia - stock_comprometido
+                
+                if disponible < requerido:
+                    errores_stock.append({
+                        'producto': detalle.producto.clave,
+                        'producto_nombre': (detalle.producto.nombre or '')[:50],
+                        'requerido': requerido,
+                        'disponible': disponible,
+                        'stock_farmacia': stock_farmacia,
+                        'stock_comprometido': stock_comprometido,
+                        'deficit': requerido - disponible,
+                        'validacion_tipo': 'fefo_automatico' if not revalidacion_post_lock else 'post_lock'
+                    })
         
         if errores_stock:
             raise StockInsuficienteError(
@@ -1129,9 +1178,10 @@ class RequisicionService:
         items_surtidos = []
         
         # ISS-003 FIX + ISS-005 FIX: Bloquear detalles para evitar modificaciones concurrentes
+        # ISS-FIX-LOTE: Incluir lote relacionado en el select para respetar lote específico
         detalles_bloqueados = DetalleRequisicion.objects.select_for_update().filter(
             requisicion=self.requisicion
-        ).select_related('producto')
+        ).select_related('producto', 'lote')
         logger.info(f"SURTIR SERVICE: Detalles bloqueados: {detalles_bloqueados.count()}")
         
         # 4. Procesar cada detalle
@@ -1152,86 +1202,99 @@ class RequisicionService:
             cantidad_surtida_item = 0
             lotes_usados = []
             
-            # ISS-001 FIX (audit11): Obtener SOLO lotes disponibles para surtido
-            # Excluye lotes bloqueados, retirados, vencidos o agotados
-            # ISS-002 FIX + ISS-014: Lotes SOLO de farmacia central CON BLOQUEO
-            # select_for_update() bloquea las filas hasta que termine la transacción
-            # 
-            # IMPORTANTE: Solo usamos lotes de farmacia central (centro=NULL).
-            # Los lotes del centro destino NO deben usarse como fuente de surtido.
-            # ISS-002 FIX: Filtrar por fecha_caducidad >= hoy para evitar lotes vencidos
-            # 
-            # ISS-007 FIX: El order_by('id') FINAL asegura un orden determinista
-            # para evitar deadlocks cuando múltiples transacciones adquieren locks.
-            # FEFO (fecha_caducidad primero), luego ID para consistencia.
-            # 
-            # ISS-004 FIX (audit14): No usar estado__in porque 'estado' es una
-            # propiedad calculada, no un campo real de BD. Usamos activo=True,
-            # cantidad_actual__gt=0 y fecha_caducidad__gte=hoy que son equivalentes.
-            lotes = Lote.objects.select_for_update().filter(
-                centro__isnull=True,  # Solo farmacia central
-                producto=detalle.producto,
-                activo=True,          # Lote activo (no eliminado ni bloqueado)
-                cantidad_actual__gt=0, # Con stock disponible
-                fecha_caducidad__gte=hoy,  # ISS-002 FIX: Solo lotes vigentes
-            ).order_by('fecha_caducidad', 'id')  # FEFO + ID para evitar deadlocks
+            # =====================================================================
+            # ISS-FIX-LOTE (CRÍTICO): RESPETAR EL LOTE ESPECÍFICO DEL DETALLE
+            # =====================================================================
+            # Si el detalle tiene un lote específico (detalle.lote), se DEBE usar
+            # ese lote exclusivamente. Esto ocurre cuando el usuario seleccionó
+            # un lote específico al crear la requisición.
+            #
+            # Si detalle.lote es NULL, entonces se usa FEFO automático.
+            # =====================================================================
             
-            for lote in lotes:
-                if pendiente <= 0:
-                    break
+            if detalle.lote is not None:
+                # CASO 1: Lote específico definido - USAR EXCLUSIVAMENTE ESE LOTE
+                logger.info(
+                    f"ISS-FIX-LOTE: Detalle {detalle.pk} tiene lote específico: "
+                    f"{detalle.lote.numero_lote} (ID: {detalle.lote_id})"
+                )
                 
-                # ISS-004 FIX: Revalidar estado del lote DESPUÉS del lock
-                # El lote pudo haber cambiado entre la query y el lock
-                lote.refresh_from_db()
+                # Bloquear el lote específico
+                try:
+                    lote = Lote.objects.select_for_update().get(pk=detalle.lote_id)
+                except Lote.DoesNotExist:
+                    logger.error(
+                        f"ISS-FIX-LOTE: Lote especificado {detalle.lote_id} no existe. "
+                        f"Detalle: {detalle.pk}, Producto: {detalle.producto.clave}"
+                    )
+                    raise StockInsuficienteError(
+                        f"El lote {detalle.lote.numero_lote} especificado ya no existe",
+                        detalles_stock=[{
+                            'producto': detalle.producto.clave,
+                            'lote_solicitado': detalle.lote.numero_lote,
+                            'error': 'Lote no encontrado'
+                        }]
+                    )
                 
-                # ISS-004 FIX: Verificar que el lote sigue siendo válido para surtido
+                # Validar que el lote sea válido para surtido
                 if not lote.activo:
-                    logger.warning(
-                        f"ISS-004: Lote {lote.numero_lote} inactivo después del lock. Saltando."
+                    raise StockInsuficienteError(
+                        f"El lote {lote.numero_lote} está inactivo",
+                        detalles_stock=[{
+                            'producto': detalle.producto.clave,
+                            'lote': lote.numero_lote,
+                            'error': 'Lote inactivo'
+                        }]
                     )
-                    continue
                 
-                if lote.cantidad_actual <= 0:
-                    logger.warning(
-                        f"ISS-004: Lote {lote.numero_lote} sin stock después del lock. Saltando."
+                if lote.cantidad_actual < pendiente:
+                    raise StockInsuficienteError(
+                        f"Stock insuficiente en lote {lote.numero_lote}: "
+                        f"disponible={lote.cantidad_actual}, requerido={pendiente}",
+                        detalles_stock=[{
+                            'producto': detalle.producto.clave,
+                            'lote': lote.numero_lote,
+                            'disponible': lote.cantidad_actual,
+                            'requerido': pendiente
+                        }]
                     )
-                    continue
                 
                 if lote.fecha_caducidad < hoy:
-                    logger.warning(
-                        f"ISS-004: Lote {lote.numero_lote} venció después del lock "
-                        f"(caducidad: {lote.fecha_caducidad}). Saltando."
+                    raise StockInsuficienteError(
+                        f"El lote {lote.numero_lote} está vencido (caducidad: {lote.fecha_caducidad})",
+                        detalles_stock=[{
+                            'producto': detalle.producto.clave,
+                            'lote': lote.numero_lote,
+                            'error': 'Lote vencido',
+                            'fecha_caducidad': str(lote.fecha_caducidad)
+                        }]
                     )
-                    continue
                 
-                usar = min(pendiente, lote.cantidad_actual)
+                # Usar exactamente la cantidad pendiente del lote específico
+                usar = pendiente
                 
-                # ISS-006 FIX: Verificar que el lote tenga contrato válido
-                # Advertir si no tiene, pero NO bloquear (algunos productos pueden no requerir contrato)
-                if not lote.numero_contrato:
-                    logger.warning(
-                        f"ISS-006: Lote {lote.numero_lote} usado sin número de contrato. "
-                        f"Producto: {detalle.producto.clave}, Requisición: {self.requisicion.folio}"
-                    )
+                logger.info(
+                    f"ISS-FIX-LOTE: Descontando {usar} unidades del lote específico "
+                    f"{lote.numero_lote} (stock actual: {lote.cantidad_actual})"
+                )
                 
                 # Guardar stock previo antes de descontar
                 stock_previo = lote.cantidad_actual
                 
-                # ISS-014: Descontar con verificación atómica
+                # Descontar del lote específico
                 lote_info = self._descontar_lote_atomico(lote, usar)
                 
-                # Registrar movimiento de salida (pasando stock_previo para validación)
-                # ISS-FIX: cantidad debe ser POSITIVA, el tipo='salida' indica que resta
+                # Registrar movimiento de salida
                 movimiento_salida = self._crear_movimiento(
                     lote=lote,
                     tipo='salida',
-                    cantidad=usar,  # Positivo - el modelo valida cantidad > 0
+                    cantidad=usar,
                     centro=lote.centro,
-                    observaciones=f'SALIDA_POR_REQUISICION {self.requisicion.folio}',
+                    observaciones=f'SALIDA_POR_REQUISICION {self.requisicion.folio} (Lote específico)',
                     stock_previo=stock_previo
                 )
                 
-                # ISS-002 FIX: Registrar trazabilidad detalle-lote
+                # Registrar trazabilidad detalle-lote
                 self._registrar_detalle_surtido(
                     detalle=detalle,
                     lote=lote,
@@ -1239,7 +1302,7 @@ class RequisicionService:
                     movimiento=movimiento_salida
                 )
                 
-                # Si lote era de farmacia central, crear entrada en centro destino
+                # Crear entrada en centro destino si aplica
                 if lote.centro is None and centro_requisicion:
                     lote_destino = self._obtener_o_crear_lote_destino(
                         lote_origen=lote,
@@ -1252,18 +1315,99 @@ class RequisicionService:
                         tipo='entrada',
                         cantidad=usar,
                         centro=centro_requisicion,
-                        observaciones=f'ENTRADA_POR_REQUISICION {self.requisicion.folio}'
+                        observaciones=f'ENTRADA_POR_REQUISICION {self.requisicion.folio} (Lote específico)'
                     )
                 
                 lotes_usados.append({
                     'lote_numero': lote.numero_lote,
                     'cantidad': usar,
-                    'lote_origen_id': lote.pk
+                    'lote_origen_id': lote.pk,
+                    'lote_especifico': True
                 })
                 
                 detalle.cantidad_surtida = (detalle.cantidad_surtida or 0) + usar
-                pendiente -= usar
-                cantidad_surtida_item += usar
+                pendiente = 0
+                cantidad_surtida_item = usar
+                
+            else:
+                # CASO 2: Sin lote específico - USAR FEFO AUTOMÁTICO
+                logger.info(
+                    f"ISS-FIX-LOTE: Detalle {detalle.pk} sin lote específico. "
+                    f"Usando FEFO automático para producto {detalle.producto.clave}"
+                )
+                
+                # ISS-001 FIX (audit11): Obtener SOLO lotes disponibles para surtido
+                # usando FEFO (First Expired, First Out)
+                lotes = Lote.objects.select_for_update().filter(
+                    centro__isnull=True,  # Solo farmacia central
+                    producto=detalle.producto,
+                    activo=True,          # Lote activo (no eliminado ni bloqueado)
+                    cantidad_actual__gt=0, # Con stock disponible
+                    fecha_caducidad__gte=hoy,  # Solo lotes vigentes
+                ).order_by('fecha_caducidad', 'id')  # FEFO + ID para evitar deadlocks
+                
+                for lote in lotes:
+                    if pendiente <= 0:
+                        break
+                    
+                    # Revalidar estado del lote DESPUÉS del lock
+                    lote.refresh_from_db()
+                    
+                    if not lote.activo or lote.cantidad_actual <= 0 or lote.fecha_caducidad < hoy:
+                        continue
+                    
+                    usar = min(pendiente, lote.cantidad_actual)
+                    
+                    # Guardar stock previo antes de descontar
+                    stock_previo = lote.cantidad_actual
+                    
+                    # Descontar con verificación atómica
+                    lote_info = self._descontar_lote_atomico(lote, usar)
+                    
+                    # Registrar movimiento de salida
+                    movimiento_salida = self._crear_movimiento(
+                        lote=lote,
+                        tipo='salida',
+                        cantidad=usar,
+                        centro=lote.centro,
+                        observaciones=f'SALIDA_POR_REQUISICION {self.requisicion.folio}',
+                        stock_previo=stock_previo
+                    )
+                    
+                    # Registrar trazabilidad detalle-lote
+                    self._registrar_detalle_surtido(
+                        detalle=detalle,
+                        lote=lote,
+                        cantidad=usar,
+                        movimiento=movimiento_salida
+                    )
+                    
+                    # Crear entrada en centro destino si aplica
+                    if lote.centro is None and centro_requisicion:
+                        lote_destino = self._obtener_o_crear_lote_destino(
+                            lote_origen=lote,
+                            centro_destino=centro_requisicion,
+                            cantidad=usar
+                        )
+                        
+                        movimiento_entrada = self._crear_movimiento(
+                            lote=lote_destino,
+                            tipo='entrada',
+                            cantidad=usar,
+                            centro=centro_requisicion,
+                            observaciones=f'ENTRADA_POR_REQUISICION {self.requisicion.folio}'
+                        )
+                    
+                    lotes_usados.append({
+                        'lote_numero': lote.numero_lote,
+                        'cantidad': usar,
+                        'lote_origen_id': lote.pk,
+                        'lote_especifico': False
+                    })
+                    
+                    detalle.cantidad_surtida = (detalle.cantidad_surtida or 0) + usar
+                    pendiente -= usar
+                    cantidad_surtida_item += usar
             
             # Guardar detalle actualizado
             detalle.save(update_fields=['cantidad_surtida'])

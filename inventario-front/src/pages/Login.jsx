@@ -41,7 +41,48 @@ function Login() {
     return userPayload;
   };
 
-  const performLogin = async (creds) => loginWithBackend(creds);
+  // ISS-FIX: Helper para esperar entre reintentos
+  const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+  // ISS-FIX: Login con reintentos automáticos para cold starts de Render
+  const performLogin = async (creds, maxRetries = 3) => {
+    let lastError = null;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        if (attempt > 0) {
+          // Mostrar mensaje de reintento
+          setErrorMessage(`Conectando con el servidor... (intento ${attempt + 1}/${maxRetries})`);
+          await sleep(2000 * attempt); // Backoff: 2s, 4s, 6s
+        }
+        return await loginWithBackend(creds);
+      } catch (error) {
+        lastError = error;
+        
+        // Solo reintentar en errores de red/conexión (no en 401/400)
+        const isNetworkError = !error.response || 
+          error.code === 'ECONNABORTED' || 
+          error.code === 'ERR_NETWORK' ||
+          error.message?.includes('SSL') ||
+          error.message?.includes('Network') ||
+          error.message?.includes('timeout');
+        
+        if (!isNetworkError) {
+          // Error de autenticación, no reintentar
+          throw error;
+        }
+        
+        // En el último intento, propagar el error
+        if (attempt === maxRetries - 1) {
+          throw error;
+        }
+        
+        console.warn(`[Login] Intento ${attempt + 1} fallido, reintentando...`, error.message);
+      }
+    }
+    
+    throw lastError;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -68,7 +109,7 @@ function Login() {
       } else if (error.response?.data?.detail) {
         setErrorMessage(error.response.data.detail);
       } else if (error.message) {
-        setErrorMessage('Error de conexión. Intente nuevamente.');
+        setErrorMessage('Error interno del servidor. El servicio puede estar iniciando, intente de nuevo en unos segundos.');
       } else {
         setErrorMessage('Usuario o contraseña incorrectos');
       }

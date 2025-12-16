@@ -4596,9 +4596,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 cant = item_data.get('cantidad_solicitada')
                 if not producto_id or cant in [None, '']:
                     continue
+                # ISS-FIX-LOTE: Incluir el lote específico si viene en el request
+                lote_id = item_data.get('lote') or item_data.get('lote_id')
                 DetalleRequisicion.objects.create(
                     requisicion=requisicion,
                     producto_id=producto_id,
+                    lote_id=lote_id,  # ISS-FIX-LOTE: Guardar lote específico
                     cantidad_solicitada=int(cant),
                     cantidad_autorizada=int(item_data.get('cantidad_autorizada') or 0),
                     observaciones=item_data.get('observaciones', '')
