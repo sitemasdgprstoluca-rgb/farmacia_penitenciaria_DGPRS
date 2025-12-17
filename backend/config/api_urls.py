@@ -33,6 +33,7 @@ from inventario.views import (
     reporte_caducidades, reporte_requisiciones, reportes_precarga,
     reporte_medicamentos_por_caducar, reporte_bajo_stock, reporte_consumo
 )
+from inventario.views.salida_masiva import salida_masiva, hoja_entrega_pdf, lotes_disponibles_farmacia
 
 # SimpleRouter no expone la vista raíz de la API (mayor seguridad)
 router = SimpleRouter()
@@ -121,6 +122,11 @@ urlpatterns = [
     path('reportes/bajo-stock/', reporte_bajo_stock, name='reporte-bajo-stock'),
     path('reportes/consumo/', reporte_consumo, name='reporte-consumo'),
     path('reportes/precarga/', reportes_precarga, name='reportes-precarga'),
+    
+    # Salida masiva (solo Farmacia)
+    path('salida-masiva/', salida_masiva, name='salida-masiva'),
+    path('salida-masiva/lotes-disponibles/', lotes_disponibles_farmacia, name='lotes-disponibles-farmacia'),
+    path('salida-masiva/hoja-entrega/<str:grupo_salida>/', hoja_entrega_pdf, name='hoja-entrega-pdf'),
 ]
 
 # SOLO EN DESARROLLO: Endpoint de autologin automatico

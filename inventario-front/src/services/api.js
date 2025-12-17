@@ -1092,6 +1092,16 @@ export const movimientosAPI = {
   exportarPdf: (params) => apiClient.get('/movimientos/exportar-pdf/', { params, responseType: 'blob' }),
 };
 
+// Salida Masiva (solo Farmacia)
+export const salidaMasivaAPI = {
+  // Procesar salida masiva a un centro
+  procesar: (data) => apiClient.post('/salida-masiva/', data),
+  // Obtener lotes disponibles en Farmacia Central
+  lotesDisponibles: (params) => apiClient.get('/salida-masiva/lotes-disponibles/', { params }),
+  // Descargar hoja de entrega PDF
+  hojaEntregaPdf: (grupoSalida) => apiClient.get(`/salida-masiva/hoja-entrega/${grupoSalida}/`, { responseType: 'blob' }),
+};
+
 // Trazabilidad -  NUEVO
 export const trazabilidadAPI = {
   producto: (clave, params = {}) => apiClient.get(`/trazabilidad/producto/${clave}/`, { params }),

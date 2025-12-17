@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useState, useRef, useCallback } from "react"
 import { useLocation } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import Pagination from "../components/Pagination";
+import SalidaMasiva from "../components/SalidaMasiva";
 import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, descargarArchivo } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
-import { FaFilter, FaChevronDown, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle } from "react-icons/fa";
+import { FaFilter, FaChevronDown, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck } from "react-icons/fa";
 import { COLORS } from "../constants/theme";
 
 const PAGE_SIZE = 25;
@@ -86,6 +87,10 @@ const Movimientos = () => {
   const [submitting, setSubmitting] = useState(false);
   const [exporting, setExporting] = useState(null); // 'pdf' | 'excel' | null
   const [showFiltersMenu, setShowFiltersMenu] = useState(false);
+  const [showSalidaMasiva, setShowSalidaMasiva] = useState(false); // Modal salida masiva
+  
+  // Detectar si es usuario Farmacia (puede usar salida masiva)
+  const esFarmacia = rolPrincipal === 'FARMACIA' || rolPrincipal === 'ADMIN';
 
   const columnas = useMemo(
     () => ["producto", "tipo", "cantidad", "centro", "fecha"],
@@ -473,6 +478,17 @@ const Movimientos = () => {
             </span>
           )}
           <div className="flex flex-wrap gap-3">
+            {/* Botón Salida Masiva - Solo Farmacia */}
+            {esFarmacia && (
+              <button
+                onClick={() => setShowSalidaMasiva(true)}
+                className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition bg-white text-rose-700 hover:bg-rose-50"
+                title="Salida masiva a centros"
+              >
+                <FaTruck />
+                Salida Masiva
+              </button>
+            )}
             {puedeExportar && (
               <>
                 <button
@@ -1110,6 +1126,21 @@ const Movimientos = () => {
           </div>
         )}
       </div>
+      
+      {/* Modal Salida Masiva */}
+      {showSalidaMasiva && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="max-h-[90vh] overflow-y-auto">
+            <SalidaMasiva
+              onClose={() => setShowSalidaMasiva(false)}
+              onSuccess={() => {
+                cargarMovimientos();
+                cargarCatalogos();
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
