@@ -3262,8 +3262,15 @@ class DonacionViewSet(viewsets.ModelViewSet):
             
             status_code = status.HTTP_200_OK if len(resultados['errores']) == 0 else status.HTTP_207_MULTI_STATUS
             
+            # ISS-FIX: Formato compatible con frontend (espera resultados.exitosos y resultados.fallidos)
             return Response({
                 'mensaje': 'Importación completada',
+                'resultados': {
+                    'exitosos': resultados['donaciones_creadas'],
+                    'fallidos': len(resultados['errores']),
+                    'detalles_creados': resultados['detalles_creados'],
+                    'errores': resultados['errores']
+                },
                 'resumen': {
                     'donaciones_creadas': resultados['donaciones_creadas'],
                     'detalles_creados': resultados['detalles_creados'],
