@@ -7984,14 +7984,18 @@ def reporte_movimientos(request):
                     'centro_destino': mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central',
                     'total_productos': 0,
                     'total_cantidad': 0,
-                    'observaciones': mov.observaciones or '',
+                    'observaciones': mov.motivo or '',
                     'detalles': []
                 }
             
             # Agregar detalle a la transacción
+            producto_info = 'N/A'
+            if mov.lote and mov.lote.producto:
+                producto_info = f"{mov.lote.producto.clave} - {(mov.lote.producto.descripcion or '')[:50]}"
+            
             transacciones[ref]['detalles'].append({
-                'producto': f"{getattr(mov.lote.producto, 'clave', 'N/A')} - {getattr(mov.lote.producto, 'descripcion', '')[:50]}",
-                'lote': getattr(mov.lote, 'numero_lote', 'N/A') if mov.lote else 'N/A',
+                'producto': producto_info,
+                'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                 'cantidad': amount
             })
             transacciones[ref]['total_productos'] += 1
