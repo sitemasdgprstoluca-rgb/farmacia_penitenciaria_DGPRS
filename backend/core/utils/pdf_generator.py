@@ -655,10 +655,10 @@ def generar_hoja_consulta(requisicion):
     # Determinar el sello según el estado
     estado = (requisicion.estado or '').lower()
     if estado == 'entregada':
-        sello_texto = "✓ ENTREGADA"
+        sello_texto = "[ ENTREGADA ]"
         sello_color = colors.HexColor('#16a34a')  # Verde
     else:
-        sello_texto = "✓ SURTIDA"
+        sello_texto = "[ SURTIDA ]"
         sello_color = colors.HexColor('#2563eb')  # Azul
     
     # Estilo para subtítulo de estado
