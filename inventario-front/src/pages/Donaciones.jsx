@@ -1772,43 +1772,40 @@ const Donaciones = () => {
       )}
 
       {/* Modal de confirmación eliminar */}
-      {confirmDelete && (
-        <ConfirmModal
-          title="Eliminar Donación"
-          message={`¿Estás seguro de eliminar la donación "${confirmDelete.numero || 'DON-' + confirmDelete.id}"? Esta acción no se puede deshacer.`}
-          confirmText="Eliminar"
-          cancelText="Cancelar"
-          confirmColor="red"
-          onConfirm={() => handleEliminar(confirmDelete.id)}
-          onCancel={() => setConfirmDelete(null)}
-        />
-      )}
+      <ConfirmModal
+        open={!!confirmDelete}
+        title="Eliminar Donación"
+        message={confirmDelete ? `¿Estás seguro de eliminar la donación "${confirmDelete.numero || 'DON-' + confirmDelete.id}"? Esta acción no se puede deshacer.` : ''}
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+        tone="danger"
+        onConfirm={() => confirmDelete && handleEliminar(confirmDelete.id)}
+        onCancel={() => setConfirmDelete(null)}
+      />
 
       {/* Modal de confirmación recibir */}
-      {confirmRecibir && (
-        <ConfirmModal
-          title="Recibir Donación"
-          message={`¿Confirmas que has recibido físicamente la donación "${confirmRecibir.numero || 'DON-' + confirmRecibir.id}"?`}
-          confirmText="Confirmar Recepción"
-          cancelText="Cancelar"
-          confirmColor="blue"
-          onConfirm={() => handleRecibir(confirmRecibir.id)}
-          onCancel={() => setConfirmRecibir(null)}
-        />
-      )}
+      <ConfirmModal
+        open={!!confirmRecibir}
+        title="Recibir Donación"
+        message={confirmRecibir ? `¿Confirmas que has recibido físicamente la donación "${confirmRecibir.numero || 'DON-' + confirmRecibir.id}"?` : ''}
+        confirmText="Confirmar Recepción"
+        cancelText="Cancelar"
+        tone="info"
+        onConfirm={() => confirmRecibir && handleRecibir(confirmRecibir.id)}
+        onCancel={() => setConfirmRecibir(null)}
+      />
 
       {/* Modal de confirmación procesar */}
-      {confirmProcesar && (
-        <ConfirmModal
-          title="Procesar Donación"
-          message={`¿Estás seguro de procesar la donación "${confirmProcesar.numero || 'DON-' + confirmProcesar.id}"? Esto activará el stock disponible en el almacén de donaciones para registrar entregas.`}
-          confirmText="Procesar"
-          cancelText="Cancelar"
-          confirmColor="green"
-          onConfirm={() => handleProcesar(confirmProcesar.id)}
-          onCancel={() => setConfirmProcesar(null)}
-        />
-      )}
+      <ConfirmModal
+        open={!!confirmProcesar}
+        title="Procesar Donación"
+        message={confirmProcesar ? `¿Estás seguro de procesar la donación "${confirmProcesar.numero || 'DON-' + confirmProcesar.id}"? Esto activará el stock disponible en el almacén de donaciones para registrar entregas.` : ''}
+        confirmText="Procesar"
+        cancelText="Cancelar"
+        tone="info"
+        onConfirm={() => confirmProcesar && handleProcesar(confirmProcesar.id)}
+        onCancel={() => setConfirmProcesar(null)}
+      />
 
       {/* Modal de rechazo con motivo */}
       {confirmRechazar && (
