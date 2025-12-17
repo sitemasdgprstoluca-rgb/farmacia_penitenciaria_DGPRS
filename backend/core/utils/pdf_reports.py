@@ -1088,13 +1088,16 @@ def generar_reporte_requisiciones(requisiciones_data, filtros=None):
     return buffer
 
 
-def generar_reporte_movimientos(movimientos_data, filtros=None):
+def generar_reporte_movimientos(transacciones_data, filtros=None, resumen=None):
     """
-    Genera reporte PDF de movimientos de inventario con fondo oficial
+    Genera reporte PDF de movimientos de inventario agrupados por transacción
     
     Args:
-        movimientos_data: Lista de diccionarios con datos de movimientos
+        transacciones_data: Lista de diccionarios con transacciones agrupadas
+            Cada transacción tiene: referencia, fecha, tipo, centro_origen, centro_destino,
+            total_productos, total_cantidad, detalles[]
         filtros: Diccionario con filtros aplicados
+        resumen: Diccionario con resumen de movimientos
     
     Returns:
         BytesIO con el PDF generado
@@ -1107,8 +1110,8 @@ def generar_reporte_movimientos(movimientos_data, filtros=None):
         pagesize=letter, 
         topMargin=1.8*inch,
         bottomMargin=1.2*inch,
-        leftMargin=0.6*inch,
-        rightMargin=0.6*inch
+        leftMargin=0.5*inch,
+        rightMargin=0.5*inch
     )
     
     elements = []
@@ -1116,11 +1119,15 @@ def generar_reporte_movimientos(movimientos_data, filtros=None):
     
     titulo = Paragraph("REPORTE DE MOVIMIENTOS DE INVENTARIO", styles['TituloReporte'])
     elements.append(titulo)
-    elements.append(Spacer(1, 0.2*inch))
+    elements.append(Spacer(1, 0.15*inch))
     
-    # Información
+    # Información del reporte
+    total_transacciones = len(transacciones_data)
+    total_movimientos = resumen.get('total_movimientos', 0) if resumen else sum(t.get('total_productos', 0) for t in transacciones_data)
+    
     info_text = f"<b>Fecha de generación:</b> {timezone.now().strftime('%d/%m/%Y %H:%M')}<br/>"
-    info_text += f"<b>Total de movimientos:</b> {len(movimientos_data)}"
+    info_text += f"<b>Total de transacciones:</b> {total_transacciones}<br/>"
+    info_text += f"<b>Total de movimientos:</b> {total_movimientos}"
     
     if filtros:
         if filtros.get('fecha_inicio'):
@@ -1129,86 +1136,145 @@ def generar_reporte_movimientos(movimientos_data, filtros=None):
             info_text += f"<br/><b>Hasta:</b> {filtros['fecha_fin']}"
         if filtros.get('tipo'):
             info_text += f"<br/><b>Tipo:</b> {filtros['tipo'].upper()}"
+        if filtros.get('centro'):
+            info_text += f"<br/><b>Centro:</b> {filtros['centro']}"
     
     info = Paragraph(info_text, styles['Normal'])
     elements.append(info)
-    elements.append(Spacer(1, 0.2*inch))
+    elements.append(Spacer(1, 0.15*inch))
     
     # Resumen de movimientos
-    total_entradas = sum(1 for m in movimientos_data if str(m.get('tipo', '')).lower() == 'entrada')
-    total_salidas = sum(1 for m in movimientos_data if str(m.get('tipo', '')).lower() == 'salida')
-    total_ajustes = sum(1 for m in movimientos_data if str(m.get('tipo', '')).lower() == 'ajuste')
+    if resumen:
+        resumen_titulo = Paragraph("RESUMEN", styles['SeccionTitulo'])
+        elements.append(resumen_titulo)
+        
+        resumen_data = [
+            ['Concepto', 'Cantidad'],
+            ['Transacciones', str(resumen.get('total_transacciones', 0))],
+            ['Total Entradas', str(resumen.get('total_entradas', 0))],
+            ['Total Salidas', str(resumen.get('total_salidas', 0))],
+            ['Diferencia', str(resumen.get('diferencia', 0))],
+        ]
+        
+        resumen_table = Table(resumen_data, colWidths=[2*inch, 1*inch])
+        resumen_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
+            ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(resumen_table)
+        elements.append(Spacer(1, 0.2*inch))
     
-    resumen_titulo = Paragraph("RESUMEN", styles['SeccionTitulo'])
-    elements.append(resumen_titulo)
-    
-    resumen_data = [
-        ['Tipo', 'Cantidad'],
-        ['Entradas', str(total_entradas)],
-        ['Salidas', str(total_salidas)],
-        ['Ajustes', str(total_ajustes)],
-        ['TOTAL', str(len(movimientos_data))],
-    ]
-    
-    resumen_table = Table(resumen_data, colWidths=[2*inch, 1*inch])
-    resumen_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
-        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 8),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-    ]))
-    elements.append(resumen_table)
-    elements.append(Spacer(1, 0.2*inch))
-    
-    # Tabla de movimientos - Con centros origen y destino
-    mov_titulo = Paragraph("DETALLE DE MOVIMIENTOS", styles['SeccionTitulo'])
-    elements.append(mov_titulo)
-    
-    # Estilo para celdas de texto largo
+    # Estilo para celdas de texto
     estilo_celda = ParagraphStyle(
         'CeldaTextoMov',
         parent=styles['Normal'],
-        fontSize=6,
-        leading=8,
+        fontSize=7,
+        leading=9,
         wordWrap='CJK',
     )
     
-    data = [['Fecha', 'Tipo', 'Producto', 'Lote', 'Cant.', 'Origen', 'Destino', 'Obs.']]
+    estilo_celda_pequena = ParagraphStyle(
+        'CeldaTextoPequena',
+        parent=styles['Normal'],
+        fontSize=6,
+        leading=7,
+        wordWrap='CJK',
+    )
     
-    for mov in movimientos_data:
-        tipo = str(mov.get('tipo', '')).upper()
-        cantidad = mov.get('cantidad', 0)
-        signo = '+' if cantidad >= 0 else ''
-        producto = str(mov.get('producto_clave', mov.get('producto', '')))
-        producto_paragraph = Paragraph(producto, estilo_celda)
-        centro_origen = str(mov.get('centro_origen', mov.get('centro', 'F. Central')))[:18]
-        centro_origen_p = Paragraph(centro_origen, estilo_celda)
-        centro_destino = str(mov.get('centro_destino', 'F. Central'))[:18]
-        centro_destino_p = Paragraph(centro_destino, estilo_celda)
-        observaciones = str(mov.get('observaciones', ''))[:35]
-        obs_paragraph = Paragraph(observaciones, estilo_celda)
+    # Tabla de transacciones agrupadas
+    trans_titulo = Paragraph("DETALLE DE TRANSACCIONES", styles['SeccionTitulo'])
+    elements.append(trans_titulo)
+    
+    # Encabezado de transacciones
+    data = [['Referencia', 'Fecha', 'Tipo', 'Origen', 'Destino', 'Prods', 'Cant.']]
+    
+    for trans in transacciones_data:
+        tipo = str(trans.get('tipo', '')).upper()
+        referencia_p = Paragraph(str(trans.get('referencia', ''))[:20], estilo_celda)
+        origen_p = Paragraph(str(trans.get('centro_origen', 'F. Central'))[:18], estilo_celda)
+        destino_p = Paragraph(str(trans.get('centro_destino', 'F. Central'))[:18], estilo_celda)
         
         data.append([
-            str(mov.get('fecha_movimiento', mov.get('fecha', '')))[:16],
+            referencia_p,
+            str(trans.get('fecha', ''))[:16],
             tipo,
-            producto_paragraph,
-            str(mov.get('numero_lote', mov.get('lote', '')))[:12],
-            f"{signo}{cantidad}",
-            centro_origen_p,
-            centro_destino_p,
-            obs_paragraph
+            origen_p,
+            destino_p,
+            str(trans.get('total_productos', 0)),
+            str(trans.get('total_cantidad', 0))
         ])
     
-    # Anchos ajustados para 8 columnas en orientación portrait
-    col_widths = [0.85*inch, 0.55*inch, 1.3*inch, 0.75*inch, 0.45*inch, 1.0*inch, 1.0*inch, 1.0*inch]
+    # Anchos de columnas para tabla de transacciones
+    col_widths = [1.4*inch, 1.0*inch, 0.7*inch, 1.2*inch, 1.2*inch, 0.55*inch, 0.55*inch]
     table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
+    elements.append(Spacer(1, 0.25*inch))
+    
+    # Detalle de productos por transacción
+    det_titulo = Paragraph("DETALLE DE PRODUCTOS POR TRANSACCIÓN", styles['SeccionTitulo'])
+    elements.append(det_titulo)
+    elements.append(Spacer(1, 0.1*inch))
+    
+    for trans in transacciones_data:
+        detalles = trans.get('detalles', [])
+        if not detalles:
+            continue
+            
+        # Mini encabezado de la transacción
+        trans_header = f"<b>{trans.get('referencia', 'N/A')}</b> | {trans.get('fecha', '')} | " \
+                       f"<b>{trans.get('tipo', '')}</b> | " \
+                       f"{trans.get('centro_origen', '')} → {trans.get('centro_destino', '')}"
+        trans_header_p = Paragraph(trans_header, ParagraphStyle(
+            'TransHeader',
+            parent=styles['Normal'],
+            fontSize=8,
+            leading=10,
+            spaceAfter=4,
+            textColor=COLOR_GUINDA
+        ))
+        elements.append(trans_header_p)
+        
+        # Tabla de productos
+        det_data = [['#', 'Producto', 'Lote', 'Cantidad']]
+        for idx, det in enumerate(detalles, 1):
+            producto_p = Paragraph(str(det.get('producto', ''))[:50], estilo_celda_pequena)
+            det_data.append([
+                str(idx),
+                producto_p,
+                str(det.get('lote', 'N/A'))[:15],
+                str(det.get('cantidad', 0))
+            ])
+        
+        # Fila de total
+        det_data.append(['', '', 'TOTAL:', str(trans.get('total_cantidad', 0))])
+        
+        det_col_widths = [0.35*inch, 4.0*inch, 1.0*inch, 0.7*inch]
+        det_table = Table(det_data, colWidths=det_col_widths)
+        det_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E5E7EB')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), COLOR_TEXTO),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 7),
+            ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
+            ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#D1D5DB')),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+            ('ALIGN', (3, 0), (3, -1), 'RIGHT'),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#F3F4F6')),
+        ]))
+        elements.append(det_table)
+        elements.append(Spacer(1, 0.15*inch))
     
     # Usar canvas con fondo institucional
     def make_canvas(*args, **kwargs):
@@ -1217,7 +1283,7 @@ def generar_reporte_movimientos(movimientos_data, filtros=None):
     doc.build(elements, canvasmaker=make_canvas)
     
     buffer.seek(0)
-    logger.info(f"Reporte de movimientos PDF generado: {len(movimientos_data)} registros")
+    logger.info(f"Reporte de movimientos PDF generado: {len(transacciones_data)} transacciones")
     return buffer
 
 

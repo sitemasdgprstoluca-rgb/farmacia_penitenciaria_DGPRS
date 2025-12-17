@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { 
   FaChartBar, 
@@ -14,7 +14,9 @@ import {
   FaTimesCircle,
   FaDatabase,
   FaSpinner,
-  FaLock
+  FaLock,
+  FaChevronDown,
+  FaChevronRight
 } from "react-icons/fa";
 import { reportesAPI, centrosAPI, descargarArchivo } from "../services/api";
 import PageHeader from "../components/PageHeader";
@@ -72,15 +74,14 @@ const COLUMNAS_CONFIG = {
     { key: 'solicitante', label: 'Solicitante', width: '150px' },
   ],
   movimientos: [
-    { key: '#', label: '#', width: '50px' },
+    { key: 'expand', label: '', width: '40px', align: 'center' },
     { key: 'fecha', label: 'Fecha', width: '130px' },
-    { key: 'tipo', label: 'Tipo', width: '90px', align: 'center' },
-    { key: 'producto', label: 'Producto', width: '220px' },
-    { key: 'lote', label: 'Lote', width: '100px' },
-    { key: 'cantidad', label: 'Cant.', width: '70px', align: 'right' },
-    { key: 'centro_origen', label: 'Origen', width: '140px' },
-    { key: 'centro_destino', label: 'Destino', width: '140px' },
-    { key: 'observaciones', label: 'Observaciones', width: '150px' },
+    { key: 'tipo', label: 'Tipo', width: '100px', align: 'center' },
+    { key: 'referencia', label: 'Referencia', width: '180px' },
+    { key: 'centro_origen', label: 'Origen', width: '160px' },
+    { key: 'centro_destino', label: 'Destino', width: '160px' },
+    { key: 'total_productos', label: 'Productos', width: '90px', align: 'center' },
+    { key: 'total_cantidad', label: 'Cantidad', width: '90px', align: 'right' },
   ],
 };
 
@@ -154,6 +155,15 @@ const Reportes = () => {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const [centros, setCentros] = useState([]);
+  const [expandedRows, setExpandedRows] = useState({});  // Para expandir filas de movimientos
+
+  // Toggle para expandir/colapsar fila de transacción
+  const toggleRowExpansion = (referencia) => {
+    setExpandedRows(prev => ({
+      ...prev,
+      [referencia]: !prev[referencia]
+    }));
+  };
 
   const columnas = useMemo(() => {
     return COLUMNAS_CONFIG[filtros.tipo] || [];
@@ -356,6 +366,24 @@ const Reportes = () => {
       return idx + 1;
     }
     
+    // Columna de expansión para movimientos agrupados
+    if (col.key === 'expand' && filtros.tipo === 'movimientos') {
+      const isExpanded = expandedRows[fila.referencia];
+      return (
+        <button
+          onClick={() => toggleRowExpansion(fila.referencia)}
+          className="p-1 hover:bg-gray-200 rounded transition-colors"
+          title={isExpanded ? 'Colapsar' : 'Expandir'}
+        >
+          {isExpanded ? (
+            <FaChevronDown className="text-gray-600" />
+          ) : (
+            <FaChevronRight className="text-gray-600" />
+          )}
+        </button>
+      );
+    }
+    
     const value = fila[col.key];
     const formatted = formatValue(value, col.key);
     
@@ -496,18 +524,22 @@ const Reportes = () => {
     }
 
     if (filtros.tipo === 'movimientos') {
-      const porCentro = resumen.por_centro || {};
-      const centrosOrdenados = Object.entries(porCentro).sort((a, b) => b[1].total - a[1].total);
-      
       return (
-        <div className="p-4 bg-gradient-to-r from-gray-50 to-white border-t space-y-4">
-          {/* Resumen general */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="p-4 bg-gradient-to-r from-gray-50 to-white border-t">
+          {/* Resumen general de transacciones */}
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-lg">
+              <FaClipboardList className="text-2xl text-indigo-600" />
+              <div>
+                <p className="text-xs text-indigo-600 font-semibold">Transacciones</p>
+                <p className="text-xl font-bold text-indigo-800">{resumen.total_transacciones || datos.length}</p>
+              </div>
+            </div>
             <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
               <FaExchangeAlt className="text-2xl text-blue-600" />
               <div>
-                <p className="text-xs text-blue-600 font-semibold">Total Movimientos</p>
-                <p className="text-xl font-bold text-blue-800">{resumen.total_movimientos || datos.length}</p>
+                <p className="text-xs text-blue-600 font-semibold">Movimientos</p>
+                <p className="text-xl font-bold text-blue-800">{resumen.total_movimientos || 0}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
@@ -532,25 +564,9 @@ const Reportes = () => {
               </div>
             </div>
           </div>
-          
-          {/* Desglose por centro */}
-          {centrosOrdenados.length > 0 && (
-            <div className="mt-4">
-              <h4 className="text-sm font-semibold text-gray-700 mb-2">📍 Desglose por Centro</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {centrosOrdenados.map(([centro, info]) => (
-                  <div key={centro} className="p-3 bg-white border rounded-lg shadow-sm">
-                    <p className="font-semibold text-gray-800 text-sm truncate">{centro}</p>
-                    <div className="flex gap-4 mt-1 text-xs">
-                      <span className="text-green-600">📥 {info.entradas.toLocaleString()}</span>
-                      <span className="text-red-600">📤 {info.salidas.toLocaleString()}</span>
-                      <span className="text-gray-500">({info.total} mov.)</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <p className="text-xs text-gray-500 mt-2 text-center">
+            💡 Haz clic en una fila para ver los productos de cada transacción
+          </p>
         </div>
       );
     }
@@ -952,19 +968,69 @@ const Reportes = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {preview.map((fila, idx) => (
-                  <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                    {columnas.map((col) => (
-                      <td 
-                        key={col.key} 
-                        className="px-4 py-3 text-gray-800"
-                        style={{ textAlign: col.align || 'left' }}
+                {preview.map((fila, idx) => {
+                  const isMovimientos = filtros.tipo === 'movimientos';
+                  const isExpanded = isMovimientos && expandedRows[fila.referencia];
+                  
+                  return (
+                    <React.Fragment key={idx}>
+                      {/* Fila principal */}
+                      <tr 
+                        className={`${isMovimientos ? 'cursor-pointer' : ''} hover:bg-gray-50 transition-colors ${isExpanded ? 'bg-blue-50' : ''}`}
+                        onClick={isMovimientos ? () => toggleRowExpansion(fila.referencia) : undefined}
                       >
-                        {renderCellValue(fila, col, idx)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+                        {columnas.map((col) => (
+                          <td 
+                            key={col.key} 
+                            className="px-4 py-3 text-gray-800"
+                            style={{ textAlign: col.align || 'left' }}
+                          >
+                            {renderCellValue(fila, col, idx)}
+                          </td>
+                        ))}
+                      </tr>
+                      
+                      {/* Fila de detalles expandida (solo para movimientos) */}
+                      {isExpanded && fila.detalles && fila.detalles.length > 0 && (
+                        <tr className="bg-gray-50">
+                          <td colSpan={columnas.length} className="px-6 py-3">
+                            <div className="bg-white rounded-lg border shadow-sm p-4">
+                              <h4 className="text-sm font-semibold text-gray-700 mb-3">
+                                📦 Productos en esta transacción ({fila.detalles.length} items)
+                              </h4>
+                              <table className="w-full text-sm">
+                                <thead className="bg-gray-100">
+                                  <tr>
+                                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">#</th>
+                                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Producto</th>
+                                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Lote</th>
+                                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Cantidad</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {fila.detalles.map((det, detIdx) => (
+                                    <tr key={detIdx} className="hover:bg-gray-50">
+                                      <td className="px-3 py-2 text-gray-500">{detIdx + 1}</td>
+                                      <td className="px-3 py-2 text-gray-800 font-medium">{det.producto}</td>
+                                      <td className="px-3 py-2 text-gray-600">{det.lote || '-'}</td>
+                                      <td className="px-3 py-2 text-gray-800 text-right font-semibold">{det.cantidad}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                                <tfoot className="bg-gray-50">
+                                  <tr>
+                                    <td colSpan="3" className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Total:</td>
+                                    <td className="px-3 py-2 text-right text-sm font-bold text-gray-800">{fila.total_cantidad}</td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           )}

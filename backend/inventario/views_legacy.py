@@ -7935,59 +7935,58 @@ def reporte_movimientos(request):
         
         movimientos = movimientos.order_by('-fecha')
         
-        # Construir datos
-        datos = []
+        # Agrupar movimientos por referencia/transacción
+        transacciones = {}
         total_entradas = 0
         total_salidas = 0
         
-        # Agrupar por centro para resumen
-        movimientos_por_centro = {}
-        
         for mov in movimientos:
             amount = abs(mov.cantidad) if mov.tipo == 'salida' else mov.cantidad
+            ref = mov.referencia or f"MOV-{mov.id}"
             
-            # Determinar centro principal del movimiento
-            centro_nombre = 'Farmacia Central'
-            if mov.tipo == 'entrada':
-                if mov.centro_destino:
-                    centro_nombre = mov.centro_destino.nombre
-                elif mov.lote and mov.lote.centro:
-                    centro_nombre = mov.lote.centro.nombre
-            else:  # salida
-                if mov.centro_origen:
-                    centro_nombre = mov.centro_origen.nombre
-                elif mov.lote and mov.lote.centro:
-                    centro_nombre = mov.lote.centro.nombre
+            if ref not in transacciones:
+                # Crear nueva transacción agrupada
+                transacciones[ref] = {
+                    'referencia': ref,
+                    'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M'),
+                    'fecha_raw': mov.fecha,
+                    'tipo': mov.tipo.upper(),
+                    'centro_origen': mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central',
+                    'centro_destino': mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central',
+                    'total_productos': 0,
+                    'total_cantidad': 0,
+                    'observaciones': mov.observaciones or '',
+                    'detalles': []
+                }
             
-            datos.append({
-                'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M'),
-                'tipo': mov.tipo.upper(),
-                'producto': f"{getattr(mov.lote.producto, 'clave', 'N/A')} - {getattr(mov.lote.producto, 'descripcion', '')[:40]}",
+            # Agregar detalle a la transacción
+            transacciones[ref]['detalles'].append({
+                'producto': f"{getattr(mov.lote.producto, 'clave', 'N/A')} - {getattr(mov.lote.producto, 'descripcion', '')[:50]}",
                 'lote': getattr(mov.lote, 'numero_lote', 'N/A') if mov.lote else 'N/A',
-                'cantidad': amount,
-                'centro_origen': mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central',
-                'centro_destino': mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central',
-                'observaciones': mov.observaciones or ''
+                'cantidad': amount
             })
+            transacciones[ref]['total_productos'] += 1
+            transacciones[ref]['total_cantidad'] += amount
             
-            # Acumular por centro para resumen
-            if centro_nombre not in movimientos_por_centro:
-                movimientos_por_centro[centro_nombre] = {'entradas': 0, 'salidas': 0, 'total': 0}
-            
-            movimientos_por_centro[centro_nombre]['total'] += 1
             if mov.tipo == 'entrada':
                 total_entradas += amount
-                movimientos_por_centro[centro_nombre]['entradas'] += amount
             else:
                 total_salidas += amount
-                movimientos_por_centro[centro_nombre]['salidas'] += amount
+        
+        # Convertir a lista ordenada por fecha
+        datos = list(transacciones.values())
+        datos.sort(key=lambda x: x['fecha_raw'], reverse=True)
+        
+        # Limpiar fecha_raw antes de enviar
+        for item in datos:
+            del item['fecha_raw']
         
         resumen = {
-            'total_movimientos': len(datos),
+            'total_transacciones': len(datos),
+            'total_movimientos': sum(t['total_productos'] for t in datos),
             'total_entradas': total_entradas,
             'total_salidas': total_salidas,
-            'diferencia': total_entradas - total_salidas,
-            'por_centro': movimientos_por_centro
+            'diferencia': total_entradas - total_salidas
         }
         
         # Formato JSON
@@ -8001,20 +8000,7 @@ def reporte_movimientos(request):
         if formato == 'pdf':
             from core.utils.pdf_reports import generar_reporte_movimientos
             
-            # Preparar datos para el generador PDF
-            movimientos_data = []
-            for item in datos:
-                movimientos_data.append({
-                    'fecha': item['fecha'],
-                    'tipo': item['tipo'],
-                    'producto': item['producto'],
-                    'lote': item['lote'],
-                    'cantidad': item['cantidad'],
-                    'centro_origen': item.get('centro_origen', 'Farmacia Central'),
-                    'centro_destino': item.get('centro_destino', 'Farmacia Central'),
-                    'observaciones': item['observaciones']
-                })
-            
+            # Los datos ya están agrupados por transacción, pasarlos directamente
             filtros = {
                 'fecha_generacion': timezone.now().strftime('%d/%m/%Y %H:%M')
             }
@@ -8027,22 +8013,25 @@ def reporte_movimientos(request):
             if filtrar_por_centro and user_centro:
                 filtros['centro'] = user_centro.nombre
             
-            pdf_buffer = generar_reporte_movimientos(movimientos_data, filtros=filtros)
+            # Pasar resumen y datos agrupados al generador PDF
+            pdf_buffer = generar_reporte_movimientos(datos, filtros=filtros, resumen=resumen)
             
             response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
             response['Content-Disposition'] = f"attachment; filename=Movimientos_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
             return response
         
         if formato == 'excel':
-            # Generar Excel
+            # Generar Excel con formato agrupado por transacciones
             wb = openpyxl.Workbook()
+            
+            # === HOJA 1: RESUMEN DE TRANSACCIONES ===
             ws = wb.active
-            ws.title = 'Movimientos'
+            ws.title = 'Transacciones'
             
             # Titulo
-            ws.merge_cells('A1:I1')
+            ws.merge_cells('A1:H1')
             titulo_cell = ws['A1']
-            titulo_cell.value = 'REPORTE DE MOVIMIENTOS'
+            titulo_cell.value = 'REPORTE DE MOVIMIENTOS - TRANSACCIONES'
             titulo_cell.font = Font(bold=True, size=14, color='632842')
             titulo_cell.alignment = Alignment(horizontal='center', vertical='center')
             
@@ -8055,90 +8044,106 @@ def reporte_movimientos(request):
             if tipo:
                 filtros_text.append(f'Tipo: {tipo}')
             
-            ws.merge_cells('A2:I2')
+            ws.merge_cells('A2:H2')
             filtros_cell = ws['A2']
             filtros_cell.value = ' | '.join(filtros_text) if filtros_text else 'Sin filtros'
             filtros_cell.font = Font(size=10, italic=True)
             filtros_cell.alignment = Alignment(horizontal='center')
             
+            # Resumen
+            ws['A3'] = f"Total Transacciones: {resumen['total_transacciones']}"
+            ws['C3'] = f"Total Entradas: {resumen['total_entradas']}"
+            ws['E3'] = f"Total Salidas: {resumen['total_salidas']}"
+            ws['G3'] = f"Diferencia: {resumen['diferencia']}"
+            for col in ['A', 'C', 'E', 'G']:
+                ws[f'{col}3'].font = Font(bold=True, size=10)
+            
             ws.append([])  # Linea en blanco
             
-            # Encabezados
-            headers = ['#', 'Fecha', 'Tipo', 'Producto', 'Lote', 'Cantidad', 'Centro Origen', 'Centro Destino', 'Observaciones']
+            # Encabezados de transacciones
+            headers = ['#', 'Referencia', 'Fecha', 'Tipo', 'Centro Origen', 'Centro Destino', 'Productos', 'Cantidad Total']
             ws.append(headers)
             
             # Estilo encabezados
             header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
             header_font = Font(bold=True, color='FFFFFF', size=11)
             
-            for cell in ws[4]:  # Fila 4 tiene los encabezados
+            for cell in ws[5]:  # Fila 5 tiene los encabezados
                 cell.fill = header_fill
                 cell.font = header_font
                 cell.alignment = Alignment(horizontal='center', vertical='center')
             
-            # Datos
-            total_entradas = 0
-            total_salidas = 0
-            
-            for idx, mov in enumerate(movimientos, 1):
-                amount = abs(mov.cantidad) if mov.tipo == 'salida' else mov.cantidad
-                centro_origen = mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'
-                centro_destino = mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central'
+            # Datos de transacciones
+            for idx, trans in enumerate(datos, 1):
                 ws.append([
                     idx,
-                    mov.fecha.strftime('%d/%m/%Y %H:%M'),
-                    mov.tipo.upper(),
-                    f"{getattr(mov.lote.producto, 'clave', 'N/A')} - {getattr(mov.lote.producto, 'descripcion', '')[:40]}",
-                    getattr(mov.lote, 'numero_lote', 'N/A') if mov.lote else 'N/A',
-                    amount,
-                    centro_origen,
-                    centro_destino,
-                    mov.observaciones or ''
+                    trans['referencia'],
+                    trans['fecha'],
+                    trans['tipo'],
+                    trans['centro_origen'],
+                    trans['centro_destino'],
+                    trans['total_productos'],
+                    trans['total_cantidad']
                 ])
                 
-                if mov.tipo == 'entrada':
-                    total_entradas += amount
-                else:
-                    total_salidas += amount
-                
                 # Colorear por tipo
-                row_num = idx + 4
-                tipo_cell = ws.cell(row=row_num, column=3)
-                if mov.tipo == 'entrada':
+                row_num = idx + 5
+                tipo_cell = ws.cell(row=row_num, column=4)
+                if trans['tipo'].upper() == 'ENTRADA':
                     tipo_cell.fill = PatternFill(start_color='D4EDDA', end_color='D4EDDA', fill_type='solid')
                     tipo_cell.font = Font(color='155724', bold=True)
                 else:
                     tipo_cell.fill = PatternFill(start_color='F8D7DA', end_color='F8D7DA', fill_type='solid')
                     tipo_cell.font = Font(color='721C24', bold=True)
             
-            # Resumen
-            ws.append([])
-            resumen_row = ws.max_row + 1
-            ws[f'D{resumen_row}'] = 'TOTAL ENTRADAS:'
-            ws[f'D{resumen_row}'].font = Font(bold=True)
-            ws[f'F{resumen_row}'] = total_entradas
-            ws[f'F{resumen_row}'].font = Font(bold=True, color='155724')
+            # Ajustar anchos
+            ws.column_dimensions['A'].width = 6
+            ws.column_dimensions['B'].width = 25
+            ws.column_dimensions['C'].width = 18
+            ws.column_dimensions['D'].width = 12
+            ws.column_dimensions['E'].width = 22
+            ws.column_dimensions['F'].width = 22
+            ws.column_dimensions['G'].width = 12
+            ws.column_dimensions['H'].width = 15
             
-            ws[f'D{resumen_row + 1}'] = 'TOTAL SALIDAS:'
-            ws[f'D{resumen_row + 1}'].font = Font(bold=True)
-            ws[f'F{resumen_row + 1}'] = total_salidas
-            ws[f'F{resumen_row + 1}'].font = Font(bold=True, color='721C24');
+            # === HOJA 2: DETALLE DE PRODUCTOS ===
+            ws2 = wb.create_sheet('Detalle Productos')
             
-            ws[f'D{resumen_row + 2}'] = 'DIFERENCIA:'
-            ws[f'D{resumen_row + 2}'].font = Font(bold=True)
-            ws[f'F{resumen_row + 2}'] = total_entradas - total_salidas
-            ws[f'F{resumen_row + 2}'].font = Font(bold=True)
+            ws2.merge_cells('A1:F1')
+            ws2['A1'].value = 'DETALLE DE PRODUCTOS POR TRANSACCIÓN'
+            ws2['A1'].font = Font(bold=True, size=14, color='632842')
+            ws2['A1'].alignment = Alignment(horizontal='center')
+            
+            ws2.append([])
+            
+            # Encabezados detalle
+            detail_headers = ['Referencia', 'Tipo', '#', 'Producto', 'Lote', 'Cantidad']
+            ws2.append(detail_headers)
+            
+            for cell in ws2[3]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+            
+            # Agregar detalles de cada transacción
+            for trans in datos:
+                for det_idx, det in enumerate(trans.get('detalles', []), 1):
+                    ws2.append([
+                        trans['referencia'],
+                        trans['tipo'],
+                        det_idx,
+                        det['producto'],
+                        det['lote'],
+                        det['cantidad']
+                    ])
             
             # Ajustar anchos
-            ws.column_dimensions['A'].width = 8
-            ws.column_dimensions['B'].width = 18
-            ws.column_dimensions['C'].width = 12
-            ws.column_dimensions['D'].width = 45
-            ws.column_dimensions['E'].width = 18
-            ws.column_dimensions['F'].width = 12
-            ws.column_dimensions['G'].width = 22
-            ws.column_dimensions['H'].width = 22
-            ws.column_dimensions['I'].width = 28
+            ws2.column_dimensions['A'].width = 25
+            ws2.column_dimensions['B'].width = 12
+            ws2.column_dimensions['C'].width = 6
+            ws2.column_dimensions['D'].width = 50
+            ws2.column_dimensions['E'].width = 18
+            ws2.column_dimensions['F'].width = 12
             
             response = HttpResponse(
                 content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -8146,7 +8151,7 @@ def reporte_movimientos(request):
             response['Content-Disposition'] = f'attachment; filename=Movimientos_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
             wb.save(response)
             
-            logger.info(f"Reporte Excel generado: {movimientos.count()} movimientos")
+            logger.info(f"Reporte Excel generado: {len(datos)} transacciones")
             
             return response
             
