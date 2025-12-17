@@ -7942,26 +7942,54 @@ def reporte_movimientos(request):
         total_entradas = 0
         total_salidas = 0
         
+        # Agrupar por centro para resumen
+        movimientos_por_centro = {}
+        
         for mov in movimientos:
             amount = abs(mov.cantidad) if mov.tipo == 'salida' else mov.cantidad
+            
+            # Determinar centro principal del movimiento
+            centro_nombre = 'Farmacia Central'
+            if mov.tipo == 'entrada':
+                if mov.centro_destino:
+                    centro_nombre = mov.centro_destino.nombre
+                elif mov.lote and mov.lote.centro:
+                    centro_nombre = mov.lote.centro.nombre
+            else:  # salida
+                if mov.centro_origen:
+                    centro_nombre = mov.centro_origen.nombre
+                elif mov.lote and mov.lote.centro:
+                    centro_nombre = mov.lote.centro.nombre
+            
             datos.append({
                 'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M'),
                 'tipo': mov.tipo.upper(),
                 'producto': f"{getattr(mov.lote.producto, 'clave', 'N/A')} - {getattr(mov.lote.producto, 'descripcion', '')[:40]}",
                 'lote': getattr(mov.lote, 'numero_lote', 'N/A') if mov.lote else 'N/A',
                 'cantidad': amount,
+                'centro_origen': mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central',
+                'centro_destino': mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central',
                 'observaciones': mov.observaciones or ''
             })
+            
+            # Acumular por centro para resumen
+            if centro_nombre not in movimientos_por_centro:
+                movimientos_por_centro[centro_nombre] = {'entradas': 0, 'salidas': 0, 'total': 0}
+            
+            movimientos_por_centro[centro_nombre]['total'] += 1
             if mov.tipo == 'entrada':
                 total_entradas += amount
+                movimientos_por_centro[centro_nombre]['entradas'] += amount
             else:
                 total_salidas += amount
+                movimientos_por_centro[centro_nombre]['salidas'] += amount
         
         resumen = {
             'total_movimientos': len(datos),
             'total_entradas': total_entradas,
             'total_salidas': total_salidas,
-            'diferencia': total_entradas - total_salidas
+            'diferencia': total_entradas - total_salidas,
+            'por_centro': movimientos_por_centro
         }
         
         # Formato JSON
@@ -8012,7 +8040,7 @@ def reporte_movimientos(request):
             ws.title = 'Movimientos'
             
             # Titulo
-            ws.merge_cells('A1:G1')
+            ws.merge_cells('A1:I1')
             titulo_cell = ws['A1']
             titulo_cell.value = 'REPORTE DE MOVIMIENTOS'
             titulo_cell.font = Font(bold=True, size=14, color='632842')
@@ -8027,7 +8055,7 @@ def reporte_movimientos(request):
             if tipo:
                 filtros_text.append(f'Tipo: {tipo}')
             
-            ws.merge_cells('A2:G2')
+            ws.merge_cells('A2:I2')
             filtros_cell = ws['A2']
             filtros_cell.value = ' | '.join(filtros_text) if filtros_text else 'Sin filtros'
             filtros_cell.font = Font(size=10, italic=True)
@@ -8036,7 +8064,7 @@ def reporte_movimientos(request):
             ws.append([])  # Linea en blanco
             
             # Encabezados
-            headers = ['#', 'Fecha', 'Tipo', 'Producto', 'Lote', 'Cantidad', 'Observaciones']
+            headers = ['#', 'Fecha', 'Tipo', 'Producto', 'Lote', 'Cantidad', 'Centro Origen', 'Centro Destino', 'Observaciones']
             ws.append(headers)
             
             # Estilo encabezados
@@ -8054,6 +8082,8 @@ def reporte_movimientos(request):
             
             for idx, mov in enumerate(movimientos, 1):
                 amount = abs(mov.cantidad) if mov.tipo == 'salida' else mov.cantidad
+                centro_origen = mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'
+                centro_destino = mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central'
                 ws.append([
                     idx,
                     mov.fecha.strftime('%d/%m/%Y %H:%M'),
@@ -8061,6 +8091,8 @@ def reporte_movimientos(request):
                     f"{getattr(mov.lote.producto, 'clave', 'N/A')} - {getattr(mov.lote.producto, 'descripcion', '')[:40]}",
                     getattr(mov.lote, 'numero_lote', 'N/A') if mov.lote else 'N/A',
                     amount,
+                    centro_origen,
+                    centro_destino,
                     mov.observaciones or ''
                 ])
                 
@@ -8101,10 +8133,12 @@ def reporte_movimientos(request):
             ws.column_dimensions['A'].width = 8
             ws.column_dimensions['B'].width = 18
             ws.column_dimensions['C'].width = 12
-            ws.column_dimensions['D'].width = 50
-            ws.column_dimensions['E'].width = 20
+            ws.column_dimensions['D'].width = 45
+            ws.column_dimensions['E'].width = 18
             ws.column_dimensions['F'].width = 12
-            ws.column_dimensions['G'].width = 30
+            ws.column_dimensions['G'].width = 22
+            ws.column_dimensions['H'].width = 22
+            ws.column_dimensions['I'].width = 28
             
             response = HttpResponse(
                 content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
