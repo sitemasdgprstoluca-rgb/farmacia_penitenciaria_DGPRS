@@ -127,14 +127,12 @@ const Donaciones = () => {
   const [entregasTotalPages, setEntregasTotalPages] = useState(1);
   const [searchEntregas, setSearchEntregas] = useState('');
   
-  // Importación/Exportación de entregas
+  // Exportación de entregas (solo export, sin import)
   const [exportingEntregas, setExportingEntregas] = useState(false);
-  const [importingEntregas, setImportingEntregas] = useState(false);
   
   // Importación/Exportación de donaciones
   const [exportingDonaciones, setExportingDonaciones] = useState(false);
   const [importingDonaciones, setImportingDonaciones] = useState(false);
-  const fileInputRef = useRef(null); // Para entregas
   const donacionFileInputRef = useRef(null); // Para donaciones
   
   // Modal de Entrega Masiva de Donaciones
@@ -362,71 +360,8 @@ const Donaciones = () => {
     }
   };
 
-  // Descargar plantilla de importación
-  const handleDescargarPlantilla = async () => {
-    try {
-      const response = await salidasDonacionesAPI.plantillaExcel();
-      
-      const blob = new Blob([response.data], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'plantilla_entregas_donaciones.xlsx';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      
-      toast.success('Plantilla descargada');
-    } catch (err) {
-      console.error('Error descargando plantilla:', err);
-      toast.error('Error al descargar plantilla');
-    }
-  };
-
-  // Importar entregas desde Excel
-  const handleImportarEntregas = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    
-    setImportingEntregas(true);
-    try {
-      const formData = new FormData();
-      formData.append('archivo', file);
-      
-      const response = await salidasDonacionesAPI.importarExcel(formData);
-      
-      const { resultados } = response.data;
-      
-      if (resultados.exitosos > 0) {
-        toast.success(`${resultados.exitosos} entregas importadas correctamente`);
-        cargarTodasEntregas();
-        cargarInventarioDonaciones(); // Actualizar inventario también
-      }
-      
-      if (resultados.fallidos > 0) {
-        toast.error(`${resultados.fallidos} entregas fallaron`);
-        // Mostrar errores detallados
-        resultados.errores?.forEach((err, idx) => {
-          if (idx < 3) { // Mostrar máximo 3 errores
-            toast.error(`Fila ${err.fila}: ${err.error}`, { duration: 5000 });
-          }
-        });
-      }
-    } catch (err) {
-      console.error('Error importando entregas:', err);
-      const errorMsg = err.response?.data?.error || 'Error al importar entregas';
-      toast.error(errorMsg);
-    } finally {
-      setImportingEntregas(false);
-      // Limpiar input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
+  // NOTA: Funciones handleDescargarPlantilla y handleImportarEntregas eliminadas
+  // Las entregas solo se exportan para verificar movimientos, no se importan
 
   // === IMPORTACIÓN/EXPORTACIÓN DE DONACIONES ===
   
@@ -1557,37 +1492,7 @@ const Donaciones = () => {
                   Exportar
                 </button>
                 
-                {/* Botones de Importación - Solo para admin/farmacia */}
-                {puede.crear && (
-                  <>
-                    {/* Descargar Plantilla */}
-                    <button
-                      onClick={handleDescargarPlantilla}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg border text-blue-700 border-blue-300 hover:bg-blue-50 transition-colors"
-                      title="Descargar plantilla Excel"
-                    >
-                      <FaDownload /> Plantilla
-                    </button>
-                    
-                    {/* Importar Excel */}
-                    <label className="flex items-center gap-2 px-4 py-2 rounded-lg border text-purple-700 border-purple-300 hover:bg-purple-50 transition-colors cursor-pointer">
-                      {importingEntregas ? (
-                        <FaSpinner className="animate-spin" />
-                      ) : (
-                        <FaFileImport />
-                      )}
-                      Importar
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".xlsx,.xls"
-                        onChange={handleImportarEntregas}
-                        disabled={importingEntregas}
-                        className="hidden"
-                      />
-                    </label>
-                  </>
-                )}
+                {/* NOTA: Importación de entregas removida - solo exportar para verificar movimientos */}
               </div>
             </div>
           </div>
