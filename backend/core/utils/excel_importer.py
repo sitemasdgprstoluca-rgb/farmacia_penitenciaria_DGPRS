@@ -449,14 +449,19 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
             f'Columnas faltantes: {", ".join(faltantes)}. Detectadas: {encabezados}')
         return resultado.get_dict()
     
-    # Obtener centro si se especificó
+    # Centro: NULL = Almacén Central (FARMACIA)
+    # Solo se usa centro_id si se pasa explícitamente como parámetro
     centro = None
     if centro_id:
         try:
             centro = Centro.objects.get(id=centro_id)
+            logger.info(f"Lotes - Centro especificado: {centro.nombre} (ID: {centro.id})")
         except Centro.DoesNotExist:
             resultado.agregar_error(0, 'centro', f'Centro ID {centro_id} no existe')
             return resultado.get_dict()
+    else:
+        # NULL = Almacén Central (FARMACIA) - comportamiento por defecto
+        logger.info("Lotes - Centro: NULL (Almacén Central/FARMACIA)")
 
     creados = 0
     
@@ -606,22 +611,9 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 # ========== CAMPOS OPCIONALES ==========
                 numero_contrato = get_val('contrato')
                 marca = get_val('marca')
-                ubicacion = get_val('ubicacion')
                 
-                # ========== CENTRO (opcional desde columna o parámetro) ==========
-                centro_lote = centro  # Default del parámetro
-                if 'centro' in col_map:
-                    nombre_centro = get_val('centro')
-                    if nombre_centro:
-                        try:
-                            centro_lote = Centro.objects.get(nombre__iexact=nombre_centro)
-                        except Centro.DoesNotExist:
-                            # Intentar búsqueda aproximada
-                            centros_match = Centro.objects.filter(nombre__icontains=nombre_centro)
-                            if centros_match.count() == 1:
-                                centro_lote = centros_match.first()
-                            else:
-                                logger.warning(f"Fila {fila_num}: Centro '{nombre_centro}' no encontrado, usando default")
+                # Centro ya está asignado automáticamente a FARMACIA
+                centro_lote = centro
                 
                 # ========== ACTIVO (opcional) ==========
                 activo = True
@@ -641,7 +633,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     precio_unitario=precio_unitario,
                     numero_contrato=numero_contrato,
                     marca=marca,
-                    ubicacion=ubicacion,
+                    ubicacion=None,  # Se asigna vacío por defecto
                     activo=activo,
                 )
                 

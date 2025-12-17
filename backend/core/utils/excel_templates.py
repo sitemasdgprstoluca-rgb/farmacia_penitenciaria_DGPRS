@@ -196,12 +196,10 @@ def generar_plantilla_lotes(centro=None):
         "Precio Unitario",
         "Número Contrato",
         "Marca",
-        "Ubicación",
-        "Centro",
         "Activo"
     ]
 
-    column_widths = [15, 40, 20, 18, 18, 16, 15, 18, 35, 18, 18, 12]
+    column_widths = [15, 40, 20, 18, 18, 16, 15, 18, 35, 12]
     
     for col_num, header in enumerate(headers, 1):
         ws.cell(row=1, column=col_num, value=header)
@@ -220,13 +218,13 @@ def generar_plantilla_lotes(centro=None):
     ejemplos = [
         ["PRUEBA001", "[EJEMPLO] Paracetamol - ELIMINAR", "LOTE-PRUEBA-001",
          fecha_fab, fecha_cad, 100, 15.50, "CONT-PRUEBA-001",
-         "[EJEMPLO] Laboratorio - ELIMINAR", "Estante A1", "Farmacia Central", "Activo"],
+         "[EJEMPLO] Laboratorio - ELIMINAR", "Activo"],
         ["PRUEBA002", "[EJEMPLO] Ibuprofeno - ELIMINAR", "LOTE-PRUEBA-002",
          fecha_fab, fecha_cad, 50, 18.75, "CONT-PRUEBA-002",
-         "[EJEMPLO] Farmacéutica - ELIMINAR", "Estante B2", "Farmacia Central", "Activo"],
+         "[EJEMPLO] Farmacéutica - ELIMINAR", "Activo"],
         ["PRUEBA003", "[EJEMPLO] Jeringa - ELIMINAR", "LOTE-PRUEBA-003",
          "", fecha_cad, 200, 5.00, "",
-         "[EJEMPLO] Proveedor - ELIMINAR", "", "", "Activo"],
+         "[EJEMPLO] Proveedor - ELIMINAR", "Activo"],
     ]
     
     for ejemplo in ejemplos:
@@ -265,14 +263,12 @@ def generar_plantilla_lotes(centro=None):
         ["• Precio Unitario   - Precio por unidad (default: 0)"],
         ["• Número Contrato   - Referencia del contrato de adquisición"],
         ["• Marca             - Laboratorio o fabricante"],
-        ["• Ubicación         - Ubicación física en el almacén"],
-        ["• Centro            - Nombre del centro (vacío = Farmacia Central)"],
         ["• Activo            - Activo/Inactivo (default: Activo)"],
         [""],
         ["────────────────────────────────────────────────────────────────────────"],
         ["NOTAS:"],
         ["────────────────────────────────────────────────────────────────────────"],
-        [f"Centro asignado: {centro.nombre if centro else 'Se asignará según columna Centro'}"],
+        ["• Los lotes se asignan automáticamente al Almacén Central (FARMACIA)."],
         ["• El PRODUCTO debe existir antes de importar lotes."],
         ["• Si el lote ya existe (mismo producto + número de lote), se ACTUALIZA."],
         ["• La cantidad_actual se inicializa igual a cantidad_inicial."],
