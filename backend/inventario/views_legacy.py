@@ -8131,7 +8131,7 @@ def reporte_requisiciones(request):
         if formato == 'pdf':
             from core.utils.pdf_reports import generar_reporte_requisiciones
             
-            # Preparar datos para el generador PDF
+            # Preparar datos para el generador PDF - INCLUIR PRODUCTOS
             requisiciones_data = []
             for item in datos:
                 requisiciones_data.append({
@@ -8140,7 +8140,8 @@ def reporte_requisiciones(request):
                     'estado': item['estado'],
                     'fecha_solicitud': item['fecha_solicitud'],
                     'total_productos': item['total_productos'],
-                    'solicitante': item['solicitante']
+                    'solicitante': item['solicitante'],
+                    'productos': item.get('productos', []),  # INCLUIR detalle de productos
                 })
             
             filtros = {
