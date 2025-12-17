@@ -359,37 +359,37 @@ const LimpiarInventario = ({ onLimpiezaCompletada }) => {
                     
                     return (
                       <>
-                        <div className="bg-red-100 border-2 border-red-400 rounded-lg p-4 mb-6">
+                        <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4 mb-6">
                           <div className="flex items-center gap-3 mb-3">
                             <Icon className="text-red-600 text-2xl" />
                             <div>
-                              <h3 className="font-bold text-red-800">{cat.titulo}</h3>
-                              <p className="text-sm text-red-700">{cat.descripcion}</p>
+                              <h3 className="font-bold text-red-700">{cat.titulo}</h3>
+                              <p className="text-sm text-gray-600">{cat.descripcion}</p>
                             </div>
                           </div>
                           
                           {/* Detalle de registros */}
                           {catStats?.detalle && (
-                            <div className="bg-white/50 rounded-lg p-3 mt-3">
-                              <p className="text-sm font-semibold text-red-800 mb-2">Se eliminarán:</p>
+                            <div className="bg-white rounded-lg p-3 mt-3 border border-gray-200">
+                              <p className="text-sm font-semibold text-gray-800 mb-2">Se eliminarán:</p>
                               <div className="grid grid-cols-2 gap-2 text-sm">
                                 {Object.entries(catStats.detalle).map(([key, val]) => (
                                   <div key={key} className="flex justify-between">
-                                    <span className="text-red-700">{key.replace(/_/g, ' ')}:</span>
-                                    <span className="font-semibold text-red-800">{val.toLocaleString()}</span>
+                                    <span className="text-gray-600">{key.replace(/_/g, ' ')}:</span>
+                                    <span className="font-semibold text-gray-800">{val.toLocaleString()}</span>
                                   </div>
                                 ))}
                               </div>
-                              <div className="border-t border-red-300 mt-2 pt-2 flex justify-between">
-                                <span className="font-bold text-red-800">TOTAL:</span>
-                                <span className="font-bold text-red-900">{catStats.total.toLocaleString()} registros</span>
+                              <div className="border-t border-gray-200 mt-2 pt-2 flex justify-between">
+                                <span className="font-bold text-gray-800">TOTAL:</span>
+                                <span className="font-bold text-red-600">{catStats.total.toLocaleString()} registros</span>
                               </div>
                             </div>
                           )}
                           
                           {/* Dependencias */}
                           {catStats?.dependencias?.length > 0 && (
-                            <div className="mt-3 text-sm text-red-700">
+                            <div className="mt-3 text-sm text-amber-700 bg-amber-50 p-2 rounded">
                               <p className="font-medium">⚠️ Nota:</p>
                               {catStats.dependencias.map((dep, idx) => (
                                 <p key={idx} className="ml-4">• {dep}</p>
@@ -409,17 +409,17 @@ const LimpiarInventario = ({ onLimpiezaCompletada }) => {
                         )}
 
                         {/* Campo de confirmación */}
-                        <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                        <div className="bg-white rounded-lg p-4 mb-6 border border-gray-200">
                           <p className="text-sm text-gray-700 mb-3">
-                            Esta acción <strong>NO SE PUEDE DESHACER</strong>. Escriba{' '}
-                            <code className="bg-red-200 px-2 py-1 rounded font-bold">{palabraConfirmacion}</code> para confirmar:
+                            Esta acción <strong className="text-red-600">NO SE PUEDE DESHACER</strong>. Escriba{' '}
+                            <code className="bg-red-100 text-red-700 px-2 py-1 rounded font-bold border border-red-200">{palabraConfirmacion}</code> para confirmar:
                           </p>
                           <input
                             type="text"
                             value={confirmText}
                             onChange={(e) => setConfirmText(e.target.value.toUpperCase())}
                             placeholder={`Escriba ${palabraConfirmacion}`}
-                            className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-red-500 text-center font-mono text-lg"
+                            className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-red-500 text-center font-mono text-lg bg-white text-gray-900 placeholder-gray-400"
                             autoFocus
                           />
                         </div>
@@ -432,7 +432,7 @@ const LimpiarInventario = ({ onLimpiezaCompletada }) => {
                               setConfirmText('');
                               setCategoriaSeleccionada(null);
                             }}
-                            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors bg-white text-gray-700"
                           >
                             Atrás
                           </button>
