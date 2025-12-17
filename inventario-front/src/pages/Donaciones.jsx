@@ -640,7 +640,7 @@ const Donaciones = () => {
         <PageHeader
           title="Donaciones"
           subtitle="Gestión de donaciones recibidas"
-          icon={<FaGift className="text-3xl" style={{ color: COLORS.primary }} />}
+          icon={FaGift}
         />
         <div className="bg-white rounded-xl shadow-sm border p-8 text-center">
           <FaGift className="mx-auto text-5xl text-gray-300 mb-4" />
@@ -656,7 +656,7 @@ const Donaciones = () => {
       <PageHeader
         title="Donaciones"
         subtitle="Gestión completa del almacén de donaciones"
-        icon={<FaGift className="text-3xl" style={{ color: COLORS.primary }} />}
+        icon={FaGift}
       />
 
       {/* Tabs de navegación */}
