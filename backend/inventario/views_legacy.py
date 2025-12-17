@@ -3758,19 +3758,25 @@ class MovimientoViewSet(
         - Admin/farmacia: pueden crear cualquier movimiento en cualquier lote
         - Usuario de centro (administrador/director): pueden crear movimientos en lotes de su centro
           y solo ciertos tipos: 'salida' (consumo), 'ajuste' (inventario físico)
-        - Médico: NO puede crear movimientos (ISS-MEDICO FIX)
+        - Médico: Solo puede crear movimientos de SALIDA (para dispensación a pacientes)
         - Usuario de centro NO puede crear 'entrada' (solo vía surtido de requisición)
         """
         user = self.request.user
-        
-        # ISS-MEDICO FIX: Bloquear explícitamente a médicos
-        if RoleHelper.is_medico(user):
-            raise serializers.ValidationError({
-                'detail': 'Los médicos no tienen permiso para crear movimientos de inventario. Use requisiciones para solicitar medicamentos.'
-            })
-        
         lote = serializer.validated_data.get('lote')
         tipo = serializer.validated_data.get('tipo', '').lower()
+        motivo = serializer.validated_data.get('motivo', '').strip()
+        
+        # ISS-MEDICO FIX v2: Médicos SOLO pueden crear SALIDAS (para dispensación a pacientes)
+        if RoleHelper.is_medico(user):
+            if tipo != 'salida':
+                raise serializers.ValidationError({
+                    'tipo': 'Los médicos solo pueden registrar movimientos de SALIDA para dispensación a pacientes.'
+                })
+            # Observaciones/motivo son OBLIGATORIAS para médicos
+            if not motivo:
+                raise serializers.ValidationError({
+                    'motivo': 'Las observaciones son obligatorias. Indique el motivo de la salida (ej: dispensación a paciente, nombre del paciente, etc.).'
+                })
         
         # Validar que usuario de centro solo opere con sus lotes
         if not is_farmacia_or_admin(user):

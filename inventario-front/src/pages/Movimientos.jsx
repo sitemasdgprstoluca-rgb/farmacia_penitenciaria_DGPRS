@@ -22,8 +22,12 @@ const Movimientos = () => {
   const centroNombre = user?.centro?.nombre || user?.centro_nombre || null;
   const esCentroUser = rolPrincipal === 'CENTRO';
   
+  // ISS-MEDICO FIX v2: Detectar si el usuario es médico específicamente
+  const esMedico = (user?.rol_efectivo || user?.rol || '').toLowerCase() === 'medico';
+  
   // Permisos específicos para acciones (usando permisos granulares)
-  const puedeRegistrarMovimiento = permisos?.crearMovimiento === true;
+  // ISS-MEDICO FIX v2: Médicos pueden registrar movimientos de SALIDA
+  const puedeRegistrarMovimiento = permisos?.crearMovimiento === true || esMedico;
   const puedeExportar = permisos?.exportarMovimientos === true;
   
   const [movimientos, setMovimientos] = useState([]);
@@ -261,6 +265,12 @@ const Movimientos = () => {
     }
     if (!formData.cantidad || Number(formData.cantidad) <= 0) {
       toast.error("Ingresa una cantidad válida mayor a 0");
+      return;
+    }
+
+    // ISS-MEDICO FIX v2: Observaciones obligatorias para médicos
+    if (esMedico && (!formData.observaciones || formData.observaciones.trim().length < 5)) {
+      toast.error("Las observaciones son obligatorias (mínimo 5 caracteres). Indique motivo de la salida.");
       return;
     }
 
@@ -574,6 +584,28 @@ const Movimientos = () => {
                 {lotesDisponibles.length === 0 && (
                   <p className="text-xs text-orange-600">No hay lotes disponibles</p>
                 )}
+                {/* ISS-MEDICO FIX v2: Mostrar stock disponible del lote seleccionado */}
+                {formData.lote && (() => {
+                  const loteInfo = lotesDisponibles.find(l => l.id === parseInt(formData.lote));
+                  const productoInfo = loteInfo ? productos.find(p => p.id === loteInfo.producto) : null;
+                  if (!loteInfo) return null;
+                  return (
+                    <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-center gap-2 text-blue-800">
+                        <FaInfoCircle />
+                        <span className="font-semibold">Stock disponible</span>
+                      </div>
+                      <div className="mt-1 text-sm text-blue-700">
+                        <div><strong>Producto:</strong> {productoInfo?.nombre || 'N/A'}</div>
+                        <div><strong>Lote:</strong> {loteInfo.numero_lote}</div>
+                        <div><strong>Disponible:</strong> <span className="font-bold text-lg">{loteInfo.cantidad_actual}</span> unidades</div>
+                        {loteInfo.fecha_caducidad && (
+                          <div><strong>Caducidad:</strong> {new Date(loteInfo.fecha_caducidad).toLocaleDateString()}</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="space-y-2">
@@ -581,14 +613,22 @@ const Movimientos = () => {
                 <select
                   value={formData.tipo}
                   onChange={(e) => handleFormChange("tipo", e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                  disabled={esMedico}
                 >
                   {/* ISS-FIX: CENTRO solo puede hacer salidas y ajustes, no entradas */}
+                  {/* ISS-MEDICO FIX v2: Médicos SOLO pueden hacer salidas */}
                   {puedeVerTodosCentros && <option value="entrada">Entrada</option>}
                   <option value="salida">Salida</option>
-                  <option value="ajuste">Ajuste</option>
+                  {!esMedico && <option value="ajuste">Ajuste</option>}
                 </select>
-                {!puedeVerTodosCentros && (
+                {esMedico && (
+                  <p className="text-xs text-blue-600">
+                    <FaInfoCircle className="inline mr-1" />
+                    Como médico, solo puedes registrar salidas para dispensación a pacientes.
+                  </p>
+                )}
+                {!puedeVerTodosCentros && !esMedico && (
                   <p className="text-xs text-gray-500">Las entradas solo se realizan desde Farmacia Central.</p>
                 )}
               </div>
@@ -667,14 +707,28 @@ const Movimientos = () => {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">Observaciones</label>
+                <label className="text-sm font-semibold text-gray-700">
+                  Observaciones {esMedico && <span className="text-red-500">*</span>}
+                </label>
                 <textarea
                   value={formData.observaciones}
                   onChange={(e) => handleFormChange("observaciones", e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Notas adicionales..."
-                  rows={2}
+                  className={`w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    esMedico ? 'border-blue-400 bg-blue-50' : 'border-gray-300'
+                  }`}
+                  placeholder={esMedico 
+                    ? "OBLIGATORIO: Indique motivo de salida, paciente, diagnóstico, etc."
+                    : "Notas adicionales..."
+                  }
+                  rows={esMedico ? 3 : 2}
+                  required={esMedico}
                 />
+                {esMedico && (
+                  <p className="text-xs text-blue-600">
+                    <FaExclamationTriangle className="inline mr-1" />
+                    Obligatorio: Indique motivo de la dispensación (mín. 5 caracteres).
+                  </p>
+                )}
               </div>
 
               <button

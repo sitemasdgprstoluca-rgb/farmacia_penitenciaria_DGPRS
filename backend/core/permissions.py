@@ -368,16 +368,15 @@ class IsCentroRole(permissions.BasePermission):
 
 class IsCentroCanManageInventory(permissions.BasePermission):
     """
-    ISS-MEDICO FIX: Permiso para gestión de inventario (movimientos).
+    ISS-MEDICO FIX v2: Permiso para gestión de inventario (movimientos).
     
-    Este permiso EXCLUYE específicamente al rol médico, que solo puede:
-    - Ver y crear requisiciones
-    - NO puede crear/modificar movimientos de inventario
+    Este permiso permite al médico crear movimientos de SALIDA únicamente
+    (para dispensación de medicamentos a pacientes).
     
     Para operaciones de escritura (POST, PUT, PATCH, DELETE):
     - admin, farmacia: Permitido
     - centro, administrador_centro, director_centro: Permitido
-    - medico: DENEGADO
+    - medico: PERMITIDO solo para POST (salidas) - validación adicional en perform_create
     - vista: DENEGADO
     
     Para operaciones de lectura (GET):
@@ -395,9 +394,13 @@ class IsCentroCanManageInventory(permissions.BasePermission):
         if user.is_superuser:
             return True
         
-        # Para operaciones de escritura, verificar que NO sea médico
+        # Para operaciones de escritura, verificar permisos
         if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
-            # Usar el helper centralizado
+            # ISS-MEDICO FIX v2: Médicos pueden crear (POST) salidas
+            # La validación del tipo se hace en perform_create
+            if RoleHelper.is_medico(user):
+                return request.method == 'POST'  # Solo crear, no editar ni eliminar
+            # Para otros usuarios, usar el helper centralizado
             return RoleHelper.can_manage_inventory(user)
         
         # ISS-019 FIX: Para lectura, permitir a roles de centro y vista (auditoría)
