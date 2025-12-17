@@ -1827,13 +1827,11 @@ class ProductoViewSet(viewsets.ModelViewSet):
             cell.font = header_font
             cell.fill = header_fill
         
-        # Resaltar filas de ejemplo con color amarillo para que sea obvio
-        example_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
-        example_font = Font(italic=True, color='666666')
+        # Estilo para filas de ejemplo (gris, itálica - sin fondo de color)
+        example_font = Font(italic=True, color='888888')
         for row_num in range(2, 5):  # Filas 2, 3, 4 (ejemplos)
             for col in range(1, len(headers) + 1):
                 cell = ws.cell(row=row_num, column=col)
-                cell.fill = example_fill
                 cell.font = example_font
         
         # Ajustar ancho de columnas
@@ -3332,13 +3330,11 @@ class LoteViewSet(viewsets.ModelViewSet):
             cell.font = header_font
             cell.fill = header_fill
         
-        # Resaltar filas de ejemplo con color amarillo para que sea obvio
-        example_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
-        example_font = Font(italic=True, color='666666')
+        # Estilo para filas de ejemplo (gris, itálica - sin fondo de color)
+        example_font = Font(italic=True, color='888888')
         for row_num in range(2, 5):  # Filas 2, 3, 4 (ejemplos)
             for col in range(1, len(headers) + 1):
                 cell = ws.cell(row=row_num, column=col)
-                cell.fill = example_fill
                 cell.font = example_font
         
         # Ajustar ancho de columnas

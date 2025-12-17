@@ -83,7 +83,7 @@ def generar_plantilla_productos():
 
     # ============================================================
     # FILAS DE EJEMPLO - ELIMINAR ANTES DE USAR CON DATOS REALES
-    # Resaltadas en amarillo para que sea obvio
+    # Texto gris itálico para que sea obvio
     # ============================================================
     ejemplos = [
         ["PRUEBA001", "[EJEMPLO] Paracetamol 500mg - ELIMINAR", "CAJA", 50, "medicamento",
@@ -97,13 +97,11 @@ def generar_plantilla_productos():
     for ejemplo in ejemplos:
         ws.append(ejemplo)
     
-    # Resaltar filas de ejemplo con color amarillo
-    example_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
-    example_font = Font(italic=True, color="666666")
+    # Estilo para filas de ejemplo (gris claro, itálica)
+    example_font = Font(italic=True, color="888888")
     for row_num in range(2, 2 + len(ejemplos)):
         for col in range(1, len(headers) + 1):
             cell = ws.cell(row=row_num, column=col)
-            cell.fill = example_fill
             cell.font = example_font
 
     # Instrucciones en hoja separada
@@ -113,7 +111,7 @@ def generar_plantilla_productos():
         ["║    INSTRUCCIONES PARA IMPORTACIÓN DE PRODUCTOS                    ║"],
         ["╚════════════════════════════════════════════════════════════════════╝"],
         [""],
-        ["⚠️  IMPORTANTE: Las filas amarillas en la hoja 'Productos' son EJEMPLOS."],
+        ["⚠️  IMPORTANTE: Las filas grises con [EJEMPLO] en la hoja 'Productos' son de muestra."],
         ["    ELIMÍNELAS antes de cargar sus datos reales."],
         [""],
         ["────────────────────────────────────────────────────────────────────────"],
@@ -214,7 +212,7 @@ def generar_plantilla_lotes(centro=None):
 
     # ============================================================
     # FILAS DE EJEMPLO - ELIMINAR ANTES DE USAR CON DATOS REALES
-    # Resaltadas en amarillo para que sea obvio
+    # Texto gris itálico para que sea obvio
     # ============================================================
     fecha_cad = (date.today() + timedelta(days=365)).strftime('%Y-%m-%d')
     fecha_fab = date.today().strftime('%Y-%m-%d')
@@ -234,13 +232,11 @@ def generar_plantilla_lotes(centro=None):
     for ejemplo in ejemplos:
         ws.append(ejemplo)
     
-    # Resaltar filas de ejemplo con color amarillo
-    example_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
-    example_font = Font(italic=True, color="666666")
+    # Estilo para filas de ejemplo (gris claro, itálica - sin fondo de color)
+    example_font = Font(italic=True, color="888888")
     for row_num in range(2, 2 + len(ejemplos)):
         for col in range(1, len(headers) + 1):
             cell = ws.cell(row=row_num, column=col)
-            cell.fill = example_fill
             cell.font = example_font
 
     # Instrucciones
@@ -250,7 +246,7 @@ def generar_plantilla_lotes(centro=None):
         ["║    INSTRUCCIONES PARA IMPORTACIÓN DE LOTES                        ║"],
         ["╚════════════════════════════════════════════════════════════════════╝"],
         [""],
-        ["⚠️  IMPORTANTE: Las filas amarillas en la hoja 'Lotes Inventario' son EJEMPLOS."],
+        ["⚠️  IMPORTANTE: Las filas de ejemplo (texto gris con [EJEMPLO]) son de muestra."],
         ["    ELIMÍNELAS antes de cargar sus datos reales."],
         [""],
         ["────────────────────────────────────────────────────────────────────────"],

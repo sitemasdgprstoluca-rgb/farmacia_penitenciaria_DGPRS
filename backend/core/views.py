@@ -2832,7 +2832,8 @@ class DonacionViewSet(viewsets.ModelViewSet):
             
             # Estilos
             header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
-            example_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')  # Amarillo
+            # Estilo para ejemplos: gris itálica sin fondo de color
+            example_font = Font(italic=True, color='888888')
             thin_border = Border(
                 left=Side(style='thin'), right=Side(style='thin'),
                 top=Side(style='thin'), bottom=Side(style='thin')
@@ -2851,13 +2852,13 @@ class DonacionViewSet(viewsets.ModelViewSet):
             instrucciones = [
                 ('INSTRUCCIONES DE USO - PLANTILLA DE DONACIONES', True, 16),
                 ('', False, 11),
-                ('⚠️ IMPORTANTE: Las filas en AMARILLO son EJEMPLOS. ELIMÍNELAS antes de importar.', True, 12),
+                ('⚠️ IMPORTANTE: Las filas grises con [EJEMPLO] son de muestra. ELIMÍNELAS antes de importar.', True, 12),
                 ('', False, 11),
                 ('PASOS:', True, 12),
                 ('1. Vaya a la hoja "Donaciones" y complete los datos de la donación', False, 11),
                 ('2. Vaya a la hoja "Detalles" y agregue los productos de cada donación', False, 11),
                 ('3. Use el "Catálogo Productos" para ver las claves de productos válidas', False, 11),
-                ('4. ELIMINE las filas de ejemplo (resaltadas en amarillo)', False, 11),
+                ('4. ELIMINE las filas de ejemplo (texto gris con [EJEMPLO])', False, 11),
                 ('5. Guarde el archivo y súbalo al sistema', False, 11),
                 ('', False, 11),
                 ('CAMPOS OBLIGATORIOS:', True, 12),
@@ -2885,7 +2886,7 @@ class DonacionViewSet(viewsets.ModelViewSet):
             ws['A1'].font = Font(bold=True, size=14, color='632842')
             ws['A1'].alignment = Alignment(horizontal='center')
             
-            ws['A2'].value = '⚠️ ELIMINE las filas de ejemplo (amarillas) antes de importar. Columnas con * son obligatorias.'
+            ws['A2'].value = '⚠️ ELIMINE las filas de ejemplo (grises con [EJEMPLO]) antes de importar. Columnas con * son obligatorias.'
             ws['A2'].font = Font(italic=True, size=10, color='CC0000')
             ws.merge_cells('A2:J2')
             ws.append([])
@@ -2902,7 +2903,7 @@ class DonacionViewSet(viewsets.ModelViewSet):
                 cell.font = Font(bold=True, color='FFFFFF')
                 cell.border = thin_border
             
-            # Ejemplos con marcador [EJEMPLO] y fondo amarillo
+            # Ejemplos con marcador [EJEMPLO] - texto gris itálica
             ejemplos_donacion = [
                 ['[EJEMPLO] PRUEBA-DON-001 - ELIMINAR', '[EJEMPLO] Donante Prueba SA - ELIMINAR', 
                  'empresa', 'XXX000000XX0', 'Calle Ejemplo 123', 'ejemplo@test.com', 
@@ -2915,10 +2916,10 @@ class DonacionViewSet(viewsets.ModelViewSet):
             for ejemplo in ejemplos_donacion:
                 ws.append(ejemplo)
             
-            # Aplicar formato amarillo a filas de ejemplo
+            # Aplicar formato gris itálica a filas de ejemplo (sin fondo de color)
             for row_num in [5, 6]:
                 for cell in ws[row_num]:
-                    cell.fill = example_fill
+                    cell.font = example_font
                     cell.border = thin_border
             
             # Ajustar anchos
@@ -2934,7 +2935,7 @@ class DonacionViewSet(viewsets.ModelViewSet):
             ws2['A1'].font = Font(bold=True, size=14, color='632842')
             ws2['A1'].alignment = Alignment(horizontal='center')
             
-            ws2['A2'].value = '⚠️ ELIMINE las filas de ejemplo (amarillas). Use claves del Catálogo Productos.'
+            ws2['A2'].value = '⚠️ ELIMINE las filas de ejemplo (grises con [EJEMPLO]). Use claves del Catálogo Productos.'
             ws2['A2'].font = Font(italic=True, size=10, color='CC0000')
             ws2.merge_cells('A2:G2')
             ws2.append([])
@@ -2963,10 +2964,10 @@ class DonacionViewSet(viewsets.ModelViewSet):
             for ejemplo in ejemplos_detalles:
                 ws2.append(ejemplo)
             
-            # Aplicar formato amarillo
+            # Aplicar formato gris itálica (sin fondo de color)
             for row_num in [5, 6, 7]:
                 for cell in ws2[row_num]:
-                    cell.fill = example_fill
+                    cell.font = example_font
                     cell.border = thin_border
             
             # Ajustar anchos
