@@ -721,58 +721,6 @@ class LoteViewSet(viewsets.ModelViewSet):
                 {'error': 'No se pudo generar la plantilla', 'mensaje': str(exc)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-        
-        # Filas de ejemplo con formato esperado
-        fecha_cad_ejemplo = (date.today() + timedelta(days=365)).strftime('%Y-%m-%d')
-        fecha_fab_ejemplo = date.today().strftime('%Y-%m-%d')
-        
-        ws.append([
-            'MED001', 'LOTE-2025-001', fecha_cad_ejemplo, 100,
-            100, fecha_fab_ejemplo, 25.50,
-            'CONT-2025-001', 'Laboratorio Nacional', 'Almacén A', ''
-        ])
-        ws.append([
-            'MED002', 'LOTE-2025-002', fecha_cad_ejemplo, 50,
-            50, fecha_fab_ejemplo, 18.75,
-            'CONT-2025-002', 'Farmacéutica SA', 'Almacén B', ''
-        ])
-        ws.append([
-            'INS001', 'LOTE-2025-003', fecha_cad_ejemplo, 200,
-            200, '', 5.00,
-            '', '', '', ''
-        ])
-        
-        # Aplicar formato a headers
-        header_font = Font(bold=True, color='FFFFFF')
-        header_fill = PatternFill(start_color='9F2241', end_color='9F2241', fill_type='solid')
-        for col in range(1, len(headers) + 1):
-            cell = ws.cell(row=1, column=col)
-            cell.font = header_font
-            cell.fill = header_fill
-        
-        # Ajustar ancho de columnas
-        column_widths = {
-            'A': 15,  # Producto
-            'B': 18,  # Numero Lote
-            'C': 16,  # Fecha Caducidad
-            'D': 16,  # Cantidad Inicial
-            'E': 16,  # Cantidad Actual
-            'F': 18,  # Fecha Fabricacion
-            'G': 15,  # Precio Unitario
-            'H': 18,  # Numero Contrato
-            'I': 20,  # Marca
-            'J': 15,  # Ubicacion
-            'K': 12,  # Centro ID
-        }
-        for col_letter, width in column_widths.items():
-            ws.column_dimensions[col_letter].width = width
-        
-        response = HttpResponse(
-            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-        response['Content-Disposition'] = 'attachment; filename=Plantilla_Lotes.xlsx'
-        wb.save(response)
-        return response
     
     @action(detail=False, methods=['get'])
     def por_vencer(self, request):

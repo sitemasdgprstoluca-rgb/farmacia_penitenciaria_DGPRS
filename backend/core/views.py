@@ -2821,25 +2821,73 @@ class DonacionViewSet(viewsets.ModelViewSet):
     def plantilla_excel(self, request):
         """
         Genera plantilla Excel para importar donaciones con detalles.
+        Incluye ejemplos marcados con [EJEMPLO] que se ignoran al importar.
         """
         import openpyxl
-        from openpyxl.styles import Font, Alignment, PatternFill
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
         from django.http import HttpResponse
         
         try:
             wb = openpyxl.Workbook()
             
-            # Hoja de donaciones
-            ws = wb.active
-            ws.title = 'Donaciones'
+            # Estilos
+            header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
+            example_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')  # Amarillo
+            thin_border = Border(
+                left=Side(style='thin'), right=Side(style='thin'),
+                top=Side(style='thin'), bottom=Side(style='thin')
+            )
             
-            ws.merge_cells('A1:L1')
-            ws['A1'].value = 'PLANTILLA PARA IMPORTAR DONACIONES'
+            # Obtener un producto real para el ejemplo
+            from core.models import Producto
+            producto_ejemplo = Producto.objects.filter(activo=True).first()
+            clave_ejemplo = producto_ejemplo.clave if producto_ejemplo else '656'
+            nombre_ejemplo = producto_ejemplo.nombre[:30] if producto_ejemplo else 'AMBROXOL'
+            
+            # ========== HOJA DE INSTRUCCIONES ==========
+            ws_inst = wb.active
+            ws_inst.title = 'INSTRUCCIONES'
+            
+            instrucciones = [
+                ('INSTRUCCIONES DE USO - PLANTILLA DE DONACIONES', True, 16),
+                ('', False, 11),
+                ('⚠️ IMPORTANTE: Las filas en AMARILLO son EJEMPLOS. ELIMÍNELAS antes de importar.', True, 12),
+                ('', False, 11),
+                ('PASOS:', True, 12),
+                ('1. Vaya a la hoja "Donaciones" y complete los datos de la donación', False, 11),
+                ('2. Vaya a la hoja "Detalles" y agregue los productos de cada donación', False, 11),
+                ('3. Use el "Catálogo Productos" para ver las claves de productos válidas', False, 11),
+                ('4. ELIMINE las filas de ejemplo (resaltadas en amarillo)', False, 11),
+                ('5. Guarde el archivo y súbalo al sistema', False, 11),
+                ('', False, 11),
+                ('CAMPOS OBLIGATORIOS:', True, 12),
+                ('  Donaciones: numero, donante_nombre, fecha_donacion', False, 11),
+                ('  Detalles: numero_donacion, producto_clave, cantidad', False, 11),
+                ('', False, 11),
+                ('TIPOS DE DONANTE VÁLIDOS:', True, 12),
+                ('  empresa, gobierno, ong, particular, otro', False, 11),
+                ('', False, 11),
+                ('ESTADOS DE PRODUCTO VÁLIDOS:', True, 12),
+                ('  bueno, regular, malo', False, 11),
+            ]
+            
+            for i, (texto, bold, size) in enumerate(instrucciones, 1):
+                cell = ws_inst.cell(row=i, column=1, value=texto)
+                cell.font = Font(bold=bold, size=size, color='632842' if bold else '333333')
+            
+            ws_inst.column_dimensions['A'].width = 80
+            
+            # ========== HOJA DE DONACIONES ==========
+            ws = wb.create_sheet(title='Donaciones')
+            
+            ws.merge_cells('A1:J1')
+            ws['A1'].value = 'DATOS DE DONACIONES'
             ws['A1'].font = Font(bold=True, size=14, color='632842')
             ws['A1'].alignment = Alignment(horizontal='center')
             
-            ws['A2'].value = 'Las columnas marcadas con * son obligatorias'
-            ws['A2'].font = Font(italic=True, size=10)
+            ws['A2'].value = '⚠️ ELIMINE las filas de ejemplo (amarillas) antes de importar. Columnas con * son obligatorias.'
+            ws['A2'].font = Font(italic=True, size=10, color='CC0000')
+            ws.merge_cells('A2:J2')
             ws.append([])
             
             headers = [
@@ -2849,37 +2897,46 @@ class DonacionViewSet(viewsets.ModelViewSet):
             ]
             ws.append(headers)
             
-            header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
             for cell in ws[4]:
                 cell.fill = header_fill
                 cell.font = Font(bold=True, color='FFFFFF')
+                cell.border = thin_border
             
-            # Ejemplo
-            ws.append([
-                'DON-2024-001', 'Farmacéuticas del Norte SA', 'empresa', 'FNO123456ABC',
-                'Av. Principal 123', 'contacto@empresa.com', '2024-01-15',
-                '', 'Donación de medicamentos', 'DOC-REF-001'
-            ])
+            # Ejemplos con marcador [EJEMPLO] y fondo amarillo
+            ejemplos_donacion = [
+                ['[EJEMPLO] PRUEBA-DON-001 - ELIMINAR', '[EJEMPLO] Donante Prueba SA - ELIMINAR', 
+                 'empresa', 'XXX000000XX0', 'Calle Ejemplo 123', 'ejemplo@test.com', 
+                 '2024-01-15', '', 'Donación de prueba - ELIMINAR', 'DOC-PRUEBA-001'],
+                ['[EJEMPLO] PRUEBA-DON-002 - ELIMINAR', '[EJEMPLO] ONG Prueba - ELIMINAR', 
+                 'ong', '', '', 'contacto@ong.org', 
+                 '2024-02-20', '', 'Segunda donación de prueba - ELIMINAR', ''],
+            ]
             
-            # Tipos de donante
-            ws.append([])
-            ws.append(['Tipos de donante válidos: empresa, gobierno, ong, particular, otro'])
-            ws['A7'].font = Font(italic=True, color='666666')
+            for ejemplo in ejemplos_donacion:
+                ws.append(ejemplo)
+            
+            # Aplicar formato amarillo a filas de ejemplo
+            for row_num in [5, 6]:
+                for cell in ws[row_num]:
+                    cell.fill = example_fill
+                    cell.border = thin_border
             
             # Ajustar anchos
-            column_widths = [18, 35, 15, 18, 30, 25, 15, 18, 30, 18]
+            column_widths = [35, 40, 15, 18, 30, 25, 15, 18, 35, 20]
             for i, width in enumerate(column_widths, 1):
                 ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
             
-            # Hoja de detalles
+            # ========== HOJA DE DETALLES ==========
             ws2 = wb.create_sheet(title='Detalles')
-            ws2.merge_cells('A1:H1')
+            
+            ws2.merge_cells('A1:G1')
             ws2['A1'].value = 'DETALLES DE DONACIONES (productos)'
             ws2['A1'].font = Font(bold=True, size=14, color='632842')
             ws2['A1'].alignment = Alignment(horizontal='center')
             
-            ws2['A2'].value = 'Asocie cada detalle con el número de donación de la hoja anterior'
-            ws2['A2'].font = Font(italic=True, size=10)
+            ws2['A2'].value = '⚠️ ELIMINE las filas de ejemplo (amarillas). Use claves del Catálogo Productos.'
+            ws2['A2'].font = Font(italic=True, size=10, color='CC0000')
+            ws2.merge_cells('A2:G2')
             ws2.append([])
             
             headers2 = [
@@ -2891,30 +2948,50 @@ class DonacionViewSet(viewsets.ModelViewSet):
             for cell in ws2[4]:
                 cell.fill = header_fill
                 cell.font = Font(bold=True, color='FFFFFF')
+                cell.border = thin_border
             
-            ws2.append([
-                'DON-2024-001', 'MED001', 'LOTE-A123', 100, '2025-12-31', 'bueno', ''
-            ])
+            # Ejemplos de detalles usando claves reales
+            ejemplos_detalles = [
+                ['[EJEMPLO] PRUEBA-DON-001 - ELIMINAR', f'{clave_ejemplo}', 
+                 'LOTE-PRUEBA-001', 100, '2025-12-31', 'bueno', '[EJEMPLO] - ELIMINAR'],
+                ['[EJEMPLO] PRUEBA-DON-001 - ELIMINAR', f'{clave_ejemplo}', 
+                 'LOTE-PRUEBA-002', 50, '2026-06-30', 'bueno', '[EJEMPLO] - ELIMINAR'],
+                ['[EJEMPLO] PRUEBA-DON-002 - ELIMINAR', f'{clave_ejemplo}', 
+                 '', 200, '', 'regular', '[EJEMPLO] - ELIMINAR'],
+            ]
             
-            ws2.append([])
-            ws2.append(['Estados válidos: bueno, regular, malo'])
-            ws2['A7'].font = Font(italic=True, color='666666')
+            for ejemplo in ejemplos_detalles:
+                ws2.append(ejemplo)
             
-            # Hoja de catálogo de productos
+            # Aplicar formato amarillo
+            for row_num in [5, 6, 7]:
+                for cell in ws2[row_num]:
+                    cell.fill = example_fill
+                    cell.border = thin_border
+            
+            # Ajustar anchos
+            column_widths2 = [35, 15, 20, 12, 15, 15, 30]
+            for i, width in enumerate(column_widths2, 1):
+                ws2.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
+            
+            # ========== HOJA DE CATÁLOGO ==========
             ws3 = wb.create_sheet(title='Catálogo Productos')
             ws3['A1'].value = 'CATÁLOGO DE PRODUCTOS DISPONIBLES'
             ws3['A1'].font = Font(bold=True, size=12, color='632842')
             ws3.append([])
             ws3.append(['Clave', 'Nombre', 'Unidad'])
             
-            from core.models import Producto
+            for cell in ws3[3]:
+                cell.fill = header_fill
+                cell.font = Font(bold=True, color='FFFFFF')
+            
             productos = Producto.objects.filter(activo=True).order_by('nombre')[:500]
             for prod in productos:
                 ws3.append([prod.clave, prod.nombre, prod.unidad_medida])
             
             ws3.column_dimensions['A'].width = 15
             ws3.column_dimensions['B'].width = 50
-            ws3.column_dimensions['C'].width = 12
+            ws3.column_dimensions['C'].width = 35
             
             response = HttpResponse(
                 content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -3079,10 +3156,24 @@ class DonacionViewSet(viewsets.ModelViewSet):
                     'fecha_donacion': 6, 'centro_destino': 7, 'notas': 8, 'documento': 9
                 }
             
+            # Función para detectar filas de ejemplo
+            def es_fila_ejemplo(row):
+                """Detecta si una fila es un ejemplo que debe ignorarse"""
+                for cell in row:
+                    if cell:
+                        cell_str = str(cell).upper()
+                        if '[EJEMPLO]' in cell_str or 'PRUEBA-DON-' in cell_str or '- ELIMINAR' in cell_str:
+                            return True
+                return False
+            
             with transaction.atomic():
                 # Crear donaciones
                 for row_num, row in enumerate(ws_donaciones.iter_rows(min_row=header_row_don + 1, values_only=True), start=header_row_don + 1):
                     if not row or all(cell is None or str(cell).strip() == '' for cell in row):
+                        continue
+                    
+                    # Ignorar filas de ejemplo
+                    if es_fila_ejemplo(row):
                         continue
                     
                     try:
@@ -3170,6 +3261,10 @@ class DonacionViewSet(viewsets.ModelViewSet):
                     
                     for row_num, row in enumerate(ws_detalles.iter_rows(min_row=header_row_det + 1, values_only=True), start=header_row_det + 1):
                         if not row or all(cell is None or str(cell).strip() == '' for cell in row):
+                            continue
+                        
+                        # Ignorar filas de ejemplo
+                        if es_fila_ejemplo(row):
                             continue
                         
                         try:

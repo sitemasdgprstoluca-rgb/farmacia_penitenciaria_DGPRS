@@ -745,7 +745,7 @@ const handleImportar = async (e) => {
   ].filter(Boolean).length;
 
   const headerActions = (
-    <>
+    <div className="flex flex-wrap gap-3">
       {puede.exportar && (
         <button
           type="button"
@@ -756,56 +756,19 @@ const handleImportar = async (e) => {
           {exportLoading ? (
             <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
           ) : (
-            <FaFileExcel />
+            <FaDownload />
           )}
-          {exportLoading ? 'Exportando...' : 'Excel'}
-        </button>
-      )}
-      {puede.exportar && (
-        <button
-          type="button"
-          onClick={handleExportarPdf}
-          disabled={exportPdfLoading}
-          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{
-            background: 'linear-gradient(135deg, #c62828 0%, #8b0000 100%)',
-          }}
-        >
-          {exportPdfLoading ? (
-            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-          ) : (
-            <FaFilePdf />
-          )}
-          {exportPdfLoading ? 'Generando...' : 'PDF'}
+          {exportLoading ? 'Exportando...' : 'Exportar'}
         </button>
       )}
       {puede.importar && (
         <>
-          {/* Botón Plantilla */}
-          <button
-            type="button"
-            onClick={handleDescargarPlantilla}
-            className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{
-              background: 'linear-gradient(135deg, #2563eb 0%, #1e40af 100%)',
-              border: '1px solid rgba(255,255,255,0.4)'
-            }}
-            title="Descargar plantilla Excel para importar lotes"
-          >
-            <FaDownload />
-            Plantilla
-          </button>
-          
           {/* Botón Importar */}
           <button
             type="button"
             onClick={() => setShowImportModal(true)}
             disabled={importLoading}
-            className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{
-              background: SECONDARY_GRADIENT,
-              border: '1px solid rgba(255,255,255,0.4)'
-            }}
+            className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
           >
             {importLoading ? (
               <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
@@ -813,6 +776,17 @@ const handleImportar = async (e) => {
               <FaFileUpload />
             )}
             {importLoading ? 'Importando...' : 'Importar'}
+          </button>
+          
+          {/* Botón Plantilla */}
+          <button
+            type="button"
+            onClick={handleDescargarPlantilla}
+            className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-theme-primary bg-white/90 hover:bg-white transition"
+            title="Descargar plantilla Excel para importar lotes"
+          >
+            <FaDownload />
+            Plantilla
           </button>
         </>
       )}
@@ -826,7 +800,7 @@ const handleImportar = async (e) => {
           <FaPlus /> Nuevo Lote
         </button>
       )}
-    </>
+    </div>
   );
 
   // Mostrar error si el usuario no tiene centro asignado

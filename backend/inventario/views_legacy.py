@@ -1798,25 +1798,28 @@ class ProductoViewSet(viewsets.ModelViewSet):
         ]
         ws.append(headers)
         
-        # Filas de ejemplo (unidades en mayúsculas como las espera el sistema)
+        # ============================================================
+        # FILAS DE EJEMPLO - ELIMINAR ANTES DE USAR CON DATOS REALES
+        # Estas filas son solo para mostrar el formato correcto.
+        # ============================================================
         ws.append([
-            'MED001', 'Paracetamol 500mg', 'CAJA', 50, 'medicamento',
+            'PRUEBA001', '[EJEMPLO] Paracetamol 500mg - ELIMINAR', 'CAJA', 50, 'medicamento',
             'Paracetamol', 'Tableta', '500 mg',
             'oral', 'No', 'No', 'Activo'
         ])
         ws.append([
-            'MED002', 'Ibuprofeno 400mg', 'FRASCO', 30, 'medicamento',
+            'PRUEBA002', '[EJEMPLO] Ibuprofeno 400mg - ELIMINAR', 'FRASCO', 30, 'medicamento',
             'Ibuprofeno', 'Cápsula', '400 mg',
             'oral', 'No', 'No', 'Activo'
         ])
         ws.append([
-            'INS001', 'Jeringa 10ml', 'PIEZA', 100, 'material_curacion',
+            'PRUEBA003', '[EJEMPLO] Jeringa 10ml - ELIMINAR', 'PIEZA', 100, 'material_curacion',
             '', '', '',
             '', 'No', 'No', 'Activo'
         ])
         
         # Aplicar formato a headers
-        from openpyxl.styles import Font, PatternFill
+        from openpyxl.styles import Font, PatternFill, Alignment
         header_font = Font(bold=True, color='FFFFFF')
         header_fill = PatternFill(start_color='9F2241', end_color='9F2241', fill_type='solid')
         for col in range(1, len(headers) + 1):
@@ -1824,10 +1827,19 @@ class ProductoViewSet(viewsets.ModelViewSet):
             cell.font = header_font
             cell.fill = header_fill
         
+        # Resaltar filas de ejemplo con color amarillo para que sea obvio
+        example_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
+        example_font = Font(italic=True, color='666666')
+        for row_num in range(2, 5):  # Filas 2, 3, 4 (ejemplos)
+            for col in range(1, len(headers) + 1):
+                cell = ws.cell(row=row_num, column=col)
+                cell.fill = example_fill
+                cell.font = example_font
+        
         # Ajustar ancho de columnas
         column_widths = {
-            'A': 12,  # Clave
-            'B': 35,  # Nombre
+            'A': 15,  # Clave
+            'B': 45,  # Nombre (más ancho para ver el texto de ejemplo)
             'C': 12,  # Unidad
             'D': 14,  # Stock Minimo
             'E': 18,  # Categoria
@@ -1841,6 +1853,62 @@ class ProductoViewSet(viewsets.ModelViewSet):
         }
         for col_letter, width in column_widths.items():
             ws.column_dimensions[col_letter].width = width
+        
+        # ============================================================
+        # HOJA DE INSTRUCCIONES
+        # ============================================================
+        ws_instrucciones = wb.create_sheet(title='INSTRUCCIONES')
+        
+        instrucciones = [
+            ['╔════════════════════════════════════════════════════════════════════╗'],
+            ['║    INSTRUCCIONES PARA IMPORTACIÓN DE PRODUCTOS                    ║'],
+            ['╚════════════════════════════════════════════════════════════════════╝'],
+            [''],
+            ['⚠️  IMPORTANTE: Las filas amarillas en la hoja "Productos" son EJEMPLOS.'],
+            ['    ELIMÍNELAS antes de cargar sus datos reales.'],
+            [''],
+            ['────────────────────────────────────────────────────────────────────────'],
+            ['COLUMNAS REQUERIDAS (obligatorias):'],
+            ['────────────────────────────────────────────────────────────────────────'],
+            ['• Clave      - Código único del producto (ej: 001, MED001, ABC123)'],
+            ['• Nombre     - Nombre completo del producto'],
+            [''],
+            ['────────────────────────────────────────────────────────────────────────'],
+            ['COLUMNAS OPCIONALES:'],
+            ['────────────────────────────────────────────────────────────────────────'],
+            ['• Unidad         - CAJA, PIEZA, FRASCO, SOBRE, TABLETA, etc. (default: PIEZA)'],
+            ['• Stock Minimo   - Cantidad mínima para alertas (default: 10)'],
+            ['• Categoria      - medicamento, material_curacion, insumo (default: medicamento)'],
+            ['• Sustancia Activa - Principio activo del medicamento'],
+            ['• Presentacion   - Forma farmacéutica (tableta, cápsula, jarabe, etc.)'],
+            ['• Concentracion  - Dosis (ej: 500 mg, 10 ml)'],
+            ['• Via Admin      - oral, intravenosa, tópica, etc.'],
+            ['• Requiere Receta - Sí / No (default: No)'],
+            ['• Controlado     - Sí / No (default: No)'],
+            ['• Estado         - Activo / Inactivo (default: Activo)'],
+            [''],
+            ['────────────────────────────────────────────────────────────────────────'],
+            ['NOTAS:'],
+            ['────────────────────────────────────────────────────────────────────────'],
+            ['• Si la CLAVE ya existe, el producto se ACTUALIZARÁ con los nuevos datos.'],
+            ['• Si la CLAVE no existe, se CREARÁ un nuevo producto.'],
+            ['• Máximo 5000 productos por archivo.'],
+            ['• Tamaño máximo de archivo: 10 MB.'],
+            ['• Formatos aceptados: .xlsx, .xls'],
+            [''],
+        ]
+        
+        for row in instrucciones:
+            ws_instrucciones.append(row)
+        
+        # Formato de instrucciones
+        ws_instrucciones.column_dimensions['A'].width = 80
+        for row in ws_instrucciones.iter_rows():
+            for cell in row:
+                cell.alignment = Alignment(wrap_text=False)
+        
+        # Poner hoja de Productos como activa
+        wb.active = ws
         
         response = HttpResponse(
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -3231,29 +3299,32 @@ class LoteViewSet(viewsets.ModelViewSet):
         ]
         ws.append(headers)
         
-        # Filas de ejemplo con formato esperado
+        # ============================================================
+        # FILAS DE EJEMPLO - ELIMINAR ANTES DE USAR CON DATOS REALES
+        # Estas filas son solo para mostrar el formato correcto.
+        # ============================================================
         from datetime import date, timedelta
         fecha_cad_ejemplo = (date.today() + timedelta(days=365)).strftime('%Y-%m-%d')
         fecha_fab_ejemplo = date.today().strftime('%Y-%m-%d')
         
         ws.append([
-            'MED001', 'LOTE-2025-001', fecha_cad_ejemplo, 100,
+            'PRUEBA001', 'LOTE-PRUEBA-001', fecha_cad_ejemplo, 100,
             100, fecha_fab_ejemplo, 25.50,
-            'CONT-2025-001', 'Laboratorio Nacional', 'Almacén A', ''
+            'CONT-PRUEBA-001', '[EJEMPLO] Laboratorio - ELIMINAR', 'Almacén A', ''
         ])
         ws.append([
-            'MED002', 'LOTE-2025-002', fecha_cad_ejemplo, 50,
+            'PRUEBA002', 'LOTE-PRUEBA-002', fecha_cad_ejemplo, 50,
             50, fecha_fab_ejemplo, 18.75,
-            'CONT-2025-002', 'Farmacéutica SA', 'Almacén B', ''
+            'CONT-PRUEBA-002', '[EJEMPLO] Farmacéutica - ELIMINAR', 'Almacén B', ''
         ])
         ws.append([
-            'INS001', 'LOTE-2025-003', fecha_cad_ejemplo, 200,
+            'PRUEBA003', 'LOTE-PRUEBA-003', fecha_cad_ejemplo, 200,
             200, '', 5.00,
-            '', '', '', ''
+            '', '[EJEMPLO] Material - ELIMINAR', '', ''
         ])
         
         # Aplicar formato a headers
-        from openpyxl.styles import Font, PatternFill
+        from openpyxl.styles import Font, PatternFill, Alignment
         header_font = Font(bold=True, color='FFFFFF')
         header_fill = PatternFill(start_color='9F2241', end_color='9F2241', fill_type='solid')
         for col in range(1, len(headers) + 1):
@@ -3261,22 +3332,87 @@ class LoteViewSet(viewsets.ModelViewSet):
             cell.font = header_font
             cell.fill = header_fill
         
+        # Resaltar filas de ejemplo con color amarillo para que sea obvio
+        example_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
+        example_font = Font(italic=True, color='666666')
+        for row_num in range(2, 5):  # Filas 2, 3, 4 (ejemplos)
+            for col in range(1, len(headers) + 1):
+                cell = ws.cell(row=row_num, column=col)
+                cell.fill = example_fill
+                cell.font = example_font
+        
         # Ajustar ancho de columnas
         column_widths = {
             'A': 15,  # Producto
-            'B': 18,  # Numero Lote
+            'B': 20,  # Numero Lote
             'C': 16,  # Fecha Caducidad
             'D': 16,  # Cantidad Inicial
             'E': 16,  # Cantidad Actual
             'F': 18,  # Fecha Fabricacion
             'G': 15,  # Precio Unitario
             'H': 18,  # Numero Contrato
-            'I': 20,  # Marca
+            'I': 35,  # Marca (más ancho para ver el texto de ejemplo)
             'J': 15,  # Ubicacion
             'K': 12,  # Centro ID
         }
         for col_letter, width in column_widths.items():
             ws.column_dimensions[col_letter].width = width
+        
+        # ============================================================
+        # HOJA DE INSTRUCCIONES
+        # ============================================================
+        ws_instrucciones = wb.create_sheet(title='INSTRUCCIONES')
+        
+        instrucciones = [
+            ['╔════════════════════════════════════════════════════════════════════╗'],
+            ['║    INSTRUCCIONES PARA IMPORTACIÓN DE LOTES                        ║'],
+            ['╚════════════════════════════════════════════════════════════════════╝'],
+            [''],
+            ['⚠️  IMPORTANTE: Las filas amarillas en la hoja "Lotes" son EJEMPLOS.'],
+            ['    ELIMÍNELAS antes de cargar sus datos reales.'],
+            [''],
+            ['────────────────────────────────────────────────────────────────────────'],
+            ['COLUMNAS REQUERIDAS (obligatorias):'],
+            ['────────────────────────────────────────────────────────────────────────'],
+            ['• Producto       - Clave del producto (debe existir en el sistema)'],
+            ['• Numero Lote    - Identificador único del lote'],
+            ['• Fecha Caducidad - Formato: YYYY-MM-DD (ej: 2026-12-31)'],
+            ['• Cantidad Inicial - Cantidad de unidades recibidas'],
+            [''],
+            ['────────────────────────────────────────────────────────────────────────'],
+            ['COLUMNAS OPCIONALES:'],
+            ['────────────────────────────────────────────────────────────────────────'],
+            ['• Cantidad Actual  - Stock actual (default: igual a Cantidad Inicial)'],
+            ['• Fecha Fabricacion - Formato: YYYY-MM-DD'],
+            ['• Precio Unitario  - Precio por unidad (default: 0)'],
+            ['• Numero Contrato  - Referencia del contrato de adquisición'],
+            ['• Marca            - Laboratorio o fabricante'],
+            ['• Ubicacion        - Ubicación física en el almacén'],
+            ['• Centro ID        - ID numérico del centro (vacío = Farmacia Central)'],
+            [''],
+            ['────────────────────────────────────────────────────────────────────────'],
+            ['NOTAS:'],
+            ['────────────────────────────────────────────────────────────────────────'],
+            ['• El PRODUCTO debe existir antes de importar lotes.'],
+            ['• Si el lote ya existe (mismo producto + número de lote), se ACTUALIZA.'],
+            ['• La cantidad_actual se inicializa igual a cantidad_inicial.'],
+            ['• Fechas aceptadas: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY'],
+            ['• Máximo 5000 lotes por archivo.'],
+            ['• Tamaño máximo de archivo: 10 MB.'],
+            [''],
+        ]
+        
+        for row in instrucciones:
+            ws_instrucciones.append(row)
+        
+        # Formato de instrucciones
+        ws_instrucciones.column_dimensions['A'].width = 80
+        for row in ws_instrucciones.iter_rows():
+            for cell in row:
+                cell.alignment = Alignment(wrap_text=False)
+        
+        # Poner hoja de Lotes como activa
+        wb.active = ws
         
         response = HttpResponse(
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

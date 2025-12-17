@@ -72,7 +72,7 @@ def generar_plantilla_productos():
     ]
 
     # Anchos personalizados por columna para mejor legibilidad
-    column_widths = [15, 40, 15, 15, 20, 25, 25, 20, 20, 18, 15, 12]
+    column_widths = [15, 45, 18, 15, 20, 25, 25, 20, 20, 18, 15, 12]
     
     for col_num, header in enumerate(headers, 1):
         ws.cell(row=1, column=col_num, value=header)
@@ -81,57 +81,78 @@ def generar_plantilla_productos():
     
     aplicar_estilos_header(ws, len(headers))
 
-    # Fila de ejemplo que coincide con el formato actualizado
-    ws.append([
-        "615",
-        "PARACETAMOL",
-        "CAJA CON 7 OVULOS",
-        10,
-        "medicamento",
-        "Paracetamol",
-        "Tabletas",
-        "500mg",
-        "Oral",
-        "No",
-        "No",
-        "Activo"
-    ])
+    # ============================================================
+    # FILAS DE EJEMPLO - ELIMINAR ANTES DE USAR CON DATOS REALES
+    # Resaltadas en amarillo para que sea obvio
+    # ============================================================
+    ejemplos = [
+        ["PRUEBA001", "[EJEMPLO] Paracetamol 500mg - ELIMINAR", "CAJA", 50, "medicamento",
+         "Paracetamol", "Tableta", "500 mg", "oral", "No", "No", "Activo"],
+        ["PRUEBA002", "[EJEMPLO] Ibuprofeno 400mg - ELIMINAR", "FRASCO", 30, "medicamento",
+         "Ibuprofeno", "Cápsula", "400 mg", "oral", "No", "No", "Activo"],
+        ["PRUEBA003", "[EJEMPLO] Jeringa 10ml - ELIMINAR", "PIEZA", 100, "material_curacion",
+         "", "", "", "", "No", "No", "Activo"],
+    ]
+    
+    for ejemplo in ejemplos:
+        ws.append(ejemplo)
+    
+    # Resaltar filas de ejemplo con color amarillo
+    example_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+    example_font = Font(italic=True, color="666666")
+    for row_num in range(2, 2 + len(ejemplos)):
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=row_num, column=col)
+            cell.fill = example_fill
+            cell.font = example_font
 
     # Instrucciones en hoja separada
-    ws_inst = wb.create_sheet("Instrucciones")
+    ws_inst = wb.create_sheet("INSTRUCCIONES")
     instrucciones = [
-        ["INSTRUCCIONES DE LLENADO DE PLANTILLA - PRODUCTOS"],
+        ["╔════════════════════════════════════════════════════════════════════╗"],
+        ["║    INSTRUCCIONES PARA IMPORTACIÓN DE PRODUCTOS                    ║"],
+        ["╚════════════════════════════════════════════════════════════════════╝"],
         [""],
-        ["Campos obligatorios marcados con asterisco (*)"],
+        ["⚠️  IMPORTANTE: Las filas amarillas en la hoja 'Productos' son EJEMPLOS."],
+        ["    ELIMÍNELAS antes de cargar sus datos reales."],
         [""],
-        ["CLAVE (REQUERIDO):", "Código único del producto. Ej: 615, 616, 1A, MED-001"],
-        ["NOMBRE (REQUERIDO):", "Nombre completo del producto (mínimo 5 caracteres)"],
-        ["UNIDAD (REQUERIDO):", "Unidad de medida con texto libre. Ejemplos: PIEZA, CAJA, CAJA CON 7 OVULOS, GOTERO CON 15 MILILITROS, BOLSA FLEX-OVAL DE 500 ML"],
-        ["STOCK MINIMO (REQUERIDO):", "Cantidad mínima en inventario (número entero, ej: 10)"],
-        ["CATEGORIA (REQUERIDO):", "Tipo de producto. Valores: medicamento, material_curacion, insumo"],
-        ["SUSTANCIA ACTIVA:", "Principio activo del medicamento (opcional)"],
-        ["PRESENTACION:", "Formato de presentación (opcional, ej: Tabletas, Jarabe)"],
-        ["CONCENTRACION:", "Dosis o concentración (opcional, ej: 500mg, 5ml)"],
-        ["VIA ADMIN:", "Vía de administración (opcional, ej: Oral, Intramuscular)"],
-        ["REQUIERE RECETA:", "Si/No - Indica si requiere receta médica (default: No)"],
-        ["CONTROLADO:", "Si/No - Indica si es medicamento controlado (default: No)"],
-        ["ESTADO:", "Activo/Inactivo - Estado del producto (default: Activo)"],
+        ["────────────────────────────────────────────────────────────────────────"],
+        ["COLUMNAS REQUERIDAS (obligatorias):"],
+        ["────────────────────────────────────────────────────────────────────────"],
+        ["• Clave      - Código único del producto (ej: 001, MED001, ABC123)"],
+        ["• Nombre     - Nombre completo del producto"],
         [""],
-        ["NOTAS IMPORTANTES:"],
-        ["• La clave debe ser única en todo el sistema"],
-        ["• Los valores booleanos aceptan: Si/Sí/Yes/True/1/Activo para verdadero, No/False/0/Inactivo para falso"],
-        ["• La Unidad acepta texto libre: escriba la descripción completa como 'CAJA CON 7 OVULOS' o 'GOTERO CON 15 MILILITROS'"],
-        ["• Si la plantilla tiene datos de ejemplo, puede borrarlos o mantener la fila 2 como referencia"],
-        ["• Puede eliminar la hoja 'Instrucciones' antes de subir el archivo"],
-        ["• Máximo 10,000 filas por archivo"],
-        ["• Tamaño máximo de archivo: 10MB"],
+        ["────────────────────────────────────────────────────────────────────────"],
+        ["COLUMNAS OPCIONALES:"],
+        ["────────────────────────────────────────────────────────────────────────"],
+        ["• Unidad         - CAJA, PIEZA, FRASCO, SOBRE, TABLETA, etc. (default: PIEZA)"],
+        ["• Stock Minimo   - Cantidad mínima para alertas (default: 10)"],
+        ["• Categoria      - medicamento, material_curacion, insumo (default: medicamento)"],
+        ["• Sustancia Activa - Principio activo del medicamento"],
+        ["• Presentacion   - Forma farmacéutica (tableta, cápsula, jarabe, etc.)"],
+        ["• Concentracion  - Dosis (ej: 500 mg, 10 ml)"],
+        ["• Via Admin      - oral, intravenosa, tópica, etc."],
+        ["• Requiere Receta - Sí / No (default: No)"],
+        ["• Controlado     - Sí / No (default: No)"],
+        ["• Estado         - Activo / Inactivo (default: Activo)"],
+        [""],
+        ["────────────────────────────────────────────────────────────────────────"],
+        ["NOTAS:"],
+        ["────────────────────────────────────────────────────────────────────────"],
+        ["• Si la CLAVE ya existe, el producto se ACTUALIZARÁ con los nuevos datos."],
+        ["• Si la CLAVE no existe, se CREARÁ un nuevo producto."],
+        ["• La Unidad acepta texto libre: 'CAJA CON 7 OVULOS', 'GOTERO CON 15 ML'"],
+        ["• Valores booleanos: Sí/Si/Yes/True/1/Activo o No/False/0/Inactivo"],
+        ["• Máximo 5000 productos por archivo."],
+        ["• Tamaño máximo de archivo: 10 MB."],
+        ["• Formatos aceptados: .xlsx, .xls"],
+        [""],
     ]
     
     for row_data in instrucciones:
         ws_inst.append(row_data)
     
-    ws_inst.column_dimensions['A'].width = 25
-    ws_inst.column_dimensions['B'].width = 70
+    ws_inst.column_dimensions['A'].width = 80
 
     response = HttpResponse(
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -161,6 +182,8 @@ def generar_plantilla_lotes(centro=None):
     - Centro: Nombre del centro (opcional)
     - Activo: Estado del lote (opcional, default Activo)
     """
+    from datetime import date, timedelta
+    
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Lotes Inventario"
@@ -180,70 +203,94 @@ def generar_plantilla_lotes(centro=None):
         "Activo"
     ]
 
+    column_widths = [15, 40, 20, 18, 18, 16, 15, 18, 35, 18, 18, 12]
+    
     for col_num, header in enumerate(headers, 1):
         ws.cell(row=1, column=col_num, value=header)
-        ws.column_dimensions[openpyxl.utils.get_column_letter(col_num)].width = 18
+        if col_num <= len(column_widths):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col_num)].width = column_widths[col_num - 1]
     
     aplicar_estilos_header(ws, len(headers))
 
-    # Ejemplo
-    ws.append([
-        "PAR-500",
-        "PARACETAMOL 500MG",
-        "LOTE-2024-ABC-001",
-        "2024-01-15",
-        "2026-12-31",
-        100,
-        15.50,
-        "CTR-2024-001",
-        "Laboratorios XYZ",
-        "Estante A1-Nivel 2",
-        "Farmacia Central",
-        "Activo"
-    ])
+    # ============================================================
+    # FILAS DE EJEMPLO - ELIMINAR ANTES DE USAR CON DATOS REALES
+    # Resaltadas en amarillo para que sea obvio
+    # ============================================================
+    fecha_cad = (date.today() + timedelta(days=365)).strftime('%Y-%m-%d')
+    fecha_fab = date.today().strftime('%Y-%m-%d')
+    
+    ejemplos = [
+        ["PRUEBA001", "[EJEMPLO] Paracetamol - ELIMINAR", "LOTE-PRUEBA-001",
+         fecha_fab, fecha_cad, 100, 15.50, "CONT-PRUEBA-001",
+         "[EJEMPLO] Laboratorio - ELIMINAR", "Estante A1", "Farmacia Central", "Activo"],
+        ["PRUEBA002", "[EJEMPLO] Ibuprofeno - ELIMINAR", "LOTE-PRUEBA-002",
+         fecha_fab, fecha_cad, 50, 18.75, "CONT-PRUEBA-002",
+         "[EJEMPLO] Farmacéutica - ELIMINAR", "Estante B2", "Farmacia Central", "Activo"],
+        ["PRUEBA003", "[EJEMPLO] Jeringa - ELIMINAR", "LOTE-PRUEBA-003",
+         "", fecha_cad, 200, 5.00, "",
+         "[EJEMPLO] Proveedor - ELIMINAR", "", "", "Activo"],
+    ]
+    
+    for ejemplo in ejemplos:
+        ws.append(ejemplo)
+    
+    # Resaltar filas de ejemplo con color amarillo
+    example_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+    example_font = Font(italic=True, color="666666")
+    for row_num in range(2, 2 + len(ejemplos)):
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=row_num, column=col)
+            cell.fill = example_fill
+            cell.font = example_font
 
     # Instrucciones
-    ws_inst = wb.create_sheet("Instrucciones")
+    ws_inst = wb.create_sheet("INSTRUCCIONES")
     instrucciones = [
-        ["INSTRUCCIONES DE LLENADO DE PLANTILLA - LOTES"],
+        ["╔════════════════════════════════════════════════════════════════════╗"],
+        ["║    INSTRUCCIONES PARA IMPORTACIÓN DE LOTES                        ║"],
+        ["╚════════════════════════════════════════════════════════════════════╝"],
         [""],
-        ["IDENTIFICACIÓN DEL PRODUCTO (Usar al menos UNO):"],
-        ["  • Clave Producto: Código alfanumérico del producto (ej: PAR-500)"],
-        ["  • O bien usar ID numérico si lo conoce en la columna 'Clave Producto'"],
-        ["  • Nombre Producto es referencia visual (opcional)"],
+        ["⚠️  IMPORTANTE: Las filas amarillas en la hoja 'Lotes Inventario' son EJEMPLOS."],
+        ["    ELIMÍNELAS antes de cargar sus datos reales."],
         [""],
-        ["CAMPOS OBLIGATORIOS:"],
-        ["  Número Lote*:", "Identificador único del lote del fabricante"],
-        ["  Fecha Caducidad*:", "Formato: YYYY-MM-DD (Ej: 2026-12-31)"],
-        ["  Cantidad Inicial*:", "Cantidad de unidades del lote (número entero positivo)"],
-        ["  Precio Unitario*:", "Precio por unidad (decimal, ej: 15.50) - usar 0 si no aplica"],
+        ["────────────────────────────────────────────────────────────────────────"],
+        ["COLUMNAS REQUERIDAS (obligatorias):"],
+        ["────────────────────────────────────────────────────────────────────────"],
+        ["• Clave Producto  - Clave del producto (debe existir en el sistema)"],
+        ["• Número Lote     - Identificador único del lote"],
+        ["• Fecha Caducidad - Formato: YYYY-MM-DD (ej: 2026-12-31)"],
+        ["• Cantidad Inicial - Cantidad de unidades recibidas"],
         [""],
-        ["CAMPOS OPCIONALES:"],
-        ["  Fecha Fabricación:", "Formato: YYYY-MM-DD (Ej: 2024-01-15)"],
-        ["  Número Contrato:", "Número del contrato de adquisición"],
-        ["  Marca:", "Marca o laboratorio fabricante"],
-        ["  Ubicación:", "Ubicación física en almacén (ej: Estante A1)"],
-        ["  Centro:", "Nombre del centro donde se almacena el lote"],
-        ["  Activo:", "Estado: Activo/Inactivo (default: Activo)"],
+        ["────────────────────────────────────────────────────────────────────────"],
+        ["COLUMNAS OPCIONALES:"],
+        ["────────────────────────────────────────────────────────────────────────"],
+        ["• Nombre Producto   - Referencia visual (el sistema busca por clave)"],
+        ["• Fecha Fabricación - Formato: YYYY-MM-DD"],
+        ["• Precio Unitario   - Precio por unidad (default: 0)"],
+        ["• Número Contrato   - Referencia del contrato de adquisición"],
+        ["• Marca             - Laboratorio o fabricante"],
+        ["• Ubicación         - Ubicación física en el almacén"],
+        ["• Centro            - Nombre del centro (vacío = Farmacia Central)"],
+        ["• Activo            - Activo/Inactivo (default: Activo)"],
         [""],
-        [f"CENTRO ASIGNADO:", centro.nombre if centro else "Se asignará automáticamente o desde columna Centro"],
+        ["────────────────────────────────────────────────────────────────────────"],
+        ["NOTAS:"],
+        ["────────────────────────────────────────────────────────────────────────"],
+        [f"Centro asignado: {centro.nombre if centro else 'Se asignará según columna Centro'}"],
+        ["• El PRODUCTO debe existir antes de importar lotes."],
+        ["• Si el lote ya existe (mismo producto + número de lote), se ACTUALIZA."],
+        ["• La cantidad_actual se inicializa igual a cantidad_inicial."],
+        ["• El stock del producto se actualiza automáticamente."],
+        ["• Fechas aceptadas: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY"],
+        ["• Máximo 5000 lotes por archivo."],
+        ["• Tamaño máximo de archivo: 10 MB."],
         [""],
-        ["NOTAS IMPORTANTES:"],
-        ["• El producto debe existir antes de cargar lotes"],
-        ["• Puede usar Clave, ID o Nombre del producto para identificarlo"],
-        ["• El sistema detecta automáticamente la fila de encabezados"],
-        ["• La cantidad_actual se inicializa igual a cantidad_inicial"],
-        ["• El stock del producto se actualiza automáticamente"],
-        ["• Las fechas deben estar en formato ISO: YYYY-MM-DD"],
-        ["• Si el lote ya existe, se omitirá (no se duplica)"],
-        ["• Elimine esta hoja de instrucciones antes de subir el archivo"],
     ]
     
     for row_data in instrucciones:
         ws_inst.append(row_data)
     
-    ws_inst.column_dimensions['A'].width = 25
-    ws_inst.column_dimensions['B'].width = 70
+    ws_inst.column_dimensions['A'].width = 80
 
     response = HttpResponse(
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
