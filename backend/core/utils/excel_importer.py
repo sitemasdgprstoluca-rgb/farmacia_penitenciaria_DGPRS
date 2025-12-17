@@ -633,7 +633,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     precio_unitario=precio_unitario,
                     numero_contrato=numero_contrato,
                     marca=marca,
-                    ubicacion=None,  # Se asigna vacío por defecto
+                    ubicacion='Almacén Central',  # Todo llega a Farmacia
                     activo=activo,
                 )
                 

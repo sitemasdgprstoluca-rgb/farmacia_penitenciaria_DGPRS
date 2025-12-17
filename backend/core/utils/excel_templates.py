@@ -176,9 +176,10 @@ def generar_plantilla_lotes(centro=None):
     - Precio Unitario*: Precio por unidad (default 0)
     - Número Contrato: Número de contrato (opcional)
     - Marca: Marca o laboratorio (opcional)
-    - Ubicación: Ubicación física (opcional)
-    - Centro: Nombre del centro (opcional)
     - Activo: Estado del lote (opcional, default Activo)
+    
+    NOTA: La ubicación se asigna automáticamente como "Almacén Central"
+    y el centro queda NULL (representa Farmacia Central).
     """
     from datetime import date, timedelta
     
