@@ -1424,12 +1424,22 @@ class MovimientoSerializer(serializers.ModelSerializer):
         FIX: Mapear campos del frontend a campos del modelo.
         - 'centro' -> se guarda en validated_data['centro'] para que ViewSet lo use
         - 'observaciones' -> se mapea a 'motivo' para el modelo
+        - ISS-MEDICO FIX v2: Inferir 'producto' del 'lote' si no se envía
         """
+        from .models import Lote
         data = data.copy() if hasattr(data, 'copy') else dict(data)
         
         # Mapear 'observaciones' del frontend a 'motivo' del modelo
         if 'observaciones' in data and 'motivo' not in data:
             data['motivo'] = data.pop('observaciones')
+        
+        # ISS-MEDICO FIX v2: Si no viene 'producto' pero viene 'lote', inferir producto del lote
+        if 'producto' not in data and 'lote' in data:
+            try:
+                lote = Lote.objects.select_related('producto').get(pk=data['lote'])
+                data['producto'] = lote.producto_id
+            except Lote.DoesNotExist:
+                pass  # Se manejará en la validación normal
         
         result = super().to_internal_value(data)
         

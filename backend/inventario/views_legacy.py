@@ -818,6 +818,9 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         lote_ref.save(update_fields=update_fields)
 
         # Crear movimiento con campos correctos de la BD
+        # ISS-MEDICO FIX v2: La cantidad siempre se guarda como positiva en BD
+        # (hay un CHECK constraint chk_movimiento_cantidad_positiva)
+        # El tipo (entrada/salida/ajuste) indica si suma o resta
         movimiento = Movimiento(
             tipo=tipo_normalizado,
             producto=lote_ref.producto,
@@ -826,7 +829,7 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
             centro_origen=centro if tipo_normalizado != 'entrada' else None,
             requisicion=requisicion,
             usuario=usuario if usuario and getattr(usuario, 'is_authenticated', False) else None,
-            cantidad=delta,
+            cantidad=abs(cantidad_int),  # Siempre positivo, el tipo indica la operación
             motivo=observaciones or '',
             # MEJORA FLUJO 5: Campos de trazabilidad para pacientes
             subtipo_salida=subtipo_salida if tipo_normalizado == 'salida' else None,
