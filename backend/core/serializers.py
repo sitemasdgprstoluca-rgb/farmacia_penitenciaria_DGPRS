@@ -2120,10 +2120,7 @@ class SalidaDonacionSerializer(serializers.ModelSerializer):
         if request and request.user:
             validated_data['entregado_por'] = request.user
         
-        # Descontar stock
-        detalle = validated_data['detalle_donacion']
-        cantidad = validated_data['cantidad']
-        detalle.cantidad_disponible -= cantidad
-        detalle.save()
+        # NOTA: El descuento de stock lo hace el modelo SalidaDonacion.save()
+        # No duplicar el descuento aquí
         
         return super().create(validated_data)
