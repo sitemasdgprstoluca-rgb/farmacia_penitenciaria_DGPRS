@@ -259,18 +259,12 @@ def importar_productos_desde_excel(archivo, usuario):
                 nombre = nombre_raw[:500]
                 
                 # ========== UNIDAD DE MEDIDA ==========
+                # Guardar texto libre completo (ej: "CAJA CON 7 OVULOS")
                 unidad_raw = get_val('unidad_medida', 'PIEZA')
-                # Extraer unidad base de valores como "CAJA CON 7 OVULOS"
-                unidad_medida = extraer_unidad_base(unidad_raw)
+                unidad_medida = str(unidad_raw).strip().upper()[:100] if unidad_raw else 'PIEZA'
                 
                 # ========== PRESENTACION ==========
                 presentacion = get_val('presentacion', '')
-                # Si Unidad tiene valor descriptivo, usarlo como presentación
-                if unidad_raw and unidad_raw.upper() != unidad_medida:
-                    if not presentacion:
-                        presentacion = unidad_raw
-                    elif unidad_raw not in presentacion:
-                        presentacion = f"{unidad_raw}"
                 
                 # ========== CATEGORIA ==========
                 categoria_raw = get_val('categoria', '')
@@ -321,7 +315,7 @@ def importar_productos_desde_excel(archivo, usuario):
                     defaults={
                         'nombre': nombre,
                         'descripcion': descripcion,
-                        'unidad_medida': unidad_medida.lower(),
+                        'unidad_medida': unidad_medida,
                         'categoria': categoria,
                         'sustancia_activa': sustancia_activa[:200] if sustancia_activa else None,
                         'presentacion': presentacion[:200] if presentacion else None,
