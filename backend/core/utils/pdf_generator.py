@@ -774,22 +774,46 @@ def generar_hoja_consulta(requisicion):
         ['#', 'Clave', 'Descripción', 'Solicitado', 'Surtido', 'Unidad']
     ]
     
-    for idx, detalle in enumerate(requisicion.detalles.all(), start=1):
-        descripcion_texto = detalle.producto.descripcion or detalle.producto.nombre or 'N/A'
-        descripcion_paragraph = Paragraph(descripcion_texto, celda_texto_style)
-        
-        cantidad_solicitada = detalle.cantidad_solicitada or 0
-        cantidad_surtida = detalle.cantidad_entregada or detalle.cantidad_autorizada or 0
-        unidad = getattr(detalle.producto, 'unidad_medida', None) or 'UND'
-        
-        productos_data.append([
-            str(idx),
-            detalle.producto.clave or 'N/A',
-            descripcion_paragraph,
-            str(cantidad_solicitada),
-            str(cantidad_surtida),
-            unidad
-        ])
+    try:
+        detalles = requisicion.detalles.all()
+    except:
+        detalles = []
+    
+    for idx, detalle in enumerate(detalles, start=1):
+        try:
+            producto = getattr(detalle, 'producto', None)
+            if producto:
+                descripcion_texto = producto.descripcion or producto.nombre or 'N/A'
+                clave = producto.clave or 'N/A'
+                unidad = getattr(producto, 'unidad_medida', None) or 'UND'
+            else:
+                descripcion_texto = 'Producto no disponible'
+                clave = 'N/A'
+                unidad = 'UND'
+            
+            descripcion_paragraph = Paragraph(descripcion_texto, celda_texto_style)
+            
+            cantidad_solicitada = getattr(detalle, 'cantidad_solicitada', 0) or 0
+            cantidad_surtida = getattr(detalle, 'cantidad_entregada', None) or getattr(detalle, 'cantidad_autorizada', 0) or 0
+            
+            productos_data.append([
+                str(idx),
+                clave,
+                descripcion_paragraph,
+                str(cantidad_solicitada),
+                str(cantidad_surtida),
+                unidad
+            ])
+        except Exception as e:
+            # Si falla un detalle, agregar fila de error
+            productos_data.append([
+                str(idx),
+                'ERROR',
+                Paragraph(f'Error: {str(e)}', celda_texto_style),
+                '0',
+                '0',
+                'UND'
+            ])
     
     productos_table = Table(
         productos_data, 
