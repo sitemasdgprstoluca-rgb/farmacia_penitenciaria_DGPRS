@@ -2454,7 +2454,7 @@ class LoteViewSet(viewsets.ModelViewSet):
         - centro: ID del centro o 'central' para farmacia (solo admin/farmacia/vista)
         
         Seguridad: Usuarios de centro solo ven lotes de su centro.
-        Admin/farmacia/vista ven todo por defecto, pueden filtrar con ?centro=.
+        Admin/farmacia por defecto ven solo Farmacia Central, pueden filtrar con ?centro=.
         """
         queryset = Lote.objects.select_related('producto', 'centro').all()
         
@@ -2479,14 +2479,22 @@ class LoteViewSet(viewsets.ModelViewSet):
                 # Por defecto: solo lotes de SU centro
                 queryset = queryset.filter(centro=user_centro)
         else:
-            # Admin/farmacia/vista: pueden filtrar por centro especifico
+            # Admin/farmacia/vista: por defecto solo Farmacia Central
+            # ISS-FIX: Evitar mostrar lotes duplicados de centros en vista de Farmacia
             centro_param = self.request.query_params.get('centro')
             if centro_param:
                 if centro_param == 'central':
                     # Filtrar solo farmacia central (centro=NULL)
                     queryset = queryset.filter(centro__isnull=True)
+                elif centro_param == 'todos':
+                    # Mostrar todos los lotes (solo si se pide explícitamente)
+                    pass  # No filtrar
                 else:
+                    # Filtrar por centro específico
                     queryset = queryset.filter(centro_id=centro_param)
+            else:
+                # Por defecto: solo lotes de Farmacia Central (centro=NULL)
+                queryset = queryset.filter(centro__isnull=True)
         
         # Filtrar por producto
         producto = self.request.query_params.get('producto')
