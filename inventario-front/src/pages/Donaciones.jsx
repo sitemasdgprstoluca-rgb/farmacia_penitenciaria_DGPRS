@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { donacionesAPI, productosAPI, centrosAPI, lotesAPI, salidasDonacionesAPI, detallesDonacionAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
 import {
@@ -24,6 +24,8 @@ import {
   FaArrowRight,
   FaExclamationTriangle,
   FaFileExport,
+  FaFileImport,
+  FaDownload,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { COLORS } from '../constants/theme';
@@ -122,6 +124,11 @@ const Donaciones = () => {
   const [entregasPage, setEntregasPage] = useState(1);
   const [entregasTotalPages, setEntregasTotalPages] = useState(1);
   const [searchEntregas, setSearchEntregas] = useState('');
+  
+  // Importación/Exportación de entregas
+  const [exportingEntregas, setExportingEntregas] = useState(false);
+  const [importingEntregas, setImportingEntregas] = useState(false);
+  const fileInputRef = useRef(null);
   
   // Estadísticas del almacén de donaciones
   const [estadisticas, setEstadisticas] = useState({
@@ -313,6 +320,103 @@ const Donaciones = () => {
       setLoadingEntregas(false);
     }
   }, [entregasPage, searchEntregas]);
+
+  // Exportar entregas a Excel
+  const handleExportarEntregas = async () => {
+    setExportingEntregas(true);
+    try {
+      const params = {};
+      if (searchEntregas) params.destinatario = searchEntregas;
+      
+      const response = await salidasDonacionesAPI.exportarExcel(params);
+      
+      // Crear blob y descargar
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `entregas_donaciones_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Entregas exportadas correctamente');
+    } catch (err) {
+      console.error('Error exportando entregas:', err);
+      toast.error('Error al exportar entregas');
+    } finally {
+      setExportingEntregas(false);
+    }
+  };
+
+  // Descargar plantilla de importación
+  const handleDescargarPlantilla = async () => {
+    try {
+      const response = await salidasDonacionesAPI.plantillaExcel();
+      
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'plantilla_entregas_donaciones.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Plantilla descargada');
+    } catch (err) {
+      console.error('Error descargando plantilla:', err);
+      toast.error('Error al descargar plantilla');
+    }
+  };
+
+  // Importar entregas desde Excel
+  const handleImportarEntregas = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    setImportingEntregas(true);
+    try {
+      const formData = new FormData();
+      formData.append('archivo', file);
+      
+      const response = await salidasDonacionesAPI.importarExcel(formData);
+      
+      const { resultados } = response.data;
+      
+      if (resultados.exitosos > 0) {
+        toast.success(`${resultados.exitosos} entregas importadas correctamente`);
+        cargarTodasEntregas();
+        cargarInventarioDonaciones(); // Actualizar inventario también
+      }
+      
+      if (resultados.fallidos > 0) {
+        toast.error(`${resultados.fallidos} entregas fallaron`);
+        // Mostrar errores detallados
+        resultados.errores?.forEach((err, idx) => {
+          if (idx < 3) { // Mostrar máximo 3 errores
+            toast.error(`Fila ${err.fila}: ${err.error}`, { duration: 5000 });
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Error importando entregas:', err);
+      const errorMsg = err.response?.data?.error || 'Error al importar entregas';
+      toast.error(errorMsg);
+    } finally {
+      setImportingEntregas(false);
+      // Limpiar input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
 
   useEffect(() => {
     cargarCatalogos();
@@ -1202,7 +1306,7 @@ const Donaciones = () => {
       {/* ========== TAB: HISTORIAL DE ENTREGAS ========== */}
       {activeTab === 'entregas' && (
         <>
-          {/* Barra de búsqueda entregas */}
+          {/* Barra de búsqueda y acciones entregas */}
           <div className="bg-white rounded-xl shadow-sm border p-4 mb-6">
             <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
               <div className="relative flex-1 max-w-md">
@@ -1218,12 +1322,61 @@ const Donaciones = () => {
                   className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
                 />
               </div>
-              <button
-                onClick={() => cargarTodasEntregas()}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg border hover:bg-gray-50 transition-colors"
-              >
-                <FaHistory /> Actualizar
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Botón Actualizar */}
+                <button
+                  onClick={() => cargarTodasEntregas()}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border hover:bg-gray-50 transition-colors"
+                >
+                  <FaHistory /> Actualizar
+                </button>
+                
+                {/* Botón Exportar Excel */}
+                <button
+                  onClick={handleExportarEntregas}
+                  disabled={exportingEntregas || todasEntregas.length === 0}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border text-green-700 border-green-300 hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {exportingEntregas ? (
+                    <FaSpinner className="animate-spin" />
+                  ) : (
+                    <FaFileExport />
+                  )}
+                  Exportar
+                </button>
+                
+                {/* Botones de Importación - Solo para admin/farmacia */}
+                {puede.crear && (
+                  <>
+                    {/* Descargar Plantilla */}
+                    <button
+                      onClick={handleDescargarPlantilla}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg border text-blue-700 border-blue-300 hover:bg-blue-50 transition-colors"
+                      title="Descargar plantilla Excel"
+                    >
+                      <FaDownload /> Plantilla
+                    </button>
+                    
+                    {/* Importar Excel */}
+                    <label className="flex items-center gap-2 px-4 py-2 rounded-lg border text-purple-700 border-purple-300 hover:bg-purple-50 transition-colors cursor-pointer">
+                      {importingEntregas ? (
+                        <FaSpinner className="animate-spin" />
+                      ) : (
+                        <FaFileImport />
+                      )}
+                      Importar
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".xlsx,.xls"
+                        onChange={handleImportarEntregas}
+                        disabled={importingEntregas}
+                        className="hidden"
+                      />
+                    </label>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 

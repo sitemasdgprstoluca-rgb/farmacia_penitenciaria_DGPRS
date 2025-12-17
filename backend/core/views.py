@@ -2796,16 +2796,21 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
     ViewSet para gestionar salidas/entregas del almacen de donaciones.
     Control interno sin afectar movimientos principales.
     Solo ADMIN y FARMACIA pueden registrar entregas.
+    
+    Endpoints adicionales:
+    - GET /salidas-donaciones/exportar-excel/ - Exportar entregas a Excel
+    - POST /salidas-donaciones/importar-excel/ - Importar entregas desde Excel
+    - GET /salidas-donaciones/plantilla-excel/ - Descargar plantilla de importación
     """
     pagination_class = StandardResultsSetPagination
     http_method_names = ['get', 'post', 'head', 'options']  # No permite editar ni eliminar
     
     def get_permissions(self):
         """Permisos según la acción:
-        - list, retrieve: IsAuthenticated
-        - create: IsFarmaciaRole
+        - list, retrieve, exportar_excel, plantilla_excel: IsAuthenticated
+        - create, importar_excel: IsFarmaciaRole
         """
-        if self.action in ['list', 'retrieve']:
+        if self.action in ['list', 'retrieve', 'exportar_excel', 'plantilla_excel']:
             return [IsAuthenticated()]
         return [IsAuthenticated(), IsFarmaciaRole()]
     
@@ -2840,11 +2845,404 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
         if fecha_hasta:
             queryset = queryset.filter(fecha_entrega__date__lte=fecha_hasta)
         
+        # Búsqueda general
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(destinatario__icontains=search) |
+                Q(motivo__icontains=search) |
+                Q(detalle_donacion__producto__nombre__icontains=search) |
+                Q(detalle_donacion__producto__clave__icontains=search)
+            )
+        
         return queryset.order_by('-fecha_entrega')
     
     def get_serializer_class(self):
         from core.serializers import SalidaDonacionSerializer
         return SalidaDonacionSerializer
+    
+    @action(detail=False, methods=['get'], url_path='exportar-excel')
+    def exportar_excel(self, request):
+        """
+        Exporta las entregas de donaciones a Excel con formato profesional.
+        Respeta los filtros aplicados en la consulta.
+        """
+        import openpyxl
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from django.http import HttpResponse
+        from django.utils import timezone
+        
+        try:
+            entregas = self.get_queryset()
+            
+            # Crear libro de Excel
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = 'Entregas Donaciones'
+            
+            # Título del reporte
+            ws.merge_cells('A1:H1')
+            titulo_cell = ws['A1']
+            titulo_cell.value = 'REPORTE DE ENTREGAS DE DONACIONES'
+            titulo_cell.font = Font(bold=True, size=14, color='632842')
+            titulo_cell.alignment = Alignment(horizontal='center', vertical='center')
+            
+            # Fecha de generación
+            ws.merge_cells('A2:H2')
+            fecha_cell = ws['A2']
+            fecha_cell.value = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")}'
+            fecha_cell.font = Font(size=10, italic=True)
+            fecha_cell.alignment = Alignment(horizontal='center')
+            
+            # Espacio
+            ws.append([])
+            
+            # Encabezados
+            headers = [
+                '#', 'Fecha Entrega', 'Producto', 'Clave Producto',
+                'Cantidad', 'Destinatario', 'Motivo', 'Entregado Por', 'Donación'
+            ]
+            ws.append(headers)
+            
+            # Estilo de encabezados
+            header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
+            header_font = Font(bold=True, color='FFFFFF', size=11)
+            header_alignment = Alignment(horizontal='center', vertical='center')
+            
+            for col_num, cell in enumerate(ws[4], 1):
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = header_alignment
+            
+            # Datos
+            for idx, entrega in enumerate(entregas, start=1):
+                producto_nombre = ''
+                producto_clave = ''
+                donacion_numero = ''
+                
+                if entrega.detalle_donacion:
+                    if entrega.detalle_donacion.producto:
+                        producto_nombre = entrega.detalle_donacion.producto.nombre
+                        producto_clave = entrega.detalle_donacion.producto.clave
+                    if entrega.detalle_donacion.donacion:
+                        donacion_numero = entrega.detalle_donacion.donacion.numero
+                
+                entregado_por_nombre = ''
+                if entrega.entregado_por:
+                    entregado_por_nombre = f"{entrega.entregado_por.first_name} {entrega.entregado_por.last_name}".strip()
+                    if not entregado_por_nombre:
+                        entregado_por_nombre = entrega.entregado_por.username
+                
+                fecha_str = entrega.fecha_entrega.strftime('%d/%m/%Y %H:%M') if entrega.fecha_entrega else ''
+                
+                ws.append([
+                    idx,
+                    fecha_str,
+                    producto_nombre,
+                    producto_clave,
+                    entrega.cantidad,
+                    entrega.destinatario,
+                    entrega.motivo or '',
+                    entregado_por_nombre,
+                    donacion_numero
+                ])
+                
+                # Estilo para filas
+                row_num = idx + 4
+                for cell in ws[row_num]:
+                    cell.alignment = Alignment(vertical='center')
+            
+            # Ajustar anchos de columna
+            ws.column_dimensions['A'].width = 6
+            ws.column_dimensions['B'].width = 18
+            ws.column_dimensions['C'].width = 40
+            ws.column_dimensions['D'].width = 15
+            ws.column_dimensions['E'].width = 10
+            ws.column_dimensions['F'].width = 30
+            ws.column_dimensions['G'].width = 30
+            ws.column_dimensions['H'].width = 25
+            ws.column_dimensions['I'].width = 15
+            
+            # Agregar bordes
+            thin_border = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
+            
+            for row in ws.iter_rows(min_row=4, max_row=ws.max_row, min_col=1, max_col=9):
+                for cell in row:
+                    cell.border = thin_border
+            
+            # Preparar respuesta
+            response = HttpResponse(
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            filename = f'entregas_donaciones_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            
+            wb.save(response)
+            return response
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Error al exportar: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=False, methods=['get'], url_path='plantilla-excel')
+    def plantilla_excel(self, request):
+        """
+        Genera una plantilla Excel para importación de entregas.
+        Incluye ejemplos y validaciones.
+        """
+        import openpyxl
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from openpyxl.utils.dataframe import dataframe_to_rows
+        from openpyxl.worksheet.datavalidation import DataValidation
+        from django.http import HttpResponse
+        
+        try:
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = 'Plantilla Entregas'
+            
+            # Título
+            ws.merge_cells('A1:F1')
+            titulo_cell = ws['A1']
+            titulo_cell.value = 'PLANTILLA PARA IMPORTAR ENTREGAS DE DONACIONES'
+            titulo_cell.font = Font(bold=True, size=14, color='632842')
+            titulo_cell.alignment = Alignment(horizontal='center', vertical='center')
+            
+            # Instrucciones
+            ws.merge_cells('A2:F2')
+            ws['A2'].value = 'Complete los datos siguiendo el formato indicado. Las columnas marcadas con * son obligatorias.'
+            ws['A2'].font = Font(size=10, italic=True)
+            
+            ws.append([])
+            
+            # Encabezados
+            headers = [
+                'detalle_donacion_id *',  # ID del detalle de donación
+                'cantidad *',             # Cantidad a entregar
+                'destinatario *',         # Nombre del destinatario
+                'motivo',                 # Motivo de la entrega
+                'notas'                   # Notas adicionales
+            ]
+            ws.append(headers)
+            
+            # Estilo de encabezados
+            header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
+            header_font = Font(bold=True, color='FFFFFF', size=11)
+            
+            for col_num, cell in enumerate(ws[4], 1):
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+            
+            # Fila de ejemplo
+            ws.append([1, 10, 'Juan Pérez', 'Tratamiento médico', 'Entrega programada'])
+            
+            # Agregar nota sobre detalle_donacion_id
+            ws.append([])
+            ws.append(['NOTA: El detalle_donacion_id lo puede obtener desde el inventario de donaciones.'])
+            ws['A7'].font = Font(italic=True, color='666666')
+            
+            # Ajustar anchos
+            ws.column_dimensions['A'].width = 20
+            ws.column_dimensions['B'].width = 12
+            ws.column_dimensions['C'].width = 30
+            ws.column_dimensions['D'].width = 30
+            ws.column_dimensions['E'].width = 30
+            
+            # Segunda hoja con lista de detalles disponibles
+            ws2 = wb.create_sheet(title='Inventario Disponible')
+            ws2.merge_cells('A1:F1')
+            ws2['A1'].value = 'INVENTARIO DE DONACIONES CON STOCK DISPONIBLE'
+            ws2['A1'].font = Font(bold=True, size=12, color='632842')
+            ws2['A1'].alignment = Alignment(horizontal='center')
+            
+            ws2.append([])
+            headers2 = ['ID Detalle', 'Producto', 'Clave', 'Lote', 'Disponible', 'Donación']
+            ws2.append(headers2)
+            
+            for cell in ws2[3]:
+                cell.fill = header_fill
+                cell.font = header_font
+            
+            # Obtener detalles con stock disponible
+            from core.models import DetalleDonacion
+            detalles = DetalleDonacion.objects.filter(
+                cantidad_disponible__gt=0,
+                donacion__estado='procesada'
+            ).select_related('producto', 'donacion').order_by('producto__nombre')
+            
+            for det in detalles:
+                ws2.append([
+                    det.id,
+                    det.producto.nombre if det.producto else '',
+                    det.producto.clave if det.producto else '',
+                    det.numero_lote or '',
+                    det.cantidad_disponible,
+                    det.donacion.numero if det.donacion else ''
+                ])
+            
+            ws2.column_dimensions['A'].width = 12
+            ws2.column_dimensions['B'].width = 40
+            ws2.column_dimensions['C'].width = 15
+            ws2.column_dimensions['D'].width = 15
+            ws2.column_dimensions['E'].width = 12
+            ws2.column_dimensions['F'].width = 15
+            
+            # Respuesta
+            response = HttpResponse(
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = 'attachment; filename="plantilla_entregas_donaciones.xlsx"'
+            
+            wb.save(response)
+            return response
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Error al generar plantilla: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=False, methods=['post'], url_path='importar-excel')
+    def importar_excel(self, request):
+        """
+        Importa entregas de donaciones desde un archivo Excel.
+        
+        Formato esperado:
+        - detalle_donacion_id: ID del detalle de donación (obligatorio)
+        - cantidad: Cantidad a entregar (obligatorio)
+        - destinatario: Nombre del destinatario (obligatorio)
+        - motivo: Motivo de la entrega (opcional)
+        - notas: Notas adicionales (opcional)
+        """
+        import openpyxl
+        from django.db import transaction
+        from core.models import DetalleDonacion, SalidaDonacion
+        
+        archivo = request.FILES.get('archivo')
+        if not archivo:
+            return Response(
+                {'error': 'No se proporcionó archivo'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not archivo.name.endswith(('.xlsx', '.xls')):
+            return Response(
+                {'error': 'El archivo debe ser Excel (.xlsx o .xls)'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            wb = openpyxl.load_workbook(archivo, data_only=True)
+            ws = wb.active
+            
+            # Buscar fila de encabezados (puede estar en fila 4 si usa plantilla)
+            header_row = None
+            for row_num in range(1, 10):
+                cell_value = ws.cell(row=row_num, column=1).value
+                if cell_value and 'detalle_donacion' in str(cell_value).lower():
+                    header_row = row_num
+                    break
+            
+            if not header_row:
+                # Asumir que empieza en fila 1
+                header_row = 1
+            
+            # Mapear columnas
+            headers = {}
+            for col_num, cell in enumerate(ws[header_row], 1):
+                if cell.value:
+                    header_name = str(cell.value).lower().strip()
+                    header_name = header_name.replace(' *', '').replace('*', '')
+                    headers[header_name] = col_num
+            
+            required_cols = ['detalle_donacion_id', 'cantidad', 'destinatario']
+            for col in required_cols:
+                if col not in headers:
+                    return Response(
+                        {'error': f'Columna requerida no encontrada: {col}'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            # Procesar filas
+            resultados = {
+                'exitosos': 0,
+                'fallidos': 0,
+                'errores': []
+            }
+            
+            with transaction.atomic():
+                for row_num in range(header_row + 1, ws.max_row + 1):
+                    # Verificar si la fila está vacía
+                    detalle_id = ws.cell(row=row_num, column=headers['detalle_donacion_id']).value
+                    if not detalle_id:
+                        continue
+                    
+                    try:
+                        cantidad = int(ws.cell(row=row_num, column=headers['cantidad']).value or 0)
+                        destinatario = ws.cell(row=row_num, column=headers['destinatario']).value
+                        motivo = ws.cell(row=row_num, column=headers.get('motivo', 0)).value if headers.get('motivo') else None
+                        notas = ws.cell(row=row_num, column=headers.get('notas', 0)).value if headers.get('notas') else None
+                        
+                        # Validaciones
+                        if not destinatario:
+                            raise ValueError('Destinatario es requerido')
+                        if cantidad <= 0:
+                            raise ValueError('La cantidad debe ser mayor a 0')
+                        
+                        # Obtener detalle de donación
+                        try:
+                            detalle = DetalleDonacion.objects.select_related('donacion').get(pk=detalle_id)
+                        except DetalleDonacion.DoesNotExist:
+                            raise ValueError(f'Detalle de donación {detalle_id} no existe')
+                        
+                        # Verificar que la donación esté procesada
+                        if detalle.donacion.estado != 'procesada':
+                            raise ValueError(f'La donación {detalle.donacion.numero} no está procesada')
+                        
+                        # Verificar stock disponible
+                        if cantidad > detalle.cantidad_disponible:
+                            raise ValueError(
+                                f'Stock insuficiente. Disponible: {detalle.cantidad_disponible}, Solicitado: {cantidad}'
+                            )
+                        
+                        # Crear salida
+                        salida = SalidaDonacion(
+                            detalle_donacion=detalle,
+                            cantidad=cantidad,
+                            destinatario=str(destinatario).strip(),
+                            motivo=str(motivo).strip() if motivo else None,
+                            notas=str(notas).strip() if notas else None,
+                            entregado_por=request.user
+                        )
+                        salida.save()
+                        
+                        resultados['exitosos'] += 1
+                        
+                    except Exception as e:
+                        resultados['fallidos'] += 1
+                        resultados['errores'].append({
+                            'fila': row_num,
+                            'error': str(e)
+                        })
+            
+            return Response({
+                'mensaje': f'Importación completada. Exitosos: {resultados["exitosos"]}, Fallidos: {resultados["fallidos"]}',
+                'resultados': resultados
+            })
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Error al procesar archivo: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 # =============================================================================

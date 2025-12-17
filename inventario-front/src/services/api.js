@@ -1275,7 +1275,17 @@ export const salidasDonacionesAPI = {
   getAll: (params) => apiClient.get('/salidas-donaciones/', { params }),
   getById: (id) => apiClient.get(`/salidas-donaciones/${id}/`),
   create: (data) => apiClient.post('/salidas-donaciones/', data),
-  // Solo lectura - no permite editar ni eliminar entregas
+  // Exportación e importación Excel
+  exportarExcel: (params) => apiClient.get('/salidas-donaciones/exportar-excel/', { 
+    params, 
+    responseType: 'blob' 
+  }),
+  plantillaExcel: () => apiClient.get('/salidas-donaciones/plantilla-excel/', { 
+    responseType: 'blob' 
+  }),
+  importarExcel: (formData) => apiClient.post('/salidas-donaciones/importar-excel/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
 };
 
 // Imágenes de Productos - Múltiples fotos por producto
