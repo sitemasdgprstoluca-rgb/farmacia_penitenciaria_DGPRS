@@ -4313,19 +4313,17 @@ class MovimientoViewSet(
             
             movimientos = queryset[:200]  # Limitar para PDF
             
-            # MEJORA: Incluir subtipo_salida y numero_expediente en datos del PDF
+            # MEJORA: Incluir centro_origen y centro_destino en datos del PDF
             movimientos_data = []
             for mov in movimientos:
                 movimientos_data.append({
                     'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
                     'tipo': mov.tipo.upper(),
-                    'subtipo': (mov.subtipo_salida or '').upper() if mov.tipo == 'salida' else '',
                     'producto': mov.lote.producto.clave if mov.lote and mov.lote.producto else 'N/A',
                     'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                     'cantidad': mov.cantidad,
-                    'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
-                    'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
-                    'expediente': mov.numero_expediente or '',
+                    'centro_origen': mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central',
+                    'centro_destino': mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central',
                     'observaciones': (mov.motivo or '')[:50],
                 })
             
@@ -8012,6 +8010,8 @@ def reporte_movimientos(request):
                     'producto': item['producto'],
                     'lote': item['lote'],
                     'cantidad': item['cantidad'],
+                    'centro_origen': item.get('centro_origen', 'Farmacia Central'),
+                    'centro_destino': item.get('centro_destino', 'Farmacia Central'),
                     'observaciones': item['observaciones']
                 })
             

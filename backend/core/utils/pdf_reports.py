@@ -1166,7 +1166,7 @@ def generar_reporte_movimientos(movimientos_data, filtros=None):
     elements.append(resumen_table)
     elements.append(Spacer(1, 0.2*inch))
     
-    # Tabla de movimientos - MEJORA: Extendida con subtipo, expediente y observaciones
+    # Tabla de movimientos - Con centros origen y destino
     mov_titulo = Paragraph("DETALLE DE MOVIMIENTOS", styles['SeccionTitulo'])
     elements.append(mov_titulo)
     
@@ -1179,35 +1179,34 @@ def generar_reporte_movimientos(movimientos_data, filtros=None):
         wordWrap='CJK',
     )
     
-    data = [['Fecha', 'Tipo', 'Subtipo', 'Producto', 'Lote', 'Cant.', 'Centro', 'Expediente', 'Obs.']]
+    data = [['Fecha', 'Tipo', 'Producto', 'Lote', 'Cant.', 'Origen', 'Destino', 'Obs.']]
     
     for mov in movimientos_data:
         tipo = str(mov.get('tipo', '')).upper()
-        subtipo = str(mov.get('subtipo', ''))
         cantidad = mov.get('cantidad', 0)
         signo = '+' if cantidad >= 0 else ''
         producto = str(mov.get('producto_clave', mov.get('producto', '')))
         producto_paragraph = Paragraph(producto, estilo_celda)
-        centro = str(mov.get('centro', ''))[:15]
-        centro_paragraph = Paragraph(centro, estilo_celda)
-        expediente = str(mov.get('expediente', ''))[:12]
-        observaciones = str(mov.get('observaciones', ''))[:30]
+        centro_origen = str(mov.get('centro_origen', mov.get('centro', 'F. Central')))[:18]
+        centro_origen_p = Paragraph(centro_origen, estilo_celda)
+        centro_destino = str(mov.get('centro_destino', 'F. Central'))[:18]
+        centro_destino_p = Paragraph(centro_destino, estilo_celda)
+        observaciones = str(mov.get('observaciones', ''))[:35]
         obs_paragraph = Paragraph(observaciones, estilo_celda)
         
         data.append([
             str(mov.get('fecha_movimiento', mov.get('fecha', '')))[:16],
             tipo,
-            subtipo[:10],
             producto_paragraph,
-            str(mov.get('numero_lote', mov.get('lote', '')))[:10],
+            str(mov.get('numero_lote', mov.get('lote', '')))[:12],
             f"{signo}{cantidad}",
-            centro_paragraph,
-            expediente,
+            centro_origen_p,
+            centro_destino_p,
             obs_paragraph
         ])
     
-    # Anchos ajustados para 9 columnas en orientación portrait
-    col_widths = [0.85*inch, 0.5*inch, 0.55*inch, 1.1*inch, 0.7*inch, 0.4*inch, 0.9*inch, 0.7*inch, 0.9*inch]
+    # Anchos ajustados para 8 columnas en orientación portrait
+    col_widths = [0.85*inch, 0.55*inch, 1.3*inch, 0.75*inch, 0.45*inch, 1.0*inch, 1.0*inch, 1.0*inch]
     table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
     
