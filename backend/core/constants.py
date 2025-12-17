@@ -84,6 +84,17 @@ def normalizar_unidad_medida(valor):
     if valor_lower in UNIDADES_ALIAS:
         return UNIDADES_ALIAS[valor_lower]
     
+    # ISS-FIX: Intentar extraer unidad base de textos compuestos
+    # Ej: "CAJA CON 7 OVULOS" -> "CAJA", "FRASCO 120ML" -> "FRASCO"
+    for unidad in UNIDADES_VALIDAS:
+        if valor_upper.startswith(unidad + ' ') or valor_upper.startswith(unidad + '/'):
+            return unidad
+    
+    # También buscar en alias con texto compuesto
+    for alias, normalizado in UNIDADES_ALIAS.items():
+        if valor_lower.startswith(alias + ' ') or valor_lower.startswith(alias + '/'):
+            return normalizado
+    
     # Retornar original si no se reconoce
     return valor
 

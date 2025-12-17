@@ -1624,10 +1624,13 @@ class ProductoViewSet(viewsets.ModelViewSet):
                             errores.append({'fila': row_idx, 'error': 'Nombre es obligatorio'})
                             continue
                         
-                        # Validar unidad
-                        unidad_limpia = str(unidad_medida).strip().upper() if unidad_medida else 'PIEZA'
-                        if unidad_limpia not in dict(UNIDADES_MEDIDA):
-                            errores.append({'fila': row_idx, 'error': f'Unidad no valida: {unidad_limpia}'})
+                        # ISS-FIX: Normalizar unidad usando función centralizada
+                        # Maneja textos como "CAJA CON 7 OVULOS" -> "CAJA"
+                        from core.constants import normalizar_unidad_medida, UNIDADES_VALIDAS
+                        unidad_raw = str(unidad_medida).strip() if unidad_medida else 'PIEZA'
+                        unidad_limpia = normalizar_unidad_medida(unidad_raw)
+                        if unidad_limpia.upper() not in UNIDADES_VALIDAS:
+                            errores.append({'fila': row_idx, 'error': f'Unidad no valida: {unidad_raw}'})
                             continue
 
                         try:
