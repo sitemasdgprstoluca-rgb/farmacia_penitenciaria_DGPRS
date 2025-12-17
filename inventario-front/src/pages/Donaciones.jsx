@@ -910,6 +910,30 @@ const Donaciones = () => {
       {/* ========== TAB: DONACIONES ========== */}
       {activeTab === 'donaciones' && (
         <>
+          {/* Banner informativo del flujo */}
+          <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <FaGift className="text-purple-600 text-xl" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-purple-800">Flujo de Donaciones</h3>
+                <div className="flex flex-wrap items-center gap-2 text-sm text-purple-700 mt-1">
+                  <span className="flex items-center gap-1"><FaPlus className="text-purple-500" /> Registrar</span>
+                  <FaArrowRight className="text-purple-400" />
+                  <span className="flex items-center gap-1"><FaCheck className="text-purple-500" /> Procesar</span>
+                  <FaArrowRight className="text-purple-400" />
+                  <span className="flex items-center gap-1"><FaWarehouse className="text-purple-500" /> Inventario</span>
+                  <FaArrowRight className="text-purple-400" />
+                  <span className="flex items-center gap-1"><FaHandHoldingMedical className="text-purple-500" /> Entregar</span>
+                </div>
+                <p className="text-xs text-purple-600 mt-2">
+                  Las donaciones procesadas aparecen en "Inventario" donde puedes dar salida a los productos.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Barra de acciones */}
           <div className="bg-white rounded-xl shadow-sm border p-4 mb-6">
             <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
@@ -1289,6 +1313,23 @@ const Donaciones = () => {
       {/* ========== TAB: INVENTARIO DE DONACIONES ========== */}
       {activeTab === 'inventario' && (
         <>
+          {/* Banner informativo */}
+          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-green-100 rounded-lg">
+                <FaHandHoldingMedical className="text-green-600 text-xl" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-green-800">Almacén de Donaciones</h3>
+                <p className="text-sm text-green-700 mt-1">
+                  Este inventario es <strong>independiente</strong> del inventario principal de la farmacia. 
+                  Para dar salida a productos donados, usa el botón <FaHandHoldingMedical className="inline mx-1" /> 
+                  en la columna "Entregar". Las salidas se registran en la pestaña "Entregas".
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Estadísticas del almacén */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <div className="bg-white rounded-xl shadow-sm border p-4">
