@@ -988,7 +988,7 @@ const handleImportar = async (e) => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="thead-theme">
               <tr>
-                {['#', 'Producto', 'Número Lote', 'Caducidad', 'Días', 'Alerta', 'Inventario', 'Acciones'].map((col) => (
+                {['#', 'Producto', 'Número Lote', 'Marca', 'Caducidad', 'Días', 'Alerta', 'Inventario', 'Acciones'].map((col) => (
                   <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
                     {col}
                   </th>
@@ -998,13 +998,13 @@ const handleImportar = async (e) => {
             <tbody className="bg-white divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan="8" className="p-0">
+                  <td colSpan="9" className="p-0">
                     <LotesSkeleton />
                   </td>
                 </tr>
               ) : lotes.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="text-center py-8 text-gray-500">
+                  <td colSpan="9" className="text-center py-8 text-gray-500">
                     No hay lotes registrados
                   </td>
                 </tr>
@@ -1031,6 +1031,9 @@ const handleImportar = async (e) => {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm font-mono font-bold text-gray-800">
                       {lote.numero_lote}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                      {lote.marca || <span className="text-gray-400 italic">Sin marca</span>}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm">
                       {new Date(lote.fecha_caducidad).toLocaleDateString()}
