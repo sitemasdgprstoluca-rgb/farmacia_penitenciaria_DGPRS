@@ -4313,21 +4313,50 @@ class MovimientoViewSet(
             
             movimientos = queryset[:200]  # Limitar para PDF
             
-            # MEJORA: Incluir centro_origen y centro_destino en datos del PDF
-            movimientos_data = []
-            for mov in movimientos:
-                movimientos_data.append({
-                    'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
-                    'tipo': mov.tipo.upper(),
-                    'producto': mov.lote.producto.clave if mov.lote and mov.lote.producto else 'N/A',
-                    'lote': mov.lote.numero_lote if mov.lote else 'N/A',
-                    'cantidad': mov.cantidad,
-                    'centro_origen': mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central',
-                    'centro_destino': mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central',
-                    'observaciones': (mov.motivo or '')[:50],
-                })
+            # Agrupar movimientos por referencia/transacción para PDF
+            transacciones = {}
+            total_entradas = 0
+            total_salidas = 0
             
-            pdf_buffer = generar_reporte_movimientos(movimientos_data)
+            for mov in movimientos:
+                amount = abs(mov.cantidad) if mov.tipo == 'salida' else mov.cantidad
+                ref = mov.referencia or f"MOV-{mov.id}"
+                
+                if ref not in transacciones:
+                    transacciones[ref] = {
+                        'referencia': ref,
+                        'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
+                        'tipo': mov.tipo.upper(),
+                        'centro_origen': mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central',
+                        'centro_destino': mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central',
+                        'total_productos': 0,
+                        'total_cantidad': 0,
+                        'detalles': []
+                    }
+                
+                transacciones[ref]['detalles'].append({
+                    'producto': f"{mov.lote.producto.clave if mov.lote and mov.lote.producto else 'N/A'} - {getattr(mov.lote.producto, 'descripcion', '')[:40] if mov.lote and mov.lote.producto else ''}",
+                    'lote': mov.lote.numero_lote if mov.lote else 'N/A',
+                    'cantidad': amount
+                })
+                transacciones[ref]['total_productos'] += 1
+                transacciones[ref]['total_cantidad'] += amount
+                
+                if mov.tipo == 'entrada':
+                    total_entradas += amount
+                else:
+                    total_salidas += amount
+            
+            movimientos_data = list(transacciones.values())
+            resumen_data = {
+                'total_transacciones': len(movimientos_data),
+                'total_movimientos': sum(t['total_productos'] for t in movimientos_data),
+                'total_entradas': total_entradas,
+                'total_salidas': total_salidas,
+                'diferencia': total_entradas - total_salidas
+            }
+            
+            pdf_buffer = generar_reporte_movimientos(movimientos_data, resumen=resumen_data)
             
             response = HttpResponse(
                 pdf_buffer.getvalue(),
