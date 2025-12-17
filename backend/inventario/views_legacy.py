@@ -3215,6 +3215,9 @@ class LoteViewSet(viewsets.ModelViewSet):
                             pass  # Usar 0 si no es valido
 
                     # Preparar defaults para update_or_create
+                    # Si no viene ubicacion, usar "Almacén Central" (todo llega a Farmacia)
+                    ubicacion_final = str(ubicacion).strip()[:100] if ubicacion else 'Almacén Central'
+                    
                     defaults = {
                         'fecha_caducidad': fecha_cad_val or date.today(),
                         'cantidad_inicial': cant_ini,
@@ -3222,7 +3225,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                         'precio_unitario': precio_val,
                         'numero_contrato': str(numero_contrato).strip()[:100] if numero_contrato else '',
                         'marca': str(marca).strip()[:100] if marca else '',
-                        'ubicacion': str(ubicacion).strip()[:100] if ubicacion else '',
+                        'ubicacion': ubicacion_final,
                     }
                     
                     if fecha_fab_val:
@@ -3282,18 +3285,21 @@ class LoteViewSet(viewsets.ModelViewSet):
         7. Precio Unitario (opcional, default = 0)
         8. Numero Contrato (opcional)
         9. Marca (opcional)
-        10. Ubicacion (opcional)
-        11. Centro ID (opcional) - ID numérico del centro
+        10. Activo (opcional, default = Activo)
+        
+        NOTA: La ubicación se asigna automáticamente como "Almacén Central"
+        y el centro queda NULL (representa Farmacia Central).
         """
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = 'Lotes'
         
-        # Headers que coinciden con importar_excel
+        # Headers SIMPLIFICADOS - sin Ubicacion ni Centro ID
+        # Todo llega a Farmacia (Almacén Central) por defecto
         headers = [
             'Producto', 'Numero Lote', 'Fecha Caducidad', 'Cantidad Inicial',
             'Cantidad Actual', 'Fecha Fabricacion', 'Precio Unitario',
-            'Numero Contrato', 'Marca', 'Ubicacion', 'Centro ID'
+            'Numero Contrato', 'Marca', 'Activo'
         ]
         ws.append(headers)
         
@@ -3308,17 +3314,17 @@ class LoteViewSet(viewsets.ModelViewSet):
         ws.append([
             'PRUEBA001', 'LOTE-PRUEBA-001', fecha_cad_ejemplo, 100,
             100, fecha_fab_ejemplo, 25.50,
-            'CONT-PRUEBA-001', '[EJEMPLO] Laboratorio - ELIMINAR', 'Almacén A', ''
+            'CONT-PRUEBA-001', '[EJEMPLO] Laboratorio - ELIMINAR', 'Activo'
         ])
         ws.append([
             'PRUEBA002', 'LOTE-PRUEBA-002', fecha_cad_ejemplo, 50,
             50, fecha_fab_ejemplo, 18.75,
-            'CONT-PRUEBA-002', '[EJEMPLO] Farmacéutica - ELIMINAR', 'Almacén B', ''
+            'CONT-PRUEBA-002', '[EJEMPLO] Farmacéutica - ELIMINAR', 'Activo'
         ])
         ws.append([
             'PRUEBA003', 'LOTE-PRUEBA-003', fecha_cad_ejemplo, 200,
             200, '', 5.00,
-            '', '[EJEMPLO] Material - ELIMINAR', '', ''
+            '', '[EJEMPLO] Material - ELIMINAR', 'Activo'
         ])
         
         # Aplicar formato a headers
@@ -3337,7 +3343,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                 cell = ws.cell(row=row_num, column=col)
                 cell.font = example_font
         
-        # Ajustar ancho de columnas
+        # Ajustar ancho de columnas (10 columnas sin Ubicacion ni Centro ID)
         column_widths = {
             'A': 15,  # Producto
             'B': 20,  # Numero Lote
@@ -3348,8 +3354,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             'G': 15,  # Precio Unitario
             'H': 18,  # Numero Contrato
             'I': 35,  # Marca (más ancho para ver el texto de ejemplo)
-            'J': 15,  # Ubicacion
-            'K': 12,  # Centro ID
+            'J': 12,  # Activo
         }
         for col_letter, width in column_widths.items():
             ws.column_dimensions[col_letter].width = width
@@ -3364,7 +3369,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             ['║    INSTRUCCIONES PARA IMPORTACIÓN DE LOTES                        ║'],
             ['╚════════════════════════════════════════════════════════════════════╝'],
             [''],
-            ['⚠️  IMPORTANTE: Las filas amarillas en la hoja "Lotes" son EJEMPLOS.'],
+            ['⚠️  IMPORTANTE: Las filas grises en la hoja "Lotes" son EJEMPLOS.'],
             ['    ELIMÍNELAS antes de cargar sus datos reales.'],
             [''],
             ['────────────────────────────────────────────────────────────────────────'],
@@ -3383,12 +3388,12 @@ class LoteViewSet(viewsets.ModelViewSet):
             ['• Precio Unitario  - Precio por unidad (default: 0)'],
             ['• Numero Contrato  - Referencia del contrato de adquisición'],
             ['• Marca            - Laboratorio o fabricante'],
-            ['• Ubicacion        - Ubicación física en el almacén'],
-            ['• Centro ID        - ID numérico del centro (vacío = Farmacia Central)'],
+            ['• Activo           - Estado del lote (default: Activo)'],
             [''],
             ['────────────────────────────────────────────────────────────────────────'],
             ['NOTAS:'],
             ['────────────────────────────────────────────────────────────────────────'],
+            ['• Los lotes se asignan automáticamente al Almacén Central (FARMACIA).'],
             ['• El PRODUCTO debe existir antes de importar lotes.'],
             ['• Si el lote ya existe (mismo producto + número de lote), se ACTUALIZA.'],
             ['• La cantidad_actual se inicializa igual a cantidad_inicial.'],
