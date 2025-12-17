@@ -1054,7 +1054,7 @@ class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):
         
         ISS-037: Se aplica un límite máximo para evitar escaneo de tabla completa.
         """
-        queryset = AuditoriaLog.objects.select_related('usuario').all()
+        queryset = AuditoriaLog.objects.select_related('usuario').order_by('-timestamp')
         
         # Filtro por acción
         accion = self.request.query_params.get('accion')
@@ -1085,8 +1085,8 @@ class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):
         if fecha_fin:
             queryset = queryset.filter(timestamp__date__lte=fecha_fin)
         
-        # ISS-037: Aplicar límite máximo para evitar slow queries en tablas grandes
-        return queryset[:self.MAX_AUDIT_RECORDS]
+        # ISS-037: La paginación manejará el límite de registros
+        return queryset
 
     @action(detail=False, methods=['get'])
     def exportar(self, request):

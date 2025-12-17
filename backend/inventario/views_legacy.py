@@ -8473,7 +8473,7 @@ class HojaRecoleccionViewSet(viewsets.ReadOnlyModelViewSet):
     Las hojas se generan automaticamente al autorizar requisiciones.
     """
     queryset = HojaRecoleccion.objects.select_related(
-        'requisicion', 'requisicion__centro', 'generado_por'
+        'centro', 'responsable'
     ).prefetch_related('detalles')
     serializer_class = HojaRecoleccionSerializer
     permission_classes = [IsAuthenticated]
@@ -8481,7 +8481,7 @@ class HojaRecoleccionViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         """Filtra por centro si el usuario no es admin/farmacia."""
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().order_by('-created_at')
         user = self.request.user
         if not user or not user.is_authenticated:
             return HojaRecoleccion.objects.none()
@@ -8493,7 +8493,7 @@ class HojaRecoleccionViewSet(viewsets.ReadOnlyModelViewSet):
         # Filtrar por centro del usuario
         user_centro = getattr(user, 'centro', None)
         if user_centro:
-            return queryset.filter(requisicion__centro_destino=user_centro)
+            return queryset.filter(centro=user_centro)
         return HojaRecoleccion.objects.none()
 
     @action(detail=True, methods=['get'])

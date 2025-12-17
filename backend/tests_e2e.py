@@ -37,16 +37,12 @@ class E2EFlujosCompletos(TestCase):
             password="test123",
         )
 
-        # Centros
+        # Centros (usando campos de la BD actual: nombre, direccion, telefono, email, activo)
         self.farmacia = Centro.objects.create(
-            clave="FARM001",
             nombre="Farmacia Principal",
-            tipo="Farmacia",
         )
         self.centro = Centro.objects.create(
-            clave="CTR001",
             nombre="Centro de Salud",
-            tipo="Centro Penitenciario",
         )
 
         # Asignar centros
@@ -55,16 +51,15 @@ class E2EFlujosCompletos(TestCase):
         self.centro_user.centro = self.centro
         self.centro_user.save()
 
-        # Producto y lote base
+        # Producto y lote base (campos de BD actual: clave, nombre, descripcion, unidad_medida, stock_minimo)
         self.producto = Producto.objects.create(
             clave="PROD001",
-            descripcion="Medicamento de Prueba",
+            nombre="Medicamento de Prueba",
+            descripcion="Descripción del medicamento",
             unidad_medida="CAJA",
-            precio_unitario=Decimal("500.00"),
             stock_minimo=5,
-            created_by=self.admin,
         )
-        # Lote en farmacia CENTRAL (centro=None)
+        # Lote en farmacia CENTRAL (centro=None para farmacia central)
         self.lote = Lote.objects.create(
             producto=self.producto,
             numero_lote="LOT001",
@@ -72,7 +67,6 @@ class E2EFlujosCompletos(TestCase):
             cantidad_inicial=100,
             cantidad_actual=100,
             centro=None,  # Farmacia central
-            created_by=self.admin,
         )
 
         self.client = APIClient()
@@ -209,8 +203,8 @@ class E2ESeguridad(TestCase):
         self.user1 = User.objects.create_user(username="user1", password="test123")
         self.user2 = User.objects.create_user(username="user2", password="test123")
 
-        self.centro1 = Centro.objects.create(clave="CTR001", nombre="Centro 1", tipo="Centro Penitenciario")
-        self.centro2 = Centro.objects.create(clave="CTR002", nombre="Centro 2", tipo="Centro Penitenciario")
+        self.centro1 = Centro.objects.create(nombre="Centro 1")
+        self.centro2 = Centro.objects.create(nombre="Centro 2")
 
         self.user1.centro = self.centro1
         self.user1.save()
@@ -230,10 +224,9 @@ class E2ESeguridad(TestCase):
         req = Requisicion.objects.create(numero='E2E-001', solicitante=self.user1, centro_destino=self.centro1)
         DetalleRequisicion.objects.create(requisicion=req, producto=Producto.objects.create(
             clave="SEG001",
-            descripcion="Prod Seg",
+            nombre="Prod Seg",
+            descripcion="Producto de seguridad",
             unidad_medida="PIEZA",
-            precio_unitario=Decimal("10.00"),
-            created_by=self.user1,
         ), cantidad_solicitada=1)
 
         self._auth("user2", "test123")
@@ -296,19 +289,13 @@ class E2EInventarioCentros(TestCase):
 
         # Centros
         self.farmacia = Centro.objects.create(
-            clave="FARM_INV",
             nombre="Farmacia Central Inv",
-            tipo="Farmacia",
         )
         self.centro1 = Centro.objects.create(
-            clave="CTR_INV1",
             nombre="Centro Penitenciario 1",
-            tipo="Centro Penitenciario",
         )
         self.centro2 = Centro.objects.create(
-            clave="CTR_INV2",
             nombre="Centro Penitenciario 2",
-            tipo="Centro Penitenciario",
         )
 
         # Asignar centros
@@ -320,11 +307,10 @@ class E2EInventarioCentros(TestCase):
         # Producto
         self.producto = Producto.objects.create(
             clave="PROD_INV",
-            descripcion="Medicamento para Inventario",
+            nombre="Medicamento para Inventario",
+            descripcion="Descripción del medicamento",
             unidad_medida="CAJA",
-            precio_unitario=Decimal("250.00"),
             stock_minimo=10,
-            created_by=self.admin,
         )
 
         # Lote en farmacia CENTRAL
@@ -335,7 +321,6 @@ class E2EInventarioCentros(TestCase):
             cantidad_inicial=500,
             cantidad_actual=500,
             centro=None,  # Farmacia central
-            created_by=self.admin,
         )
 
         self.client = APIClient()
@@ -383,7 +368,6 @@ class E2EInventarioCentros(TestCase):
             cantidad_actual=50,
             centro=self.centro1,
             origen=self.lote_central,
-            created_by=self.admin,
         )
         
         # Inventario del centro
@@ -449,7 +433,6 @@ class E2EInventarioCentros(TestCase):
             cantidad_inicial=30,
             cantidad_actual=30,
             centro=None,
-            created_by=self.admin,
         )
         
         self._auth("farmacia_inv", "test123")
@@ -496,14 +479,10 @@ class E2EFlujoRequisicionV2(TestCase):
 
         # Centro
         self.centro = Centro.objects.create(
-            clave="CTR_V2",
             nombre="Centro V2",
-            tipo="Centro Penitenciario",
         )
         self.farmacia_central = Centro.objects.create(
-            clave="FARM_V2",
             nombre="Farmacia V2",
-            tipo="Farmacia",
         )
 
         # Asignar centros
@@ -519,11 +498,10 @@ class E2EFlujoRequisicionV2(TestCase):
         # Producto y lote
         self.producto = Producto.objects.create(
             clave="PROD_V2",
-            descripcion="Medicamento V2",
+            nombre="Medicamento V2",
+            descripcion="Descripción del Medicamento V2",
             unidad_medida="CAJA",
-            precio_unitario=Decimal("100.00"),
             stock_minimo=5,
-            created_by=self.admin,
         )
         self.lote = Lote.objects.create(
             producto=self.producto,
@@ -532,7 +510,6 @@ class E2EFlujoRequisicionV2(TestCase):
             cantidad_inicial=200,
             cantidad_actual=200,
             centro=None,
-            created_by=self.admin,
         )
 
         self.client = APIClient()
