@@ -128,7 +128,12 @@ const Donaciones = () => {
   // Importación/Exportación de entregas
   const [exportingEntregas, setExportingEntregas] = useState(false);
   const [importingEntregas, setImportingEntregas] = useState(false);
-  const fileInputRef = useRef(null);
+  
+  // Importación/Exportación de donaciones
+  const [exportingDonaciones, setExportingDonaciones] = useState(false);
+  const [importingDonaciones, setImportingDonaciones] = useState(false);
+  const fileInputRef = useRef(null); // Para entregas
+  const donacionFileInputRef = useRef(null); // Para donaciones
   
   // Estadísticas del almacén de donaciones
   const [estadisticas, setEstadisticas] = useState({
@@ -414,6 +419,109 @@ const Donaciones = () => {
       // Limpiar input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // === IMPORTACIÓN/EXPORTACIÓN DE DONACIONES ===
+  
+  // Exportar donaciones a Excel
+  const handleExportarDonaciones = async () => {
+    setExportingDonaciones(true);
+    try {
+      const params = {};
+      if (filtroEstado) params.estado = filtroEstado;
+      if (filtroTipoDonante) params.donante_tipo = filtroTipoDonante;
+      if (filtroCentro) params.centro_destino = filtroCentro;
+      if (filtroFechaDesde) params.fecha_desde = filtroFechaDesde;
+      if (filtroFechaHasta) params.fecha_hasta = filtroFechaHasta;
+      if (searchTerm) params.search = searchTerm;
+      
+      const response = await donacionesAPI.exportarExcel(params);
+      
+      // Crear blob y descargar
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `donaciones_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Donaciones exportadas correctamente');
+    } catch (err) {
+      console.error('Error exportando donaciones:', err);
+      toast.error('Error al exportar donaciones');
+    } finally {
+      setExportingDonaciones(false);
+    }
+  };
+
+  // Descargar plantilla de importación de donaciones
+  const handleDescargarPlantillaDonaciones = async () => {
+    try {
+      const response = await donacionesAPI.plantillaExcel();
+      
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'plantilla_donaciones.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Plantilla descargada');
+    } catch (err) {
+      console.error('Error descargando plantilla:', err);
+      toast.error('Error al descargar plantilla');
+    }
+  };
+
+  // Importar donaciones desde Excel
+  const handleImportarDonaciones = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    setImportingDonaciones(true);
+    try {
+      const formData = new FormData();
+      formData.append('archivo', file);
+      
+      const response = await donacionesAPI.importarExcel(formData);
+      
+      const { resultados } = response.data;
+      
+      if (resultados.exitosos > 0) {
+        toast.success(`${resultados.exitosos} donaciones importadas correctamente`);
+        cargarDonaciones();
+      }
+      
+      if (resultados.fallidos > 0) {
+        toast.error(`${resultados.fallidos} donaciones fallaron`);
+        // Mostrar errores detallados
+        resultados.errores?.forEach((err, idx) => {
+          if (idx < 3) { // Mostrar máximo 3 errores
+            toast.error(`Fila ${err.fila}: ${err.error}`, { duration: 5000 });
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Error importando donaciones:', err);
+      const errorMsg = err.response?.data?.error || 'Error al importar donaciones';
+      toast.error(errorMsg);
+    } finally {
+      setImportingDonaciones(false);
+      // Limpiar input
+      if (donacionFileInputRef.current) {
+        donacionFileInputRef.current.value = '';
       }
     }
   };
@@ -840,6 +948,52 @@ const Donaciones = () => {
                   )}
                   <FaChevronDown className={`transition-transform ${showFiltersMenu ? 'rotate-180' : ''}`} />
                 </button>
+
+                {/* Botón Exportar Excel */}
+                <button
+                  onClick={handleExportarDonaciones}
+                  disabled={exportingDonaciones || donaciones.length === 0}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border text-green-700 border-green-300 hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {exportingDonaciones ? (
+                    <FaSpinner className="animate-spin" />
+                  ) : (
+                    <FaFileExport />
+                  )}
+                  Exportar
+                </button>
+
+                {/* Botones de Importación - Solo para admin/farmacia */}
+                {puede.crear && (
+                  <>
+                    {/* Descargar Plantilla */}
+                    <button
+                      onClick={handleDescargarPlantillaDonaciones}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg border text-blue-700 border-blue-300 hover:bg-blue-50 transition-colors"
+                      title="Descargar plantilla Excel para importar donaciones"
+                    >
+                      <FaDownload /> Plantilla
+                    </button>
+                    
+                    {/* Importar Excel */}
+                    <label className="flex items-center gap-2 px-4 py-2 rounded-lg border text-purple-700 border-purple-300 hover:bg-purple-50 transition-colors cursor-pointer">
+                      {importingDonaciones ? (
+                        <FaSpinner className="animate-spin" />
+                      ) : (
+                        <FaFileImport />
+                      )}
+                      Importar
+                      <input
+                        ref={donacionFileInputRef}
+                        type="file"
+                        accept=".xlsx,.xls"
+                        onChange={handleImportarDonaciones}
+                        disabled={importingDonaciones}
+                        className="hidden"
+                      />
+                    </label>
+                  </>
+                )}
 
                 {/* Botón nueva donación */}
                 {puede.crear && (

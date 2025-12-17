@@ -2734,10 +2734,362 @@ class DonacionViewSet(viewsets.ModelViewSet):
                 'tabla_existe': False,
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=False, methods=['get'], url_path='exportar-excel')
+    def exportar_excel(self, request):
+        """
+        Exporta las donaciones a Excel con formato profesional.
+        Respeta los filtros aplicados en la consulta.
+        """
+        import openpyxl
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from django.http import HttpResponse
+        from django.utils import timezone
+        
+        try:
+            donaciones = self.get_queryset()
+            
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = 'Donaciones'
+            
+            # Título
+            ws.merge_cells('A1:J1')
+            ws['A1'].value = 'REPORTE DE DONACIONES RECIBIDAS'
+            ws['A1'].font = Font(bold=True, size=14, color='632842')
+            ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+            
+            ws.merge_cells('A2:J2')
+            ws['A2'].value = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")}'
+            ws['A2'].font = Font(size=10, italic=True)
+            ws['A2'].alignment = Alignment(horizontal='center')
+            
+            ws.append([])
+            
+            # Encabezados
+            headers = [
+                'Número', 'Donante', 'Tipo Donante', 'RFC', 
+                'Fecha Donación', 'Fecha Recepción', 'Centro Destino',
+                'Estado', 'Productos', 'Unidades Totales'
+            ]
+            ws.append(headers)
+            
+            header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
+            header_font = Font(bold=True, color='FFFFFF', size=11)
+            
+            for cell in ws[4]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+            
+            # Datos
+            for donacion in donaciones:
+                total_productos = donacion.detalles.count() if hasattr(donacion, 'detalles') else 0
+                total_unidades = sum(d.cantidad for d in donacion.detalles.all()) if hasattr(donacion, 'detalles') else 0
+                
+                ws.append([
+                    donacion.numero,
+                    donacion.donante_nombre,
+                    donacion.donante_tipo,
+                    donacion.donante_rfc or '',
+                    donacion.fecha_donacion.strftime('%d/%m/%Y') if donacion.fecha_donacion else '',
+                    donacion.fecha_recepcion.strftime('%d/%m/%Y') if donacion.fecha_recepcion else '',
+                    donacion.centro_destino.nombre if donacion.centro_destino else 'Sin asignar',
+                    donacion.estado,
+                    total_productos,
+                    total_unidades
+                ])
+            
+            # Ajustar anchos
+            column_widths = [15, 35, 15, 15, 15, 15, 30, 12, 12, 15]
+            for i, width in enumerate(column_widths, 1):
+                ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
+            
+            response = HttpResponse(
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            filename = f'donaciones_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            
+            wb.save(response)
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error exportando donaciones: {e}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-# =============================================================================
-# DETALLE DONACION VIEWSET
-# =============================================================================
+    @action(detail=False, methods=['get'], url_path='plantilla-excel')
+    def plantilla_excel(self, request):
+        """
+        Genera plantilla Excel para importar donaciones con detalles.
+        """
+        import openpyxl
+        from openpyxl.styles import Font, Alignment, PatternFill
+        from django.http import HttpResponse
+        
+        try:
+            wb = openpyxl.Workbook()
+            
+            # Hoja de donaciones
+            ws = wb.active
+            ws.title = 'Donaciones'
+            
+            ws.merge_cells('A1:L1')
+            ws['A1'].value = 'PLANTILLA PARA IMPORTAR DONACIONES'
+            ws['A1'].font = Font(bold=True, size=14, color='632842')
+            ws['A1'].alignment = Alignment(horizontal='center')
+            
+            ws['A2'].value = 'Las columnas marcadas con * son obligatorias'
+            ws['A2'].font = Font(italic=True, size=10)
+            ws.append([])
+            
+            headers = [
+                'numero *', 'donante_nombre *', 'donante_tipo', 'donante_rfc',
+                'donante_direccion', 'donante_contacto', 'fecha_donacion *',
+                'centro_destino_id', 'notas', 'documento_donacion'
+            ]
+            ws.append(headers)
+            
+            header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
+            for cell in ws[4]:
+                cell.fill = header_fill
+                cell.font = Font(bold=True, color='FFFFFF')
+            
+            # Ejemplo
+            ws.append([
+                'DON-2024-001', 'Farmacéuticas del Norte SA', 'empresa', 'FNO123456ABC',
+                'Av. Principal 123', 'contacto@empresa.com', '2024-01-15',
+                '', 'Donación de medicamentos', 'DOC-REF-001'
+            ])
+            
+            # Tipos de donante
+            ws.append([])
+            ws.append(['Tipos de donante válidos: empresa, gobierno, ong, particular, otro'])
+            ws['A7'].font = Font(italic=True, color='666666')
+            
+            # Ajustar anchos
+            column_widths = [18, 35, 15, 18, 30, 25, 15, 18, 30, 18]
+            for i, width in enumerate(column_widths, 1):
+                ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
+            
+            # Hoja de detalles
+            ws2 = wb.create_sheet(title='Detalles')
+            ws2.merge_cells('A1:H1')
+            ws2['A1'].value = 'DETALLES DE DONACIONES (productos)'
+            ws2['A1'].font = Font(bold=True, size=14, color='632842')
+            ws2['A1'].alignment = Alignment(horizontal='center')
+            
+            ws2['A2'].value = 'Asocie cada detalle con el número de donación de la hoja anterior'
+            ws2['A2'].font = Font(italic=True, size=10)
+            ws2.append([])
+            
+            headers2 = [
+                'numero_donacion *', 'producto_clave *', 'numero_lote',
+                'cantidad *', 'fecha_caducidad', 'estado_producto', 'notas'
+            ]
+            ws2.append(headers2)
+            
+            for cell in ws2[4]:
+                cell.fill = header_fill
+                cell.font = Font(bold=True, color='FFFFFF')
+            
+            ws2.append([
+                'DON-2024-001', 'MED001', 'LOTE-A123', 100, '2025-12-31', 'bueno', ''
+            ])
+            
+            ws2.append([])
+            ws2.append(['Estados válidos: bueno, regular, malo'])
+            ws2['A7'].font = Font(italic=True, color='666666')
+            
+            # Hoja de catálogo de productos
+            ws3 = wb.create_sheet(title='Catálogo Productos')
+            ws3['A1'].value = 'CATÁLOGO DE PRODUCTOS DISPONIBLES'
+            ws3['A1'].font = Font(bold=True, size=12, color='632842')
+            ws3.append([])
+            ws3.append(['Clave', 'Nombre', 'Unidad'])
+            
+            from core.models import Producto
+            productos = Producto.objects.filter(activo=True).order_by('nombre')[:500]
+            for prod in productos:
+                ws3.append([prod.clave, prod.nombre, prod.unidad_medida])
+            
+            ws3.column_dimensions['A'].width = 15
+            ws3.column_dimensions['B'].width = 50
+            ws3.column_dimensions['C'].width = 12
+            
+            response = HttpResponse(
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = 'attachment; filename="plantilla_donaciones.xlsx"'
+            wb.save(response)
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error generando plantilla: {e}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], url_path='importar-excel')
+    def importar_excel(self, request):
+        """
+        Importa donaciones desde archivo Excel.
+        Acepta dos hojas: 'Donaciones' y 'Detalles'.
+        """
+        import openpyxl
+        from django.db import transaction
+        from core.models import Donacion, DetalleDonacion, Producto, Centro
+        
+        archivo = request.FILES.get('archivo')
+        if not archivo:
+            return Response({'error': 'No se proporcionó archivo'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            wb = openpyxl.load_workbook(archivo, data_only=True)
+            
+            # Procesar hoja de donaciones
+            if 'Donaciones' not in wb.sheetnames:
+                return Response({'error': 'El archivo debe tener una hoja llamada "Donaciones"'}, 
+                              status=status.HTTP_400_BAD_REQUEST)
+            
+            ws_donaciones = wb['Donaciones']
+            ws_detalles = wb['Detalles'] if 'Detalles' in wb.sheetnames else None
+            
+            resultados = {
+                'donaciones_creadas': 0,
+                'detalles_creados': 0,
+                'errores': []
+            }
+            
+            donaciones_map = {}  # numero -> instancia
+            
+            with transaction.atomic():
+                # Crear donaciones
+                for row_num, row in enumerate(ws_donaciones.iter_rows(min_row=5, values_only=True), start=5):
+                    if not row[0]:  # Saltar filas vacías
+                        continue
+                    
+                    try:
+                        numero = str(row[0]).strip()
+                        donante_nombre = str(row[1]).strip() if row[1] else None
+                        
+                        if not donante_nombre:
+                            resultados['errores'].append({
+                                'fila': row_num, 'hoja': 'Donaciones',
+                                'error': 'donante_nombre es obligatorio'
+                            })
+                            continue
+                        
+                        # Verificar si ya existe
+                        if Donacion.objects.filter(numero=numero).exists():
+                            resultados['errores'].append({
+                                'fila': row_num, 'hoja': 'Donaciones',
+                                'error': f'Donación {numero} ya existe'
+                            })
+                            continue
+                        
+                        centro_destino = None
+                        if row[7]:
+                            try:
+                                centro_destino = Centro.objects.get(pk=int(row[7]))
+                            except (ValueError, Centro.DoesNotExist):
+                                pass
+                        
+                        donacion = Donacion.objects.create(
+                            numero=numero,
+                            donante_nombre=donante_nombre,
+                            donante_tipo=str(row[2]).strip() if row[2] else 'empresa',
+                            donante_rfc=str(row[3]).strip() if row[3] else None,
+                            donante_direccion=str(row[4]).strip() if row[4] else None,
+                            donante_contacto=str(row[5]).strip() if row[5] else None,
+                            fecha_donacion=row[6] if row[6] else timezone.now().date(),
+                            centro_destino=centro_destino,
+                            notas=str(row[8]).strip() if row[8] else None,
+                            documento_donacion=str(row[9]).strip() if len(row) > 9 and row[9] else None,
+                            recibido_por=request.user,
+                            estado='pendiente'
+                        )
+                        donaciones_map[numero] = donacion
+                        resultados['donaciones_creadas'] += 1
+                        
+                    except Exception as e:
+                        resultados['errores'].append({
+                            'fila': row_num, 'hoja': 'Donaciones',
+                            'error': str(e)
+                        })
+                
+                # Crear detalles
+                if ws_detalles:
+                    for row_num, row in enumerate(ws_detalles.iter_rows(min_row=5, values_only=True), start=5):
+                        if not row[0]:
+                            continue
+                        
+                        try:
+                            numero_donacion = str(row[0]).strip()
+                            producto_clave = str(row[1]).strip() if row[1] else None
+                            
+                            # Buscar donación
+                            donacion = donaciones_map.get(numero_donacion)
+                            if not donacion:
+                                donacion = Donacion.objects.filter(numero=numero_donacion).first()
+                            
+                            if not donacion:
+                                resultados['errores'].append({
+                                    'fila': row_num, 'hoja': 'Detalles',
+                                    'error': f'Donación {numero_donacion} no encontrada'
+                                })
+                                continue
+                            
+                            # Buscar producto
+                            if not producto_clave:
+                                resultados['errores'].append({
+                                    'fila': row_num, 'hoja': 'Detalles',
+                                    'error': 'producto_clave es obligatorio'
+                                })
+                                continue
+                            
+                            producto = Producto.objects.filter(clave=producto_clave).first()
+                            if not producto:
+                                resultados['errores'].append({
+                                    'fila': row_num, 'hoja': 'Detalles',
+                                    'error': f'Producto {producto_clave} no encontrado'
+                                })
+                                continue
+                            
+                            cantidad = int(row[3]) if row[3] else 0
+                            if cantidad <= 0:
+                                resultados['errores'].append({
+                                    'fila': row_num, 'hoja': 'Detalles',
+                                    'error': 'Cantidad debe ser mayor a 0'
+                                })
+                                continue
+                            
+                            DetalleDonacion.objects.create(
+                                donacion=donacion,
+                                producto=producto,
+                                numero_lote=str(row[2]).strip() if row[2] else None,
+                                cantidad=cantidad,
+                                cantidad_disponible=0,  # Se activa al procesar
+                                fecha_caducidad=row[4] if row[4] else None,
+                                estado_producto=str(row[5]).strip() if row[5] else 'bueno',
+                                notas=str(row[6]).strip() if len(row) > 6 and row[6] else None
+                            )
+                            resultados['detalles_creados'] += 1
+                            
+                        except Exception as e:
+                            resultados['errores'].append({
+                                'fila': row_num, 'hoja': 'Detalles',
+                                'error': str(e)
+                            })
+            
+            logger.info(f"Importación de donaciones por {request.user.username}: "
+                       f"{resultados['donaciones_creadas']} donaciones, {resultados['detalles_creados']} detalles")
+            
+            return Response({
+                'mensaje': 'Importación completada',
+                'resultados': resultados
+            })
+            
+        except Exception as e:
+            logger.error(f"Error importando donaciones: {e}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class DetalleDonacionViewSet(viewsets.ModelViewSet):
     """

@@ -1260,10 +1260,21 @@ export const donacionesAPI = {
   procesar: (id) => apiClient.post(`/donaciones/${id}/procesar/`),
   // Rechazar donación
   rechazar: (id, data) => apiClient.post(`/donaciones/${id}/rechazar/`, data),
-  // Exportar
+  // Exportar (legacy)
   exportar: (params) => apiClient.get('/donaciones/exportar/', { 
     params, 
     responseType: 'blob' 
+  }),
+  // Exportación e importación Excel
+  exportarExcel: (params) => apiClient.get('/donaciones/exportar-excel/', { 
+    params, 
+    responseType: 'blob' 
+  }),
+  plantillaExcel: () => apiClient.get('/donaciones/plantilla-excel/', { 
+    responseType: 'blob' 
+  }),
+  importarExcel: (formData) => apiClient.post('/donaciones/importar-excel/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
   }),
 };
 
