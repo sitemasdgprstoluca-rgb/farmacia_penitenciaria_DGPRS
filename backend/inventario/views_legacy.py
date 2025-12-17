@@ -7383,20 +7383,28 @@ def reporte_inventario(request):
             return Response({'error': 'Solo usuarios de farmacia o administradores pueden acceder a reportes'}, status=status.HTTP_403_FORBIDDEN)
         # SEGURIDAD: Determinar filtro de centro
         user = request.user
-        filtrar_por_centro = not is_farmacia_or_admin(user)
-        user_centro = get_user_centro(user) if filtrar_por_centro else None
         
-        # Admin/farmacia puede filtrar por centro especfico
+        # Por defecto: admin/farmacia ven solo Farmacia Central
+        # Usuarios de centro ven solo su centro
+        filtrar_por_centro = True  # Siempre filtrar
+        user_centro = None  # NULL = Farmacia Central por defecto
+        
+        if not is_farmacia_or_admin(user):
+            # Usuario de centro: filtrar por su centro
+            user_centro = get_user_centro(user)
+        
+        # Admin/farmacia puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
         if centro_param and is_farmacia_or_admin(user):
             if centro_param == 'central':
-                # Filtrar solo farmacia central
-                filtrar_por_centro = True
-                user_centro = None  # centro=NULL significa farmacia central
+                # Filtrar solo farmacia central (ya es el default)
+                user_centro = None
+            elif centro_param == 'todos':
+                # Ver todo (sin filtro de centro)
+                filtrar_por_centro = False
             else:
                 try:
                     user_centro = Centro.objects.get(pk=centro_param)
-                    filtrar_por_centro = True
                 except Centro.DoesNotExist:
                     pass
         
