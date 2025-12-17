@@ -163,6 +163,9 @@ const Reportes = () => {
       params.centro = userCentroId;
     } else if (filtros.centro) {
       params.centro = filtros.centro;
+    } else {
+      // Cuando no hay filtro de centro seleccionado, enviar 'todos' para ver todo el inventario
+      params.centro = 'todos';
     }
     
     // Parámetros específicos por tipo de reporte
