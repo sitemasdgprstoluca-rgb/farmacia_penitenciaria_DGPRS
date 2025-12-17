@@ -75,6 +75,30 @@ const normalizeProductoResponse = (data) => {
 const normalizeLoteResponse = (data) => {
   if (!data) return null;
 
+  // Estructura donde data.lote contiene los datos del lote
+  if (data.lote) {
+    const lote = data.lote;
+    return {
+      numero_lote: lote.numero_lote,
+      producto: {
+        codigo: lote.producto,
+        nombre: lote.producto_nombre || lote.producto_descripcion,
+      },
+      fecha_caducidad: lote.fecha_caducidad,
+      cantidad_actual: lote.cantidad_actual,
+      cantidad_inicial: lote.cantidad_inicial,
+      proveedor: lote.proveedor,
+      estado: (lote.estado_caducidad || lote.estado || '').toString().toUpperCase(),
+      centro: lote.centro,
+      numero_contrato: lote.numero_contrato || '',
+      marca: lote.marca || '',
+      movimientos: (data.movimientos || data.historial || []).map(mapMovimiento),
+      alertas: data.alertas || [],
+      estadisticas: data.estadisticas || {},
+    };
+  }
+
+  // Estructura donde data tiene los campos directamente
   if (data.numero_lote) {
     return {
       numero_lote: data.numero_lote,
@@ -88,27 +112,6 @@ const normalizeLoteResponse = (data) => {
       numero_contrato: data.numero_contrato || '',
       marca: data.marca || '',
       movimientos: (data.movimientos || []).map(mapMovimiento),
-      alertas: data.alertas || [],
-      estadisticas: data.estadisticas || {},
-    };
-  }
-
-  if (data.lote) {
-    return {
-      numero_lote: data.lote.numero_lote,
-      producto: {
-        codigo: data.lote.producto,
-        nombre: data.lote.producto_nombre,
-      },
-      fecha_caducidad: data.lote.fecha_caducidad,
-      cantidad_actual: data.lote.cantidad_actual,
-      cantidad_inicial: data.lote.cantidad_inicial,
-      proveedor: data.lote.proveedor,
-      estado: (data.lote.estado || data.lote.estado_caducidad || '').toString().toUpperCase(),
-      centro: data.lote.centro,
-      numero_contrato: data.lote.numero_contrato || '',
-      marca: data.lote.marca || '',
-      movimientos: (data.historial || []).map(mapMovimiento),
       alertas: data.alertas || [],
       estadisticas: data.estadisticas || {},
     };

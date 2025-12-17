@@ -7317,7 +7317,8 @@ def trazabilidad_lote(request, codigo):
                 'id': lote.id,
                 'numero_lote': lote.numero_lote,
                 'producto': lote.producto.clave,
-                'producto_descripcion': lote.producto.nombre,  # Usar nombre como campo principal
+                'producto_nombre': lote.producto.nombre,  # Campo para frontend
+                'producto_descripcion': lote.producto.descripcion or lote.producto.nombre,
                 'cantidad_actual': lote.cantidad_actual,
                 'cantidad_inicial': lote.cantidad_inicial,
                 'activo': lote.activo,
@@ -7325,6 +7326,7 @@ def trazabilidad_lote(request, codigo):
                 'dias_para_caducar': dias_caducidad,
                 'estado_caducidad': estado_caducidad,
                 'marca': lote.marca,
+                'proveedor': lote.proveedor,  # Campo faltante
                 # ISS-FIX: Agregar centro (nombre o 'Farmacia Central' si es null)
                 'centro': lote.centro.nombre if lote.centro else 'Farmacia Central',
                 'centro_id': lote.centro.id if lote.centro else None,
