@@ -2338,92 +2338,21 @@ const Productos = () => {
                 <span className="text-sm font-semibold text-gray-700">Producto Activo</span>
               </div>
 
-              {/* Campo de imagen del producto */}
-
+              {/* Campo de imagen del producto - DESHABILITADO */}
               <div>
-
-                <label className="text-xs font-semibold text-theme-primary-hover">Imagen del producto</label>
-
-                <div className="mt-1 flex items-center gap-4">
-
-                  {(formData.imagenPreview || formData.imagen) && (
-
-                    <div className="relative">
-
-                      <img
-
-                        src={formData.imagen ? URL.createObjectURL(formData.imagen) : formData.imagenPreview}
-
-                        alt="Preview"
-
-                        className="h-20 w-20 rounded-lg object-cover border border-gray-300"
-
-                      />
-
-                      <button
-
-                        type="button"
-
-                        onClick={() => setFormData({ ...formData, imagen: null, imagenPreview: null })}
-
-                        className="absolute -top-2 -right-2 rounded-full bg-red-500 text-white p-1 text-xs hover:bg-red-600"
-
-                      >
-
-                        ✕
-
-                      </button>
-
-                    </div>
-
-                  )}
-
-                  <label className="cursor-pointer flex items-center gap-2 rounded-lg border border-dashed border-gray-400 px-4 py-3 hover:border-theme-primary hover:bg-gray-50">
-
-                    <FaFileUpload className="text-gray-500" />
-
-                    <span className="text-sm text-gray-600">
-
-                      {formData.imagen ? 'Cambiar imagen' : 'Seleccionar imagen'}
-
-                    </span>
-
-                    <input
-
-                      type="file"
-
-                      accept="image/jpeg,image/png,image/webp"
-
-                      className="hidden"
-
-                      onChange={(e) => {
-
-                        const file = e.target.files?.[0];
-
-                        if (file) {
-
-                          if (file.size > 2 * 1024 * 1024) {
-
-                            toast.error('La imagen no puede exceder 2MB');
-
-                            return;
-
-                          }
-
-                          setFormData({ ...formData, imagen: file, imagenPreview: null });
-
-                        }
-
-                      }}
-
-                    />
-
-                  </label>
-
+                <label className="text-xs font-semibold text-gray-400">Imagen del producto</label>
+                <div className="mt-1 flex items-center gap-4 opacity-60 cursor-not-allowed">
+                  <div className="flex items-center gap-2 rounded-lg border border-dashed border-gray-300 px-4 py-3 bg-gray-50">
+                    <FaFileUpload className="text-gray-400" />
+                    <span className="text-sm text-gray-400">Seleccionar imagen</span>
+                  </div>
                 </div>
-
-                <p className="text-xs text-gray-500 mt-1">JPG, PNG o WebP. Máximo 2MB.</p>
-
+                <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-xs text-amber-700 flex items-center gap-1">
+                    <span className="font-semibold">⏳ Funcionalidad pendiente:</span>
+                    En espera de mejora de almacenamiento para esta funcionalidad.
+                  </p>
+                </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-2">
