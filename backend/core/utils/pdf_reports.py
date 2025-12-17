@@ -1043,7 +1043,7 @@ def generar_reporte_requisiciones(requisiciones_data, filtros=None):
         elements.append(folio_p)
         
         # Tabla de productos de esta requisición
-        productos_data = [['Clave', 'Producto', 'Solicitado', 'Autorizado', 'Entregado']]
+        productos_data = [['Clave', 'Producto', 'Solicitado', 'Autorizado', 'Surtido']]
         
         for prod in productos:
             nombre = str(prod.get('nombre', 'N/A'))
@@ -1054,7 +1054,7 @@ def generar_reporte_requisiciones(requisiciones_data, filtros=None):
                 Paragraph(nombre, estilo_celda),
                 str(prod.get('cantidad_solicitada', 0)),
                 str(prod.get('cantidad_autorizada', 0)),
-                str(prod.get('cantidad_entregada', 0)),
+                str(prod.get('cantidad_surtida', 0)),
             ])
         
         prod_col_widths = [0.7*inch, 3.5*inch, 0.7*inch, 0.8*inch, 0.8*inch]

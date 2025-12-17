@@ -175,6 +175,8 @@ const Reportes = () => {
       if (filtros.estado) params.estado = filtros.estado;
       if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
       if (filtros.fechaFin) params.fecha_fin = filtros.fechaFin;
+      // FIX: También aplicar filtro de centro para requisiciones
+      // (ya se aplica arriba en el bloque general)
     }
     
     return params;
@@ -319,7 +321,12 @@ const Reportes = () => {
     return <FaChartBar />;
   };
 
-  const renderCellValue = (fila, col) => {
+  const renderCellValue = (fila, col, idx) => {
+    // FIX: Manejar columna # (índice de fila)
+    if (col.key === '#') {
+      return idx + 1;
+    }
+    
     const value = fila[col.key];
     const formatted = formatValue(value, col.key);
     
@@ -787,7 +794,7 @@ const Reportes = () => {
                         className="px-4 py-3 text-gray-800"
                         style={{ textAlign: col.align || 'left' }}
                       >
-                        {renderCellValue(fila, col)}
+                        {renderCellValue(fila, col, idx)}
                       </td>
                     ))}
                   </tr>

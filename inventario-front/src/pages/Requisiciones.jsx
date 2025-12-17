@@ -107,11 +107,9 @@ const Requisiciones = () => {
   const [actionLoading, setActionLoading] = useState(null); // Loading específico por acción (evita bloquear todo)
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [navegando, setNavegando] = useState(false); // Bloquea navegaciones múltiples
-  // Para usuarios de centro, pre-llenar con su centro; para admin/farmacia iniciar vacío
-  // IMPORTANTE: usar 'PENDING' como valor especial para usuarios de centro sin hidratar
-  const [filtroCentro, setFiltroCentro] = useState(() => 
-    esAdminOFarmacia ? '' : (user?.centro?.id?.toString() || 'PENDING')
-  );
+  // FIX: Inicializar filtroCentro siempre vacío - se resuelve en useEffect de hidratación
+  // Esto evita problemas cuando esAdminOFarmacia aún no se ha determinado al montar
+  const [filtroCentro, setFiltroCentro] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
   const [grupoEstado, setGrupoEstado] = useState('todas');
   const [searchTerm, setSearchTerm] = useState('');
@@ -393,7 +391,9 @@ const Requisiciones = () => {
   const cargarRequisiciones = useCallback(async () => {
     // BLOQUEAR carga si el centro del usuario no está resuelto
     // Esto previene que usuarios de centro vean datos de otros centros
-    if (!centroResuelto || filtroCentro === 'PENDING') {
+    // FIX: Solo bloquear si centroResuelto es false, NO si filtroCentro es vacío
+    // (vacío es válido para admin/farmacia)
+    if (!centroResuelto) {
       return;
     }
     // BLOQUEAR carga si el usuario no tiene centro asignado (seguridad)
@@ -450,7 +450,8 @@ const Requisiciones = () => {
 
   const cargarResumenEstados = useCallback(async () => {
     // BLOQUEAR si usuario sin centro asignado (misma lógica que cargarRequisiciones)
-    if (errorCentroNoAsignado || !centroResuelto || filtroCentro === 'PENDING') {
+    // FIX: Solo bloquear si centroResuelto es false, NO si filtroCentro es vacío
+    if (errorCentroNoAsignado || !centroResuelto) {
       return;
     }
     try {
@@ -577,7 +578,8 @@ const Requisiciones = () => {
   // OPTIMIZADO: No programar timeout si el centro no está resuelto
   useEffect(() => {
     // Si el centro no está resuelto, no tiene sentido programar la carga
-    if (!centroResuelto || filtroCentro === 'PENDING') {
+    // FIX: Solo verificar centroResuelto, filtroCentro vacío es válido para admin/farmacia
+    if (!centroResuelto) {
       return;
     }
     

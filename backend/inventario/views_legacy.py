@@ -1455,7 +1455,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
             ws.title = 'Productos'
             
             # Encabezados alineados con schema de Supabase
-            headers = ['#', 'Codigo Barras', 'Nombre', 'Categoria', 'Unidad Medida', 
+            headers = ['#', 'Clave', 'Nombre', 'Categoria', 'Unidad Medida', 
                        'Stock Minimo', 'Stock Actual', 'Sustancia Activa', 'Presentacion',
                        'Concentracion', 'Via Admin', 'Requiere Receta', 'Controlado', 
                        'Lotes Activos', 'Estado']
@@ -8101,7 +8101,7 @@ def reporte_requisiciones(request):
                     'nombre': detalle.producto.nombre if detalle.producto else 'N/A',
                     'cantidad_solicitada': detalle.cantidad_solicitada or 0,
                     'cantidad_autorizada': detalle.cantidad_autorizada or 0,
-                    'cantidad_entregada': detalle.cantidad_entregada or 0,
+                    'cantidad_surtida': detalle.cantidad_surtida or 0,
                 })
             
             datos.append({

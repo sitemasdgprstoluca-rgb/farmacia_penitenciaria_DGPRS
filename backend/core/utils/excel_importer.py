@@ -179,7 +179,8 @@ def importar_productos_desde_excel(archivo, usuario):
     
     # Mapeo de columnas con sinónimos
     SINONIMOS = {
-        'clave': ['clave', 'codigo', 'code', 'id', 'cve', 'sku', 'key', 'producto id'],
+        'clave': ['clave', 'codigo', 'code', 'id', 'cve', 'sku', 'key', 'producto id', 
+                  'codigo barras', 'codigo de barras', 'barcode'],
         'nombre': ['nombre', 'descripcion', 'nombre generico', 'medicamento', 'producto', 
                    'nombre del medicamento', 'nombre generico del medicamento', 'articulo'],
         'unidad_medida': ['unidad', 'unidad medida', 'um', 'unidad de medida'],
