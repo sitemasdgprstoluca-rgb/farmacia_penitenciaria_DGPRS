@@ -702,24 +702,49 @@ def generar_hoja_consulta(requisicion):
     story.append(surtida_stamp)
     story.append(Spacer(1, 0.1*inch))
     
-    # Información de la requisición
-    centro_obj = requisicion.centro_origen or requisicion.centro_destino
+    # Información de la requisición (con manejo defensivo de nulls)
+    centro_obj = getattr(requisicion, 'centro_origen', None) or getattr(requisicion, 'centro_destino', None)
     centro_nombre = centro_obj.nombre if centro_obj else 'N/A'
-    solicitante_nombre = requisicion.solicitante.get_full_name() if requisicion.solicitante else 'N/A'
     
-    # Fechas
+    # Obtener nombre del solicitante de forma segura
+    solicitante = getattr(requisicion, 'solicitante', None)
+    if solicitante:
+        try:
+            solicitante_nombre = solicitante.get_full_name() or solicitante.username or 'N/A'
+        except:
+            solicitante_nombre = str(solicitante) if solicitante else 'N/A'
+    else:
+        solicitante_nombre = 'N/A'
+    
+    # Fechas (con manejo defensivo)
     fecha_surtido_texto = 'N/A'
-    if hasattr(requisicion, 'fecha_surtido') and requisicion.fecha_surtido:
-        fecha_surtido_texto = requisicion.fecha_surtido.strftime('%d/%m/%Y %H:%M')
+    fecha_surtido = getattr(requisicion, 'fecha_surtido', None)
+    if fecha_surtido:
+        try:
+            fecha_surtido_texto = fecha_surtido.strftime('%d/%m/%Y %H:%M')
+        except:
+            fecha_surtido_texto = str(fecha_surtido)
     
     fecha_entrega_texto = 'N/A'
-    if hasattr(requisicion, 'fecha_entrega') and requisicion.fecha_entrega:
-        fecha_entrega_texto = requisicion.fecha_entrega.strftime('%d/%m/%Y %H:%M')
+    fecha_entrega = getattr(requisicion, 'fecha_entrega', None)
+    if fecha_entrega:
+        try:
+            fecha_entrega_texto = fecha_entrega.strftime('%d/%m/%Y %H:%M')
+        except:
+            fecha_entrega_texto = str(fecha_entrega)
+    
+    # Fecha de solicitud
+    fecha_solicitud_texto = 'N/A'
+    fecha_solicitud = getattr(requisicion, 'fecha_solicitud', None)
+    if fecha_solicitud:
+        try:
+            fecha_solicitud_texto = fecha_solicitud.strftime('%d/%m/%Y')
+        except:
+            fecha_solicitud_texto = str(fecha_solicitud)
     
     info_data = [
         ['Folio:', requisicion.folio or f'REQ-{requisicion.id}', 'Estado:', (requisicion.estado or '').upper()],
-        ['Centro Solicitante:', centro_nombre, 'Fecha de Solicitud:', 
-         requisicion.fecha_solicitud.strftime('%d/%m/%Y') if requisicion.fecha_solicitud else 'N/A'],
+        ['Centro Solicitante:', centro_nombre, 'Fecha de Solicitud:', fecha_solicitud_texto],
         ['Solicitante:', solicitante_nombre, 'Fecha de Surtido:', fecha_surtido_texto],
         ['', '', 'Fecha de Entrega:', fecha_entrega_texto],
     ]
