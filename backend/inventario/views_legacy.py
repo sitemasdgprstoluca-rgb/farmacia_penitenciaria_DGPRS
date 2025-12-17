@@ -8085,6 +8085,17 @@ def reporte_requisiciones(request):
             elif req.centro_origen:
                 centro_nombre = req.centro_origen.nombre
             
+            # Obtener detalle de productos
+            detalles_productos = []
+            for detalle in req.detalles.select_related('producto').all():
+                detalles_productos.append({
+                    'clave': detalle.producto.clave if detalle.producto else 'N/A',
+                    'nombre': detalle.producto.nombre if detalle.producto else 'N/A',
+                    'cantidad_solicitada': detalle.cantidad_solicitada or 0,
+                    'cantidad_autorizada': detalle.cantidad_autorizada or 0,
+                    'cantidad_entregada': detalle.cantidad_entregada or 0,
+                })
+            
             datos.append({
                 'id': req.id,
                 'folio': req.folio or f'REQ-{req.id}',
@@ -8093,6 +8104,7 @@ def reporte_requisiciones(request):
                 'fecha_solicitud': req.fecha_solicitud.isoformat() if req.fecha_solicitud else None,
                 'total_productos': req.detalles.count(),
                 'solicitante': req.solicitante.get_full_name() if req.solicitante else 'N/A',
+                'productos': detalles_productos,  # Agregar detalle de productos
             })
         
         resumen = {

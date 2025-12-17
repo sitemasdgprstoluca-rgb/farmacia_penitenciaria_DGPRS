@@ -1014,6 +1014,68 @@ def generar_reporte_requisiciones(requisiciones_data, filtros=None):
     col_widths = [1*inch, 1.9*inch, 0.75*inch, 0.8*inch, 0.45*inch, 1.25*inch]
     table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
+    elements.append(Spacer(1, 0.3*inch))
+    
+    # === DETALLE DE PRODUCTOS POR REQUISICIÓN ===
+    detalle_titulo = Paragraph("DETALLE DE PRODUCTOS POR REQUISICIÓN", styles['SeccionTitulo'])
+    elements.append(detalle_titulo)
+    elements.append(Spacer(1, 0.1*inch))
+    
+    # Estilo para el folio de cada requisición
+    estilo_folio = ParagraphStyle(
+        'FolioReq',
+        parent=styles['Normal'],
+        fontSize=9,
+        fontName='Helvetica-Bold',
+        textColor=COLOR_GUINDA,
+        spaceBefore=10,
+        spaceAfter=5,
+    )
+    
+    for req in requisiciones_data:
+        productos = req.get('productos', [])
+        if not productos:
+            continue
+        
+        # Encabezado de la requisición
+        folio_text = f"📋 {req.get('folio', 'N/A')} - {req.get('centro', 'N/A')} - Estado: {req.get('estado', 'N/A')}"
+        folio_p = Paragraph(folio_text, estilo_folio)
+        elements.append(folio_p)
+        
+        # Tabla de productos de esta requisición
+        productos_data = [['Clave', 'Producto', 'Solicitado', 'Autorizado', 'Entregado']]
+        
+        for prod in productos:
+            nombre = str(prod.get('nombre', 'N/A'))
+            if len(nombre) > 40:
+                nombre = nombre[:37] + '...'
+            productos_data.append([
+                str(prod.get('clave', 'N/A')),
+                Paragraph(nombre, estilo_celda),
+                str(prod.get('cantidad_solicitada', 0)),
+                str(prod.get('cantidad_autorizada', 0)),
+                str(prod.get('cantidad_entregada', 0)),
+            ])
+        
+        prod_col_widths = [0.7*inch, 3.5*inch, 0.7*inch, 0.8*inch, 0.8*inch]
+        prod_table = Table(productos_data, colWidths=prod_col_widths)
+        prod_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('FONTSIZE', (0, 1), (-1, -1), 7),
+            ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
+            ('GRID', (0, 0), (-1, -1), 0.3, COLOR_GUINDA),
+            ('ALIGN', (2, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(prod_table)
+        elements.append(Spacer(1, 0.15*inch))
     
     # Usar canvas con fondo institucional
     def make_canvas(*args, **kwargs):
