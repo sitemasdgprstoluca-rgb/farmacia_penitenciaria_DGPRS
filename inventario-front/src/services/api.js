@@ -1133,6 +1133,7 @@ export const reportesAPI = {
   inventario: (params) => apiClient.get('/reportes/inventario/', { params }),
   caducidades: (params) => apiClient.get('/reportes/caducidades/', { params }),
   requisiciones: (params) => apiClient.get('/reportes/requisiciones/', { params }),
+  movimientos: (params) => apiClient.get('/reportes/movimientos/', { params: { ...params, formato: 'json' } }),
 
   // Descargas Excel
   exportarInventarioExcel: (params) => apiClient.get('/reportes/inventario/', {
@@ -1356,10 +1357,11 @@ export const catalogosAPI = {
 
 // ADMIN: Limpieza de datos del sistema
 export const adminAPI = {
-  // Obtener estadísticas de lo que se eliminaría
+  // Obtener estadísticas de lo que se eliminaría por categoría
   getLimpiarDatosStats: () => apiClient.get('/admin/limpiar-datos/'),
-  // Ejecutar limpieza (requiere {"confirmar": true})
-  limpiarDatos: (confirmar = false) => apiClient.post('/admin/limpiar-datos/', { confirmar }),
+  // Ejecutar limpieza selectiva (requiere {"confirmar": true, "categoria": "productos|lotes|requisiciones|movimientos|todos"})
+  limpiarDatos: (confirmar = false, categoria = 'todos') => 
+    apiClient.post('/admin/limpiar-datos/', { confirmar, categoria }),
 };
 
 // ISS-001 FIX: Health check API

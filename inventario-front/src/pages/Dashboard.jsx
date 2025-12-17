@@ -21,7 +21,6 @@ import {
 } from 'recharts';
 import { usePermissions } from '../hooks/usePermissions';
 import CentroSelector from '../components/CentroSelector';
-import AdminLimpiarDatos from '../components/AdminLimpiarDatos';
 import '../styles/Dashboard.css';
 import { dashboardAPI } from '../services/api';
 import { hasAccessToken } from '../services/tokenManager';
@@ -444,11 +443,6 @@ const Dashboard = () => {
           {/* Selector de centro solo para admin/farmacia (backend no soporta filtro para vista) */}
           {puedeFiltrarPorCentro && (
             <CentroSelector onCentroChange={handleCentroChange} selectedValue={selectedCentro} />
-          )}
-          
-          {/* Botón de limpieza de datos - SOLO ADMIN */}
-          {permisos?.isSuperuser && (
-            <AdminLimpiarDatos />
           )}
           
           <div

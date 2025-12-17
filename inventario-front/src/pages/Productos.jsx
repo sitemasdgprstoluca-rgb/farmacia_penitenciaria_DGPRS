@@ -41,6 +41,7 @@ import { usePermissions } from '../hooks/usePermissions';
 import { ProtectedButton } from '../components/ProtectedAction';
 import Pagination from '../components/Pagination';
 import { ProductosSkeleton } from '../components/skeletons';
+import LimpiarInventario from '../components/LimpiarInventario';
 
 import { COLORS } from '../constants/theme';
 
@@ -1794,6 +1795,11 @@ const Productos = () => {
                 <FaPlus />
                 Nuevo Producto
               </ProtectedButton>
+              
+              {/* Botón de limpieza de inventario - SOLO SUPERUSUARIOS */}
+              {permisos?.isSuperuser && (
+                <LimpiarInventario onLimpiezaCompletada={() => fetchProductos()} />
+              )}
           </div>
 
         </div>

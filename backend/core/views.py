@@ -3674,61 +3674,196 @@ class CatalogosView(APIView):
 
 class AdminLimpiarDatosView(APIView):
     """
-    Vista EXCLUSIVA para ADMIN para limpiar datos del sistema.
+    Vista EXCLUSIVA para SUPERUSUARIOS para limpiar datos operativos del sistema.
     
-    ADVERTENCIA: Esta acción es IRREVERSIBLE y elimina:
-    - Todos los movimientos
-    - Todos los lotes  
-    - Todos los productos
+    Permite dejar el sistema "en blanco" para que farmacia y centros puedan
+    empezar a usar el sistema desde cero después de capacitación.
     
-    NO elimina:
-    - Usuarios
+    SOPORTA ELIMINACIÓN SELECTIVA:
+    - productos: Elimina productos, imágenes, lotes, documentos, movimientos
+    - lotes: Elimina lotes, documentos, hojas recolección (no productos)
+    - requisiciones: Elimina requisiciones, detalles, historial, ajustes
+    - movimientos: Elimina solo movimientos
+    - donaciones: Elimina donaciones, detalles y salidas de donaciones
+    - todos: Elimina todo lo anterior INCLUYENDO donaciones
+    
+    NO ELIMINA (configuración del sistema):
+    - Usuarios y sus perfiles
     - Centros
-    - Configuraciones del sistema
-    - Donaciones (almacén separado)
+    - Configuración del sistema
+    - Tema global (estilos)
+    - Logs de auditoría (para mantener trazabilidad)
+    - Notificaciones
+    - Permisos de Django
+    - Grupos de Django
     
     Endpoints:
-    - GET /api/admin/limpiar-datos/ - Obtener estadísticas de lo que se eliminaría
-    - POST /api/admin/limpiar-datos/ - Ejecutar limpieza (requiere confirmación)
+    - GET /api/admin/limpiar-datos/ - Obtener estadísticas detalladas
+    - POST /api/admin/limpiar-datos/ - Ejecutar limpieza (requiere confirmación y categoría)
     """
-    permission_classes = [IsAuthenticated, IsSuperuserOnly]  # Solo superusuarios
+    permission_classes = [IsAuthenticated, IsSuperuserOnly]
     
     def get(self, request):
         """
-        Retorna estadísticas de lo que se eliminaría.
+        Retorna estadísticas detalladas de lo que se eliminaría por categoría.
         """
-        from core.models import Producto, Lote, Movimiento
+        from core.models import (
+            Producto, Lote, Movimiento, Requisicion, DetalleRequisicion,
+            HojaRecoleccion, DetalleHojaRecoleccion, LoteDocumento,
+            ProductoImagen, ImportacionLog, DetalleDonacion, Donacion, SalidaDonacion
+        )
+        from django.db import connection
         
-        # Verificar que el usuario es admin
-        user = request.user
-        if not (user.is_superuser or user.rol == 'admin'):
+        # Solo superusuarios
+        if not request.user.is_superuser:
             return Response(
-                {'error': 'Solo ADMIN puede acceder a esta función'},
+                {'error': 'Solo SUPERUSUARIOS pueden acceder a esta función'},
                 status=status.HTTP_403_FORBIDDEN
             )
         
+        # Conteos
+        productos_count = Producto.objects.count()
+        lotes_count = Lote.objects.count()
+        movimientos_count = Movimiento.objects.count()
+        requisiciones_count = Requisicion.objects.count()
+        detalles_req_count = DetalleRequisicion.objects.count()
+        hojas_recoleccion_count = HojaRecoleccion.objects.count()
+        
+        # Conteos de donaciones
+        donaciones_count = Donacion.objects.count()
+        detalles_donacion_count = DetalleDonacion.objects.count()
+        salidas_donacion_count = SalidaDonacion.objects.count()
+        
+        # Conteos con raw SQL para tablas sin modelo
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM requisicion_ajustes_cantidad")
+            ajustes_count = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM requisicion_historial_estados")
+            historial_count = cursor.fetchone()[0]
+        
+        # Verificar si hay donaciones con productos
+        productos_con_donaciones = DetalleDonacion.objects.values('producto_id').distinct().count()
+        
+        # Estadísticas organizadas por categoría
         stats = {
-            'productos': Producto.objects.count(),
-            'lotes': Lote.objects.count(),
-            'movimientos': Movimiento.objects.count(),
-            'mensaje': 'Esta operación eliminará TODOS los productos, lotes y movimientos del inventario principal. Las donaciones NO se verán afectadas.',
-            'advertencia': 'ACCIÓN IRREVERSIBLE - Asegúrese de tener respaldos antes de continuar.',
+            'categorias': {
+                'productos': {
+                    'nombre': 'Productos e Inventario',
+                    'descripcion': 'Elimina productos, sus imágenes, lotes asociados y documentos de lotes',
+                    'total': productos_count + ProductoImagen.objects.count() + lotes_count + LoteDocumento.objects.count(),
+                    'detalle': {
+                        'productos': productos_count,
+                        'producto_imagenes': ProductoImagen.objects.count(),
+                        'lotes': lotes_count,
+                        'lote_documentos': LoteDocumento.objects.count(),
+                    },
+                    'dependencias': ['También eliminará: movimientos, hojas recolección y sus detalles'],
+                },
+                'lotes': {
+                    'nombre': 'Solo Lotes',
+                    'descripcion': 'Elimina lotes, documentos de lotes y hojas de recolección (mantiene productos)',
+                    'total': lotes_count + LoteDocumento.objects.count() + hojas_recoleccion_count + DetalleHojaRecoleccion.objects.count(),
+                    'detalle': {
+                        'lotes': lotes_count,
+                        'lote_documentos': LoteDocumento.objects.count(),
+                        'hojas_recoleccion': hojas_recoleccion_count,
+                        'detalles_hojas_recoleccion': DetalleHojaRecoleccion.objects.count(),
+                    },
+                    'dependencias': ['También eliminará: movimientos vinculados a lotes'],
+                },
+                'requisiciones': {
+                    'nombre': 'Requisiciones',
+                    'descripcion': 'Elimina requisiciones, sus detalles, historial de estados y ajustes',
+                    'total': requisiciones_count + detalles_req_count + historial_count + ajustes_count,
+                    'detalle': {
+                        'requisiciones': requisiciones_count,
+                        'detalles_requisicion': detalles_req_count,
+                        'requisicion_historial_estados': historial_count,
+                        'requisicion_ajustes_cantidad': ajustes_count,
+                    },
+                    'dependencias': ['También eliminará: movimientos vinculados a requisiciones'],
+                },
+                'movimientos': {
+                    'nombre': 'Movimientos',
+                    'descripcion': 'Elimina solo el historial de movimientos de inventario',
+                    'total': movimientos_count,
+                    'detalle': {
+                        'movimientos': movimientos_count,
+                    },
+                    'dependencias': [],
+                },
+                'donaciones': {
+                    'nombre': 'Donaciones',
+                    'descripcion': 'Elimina donaciones, sus detalles y registro de salidas',
+                    'total': donaciones_count + detalles_donacion_count + salidas_donacion_count,
+                    'detalle': {
+                        'donaciones': donaciones_count,
+                        'detalles_donacion': detalles_donacion_count,
+                        'salidas_donacion': salidas_donacion_count,
+                    },
+                    'dependencias': [],
+                },
+                'todos': {
+                    'nombre': 'Todo el Inventario',
+                    'descripcion': 'Limpieza completa: productos, lotes, requisiciones, movimientos y donaciones',
+                    'total': productos_count + lotes_count + requisiciones_count + movimientos_count + donaciones_count,
+                    'detalle': {
+                        'productos': productos_count,
+                        'lotes': lotes_count,
+                        'requisiciones': requisiciones_count,
+                        'movimientos': movimientos_count,
+                        'donaciones': donaciones_count,
+                    },
+                    'dependencias': ['Incluye todos los datos asociados, dependencias y donaciones'],
+                },
+            },
+            'resumen': {
+                'productos': productos_count,
+                'lotes': lotes_count,
+                'movimientos': movimientos_count,
+                'requisiciones': requisiciones_count,
+                'donaciones': donaciones_count,
+            },
+            'no_se_eliminara': [
+                'Usuarios y perfiles',
+                'Centros',
+                'Configuración del sistema',
+                'Tema global (estilos)',
+                'Logs de auditoría',
+                'Notificaciones',
+                'Permisos y grupos',
+            ],
+            'advertencias': [],
         }
+        
+        # Advertir si hay donaciones vinculadas a productos
+        if productos_con_donaciones > 0:
+            stats['advertencias'].append(
+                f'Hay {productos_con_donaciones} productos vinculados a donaciones. '
+                'El sistema de donaciones seguirá funcionando pero los productos '
+                'aparecerán como "producto eliminado" en el historial de donaciones.'
+            )
         
         return Response(stats)
     
     def post(self, request):
         """
-        Ejecuta la limpieza de datos.
-        Requiere confirmación explícita en el body: {"confirmar": true}
+        Ejecuta la limpieza de datos operativos según la categoría seleccionada.
+        Requiere: {"confirmar": true, "categoria": "productos|lotes|requisiciones|movimientos|todos"}
         """
-        from core.models import Producto, Lote, Movimiento, AuditoriaLog
+        from core.models import (
+            Producto, Lote, Movimiento, Requisicion, DetalleRequisicion,
+            HojaRecoleccion, DetalleHojaRecoleccion, LoteDocumento,
+            ProductoImagen, ImportacionLog, AuditoriaLog,
+            Donacion, DetalleDonacion, SalidaDonacion
+        )
+        from django.db import connection
         
-        # Verificar que el usuario es admin
+        # Solo superusuarios
         user = request.user
-        if not (user.is_superuser or user.rol == 'admin'):
+        if not user.is_superuser:
             return Response(
-                {'error': 'Solo ADMIN puede ejecutar esta función'},
+                {'error': 'Solo SUPERUSUARIOS pueden ejecutar esta función'},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -3740,54 +3875,229 @@ class AdminLimpiarDatosView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Obtener categoría
+        categoria = request.data.get('categoria', 'todos').lower()
+        categorias_validas = ['productos', 'lotes', 'requisiciones', 'movimientos', 'donaciones', 'todos']
+        
+        if categoria not in categorias_validas:
+            return Response(
+                {'error': f'Categoría inválida. Use una de: {", ".join(categorias_validas)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         try:
             with transaction.atomic():
-                # Contar antes de eliminar
-                stats_antes = {
-                    'productos': Producto.objects.count(),
-                    'lotes': Lote.objects.count(),
-                    'movimientos': Movimiento.objects.count(),
+                eliminados = {}
+                
+                # ============================================================
+                # ELIMINACIÓN SELECTIVA RESPETANDO FOREIGN KEYS
+                # ============================================================
+                
+                if categoria == 'movimientos':
+                    # Solo movimientos
+                    eliminados['movimientos'] = Movimiento.objects.all().delete()[0]
+                
+                elif categoria == 'donaciones':
+                    # Eliminar donaciones en orden de dependencias FK
+                    # 1. Salidas de donaciones (depende de detalle_donaciones)
+                    eliminados['salidas_donacion'] = SalidaDonacion.objects.all().delete()[0]
+                    # 2. Detalles de donaciones (depende de donaciones)
+                    eliminados['detalles_donacion'] = DetalleDonacion.objects.all().delete()[0]
+                    # 3. Donaciones
+                    eliminados['donaciones'] = Donacion.objects.all().delete()[0]
+                
+                elif categoria == 'requisiciones':
+                    # 1. Ajustes de cantidad
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM requisicion_ajustes_cantidad")
+                        eliminados['requisicion_ajustes_cantidad'] = cursor.rowcount
+                    
+                    # 2. Detalles de requisición
+                    eliminados['detalles_requisicion'] = DetalleRequisicion.objects.all().delete()[0]
+                    
+                    # 3. Historial de estados
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM requisicion_historial_estados")
+                        eliminados['requisicion_historial_estados'] = cursor.rowcount
+                    
+                    # 4. Movimientos vinculados a requisiciones
+                    eliminados['movimientos'] = Movimiento.objects.filter(requisicion_id__isnull=False).delete()[0]
+                    
+                    # 5. Requisiciones
+                    eliminados['requisiciones'] = Requisicion.objects.all().delete()[0]
+                
+                elif categoria == 'lotes':
+                    # 1. Movimientos vinculados a lotes
+                    eliminados['movimientos'] = Movimiento.objects.filter(lote_id__isnull=False).delete()[0]
+                    
+                    # 2. Detalles de hojas de recolección
+                    eliminados['detalles_hojas_recoleccion'] = DetalleHojaRecoleccion.objects.all().delete()[0]
+                    
+                    # 3. Hojas de recolección
+                    eliminados['hojas_recoleccion'] = HojaRecoleccion.objects.all().delete()[0]
+                    
+                    # 4. Documentos de lotes
+                    eliminados['lote_documentos'] = LoteDocumento.objects.all().delete()[0]
+                    
+                    # 5. Actualizar detalles_requisicion para quitar referencia a lotes
+                    DetalleRequisicion.objects.all().update(lote_id=None)
+                    
+                    # 6. Lotes
+                    eliminados['lotes'] = Lote.objects.all().delete()[0]
+                    
+                    # 7. Actualizar stock de productos a 0
+                    Producto.objects.all().update(stock_actual=0)
+                
+                elif categoria == 'productos':
+                    # Elimina productos Y todo lo que depende de ellos
+                    
+                    # 1. Ajustes de cantidad
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM requisicion_ajustes_cantidad")
+                        eliminados['requisicion_ajustes_cantidad'] = cursor.rowcount
+                    
+                    # 2. Detalles de requisición
+                    eliminados['detalles_requisicion'] = DetalleRequisicion.objects.all().delete()[0]
+                    
+                    # 3. Historial de estados
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM requisicion_historial_estados")
+                        eliminados['requisicion_historial_estados'] = cursor.rowcount
+                    
+                    # 4. Movimientos
+                    eliminados['movimientos'] = Movimiento.objects.all().delete()[0]
+                    
+                    # 5. Requisiciones
+                    eliminados['requisiciones'] = Requisicion.objects.all().delete()[0]
+                    
+                    # 6. Detalles de hojas de recolección
+                    eliminados['detalles_hojas_recoleccion'] = DetalleHojaRecoleccion.objects.all().delete()[0]
+                    
+                    # 7. Hojas de recolección
+                    eliminados['hojas_recoleccion'] = HojaRecoleccion.objects.all().delete()[0]
+                    
+                    # 8. Documentos de lotes
+                    eliminados['lote_documentos'] = LoteDocumento.objects.all().delete()[0]
+                    
+                    # 9. Lotes
+                    eliminados['lotes'] = Lote.objects.all().delete()[0]
+                    
+                    # 10. Imágenes de productos
+                    eliminados['producto_imagenes'] = ProductoImagen.objects.all().delete()[0]
+                    
+                    # 11. Productos
+                    eliminados['productos'] = Producto.objects.all().delete()[0]
+                    
+                    # 12. Logs de importación
+                    eliminados['importacion_logs'] = ImportacionLog.objects.all().delete()[0]
+                
+                else:  # categoria == 'todos'
+                    # LIMPIEZA COMPLETA
+                    
+                    # 1. Ajustes de cantidad
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM requisicion_ajustes_cantidad")
+                        eliminados['requisicion_ajustes_cantidad'] = cursor.rowcount
+                    
+                    # 2. Detalles de requisición
+                    eliminados['detalles_requisicion'] = DetalleRequisicion.objects.all().delete()[0]
+                    
+                    # 3. Historial de estados
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM requisicion_historial_estados")
+                        eliminados['requisicion_historial_estados'] = cursor.rowcount
+                    
+                    # 4. Movimientos
+                    eliminados['movimientos'] = Movimiento.objects.all().delete()[0]
+                    
+                    # 5. Requisiciones
+                    eliminados['requisiciones'] = Requisicion.objects.all().delete()[0]
+                    
+                    # 6. Detalles de hojas de recolección
+                    eliminados['detalles_hojas_recoleccion'] = DetalleHojaRecoleccion.objects.all().delete()[0]
+                    
+                    # 7. Hojas de recolección
+                    eliminados['hojas_recoleccion'] = HojaRecoleccion.objects.all().delete()[0]
+                    
+                    # 8. Documentos de lotes
+                    eliminados['lote_documentos'] = LoteDocumento.objects.all().delete()[0]
+                    
+                    # 9. Lotes
+                    eliminados['lotes'] = Lote.objects.all().delete()[0]
+                    
+                    # 10. Imágenes de productos
+                    eliminados['producto_imagenes'] = ProductoImagen.objects.all().delete()[0]
+                    
+                    # 11. Productos
+                    eliminados['productos'] = Producto.objects.all().delete()[0]
+                    
+                    # 12. Logs de importación
+                    eliminados['importacion_logs'] = ImportacionLog.objects.all().delete()[0]
+                    
+                    # 13-15. Donaciones (incluido en "todos")
+                    eliminados['salidas_donacion'] = SalidaDonacion.objects.all().delete()[0]
+                    eliminados['detalles_donacion'] = DetalleDonacion.objects.all().delete()[0]
+                    eliminados['donaciones'] = Donacion.objects.all().delete()[0]
+                
+                # Calcular totales
+                total_eliminados = sum(eliminados.values())
+                
+                # Nombres de categorías para el log
+                nombres_categorias = {
+                    'productos': 'PRODUCTOS E INVENTARIO',
+                    'lotes': 'SOLO LOTES',
+                    'requisiciones': 'REQUISICIONES',
+                    'movimientos': 'MOVIMIENTOS',
+                    'donaciones': 'DONACIONES',
+                    'todos': 'TODO EL INVENTARIO (INCLUYE DONACIONES)',
                 }
                 
-                # IMPORTANTE: Orden de eliminación por dependencias
-                # 1. Primero movimientos (referencia a lotes y productos)
-                movimientos_eliminados = Movimiento.objects.all().delete()[0]
-                
-                # 2. Luego lotes (referencia a productos)
-                lotes_eliminados = Lote.objects.all().delete()[0]
-                
-                # 3. Finalmente productos
-                productos_eliminados = Producto.objects.all().delete()[0]
-                
-                # Registrar en auditoría
+                # Registrar en auditoría (NO se elimina)
                 AuditoriaLog.objects.create(
                     usuario=user,
                     accion='LIMPIEZA_DATOS',
-                    descripcion=f'LIMPIEZA COMPLETA: {productos_eliminados} productos, {lotes_eliminados} lotes, {movimientos_eliminados} movimientos eliminados',
+                    modelo='SISTEMA',
+                    objeto_id=None,
+                    datos_anteriores=None,
+                    datos_nuevos=eliminados,
+                    detalles={
+                        'tipo': f'LIMPIEZA_SELECTIVA_{categoria.upper()}',
+                        'categoria': categoria,
+                        'categoria_nombre': nombres_categorias.get(categoria, categoria),
+                        'ejecutado_por': user.username,
+                        'email': user.email,
+                        'fecha': timezone.now().isoformat(),
+                        'registros_eliminados': total_eliminados,
+                    },
                     ip_address=request.META.get('REMOTE_ADDR', ''),
                     user_agent=request.META.get('HTTP_USER_AGENT', '')[:500] if request.META.get('HTTP_USER_AGENT') else None,
                 )
                 
                 logger.warning(
-                    f"LIMPIEZA DE DATOS ejecutada por {user.username}: "
-                    f"{productos_eliminados} productos, {lotes_eliminados} lotes, "
-                    f"{movimientos_eliminados} movimientos eliminados"
+                    f"🗑️ LIMPIEZA DE DATOS [{categoria.upper()}] ejecutada por {user.username} ({user.email}): "
+                    f"{total_eliminados} registros eliminados. Detalle: {eliminados}"
                 )
                 
                 return Response({
                     'success': True,
-                    'mensaje': 'Limpieza completada exitosamente',
-                    'eliminados': {
-                        'productos': productos_eliminados,
-                        'lotes': lotes_eliminados,
-                        'movimientos': movimientos_eliminados,
-                    },
+                    'mensaje': f'✅ Limpieza de {nombres_categorias.get(categoria, categoria)} completada exitosamente.',
+                    'categoria': categoria,
+                    'eliminados': eliminados,
+                    'total_registros_eliminados': total_eliminados,
+                    'no_eliminado': [
+                        'Usuarios y perfiles',
+                        'Centros', 
+                        'Configuración del sistema',
+                        'Tema global',
+                        'Auditoría',
+                        'Notificaciones',
+                    ],
                     'ejecutado_por': user.username,
                     'fecha': timezone.now().isoformat(),
                 })
                 
         except Exception as e:
-            logger.error(f"Error en limpieza de datos: {e}")
+            logger.error(f"❌ Error en limpieza de datos [{categoria}]: {e}", exc_info=True)
             return Response(
                 {'error': f'Error al limpiar datos: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR

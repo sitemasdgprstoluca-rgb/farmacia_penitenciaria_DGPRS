@@ -1,8 +1,10 @@
 /**
  * Componente AdminLimpiarDatos - SOLO PARA SUPERUSUARIOS
  * 
- * Permite eliminar todos los productos, lotes y movimientos del sistema
- * para empezar de cero después de una capacitación.
+ * Permite eliminar datos operativos del inventario (productos, lotes, 
+ * movimientos, requisiciones) para empezar de cero después de capacitación.
+ * 
+ * NO ELIMINA: Usuarios, Centros, Configuración, Tema, Donaciones, Auditoría
  * 
  * ADVERTENCIA: Esta acción es IRREVERSIBLE.
  */
@@ -18,6 +20,11 @@ import {
   FaCheck,
   FaTimes,
   FaShieldAlt,
+  FaFileAlt,
+  FaUsers,
+  FaBuilding,
+  FaCog,
+  FaGift,
 } from 'react-icons/fa';
 import { adminAPI } from '../services/api';
 
@@ -42,7 +49,7 @@ const AdminLimpiarDatos = () => {
     } catch (err) {
       console.error('Error obteniendo estadísticas:', err);
       if (err.response?.status === 403) {
-        toast.error('No tiene permisos para esta función');
+        toast.error('Solo SUPERUSUARIOS pueden acceder a esta función');
         setShowModal(false);
       } else {
         toast.error('Error al obtener estadísticas');
@@ -83,6 +90,23 @@ const AdminLimpiarDatos = () => {
     }
   };
 
+  // Obtener valores de stats con estructura nueva o antigua
+  const getStatValue = (key) => {
+    if (!stats) return 0;
+    // Nueva estructura: stats.resumen.productos
+    if (stats.resumen) return stats.resumen[key] || 0;
+    // Estructura antigua: stats.productos
+    return stats[key] || 0;
+  };
+
+  // Verificar si hay datos para eliminar
+  const hayDatosParaEliminar = () => {
+    return getStatValue('productos') > 0 || 
+           getStatValue('lotes') > 0 || 
+           getStatValue('movimientos') > 0 ||
+           getStatValue('requisiciones') > 0;
+  };
+
   return (
     <>
       {/* Botón de activación */}
@@ -96,18 +120,18 @@ const AdminLimpiarDatos = () => {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b bg-red-50">
+            <div className="flex items-center justify-between p-4 border-b bg-red-50 sticky top-0">
               <div className="flex items-center gap-3">
                 <div className="p-3 bg-red-100 rounded-lg">
                   <FaShieldAlt className="text-xl text-red-600" />
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-red-800">
-                    {paso === 3 ? 'Limpieza Completada' : 'Limpiar Datos del Sistema'}
+                    {paso === 3 ? 'Limpieza Completada' : 'Reiniciar Sistema de Inventario'}
                   </h2>
-                  <p className="text-sm text-red-600">Solo Administradores</p>
+                  <p className="text-sm text-red-600">Solo Superusuarios</p>
                 </div>
               </div>
               <button
@@ -134,42 +158,81 @@ const AdminLimpiarDatos = () => {
                     <div className="flex items-start gap-3">
                       <FaExclamationTriangle className="text-red-600 text-xl flex-shrink-0 mt-0.5" />
                       <div>
-                        <h3 className="font-bold text-red-800">¡ADVERTENCIA!</h3>
+                        <h3 className="font-bold text-red-800">¡ADVERTENCIA IMPORTANTE!</h3>
                         <p className="text-sm text-red-700 mt-1">
-                          {stats.mensaje}
+                          {stats.mensaje || 'Esta operación eliminará todos los datos operativos del inventario.'}
                         </p>
                         <p className="text-sm text-red-700 mt-2 font-semibold">
-                          {stats.advertencia}
+                          {stats.advertencia_principal || stats.advertencia || '⚠️ ACCIÓN IRREVERSIBLE'}
                         </p>
                       </div>
                     </div>
                   </div>
 
-                  {/* Estadísticas */}
+                  {/* Advertencias adicionales */}
+                  {stats.advertencias && stats.advertencias.length > 0 && (
+                    <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 mb-6">
+                      <h4 className="font-semibold text-amber-800 mb-2">⚠️ Advertencias:</h4>
+                      {stats.advertencias.map((adv, idx) => (
+                        <p key={idx} className="text-sm text-amber-700">{adv}</p>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Estadísticas principales */}
                   <h4 className="font-semibold text-gray-700 mb-3">Se eliminarán:</h4>
-                  <div className="grid grid-cols-3 gap-4 mb-6">
-                    <div className="bg-gray-50 rounded-lg p-4 text-center">
-                      <FaBox className="mx-auto text-2xl text-blue-600 mb-2" />
-                      <p className="text-2xl font-bold text-gray-800">{stats.productos}</p>
-                      <p className="text-sm text-gray-600">Productos</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                      <FaBox className="mx-auto text-xl text-red-600 mb-1" />
+                      <p className="text-xl font-bold text-red-700">{getStatValue('productos')}</p>
+                      <p className="text-xs text-red-600">Productos</p>
                     </div>
-                    <div className="bg-gray-50 rounded-lg p-4 text-center">
-                      <FaClipboardList className="mx-auto text-2xl text-green-600 mb-2" />
-                      <p className="text-2xl font-bold text-gray-800">{stats.lotes}</p>
-                      <p className="text-sm text-gray-600">Lotes</p>
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                      <FaClipboardList className="mx-auto text-xl text-red-600 mb-1" />
+                      <p className="text-xl font-bold text-red-700">{getStatValue('lotes')}</p>
+                      <p className="text-xs text-red-600">Lotes</p>
                     </div>
-                    <div className="bg-gray-50 rounded-lg p-4 text-center">
-                      <FaHistory className="mx-auto text-2xl text-purple-600 mb-2" />
-                      <p className="text-2xl font-bold text-gray-800">{stats.movimientos}</p>
-                      <p className="text-sm text-gray-600">Movimientos</p>
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                      <FaHistory className="mx-auto text-xl text-red-600 mb-1" />
+                      <p className="text-xl font-bold text-red-700">{getStatValue('movimientos')}</p>
+                      <p className="text-xs text-red-600">Movimientos</p>
+                    </div>
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                      <FaFileAlt className="mx-auto text-xl text-red-600 mb-1" />
+                      <p className="text-xl font-bold text-red-700">{getStatValue('requisiciones')}</p>
+                      <p className="text-xs text-red-600">Requisiciones</p>
                     </div>
                   </div>
 
-                  {/* Info de lo que NO se elimina */}
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6">
-                    <p className="text-sm text-blue-700">
-                      <strong>No se eliminarán:</strong> Usuarios, Centros, Configuración, Donaciones
-                    </p>
+                  {/* Lo que NO se elimina */}
+                  <h4 className="font-semibold text-gray-700 mb-3">NO se eliminarán (se mantienen):</h4>
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div className="flex items-center gap-2 text-green-700">
+                        <FaUsers className="text-green-600" />
+                        <span>Usuarios y perfiles</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-green-700">
+                        <FaBuilding className="text-green-600" />
+                        <span>Centros</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-green-700">
+                        <FaCog className="text-green-600" />
+                        <span>Configuración</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-green-700">
+                        <FaGift className="text-green-600" />
+                        <span>Donaciones</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-green-700">
+                        <FaHistory className="text-green-600" />
+                        <span>Logs de auditoría</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-green-700">
+                        <FaShieldAlt className="text-green-600" />
+                        <span>Permisos y roles</span>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Botón continuar */}
@@ -182,10 +245,10 @@ const AdminLimpiarDatos = () => {
                     </button>
                     <button
                       onClick={() => setPaso(2)}
-                      disabled={stats.productos === 0 && stats.lotes === 0 && stats.movimientos === 0}
+                      disabled={!hayDatosParaEliminar()}
                       className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Continuar
+                      {hayDatosParaEliminar() ? 'Continuar' : 'No hay datos para eliminar'}
                     </button>
                   </div>
                 </>
@@ -251,7 +314,7 @@ const AdminLimpiarDatos = () => {
                       <FaCheck className="text-3xl text-green-600" />
                     </div>
                     <h3 className="text-xl font-bold text-gray-800">¡Limpieza Completada!</h3>
-                    <p className="text-gray-600 mt-2">El sistema está listo para comenzar de nuevo.</p>
+                    <p className="text-gray-600 mt-2">{resultado.mensaje || 'El sistema está listo para comenzar de nuevo.'}</p>
                   </div>
 
                   <div className="bg-gray-50 rounded-lg p-4 mb-6">
@@ -269,6 +332,16 @@ const AdminLimpiarDatos = () => {
                         <span className="text-gray-600">Movimientos eliminados:</span>
                         <span className="font-semibold text-red-600">{resultado.eliminados?.movimientos || 0}</span>
                       </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Requisiciones eliminadas:</span>
+                        <span className="font-semibold text-red-600">{resultado.eliminados?.requisiciones || 0}</span>
+                      </div>
+                      {resultado.total_registros_eliminados && (
+                        <div className="flex justify-between pt-2 border-t border-gray-300">
+                          <span className="text-gray-700 font-semibold">Total registros eliminados:</span>
+                          <span className="font-bold text-red-700">{resultado.total_registros_eliminados}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between pt-2 border-t">
                         <span className="text-gray-600">Ejecutado por:</span>
                         <span className="font-semibold">{resultado.ejecutado_por}</span>
@@ -279,6 +352,14 @@ const AdminLimpiarDatos = () => {
                       </div>
                     </div>
                   </div>
+
+                  {/* Lo que se mantuvo */}
+                  {resultado.no_eliminado && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-6">
+                      <p className="text-sm text-green-700 font-semibold mb-2">✓ Se mantuvieron intactos:</p>
+                      <p className="text-sm text-green-600">{resultado.no_eliminado.join(', ')}</p>
+                    </div>
+                  )}
 
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6">
                     <p className="text-sm text-blue-700">

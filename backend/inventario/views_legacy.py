@@ -7610,6 +7610,9 @@ def reporte_movimientos(request):
         
         # Admin/farmacia puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
+        # Ignorar 'todos' como parámetro de centro
+        if centro_param and centro_param.lower() == 'todos':
+            centro_param = None
         if centro_param and is_farmacia_or_admin(user):
             try:
                 user_centro = Centro.objects.get(pk=centro_param)
@@ -8068,6 +8071,9 @@ def reporte_requisiciones(request):
         fecha_fin = request.query_params.get('fecha_fin')
         estado = request.query_params.get('estado')
         centro_param = request.query_params.get('centro') or request.query_params.get('centro_id')
+        # Ignorar 'todos' como parámetro de centro
+        if centro_param and centro_param.lower() == 'todos':
+            centro_param = None
         formato = request.query_params.get('formato', 'json')
         
         requisiciones = Requisicion.objects.select_related('centro_origen', 'centro_destino', 'solicitante').all()

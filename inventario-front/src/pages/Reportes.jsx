@@ -9,6 +9,7 @@ import {
   FaBox, 
   FaClock, 
   FaClipboardList,
+  FaExchangeAlt,
   FaExclamationTriangle,
   FaTimesCircle,
   FaDatabase,
@@ -37,6 +38,7 @@ const baseFilters = {
   fechaFin: "",
   centro: "",
   nivelStock: "",
+  tipoMovimiento: "",
 };
 
 // Configuración de columnas por tipo de reporte
@@ -68,6 +70,15 @@ const COLUMNAS_CONFIG = {
     { key: 'fecha_solicitud', label: 'Fecha', width: '150px' },
     { key: 'total_productos', label: 'Productos', width: '100px', align: 'center' },
     { key: 'solicitante', label: 'Solicitante', width: '150px' },
+  ],
+  movimientos: [
+    { key: '#', label: '#', width: '60px' },
+    { key: 'fecha', label: 'Fecha', width: '150px' },
+    { key: 'tipo', label: 'Tipo', width: '100px', align: 'center' },
+    { key: 'producto', label: 'Producto', width: '300px' },
+    { key: 'lote', label: 'Lote', width: '120px' },
+    { key: 'cantidad', label: 'Cantidad', width: '100px', align: 'right' },
+    { key: 'observaciones', label: 'Observaciones', width: '200px' },
   ],
 };
 
@@ -180,6 +191,10 @@ const Reportes = () => {
       if (filtros.fechaFin) params.fecha_fin = filtros.fechaFin;
       // FIX: También aplicar filtro de centro para requisiciones
       // (ya se aplica arriba en el bloque general)
+    } else if (filtros.tipo === "movimientos") {
+      if (filtros.tipoMovimiento) params.tipo = filtros.tipoMovimiento;
+      if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
+      if (filtros.fechaFin) params.fecha_fin = filtros.fechaFin;
     }
     
     return params;
@@ -202,6 +217,8 @@ const Reportes = () => {
         response = await reportesAPI.caducidades(params);
       } else if (filtros.tipo === "requisiciones") {
         response = await reportesAPI.requisiciones(params);
+      } else if (filtros.tipo === "movimientos") {
+        response = await reportesAPI.movimientos(params);
       } else {
         throw new Error("Tipo de reporte no soportado");
       }
@@ -259,6 +276,9 @@ const Reportes = () => {
       } else if (filtros.tipo === "requisiciones") {
         response = await reportesAPI.exportarRequisicionesExcel(params);
         filename = `requisiciones_${new Date().toISOString().split("T")[0]}.xlsx`;
+      } else if (filtros.tipo === "movimientos") {
+        response = await reportesAPI.exportarMovimientosExcel(params);
+        filename = `movimientos_${new Date().toISOString().split("T")[0]}.xlsx`;
       } else {
         toast.error("Tipo de reporte no soportado", { id: toastId });
         return;
@@ -291,6 +311,9 @@ const Reportes = () => {
       } else if (filtros.tipo === "requisiciones") {
         response = await reportesAPI.exportarRequisicionesPDF(params);
         filename = `reporte_requisiciones_${new Date().toISOString().split("T")[0]}.pdf`;
+      } else if (filtros.tipo === "movimientos") {
+        response = await reportesAPI.exportarMovimientosPDF(params);
+        filename = `reporte_movimientos_${new Date().toISOString().split("T")[0]}.pdf`;
       } else {
         toast.error("Tipo de reporte no soportado para PDF", { id: toastId });
         return;
@@ -321,6 +344,7 @@ const Reportes = () => {
     if (filtros.tipo === 'inventario') return <FaBox />;
     if (filtros.tipo === 'caducidades') return <FaClock />;
     if (filtros.tipo === 'requisiciones') return <FaClipboardList />;
+    if (filtros.tipo === 'movimientos') return <FaExchangeAlt />;
     return <FaChartBar />;
   };
 
@@ -353,6 +377,22 @@ const Reportes = () => {
           style={{ backgroundColor: colors.bg, color: colors.text }}
         >
           {(formatted || '').toUpperCase()}
+        </span>
+      );
+    }
+    
+    // Renderizar tipo de movimiento con colores
+    if (col.key === 'tipo' && filtros.tipo === 'movimientos') {
+      const esEntrada = (value || '').toLowerCase() === 'entrada';
+      const colors = esEntrada 
+        ? { bg: '#D1FAE5', text: '#065F46' }  // Verde para entradas
+        : { bg: '#FEE2E2', text: '#991B1B' }; // Rojo para salidas
+      return (
+        <span 
+          className="px-2 py-1 rounded-full text-xs font-bold"
+          style={{ backgroundColor: colors.bg, color: colors.text }}
+        >
+          {esEntrada ? '📥 ENTRADA' : '📤 SALIDA'}
         </span>
       );
     }
@@ -453,6 +493,41 @@ const Reportes = () => {
       );
     }
 
+    if (filtros.tipo === 'movimientos') {
+      return (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-gradient-to-r from-gray-50 to-white border-t">
+          <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+            <FaExchangeAlt className="text-2xl text-blue-600" />
+            <div>
+              <p className="text-xs text-blue-600 font-semibold">Total Movimientos</p>
+              <p className="text-xl font-bold text-blue-800">{resumen.total_movimientos || datos.length}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
+            <span className="text-2xl">📥</span>
+            <div>
+              <p className="text-xs text-green-600 font-semibold">Total Entradas</p>
+              <p className="text-xl font-bold text-green-800">{(resumen.total_entradas || 0).toLocaleString()}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-3 bg-red-50 rounded-lg">
+            <span className="text-2xl">📤</span>
+            <div>
+              <p className="text-xs text-red-600 font-semibold">Total Salidas</p>
+              <p className="text-xl font-bold text-red-800">{(resumen.total_salidas || 0).toLocaleString()}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-lg">
+            <FaDatabase className="text-2xl text-purple-600" />
+            <div>
+              <p className="text-xs text-purple-600 font-semibold">Diferencia</p>
+              <p className="text-xl font-bold text-purple-800">{(resumen.diferencia || 0).toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return null;
   };
 
@@ -497,6 +572,7 @@ const Reportes = () => {
               <option value="inventario">📦 Inventario</option>
               <option value="caducidades">⏰ Caducidades</option>
               <option value="requisiciones">📋 Requisiciones</option>
+              <option value="movimientos">🔄 Movimientos</option>
             </select>
           </div>
 
@@ -662,6 +738,66 @@ const Reportes = () => {
                   <option value="alto">🟢 Alto</option>
                   <option value="sin_stock">⚪ Sin Inventario</option>
                 </select>
+              </div>
+            </>
+          )}
+
+          {filtros.tipo === "movimientos" && (
+            <>
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-gray-700">Tipo de movimiento</label>
+                <select
+                  value={filtros.tipoMovimiento}
+                  onChange={(e) => handleFiltro("tipoMovimiento", e.target.value)}
+                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                >
+                  <option value="">Todos los movimientos</option>
+                  <option value="entrada">📥 Entradas</option>
+                  <option value="salida">📤 Salidas</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-gray-700">Centro</label>
+                <select
+                  value={!esAdminOFarmacia && userCentroId ? userCentroId : filtros.centro}
+                  onChange={(e) => handleFiltro("centro", e.target.value)}
+                  disabled={!esAdminOFarmacia && userCentroId}
+                  className={`w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors ${!esAdminOFarmacia && userCentroId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                >
+                  {esAdminOFarmacia ? (
+                    <>
+                      <option value="">Todos los centros</option>
+                      <option value="central">🏥 Farmacia Central</option>
+                      {centros.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre}
+                        </option>
+                      ))}
+                    </>
+                  ) : (
+                    <option value={userCentroId}>
+                      {centros.find(c => c.id === userCentroId)?.nombre || 'Tu centro'}
+                    </option>
+                  )}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-gray-700">Desde</label>
+                <input
+                  type="date"
+                  value={filtros.fechaInicio}
+                  onChange={(e) => handleFiltro("fechaInicio", e.target.value)}
+                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-gray-700">Hasta</label>
+                <input
+                  type="date"
+                  value={filtros.fechaFin}
+                  onChange={(e) => handleFiltro("fechaFin", e.target.value)}
+                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                />
               </div>
             </>
           )}
