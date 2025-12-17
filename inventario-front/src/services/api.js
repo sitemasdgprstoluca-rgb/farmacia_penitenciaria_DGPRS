@@ -1354,6 +1354,14 @@ export const catalogosAPI = {
   roles: () => apiClient.get('/catalogos/roles/'),
 };
 
+// ADMIN: Limpieza de datos del sistema
+export const adminAPI = {
+  // Obtener estadísticas de lo que se eliminaría
+  getLimpiarDatosStats: () => apiClient.get('/admin/limpiar-datos/'),
+  // Ejecutar limpieza (requiere {"confirmar": true})
+  limpiarDatos: (confirmar = false) => apiClient.post('/admin/limpiar-datos/', { confirmar }),
+};
+
 // ISS-001 FIX: Health check API
 // ISS-003 FIX (audit33): Validación flexible de respuesta
 export const healthAPI = {

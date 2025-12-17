@@ -26,6 +26,7 @@ import {
   FaFileExport,
   FaFileImport,
   FaDownload,
+  FaShoppingCart,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { COLORS } from '../constants/theme';
@@ -33,6 +34,7 @@ import Pagination from '../components/Pagination';
 import { usePermissions } from '../hooks/usePermissions';
 import ConfirmModal from '../components/ConfirmModal';
 import { esFarmaciaAdmin as checkEsFarmaciaAdmin } from '../utils/roles';
+import SalidaMasivaDonaciones from '../components/SalidaMasivaDonaciones';
 
 const PAGE_SIZE = 25;
 
@@ -134,6 +136,9 @@ const Donaciones = () => {
   const [importingDonaciones, setImportingDonaciones] = useState(false);
   const fileInputRef = useRef(null); // Para entregas
   const donacionFileInputRef = useRef(null); // Para donaciones
+  
+  // Modal de Entrega Masiva de Donaciones
+  const [showSalidaMasiva, setShowSalidaMasiva] = useState(false);
   
   // Estadísticas del almacén de donaciones
   const [estadisticas, setEstadisticas] = useState({
@@ -1394,12 +1399,24 @@ const Donaciones = () => {
                   className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
                 />
               </div>
-              <button
-                onClick={() => cargarInventarioDonaciones()}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg border hover:bg-gray-50 transition-colors"
-              >
-                <FaHistory /> Actualizar
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Botón Entrega Masiva - Solo para admin/farmacia */}
+                {puede.procesar && (
+                  <button
+                    onClick={() => setShowSalidaMasiva(true)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                    title="Registrar múltiples entregas a un destinatario"
+                  >
+                    <FaShoppingCart /> Entrega Masiva
+                  </button>
+                )}
+                <button
+                  onClick={() => cargarInventarioDonaciones()}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border hover:bg-gray-50 transition-colors"
+                >
+                  <FaHistory /> Actualizar
+                </button>
+              </div>
             </div>
           </div>
 
@@ -2425,6 +2442,18 @@ const Donaciones = () => {
             </div>
           </div>
         </div>
+      )}
+      
+      {/* Modal de Entrega Masiva de Donaciones */}
+      {showSalidaMasiva && (
+        <SalidaMasivaDonaciones
+          onClose={() => setShowSalidaMasiva(false)}
+          onSuccess={() => {
+            // Recargar inventario y entregas después de procesar
+            cargarInventarioDonaciones();
+            cargarTodasEntregas();
+          }}
+        />
       )}
     </div>
   );

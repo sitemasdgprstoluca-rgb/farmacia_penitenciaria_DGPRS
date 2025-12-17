@@ -181,9 +181,11 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
     }).filter(item => item.cantidad > 0)); // Eliminar si llega a 0
   }, [items]);
   
-  // Actualizar cantidad de un item
+  // Actualizar cantidad de un item - solo enteros positivos
   const actualizarCantidad = useCallback((loteId, cantidad) => {
-    const cantidadNum = parseInt(cantidad) || 0;
+    // Limpiar cualquier caracter no numérico
+    const valorLimpio = cantidad.toString().replace(/[^0-9]/g, '');
+    const cantidadNum = parseInt(valorLimpio) || 0;
     
     if (cantidadNum <= 0) {
       setItems(items.filter(item => item.lote_id !== loteId));
@@ -201,6 +203,31 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
       return item;
     }));
   }, [items]);
+  
+  // Handler para validar input - solo números enteros
+  const handleCantidadKeyDown = useCallback((e) => {
+    // Permitir: backspace, delete, tab, escape, enter, flechas
+    const allowedKeys = ['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
+    if (allowedKeys.includes(e.key)) return;
+    
+    // Permitir Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X
+    if ((e.ctrlKey || e.metaKey) && ['a', 'c', 'v', 'x'].includes(e.key.toLowerCase())) return;
+    
+    // Bloquear todo excepto números
+    if (!/^[0-9]$/.test(e.key)) {
+      e.preventDefault();
+    }
+  }, []);
+  
+  // Handler para pegar - filtrar no numéricos
+  const handleCantidadPaste = useCallback((e) => {
+    e.preventDefault();
+    const pasteData = e.clipboardData.getData('text');
+    const numericValue = pasteData.replace(/[^0-9]/g, '');
+    if (numericValue) {
+      document.execCommand('insertText', false, numericValue);
+    }
+  }, []);
   
   // Eliminar item del carrito
   const eliminarItem = useCallback((loteId) => {
@@ -589,35 +616,42 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
                                 {stockDisponible}
                               </td>
                               <td className="px-4 py-3">
-                                <div className="flex items-center justify-center gap-1">
+                                <div className="flex items-center justify-center gap-2">
                                   {enCarrito ? (
                                     <>
                                       <button
                                         onClick={() => decrementarCantidad(lote.id)}
-                                        className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
+                                        className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 transition-colors font-bold"
+                                        title="Reducir cantidad"
                                       >
-                                        <FaMinus className="text-xs" />
+                                        −
                                       </button>
                                       <input
-                                        type="number"
-                                        min="0"
+                                        type="text"
+                                        inputMode="numeric"
+                                        pattern="[0-9]*"
+                                        min="1"
                                         max={stockDisponible}
                                         value={cantidadCarrito}
                                         onChange={(e) => actualizarCantidad(lote.id, e.target.value)}
-                                        className="w-16 px-2 py-1 border rounded text-center font-semibold focus:outline-none focus:border-rose-500"
+                                        onKeyDown={handleCantidadKeyDown}
+                                        onPaste={handleCantidadPaste}
+                                        className="w-16 h-8 px-2 border-2 border-gray-300 rounded-lg text-center font-bold text-gray-800 focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-200"
+                                        title="Escriba la cantidad (solo números enteros)"
                                       />
                                       <button
                                         onClick={() => incrementarCantidad(lote.id)}
                                         disabled={cantidadCarrito >= stockDisponible}
-                                        className="p-2 rounded-lg bg-green-100 hover:bg-green-200 text-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="w-8 h-8 flex items-center justify-center rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed font-bold"
+                                        title="Aumentar cantidad"
                                       >
-                                        <FaPlus className="text-xs" />
+                                        +
                                       </button>
                                     </>
                                   ) : (
                                     <button
                                       onClick={() => agregarItem(lote)}
-                                      className="flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-sm"
+                                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium shadow-sm"
                                     >
                                       <FaPlus /> Agregar
                                     </button>
@@ -690,27 +724,34 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
                               {item.cantidad_disponible}
                             </td>
                             <td className="px-4 py-3">
-                              <div className="flex items-center justify-center gap-1">
+                              <div className="flex items-center justify-center gap-2">
                                 <button
                                   onClick={() => decrementarCantidad(item.lote_id)}
-                                  className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
+                                  className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 transition-colors font-bold"
+                                  title="Reducir cantidad"
                                 >
-                                  <FaMinus className="text-xs" />
+                                  −
                                 </button>
                                 <input
-                                  type="number"
+                                  type="text"
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
                                   min="1"
                                   max={item.cantidad_disponible}
                                   value={item.cantidad}
                                   onChange={(e) => actualizarCantidad(item.lote_id, e.target.value)}
-                                  className="w-16 px-2 py-1 border rounded text-center font-semibold focus:outline-none focus:border-rose-500"
+                                  onKeyDown={handleCantidadKeyDown}
+                                  onPaste={handleCantidadPaste}
+                                  className="w-16 h-8 px-2 border-2 border-gray-300 rounded-lg text-center font-bold text-gray-800 focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-200"
+                                  title="Escriba la cantidad (solo números enteros)"
                                 />
                                 <button
                                   onClick={() => incrementarCantidad(item.lote_id)}
                                   disabled={item.cantidad >= item.cantidad_disponible}
-                                  className="p-2 rounded-lg bg-green-100 hover:bg-green-200 text-green-600 transition-colors disabled:opacity-50"
+                                  className="w-8 h-8 flex items-center justify-center rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed font-bold"
+                                  title="Aumentar cantidad"
                                 >
-                                  <FaPlus className="text-xs" />
+                                  +
                                 </button>
                               </div>
                             </td>

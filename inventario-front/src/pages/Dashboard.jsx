@@ -21,6 +21,7 @@ import {
 } from 'recharts';
 import { usePermissions } from '../hooks/usePermissions';
 import CentroSelector from '../components/CentroSelector';
+import AdminLimpiarDatos from '../components/AdminLimpiarDatos';
 import '../styles/Dashboard.css';
 import { dashboardAPI } from '../services/api';
 import { hasAccessToken } from '../services/tokenManager';
@@ -444,6 +445,12 @@ const Dashboard = () => {
           {puedeFiltrarPorCentro && (
             <CentroSelector onCentroChange={handleCentroChange} selectedValue={selectedCentro} />
           )}
+          
+          {/* Botón de limpieza de datos - SOLO ADMIN */}
+          {permisos?.isSuperuser && (
+            <AdminLimpiarDatos />
+          )}
+          
           <div
             className="px-5 py-2.5 rounded-2xl font-semibold text-sm"
             style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%)', color: 'white' }}

@@ -3666,3 +3666,130 @@ class CatalogosView(APIView):
         
         # Retornar todos los catálogos
         return Response(catalogos)
+
+
+# =============================================================================
+# ADMIN: LIMPIEZA DE DATOS PARA REINICIO COMPLETO
+# =============================================================================
+
+class AdminLimpiarDatosView(APIView):
+    """
+    Vista EXCLUSIVA para ADMIN para limpiar datos del sistema.
+    
+    ADVERTENCIA: Esta acción es IRREVERSIBLE y elimina:
+    - Todos los movimientos
+    - Todos los lotes  
+    - Todos los productos
+    
+    NO elimina:
+    - Usuarios
+    - Centros
+    - Configuraciones del sistema
+    - Donaciones (almacén separado)
+    
+    Endpoints:
+    - GET /api/admin/limpiar-datos/ - Obtener estadísticas de lo que se eliminaría
+    - POST /api/admin/limpiar-datos/ - Ejecutar limpieza (requiere confirmación)
+    """
+    permission_classes = [IsAuthenticated, IsSuperuserOnly]  # Solo superusuarios
+    
+    def get(self, request):
+        """
+        Retorna estadísticas de lo que se eliminaría.
+        """
+        from core.models import Producto, Lote, Movimiento
+        
+        # Verificar que el usuario es admin
+        user = request.user
+        if not (user.is_superuser or user.rol == 'admin'):
+            return Response(
+                {'error': 'Solo ADMIN puede acceder a esta función'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        stats = {
+            'productos': Producto.objects.count(),
+            'lotes': Lote.objects.count(),
+            'movimientos': Movimiento.objects.count(),
+            'mensaje': 'Esta operación eliminará TODOS los productos, lotes y movimientos del inventario principal. Las donaciones NO se verán afectadas.',
+            'advertencia': 'ACCIÓN IRREVERSIBLE - Asegúrese de tener respaldos antes de continuar.',
+        }
+        
+        return Response(stats)
+    
+    def post(self, request):
+        """
+        Ejecuta la limpieza de datos.
+        Requiere confirmación explícita en el body: {"confirmar": true}
+        """
+        from core.models import Producto, Lote, Movimiento, AuditoriaLog
+        
+        # Verificar que el usuario es admin
+        user = request.user
+        if not (user.is_superuser or user.rol == 'admin'):
+            return Response(
+                {'error': 'Solo ADMIN puede ejecutar esta función'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Verificar confirmación
+        confirmar = request.data.get('confirmar', False)
+        if not confirmar:
+            return Response(
+                {'error': 'Debe enviar {"confirmar": true} para ejecutar la limpieza'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            with transaction.atomic():
+                # Contar antes de eliminar
+                stats_antes = {
+                    'productos': Producto.objects.count(),
+                    'lotes': Lote.objects.count(),
+                    'movimientos': Movimiento.objects.count(),
+                }
+                
+                # IMPORTANTE: Orden de eliminación por dependencias
+                # 1. Primero movimientos (referencia a lotes y productos)
+                movimientos_eliminados = Movimiento.objects.all().delete()[0]
+                
+                # 2. Luego lotes (referencia a productos)
+                lotes_eliminados = Lote.objects.all().delete()[0]
+                
+                # 3. Finalmente productos
+                productos_eliminados = Producto.objects.all().delete()[0]
+                
+                # Registrar en auditoría
+                AuditoriaLog.objects.create(
+                    usuario=user,
+                    accion='LIMPIEZA_DATOS',
+                    descripcion=f'LIMPIEZA COMPLETA: {productos_eliminados} productos, {lotes_eliminados} lotes, {movimientos_eliminados} movimientos eliminados',
+                    ip_address=request.META.get('REMOTE_ADDR', ''),
+                    user_agent=request.META.get('HTTP_USER_AGENT', '')[:500] if request.META.get('HTTP_USER_AGENT') else None,
+                )
+                
+                logger.warning(
+                    f"LIMPIEZA DE DATOS ejecutada por {user.username}: "
+                    f"{productos_eliminados} productos, {lotes_eliminados} lotes, "
+                    f"{movimientos_eliminados} movimientos eliminados"
+                )
+                
+                return Response({
+                    'success': True,
+                    'mensaje': 'Limpieza completada exitosamente',
+                    'eliminados': {
+                        'productos': productos_eliminados,
+                        'lotes': lotes_eliminados,
+                        'movimientos': movimientos_eliminados,
+                    },
+                    'ejecutado_por': user.username,
+                    'fecha': timezone.now().isoformat(),
+                })
+                
+        except Exception as e:
+            logger.error(f"Error en limpieza de datos: {e}")
+            return Response(
+                {'error': f'Error al limpiar datos: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+

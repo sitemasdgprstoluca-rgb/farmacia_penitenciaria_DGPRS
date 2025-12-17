@@ -14,6 +14,7 @@ from core.views import (
     ProductoImagenViewSet, LoteDocumentoViewSet, DonacionViewSet, DetalleDonacionViewSet,
     SalidaDonacionViewSet,
     CatalogosView,  # ISS-002 FIX: Endpoint de catálogos
+    AdminLimpiarDatosView,  # ADMIN: Limpieza de datos
 )
 # JWT Views seguros (cookies HttpOnly para refresh token)
 from core.serializers_jwt import (
@@ -127,6 +128,9 @@ urlpatterns = [
     path('salida-masiva/', salida_masiva, name='salida-masiva'),
     path('salida-masiva/lotes-disponibles/', lotes_disponibles_farmacia, name='lotes-disponibles-farmacia'),
     path('salida-masiva/hoja-entrega/<str:grupo_salida>/', hoja_entrega_pdf, name='hoja-entrega-pdf'),
+    
+    # ADMIN: Limpieza de datos (solo superusuarios)
+    path('admin/limpiar-datos/', AdminLimpiarDatosView.as_view(), name='admin-limpiar-datos'),
 ]
 
 # SOLO EN DESARROLLO: Endpoint de autologin automatico
