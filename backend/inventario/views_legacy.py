@@ -1541,19 +1541,21 @@ class ProductoViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='importar-excel')
     def importar_excel(self, request):
         """
-        Importa productos desde un archivo Excel.
+        Importa productos desde archivo Excel con detección automática de columnas.
         
-        Formato esperado:
-        Fila 1: Encabezados (se ignora)
-        Columnas: Clave | Nombre | Unidad | Stock Minimo | Categoria | 
-                  Sustancia Activa | Presentacion | Concentracion | Via Admin |
-                  Requiere Receta | Controlado | Estado
-        
-        Nota: Las primeras 4 columnas son requeridas, el resto son opcionales.
+        Columnas reconocidas (flexibles, no importa el orden):
+        - Clave (requerido): código único del producto
+        - Nombre (requerido): nombre del producto
+        - Unidad (requerido): unidad de medida (CAJA, PIEZA, etc.)
+        - Stock Minimo (opcional): cantidad mínima en inventario
+        - Categoria (opcional): medicamento, material_curacion, insumo
+        - Sustancia Activa, Presentacion, Concentracion, Via Admin (opcionales)
+        - Requiere Receta, Controlado (opcionales): Si/No
+        - Estado/Activo (opcional): Activo/Inactivo
         
         Limites de seguridad:
-        - Tamano maximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
-        - Filas maximas: configurado en IMPORT_MAX_ROWS (default 5000)
+        - Tamano maximo: 10MB
+        - Filas maximas: 5000
         - Extensiones: .xlsx, .xls
         """
         file = request.FILES.get('file')
@@ -1581,42 +1583,106 @@ class ProductoViewSet(viewsets.ModelViewSet):
             # Validar numero de filas
             filas_validas, error_filas, num_filas = validar_filas_excel(ws)
             if not filas_validas:
-                wb.close()  # Liberar recursos en modo read_only
+                wb.close()
                 return Response({
                     'error': 'Archivo demasiado grande',
                     'mensaje': error_filas
                 }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # ISS-FIX: Detectar fila de encabezados automáticamente
+            COLUMN_ALIASES = {
+                'clave': ['clave', 'codigo', 'código', 'clave producto', 'cod', 'id producto'],
+                'nombre': ['nombre', 'nombre producto', 'descripcion', 'descripción', 'producto'],
+                'unidad_medida': ['unidad', 'unidad medida', 'um', 'unidad de medida', 'medida'],
+                'stock_minimo': ['stock minimo', 'stock mínimo', 'stock min', 'minimo', 'mínimo'],
+                'categoria': ['categoria', 'categoría', 'tipo', 'clasificacion'],
+                'sustancia_activa': ['sustancia activa', 'sustancia', 'principio activo', 'activo'],
+                'presentacion': ['presentacion', 'presentación', 'forma'],
+                'concentracion': ['concentracion', 'concentración', 'dosis'],
+                'via_administracion': ['via admin', 'via administracion', 'vía admin', 'administracion', 'via'],
+                'requiere_receta': ['requiere receta', 'receta', 'req receta'],
+                'es_controlado': ['controlado', 'es controlado', 'control'],
+                'estado': ['estado', 'activo', 'status'],
+            }
+            
+            def normalizar_header(val):
+                if not val:
+                    return ''
+                return str(val).lower().strip().replace('_', ' ').replace('-', ' ')
+            
+            # Buscar fila con encabezados (primeras 5 filas)
+            header_row_idx = 1
+            col_map = {}
+            
+            for row_num in range(1, min(6, ws.max_row + 1)):
+                row_values = [cell.value for cell in ws[row_num]]
+                headers_encontrados = 0
+                temp_map = {}
+                
+                for col_idx, val in enumerate(row_values):
+                    header_norm = normalizar_header(val)
+                    if not header_norm:
+                        continue
+                    
+                    for field, aliases in COLUMN_ALIASES.items():
+                        if header_norm in aliases or any(alias in header_norm for alias in aliases):
+                            if field not in temp_map:
+                                temp_map[field] = col_idx
+                                headers_encontrados += 1
+                            break
+                
+                # Si encontramos al menos 2 columnas clave (clave, nombre), es la fila de headers
+                if headers_encontrados >= 2 and ('clave' in temp_map or 'nombre' in temp_map):
+                    header_row_idx = row_num
+                    col_map = temp_map
+                    break
+            
+            # Si no hay mapa, usar orden por defecto
+            if not col_map:
+                col_map = {
+                    'clave': 0, 'nombre': 1, 'unidad_medida': 2, 'stock_minimo': 3,
+                    'categoria': 4, 'sustancia_activa': 5, 'presentacion': 6,
+                    'concentracion': 7, 'via_administracion': 8, 'requiere_receta': 9,
+                    'es_controlado': 10, 'estado': 11
+                }
+            
+            def get_val(row, field, default=None):
+                if field not in col_map:
+                    return default
+                idx = col_map[field]
+                if idx < len(row):
+                    val = row[idx]
+                    return val if val not in [None, '', 'None'] else default
+                return default
             
             creados = 0
             actualizados = 0
             errores = []
             exitos = []
             
-            # ISS-019: Envolver en transacción atómica para evitar estados parciales
-            # Si hay errores críticos, se hace rollback automático
+            # ISS-019: Envolver en transacción atómica
             with transaction.atomic():
-                # Procesar cada fila (empezando desde la fila 2)
-                # Formato esperado (columnas): Clave | Nombre | Unidad | Stock Min | Categoria | 
-                #                              Sust Activa | Presentacion | Concentracion | Via Admin | 
-                #                              Req Receta | Controlado | Estado
-                for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                for row_idx, row in enumerate(ws.iter_rows(min_row=header_row_idx + 1, values_only=True), start=header_row_idx + 1):
                     try:
-                        # Extraer valores (asegurarse de tener al menos 12 columnas)
-                        valores = list(row) + [None] * 12
-                        clave = valores[0]
-                        nombre = valores[1]
-                        unidad_medida = valores[2]
-                        stock_minimo = valores[3]
-                        categoria = valores[4]
-                        sustancia_activa = valores[5]
-                        presentacion = valores[6]
-                        concentracion = valores[7]
-                        via_administracion = valores[8]
-                        requiere_receta = valores[9]
-                        es_controlado = valores[10]
-                        estado = valores[11]
+                        # Saltar filas vacías
+                        if not row or all(cell is None or str(cell).strip() == '' for cell in row):
+                            continue
                         
-                        # Validar campo requerido: clave y nombre
+                        # Extraer valores usando el mapa de columnas
+                        clave = get_val(row, 'clave')
+                        nombre = get_val(row, 'nombre')
+                        unidad_medida = get_val(row, 'unidad_medida')
+                        stock_minimo = get_val(row, 'stock_minimo')
+                        categoria = get_val(row, 'categoria')
+                        sustancia_activa = get_val(row, 'sustancia_activa')
+                        presentacion = get_val(row, 'presentacion')
+                        concentracion = get_val(row, 'concentracion')
+                        via_administracion = get_val(row, 'via_administracion')
+                        requiere_receta = get_val(row, 'requiere_receta')
+                        es_controlado = get_val(row, 'es_controlado')
+                        estado = get_val(row, 'estado')
+                        
+                        # Validar campos requeridos
                         if not clave:
                             errores.append({'fila': row_idx, 'error': 'Clave es obligatoria'})
                             continue
@@ -1625,7 +1691,6 @@ class ProductoViewSet(viewsets.ModelViewSet):
                             continue
                         
                         # ISS-FIX: Normalizar unidad usando función centralizada
-                        # Maneja textos como "CAJA CON 7 OVULOS" -> "CAJA"
                         from core.constants import normalizar_unidad_medida, UNIDADES_VALIDAS
                         unidad_raw = str(unidad_medida).strip() if unidad_medida else 'PIEZA'
                         unidad_limpia = normalizar_unidad_medida(unidad_raw)
@@ -1634,26 +1699,25 @@ class ProductoViewSet(viewsets.ModelViewSet):
                             continue
 
                         try:
-                            stock_min = int(stock_minimo) if stock_minimo not in [None, ''] else 10
+                            stock_min = int(float(stock_minimo)) if stock_minimo not in [None, ''] else 10
                             if stock_min < 0:
-                                raise ValueError
+                                stock_min = 0
                         except Exception:
-                            errores.append({'fila': row_idx, 'error': 'Stock minimo invalido'})
-                            continue
+                            stock_min = 10  # Default
 
                         # Parsear campos booleanos
                         def parse_bool(val):
                             if val is None:
                                 return False
-                            return str(val).lower() in ['sí', 'si', 'true', '1', 'yes', 's', 'x']
+                            return str(val).lower() in ['sí', 'si', 'true', '1', 'yes', 's', 'x', 'activo']
 
-                        # Validar y normalizar categoría (usar constante centralizada)
+                        # Validar y normalizar categoría
                         from core.constants import CATEGORIAS_VALIDAS
-                        categoria_limpia = str(categoria).strip().lower() if categoria else 'medicamento'
+                        categoria_limpia = str(categoria).strip().lower().replace(' ', '_') if categoria else 'medicamento'
                         if categoria_limpia not in CATEGORIAS_VALIDAS:
-                            categoria_limpia = 'medicamento'  # Default si no es válida
+                            categoria_limpia = 'medicamento'
 
-                        # Limpiar y preparar datos alineados con schema real
+                        # Preparar datos
                         datos = {
                             'nombre': str(nombre).strip()[:500],
                             'unidad_medida': unidad_limpia,
@@ -1668,8 +1732,12 @@ class ProductoViewSet(viewsets.ModelViewSet):
                             'activo': str(estado).lower() in ['activo', 'sí', 'si', 'true', '1', 'yes', 's'] if estado else True
                         }
                         
-                        # Crear o actualizar producto usando clave como identificador
-                        clave_limpia = str(clave).strip()[:50].upper()  # También normalizar a mayúsculas
+                        # Guardar presentación original de unidad si difiere
+                        if unidad_raw and unidad_raw.upper() != unidad_limpia and not datos['presentacion']:
+                            datos['presentacion'] = unidad_raw
+                        
+                        # Crear o actualizar producto
+                        clave_limpia = str(clave).strip()[:50].upper()
                         
                         producto, created = Producto.objects.update_or_create(
                             clave=clave_limpia,
@@ -1684,7 +1752,6 @@ class ProductoViewSet(viewsets.ModelViewSet):
                             
                     except Exception as e:
                         errores.append({'fila': row_idx, 'error': str(e)})
-            # Fin del bloque transaction.atomic
             
             return Response({
                 'mensaje': 'Importacion completada',
@@ -1700,11 +1767,10 @@ class ProductoViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_200_OK if len(errores) == 0 else status.HTTP_207_MULTI_STATUS)
             
         except Exception as e:
-            # traceback removido por seguridad (ISS-008)
             return Response({
                 'error': 'Error al procesar archivo',
                 'mensaje': str(e),
-                'sugerencia': 'Verifique que el archivo tenga el formato correcto: Clave, Nombre, Unidad, Stock Minimo, Categoria, Sustancia Activa, Presentacion, Concentracion, Via Admin, Requiere Receta, Controlado, Estado'
+                'sugerencia': 'Verifique que el archivo tenga formato Excel válido con columnas: Clave, Nombre, Unidad, etc.'
             }, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['get'], url_path='plantilla')
@@ -2872,24 +2938,24 @@ class LoteViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='importar-excel')
     def importar_excel(self, request):
         """
-        Importa lotes desde Excel con validaciones.
+        Importa lotes desde Excel con detección automática de columnas.
         
-        Columnas esperadas (en orden):
-        1. Producto (clave o nombre) - Requerido
-        2. Numero Lote - Requerido
-        3. Fecha Caducidad (YYYY-MM-DD) - Requerido
-        4. Cantidad Inicial - Requerido
-        5. Cantidad Actual (opcional, default = Cantidad Inicial)
-        6. Fecha Fabricacion (opcional, YYYY-MM-DD)
-        7. Precio Unitario (opcional, default = 0)
-        8. Numero Contrato (opcional)
-        9. Marca (opcional)
-        10. Ubicacion (opcional)
-        11. Centro ID (opcional, para asignar a un centro especifico)
+        Columnas reconocidas (flexibles, no importa el orden):
+        - Producto/Clave (requerido): clave o nombre del producto
+        - Numero Lote/Lote (requerido): identificador del lote
+        - Fecha Caducidad (requerido): fecha de vencimiento
+        - Cantidad Inicial/Cantidad (requerido): cantidad recibida
+        - Cantidad Actual (opcional): default = cantidad inicial
+        - Fecha Fabricacion (opcional)
+        - Precio Unitario/Precio (opcional): default = 0
+        - Numero Contrato/Contrato (opcional)
+        - Marca (opcional)
+        - Ubicacion (opcional)
+        - Centro/Centro ID (opcional): ID o nombre del centro
         
         Limites de seguridad:
-        - Tamano maximo: configurado en IMPORT_MAX_FILE_SIZE_MB (default 10MB)
-        - Filas maximas: configurado en IMPORT_MAX_ROWS (default 5000)
+        - Tamano maximo: 10MB
+        - Filas maximas: 5000
         - Extensiones: .xlsx, .xls
         """
         file = request.FILES.get('file')
@@ -2917,53 +2983,136 @@ class LoteViewSet(viewsets.ModelViewSet):
             # Validar numero de filas
             filas_validas, error_filas, num_filas = validar_filas_excel(ws)
             if not filas_validas:
-                wb.close()  # Liberar recursos en modo read_only
+                wb.close()
                 return Response({
                     'error': 'Archivo demasiado grande',
                     'mensaje': error_filas
                 }, status=status.HTTP_400_BAD_REQUEST)
             
+            # ISS-FIX: Detectar fila de encabezados automáticamente
+            # Buscar fila que contenga palabras clave como "lote", "producto", "cantidad"
+            header_row_idx = 1
+            col_map = {}
+            
+            # Mapeo de nombres de columna a campos internos
+            COLUMN_ALIASES = {
+                'producto': ['producto', 'clave', 'clave producto', 'codigo', 'código'],
+                'nombre_producto': ['nombre producto', 'nombre', 'descripcion', 'descripción'],
+                'numero_lote': ['numero lote', 'número lote', 'lote', 'no. lote', 'no lote', 'num lote'],
+                'fecha_caducidad': ['fecha caducidad', 'caducidad', 'vencimiento', 'fecha vencimiento', 'expira', 'fecha expiracion'],
+                'cantidad_inicial': ['cantidad inicial', 'cantidad', 'cant inicial', 'cant', 'qty'],
+                'cantidad_actual': ['cantidad actual', 'cant actual', 'stock', 'existencia'],
+                'fecha_fabricacion': ['fecha fabricacion', 'fecha fabricación', 'fabricacion', 'fabricación', 'manufactura'],
+                'precio_unitario': ['precio unitario', 'precio', 'costo', 'valor', 'precio unit'],
+                'numero_contrato': ['numero contrato', 'número contrato', 'contrato', 'no. contrato', 'no contrato'],
+                'marca': ['marca', 'laboratorio', 'fabricante'],
+                'ubicacion': ['ubicacion', 'ubicación', 'almacen', 'almacén', 'bodega'],
+                'centro': ['centro', 'centro id', 'centro_id', 'destino'],
+                'activo': ['activo', 'estado', 'status'],
+            }
+            
+            def normalizar_header(val):
+                if not val:
+                    return ''
+                return str(val).lower().strip().replace('_', ' ').replace('-', ' ')
+            
+            # Buscar fila con encabezados (primeras 5 filas)
+            for row_num in range(1, min(6, ws.max_row + 1)):
+                row_values = [cell.value for cell in ws[row_num]]
+                headers_encontrados = 0
+                temp_map = {}
+                
+                for col_idx, val in enumerate(row_values):
+                    header_norm = normalizar_header(val)
+                    if not header_norm:
+                        continue
+                    
+                    for field, aliases in COLUMN_ALIASES.items():
+                        if header_norm in aliases or any(alias in header_norm for alias in aliases):
+                            if field not in temp_map:
+                                temp_map[field] = col_idx
+                                headers_encontrados += 1
+                            break
+                
+                # Si encontramos al menos 3 columnas relevantes, es la fila de headers
+                if headers_encontrados >= 3:
+                    header_row_idx = row_num
+                    col_map = temp_map
+                    break
+            
+            # Si no hay mapa, usar orden por defecto
+            if not col_map:
+                col_map = {
+                    'producto': 0, 'numero_lote': 1, 'fecha_caducidad': 2,
+                    'cantidad_inicial': 3, 'cantidad_actual': 4, 'fecha_fabricacion': 5,
+                    'precio_unitario': 6, 'numero_contrato': 7, 'marca': 8,
+                    'ubicacion': 9, 'centro': 10
+                }
+            
+            def get_val(row, field, default=None):
+                if field not in col_map:
+                    return default
+                idx = col_map[field]
+                if idx < len(row):
+                    val = row[idx]
+                    return val if val not in [None, '', 'None'] else default
+                return default
+            
             exitos = []
             errores = []
 
-            for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            for row_idx, row in enumerate(ws.iter_rows(min_row=header_row_idx + 1, values_only=True), start=header_row_idx + 1):
                 try:
-                    # Extraer valores con padding para columnas opcionales
-                    valores = (list(row) + [None] * 11)[:11]
-                    producto_clave = valores[0]
-                    numero_lote = valores[1]
-                    fecha_cad = valores[2]
-                    cantidad_inicial = valores[3]
-                    cantidad_actual = valores[4]
-                    fecha_fab = valores[5]
-                    precio_unitario = valores[6]
-                    numero_contrato = valores[7]
-                    marca = valores[8]
-                    ubicacion = valores[9]
-                    centro_id = valores[10]
+                    # Saltar filas vacías
+                    if not row or all(cell is None or str(cell).strip() == '' for cell in row):
+                        continue
+                    
+                    # Extraer valores usando el mapa de columnas
+                    producto_ref = get_val(row, 'producto') or get_val(row, 'nombre_producto')
+                    numero_lote = get_val(row, 'numero_lote')
+                    fecha_cad = get_val(row, 'fecha_caducidad')
+                    cantidad_inicial = get_val(row, 'cantidad_inicial')
+                    cantidad_actual = get_val(row, 'cantidad_actual')
+                    fecha_fab = get_val(row, 'fecha_fabricacion')
+                    precio_unitario = get_val(row, 'precio_unitario')
+                    numero_contrato = get_val(row, 'numero_contrato')
+                    marca = get_val(row, 'marca')
+                    ubicacion = get_val(row, 'ubicacion')
+                    centro_ref = get_val(row, 'centro')
 
-                    if not producto_clave or not numero_lote:
+                    if not producto_ref or not numero_lote:
                         errores.append({'fila': row_idx, 'error': 'Producto y numero de lote son obligatorios'})
                         continue
 
+                    # ISS-FIX: Buscar producto por clave o nombre (flexible)
+                    producto_busqueda = str(producto_ref).strip()
                     producto = Producto.objects.filter(
-                        Q(clave__iexact=str(producto_clave).strip()) |
-                        Q(nombre__iexact=str(producto_clave).strip())
+                        Q(clave__iexact=producto_busqueda) |
+                        Q(nombre__icontains=producto_busqueda)
                     ).first()
                     if not producto:
-                        errores.append({'fila': row_idx, 'error': f'Producto no encontrado: {producto_clave}'})
+                        errores.append({'fila': row_idx, 'error': f'Producto no encontrado: {producto_ref}'})
                         continue
 
-                    # Parsear fecha de caducidad
+                    # Parsear fecha de caducidad (varios formatos)
                     try:
                         fecha_cad_val = None
                         if fecha_cad:
                             if isinstance(fecha_cad, (datetime, date)):
                                 fecha_cad_val = fecha_cad.date() if hasattr(fecha_cad, 'date') else fecha_cad
                             else:
-                                fecha_cad_val = datetime.strptime(str(fecha_cad), '%Y-%m-%d').date()
+                                fecha_str = str(fecha_cad).strip()
+                                # Intentar varios formatos
+                                for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%Y/%m/%d']:
+                                    try:
+                                        fecha_cad_val = datetime.strptime(fecha_str.split()[0], fmt).date()
+                                        break
+                                    except:
+                                        continue
+                        if not fecha_cad_val:
+                            raise ValueError("No se pudo parsear fecha")
                     except Exception:
-                        errores.append({'fila': row_idx, 'error': 'Fecha de caducidad invalida'})
+                        errores.append({'fila': row_idx, 'error': f'Fecha de caducidad invalida: {fecha_cad}'})
                         continue
 
                     # Parsear fecha de fabricacion (opcional)
@@ -2973,25 +3122,33 @@ class LoteViewSet(viewsets.ModelViewSet):
                             if isinstance(fecha_fab, (datetime, date)):
                                 fecha_fab_val = fecha_fab.date() if hasattr(fecha_fab, 'date') else fecha_fab
                             else:
-                                fecha_fab_val = datetime.strptime(str(fecha_fab), '%Y-%m-%d').date()
+                                fecha_str = str(fecha_fab).strip()
+                                for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%Y/%m/%d']:
+                                    try:
+                                        fecha_fab_val = datetime.strptime(fecha_str.split()[0], fmt).date()
+                                        break
+                                    except:
+                                        continue
                         except Exception:
                             pass  # Ignorar fecha fabricacion invalida
 
-                    # Parsear cantidades
+                    # Parsear cantidades (más flexible)
                     try:
-                        cant_ini = int(cantidad_inicial) if cantidad_inicial not in [None, ''] else 0
-                        cant_act = int(cantidad_actual) if cantidad_actual not in [None, ''] else cant_ini
-                        if cant_ini <= 0 or cant_act < 0:
-                            raise ValueError
+                        cant_ini = int(float(cantidad_inicial)) if cantidad_inicial not in [None, ''] else 0
+                        cant_act = int(float(cantidad_actual)) if cantidad_actual not in [None, ''] else cant_ini
+                        if cant_ini <= 0:
+                            cant_ini = 1  # Minimo 1
+                        if cant_act < 0:
+                            cant_act = 0
                     except Exception:
-                        errores.append({'fila': row_idx, 'error': 'Cantidades invalidas'})
+                        errores.append({'fila': row_idx, 'error': f'Cantidades invalidas: inicial={cantidad_inicial}, actual={cantidad_actual}'})
                         continue
 
                     # Parsear precio unitario (opcional)
                     precio_val = 0
                     if precio_unitario not in [None, '']:
                         try:
-                            precio_val = float(precio_unitario)
+                            precio_val = float(str(precio_unitario).replace(',', '.'))
                             if precio_val < 0:
                                 precio_val = 0
                         except Exception:
@@ -3011,11 +3168,18 @@ class LoteViewSet(viewsets.ModelViewSet):
                     if fecha_fab_val:
                         defaults['fecha_fabricacion'] = fecha_fab_val
                     
-                    # Asignar centro si se proporciona
-                    if centro_id:
+                    # ISS-FIX: Asignar centro si se proporciona (por ID o nombre)
+                    if centro_ref:
                         try:
-                            centro = Centro.objects.get(pk=int(centro_id))
-                            defaults['centro'] = centro
+                            centro_str = str(centro_ref).strip()
+                            # Intentar por ID numerico primero
+                            if centro_str.isdigit():
+                                centro = Centro.objects.get(pk=int(centro_str))
+                            else:
+                                # Buscar por nombre
+                                centro = Centro.objects.filter(nombre__icontains=centro_str).first()
+                            if centro:
+                                defaults['centro'] = centro
                         except (Centro.DoesNotExist, ValueError):
                             pass  # Ignorar centro invalido
 

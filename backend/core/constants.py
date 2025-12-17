@@ -64,14 +64,22 @@ def normalizar_unidad_medida(valor):
     """
     ISS-024 FIX (audit9): Normaliza una unidad de medida al código estándar.
     
+    Maneja textos compuestos como:
+    - "CAJA CON 7 OVULOS" -> "CAJA"
+    - "FRASCO 120ML" -> "FRASCO"
+    - "EN CAJA CON 20 GRAGEAS" -> "CAJA"
+    - "GOTERO CON 15 MILILITROS" -> "FRASCO"
+    - "BOLSA FLEX-OVAL, DE 500 MILILITROS" -> "PIEZA"
+    - "ENVASE CON 120 MILILITROS" -> "FRASCO"
+    
     Args:
         valor: Valor de unidad (puede ser código, nombre o alias)
         
     Returns:
-        str: Código normalizado o el valor original si no se reconoce
+        str: Código normalizado o PIEZA como default
     """
     if not valor:
-        return valor
+        return 'PIEZA'
     
     valor_upper = valor.upper().strip()
     valor_lower = valor.lower().strip()
@@ -85,9 +93,58 @@ def normalizar_unidad_medida(valor):
         return UNIDADES_ALIAS[valor_lower]
     
     # ISS-FIX: Intentar extraer unidad base de textos compuestos
-    # Ej: "CAJA CON 7 OVULOS" -> "CAJA", "FRASCO 120ML" -> "FRASCO"
+    # Primero remover prefijos comunes
+    texto_limpio = valor_upper
+    prefijos_remover = ['EN ', 'CON ', 'DE ', 'POR ']
+    for prefijo in prefijos_remover:
+        if texto_limpio.startswith(prefijo):
+            texto_limpio = texto_limpio[len(prefijo):]
+    
+    # Mapeo de palabras clave a unidades
+    MAPEO_PALABRAS_CLAVE = {
+        'CAJA': 'CAJA',
+        'CAJAS': 'CAJA',
+        'FRASCO': 'FRASCO',
+        'FRASCOS': 'FRASCO',
+        'GOTERO': 'FRASCO',  # Gotero es un tipo de frasco
+        'ENVASE': 'FRASCO',  # Envase se mapea a frasco
+        'BOTELLA': 'FRASCO',
+        'SOBRE': 'SOBRE',
+        'SOBRES': 'SOBRE',
+        'AMPOLLETA': 'AMPOLLETA',
+        'AMPOLLETAS': 'AMPOLLETA',
+        'TABLETA': 'TABLETA',
+        'TABLETAS': 'TABLETA',
+        'GRAGEA': 'TABLETA',  # Gragea es similar a tableta
+        'GRAGEAS': 'TABLETA',
+        'COMPRIMIDO': 'TABLETA',
+        'COMPRIMIDOS': 'TABLETA',
+        'CAPSULA': 'CAPSULA',
+        'CAPSULAS': 'CAPSULA',
+        'PIEZA': 'PIEZA',
+        'PIEZAS': 'PIEZA',
+        'BOLSA': 'PIEZA',  # Bolsa se considera pieza
+        'BOLSAS': 'PIEZA',
+        'TUBO': 'PIEZA',
+        'TUBOS': 'PIEZA',
+        'JERINGA': 'PIEZA',
+        'JERINGAS': 'PIEZA',
+        'PARCHE': 'PIEZA',
+        'PARCHES': 'PIEZA',
+        'AMPULA': 'AMPOLLETA',
+        'AMPULAS': 'AMPOLLETA',
+    }
+    
+    # Buscar palabras clave en el texto
+    palabras = texto_limpio.replace(',', ' ').replace('-', ' ').split()
+    for palabra in palabras:
+        palabra_limpia = palabra.strip()
+        if palabra_limpia in MAPEO_PALABRAS_CLAVE:
+            return MAPEO_PALABRAS_CLAVE[palabra_limpia]
+    
+    # Buscar si alguna unidad válida está al inicio
     for unidad in UNIDADES_VALIDAS:
-        if valor_upper.startswith(unidad + ' ') or valor_upper.startswith(unidad + '/'):
+        if texto_limpio.startswith(unidad + ' ') or texto_limpio.startswith(unidad + '/'):
             return unidad
     
     # También buscar en alias con texto compuesto
@@ -95,8 +152,8 @@ def normalizar_unidad_medida(valor):
         if valor_lower.startswith(alias + ' ') or valor_lower.startswith(alias + '/'):
             return normalizado
     
-    # Retornar original si no se reconoce
-    return valor
+    # Default a PIEZA si no se reconoce nada
+    return 'PIEZA'
 
 # Categorías de productos válidas
 CATEGORIAS_PRODUCTO = [
