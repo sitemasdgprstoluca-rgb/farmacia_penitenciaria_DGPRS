@@ -780,23 +780,41 @@ const handleImportar = async (e) => {
         </button>
       )}
       {puede.importar && (
-        <button
-          type="button"
-          onClick={() => setShowImportModal(true)}
-          disabled={importLoading}
-          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{
-            background: SECONDARY_GRADIENT,
-            border: '1px solid rgba(255,255,255,0.4)'
-          }}
-        >
-          {importLoading ? (
-            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-          ) : (
-            <FaFileUpload />
-          )}
-          {importLoading ? 'Importando...' : 'Importar'}
-        </button>
+        <>
+          {/* Botón Plantilla */}
+          <button
+            type="button"
+            onClick={handleDescargarPlantilla}
+            className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              background: 'linear-gradient(135deg, #2563eb 0%, #1e40af 100%)',
+              border: '1px solid rgba(255,255,255,0.4)'
+            }}
+            title="Descargar plantilla Excel para importar lotes"
+          >
+            <FaDownload />
+            Plantilla
+          </button>
+          
+          {/* Botón Importar */}
+          <button
+            type="button"
+            onClick={() => setShowImportModal(true)}
+            disabled={importLoading}
+            className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              background: SECONDARY_GRADIENT,
+              border: '1px solid rgba(255,255,255,0.4)'
+            }}
+          >
+            {importLoading ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+            ) : (
+              <FaFileUpload />
+            )}
+            {importLoading ? 'Importando...' : 'Importar'}
+          </button>
+        </>
       )}
       {puede.crear && (
         <button
