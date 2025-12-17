@@ -4003,7 +4003,8 @@ class AdminLimpiarDatosView(APIView):
         from core.models import (
             Producto, Lote, Movimiento, Requisicion, DetalleRequisicion,
             HojaRecoleccion, DetalleHojaRecoleccion, LoteDocumento,
-            ProductoImagen, ImportacionLog, DetalleDonacion, Donacion, SalidaDonacion
+            ProductoImagen, ImportacionLog, DetalleDonacion, Donacion, SalidaDonacion,
+            Notificacion
         )
         from django.db import connection
         
@@ -4026,6 +4027,9 @@ class AdminLimpiarDatosView(APIView):
         donaciones_count = Donacion.objects.count()
         detalles_donacion_count = DetalleDonacion.objects.count()
         salidas_donacion_count = SalidaDonacion.objects.count()
+        
+        # Conteo de notificaciones
+        notificaciones_count = Notificacion.objects.count()
         
         # Conteos con raw SQL para tablas sin modelo
         with connection.cursor() as cursor:
@@ -4096,18 +4100,28 @@ class AdminLimpiarDatosView(APIView):
                     },
                     'dependencias': [],
                 },
+                'notificaciones': {
+                    'nombre': 'Notificaciones',
+                    'descripcion': 'Elimina todas las notificaciones de usuarios',
+                    'total': notificaciones_count,
+                    'detalle': {
+                        'notificaciones': notificaciones_count,
+                    },
+                    'dependencias': [],
+                },
                 'todos': {
                     'nombre': 'Todo el Inventario',
-                    'descripcion': 'Limpieza completa: productos, lotes, requisiciones, movimientos y donaciones',
-                    'total': productos_count + lotes_count + requisiciones_count + movimientos_count + donaciones_count,
+                    'descripcion': 'Limpieza completa: productos, lotes, requisiciones, movimientos, donaciones y notificaciones',
+                    'total': productos_count + lotes_count + requisiciones_count + movimientos_count + donaciones_count + notificaciones_count,
                     'detalle': {
                         'productos': productos_count,
                         'lotes': lotes_count,
                         'requisiciones': requisiciones_count,
                         'movimientos': movimientos_count,
                         'donaciones': donaciones_count,
+                        'notificaciones': notificaciones_count,
                     },
-                    'dependencias': ['Incluye todos los datos asociados, dependencias y donaciones'],
+                    'dependencias': ['Incluye todos los datos asociados, dependencias, donaciones y notificaciones'],
                 },
             },
             'resumen': {
@@ -4116,6 +4130,7 @@ class AdminLimpiarDatosView(APIView):
                 'movimientos': movimientos_count,
                 'requisiciones': requisiciones_count,
                 'donaciones': donaciones_count,
+                'notificaciones': notificaciones_count,
             },
             'no_se_eliminara': [
                 'Usuarios y perfiles',
@@ -4123,7 +4138,6 @@ class AdminLimpiarDatosView(APIView):
                 'Configuración del sistema',
                 'Tema global (estilos)',
                 'Logs de auditoría',
-                'Notificaciones',
                 'Permisos y grupos',
             ],
             'advertencias': [],
@@ -4148,7 +4162,7 @@ class AdminLimpiarDatosView(APIView):
             Producto, Lote, Movimiento, Requisicion, DetalleRequisicion,
             HojaRecoleccion, DetalleHojaRecoleccion, LoteDocumento,
             ProductoImagen, ImportacionLog, AuditoriaLog,
-            Donacion, DetalleDonacion, SalidaDonacion
+            Donacion, DetalleDonacion, SalidaDonacion, Notificacion
         )
         from django.db import connection
         
@@ -4170,7 +4184,7 @@ class AdminLimpiarDatosView(APIView):
         
         # Obtener categoría
         categoria = request.data.get('categoria', 'todos').lower()
-        categorias_validas = ['productos', 'lotes', 'requisiciones', 'movimientos', 'donaciones', 'todos']
+        categorias_validas = ['productos', 'lotes', 'requisiciones', 'movimientos', 'donaciones', 'notificaciones', 'todos']
         
         if categoria not in categorias_validas:
             return Response(
@@ -4198,6 +4212,10 @@ class AdminLimpiarDatosView(APIView):
                     eliminados['detalles_donacion'] = DetalleDonacion.objects.all().delete()[0]
                     # 3. Donaciones
                     eliminados['donaciones'] = Donacion.objects.all().delete()[0]
+                
+                elif categoria == 'notificaciones':
+                    # Solo notificaciones
+                    eliminados['notificaciones'] = Notificacion.objects.all().delete()[0]
                 
                 elif categoria == 'requisiciones':
                     # 1. Ajustes de cantidad
@@ -4331,6 +4349,9 @@ class AdminLimpiarDatosView(APIView):
                     eliminados['salidas_donacion'] = SalidaDonacion.objects.all().delete()[0]
                     eliminados['detalles_donacion'] = DetalleDonacion.objects.all().delete()[0]
                     eliminados['donaciones'] = Donacion.objects.all().delete()[0]
+                    
+                    # 16. Notificaciones (incluido en "todos")
+                    eliminados['notificaciones'] = Notificacion.objects.all().delete()[0]
                 
                 # Calcular totales
                 total_eliminados = sum(eliminados.values())
@@ -4342,7 +4363,8 @@ class AdminLimpiarDatosView(APIView):
                     'requisiciones': 'REQUISICIONES',
                     'movimientos': 'MOVIMIENTOS',
                     'donaciones': 'DONACIONES',
-                    'todos': 'TODO EL INVENTARIO (INCLUYE DONACIONES)',
+                    'notificaciones': 'NOTIFICACIONES',
+                    'todos': 'TODO EL INVENTARIO (INCLUYE DONACIONES Y NOTIFICACIONES)',
                 }
                 
                 # Registrar en auditoría (NO se elimina)
@@ -4383,7 +4405,6 @@ class AdminLimpiarDatosView(APIView):
                         'Configuración del sistema',
                         'Tema global',
                         'Auditoría',
-                        'Notificaciones',
                     ],
                     'ejecutado_por': user.username,
                     'fecha': timezone.now().isoformat(),

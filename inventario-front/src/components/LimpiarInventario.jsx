@@ -33,6 +33,7 @@ import {
   FaLayerGroup,
   FaExchangeAlt,
   FaBroom,
+  FaBell,
 } from 'react-icons/fa';
 import { adminAPI } from '../services/api';
 
@@ -82,12 +83,19 @@ const LimpiarInventario = ({ onLimpiezaCompletada }) => {
       descripcion: 'Elimina donaciones, detalles y salidas registradas',
       advertencia: 'Almacén de donaciones quedará vacío',
     },
+    notificaciones: {
+      icon: FaBell,
+      color: 'blue',
+      titulo: 'Notificaciones',
+      descripcion: 'Elimina todas las notificaciones de usuarios',
+      advertencia: 'Se eliminarán todas las notificaciones',
+    },
     todos: {
       icon: FaBroom,
       color: 'red',
       titulo: 'Todo el Inventario',
-      descripcion: 'Limpieza completa incluyendo donaciones',
-      advertencia: '⚠️ ELIMINA TODO (incluyendo donaciones)',
+      descripcion: 'Limpieza completa incluyendo donaciones y notificaciones',
+      advertencia: '⚠️ ELIMINA TODO (incluyendo donaciones y notificaciones)',
     },
   };
 
@@ -186,6 +194,7 @@ const LimpiarInventario = ({ onLimpiezaCompletada }) => {
       amber: 'bg-amber-50 border-amber-200 hover:bg-amber-100 hover:border-amber-300',
       yellow: 'bg-yellow-50 border-yellow-200 hover:bg-yellow-100 hover:border-yellow-300',
       purple: 'bg-purple-50 border-purple-200 hover:bg-purple-100 hover:border-purple-300',
+      blue: 'bg-blue-50 border-blue-200 hover:bg-blue-100 hover:border-blue-300',
     };
     
     const textClasses = {
@@ -194,6 +203,7 @@ const LimpiarInventario = ({ onLimpiezaCompletada }) => {
       amber: 'text-amber-700',
       yellow: 'text-yellow-700',
       purple: 'text-purple-700',
+      blue: 'text-blue-700',
     };
     
     const iconClasses = {
@@ -202,6 +212,7 @@ const LimpiarInventario = ({ onLimpiezaCompletada }) => {
       amber: 'text-amber-500 bg-amber-100',
       yellow: 'text-yellow-500 bg-yellow-100',
       purple: 'text-purple-500 bg-purple-100',
+      blue: 'text-blue-500 bg-blue-100',
     };
 
     return (
@@ -305,6 +316,7 @@ const LimpiarInventario = ({ onLimpiezaCompletada }) => {
                     {renderCategoriaCard('lotes')}
                     {renderCategoriaCard('productos')}
                     {renderCategoriaCard('donaciones')}
+                    {renderCategoriaCard('notificaciones')}
                   </div>
                   
                   {/* Opción TODO */}
