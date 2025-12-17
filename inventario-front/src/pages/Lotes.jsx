@@ -988,7 +988,7 @@ const handleImportar = async (e) => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="thead-theme">
               <tr>
-                {['#', 'Producto', 'Número Lote', 'Marca', 'Caducidad', 'Días', 'Alerta', 'Inventario', 'Acciones'].map((col) => (
+                {['#', 'Producto', 'Número Lote', 'Marca', 'Caducidad', 'Días', 'Alerta', 'Stock', 'Acciones'].map((col) => (
                   <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
                     {col}
                   </th>
@@ -1047,12 +1047,19 @@ const handleImportar = async (e) => {
                         {lote.alerta_caducidad?.toUpperCase()}
                       </span>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm">
-                      <span className={lote.cantidad_actual === 0 ? 'text-red-600 font-bold' : ''}>
-                        {lote.cantidad_actual} / {lote.cantidad_inicial}
-                      </span>
-                      <div className="text-xs text-gray-500">
-                        ({lote.porcentaje_consumido}% usado)
+                    <td className="px-4 py-3 text-sm">
+                      <div className="space-y-1">
+                        {/* Disponible - resaltado */}
+                        <div className={`font-bold ${lote.cantidad_actual === 0 ? 'text-red-600' : 'text-green-700'}`}>
+                          Disp: {lote.cantidad_actual}
+                        </div>
+                        {/* Desglose */}
+                        <div className="text-xs text-gray-500 space-y-0.5">
+                          <div>Inicial: {lote.cantidad_inicial}</div>
+                          <div className="text-orange-600">
+                            Salidas: {lote.cantidad_inicial - lote.cantidad_actual}
+                          </div>
+                        </div>
                       </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm">
