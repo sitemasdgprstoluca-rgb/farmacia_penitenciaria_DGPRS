@@ -692,20 +692,68 @@ const handleImportar = async (e) => {
     const resumen = response.data?.resumen || {};
     const errores = response.data?.errores || [];
 
-    toast.success(
-      `Importación completada: ${resumen.exitos || 0} filas correctas de ${resumen.total || 0}`
-    );
+    // Función para traducir errores técnicos a mensajes amigables
+    const traducirError = (errorStr) => {
+      if (!errorStr) return 'Error desconocido';
+      const str = String(errorStr);
+      
+      // Errores de fecha de caducidad
+      if (str.includes('fecha de caducidad debe ser posterior a la fecha de fabricación')) {
+        return '⚠️ La fecha de caducidad es anterior a la fabricación (dato incorrecto en Excel)';
+      }
+      if (str.includes('No se puede registrar un lote ya vencido') || str.includes('lote ya vencido')) {
+        return '⚠️ Lote ya vencido - no se puede registrar inventario caducado';
+      }
+      if (str.includes('Fecha de caducidad invalida')) {
+        return '⚠️ Formato de fecha inválido (use YYYY-MM-DD o DD/MM/YYYY)';
+      }
+      
+      // Errores de producto
+      if (str.includes('Producto no encontrado')) {
+        return '⚠️ Producto no existe en el catálogo - verifique la clave';
+      }
+      if (str.includes('Producto y numero de lote son obligatorios')) {
+        return '⚠️ Faltan datos obligatorios (Producto o Número de Lote)';
+      }
+      
+      // Errores de cantidad
+      if (str.includes('Cantidades invalidas')) {
+        return '⚠️ Cantidad inválida - debe ser un número positivo';
+      }
+      
+      return str;
+    };
+
+    // Mostrar resultado principal
+    if (resumen.exitos > 0) {
+      toast.success(
+        `✅ Importación completada: ${resumen.exitos} lotes importados correctamente`,
+        { duration: 4000 }
+      );
+    }
     
     if (errores.length) {
       console.warn('Errores en importación de lotes:', errores);
-      // Mostrar primeros 3 errores al usuario
+      
+      // Mostrar alerta general si hay errores
+      toast(
+        `⚠️ ${errores.length} fila(s) no se importaron por datos inválidos en el Excel`,
+        { icon: '📋', duration: 5000 }
+      );
+      
+      // Mostrar detalles de los primeros 3 errores
       const primeros = errores.slice(0, 3);
-      primeros.forEach((err, idx) => {
-        const msg = typeof err === 'string' ? err : `Fila ${err.fila || idx + 1}: ${err.error || err.mensaje || JSON.stringify(err)}`;
-        toast.error(msg, { duration: 5000 });
+      primeros.forEach((err) => {
+        const fila = err.fila || '?';
+        const errorMsg = traducirError(err.error || err.mensaje);
+        toast.error(`Fila ${fila}: ${errorMsg}`, { duration: 6000 });
       });
+      
       if (errores.length > 3) {
-        toast.error(`... y ${errores.length - 3} errores más. Revise la consola.`, { duration: 5000 });
+        toast(`📝 Ver consola (F12) para los ${errores.length - 3} errores restantes`, { 
+          icon: 'ℹ️', 
+          duration: 5000 
+        });
       }
     }
     
