@@ -7331,7 +7331,7 @@ def trazabilidad_lote(request, codigo):
                 'dias_para_caducar': dias_caducidad,
                 'estado_caducidad': estado_caducidad,
                 'marca': lote.marca,
-                'proveedor': lote.proveedor,  # Campo faltante
+                'proveedor': None,  # Campo no existe en modelo, dejarlo null
                 # ISS-FIX: Agregar centro (nombre o 'Farmacia Central' si es null)
                 'centro': lote.centro.nombre if lote.centro else 'Farmacia Central',
                 'centro_id': lote.centro.id if lote.centro else None,
