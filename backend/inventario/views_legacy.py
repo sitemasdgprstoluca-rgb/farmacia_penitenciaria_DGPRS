@@ -1690,13 +1690,9 @@ class ProductoViewSet(viewsets.ModelViewSet):
                             errores.append({'fila': row_idx, 'error': 'Nombre es obligatorio'})
                             continue
                         
-                        # ISS-FIX: Normalizar unidad usando función centralizada
-                        from core.constants import normalizar_unidad_medida, UNIDADES_VALIDAS
-                        unidad_raw = str(unidad_medida).strip() if unidad_medida else 'PIEZA'
-                        unidad_limpia = normalizar_unidad_medida(unidad_raw)
-                        if unidad_limpia.upper() not in UNIDADES_VALIDAS:
-                            errores.append({'fila': row_idx, 'error': f'Unidad no valida: {unidad_raw}'})
-                            continue
+                        # ISS-FIX: Permitir texto libre en unidad de medida para mejor manejo de farmacia
+                        # Ejemplos: "CAJA CON 7 OVULOS", "GOTERO CON 15 MILILITROS"
+                        unidad_limpia = str(unidad_medida).strip().upper() if unidad_medida else 'PIEZA'
 
                         try:
                             stock_min = int(float(stock_minimo)) if stock_minimo not in [None, ''] else 10
@@ -1732,9 +1728,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                             'activo': str(estado).lower() in ['activo', 'sí', 'si', 'true', '1', 'yes', 's'] if estado else True
                         }
                         
-                        # Guardar presentación original de unidad si difiere
-                        if unidad_raw and unidad_raw.upper() != unidad_limpia and not datos['presentacion']:
-                            datos['presentacion'] = unidad_raw
+                        # Ya no es necesario guardar en presentación porque unidad_medida acepta texto completo
                         
                         # Crear o actualizar producto
                         clave_limpia = str(clave).strip()[:50].upper()

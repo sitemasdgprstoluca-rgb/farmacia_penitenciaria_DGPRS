@@ -728,25 +728,22 @@ class ProductoSerializer(serializers.ModelSerializer):
     
     def validate_unidad_medida(self, value):
         """
-        ISS-024 FIX (audit9): Normaliza y valida unidad_medida.
+        ISS-FIX: Permite texto libre en unidad_medida para mejor manejo de farmacia.
         
-        Acepta alias comunes y los normaliza al código estándar.
+        Ejemplos válidos: "CAJA", "CAJA CON 7 OVULOS", "GOTERO CON 15 MILILITROS"
+        La BD acepta character varying sin restricción de choices.
         """
-        from core.constants import UNIDADES_VALIDAS, normalizar_unidad_medida
-        
         if not value:
             return 'PIEZA'  # Default
         
-        # Normalizar usando alias
-        valor_normalizado = normalizar_unidad_medida(value)
+        # Limpiar y convertir a mayúsculas
+        valor_limpio = str(value).strip().upper()
         
-        # Validar que el resultado sea válido
-        if valor_normalizado.upper() not in UNIDADES_VALIDAS:
-            raise serializers.ValidationError(
-                f'Unidad no válida: {value}. Opciones: {", ".join(sorted(UNIDADES_VALIDAS))}'
-            )
+        # Validar longitud máxima (la BD permite hasta ~255 caracteres)
+        if len(valor_limpio) > 100:
+            raise serializers.ValidationError('La unidad de medida no puede exceder 100 caracteres')
         
-        return valor_normalizado.upper()
+        return valor_limpio
     
     def validate_categoria(self, value):
         """Normaliza y valida categoría."""
