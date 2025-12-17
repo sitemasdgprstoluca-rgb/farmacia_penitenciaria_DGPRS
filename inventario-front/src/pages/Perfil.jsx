@@ -8,7 +8,9 @@ import {
   FaKey, 
   FaUserCircle,
   FaCheckCircle,
-  FaShieldAlt
+  FaShieldAlt,
+  FaEye,
+  FaEyeSlash
 } from "react-icons/fa";
 import ConfirmModal from "../components/ConfirmModal";
 import PageHeader from "../components/PageHeader";
@@ -107,6 +109,10 @@ function Perfil() {
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  // Estados para visibilidad de contraseñas
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const navigate = useNavigate();
 
   const cargarPerfil = async () => {
@@ -482,25 +488,45 @@ function Perfil() {
           <form className="space-y-3" onSubmit={cambiarPassword}>
             <div>
               <label className="block text-xs font-semibold text-gray-500">Contraseña actual</label>
-              <input
-                type="password"
-                value={passForm.old_password}
-                onChange={(e) => setPassForm((f) => ({ ...f, old_password: e.target.value }))}
-                placeholder="••••••••"
-                autoComplete="current-password"
-                className="mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
-              />
+              <div className="relative mt-1">
+                <input
+                  type={showOldPassword ? "text" : "password"}
+                  value={passForm.old_password}
+                  onChange={(e) => setPassForm((f) => ({ ...f, old_password: e.target.value }))}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  className="w-full pr-10 border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowOldPassword(!showOldPassword)}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                  tabIndex={-1}
+                >
+                  {showOldPassword ? <FaEyeSlash size={16} /> : <FaEye size={16} />}
+                </button>
+              </div>
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500">Nueva contraseña</label>
-              <input
-                type="password"
-                value={passForm.new_password}
-                onChange={(e) => setPassForm((f) => ({ ...f, new_password: e.target.value }))}
-                placeholder="••••••••"
-                autoComplete="new-password"
-                className="mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
-              />
+              <div className="relative mt-1">
+                <input
+                  type={showNewPassword ? "text" : "password"}
+                  value={passForm.new_password}
+                  onChange={(e) => setPassForm((f) => ({ ...f, new_password: e.target.value }))}
+                  placeholder="••••••••"
+                  autoComplete="new-password"
+                  className="w-full pr-10 border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                  tabIndex={-1}
+                >
+                  {showNewPassword ? <FaEyeSlash size={16} /> : <FaEye size={16} />}
+                </button>
+              </div>
               {/* Indicadores de validación de contraseña */}
               <div className="mt-2 space-y-1">
                 <p className={`text-xs flex items-center gap-1 ${passForm.new_password.length >= 8 ? 'text-green-600' : 'text-gray-400'}`}>
@@ -519,14 +545,24 @@ function Perfil() {
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500">Confirmar nueva contraseña</label>
-              <input
-                type="password"
-                value={passForm.confirm_password}
-                onChange={(e) => setPassForm((f) => ({ ...f, confirm_password: e.target.value }))}
-                placeholder="••••••••"
-                autoComplete="new-password"
-                className="mt-1 w-full border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
-              />
+              <div className="relative mt-1">
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={passForm.confirm_password}
+                  onChange={(e) => setPassForm((f) => ({ ...f, confirm_password: e.target.value }))}
+                  placeholder="••••••••"
+                  autoComplete="new-password"
+                  className="w-full pr-10 border-gray-200 rounded-lg focus:ring-primary-500 focus:border-primary-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                  tabIndex={-1}
+                >
+                  {showConfirmPassword ? <FaEyeSlash size={16} /> : <FaEye size={16} />}
+                </button>
+              </div>
               {passForm.confirm_password && passForm.new_password !== passForm.confirm_password && (
                 <p className="mt-1 text-xs text-red-500">Las contraseñas no coinciden</p>
               )}

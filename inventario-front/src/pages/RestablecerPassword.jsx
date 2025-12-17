@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { FaLock, FaCheck, FaArrowLeft, FaExclamationTriangle, FaSpinner } from 'react-icons/fa';
+import { FaLock, FaCheck, FaArrowLeft, FaExclamationTriangle, FaSpinner, FaEye, FaEyeSlash } from 'react-icons/fa';
 import { passwordResetAPI } from '../services/api';
 import { useTheme } from '../hooks/useTheme';
 
@@ -21,6 +21,8 @@ function RestablecerPassword() {
     new_password: '',
     confirm_password: ''
   });
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
     const validateToken = async () => {
@@ -156,16 +158,24 @@ function RestablecerPassword() {
                 <div className="relative">
                   <FaLock className="absolute left-4 top-4 text-gray-400" />
                   <input
-                    type="password"
+                    type={showNewPassword ? "text" : "password"}
                     name="new_password"
                     value={formData.new_password}
                     onChange={handleChange}
-                    className="w-full pl-12 pr-4 py-3.5 border-2 border-gray-200 rounded-xl transition-all focus:border-transparent focus:ring-4 focus:outline-none"
+                    className="w-full pl-12 pr-12 py-3.5 border-2 border-gray-200 rounded-xl transition-all focus:border-transparent focus:ring-4 focus:outline-none"
                     style={{ '--tw-ring-color': 'rgba(159, 34, 65, 0.2)' }}
                     placeholder="Mínimo 8 caracteres"
                     minLength={8}
                     required
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+                    tabIndex={-1}
+                  >
+                    {showNewPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
+                  </button>
                 </div>
               </div>
 
@@ -176,16 +186,24 @@ function RestablecerPassword() {
                 <div className="relative">
                   <FaLock className="absolute left-4 top-4 text-gray-400" />
                   <input
-                    type="password"
+                    type={showConfirmPassword ? "text" : "password"}
                     name="confirm_password"
                     value={formData.confirm_password}
                     onChange={handleChange}
-                    className="w-full pl-12 pr-4 py-3.5 border-2 border-gray-200 rounded-xl transition-all focus:border-transparent focus:ring-4 focus:outline-none"
+                    className="w-full pl-12 pr-12 py-3.5 border-2 border-gray-200 rounded-xl transition-all focus:border-transparent focus:ring-4 focus:outline-none"
                     style={{ '--tw-ring-color': 'rgba(159, 34, 65, 0.2)' }}
                     placeholder="Repite la contraseña"
                     minLength={8}
                     required
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+                    tabIndex={-1}
+                  >
+                    {showConfirmPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
+                  </button>
                 </div>
               </div>
 

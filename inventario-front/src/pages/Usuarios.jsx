@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { usuariosAPI, centrosAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
-import { FaPlus, FaEdit, FaTrash, FaKey, FaUsers, FaTimes, FaDownload, FaFileUpload, FaSearch, FaFilter, FaShieldAlt, FaSpinner, FaToggleOn, FaToggleOff } from 'react-icons/fa';
+import { FaPlus, FaEdit, FaTrash, FaKey, FaUsers, FaTimes, FaDownload, FaFileUpload, FaSearch, FaFilter, FaShieldAlt, FaSpinner, FaToggleOn, FaToggleOff, FaEye, FaEyeSlash } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { COLORS } from '../constants/theme';
 import { usePermissions } from '../hooks/usePermissions';
@@ -79,6 +79,12 @@ function Usuarios() {
   const [actionLoading, setActionLoading] = useState(null); // ID del usuario en acción
   const [showModal, setShowModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  // Estados para visibilidad de contraseñas en modal de cambio
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  // Estados para visibilidad de contraseñas en modal de crear usuario
+  const [showCreatePassword, setShowCreatePassword] = useState(false);
+  const [showCreateConfirmPassword, setShowCreateConfirmPassword] = useState(false);
   const [showPermisosAvanzados, setShowPermisosAvanzados] = useState(false);
   const [editingUsuario, setEditingUsuario] = useState(null);
   const fileInputRef = useRef(null);
@@ -334,6 +340,9 @@ function Usuarios() {
       });
       setShowPermisosAvanzados(false);
     }
+    // Resetear visibilidad de contraseñas
+    setShowCreatePassword(false);
+    setShowCreateConfirmPassword(false);
     setShowModal(true);
   };
   
@@ -600,6 +609,8 @@ function Usuarios() {
   const handleOpenPasswordModal = (usuario) => {
     setEditingUsuario(usuario);
     setPasswordData({ new_password: '', confirm_password: '' });
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
     setShowPasswordModal(true);
   };
   
@@ -1211,18 +1222,28 @@ function Usuarios() {
                       <label className="block text-sm font-semibold text-gray-700 mb-1">
                         Contraseña <span className="text-red-500">*</span>
                       </label>
-                      <input
-                        type="password"
-                        value={formData.password}
-                        onChange={(e) => setFormData({...formData, password: e.target.value})}
-                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                          formData.password && !PASSWORD_REGEX.test(formData.password) 
-                            ? 'border-amber-400' 
-                            : 'border-gray-300'
-                        }`}
-                        required
-                        minLength={8}
-                      />
+                      <div className="relative">
+                        <input
+                          type={showCreatePassword ? "text" : "password"}
+                          value={formData.password}
+                          onChange={(e) => setFormData({...formData, password: e.target.value})}
+                          className={`w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                            formData.password && !PASSWORD_REGEX.test(formData.password) 
+                              ? 'border-amber-400' 
+                              : 'border-gray-300'
+                          }`}
+                          required
+                          minLength={8}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowCreatePassword(!showCreatePassword)}
+                          className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                          tabIndex={-1}
+                        >
+                          {showCreatePassword ? <FaEyeSlash size={16} /> : <FaEye size={16} />}
+                        </button>
+                      </div>
                       <p className="text-xs text-gray-500 mt-1">
                         {PASSWORD_REQUIREMENTS}
                       </p>
@@ -1248,18 +1269,28 @@ function Usuarios() {
                       <label className="block text-sm font-semibold text-gray-700 mb-1">
                         Confirmar Contraseña <span className="text-red-500">*</span>
                       </label>
-                      <input
-                        type="password"
-                        value={formData.password_confirm}
-                        onChange={(e) => setFormData({...formData, password_confirm: e.target.value})}
-                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                          formData.password_confirm && formData.password !== formData.password_confirm 
-                            ? 'border-red-400' 
-                            : 'border-gray-300'
-                        }`}
-                        required
-                        minLength={8}
-                      />
+                      <div className="relative">
+                        <input
+                          type={showCreateConfirmPassword ? "text" : "password"}
+                          value={formData.password_confirm}
+                          onChange={(e) => setFormData({...formData, password_confirm: e.target.value})}
+                          className={`w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                            formData.password_confirm && formData.password !== formData.password_confirm 
+                              ? 'border-red-400' 
+                              : 'border-gray-300'
+                          }`}
+                          required
+                          minLength={8}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowCreateConfirmPassword(!showCreateConfirmPassword)}
+                          className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                          tabIndex={-1}
+                        >
+                          {showCreateConfirmPassword ? <FaEyeSlash size={16} /> : <FaEye size={16} />}
+                        </button>
+                      </div>
                       {formData.password_confirm && formData.password !== formData.password_confirm && (
                         <p className="text-xs text-red-500 mt-1">Las contraseñas no coinciden</p>
                       )}
@@ -1456,18 +1487,28 @@ function Usuarios() {
                 <label className="block text-sm font-semibold text-gray-700 mb-1">
                   Nueva Contraseña <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="password"
-                  value={passwordData.new_password}
-                  onChange={(e) => setPasswordData({...passwordData, new_password: e.target.value})}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    passwordData.new_password && !PASSWORD_REGEX.test(passwordData.new_password) 
-                      ? 'border-amber-400' 
-                      : 'border-gray-300'
-                  }`}
-                  required
-                  minLength={8}
-                />
+                <div className="relative">
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    value={passwordData.new_password}
+                    onChange={(e) => setPasswordData({...passwordData, new_password: e.target.value})}
+                    className={`w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      passwordData.new_password && !PASSWORD_REGEX.test(passwordData.new_password) 
+                        ? 'border-amber-400' 
+                        : 'border-gray-300'
+                    }`}
+                    required
+                    minLength={8}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                    tabIndex={-1}
+                  >
+                    {showNewPassword ? <FaEyeSlash size={16} /> : <FaEye size={16} />}
+                  </button>
+                </div>
                 <p className="text-xs text-gray-500 mt-1">{PASSWORD_REQUIREMENTS}</p>
                 {passwordData.new_password && (
                   <div className="text-xs mt-1 space-y-0.5">
@@ -1491,18 +1532,28 @@ function Usuarios() {
                 <label className="block text-sm font-semibold text-gray-700 mb-1">
                   Confirmar Contraseña <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="password"
-                  value={passwordData.confirm_password}
-                  onChange={(e) => setPasswordData({...passwordData, confirm_password: e.target.value})}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    passwordData.confirm_password && passwordData.new_password !== passwordData.confirm_password 
-                      ? 'border-red-400' 
-                      : 'border-gray-300'
-                  }`}
-                  required
-                  minLength={8}
-                />
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={passwordData.confirm_password}
+                    onChange={(e) => setPasswordData({...passwordData, confirm_password: e.target.value})}
+                    className={`w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      passwordData.confirm_password && passwordData.new_password !== passwordData.confirm_password 
+                        ? 'border-red-400' 
+                        : 'border-gray-300'
+                    }`}
+                    required
+                    minLength={8}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                    tabIndex={-1}
+                  >
+                    {showConfirmPassword ? <FaEyeSlash size={16} /> : <FaEye size={16} />}
+                  </button>
+                </div>
                 {passwordData.confirm_password && passwordData.new_password !== passwordData.confirm_password && (
                   <p className="text-xs text-red-500 mt-1">Las contraseñas no coinciden</p>
                 )}
