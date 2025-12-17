@@ -5653,10 +5653,15 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             return response
             
         except Exception as e:
-            # traceback removido por seguridad (ISS-008)
+            import traceback
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error generando hoja consulta req {pk}: {str(e)}")
+            logger.error(traceback.format_exc())
             return Response({
                 'error': 'Error al generar la hoja de consulta',
-                'mensaje': str(e)
+                'mensaje': str(e),
+                'detalle': traceback.format_exc()
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['get'], url_path='pdf-rechazo')
