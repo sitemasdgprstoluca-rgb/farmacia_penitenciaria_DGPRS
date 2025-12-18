@@ -349,22 +349,22 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     Importa lotes desde Excel.
     
     COLUMNAS OBLIGATORIAS:
-    - Clave Producto (REQUERIDO): código/clave del producto - NO se busca por nombre
+    - Clave Producto (REQUERIDO): código/clave del producto
+    - Nombre Producto (REQUERIDO): nombre del producto (debe coincidir con clave)
     - Lote (REQUERIDO): número de lote
     - Cantidad Inicial (REQUERIDO): cantidad inicial
     - Fecha Caducidad (REQUERIDO): fecha de vencimiento
     
     COLUMNAS OPCIONALES:
-    - Nombre Producto: solo referencia visual (NO se usa para búsqueda)
     - Precio Unitario: precio unitario (default 0)
     - Número Contrato: número de contrato
     - Marca: laboratorio (opcional)
     - Fecha Fabricación: fecha de elaboración
     - Activo: estado del lote (default Activo)
     
-    IMPORTANTE: El sistema identifica productos SOLO por CLAVE para evitar
-    confusiones con productos de nombres similares. El nombre es solo para
-    referencia visual del usuario en la plantilla.
+    IMPORTANTE: El sistema verifica que CLAVE y NOMBRE coincidan con el producto
+    en la base de datos. Si hay discrepancia, se reporta error para evitar
+    sumar cantidades a productos incorrectos.
     
     Detecta automáticamente la fila de encabezados.
     """
@@ -436,17 +436,20 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     
     logger.info(f"Lotes - Mapeo: {col_map}")
     
-    # FIX: Validar columnas mínimas - CLAVE es OBLIGATORIA (no nombre)
-    # El nombre es solo para referencia visual, no se usa para búsqueda
+    # FIX: Validar columnas mínimas - CLAVE y NOMBRE son OBLIGATORIAS
+    # Ambos deben coincidir con el producto en la base de datos
     tiene_clave = ('producto_clave' in col_map or 'producto_id' in col_map)
+    tiene_nombre = 'producto_nombre' in col_map
     tiene_lote = 'numero_lote' in col_map
     tiene_cantidad = 'cantidad_inicial' in col_map
     tiene_caducidad = 'caducidad' in col_map
     
-    if not (tiene_clave and tiene_lote and tiene_cantidad and tiene_caducidad):
+    if not (tiene_clave and tiene_nombre and tiene_lote and tiene_cantidad and tiene_caducidad):
         faltantes = []
         if not tiene_clave:
-            faltantes.append('Clave Producto (obligatoria para identificar producto)')
+            faltantes.append('Clave Producto (obligatoria)')
+        if not tiene_nombre:
+            faltantes.append('Nombre Producto (obligatorio - debe coincidir con clave)')
         if not tiene_lote:
             faltantes.append('Número Lote')
         if not tiene_cantidad:
@@ -456,7 +459,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
         
         resultado.agregar_error(1, 'encabezados', 
             f'Columnas faltantes: {", ".join(faltantes)}. Detectadas: {encabezados}. '
-            f'NOTA: La columna "Clave Producto" es obligatoria - el nombre es solo referencia visual.')
+            f'NOTA: Tanto Clave como Nombre del producto son obligatorios y deben coincidir.')
         return resultado.get_dict()
     
     # Centro: NULL = Almacén Central (FARMACIA)
@@ -489,51 +492,54 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                             return str(val).strip()
                     return default
                 
-                # ========== PRODUCTO (requerido - CLAVE es OBLIGATORIA) ==========
-                # FIX: La CLAVE es obligatoria para evitar confusiones por nombres similares
-                # El nombre es solo para referencia visual, no para búsqueda
+                # ========== PRODUCTO (requerido - CLAVE Y NOMBRE son OBLIGATORIOS) ==========
+                # FIX: AMBOS campos son obligatorios y deben coincidir con la BD
                 producto = None
                 producto_ref = None
                 clave_producto = None
+                nombre_producto = None
                 
-                # OBLIGATORIO: Buscar por Clave alfanumérica
+                # Obtener CLAVE (obligatoria)
                 if 'producto_clave' in col_map:
                     clave_producto = get_val('producto_clave')
-                    if clave_producto:
-                        producto_ref = clave_producto.upper()
-                        try:
-                            producto = Producto.objects.get(clave__iexact=clave_producto)
-                        except Producto.DoesNotExist:
-                            # La clave no existe - reportar error claro
-                            nombre_ref = get_val('producto_nombre') if 'producto_nombre' in col_map else ''
-                            resultado.agregar_error(fila_num, 'producto', 
-                                f'Clave "{clave_producto}" no encontrada en el catálogo de productos. '
-                                f'Nombre: {nombre_ref}. Verifique que el producto exista.')
-                            continue
                 
-                # FALLBACK: Si no hay columna de clave, intentar por ID numérico
-                if not producto and not clave_producto and 'producto_id' in col_map:
-                    id_producto_raw = get_val('producto_id')
-                    if id_producto_raw:
-                        try:
-                            producto_id = int(float(id_producto_raw))
-                            producto_ref = f"ID:{producto_id}"
-                            producto = Producto.objects.get(id=producto_id)
-                        except (ValueError, Producto.DoesNotExist):
-                            resultado.agregar_error(fila_num, 'producto', 
-                                f'Producto con ID {id_producto_raw} no encontrado')
-                            continue
+                # Obtener NOMBRE (obligatorio)
+                if 'producto_nombre' in col_map:
+                    nombre_producto = get_val('producto_nombre')
                 
-                # NOTA: Ya NO se busca por nombre para evitar confusiones
-                # El nombre solo es referencia visual en la plantilla
-                
-                if not producto:
-                    if not clave_producto and not get_val('producto_id'):
-                        # Fila vacía o sin identificador de producto
-                        resultado.total_procesados -= 1
-                        continue
+                # Validar que AMBOS campos estén presentes
+                if not clave_producto:
                     resultado.agregar_error(fila_num, 'producto', 
-                        f'La columna "Clave Producto" es obligatoria. Proporcione la clave del producto.')
+                        f'Clave de producto es OBLIGATORIA. Nombre proporcionado: {nombre_producto or "N/A"}')
+                    continue
+                
+                if not nombre_producto:
+                    resultado.agregar_error(fila_num, 'producto', 
+                        f'Nombre de producto es OBLIGATORIO. Clave proporcionada: {clave_producto}')
+                    continue
+                
+                # Buscar producto por CLAVE
+                producto_ref = clave_producto.upper()
+                try:
+                    producto = Producto.objects.get(clave__iexact=clave_producto)
+                except Producto.DoesNotExist:
+                    resultado.agregar_error(fila_num, 'producto', 
+                        f'Clave "{clave_producto}" no encontrada en el catálogo de productos. '
+                        f'Nombre: {nombre_producto}. Verifique que el producto exista.')
+                    continue
+                
+                # VERIFICACIÓN CRÍTICA: El nombre en Excel debe coincidir con el nombre en BD
+                nombre_bd_normalizado = producto.nombre.strip().lower()
+                nombre_excel_normalizado = nombre_producto.strip().lower()
+                
+                # Verificar si el nombre coincide (completo o parcialmente al inicio)
+                if not (nombre_bd_normalizado == nombre_excel_normalizado or 
+                        nombre_bd_normalizado.startswith(nombre_excel_normalizado) or
+                        nombre_excel_normalizado.startswith(nombre_bd_normalizado)):
+                    resultado.agregar_error(fila_num, 'producto', 
+                        f'DISCREPANCIA: Clave "{clave_producto}" corresponde a '
+                        f'"{producto.nombre}" en BD, pero Excel dice "{nombre_producto}". '
+                        f'Verifique que clave y nombre sean correctos.')
                     continue
                 
                 # ========== NUMERO LOTE (requerido) ==========

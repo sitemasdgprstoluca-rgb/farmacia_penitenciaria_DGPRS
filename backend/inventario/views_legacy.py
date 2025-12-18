@@ -3001,13 +3001,13 @@ class LoteViewSet(viewsets.ModelViewSet):
         Importa lotes desde Excel con detección automática de columnas.
         
         COLUMNAS OBLIGATORIAS:
-        - Clave Producto* (REQUERIDO): clave del producto - NO se busca por nombre
+        - Clave Producto* (REQUERIDO): clave única del producto
+        - Nombre Producto* (REQUERIDO): nombre del producto (debe coincidir con clave)
         - Numero Lote* (REQUERIDO): identificador del lote
         - Fecha Caducidad* (REQUERIDO): fecha de vencimiento
         - Cantidad Inicial* (REQUERIDO): cantidad recibida
         
         COLUMNAS OPCIONALES:
-        - Nombre Producto: solo referencia visual (NO se usa para búsqueda)
         - Cantidad Actual: default = cantidad inicial
         - Fecha Fabricacion
         - Precio Unitario: default = 0
@@ -3017,8 +3017,8 @@ class LoteViewSet(viewsets.ModelViewSet):
         - Centro/Centro ID: ID o nombre del centro
         - Activo: estado del lote
         
-        IMPORTANTE: El sistema identifica productos SOLO por CLAVE para evitar
-        confusiones con productos de nombres similares.
+        IMPORTANTE: El sistema verifica que CLAVE y NOMBRE coincidan con el producto
+        en la base de datos. Si hay discrepancia, se reporta error.
         
         Limites de seguridad:
         - Tamano maximo: 10MB
@@ -3135,9 +3135,9 @@ class LoteViewSet(viewsets.ModelViewSet):
                         continue
                     
                     # Extraer valores usando el mapa de columnas
-                    # FIX: La clave es OBLIGATORIA, el nombre es solo referencia visual
-                    clave_producto = get_val(row, 'producto')  # Columna "Clave Producto" 
-                    nombre_producto_ref = get_val(row, 'nombre_producto')  # Solo para referencia visual
+                    # FIX: AMBOS son OBLIGATORIOS: Clave Y Nombre deben coincidir con producto en BD
+                    clave_producto = get_val(row, 'producto')  # Columna "Clave Producto" - OBLIGATORIA
+                    nombre_producto = get_val(row, 'nombre_producto')  # Columna "Nombre Producto" - OBLIGATORIA
                     numero_lote = get_val(row, 'numero_lote')
                     fecha_cad = get_val(row, 'fecha_caducidad')
                     cantidad_inicial = get_val(row, 'cantidad_inicial')
@@ -3149,11 +3149,18 @@ class LoteViewSet(viewsets.ModelViewSet):
                     ubicacion = get_val(row, 'ubicacion')
                     centro_ref = get_val(row, 'centro')
 
-                    # FIX: Validar que la clave del producto esté presente
+                    # FIX: Validar que AMBOS campos estén presentes: Clave Y Nombre
                     if not clave_producto:
                         errores.append({
                             'fila': row_idx, 
-                            'error': f'Clave de producto es obligatoria. Nombre referencia: {nombre_producto_ref or "N/A"}'
+                            'error': f'Clave de producto es OBLIGATORIA. Nombre proporcionado: {nombre_producto or "N/A"}'
+                        })
+                        continue
+                    
+                    if not nombre_producto:
+                        errores.append({
+                            'fila': row_idx, 
+                            'error': f'Nombre de producto es OBLIGATORIO. Clave proporcionada: {clave_producto}'
                         })
                         continue
                     
@@ -3161,15 +3168,34 @@ class LoteViewSet(viewsets.ModelViewSet):
                         errores.append({'fila': row_idx, 'error': 'Número de lote es obligatorio'})
                         continue
 
-                    # FIX: Buscar producto SOLO por clave - NO por nombre (evita confusiones)
-                    producto_busqueda = str(clave_producto).strip()
+                    # FIX: Buscar producto por CLAVE y verificar que NOMBRE coincida
+                    clave_busqueda = str(clave_producto).strip()
+                    nombre_busqueda = str(nombre_producto).strip()
+                    
                     try:
-                        producto = Producto.objects.get(clave__iexact=producto_busqueda)
+                        producto = Producto.objects.get(clave__iexact=clave_busqueda)
                     except Producto.DoesNotExist:
                         errores.append({
                             'fila': row_idx, 
-                            'error': f'Clave "{producto_busqueda}" no encontrada en catálogo. '
-                                     f'Nombre ref: {nombre_producto_ref or "N/A"}. Verifique el catálogo de productos.'
+                            'error': f'Clave "{clave_busqueda}" no encontrada en catálogo. '
+                                     f'Nombre: "{nombre_busqueda}". Verifique el catálogo de productos.'
+                        })
+                        continue
+                    
+                    # VERIFICACIÓN CRÍTICA: El nombre en Excel debe coincidir con el nombre en BD
+                    # Comparación flexible: ignorar mayúsculas/minúsculas y espacios extra
+                    nombre_bd_normalizado = producto.nombre.strip().lower()
+                    nombre_excel_normalizado = nombre_busqueda.lower()
+                    
+                    # Verificar si el nombre coincide (completo o parcialmente al inicio)
+                    if not (nombre_bd_normalizado == nombre_excel_normalizado or 
+                            nombre_bd_normalizado.startswith(nombre_excel_normalizado) or
+                            nombre_excel_normalizado.startswith(nombre_bd_normalizado)):
+                        errores.append({
+                            'fila': row_idx, 
+                            'error': f'DISCREPANCIA: Clave "{clave_busqueda}" corresponde a '
+                                     f'"{producto.nombre}" en BD, pero Excel dice "{nombre_busqueda}". '
+                                     f'Verifique que clave y nombre sean correctos.'
                         })
                         continue
 
@@ -3295,8 +3321,8 @@ class LoteViewSet(viewsets.ModelViewSet):
         Descarga plantilla Excel para importación de lotes.
         
         COLUMNAS OBLIGATORIAS (en orden):
-        1. Clave Producto* (REQUERIDO) - OBLIGATORIA para identificar producto
-        2. Nombre Producto (referencia visual - NO se usa para búsqueda)
+        1. Clave Producto* (REQUERIDO) - Clave única del producto
+        2. Nombre Producto* (REQUERIDO) - Debe coincidir con la clave
         3. Numero Lote* (REQUERIDO) - Identificador único del lote
         4. Fecha Caducidad* (REQUERIDO, YYYY-MM-DD)
         5. Cantidad Inicial* (REQUERIDO) - Cantidad recibida
@@ -3308,8 +3334,9 @@ class LoteViewSet(viewsets.ModelViewSet):
         9. Marca
         10. Activo (default = Activo)
         
-        IMPORTANTE: El sistema identifica productos SOLO por CLAVE para evitar
-        confusiones con productos de nombres similares.
+        IMPORTANTE: El sistema verifica que CLAVE y NOMBRE coincidan con el producto
+        en la base de datos. Si hay discrepancia (clave correcta pero nombre incorrecto),
+        se reportará un error para evitar confusiones.
         
         NOTA: La ubicación se asigna automáticamente como "Almacén Central"
         y el centro queda NULL (representa Farmacia Central).
@@ -3397,15 +3424,17 @@ class LoteViewSet(viewsets.ModelViewSet):
             ['    ELIMÍNELAS antes de cargar sus datos reales.'],
             [''],
             ['════════════════════════════════════════════════════════════════════════'],
-            ['⚠️  NOTA CRÍTICA: El sistema identifica productos SOLO por CLAVE.'],
-            ['    El nombre es SOLO referencia visual - NO se usa para búsqueda.'],
-            ['    Esto evita confusiones con productos de nombres similares.'],
+            ['⚠️  VERIFICACIÓN DE DOBLE CAMPO: CLAVE + NOMBRE'],
             ['════════════════════════════════════════════════════════════════════════'],
+            ['El sistema verifica que AMBOS campos (Clave y Nombre) coincidan con'],
+            ['el producto en la base de datos. Si hay discrepancia, se reportará error.'],
+            ['Esto evita errores al sumar cantidades a productos incorrectos.'],
             [''],
             ['────────────────────────────────────────────────────────────────────────'],
             ['COLUMNAS REQUERIDAS (obligatorias):'],
             ['────────────────────────────────────────────────────────────────────────'],
             ['• Clave Producto* - OBLIGATORIA: Clave única del producto en el sistema'],
+            ['• Nombre Producto* - OBLIGATORIO: Debe coincidir con la clave'],
             ['• Numero Lote*    - Identificador único del lote'],
             ['• Fecha Caducidad* - Formato: YYYY-MM-DD (ej: 2026-12-31)'],
             ['• Cantidad Inicial* - Cantidad de unidades recibidas'],
@@ -3413,7 +3442,6 @@ class LoteViewSet(viewsets.ModelViewSet):
             ['────────────────────────────────────────────────────────────────────────'],
             ['COLUMNAS OPCIONALES:'],
             ['────────────────────────────────────────────────────────────────────────'],
-            ['• Nombre Producto  - Solo para referencia visual (NO SE USA PARA BÚSQUEDA)'],
             ['• Fecha Fabricacion - Formato: YYYY-MM-DD'],
             ['• Precio Unitario  - Precio por unidad (default: 0)'],
             ['• Numero Contrato  - Referencia del contrato de adquisición'],
@@ -3425,7 +3453,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             ['────────────────────────────────────────────────────────────────────────'],
             ['• Los lotes se asignan automáticamente al Almacén Central (FARMACIA).'],
             ['• El PRODUCTO debe existir antes de importar lotes.'],
-            ['• Verifique la CLAVE del producto en el catálogo antes de importar.'],
+            ['• Verifique la CLAVE y NOMBRE del producto en el catálogo.'],
             ['• Si el lote ya existe (mismo producto + número de lote), se reporta error.'],
             ['• La cantidad_actual se inicializa igual a cantidad_inicial.'],
             ['• El stock del producto se actualiza automáticamente.'],
