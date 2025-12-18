@@ -348,15 +348,23 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     """
     Importa lotes desde Excel.
     
-    Columnas soportadas:
-    - Clave/ID/Nombre Producto (REQUERIDO): código o ID del producto
+    COLUMNAS OBLIGATORIAS:
+    - Clave Producto (REQUERIDO): código/clave del producto - NO se busca por nombre
     - Lote (REQUERIDO): número de lote
     - Cantidad Inicial (REQUERIDO): cantidad inicial
     - Fecha Caducidad (REQUERIDO): fecha de vencimiento
-    - Precio Unitario: precio unitario (opcional, default 0)
+    
+    COLUMNAS OPCIONALES:
+    - Nombre Producto: solo referencia visual (NO se usa para búsqueda)
+    - Precio Unitario: precio unitario (default 0)
+    - Número Contrato: número de contrato
     - Marca: laboratorio (opcional)
-    - Ubicacion: ubicación física (opcional)
-    - Centro: nombre del centro (opcional)
+    - Fecha Fabricación: fecha de elaboración
+    - Activo: estado del lote (default Activo)
+    
+    IMPORTANTE: El sistema identifica productos SOLO por CLAVE para evitar
+    confusiones con productos de nombres similares. El nombre es solo para
+    referencia visual del usuario en la plantilla.
     
     Detecta automáticamente la fila de encabezados.
     """
@@ -428,16 +436,17 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     
     logger.info(f"Lotes - Mapeo: {col_map}")
     
-    # Validar columnas mínimas - aceptar múltiples formas de identificar producto
-    tiene_producto = ('producto_clave' in col_map or 'producto_id' in col_map or 'producto_nombre' in col_map)
+    # FIX: Validar columnas mínimas - CLAVE es OBLIGATORIA (no nombre)
+    # El nombre es solo para referencia visual, no se usa para búsqueda
+    tiene_clave = ('producto_clave' in col_map or 'producto_id' in col_map)
     tiene_lote = 'numero_lote' in col_map
     tiene_cantidad = 'cantidad_inicial' in col_map
     tiene_caducidad = 'caducidad' in col_map
     
-    if not (tiene_producto and tiene_lote and tiene_cantidad and tiene_caducidad):
+    if not (tiene_clave and tiene_lote and tiene_cantidad and tiene_caducidad):
         faltantes = []
-        if not tiene_producto:
-            faltantes.append('Clave/ID/Nombre Producto')
+        if not tiene_clave:
+            faltantes.append('Clave Producto (obligatoria para identificar producto)')
         if not tiene_lote:
             faltantes.append('Número Lote')
         if not tiene_cantidad:
@@ -446,7 +455,8 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
             faltantes.append('Fecha Caducidad')
         
         resultado.agregar_error(1, 'encabezados', 
-            f'Columnas faltantes: {", ".join(faltantes)}. Detectadas: {encabezados}')
+            f'Columnas faltantes: {", ".join(faltantes)}. Detectadas: {encabezados}. '
+            f'NOTA: La columna "Clave Producto" es obligatoria - el nombre es solo referencia visual.')
         return resultado.get_dict()
     
     # Centro: NULL = Almacén Central (FARMACIA)
@@ -479,11 +489,14 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                             return str(val).strip()
                     return default
                 
-                # ========== PRODUCTO (requerido - soporta 3 formas) ==========
+                # ========== PRODUCTO (requerido - CLAVE es OBLIGATORIA) ==========
+                # FIX: La CLAVE es obligatoria para evitar confusiones por nombres similares
+                # El nombre es solo para referencia visual, no para búsqueda
                 producto = None
                 producto_ref = None
+                clave_producto = None
                 
-                # Intentar por Clave alfanumérica
+                # OBLIGATORIO: Buscar por Clave alfanumérica
                 if 'producto_clave' in col_map:
                     clave_producto = get_val('producto_clave')
                     if clave_producto:
@@ -491,10 +504,15 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         try:
                             producto = Producto.objects.get(clave__iexact=clave_producto)
                         except Producto.DoesNotExist:
-                            pass
+                            # La clave no existe - reportar error claro
+                            nombre_ref = get_val('producto_nombre') if 'producto_nombre' in col_map else ''
+                            resultado.agregar_error(fila_num, 'producto', 
+                                f'Clave "{clave_producto}" no encontrada en el catálogo de productos. '
+                                f'Nombre: {nombre_ref}. Verifique que el producto exista.')
+                            continue
                 
-                # Intentar por ID numérico
-                if not producto and 'producto_id' in col_map:
+                # FALLBACK: Si no hay columna de clave, intentar por ID numérico
+                if not producto and not clave_producto and 'producto_id' in col_map:
                     id_producto_raw = get_val('producto_id')
                     if id_producto_raw:
                         try:
@@ -502,27 +520,20 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                             producto_ref = f"ID:{producto_id}"
                             producto = Producto.objects.get(id=producto_id)
                         except (ValueError, Producto.DoesNotExist):
-                            pass
+                            resultado.agregar_error(fila_num, 'producto', 
+                                f'Producto con ID {id_producto_raw} no encontrado')
+                            continue
                 
-                # Intentar por nombre
-                if not producto and 'producto_nombre' in col_map:
-                    nombre_producto = get_val('producto_nombre')
-                    if nombre_producto:
-                        producto_ref = nombre_producto
-                        try:
-                            producto = Producto.objects.get(nombre__iexact=nombre_producto)
-                        except Producto.DoesNotExist:
-                            # Intentar búsqueda aproximada
-                            productos_match = Producto.objects.filter(nombre__icontains=nombre_producto)
-                            if productos_match.count() == 1:
-                                producto = productos_match.first()
+                # NOTA: Ya NO se busca por nombre para evitar confusiones
+                # El nombre solo es referencia visual en la plantilla
                 
                 if not producto:
-                    if not producto_ref:
+                    if not clave_producto and not get_val('producto_id'):
+                        # Fila vacía o sin identificador de producto
                         resultado.total_procesados -= 1
                         continue
                     resultado.agregar_error(fila_num, 'producto', 
-                        f'Producto no encontrado: {producto_ref}')
+                        f'La columna "Clave Producto" es obligatoria. Proporcione la clave del producto.')
                     continue
                 
                 # ========== NUMERO LOTE (requerido) ==========

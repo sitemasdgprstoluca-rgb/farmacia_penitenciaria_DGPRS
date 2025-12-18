@@ -3000,18 +3000,25 @@ class LoteViewSet(viewsets.ModelViewSet):
         """
         Importa lotes desde Excel con detección automática de columnas.
         
-        Columnas reconocidas (flexibles, no importa el orden):
-        - Producto/Clave (requerido): clave o nombre del producto
-        - Numero Lote/Lote (requerido): identificador del lote
-        - Fecha Caducidad (requerido): fecha de vencimiento
-        - Cantidad Inicial/Cantidad (requerido): cantidad recibida
-        - Cantidad Actual (opcional): default = cantidad inicial
-        - Fecha Fabricacion (opcional)
-        - Precio Unitario/Precio (opcional): default = 0
-        - Numero Contrato/Contrato (opcional)
-        - Marca (opcional)
-        - Ubicacion (opcional)
-        - Centro/Centro ID (opcional): ID o nombre del centro
+        COLUMNAS OBLIGATORIAS:
+        - Clave Producto* (REQUERIDO): clave del producto - NO se busca por nombre
+        - Numero Lote* (REQUERIDO): identificador del lote
+        - Fecha Caducidad* (REQUERIDO): fecha de vencimiento
+        - Cantidad Inicial* (REQUERIDO): cantidad recibida
+        
+        COLUMNAS OPCIONALES:
+        - Nombre Producto: solo referencia visual (NO se usa para búsqueda)
+        - Cantidad Actual: default = cantidad inicial
+        - Fecha Fabricacion
+        - Precio Unitario: default = 0
+        - Numero Contrato
+        - Marca
+        - Ubicacion
+        - Centro/Centro ID: ID o nombre del centro
+        - Activo: estado del lote
+        
+        IMPORTANTE: El sistema identifica productos SOLO por CLAVE para evitar
+        confusiones con productos de nombres similares.
         
         Limites de seguridad:
         - Tamano maximo: 10MB
@@ -3128,7 +3135,9 @@ class LoteViewSet(viewsets.ModelViewSet):
                         continue
                     
                     # Extraer valores usando el mapa de columnas
-                    producto_ref = get_val(row, 'producto') or get_val(row, 'nombre_producto')
+                    # FIX: La clave es OBLIGATORIA, el nombre es solo referencia visual
+                    clave_producto = get_val(row, 'producto')  # Columna "Clave Producto" 
+                    nombre_producto_ref = get_val(row, 'nombre_producto')  # Solo para referencia visual
                     numero_lote = get_val(row, 'numero_lote')
                     fecha_cad = get_val(row, 'fecha_caducidad')
                     cantidad_inicial = get_val(row, 'cantidad_inicial')
@@ -3140,18 +3149,28 @@ class LoteViewSet(viewsets.ModelViewSet):
                     ubicacion = get_val(row, 'ubicacion')
                     centro_ref = get_val(row, 'centro')
 
-                    if not producto_ref or not numero_lote:
-                        errores.append({'fila': row_idx, 'error': 'Producto y numero de lote son obligatorios'})
+                    # FIX: Validar que la clave del producto esté presente
+                    if not clave_producto:
+                        errores.append({
+                            'fila': row_idx, 
+                            'error': f'Clave de producto es obligatoria. Nombre referencia: {nombre_producto_ref or "N/A"}'
+                        })
+                        continue
+                    
+                    if not numero_lote:
+                        errores.append({'fila': row_idx, 'error': 'Número de lote es obligatorio'})
                         continue
 
-                    # ISS-FIX: Buscar producto por clave o nombre (flexible)
-                    producto_busqueda = str(producto_ref).strip()
-                    producto = Producto.objects.filter(
-                        Q(clave__iexact=producto_busqueda) |
-                        Q(nombre__icontains=producto_busqueda)
-                    ).first()
-                    if not producto:
-                        errores.append({'fila': row_idx, 'error': f'Producto no encontrado: {producto_ref}'})
+                    # FIX: Buscar producto SOLO por clave - NO por nombre (evita confusiones)
+                    producto_busqueda = str(clave_producto).strip()
+                    try:
+                        producto = Producto.objects.get(clave__iexact=producto_busqueda)
+                    except Producto.DoesNotExist:
+                        errores.append({
+                            'fila': row_idx, 
+                            'error': f'Clave "{producto_busqueda}" no encontrada en catálogo. '
+                                     f'Nombre ref: {nombre_producto_ref or "N/A"}. Verifique el catálogo de productos.'
+                        })
                         continue
 
                     # Parsear fecha de caducidad (varios formatos)
@@ -3275,17 +3294,22 @@ class LoteViewSet(viewsets.ModelViewSet):
         """
         Descarga plantilla Excel para importación de lotes.
         
-        Columnas (en orden):
-        1. Producto (REQUERIDO) - Clave o nombre del producto
-        2. Numero Lote (REQUERIDO) - Identificador único del lote
-        3. Fecha Caducidad (REQUERIDO, YYYY-MM-DD)
-        4. Cantidad Inicial (REQUERIDO) - Cantidad recibida
-        5. Cantidad Actual (opcional, default = Cantidad Inicial)
-        6. Fecha Fabricacion (opcional, YYYY-MM-DD)
-        7. Precio Unitario (opcional, default = 0)
-        8. Numero Contrato (opcional)
-        9. Marca (opcional)
-        10. Activo (opcional, default = Activo)
+        COLUMNAS OBLIGATORIAS (en orden):
+        1. Clave Producto* (REQUERIDO) - OBLIGATORIA para identificar producto
+        2. Nombre Producto (referencia visual - NO se usa para búsqueda)
+        3. Numero Lote* (REQUERIDO) - Identificador único del lote
+        4. Fecha Caducidad* (REQUERIDO, YYYY-MM-DD)
+        5. Cantidad Inicial* (REQUERIDO) - Cantidad recibida
+        
+        COLUMNAS OPCIONALES:
+        6. Fecha Fabricacion (YYYY-MM-DD)
+        7. Precio Unitario (default = 0)
+        8. Numero Contrato
+        9. Marca
+        10. Activo (default = Activo)
+        
+        IMPORTANTE: El sistema identifica productos SOLO por CLAVE para evitar
+        confusiones con productos de nombres similares.
         
         NOTA: La ubicación se asigna automáticamente como "Almacén Central"
         y el centro queda NULL (representa Farmacia Central).
@@ -3294,11 +3318,11 @@ class LoteViewSet(viewsets.ModelViewSet):
         ws = wb.active
         ws.title = 'Lotes'
         
-        # Headers SIMPLIFICADOS - sin Ubicacion ni Centro ID
-        # Todo llega a Farmacia (Almacén Central) por defecto
+        # Headers SIMPLIFICADOS - Clave Producto es OBLIGATORIA
+        # Nombre Producto es solo referencia visual
         headers = [
-            'Producto', 'Numero Lote', 'Fecha Caducidad', 'Cantidad Inicial',
-            'Cantidad Actual', 'Fecha Fabricacion', 'Precio Unitario',
+            'Clave Producto', 'Nombre Producto', 'Numero Lote', 'Fecha Caducidad', 'Cantidad Inicial',
+            'Fecha Fabricacion', 'Precio Unitario',
             'Numero Contrato', 'Marca', 'Activo'
         ]
         ws.append(headers)
@@ -3312,18 +3336,18 @@ class LoteViewSet(viewsets.ModelViewSet):
         fecha_fab_ejemplo = date.today().strftime('%Y-%m-%d')
         
         ws.append([
-            'PRUEBA001', 'LOTE-PRUEBA-001', fecha_cad_ejemplo, 100,
-            100, fecha_fab_ejemplo, 25.50,
+            'PRUEBA001', '[EJEMPLO] Paracetamol - ELIMINAR', 'LOTE-PRUEBA-001', fecha_cad_ejemplo, 100,
+            fecha_fab_ejemplo, 25.50,
             'CONT-PRUEBA-001', '[EJEMPLO] Laboratorio - ELIMINAR', 'Activo'
         ])
         ws.append([
-            'PRUEBA002', 'LOTE-PRUEBA-002', fecha_cad_ejemplo, 50,
-            50, fecha_fab_ejemplo, 18.75,
+            'PRUEBA002', '[EJEMPLO] Ibuprofeno - ELIMINAR', 'LOTE-PRUEBA-002', fecha_cad_ejemplo, 50,
+            fecha_fab_ejemplo, 18.75,
             'CONT-PRUEBA-002', '[EJEMPLO] Farmacéutica - ELIMINAR', 'Activo'
         ])
         ws.append([
-            'PRUEBA003', 'LOTE-PRUEBA-003', fecha_cad_ejemplo, 200,
-            200, '', 5.00,
+            'PRUEBA003', '[EJEMPLO] Jeringa - ELIMINAR', 'LOTE-PRUEBA-003', fecha_cad_ejemplo, 200,
+            '', 5.00,
             '', '[EJEMPLO] Material - ELIMINAR', 'Activo'
         ])
         
@@ -3343,13 +3367,13 @@ class LoteViewSet(viewsets.ModelViewSet):
                 cell = ws.cell(row=row_num, column=col)
                 cell.font = example_font
         
-        # Ajustar ancho de columnas (10 columnas sin Ubicacion ni Centro ID)
+        # Ajustar ancho de columnas
         column_widths = {
-            'A': 15,  # Producto
-            'B': 20,  # Numero Lote
-            'C': 16,  # Fecha Caducidad
-            'D': 16,  # Cantidad Inicial
-            'E': 16,  # Cantidad Actual
+            'A': 15,  # Clave Producto
+            'B': 40,  # Nombre Producto (referencia)
+            'C': 20,  # Numero Lote
+            'D': 16,  # Fecha Caducidad
+            'E': 16,  # Cantidad Inicial
             'F': 18,  # Fecha Fabricacion
             'G': 15,  # Precio Unitario
             'H': 18,  # Numero Contrato
@@ -3372,18 +3396,24 @@ class LoteViewSet(viewsets.ModelViewSet):
             ['⚠️  IMPORTANTE: Las filas grises en la hoja "Lotes" son EJEMPLOS.'],
             ['    ELIMÍNELAS antes de cargar sus datos reales.'],
             [''],
+            ['════════════════════════════════════════════════════════════════════════'],
+            ['⚠️  NOTA CRÍTICA: El sistema identifica productos SOLO por CLAVE.'],
+            ['    El nombre es SOLO referencia visual - NO se usa para búsqueda.'],
+            ['    Esto evita confusiones con productos de nombres similares.'],
+            ['════════════════════════════════════════════════════════════════════════'],
+            [''],
             ['────────────────────────────────────────────────────────────────────────'],
             ['COLUMNAS REQUERIDAS (obligatorias):'],
             ['────────────────────────────────────────────────────────────────────────'],
-            ['• Producto       - Clave del producto (debe existir en el sistema)'],
-            ['• Numero Lote    - Identificador único del lote'],
-            ['• Fecha Caducidad - Formato: YYYY-MM-DD (ej: 2026-12-31)'],
-            ['• Cantidad Inicial - Cantidad de unidades recibidas'],
+            ['• Clave Producto* - OBLIGATORIA: Clave única del producto en el sistema'],
+            ['• Numero Lote*    - Identificador único del lote'],
+            ['• Fecha Caducidad* - Formato: YYYY-MM-DD (ej: 2026-12-31)'],
+            ['• Cantidad Inicial* - Cantidad de unidades recibidas'],
             [''],
             ['────────────────────────────────────────────────────────────────────────'],
             ['COLUMNAS OPCIONALES:'],
             ['────────────────────────────────────────────────────────────────────────'],
-            ['• Cantidad Actual  - Stock actual (default: igual a Cantidad Inicial)'],
+            ['• Nombre Producto  - Solo para referencia visual (NO SE USA PARA BÚSQUEDA)'],
             ['• Fecha Fabricacion - Formato: YYYY-MM-DD'],
             ['• Precio Unitario  - Precio por unidad (default: 0)'],
             ['• Numero Contrato  - Referencia del contrato de adquisición'],
@@ -3395,8 +3425,10 @@ class LoteViewSet(viewsets.ModelViewSet):
             ['────────────────────────────────────────────────────────────────────────'],
             ['• Los lotes se asignan automáticamente al Almacén Central (FARMACIA).'],
             ['• El PRODUCTO debe existir antes de importar lotes.'],
-            ['• Si el lote ya existe (mismo producto + número de lote), se ACTUALIZA.'],
+            ['• Verifique la CLAVE del producto en el catálogo antes de importar.'],
+            ['• Si el lote ya existe (mismo producto + número de lote), se reporta error.'],
             ['• La cantidad_actual se inicializa igual a cantidad_inicial.'],
+            ['• El stock del producto se actualiza automáticamente.'],
             ['• Fechas aceptadas: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY'],
             ['• Máximo 5000 lotes por archivo.'],
             ['• Tamaño máximo de archivo: 10 MB.'],
