@@ -708,12 +708,21 @@ const handleImportar = async (e) => {
         return '⚠️ Formato de fecha inválido (use YYYY-MM-DD o DD/MM/YYYY)';
       }
       
-      // Errores de producto
-      if (str.includes('Producto no encontrado')) {
+      // Errores de producto y validación clave+nombre
+      if (str.includes('Producto no encontrado') || str.includes('no encontrada en catálogo') || str.includes('no encontrada en el catálogo')) {
         return '⚠️ Producto no existe en el catálogo - verifique la clave';
       }
       if (str.includes('Producto y numero de lote son obligatorios')) {
         return '⚠️ Faltan datos obligatorios (Producto o Número de Lote)';
+      }
+      if (str.includes('DISCREPANCIA')) {
+        return '⚠️ Clave y nombre no coinciden - verifique que ambos correspondan al mismo producto';
+      }
+      if (str.includes('Clave de producto es OBLIGATORIA')) {
+        return '⚠️ Falta la clave del producto (columna obligatoria)';
+      }
+      if (str.includes('Nombre de producto es OBLIGATORIO')) {
+        return '⚠️ Falta el nombre del producto (columna obligatoria)';
       }
       
       // Errores de cantidad
