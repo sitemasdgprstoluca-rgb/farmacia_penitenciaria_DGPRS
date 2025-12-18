@@ -71,8 +71,9 @@ class Command(BaseCommand):
         self.stdout.write(f"Días caducidad: {dias_caducidad}, Crítico: {dias_critico}\n")
         
         # Obtener usuarios de farmacia para notificar
+        # Roles de farmacia según ROLES_USUARIO en constants.py
         usuarios_farmacia = User.objects.filter(
-            rol__in=['farmacia', 'admin_sistema', 'admin_farmacia', 'superusuario', 'FARMACIA', 'ADMIN'],
+            rol__in=['farmacia', 'admin', 'admin_sistema', 'admin_farmacia', 'superusuario'],
             is_active=True
         )
         

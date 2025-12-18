@@ -108,8 +108,9 @@ def _verificar_stock_bajo_producto(producto):
             return
         
         # Obtener usuarios de farmacia
+        # Roles de farmacia según ROLES_USUARIO en constants.py
         usuarios_farmacia = User.objects.filter(
-            rol__in=['farmacia', 'admin_sistema', 'admin_farmacia', 'superusuario', 'FARMACIA', 'ADMIN'],
+            rol__in=['farmacia', 'admin', 'admin_sistema', 'admin_farmacia', 'superusuario'],
             is_active=True
         )
         
@@ -398,8 +399,9 @@ def _notificar_farmacia_nueva_requisicion(requisicion):
     from .models import User
     
     # Obtener usuarios de farmacia y admin que deben recibir notificaciones
+    # Roles de farmacia según ROLES_USUARIO en constants.py
     usuarios_farmacia = User.objects.filter(
-        rol__in=['farmacia', 'admin_sistema', 'admin_farmacia', 'superusuario', 'FARMACIA', 'ADMIN'],
+        rol__in=['farmacia', 'admin', 'admin_sistema', 'admin_farmacia', 'superusuario'],
         is_active=True
     )
     
