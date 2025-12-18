@@ -736,7 +736,7 @@ const Trazabilidad = () => {
                       <th className="px-4 py-2 text-left font-semibold">Fecha</th>
                       <th className="px-4 py-2 text-left font-semibold">Tipo</th>
                       <th className="px-4 py-2 text-left font-semibold">Cantidad</th>
-                      {mostrarSaldo && <th className="px-4 py-2 text-left font-semibold">Saldo</th>}
+                      {mostrarSaldo && <th className="px-4 py-2 text-left font-semibold" title="Cantidad restante del lote después del movimiento">Saldo Lote</th>}
                       <th className="px-4 py-2 text-left font-semibold">Centro</th>
                       <th className="px-4 py-2 text-left font-semibold">Usuario</th>
                       <th className="px-4 py-2 text-left font-semibold">Lote</th>
@@ -762,7 +762,11 @@ const Trazabilidad = () => {
                           </span>
                         </td>
                         <td className="px-4 py-2 font-semibold">{mov.cantidad}</td>
-                        {mostrarSaldo && <td className="px-4 py-2">{mov.saldo ?? '-'}</td>}
+                        {mostrarSaldo && (
+                          <td className="px-4 py-2" title="Cantidad del lote después de este movimiento">
+                            {mov.saldo ?? '-'}
+                          </td>
+                        )}
                         <td className="px-4 py-2">{mov.centro || 'Farmacia Central'}</td>
                         <td className="px-4 py-2">{mov.usuario || '-'}</td>
                         <td className="px-4 py-2">{mov.lote || '-'}</td>

@@ -411,12 +411,6 @@ const Movimientos = () => {
   const exportarExcel = async () => {
     if (exporting) return; // Evitar exportaciones simultáneas
     
-    // Advertir si hay filtros pendientes
-    if (hayFiltrosPendientes) {
-      toast.error("Aplica los filtros antes de exportar para obtener datos consistentes");
-      return;
-    }
-    
     setExporting('excel');
     try {
       // Sanitizar filtros: eliminar valores vacíos antes de enviar
@@ -435,12 +429,6 @@ const Movimientos = () => {
 
   const exportarPdf = async () => {
     if (exporting) return; // Evitar exportaciones simultáneas
-    
-    // Advertir si hay filtros pendientes
-    if (hayFiltrosPendientes) {
-      toast.error("Aplica los filtros antes de exportar para obtener datos consistentes");
-      return;
-    }
     
     setExporting('pdf');
     try {
@@ -564,26 +552,26 @@ const Movimientos = () => {
               <>
                 <button
                   onClick={exportarPdf}
-                  disabled={loading || exporting !== null || hayFiltrosPendientes}
+                  disabled={loading || exporting !== null}
                   className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{
                     background: 'rgba(255,255,255,0.2)',
                     border: '1px solid rgba(255,255,255,0.4)'
                   }}
-                  title={hayFiltrosPendientes ? "Aplica los filtros primero" : "Exportar a PDF"}
+                  title="Exportar a PDF"
                 >
                   {exporting === 'pdf' ? <FaSpinner className="animate-spin" /> : <FaFilePdf />}
                   {exporting === 'pdf' ? 'Generando...' : 'PDF'}
                 </button>
                 <button
                   onClick={exportarExcel}
-                  disabled={loading || exporting !== null || hayFiltrosPendientes}
+                  disabled={loading || exporting !== null}
                   className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{
                     background: 'rgba(255,255,255,0.2)',
                     border: '1px solid rgba(255,255,255,0.4)'
                   }}
-                  title={hayFiltrosPendientes ? "Aplica los filtros primero" : "Exportar a Excel"}
+                  title="Exportar a Excel"
                 >
                   {exporting === 'excel' ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
                   {exporting === 'excel' ? 'Generando...' : 'Excel'}
