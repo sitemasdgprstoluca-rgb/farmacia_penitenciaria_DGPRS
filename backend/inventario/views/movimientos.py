@@ -262,13 +262,17 @@ class MovimientoViewSet(
                     'observaciones': mov.motivo or ''
                 })
             
+            # Obtener primer lote para info de contrato y precio
+            lote_principal = Lote.objects.filter(producto=producto, activo=True).order_by('-cantidad_actual').first()
+            
             producto_info = {
                 'clave': producto.clave,
                 'descripcion': producto.nombre,  # Usar nombre como descripción principal
                 'unidad_medida': producto.unidad_medida,
                 'stock_actual': producto.get_stock_actual() if hasattr(producto, 'get_stock_actual') else 0,
                 'stock_minimo': producto.stock_minimo,
-                'precio_unitario': 0,  # precio_unitario está en Lote, no en Producto
+                'precio_unitario': lote_principal.precio_unitario if lote_principal else 0,
+                'numero_contrato': lote_principal.numero_contrato if lote_principal else 'N/A',
             }
             
             pdf_buffer = generar_reporte_trazabilidad(trazabilidad_data, producto_info=producto_info)
@@ -337,6 +341,8 @@ class MovimientoViewSet(
                 'numero_lote': lote.numero_lote,
                 'fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else 'N/A',
                 'proveedor': lote.marca or 'No especificado',
+                'numero_contrato': lote.numero_contrato or 'N/A',
+                'precio_unitario': float(lote.precio_unitario) if lote.precio_unitario else 0,
             }
             
             pdf_buffer = generar_reporte_trazabilidad(trazabilidad_data, producto_info=producto_info)

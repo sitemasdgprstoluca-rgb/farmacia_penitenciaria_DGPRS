@@ -1472,7 +1472,15 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
             ['Clave:', str(producto_info.get('clave', 'N/A')), 'Descripción:', desc_paragraph],
             ['Unidad:', str(producto_info.get('unidad_medida', 'N/A')), 'Precio:', f"${producto_info.get('precio_unitario', 0):.2f}" if producto_info.get('precio_unitario') else 'N/A'],
             ['Stock Actual:', str(producto_info.get('stock_actual', 0)), 'Stock Mínimo:', str(producto_info.get('stock_minimo', 0))],
+            ['No. Contrato:', str(producto_info.get('numero_contrato', 'N/A')), 'No. Lote:', str(producto_info.get('numero_lote', 'N/A'))],
         ]
+        
+        # Agregar fila de caducidad y proveedor si están disponibles
+        if producto_info.get('fecha_caducidad') or producto_info.get('proveedor'):
+            prod_data.append([
+                'Caducidad:', str(producto_info.get('fecha_caducidad', 'N/A')), 
+                'Proveedor/Marca:', str(producto_info.get('proveedor', 'N/A'))
+            ])
         
         prod_table = Table(prod_data, colWidths=[1.1*inch, 2.4*inch, 1.1*inch, 2.4*inch])
         prod_table.setStyle(TableStyle([
