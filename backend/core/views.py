@@ -2839,11 +2839,11 @@ class DonacionViewSet(viewsets.ModelViewSet):
                 top=Side(style='thin'), bottom=Side(style='thin')
             )
             
-            # Obtener un producto real para el ejemplo
-            from core.models import Producto
-            producto_ejemplo = Producto.objects.filter(activo=True).first()
-            clave_ejemplo = producto_ejemplo.clave if producto_ejemplo else '656'
-            nombre_ejemplo = producto_ejemplo.nombre[:30] if producto_ejemplo else 'AMBROXOL'
+            # Obtener un producto real del catálogo de donaciones para el ejemplo
+            from core.models import ProductoDonacion
+            producto_ejemplo = ProductoDonacion.objects.filter(activo=True).first()
+            clave_ejemplo = producto_ejemplo.clave if producto_ejemplo else 'DON-001'
+            nombre_ejemplo = producto_ejemplo.nombre[:30] if producto_ejemplo else 'PRODUCTO DONACION'
             
             # ========== HOJA DE INSTRUCCIONES ==========
             ws_inst = wb.active
@@ -2857,9 +2857,10 @@ class DonacionViewSet(viewsets.ModelViewSet):
                 ('PASOS:', True, 12),
                 ('1. Vaya a la hoja "Donaciones" y complete los datos de la donación', False, 11),
                 ('2. Vaya a la hoja "Detalles" y agregue los productos de cada donación', False, 11),
-                ('3. Use el "Catálogo Productos" para ver las claves de productos válidas', False, 11),
-                ('4. ELIMINE las filas de ejemplo (texto gris con [EJEMPLO])', False, 11),
-                ('5. Guarde el archivo y súbalo al sistema', False, 11),
+                ('3. Use "Catálogo Productos Donación" para ver las claves válidas', False, 11),
+                ('4. IMPORTANTE: Solo use productos del Catálogo de Donaciones (NO del inventario principal)', False, 11),
+                ('5. ELIMINE las filas de ejemplo (texto gris con [EJEMPLO])', False, 11),
+                ('6. Guarde el archivo y súbalo al sistema', False, 11),
                 ('', False, 11),
                 ('CAMPOS OBLIGATORIOS:', True, 12),
                 ('  Donaciones: numero, donante_nombre, fecha_donacion', False, 11),
@@ -2975,24 +2976,33 @@ class DonacionViewSet(viewsets.ModelViewSet):
             for i, width in enumerate(column_widths2, 1):
                 ws2.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
             
-            # ========== HOJA DE CATÁLOGO ==========
-            ws3 = wb.create_sheet(title='Catálogo Productos')
-            ws3['A1'].value = 'CATÁLOGO DE PRODUCTOS DISPONIBLES'
+            # ========== HOJA DE CATÁLOGO DE DONACIONES ==========
+            ws3 = wb.create_sheet(title='Catálogo Productos Donación')
+            ws3['A1'].value = 'CATÁLOGO INDEPENDIENTE DE PRODUCTOS DE DONACIONES'
             ws3['A1'].font = Font(bold=True, size=12, color='632842')
+            ws3['A2'].value = '⚠️ IMPORTANTE: Este catálogo es INDEPENDIENTE del inventario principal de farmacia'
+            ws3['A2'].font = Font(italic=True, size=10, color='CC0000')
             ws3.append([])
-            ws3.append(['Clave', 'Nombre', 'Unidad'])
+            ws3.append(['Clave', 'Nombre', 'Unidad', 'Presentación'])
             
-            for cell in ws3[3]:
+            for cell in ws3[4]:
                 cell.fill = header_fill
                 cell.font = Font(bold=True, color='FFFFFF')
             
-            productos = Producto.objects.filter(activo=True).order_by('nombre')[:500]
-            for prod in productos:
-                ws3.append([prod.clave, prod.nombre, prod.unidad_medida])
+            # Usar catálogo independiente de donaciones
+            productos_donacion = ProductoDonacion.objects.filter(activo=True).order_by('nombre')[:500]
             
-            ws3.column_dimensions['A'].width = 15
+            if productos_donacion.count() == 0:
+                ws3.append(['⚠️ NO HAY PRODUCTOS EN EL CATÁLOGO DE DONACIONES'])
+                ws3.append(['Agregue productos desde: Donaciones → Catálogo antes de importar'])
+            else:
+                for prod in productos_donacion:
+                    ws3.append([prod.clave, prod.nombre, prod.unidad_medida, prod.presentacion or ''])
+            
+            ws3.column_dimensions['A'].width = 20
             ws3.column_dimensions['B'].width = 50
-            ws3.column_dimensions['C'].width = 35
+            ws3.column_dimensions['C'].width = 15
+            ws3.column_dimensions['D'].width = 25
             
             response = HttpResponse(
                 content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -3031,7 +3041,7 @@ class DonacionViewSet(viewsets.ModelViewSet):
         """
         import openpyxl
         from django.db import transaction
-        from core.models import Donacion, DetalleDonacion, Producto, Centro
+        from core.models import Donacion, DetalleDonacion, ProductoDonacion, Centro
         
         archivo = request.FILES.get('archivo') or request.FILES.get('file')
         if not archivo:
@@ -3126,10 +3136,10 @@ class DonacionViewSet(viewsets.ModelViewSet):
                 'documento': ['documento donacion', 'documento', 'referencia'],
             }
             
-            # Aliases para detalles
+            # Aliases para detalles - usa catálogo independiente de donaciones
             DETALLE_ALIASES = {
                 'numero_donacion': ['numero donacion', 'número donación', 'donacion', 'folio'],
-                'producto': ['producto clave', 'clave producto', 'producto', 'clave', 'medicamento'],
+                'producto': ['producto clave', 'clave producto', 'producto', 'clave', 'medicamento', 'producto donacion'],
                 'numero_lote': ['numero lote', 'lote', 'no lote'],
                 'cantidad': ['cantidad', 'cant', 'unidades'],
                 'fecha_caducidad': ['fecha caducidad', 'caducidad', 'vencimiento', 'expiracion'],
@@ -3293,7 +3303,7 @@ class DonacionViewSet(viewsets.ModelViewSet):
                                 })
                                 continue
                             
-                            # Buscar producto por clave o nombre
+                            # Buscar producto en catálogo INDEPENDIENTE de donaciones
                             if not producto_ref:
                                 resultados['errores'].append({
                                     'fila': row_num, 'hoja': 'Detalles',
@@ -3302,14 +3312,15 @@ class DonacionViewSet(viewsets.ModelViewSet):
                                 continue
                             
                             producto_ref = str(producto_ref).strip()
-                            producto = Producto.objects.filter(clave=producto_ref.upper()).first()
-                            if not producto:
-                                producto = Producto.objects.filter(nombre__icontains=producto_ref).first()
+                            # Buscar en catálogo independiente de donaciones (NO en productos principales)
+                            producto_donacion = ProductoDonacion.objects.filter(clave__iexact=producto_ref).first()
+                            if not producto_donacion:
+                                producto_donacion = ProductoDonacion.objects.filter(nombre__icontains=producto_ref).first()
                             
-                            if not producto:
+                            if not producto_donacion:
                                 resultados['errores'].append({
                                     'fila': row_num, 'hoja': 'Detalles',
-                                    'error': f'Producto "{producto_ref}" no encontrado'
+                                    'error': f'Producto "{producto_ref}" no encontrado en Catálogo de Donaciones. Asegúrese de agregarlo primero en Donaciones → Catálogo.'
                                 })
                                 continue
                             
@@ -3337,10 +3348,11 @@ class DonacionViewSet(viewsets.ModelViewSet):
                             
                             DetalleDonacion.objects.create(
                                 donacion=donacion,
-                                producto=producto,
+                                producto_donacion=producto_donacion,  # Usa catálogo independiente
+                                producto=None,  # Legacy - no usar catálogo principal
                                 numero_lote=str(get_val(row, 'numero_lote', col_map_det, '')).strip()[:50] or None,
                                 cantidad=cantidad,
-                                cantidad_disponible=0,  # Se activa al procesar
+                                cantidad_disponible=cantidad,  # Stock disponible desde inicio
                                 fecha_caducidad=fecha_cad,
                                 estado_producto=estado,
                                 notas=str(get_val(row, 'notas', col_map_det, '')).strip() or None
