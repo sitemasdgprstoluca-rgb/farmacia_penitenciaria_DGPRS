@@ -70,6 +70,14 @@ class MovimientoViewSet(
     pagination_class = CustomPagination
     http_method_names = ['get', 'post', 'head', 'options']
 
+    def _get_producto_display(self, mov):
+        """Helper para obtener display de producto de forma segura."""
+        if not mov.lote or not mov.lote.producto:
+            return 'N/A'
+        producto = mov.lote.producto
+        nombre = producto.nombre or producto.descripcion or ''
+        return f"{producto.clave} - {nombre[:40]}"
+
     def get_queryset(self):
         """
         Filtra movimientos segun parametros.
@@ -452,7 +460,7 @@ class MovimientoViewSet(
                     }
                 
                 transacciones[ref]['detalles'].append({
-                    'producto': f"{mov.lote.producto.clave if mov.lote and mov.lote.producto else 'N/A'} - {(getattr(mov.lote.producto, 'nombre', '') or getattr(mov.lote.producto, 'descripcion', '') or '')[:40] if mov.lote and mov.lote.producto else ''}",
+                    'producto': self._get_producto_display(mov),
                     'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                     'cantidad': amount
                 })
