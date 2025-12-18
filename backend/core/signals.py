@@ -68,9 +68,77 @@ def registrar_auditoria(modelo, objeto, accion, cambios=None):
         logger.error(f"Error al registrar auditoría: {exc}")
 
 
+def _verificar_stock_bajo_producto(producto):
+    """
+    Verifica si un producto tiene stock bajo y notifica a farmacia.
+    Solo crea notificación si no existe una reciente (últimas 4 horas).
+    """
+    if _TESTING:
+        return  # No crear notificaciones en tests
+    
+    from django.db.models import Sum
+    from django.utils import timezone
+    from datetime import timedelta, date
+    from .models import Lote, User
+    
+    if not producto.stock_minimo or producto.stock_minimo <= 0:
+        return  # No tiene stock mínimo configurado
+    
+    # Calcular stock total de lotes activos no vencidos
+    hoy = date.today()
+    stock_total = Lote.objects.filter(
+        producto=producto,
+        activo=True,
+        fecha_caducidad__gte=hoy
+    ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+    
+    # Si el stock está por debajo del mínimo
+    if stock_total < producto.stock_minimo:
+        # Verificar si ya existe notificación reciente para evitar spam
+        existe_reciente = Notificacion.objects.filter(
+            tipo='warning',
+            titulo__icontains='Stock Bajo',
+            datos__tipo_alerta='stock_bajo_producto',
+            datos__producto_id=producto.id,
+            created_at__gte=timezone.now() - timedelta(hours=4)
+        ).exists()
+        
+        if existe_reciente:
+            logger.debug(f"Notificación de stock bajo para {producto.clave} ya existe (últimas 4h)")
+            return
+        
+        # Obtener usuarios de farmacia
+        usuarios_farmacia = User.objects.filter(
+            rol__in=['farmacia', 'admin_sistema', 'admin_farmacia', 'superusuario', 'FARMACIA', 'ADMIN'],
+            is_active=True
+        )
+        
+        for usuario in usuarios_farmacia:
+            try:
+                Notificacion.objects.create(
+                    usuario=usuario,
+                    tipo='warning',
+                    titulo=f'⚠️ Stock Bajo: {producto.clave}',
+                    mensaje=f'El producto {producto.clave} - {producto.nombre} tiene stock bajo.\n\n'
+                            f'Stock actual: {stock_total}\n'
+                            f'Stock mínimo: {producto.stock_minimo}',
+                    datos={
+                        'tipo_alerta': 'stock_bajo_producto',
+                        'producto_id': producto.id,
+                        'producto_clave': producto.clave,
+                        'stock_actual': stock_total,
+                        'stock_minimo': producto.stock_minimo
+                    },
+                    url=f'/productos/{producto.id}'
+                )
+                logger.info(f"Notificación de stock bajo creada para {producto.clave} -> {usuario.username}")
+            except Exception as e:
+                logger.error(f"Error creando notificación de stock bajo: {e}")
+
+
 @receiver(post_save, sender=Movimiento)
 def auditar_movimiento(sender, instance, created, **kwargs):
-    """Audita creación de movimientos de inventario."""
+    """Audita creación de movimientos de inventario y verifica alertas de stock."""
     if created:
         lote = instance.lote
         producto = instance.producto
@@ -108,6 +176,10 @@ def auditar_movimiento(sender, instance, created, **kwargs):
                 'referencia': instance.referencia or ''
             }
         )
+        
+        # Verificar alertas de stock bajo después de movimientos de salida
+        if instance.tipo.lower() == 'salida' and producto:
+            _verificar_stock_bajo_producto(producto)
 
 
 @receiver(pre_save, sender=Lote)
