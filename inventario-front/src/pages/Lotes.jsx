@@ -735,24 +735,29 @@ const handleImportar = async (e) => {
     if (errores.length) {
       console.warn('Errores en importación de lotes:', errores);
       
-      // Mostrar alerta general si hay errores
+      // Mostrar alerta general si hay errores (persistente hasta cerrar)
       toast(
-        `⚠️ ${errores.length} fila(s) no se importaron por datos inválidos en el Excel`,
-        { icon: '📋', duration: 5000 }
+        `⚠️ ${errores.length} fila(s) no se importaron por datos inválidos en el Excel. Corrija y vuelva a importar.`,
+        { 
+          icon: '📋', 
+          duration: Infinity,  // Persistente hasta cerrar
+        }
       );
       
-      // Mostrar detalles de los primeros 3 errores
-      const primeros = errores.slice(0, 3);
+      // Mostrar detalles de los primeros 5 errores (persistentes)
+      const primeros = errores.slice(0, 5);
       primeros.forEach((err) => {
         const fila = err.fila || '?';
         const errorMsg = traducirError(err.error || err.mensaje);
-        toast.error(`Fila ${fila}: ${errorMsg}`, { duration: 6000 });
+        toast.error(`Fila ${fila}: ${errorMsg}`, { 
+          duration: Infinity,  // Persistente hasta cerrar manualmente
+        });
       });
       
-      if (errores.length > 3) {
-        toast(`📝 Ver consola (F12) para los ${errores.length - 3} errores restantes`, { 
+      if (errores.length > 5) {
+        toast(`📝 Hay ${errores.length - 5} errores más. Ver consola (F12) para detalles completos.`, { 
           icon: 'ℹ️', 
-          duration: 5000 
+          duration: Infinity,
         });
       }
     }
