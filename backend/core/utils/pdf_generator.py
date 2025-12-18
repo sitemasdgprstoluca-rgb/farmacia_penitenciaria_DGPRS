@@ -927,7 +927,7 @@ def generar_hoja_entrega(datos_entrega):
         fontName='Helvetica-Bold'
     )
     
-    # Estilo para celdas con texto largo
+    # Estilo para celdas con texto largo (descripción)
     celda_texto_style = ParagraphStyle(
         'CeldaTexto',
         parent=styles['Normal'],
@@ -935,6 +935,16 @@ def generar_hoja_entrega(datos_entrega):
         leading=10,
         wordWrap='CJK',
         alignment=TA_LEFT,
+    )
+    
+    # Estilo para celdas de unidad (texto que puede ser largo)
+    celda_unidad_style = ParagraphStyle(
+        'CeldaUnidad',
+        parent=styles['Normal'],
+        fontSize=7,
+        leading=9,
+        wordWrap='CJK',
+        alignment=TA_CENTER,
     )
     
     # Título principal
@@ -972,7 +982,7 @@ def generar_hoja_entrega(datos_entrega):
     story.append(productos_titulo)
     story.append(Spacer(1, 0.1*inch))
     
-    # Tabla de productos
+    # Tabla de productos - Headers
     productos_data = [
         ['#', 'Clave', 'Descripción', 'Lote', 'Caducidad', 'Cant.', 'Unidad']
     ]
@@ -980,6 +990,8 @@ def generar_hoja_entrega(datos_entrega):
     total_items = 0
     for idx, item in enumerate(datos_entrega.get('items', []), start=1):
         descripcion_paragraph = Paragraph(item.get('descripcion', 'N/A'), celda_texto_style)
+        # Usar Paragraph para unidad también - permite texto largo como "CAJA CON 20 TABLETAS"
+        unidad_paragraph = Paragraph(item.get('unidad', 'UND'), celda_unidad_style)
         productos_data.append([
             str(idx),
             item.get('clave', 'N/A'),
@@ -987,7 +999,7 @@ def generar_hoja_entrega(datos_entrega):
             item.get('lote', 'N/A'),
             item.get('caducidad', 'N/A'),
             str(item.get('cantidad', 0)),
-            item.get('unidad', 'UND')
+            unidad_paragraph
         ])
         total_items += item.get('cantidad', 0)
     
@@ -996,9 +1008,11 @@ def generar_hoja_entrega(datos_entrega):
         '', '', '', '', 'TOTAL:', str(total_items), ''
     ])
     
+    # Anchos ajustados: Descripción reducida, Unidad aumentada significativamente
+    # Total disponible: ~7.5 inch (letter width - margins)
     productos_table = Table(
         productos_data, 
-        colWidths=[0.35*inch, 0.75*inch, 2.8*inch, 0.9*inch, 0.8*inch, 0.5*inch, 0.6*inch]
+        colWidths=[0.3*inch, 0.6*inch, 2.0*inch, 0.85*inch, 0.8*inch, 0.45*inch, 1.7*inch]
     )
     productos_table.setStyle(TableStyle([
         # Header
