@@ -7,6 +7,7 @@ from .models import (
     Movimiento, AuditoriaLogs, ImportacionLogs, Notificacion, ConfiguracionSistema,
     TemaGlobal, HojaRecoleccion, DetalleHojaRecoleccion, UserProfile,
     ProductoImagen, LoteDocumento, Donacion, DetalleDonacion, SalidaDonacion,
+    ProductoDonacion,  # Catálogo independiente de donaciones
     RequisicionHistorialEstados  # FLUJO V2
 )
 from .constants import EXTRA_PERMISSIONS
@@ -1925,20 +1926,62 @@ class LoteDocumentoSerializer(serializers.ModelSerializer):
 # DONACION SERIALIZERS (ALMACEN SEPARADO - NO AFECTA INVENTARIO PRINCIPAL)
 # =============================================================================
 
+class ProductoDonacionSerializer(serializers.ModelSerializer):
+    """
+    Serializer para el catálogo independiente de productos de donaciones.
+    Este catálogo es COMPLETAMENTE SEPARADO del catálogo principal de productos.
+    """
+    class Meta:
+        model = ProductoDonacion
+        fields = [
+            'id', 'clave', 'nombre', 'descripcion', 'unidad_medida',
+            'presentacion', 'activo', 'notas', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+        extra_kwargs = {
+            'clave': {'required': True},
+            'nombre': {'required': True},
+            'descripcion': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'unidad_medida': {'required': False, 'default': 'PIEZA'},
+            'presentacion': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'activo': {'required': False, 'default': True},
+            'notas': {'required': False, 'allow_null': True, 'allow_blank': True},
+        }
+    
+    def validate_clave(self, value):
+        """Validar que la clave sea única (case insensitive)"""
+        clave_upper = value.upper().strip()
+        qs = ProductoDonacion.objects.filter(clave__iexact=clave_upper)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("Ya existe un producto de donación con esta clave.")
+        return clave_upper
+
+
 class DetalleDonacionSerializer(serializers.ModelSerializer):
     """
-    Serializer para detalle de donaciones - ALMACEN SEPARADO.
+    Serializer para detalle de donaciones - ALMACEN COMPLETAMENTE SEPARADO.
+    Usa el catálogo independiente de ProductoDonacion.
     Las donaciones no afectan el inventario principal ni generan movimientos auditados.
     """
-    producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
-    producto_codigo = serializers.CharField(source='producto.clave', read_only=True)
+    # Campos del nuevo catálogo de donaciones
+    producto_donacion_nombre = serializers.CharField(source='producto_donacion.nombre', read_only=True)
+    producto_donacion_codigo = serializers.CharField(source='producto_donacion.clave', read_only=True)
+    # Campos legacy (compatibilidad con datos antiguos)
+    producto_nombre = serializers.SerializerMethodField()
+    producto_codigo = serializers.SerializerMethodField()
     estado_producto_display = serializers.CharField(source='get_estado_producto_display', read_only=True)
     donacion_numero = serializers.CharField(source='donacion.numero', read_only=True)
     
     class Meta:
         model = DetalleDonacion
         fields = [
-            'id', 'donacion', 'donacion_numero', 'producto', 'producto_nombre', 'producto_codigo',
+            'id', 'donacion', 'donacion_numero',
+            # Nuevo catálogo de donaciones (preferido)
+            'producto_donacion', 'producto_donacion_nombre', 'producto_donacion_codigo',
+            # Legacy (compatibilidad)
+            'producto', 'producto_nombre', 'producto_codigo',
             'numero_lote', 'cantidad', 'cantidad_disponible',
             'fecha_caducidad', 'estado_producto', 'estado_producto_display',
             'notas', 'created_at'
@@ -1946,7 +1989,8 @@ class DetalleDonacionSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'cantidad_disponible']
         extra_kwargs = {
             'donacion': {'required': False},  # Se asigna al crear desde DonacionSerializer
-            'producto': {'required': True},
+            'producto_donacion': {'required': False, 'allow_null': True},  # Nuevo catálogo
+            'producto': {'required': False, 'allow_null': True},  # Legacy, ahora opcional
             'cantidad': {'required': True},
             'numero_lote': {'required': False, 'allow_null': True, 'allow_blank': True},
             'fecha_caducidad': {'required': False, 'allow_null': True},
@@ -1954,10 +1998,37 @@ class DetalleDonacionSerializer(serializers.ModelSerializer):
             'notas': {'required': False, 'allow_null': True, 'allow_blank': True},
         }
     
+    def get_producto_nombre(self, obj):
+        """Retorna nombre del producto (donación o legacy)"""
+        if obj.producto_donacion:
+            return obj.producto_donacion.nombre
+        elif obj.producto:
+            return obj.producto.nombre
+        return 'Sin producto'
+    
+    def get_producto_codigo(self, obj):
+        """Retorna clave del producto (donación o legacy)"""
+        if obj.producto_donacion:
+            return obj.producto_donacion.clave
+        elif obj.producto:
+            return obj.producto.clave
+        return ''
+    
     def validate_cantidad(self, value):
         if value <= 0:
             raise serializers.ValidationError("La cantidad debe ser mayor a 0.")
         return value
+    
+    def validate(self, attrs):
+        """Validar que se proporcione al menos un producto (donación o legacy)"""
+        producto_donacion = attrs.get('producto_donacion')
+        producto = attrs.get('producto')
+        
+        if not producto_donacion and not producto:
+            raise serializers.ValidationError({
+                'producto_donacion': 'Debe especificar un producto del catálogo de donaciones.'
+            })
+        return attrs
 
 
 class DonacionSerializer(serializers.ModelSerializer):

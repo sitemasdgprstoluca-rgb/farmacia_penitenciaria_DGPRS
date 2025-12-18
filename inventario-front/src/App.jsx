@@ -580,7 +580,22 @@ function App() {
             />
           )}
           <SessionManager />
-          <Toaster position="top-right" />
+          <Toaster 
+            position="top-right"
+            toastOptions={{
+              // Estilos base para todos los toasts
+              style: {
+                maxWidth: '400px',
+              },
+              // Los toasts con duration: Infinity mostrarán botón de cerrar
+              success: {
+                duration: 4000,
+              },
+              error: {
+                duration: 5000,
+              },
+            }}
+          />
         
           <Suspense fallback={<PageLoader />}>
           <Routes>

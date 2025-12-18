@@ -2682,6 +2682,36 @@ ESTADOS_PRODUCTO_DONACION = [
 ]
 
 
+# ============================================================================
+# CATÁLOGO INDEPENDIENTE DE PRODUCTOS PARA DONACIONES
+# ============================================================================
+class ProductoDonacion(models.Model):
+    """
+    Catálogo de productos EXCLUSIVO para donaciones.
+    Completamente independiente del catálogo de productos principal.
+    Las donaciones pueden tener productos con claves y nombres diferentes.
+    """
+    clave = models.CharField(max_length=50, unique=True)
+    nombre = models.CharField(max_length=255)
+    descripcion = models.TextField(blank=True, null=True)
+    unidad_medida = models.CharField(max_length=50, default='PIEZA')
+    presentacion = models.CharField(max_length=100, blank=True, null=True)
+    activo = models.BooleanField(default=True)
+    notas = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'productos_donacion'
+        managed = False  # Tabla en Supabase
+        ordering = ['nombre']
+        verbose_name = 'Producto de Donación'
+        verbose_name_plural = 'Productos de Donación'
+
+    def __str__(self):
+        return f"{self.clave} - {self.nombre}"
+
+
 class Donacion(models.Model):
     """
     Registro de donaciones de medicamentos.
@@ -2749,8 +2779,8 @@ class Donacion(models.Model):
 
 class DetalleDonacion(models.Model):
     """
-    Detalle de productos en una donacion - ALMACEN SEPARADO.
-    Cada linea representa un producto donado con su propio stock independiente.
+    Detalle de productos en una donacion - ALMACEN COMPLETAMENTE SEPARADO.
+    Usa ProductoDonacion (catálogo independiente) en lugar del catálogo principal.
     NO afecta el inventario principal ni genera movimientos auditados.
     """
     donacion = models.ForeignKey(
@@ -2759,11 +2789,23 @@ class DetalleDonacion(models.Model):
         related_name='detalles',
         db_column='donacion_id'
     )
-    producto = models.ForeignKey(
-        Producto, 
+    # USA CATÁLOGO INDEPENDIENTE DE DONACIONES - no el catálogo principal
+    producto_donacion = models.ForeignKey(
+        ProductoDonacion, 
         on_delete=models.PROTECT, 
         related_name='detalles_donacion',
-        db_column='producto_id'
+        db_column='producto_donacion_id',
+        null=True,  # Permitir null temporalmente para migración
+        blank=True
+    )
+    # Campos legacy para compatibilidad con datos existentes
+    producto = models.ForeignKey(
+        Producto, 
+        on_delete=models.SET_NULL,  # Cambiado a SET_NULL para permitir desvinculación
+        related_name='detalles_donacion_legacy',
+        db_column='producto_id',
+        null=True,  # Ahora es opcional
+        blank=True
     )
     # NO usa lote del inventario principal - tiene su propio numero de lote
     numero_lote = models.CharField(max_length=100, blank=True, null=True)
@@ -2783,7 +2825,31 @@ class DetalleDonacion(models.Model):
         managed = False  # Tabla en Supabase
 
     def __str__(self):
-        return f"{self.donacion.numero} - {self.producto.nombre} x {self.cantidad}"
+        # Usar producto_donacion si existe, sino producto legacy
+        nombre_producto = 'Sin producto'
+        if self.producto_donacion:
+            nombre_producto = self.producto_donacion.nombre
+        elif self.producto:
+            nombre_producto = self.producto.nombre
+        return f"{self.donacion.numero} - {nombre_producto} x {self.cantidad}"
+    
+    @property
+    def nombre_producto(self):
+        """Devuelve el nombre del producto (donación o legacy)"""
+        if self.producto_donacion:
+            return self.producto_donacion.nombre
+        elif self.producto:
+            return self.producto.nombre
+        return 'Sin producto'
+    
+    @property
+    def clave_producto(self):
+        """Devuelve la clave del producto (donación o legacy)"""
+        if self.producto_donacion:
+            return self.producto_donacion.clave
+        elif self.producto:
+            return self.producto.clave
+        return ''
     
     def save(self, *args, **kwargs):
         # Si es nuevo registro, cantidad_disponible = cantidad

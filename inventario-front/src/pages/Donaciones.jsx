@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { donacionesAPI, productosAPI, centrosAPI, lotesAPI, salidasDonacionesAPI, detallesDonacionAPI } from '../services/api';
+import { donacionesAPI, productosDonacionAPI, centrosAPI, lotesAPI, salidasDonacionesAPI, detallesDonacionAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
 import {
   FaPlus,
@@ -110,8 +110,24 @@ const Donaciones = () => {
   const [historialSalidas, setHistorialSalidas] = useState([]);
   const [loadingSalidas, setLoadingSalidas] = useState(false);
 
-  // Sistema de Tabs: donaciones | inventario | entregas
+  // Sistema de Tabs: donaciones | catalogo | inventario | entregas
   const [activeTab, setActiveTab] = useState('donaciones');
+  
+  // Catálogo de Productos de Donaciones (independiente)
+  const [loadingCatalogo, setLoadingCatalogo] = useState(false);
+  const [searchCatalogo, setSearchCatalogo] = useState('');
+  const [showCatalogoModal, setShowCatalogoModal] = useState(false);
+  const [editingProductoDonacion, setEditingProductoDonacion] = useState(null);
+  const [confirmDeleteProducto, setConfirmDeleteProducto] = useState(null);
+  const [catalogoForm, setCatalogoForm] = useState({
+    clave: '',
+    nombre: '',
+    descripcion: '',
+    unidad_medida: 'PIEZA',
+    presentacion: '',
+    activo: true,
+    notas: '',
+  });
   
   // Inventario de Donaciones (productos con stock disponible)
   const [inventarioDonaciones, setInventarioDonaciones] = useState([]);
@@ -161,7 +177,7 @@ const Donaciones = () => {
   const [filtroFechaHasta, setFiltroFechaHasta] = useState('');
 
   // Catálogos
-  const [productos, setProductos] = useState([]);
+  const [productosDonacion, setProductosDonacion] = useState([]);  // Catálogo independiente de donaciones
   const [centros, setCentros] = useState([]);
   const [lotes, setLotes] = useState([]);
 
@@ -181,9 +197,9 @@ const Donaciones = () => {
     detalles: [],
   });
 
-  // Detalle en edición
+  // Detalle en edición - usa producto_donacion del catálogo independiente
   const [detalleForm, setDetalleForm] = useState({
-    producto: '',
+    producto_donacion: '',  // Catálogo independiente de donaciones
     numero_lote: '',
     cantidad: '',
     fecha_caducidad: '',
@@ -193,14 +209,14 @@ const Donaciones = () => {
 
   const filtrosActivos = [searchTerm, filtroEstado, filtroTipoDonante, filtroCentro, filtroFechaDesde, filtroFechaHasta].filter(Boolean).length;
 
-  // Cargar catálogos
+  // Cargar catálogos - USA CATÁLOGO INDEPENDIENTE DE DONACIONES
   const cargarCatalogos = useCallback(async () => {
     try {
-      const [prodRes, centrosRes] = await Promise.all([
-        productosAPI.getAll({ page_size: 500, activo: true, ordering: 'descripcion' }),
+      const [prodDonRes, centrosRes] = await Promise.all([
+        productosDonacionAPI.getAll({ page_size: 500, activo: true, ordering: 'nombre' }),
         centrosAPI.getAll({ page_size: 100, activo: true, ordering: 'nombre' }),
       ]);
-      setProductos(prodRes.data.results || prodRes.data || []);
+      setProductosDonacion(prodDonRes.data.results || prodDonRes.data || []);
       setCentros(centrosRes.data.results || centrosRes.data || []);
     } catch (err) {
       console.error('Error cargando catálogos:', err);
@@ -466,6 +482,52 @@ const Donaciones = () => {
     }
   };
 
+  // ========== FUNCIONES DEL CATÁLOGO DE PRODUCTOS DE DONACIONES ==========
+  
+  // Guardar producto de donación (crear o editar)
+  const handleGuardarProductoDonacion = async () => {
+    if (!catalogoForm.clave || !catalogoForm.nombre) {
+      toast.error('Clave y nombre son obligatorios');
+      return;
+    }
+
+    setActionLoading('guardarProducto');
+    try {
+      if (editingProductoDonacion) {
+        await productosDonacionAPI.update(editingProductoDonacion.id, catalogoForm);
+        toast.success('Producto actualizado correctamente');
+      } else {
+        await productosDonacionAPI.create(catalogoForm);
+        toast.success('Producto creado correctamente');
+      }
+      setShowCatalogoModal(false);
+      setCatalogoForm({ clave: '', nombre: '', descripcion: '', unidad_medida: 'PIEZA', presentacion: '', activo: true, notas: '' });
+      setEditingProductoDonacion(null);
+      cargarCatalogos();
+    } catch (err) {
+      console.error('Error guardando producto de donación:', err);
+      toast.error(err.response?.data?.clave?.[0] || err.response?.data?.error || 'Error al guardar producto');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Eliminar producto de donación
+  const handleEliminarProductoDonacion = async (producto) => {
+    setActionLoading(producto.id);
+    try {
+      await productosDonacionAPI.delete(producto.id);
+      toast.success('Producto eliminado correctamente');
+      cargarCatalogos();
+    } catch (err) {
+      console.error('Error eliminando producto de donación:', err);
+      toast.error(err.response?.data?.error || 'No se puede eliminar: el producto tiene donaciones asociadas');
+    } finally {
+      setActionLoading(null);
+      setConfirmDeleteProducto(null);
+    }
+  };
+
   useEffect(() => {
     cargarCatalogos();
   }, [cargarCatalogos]);
@@ -473,12 +535,14 @@ const Donaciones = () => {
   useEffect(() => {
     if (activeTab === 'donaciones') {
       cargarDonaciones();
+    } else if (activeTab === 'catalogo') {
+      cargarCatalogos();
     } else if (activeTab === 'inventario') {
       cargarInventarioDonaciones();
     } else if (activeTab === 'entregas') {
       cargarTodasEntregas();
     }
-  }, [activeTab, cargarDonaciones, cargarInventarioDonaciones, cargarTodasEntregas]);
+  }, [activeTab, cargarDonaciones, cargarCatalogos, cargarInventarioDonaciones, cargarTodasEntregas]);
 
   // Reset formulario
   const resetForm = () => {
@@ -497,7 +561,7 @@ const Donaciones = () => {
       detalles: [],
     });
     setDetalleForm({
-      producto: '',
+      producto_donacion: '',  // Nuevo catálogo independiente
       numero_lote: '',
       cantidad: '',
       fecha_caducidad: '',
@@ -539,17 +603,17 @@ const Donaciones = () => {
     setShowDetalleModal(true);
   };
 
-  // Agregar detalle al formulario
+  // Agregar detalle al formulario - USA CATÁLOGO INDEPENDIENTE
   const handleAgregarDetalle = () => {
-    if (!detalleForm.producto || !detalleForm.cantidad) {
+    if (!detalleForm.producto_donacion || !detalleForm.cantidad) {
       toast.error('Selecciona un producto y cantidad');
       return;
     }
 
-    const producto = productos.find((p) => p.id === parseInt(detalleForm.producto));
+    const producto = productosDonacion.find((p) => p.id === parseInt(detalleForm.producto_donacion));
     const nuevoDetalle = {
       tempId: Date.now(),
-      producto: parseInt(detalleForm.producto),
+      producto_donacion: parseInt(detalleForm.producto_donacion),  // Nuevo catálogo
       producto_clave: producto?.clave || '',
       producto_nombre: producto?.nombre || '',
       numero_lote: detalleForm.numero_lote,
@@ -565,7 +629,7 @@ const Donaciones = () => {
     }));
 
     setDetalleForm({
-      producto: '',
+      producto_donacion: '',
       numero_lote: '',
       cantidad: '',
       fecha_caducidad: '',
@@ -595,7 +659,7 @@ const Donaciones = () => {
         ...formData,
         centro_destino: parseInt(formData.centro_destino),
         detalles: formData.detalles.map((d) => ({
-          producto: d.producto,
+          producto_donacion: d.producto_donacion,  // Nuevo catálogo independiente
           numero_lote: d.numero_lote || null,
           cantidad: d.cantidad,
           fecha_caducidad: d.fecha_caducidad || null,
@@ -813,10 +877,10 @@ const Donaciones = () => {
 
       {/* Tabs de navegación */}
       <div className="bg-white rounded-xl shadow-sm border mb-6">
-        <div className="flex border-b">
+        <div className="flex border-b overflow-x-auto">
           <button
             onClick={() => setActiveTab('donaciones')}
-            className={`flex items-center gap-2 px-6 py-4 font-medium transition-colors border-b-2 -mb-px ${
+            className={`flex items-center gap-2 px-6 py-4 font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
               activeTab === 'donaciones'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -825,8 +889,18 @@ const Donaciones = () => {
             <FaGift /> Donaciones
           </button>
           <button
+            onClick={() => setActiveTab('catalogo')}
+            className={`flex items-center gap-2 px-6 py-4 font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
+              activeTab === 'catalogo'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <FaClipboardList /> Catálogo Productos
+          </button>
+          <button
             onClick={() => setActiveTab('inventario')}
-            className={`flex items-center gap-2 px-6 py-4 font-medium transition-colors border-b-2 -mb-px ${
+            className={`flex items-center gap-2 px-6 py-4 font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
               activeTab === 'inventario'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -836,7 +910,7 @@ const Donaciones = () => {
           </button>
           <button
             onClick={() => setActiveTab('entregas')}
-            className={`flex items-center gap-2 px-6 py-4 font-medium transition-colors border-b-2 -mb-px ${
+            className={`flex items-center gap-2 px-6 py-4 font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
               activeTab === 'entregas'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -1247,6 +1321,148 @@ const Donaciones = () => {
           </div>
         )}
       </div>
+        </>
+      )}
+
+      {/* ========== TAB: CATÁLOGO DE PRODUCTOS DONACIONES ========== */}
+      {activeTab === 'catalogo' && (
+        <>
+          {/* Banner informativo */}
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <FaClipboardList className="text-blue-600 text-xl" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-blue-800">Catálogo Independiente de Productos de Donaciones</h3>
+                <p className="text-sm text-blue-700 mt-1">
+                  Este catálogo es <strong>completamente separado</strong> del catálogo principal de la farmacia.
+                  Los productos de donaciones pueden tener <strong>claves y nombres diferentes</strong> a los del inventario ordinario.
+                  El inventario de donaciones <strong>NO se mezcla</strong> con el inventario principal.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Barra de acciones del catálogo */}
+          <div className="bg-white rounded-xl shadow-sm border p-4 mb-6">
+            <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+              {/* Búsqueda */}
+              <div className="relative flex-1 max-w-md">
+                <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar por clave o nombre..."
+                  value={searchCatalogo}
+                  onChange={(e) => setSearchCatalogo(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                />
+              </div>
+
+              {/* Botón Agregar Producto */}
+              {puede.crear && (
+                <button
+                  onClick={() => {
+                    setCatalogoForm({ clave: '', nombre: '', descripcion: '', unidad_medida: 'PIEZA', presentacion: '', activo: true, notas: '' });
+                    setEditingProductoDonacion(null);
+                    setShowCatalogoModal(true);
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                >
+                  <FaPlus /> Agregar Producto
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Tabla del catálogo */}
+          <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+            {loadingCatalogo ? (
+              <div className="flex items-center justify-center py-20">
+                <FaSpinner className="animate-spin text-4xl text-gray-400" />
+              </div>
+            ) : productosDonacion.length === 0 ? (
+              <div className="text-center py-20 text-gray-500">
+                <FaClipboardList className="mx-auto text-5xl mb-4 opacity-30" />
+                <p>No hay productos en el catálogo de donaciones</p>
+                <p className="text-sm mt-2">Agrega productos para poder registrar donaciones</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Clave</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Nombre</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Unidad</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Presentación</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Estado</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {productosDonacion
+                      .filter(p => 
+                        !searchCatalogo || 
+                        p.clave?.toLowerCase().includes(searchCatalogo.toLowerCase()) ||
+                        p.nombre?.toLowerCase().includes(searchCatalogo.toLowerCase())
+                      )
+                      .map((producto) => (
+                        <tr key={producto.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 font-mono font-medium text-primary">{producto.clave}</td>
+                          <td className="px-4 py-3">{producto.nombre}</td>
+                          <td className="px-4 py-3 text-gray-600">{producto.unidad_medida}</td>
+                          <td className="px-4 py-3 text-gray-600">{producto.presentacion || '-'}</td>
+                          <td className="px-4 py-3 text-center">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              producto.activo 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-gray-100 text-gray-600'
+                            }`}>
+                              {producto.activo ? 'Activo' : 'Inactivo'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-center gap-2">
+                              {puede.editar && (
+                                <button
+                                  onClick={() => {
+                                    setCatalogoForm({
+                                      clave: producto.clave,
+                                      nombre: producto.nombre,
+                                      descripcion: producto.descripcion || '',
+                                      unidad_medida: producto.unidad_medida || 'PIEZA',
+                                      presentacion: producto.presentacion || '',
+                                      activo: producto.activo,
+                                      notas: producto.notas || '',
+                                    });
+                                    setEditingProductoDonacion(producto);
+                                    setShowCatalogoModal(true);
+                                  }}
+                                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                  title="Editar"
+                                >
+                                  <FaEdit />
+                                </button>
+                              )}
+                              {puede.eliminar && (
+                                <button
+                                  onClick={() => setConfirmDeleteProducto(producto)}
+                                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                  title="Eliminar"
+                                >
+                                  <FaTrash />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </>
       )}
 
@@ -1735,21 +1951,21 @@ const Donaciones = () => {
               {/* Productos donados */}
               <div className="mb-6">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                  <FaBox /> Productos Donados
+                  <FaBox /> Productos Donados (Catálogo Independiente)
                 </h3>
 
                 {/* Formulario para agregar producto */}
                 <div className="bg-gray-50 rounded-lg p-4 mb-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
                     <div className="lg:col-span-2">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Producto *</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Producto Donación *</label>
                       <select
-                        value={detalleForm.producto}
-                        onChange={(e) => setDetalleForm({ ...detalleForm, producto: e.target.value })}
+                        value={detalleForm.producto_donacion}
+                        onChange={(e) => setDetalleForm({ ...detalleForm, producto_donacion: e.target.value })}
                         className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary"
                       >
                         <option value="">Seleccionar producto</option>
-                        {productos.map((p) => (
+                        {productosDonacion.map((p) => (
                           <option key={p.id} value={p.id}>
                             {p.clave} - {p.nombre}
                           </option>
@@ -2360,6 +2576,158 @@ const Donaciones = () => {
           }}
         />
       )}
+
+      {/* ========== MODAL: Crear/Editar Producto del Catálogo de Donaciones ========== */}
+      {showCatalogoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600 to-indigo-600 rounded-t-xl">
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <FaClipboardList />
+                {editingProductoDonacion ? 'Editar Producto' : 'Nuevo Producto de Donación'}
+              </h2>
+              <p className="text-blue-100 text-sm mt-1">
+                Catálogo independiente (no afecta inventario principal)
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Clave *
+                  </label>
+                  <input
+                    type="text"
+                    value={catalogoForm.clave}
+                    onChange={(e) => setCatalogoForm({ ...catalogoForm, clave: e.target.value.toUpperCase() })}
+                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary font-mono"
+                    placeholder="Ej: DON001"
+                    disabled={!!editingProductoDonacion}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Unidad de Medida
+                  </label>
+                  <select
+                    value={catalogoForm.unidad_medida}
+                    onChange={(e) => setCatalogoForm({ ...catalogoForm, unidad_medida: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="PIEZA">PIEZA</option>
+                    <option value="CAJA">CAJA</option>
+                    <option value="FRASCO">FRASCO</option>
+                    <option value="SOBRE">SOBRE</option>
+                    <option value="AMPOLLETA">AMPOLLETA</option>
+                    <option value="TUBO">TUBO</option>
+                    <option value="LITRO">LITRO</option>
+                    <option value="ML">ML</option>
+                    <option value="GRAMO">GRAMO</option>
+                    <option value="KG">KG</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nombre del Producto *
+                </label>
+                <input
+                  type="text"
+                  value={catalogoForm.nombre}
+                  onChange={(e) => setCatalogoForm({ ...catalogoForm, nombre: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                  placeholder="Nombre completo del producto"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Presentación
+                </label>
+                <input
+                  type="text"
+                  value={catalogoForm.presentacion}
+                  onChange={(e) => setCatalogoForm({ ...catalogoForm, presentacion: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                  placeholder="Ej: Caja con 30 tabletas de 500mg"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Descripción
+                </label>
+                <textarea
+                  value={catalogoForm.descripcion}
+                  onChange={(e) => setCatalogoForm({ ...catalogoForm, descripcion: e.target.value })}
+                  rows={2}
+                  className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                  placeholder="Descripción adicional del producto"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notas
+                </label>
+                <textarea
+                  value={catalogoForm.notas}
+                  onChange={(e) => setCatalogoForm({ ...catalogoForm, notas: e.target.value })}
+                  rows={2}
+                  className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                  placeholder="Notas internas sobre el producto"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="activo"
+                  checked={catalogoForm.activo}
+                  onChange={(e) => setCatalogoForm({ ...catalogoForm, activo: e.target.checked })}
+                  className="rounded border-gray-300 text-primary focus:ring-primary"
+                />
+                <label htmlFor="activo" className="text-sm text-gray-700">
+                  Producto activo (disponible para selección)
+                </label>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 rounded-b-xl flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowCatalogoModal(false);
+                  setEditingProductoDonacion(null);
+                  setCatalogoForm({ clave: '', nombre: '', descripcion: '', unidad_medida: 'PIEZA', presentacion: '', activo: true, notas: '' });
+                }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleGuardarProductoDonacion}
+                disabled={actionLoading === 'guardarProducto'}
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {actionLoading === 'guardarProducto' && <FaSpinner className="animate-spin" />}
+                {editingProductoDonacion ? 'Actualizar' : 'Crear Producto'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de confirmación eliminar producto del catálogo */}
+      <ConfirmModal
+        open={!!confirmDeleteProducto}
+        title="Eliminar Producto del Catálogo"
+        message={confirmDeleteProducto ? `¿Estás seguro de eliminar el producto "${confirmDeleteProducto.clave} - ${confirmDeleteProducto.nombre}"? Esta acción no se puede deshacer si el producto tiene donaciones asociadas.` : ''}
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+        tone="danger"
+        onConfirm={() => confirmDeleteProducto && handleEliminarProductoDonacion(confirmDeleteProducto)}
+        onCancel={() => setConfirmDeleteProducto(null)}
+      />
     </div>
   );
 };

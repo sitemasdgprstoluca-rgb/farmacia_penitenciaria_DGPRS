@@ -12,7 +12,7 @@ from core.views import (
     DetalleRequisicionViewSet, NotificacionViewSet, ConfiguracionSistemaViewSet,
     TemaGlobalViewSet,
     ProductoImagenViewSet, LoteDocumentoViewSet, DonacionViewSet, DetalleDonacionViewSet,
-    SalidaDonacionViewSet,
+    SalidaDonacionViewSet, ProductoDonacionViewSet,  # Catálogo independiente donaciones
     CatalogosView,  # ISS-002 FIX: Endpoint de catálogos
     AdminLimpiarDatosView,  # ADMIN: Limpieza de datos
 )
@@ -58,6 +58,7 @@ router.register(r'hojas-recoleccion', HojaRecoleccionViewSet, basename='hoja-rec
 router.register(r'productos-imagenes', ProductoImagenViewSet, basename='producto-imagen')
 router.register(r'lotes-documentos', LoteDocumentoViewSet, basename='lote-documento')
 router.register(r'donaciones', DonacionViewSet, basename='donacion')
+router.register(r'productos-donacion', ProductoDonacionViewSet, basename='producto-donacion')  # Catálogo independiente
 router.register(r'detalle-donaciones', DetalleDonacionViewSet, basename='detalle-donacion')
 router.register(r'salidas-donaciones', SalidaDonacionViewSet, basename='salida-donacion')
 

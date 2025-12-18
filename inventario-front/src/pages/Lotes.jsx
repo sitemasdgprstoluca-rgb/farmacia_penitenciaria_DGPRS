@@ -735,30 +735,69 @@ const handleImportar = async (e) => {
     if (errores.length) {
       console.warn('Errores en importación de lotes:', errores);
       
-      // Mostrar alerta general si hay errores (persistente hasta cerrar)
+      // Mostrar alerta general si hay errores (persistente hasta cerrar manualmente)
       toast(
-        `⚠️ ${errores.length} fila(s) no se importaron por datos inválidos en el Excel. Corrija y vuelva a importar.`,
+        (t) => (
+          <div className="flex items-start gap-2">
+            <span className="flex-1">⚠️ {errores.length} fila(s) no se importaron por datos inválidos en el Excel. Corrija y vuelva a importar.</span>
+            <button
+              onClick={() => toast.dismiss(t.id)}
+              className="ml-2 text-gray-500 hover:text-gray-700 font-bold text-lg leading-none"
+              aria-label="Cerrar"
+            >
+              ×
+            </button>
+          </div>
+        ),
         { 
           icon: '📋', 
-          duration: Infinity,  // Persistente hasta cerrar
+          duration: Infinity,
         }
       );
       
-      // Mostrar detalles de los primeros 5 errores (persistentes)
+      // Mostrar detalles de los primeros 5 errores (persistentes con botón de cerrar)
       const primeros = errores.slice(0, 5);
       primeros.forEach((err) => {
         const fila = err.fila || '?';
         const errorMsg = traducirError(err.error || err.mensaje);
-        toast.error(`Fila ${fila}: ${errorMsg}`, { 
-          duration: Infinity,  // Persistente hasta cerrar manualmente
-        });
+        toast.error(
+          (t) => (
+            <div className="flex items-start gap-2">
+              <span className="flex-1">Fila {fila}: {errorMsg}</span>
+              <button
+                onClick={() => toast.dismiss(t.id)}
+                className="ml-2 text-gray-500 hover:text-gray-700 font-bold text-lg leading-none"
+                aria-label="Cerrar"
+              >
+                ×
+              </button>
+            </div>
+          ),
+          { 
+            duration: Infinity,
+          }
+        );
       });
       
       if (errores.length > 5) {
-        toast(`📝 Hay ${errores.length - 5} errores más. Ver consola (F12) para detalles completos.`, { 
-          icon: 'ℹ️', 
-          duration: Infinity,
-        });
+        toast(
+          (t) => (
+            <div className="flex items-start gap-2">
+              <span className="flex-1">📝 Hay {errores.length - 5} errores más. Ver consola (F12) para detalles completos.</span>
+              <button
+                onClick={() => toast.dismiss(t.id)}
+                className="ml-2 text-gray-500 hover:text-gray-700 font-bold text-lg leading-none"
+                aria-label="Cerrar"
+              >
+                ×
+              </button>
+            </div>
+          ),
+          { 
+            icon: 'ℹ️', 
+            duration: Infinity,
+          }
+        );
       }
     }
     

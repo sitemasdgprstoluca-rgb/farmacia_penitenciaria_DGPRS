@@ -3384,14 +3384,97 @@ class DonacionViewSet(viewsets.ModelViewSet):
                 'sugerencia': 'Verifique que el archivo tenga hojas "Donaciones" y "Detalles" con los campos requeridos'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+# =============================================================================
+# CATALOGO DE PRODUCTOS DONACIONES - COMPLETAMENTE INDEPENDIENTE
+# =============================================================================
+
+class ProductoDonacionViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para el catálogo INDEPENDIENTE de productos de donaciones.
+    Este catálogo es COMPLETAMENTE SEPARADO del catálogo principal de productos.
+    Las donaciones pueden tener productos con claves y nombres diferentes.
+    
+    Solo ADMIN y FARMACIA pueden crear/editar/eliminar.
+    Cualquier usuario autenticado con permiso de donaciones puede ver.
+    """
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['clave', 'nombre', 'descripcion']
+    ordering_fields = ['clave', 'nombre', 'created_at']
+    ordering = ['nombre']
+    
+    def get_permissions(self):
+        """Permisos según la acción:
+        - list, retrieve: IsAuthenticated
+        - create, update, destroy: IsFarmaciaRole (admin/farmacia)
+        """
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated()]
+        return [IsAuthenticated(), IsFarmaciaRole()]
+    
+    def get_queryset(self):
+        from core.models import ProductoDonacion
+        queryset = ProductoDonacion.objects.all()
+        
+        # Filtrar por activo (por defecto solo activos)
+        activo = self.request.query_params.get('activo', 'true')
+        if activo.lower() == 'true':
+            queryset = queryset.filter(activo=True)
+        elif activo.lower() == 'false':
+            queryset = queryset.filter(activo=False)
+        # Si activo='all', no filtrar
+        
+        return queryset.order_by('nombre')
+    
+    def get_serializer_class(self):
+        from core.serializers import ProductoDonacionSerializer
+        return ProductoDonacionSerializer
+    
+    def perform_create(self, serializer):
+        producto = serializer.save()
+        logger.info(f"Producto de donación {producto.clave} creado por {self.request.user.username}")
+    
+    def perform_update(self, serializer):
+        producto = serializer.save()
+        logger.info(f"Producto de donación {producto.clave} actualizado por {self.request.user.username}")
+    
+    def perform_destroy(self, instance):
+        clave = instance.clave
+        instance.delete()
+        logger.info(f"Producto de donación {clave} eliminado por {self.request.user.username}")
+    
+    @action(detail=False, methods=['get'], url_path='buscar')
+    def buscar(self, request):
+        """Búsqueda rápida de productos de donación por clave o nombre."""
+        from core.models import ProductoDonacion
+        from core.serializers import ProductoDonacionSerializer
+        
+        q = request.query_params.get('q', '').strip()
+        if len(q) < 2:
+            return Response([])
+        
+        productos = ProductoDonacion.objects.filter(
+            models.Q(clave__icontains=q) | models.Q(nombre__icontains=q),
+            activo=True
+        )[:20]
+        
+        return Response(ProductoDonacionSerializer(productos, many=True).data)
+
+
 class DetalleDonacionViewSet(viewsets.ModelViewSet):
     """
     ViewSet para gestionar detalles de donaciones.
+    Usa el catálogo independiente de ProductoDonacion.
     Solo ADMIN y FARMACIA pueden modificar.
     """
     pagination_class = StandardResultsSetPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['producto__nombre', 'producto__clave', 'numero_lote', 'donacion__numero']
+    search_fields = [
+        'producto_donacion__nombre', 'producto_donacion__clave',  # Nuevo catálogo
+        'producto__nombre', 'producto__clave',  # Legacy
+        'numero_lote', 'donacion__numero'
+    ]
     ordering_fields = ['created_at', 'fecha_caducidad', 'cantidad_disponible']
     ordering = ['-created_at']
     
@@ -3407,7 +3490,7 @@ class DetalleDonacionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         from core.models import DetalleDonacion
         queryset = DetalleDonacion.objects.select_related(
-            'donacion', 'producto'
+            'donacion', 'producto', 'producto_donacion'  # Incluir ambos catálogos
         ).all()
         
         # Filtrar por donacion si se especifica

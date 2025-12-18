@@ -1279,6 +1279,22 @@ export const donacionesAPI = {
   }),
 };
 
+// ===========================================================================
+// CATÁLOGO INDEPENDIENTE DE PRODUCTOS DE DONACIONES
+// Este catálogo es COMPLETAMENTE SEPARADO del catálogo principal de productos.
+// Las donaciones pueden tener productos con claves y nombres diferentes.
+// ===========================================================================
+export const productosDonacionAPI = {
+  // CRUD básico
+  getAll: (params) => apiClient.get('/productos-donacion/', { params }),
+  getById: (id) => apiClient.get(`/productos-donacion/${id}/`),
+  create: (data) => apiClient.post('/productos-donacion/', data),
+  update: (id, data) => apiClient.put(`/productos-donacion/${id}/`, data),
+  delete: (id) => apiClient.delete(`/productos-donacion/${id}/`),
+  // Búsqueda rápida
+  buscar: (q) => apiClient.get('/productos-donacion/buscar/', { params: { q } }),
+};
+
 // Detalles de Donación
 export const detallesDonacionAPI = {
   getAll: (params) => apiClient.get('/detalle-donaciones/', { params }),
