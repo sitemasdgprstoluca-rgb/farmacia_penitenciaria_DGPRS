@@ -3062,9 +3062,10 @@ class LoteViewSet(viewsets.ModelViewSet):
             col_map = {}
             
             # Mapeo de nombres de columna a campos internos
+            # IMPORTANTE: El orden importa - los más específicos primero
             COLUMN_ALIASES = {
-                'producto': ['producto', 'clave', 'clave producto', 'codigo', 'código'],
-                'nombre_producto': ['nombre producto', 'nombre', 'descripcion', 'descripción'],
+                'nombre_producto': ['nombre producto', 'nombre del producto', 'producto nombre', 'descripcion', 'descripción'],
+                'producto': ['clave producto', 'clave', 'codigo producto', 'codigo', 'código', 'sku'],
                 'numero_lote': ['numero lote', 'número lote', 'lote', 'no. lote', 'no lote', 'num lote'],
                 'fecha_caducidad': ['fecha caducidad', 'caducidad', 'vencimiento', 'fecha vencimiento', 'expira', 'fecha expiracion'],
                 'cantidad_inicial': ['cantidad inicial', 'cantidad', 'cant inicial', 'cant', 'qty'],
@@ -3094,11 +3095,11 @@ class LoteViewSet(viewsets.ModelViewSet):
                     if not header_norm:
                         continue
                     
+                    # Buscar coincidencia EXACTA primero (prioridad)
                     for field, aliases in COLUMN_ALIASES.items():
-                        if header_norm in aliases or any(alias in header_norm for alias in aliases):
-                            if field not in temp_map:
-                                temp_map[field] = col_idx
-                                headers_encontrados += 1
+                        if field not in temp_map and header_norm in aliases:
+                            temp_map[field] = col_idx
+                            headers_encontrados += 1
                             break
                 
                 # Si encontramos al menos 3 columnas relevantes, es la fila de headers

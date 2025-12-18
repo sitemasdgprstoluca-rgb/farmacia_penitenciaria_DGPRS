@@ -397,22 +397,23 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     logger.info(f"Lotes - Encabezados: {encabezados}")
     logger.info(f"Lotes - Normalizados: {encabezados_norm}")
     
+    # IMPORTANTE: Los sinónimos más específicos primero para evitar conflictos
+    # 'nombre producto' debe mapearse a producto_nombre, NO a producto_clave
     SINONIMOS_LOTE = {
-        'producto_clave': ['clave producto', 'producto', 'codigo', 'codigo producto', 
-                           'id producto', 'sku', 'key', 'clave'],
-        'producto_id': ['id', 'product id', 'producto id', 'id_producto'],
-        'producto_nombre': ['nombre producto', 'nombre', 'descripcion', 'producto nombre'],
-        'numero_lote': ['lote', 'numero lote', 'num lote', 'no lote', 'numero de lote', 
+        'producto_nombre': ['nombre producto', 'nombre del producto', 'producto nombre', 'descripcion'],
+        'producto_clave': ['clave producto', 'clave', 'codigo producto', 'codigo', 'sku', 'key'],
+        'producto_id': ['id producto', 'producto id', 'id_producto'],
+        'numero_lote': ['numero lote', 'lote', 'num lote', 'no lote', 'numero de lote', 
                         'n lote', 'nro lote', 'batch'],
         'cantidad_inicial': ['cantidad inicial', 'cantidad', 'cant inicial', 'stock', 'existencia', 
                              'qty', 'unidades', 'piezas', 'cant'],
         'cantidad_actual': ['cantidad actual', 'cant actual', 'stock actual'],
-        'caducidad': ['caducidad', 'fecha caducidad', 'vencimiento', 'fecha vencimiento', 
+        'caducidad': ['fecha caducidad', 'caducidad', 'vencimiento', 'fecha vencimiento', 
                       'expira', 'fec cad', 'expiracion', 'fecha expiracion'],
-        'fabricacion': ['fabricacion', 'fecha fabricacion', 'elaboracion', 
+        'fabricacion': ['fecha fabricacion', 'fabricacion', 'elaboracion', 
                         'fecha elaboracion', 'fec fab'],
         'precio': ['precio unitario', 'precio', 'costo', 'valor', 'precio unit', 'pu'],
-        'contrato': ['contrato', 'numero contrato', 'no contrato', 'num contrato'],
+        'contrato': ['numero contrato', 'contrato', 'no contrato', 'num contrato'],
         'marca': ['marca', 'laboratorio', 'fabricante', 'proveedor', 'lab'],
         'ubicacion': ['ubicacion', 'almacen', 'bodega', 'estante', 'localizacion'],
         'centro': ['centro', 'centro nombre', 'nombre centro', 'centro destino'],
@@ -420,12 +421,12 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     }
     
     def buscar_columna(sinonimos_lista):
+        # Primero buscar coincidencia EXACTA
         for i, h in enumerate(encabezados_norm):
             if not h:
                 continue
-            for sinonimo in sinonimos_lista:
-                if sinonimo == h or (len(sinonimo) > 2 and sinonimo in h):
-                    return i
+            if h in sinonimos_lista:
+                return i
         return -1
     
     col_map = {}
