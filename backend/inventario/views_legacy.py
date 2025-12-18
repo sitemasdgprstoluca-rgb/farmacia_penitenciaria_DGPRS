@@ -7562,7 +7562,8 @@ def trazabilidad_producto(request, clave):
             'producto': {
                 'id': producto.id,
                 'clave': producto.clave,
-                'descripcion': producto.nombre,  # Usar nombre como descripción principal
+                'nombre': producto.nombre,  # Campo nombre explícito
+                'descripcion': producto.descripcion or producto.nombre,  # Descripción o nombre como fallback
                 'unidad_medida': producto.unidad_medida,
                 'stock_minimo': producto.stock_minimo,
                 'precio_unitario': None,  # precio_unitario está en Lote, no en Producto

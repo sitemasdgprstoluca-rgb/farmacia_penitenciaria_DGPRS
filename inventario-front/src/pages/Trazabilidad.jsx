@@ -58,7 +58,7 @@ const normalizeProductoResponse = (data) => {
     const producto = data.producto;
     return {
       codigo: producto.clave || producto.codigo,
-      nombre: producto.nombre,
+      nombre: producto.nombre || producto.descripcion || '',  // Usar nombre o descripcion como fallback
       unidad_medida: producto.unidad_medida,
       stock_actual: data.estadisticas?.stock_total ?? producto.stock_actual ?? 0,
       stock_minimo: producto.stock_minimo ?? null,
