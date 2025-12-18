@@ -4295,15 +4295,22 @@ class MovimientoViewSet(
                     'observaciones': mov.motivo or ''
                 })
             
+            # ISS-FIX: Usar nombre como fallback para descripcion, incluir numero_contrato
+            descripcion_producto = 'N/A'
+            if lote.producto:
+                descripcion_producto = lote.producto.nombre or lote.producto.descripcion or 'N/A'
+            
             producto_info = {
                 'clave': lote.producto.clave if lote.producto else 'N/A',
-                'descripcion': lote.producto.descripcion if lote.producto else 'N/A',
+                'descripcion': descripcion_producto,
                 'unidad_medida': lote.producto.unidad_medida if lote.producto else 'N/A',
                 'stock_actual': lote.cantidad_actual,
                 'stock_minimo': lote.producto.stock_minimo if lote.producto else 0,
                 'numero_lote': lote.numero_lote,
                 'fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else 'N/A',
                 'proveedor': lote.marca or 'No especificado',
+                'numero_contrato': lote.numero_contrato if lote.numero_contrato else 'N/A',
+                'precio_unitario': float(lote.precio_unitario) if lote.precio_unitario else 0,
             }
             
             pdf_buffer = generar_reporte_trazabilidad(trazabilidad_data, producto_info=producto_info)
