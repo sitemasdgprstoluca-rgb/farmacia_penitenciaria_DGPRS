@@ -307,10 +307,17 @@ class MovimientoViewSet(
             return Response({'error': 'Solo administradores y farmacia pueden exportar trazabilidad de lotes'}, status=status.HTTP_403_FORBIDDEN)
         
         numero_lote = request.query_params.get('numero_lote')
-        if not numero_lote:
-            return Response({'error': 'Se requiere numero_lote'}, status=status.HTTP_400_BAD_REQUEST)
+        lote_id = request.query_params.get('lote_id')
         
-        lote = Lote.objects.filter(numero_lote__iexact=numero_lote).select_related('producto', 'centro').first()
+        if not numero_lote and not lote_id:
+            return Response({'error': 'Se requiere numero_lote o lote_id'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # ISS-FIX: Preferir lote_id para evitar ambigüedad con lotes duplicados en diferentes centros
+        if lote_id:
+            lote = Lote.objects.filter(id=lote_id).select_related('producto', 'centro').first()
+        else:
+            lote = Lote.objects.filter(numero_lote__iexact=numero_lote).select_related('producto', 'centro').first()
+        
         if not lote:
             return Response({'error': 'Lote no encontrado'}, status=status.HTTP_404_NOT_FOUND)
         
@@ -332,16 +339,21 @@ class MovimientoViewSet(
                     'observaciones': mov.motivo or ''
                 })
             
+            # ISS-FIX: Usar nombre como fallback para descripcion, manejar None correctamente
+            descripcion_producto = 'N/A'
+            if lote.producto:
+                descripcion_producto = lote.producto.nombre or lote.producto.descripcion or 'N/A'
+            
             producto_info = {
                 'clave': lote.producto.clave if lote.producto else 'N/A',
-                'descripcion': lote.producto.descripcion if lote.producto else 'N/A',
+                'descripcion': descripcion_producto,
                 'unidad_medida': lote.producto.unidad_medida if lote.producto else 'N/A',
                 'stock_actual': lote.cantidad_actual,
                 'stock_minimo': lote.producto.stock_minimo if lote.producto else 0,
                 'numero_lote': lote.numero_lote,
                 'fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else 'N/A',
                 'proveedor': lote.marca or 'No especificado',
-                'numero_contrato': lote.numero_contrato or 'N/A',
+                'numero_contrato': lote.numero_contrato if lote.numero_contrato else 'N/A',
                 'precio_unitario': float(lote.precio_unitario) if lote.precio_unitario else 0,
             }
             

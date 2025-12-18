@@ -78,6 +78,7 @@ const normalizeLoteResponse = (data) => {
   if (data.lote) {
     const lote = data.lote;
     return {
+      id: lote.id || data.id,  // ISS-FIX: Guardar ID para exportación precisa
       numero_lote: lote.numero_lote,
       producto: {
         codigo: lote.producto,
@@ -99,6 +100,7 @@ const normalizeLoteResponse = (data) => {
   // Estructura donde data tiene los campos directamente
   if (data.numero_lote) {
     return {
+      id: data.id,  // ISS-FIX: Guardar ID para exportación precisa
       numero_lote: data.numero_lote,
       producto: data.producto || {},
       fecha_caducidad: data.fecha_caducidad,
@@ -216,7 +218,9 @@ const Trazabilidad = () => {
         response = await trazabilidadAPI.exportarPdf(codigoParaExportar);
         filename = `trazabilidad_producto_${codigoParaExportar}_${new Date().toISOString().split('T')[0]}.pdf`;
       } else {
-        response = await trazabilidadAPI.exportarLotePdf(codigoParaExportar);
+        // ISS-FIX: Usar lote_id para evitar ambigüedad con lotes duplicados en diferentes centros
+        const loteId = resultados?.id;
+        response = await trazabilidadAPI.exportarLotePdf(codigoParaExportar, loteId);
         filename = `trazabilidad_lote_${codigoParaExportar}_${new Date().toISOString().split('T')[0]}.pdf`;
       }
       
