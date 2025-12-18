@@ -1110,11 +1110,15 @@ export const trazabilidadAPI = {
     params: { producto_clave: clave }, 
     responseType: 'blob' 
   }),
-  // ISS-FIX: Aceptar loteId para evitar ambigüedad con lotes duplicados en diferentes centros
-  exportarLotePdf: (numeroLote, loteId = null) => apiClient.get(`/movimientos/trazabilidad-lote-pdf/`, { 
-    params: loteId ? { lote_id: loteId } : { numero_lote: numeroLote }, 
-    responseType: 'blob' 
-  }),
+  // ISS-FIX: Enviar ambos parámetros para máxima compatibilidad
+  exportarLotePdf: (numeroLote, loteId = null) => {
+    const params = { numero_lote: numeroLote };
+    if (loteId) params.lote_id = loteId;
+    return apiClient.get(`/movimientos/trazabilidad-lote-pdf/`, { 
+      params, 
+      responseType: 'blob' 
+    });
+  },
 };
 
 // Dashboard

@@ -548,6 +548,7 @@ const Movimientos = () => {
               {vistaAgrupada ? <FaLayerGroup /> : <FaList />}
               {vistaAgrupada ? 'Agrupado' : 'Individual'}
             </button>
+            {/* TEMPORALMENTE DESHABILITADO: Exportar PDF/Excel 
             {puedeExportar && (
               <>
                 <button
@@ -578,6 +579,7 @@ const Movimientos = () => {
                 </button>
               </>
             )}
+            */}
           </div>
         </div>
       </div>
