@@ -514,6 +514,16 @@ def generar_reporte_inventario(productos_data, formato='pdf', filtros=None):
         wordWrap='CJK',
     )
     
+    # Estilo para celdas de unidad (texto largo como "CAJA CON 20 TABLETAS")
+    estilo_celda_unidad = ParagraphStyle(
+        'CeldaUnidadInv',
+        parent=styles['Normal'],
+        fontSize=6,
+        leading=7,
+        wordWrap='CJK',
+        alignment=TA_CENTER,
+    )
+    
     # Tabla de datos con Paragraph para texto largo
     data = [['Clave', 'Descripción', 'Stock', 'Mín.', 'Nivel', 'Unidad']]
     
@@ -522,18 +532,21 @@ def generar_reporte_inventario(productos_data, formato='pdf', filtros=None):
         descripcion = str(producto.get('descripcion', ''))
         # Usar Paragraph para la descripción para que se ajuste automáticamente
         desc_paragraph = Paragraph(descripcion, estilo_celda)
+        # Usar Paragraph para unidad - permite texto largo
+        unidad = str(producto.get('unidad', producto.get('unidad_medida', '')))
+        unidad_paragraph = Paragraph(unidad, estilo_celda_unidad)
         data.append([
             str(producto.get('clave', '')),
             desc_paragraph,
             str(producto.get('stock_actual', 0)),
             str(producto.get('stock_minimo', 0)),
             nivel,
-            str(producto.get('unidad', producto.get('unidad_medida', '')))
+            unidad_paragraph
         ])
     
     # Ajustar anchos para que sumen exactamente el ancho disponible (7 pulgadas)
-    # Descripción más ancha, columnas numéricas más estrechas y compactas
-    col_widths = [0.9*inch, 3.6*inch, 0.7*inch, 0.5*inch, 0.6*inch, 0.7*inch]
+    # Descripción más ancha, Unidad ampliada para textos largos
+    col_widths = [0.9*inch, 3.0*inch, 0.6*inch, 0.5*inch, 0.6*inch, 1.4*inch]
     table = _crear_tabla_institucional(data, col_widths)
     # Alinear números a la derecha
     table.setStyle(TableStyle([

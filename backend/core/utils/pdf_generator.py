@@ -177,6 +177,16 @@ def generar_hoja_recoleccion(requisicion):
         alignment=TA_LEFT,
     )
     
+    # Estilo para celdas de unidad (texto que puede ser largo como "CAJA CON 20 TABLETAS")
+    celda_unidad_style = ParagraphStyle(
+        'CeldaUnidadRecoleccion',
+        parent=styles['Normal'],
+        fontSize=7,
+        leading=9,
+        wordWrap='CJK',
+        alignment=TA_CENTER,
+    )
+    
     # Título principal
     titulo = Paragraph("HOJA DE RECOLECCIÓN DE MEDICAMENTOS", titulo_style)
     story.append(titulo)
@@ -253,6 +263,8 @@ def generar_hoja_recoleccion(requisicion):
         
         # ISS-PDF FIX: unidad_medida es CharField simple, no tiene choices
         unidad = getattr(detalle.producto, 'unidad_medida', None) or 'UND'
+        # Usar Paragraph para unidad - permite texto largo como "CAJA CON 20 TABLETAS"
+        unidad_paragraph = Paragraph(unidad, celda_unidad_style)
         
         productos_data.append([
             str(idx),
@@ -261,13 +273,14 @@ def generar_hoja_recoleccion(requisicion):
             lote_asignado.numero_lote if lote_asignado else 'SIN LOTE',
             lote_asignado.fecha_caducidad.strftime('%d/%m/%Y') if lote_asignado and lote_asignado.fecha_caducidad else 'N/A',
             str(cantidad),
-            unidad
+            unidad_paragraph
         ])
     
     # Ajustar anchos para mejor distribución (total ~7.5 pulgadas disponibles)
+    # Unidad ampliada de 0.6" a 1.4" para textos largos
     productos_table = Table(
         productos_data, 
-        colWidths=[0.35*inch, 0.75*inch, 2.8*inch, 0.9*inch, 0.8*inch, 0.5*inch, 0.6*inch]
+        colWidths=[0.3*inch, 0.65*inch, 2.3*inch, 0.85*inch, 0.8*inch, 0.45*inch, 1.4*inch]
     )
     productos_table.setStyle(TableStyle([
         # Header con color guinda institucional
@@ -543,6 +556,16 @@ def generar_pdf_rechazo(requisicion):
         wordWrap='CJK',
         alignment=TA_LEFT,
     )
+    
+    # Estilo para celdas de unidad (texto largo)
+    celda_unidad_rechazo_style = ParagraphStyle(
+        'CeldaUnidadRechazo',
+        parent=styles['Normal'],
+        fontSize=7,
+        leading=9,
+        wordWrap='CJK',
+        alignment=TA_CENTER,
+    )
 
     productos_data = [
         ['#', 'Clave', 'Descripción', 'Cant. Solicitada', 'Unidad']
@@ -554,17 +577,20 @@ def generar_pdf_rechazo(requisicion):
         descripcion_paragraph = Paragraph(descripcion_texto, celda_rechazo_style)
         # ISS-PDF FIX: unidad_medida es CharField simple
         unidad = getattr(detalle.producto, 'unidad_medida', None) or 'UND'
+        # Usar Paragraph para unidad - permite texto largo
+        unidad_paragraph = Paragraph(unidad, celda_unidad_rechazo_style)
         productos_data.append([
             str(idx),
             detalle.producto.clave or 'N/A',
             descripcion_paragraph,
             str(detalle.cantidad_solicitada or 0),
-            unidad
+            unidad_paragraph
         ])
 
+    # Unidad ampliada de 0.6" a 1.4" para textos largos
     productos_table = Table(
         productos_data,
-        colWidths=[0.35 * inch, 0.75 * inch, 3.0 * inch, 1.0 * inch, 0.6 * inch]
+        colWidths=[0.3 * inch, 0.65 * inch, 2.5 * inch, 0.85 * inch, 1.4 * inch]
     )
     productos_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#dc2626')),
@@ -693,6 +719,16 @@ def generar_hoja_consulta(requisicion):
         alignment=TA_LEFT,
     )
     
+    # Estilo para celdas de unidad (texto largo)
+    celda_unidad_consulta_style = ParagraphStyle(
+        'CeldaUnidadConsulta',
+        parent=styles['Normal'],
+        fontSize=7,
+        leading=9,
+        wordWrap='CJK',
+        alignment=TA_CENTER,
+    )
+    
     # Título principal
     titulo = Paragraph("HOJA DE CONSULTA - REQUISICIÓN DE MEDICAMENTOS", titulo_style)
     story.append(titulo)
@@ -792,6 +828,8 @@ def generar_hoja_consulta(requisicion):
                 unidad = 'UND'
             
             descripcion_paragraph = Paragraph(descripcion_texto, celda_texto_style)
+            # Usar Paragraph para unidad - permite texto largo como "CAJA CON 20 TABLETAS"
+            unidad_paragraph = Paragraph(unidad, celda_unidad_consulta_style)
             
             cantidad_solicitada = getattr(detalle, 'cantidad_solicitada', 0) or 0
             cantidad_surtida = getattr(detalle, 'cantidad_entregada', None) or getattr(detalle, 'cantidad_autorizada', 0) or 0
@@ -802,7 +840,7 @@ def generar_hoja_consulta(requisicion):
                 descripcion_paragraph,
                 str(cantidad_solicitada),
                 str(cantidad_surtida),
-                unidad
+                unidad_paragraph
             ])
         except Exception as e:
             # Si falla un detalle, agregar fila de error
@@ -812,12 +850,13 @@ def generar_hoja_consulta(requisicion):
                 Paragraph(f'Error: {str(e)}', celda_texto_style),
                 '0',
                 '0',
-                'UND'
+                Paragraph('UND', celda_unidad_consulta_style)
             ])
     
+    # Unidad ampliada de 0.7" a 1.4" para textos largos
     productos_table = Table(
         productos_data, 
-        colWidths=[0.4*inch, 0.8*inch, 3.2*inch, 0.8*inch, 0.8*inch, 0.7*inch]
+        colWidths=[0.35*inch, 0.7*inch, 2.6*inch, 0.7*inch, 0.7*inch, 1.4*inch]
     )
     productos_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
