@@ -29,7 +29,6 @@ const mapLote = (lote = {}) => ({
   cantidad_inicial: lote.cantidad_inicial ?? lote.cantidad_actual,
   estado: (lote.estado || lote.estado_caducidad || '').toString().toUpperCase(),
   centro: lote.centro,
-  proveedor: lote.proveedor,
   numero_contrato: lote.numero_contrato || '',
   marca: lote.marca || '',
 });
@@ -87,7 +86,6 @@ const normalizeLoteResponse = (data) => {
       fecha_caducidad: lote.fecha_caducidad,
       cantidad_actual: lote.cantidad_actual,
       cantidad_inicial: lote.cantidad_inicial,
-      proveedor: lote.proveedor,
       estado: (lote.estado_caducidad || lote.estado || '').toString().toUpperCase(),
       centro: lote.centro,
       numero_contrato: lote.numero_contrato || '',
@@ -106,7 +104,6 @@ const normalizeLoteResponse = (data) => {
       fecha_caducidad: data.fecha_caducidad,
       cantidad_actual: data.cantidad_actual,
       cantidad_inicial: data.cantidad_inicial,
-      proveedor: data.proveedor,
       estado: (data.estado || data.estado_caducidad || '').toString().toUpperCase(),
       centro: data.centro,
       numero_contrato: data.numero_contrato || '',
@@ -405,10 +402,6 @@ const Trazabilidad = () => {
         <p className="font-semibold">{resultados.cantidad_inicial}</p>
       </div>
       <div>
-        <p className="text-xs text-gray-500">Proveedor</p>
-        <p className="font-semibold">{resultados.proveedor || '-'}</p>
-      </div>
-      <div>
         <p className="text-xs text-gray-500">Estado</p>
         <p className="font-semibold">{resultados.estado || '-'}</p>
       </div>
@@ -416,18 +409,16 @@ const Trazabilidad = () => {
         <p className="text-xs text-gray-500">Centro</p>
         <p className="font-semibold">{resultados.centro || 'Farmacia Central'}</p>
       </div>
+      <div>
+        <p className="text-xs text-gray-500">Marca</p>
+        <p className="font-semibold">{resultados.marca || '-'}</p>
+      </div>
       {/* Campos de trazabilidad de contratos - Solo visible para ADMIN y FARMACIA */}
       {puedeVerContrato && (
-        <>
-          <div>
-            <p className="text-xs text-gray-500">Número de Contrato</p>
-            <p className="font-semibold text-blue-600">{resultados.numero_contrato || '-'}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500">Marca</p>
-            <p className="font-semibold">{resultados.marca || '-'}</p>
-          </div>
-        </>
+        <div>
+          <p className="text-xs text-gray-500">Número de Contrato</p>
+          <p className="font-semibold text-blue-600">{resultados.numero_contrato || '-'}</p>
+        </div>
       )}
     </div>
   );

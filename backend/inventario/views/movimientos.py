@@ -440,7 +440,7 @@ class MovimientoViewSet(
                     }
                 
                 transacciones[ref]['detalles'].append({
-                    'producto': f"{mov.lote.producto.clave if mov.lote and mov.lote.producto else 'N/A'} - {getattr(mov.lote.producto, 'descripcion', '')[:40] if mov.lote and mov.lote.producto else ''}",
+                    'producto': f"{mov.lote.producto.clave if mov.lote and mov.lote.producto else 'N/A'} - {(getattr(mov.lote.producto, 'nombre', '') or getattr(mov.lote.producto, 'descripcion', '') or '')[:40] if mov.lote and mov.lote.producto else ''}",
                     'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                     'cantidad': amount
                 })
@@ -472,7 +472,9 @@ class MovimientoViewSet(
             return response
             
         except Exception as e:
-            # traceback removido por seguridad (ISS-008)
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f'Error generando PDF de movimientos: {str(e)}', exc_info=True)
             return Response({
                 'error': 'Error al generar PDF de movimientos',
                 'mensaje': str(e)
@@ -562,11 +564,15 @@ class MovimientoViewSet(
             
             # Datos - Con centro origen y destino separados
             for idx, mov in enumerate(movimientos, 1):
+                # ISS-FIX: Usar nombre o descripcion, manejar None correctamente
+                producto_nombre = ''
+                if mov.lote and mov.lote.producto:
+                    producto_nombre = (mov.lote.producto.nombre or mov.lote.producto.descripcion or '')[:50]
                 ws.append([
                     idx,
                     mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
                     mov.tipo.upper(),
-                    mov.lote.producto.descripcion[:50] if mov.lote and mov.lote.producto else 'N/A',
+                    producto_nombre or 'N/A',
                     mov.lote.numero_lote if mov.lote else 'N/A',
                     mov.cantidad,
                     mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central',

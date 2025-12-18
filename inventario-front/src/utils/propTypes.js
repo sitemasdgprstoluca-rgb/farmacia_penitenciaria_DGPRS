@@ -77,7 +77,7 @@ export const LotePropType = PropTypes.shape({
   fecha_fabricacion: PropTypes.string,
   estado: PropTypes.oneOf(['disponible', 'agotado', 'vencido', 'por_vencer', 'bloqueado', 'retirado']),
   activo: PropTypes.bool,
-  proveedor: PropTypes.string,
+  marca: PropTypes.string,
   precio_unitario: PropTypes.number,
 });
 

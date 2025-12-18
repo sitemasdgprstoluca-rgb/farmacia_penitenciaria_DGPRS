@@ -457,7 +457,7 @@ export const normalizarLote = (raw) => {
     fecha_fabricacion: raw.fecha_fabricacion || null,
     estado: raw.estado || calcularEstadoLote(raw),
     activo: raw.activo !== false,
-    proveedor: raw.proveedor || '',
+    marca: raw.marca || '',
     precio_unitario: Number(raw.precio_unitario) || 0,
   };
 };

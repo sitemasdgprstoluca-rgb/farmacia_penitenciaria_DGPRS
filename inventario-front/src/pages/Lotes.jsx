@@ -58,7 +58,7 @@ const createMockLote = (index) => {
     porcentaje_consumido: Math.round(
       (1 - cantidadActual / cantidadInicial) * 100,
     ),
-    proveedor: `Proveedor ${index % 6 + 1}`,
+    marca: `Marca ${index % 6 + 1}`,
     observaciones: '',
     activo: index % 9 !== 0,
   };
