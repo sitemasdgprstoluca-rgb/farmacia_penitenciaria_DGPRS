@@ -5,7 +5,7 @@ import Pagination from "../components/Pagination";
 import SalidaMasiva from "../components/SalidaMasiva";
 import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, descargarArchivo } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
-import { FaFilter, FaChevronDown, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck } from "react-icons/fa";
+import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList } from "react-icons/fa";
 import { COLORS } from "../constants/theme";
 
 const PAGE_SIZE = 25;
@@ -37,6 +37,8 @@ const Movimientos = () => {
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState({ entradas: 0, salidas: 0, balance: 0 });
   const [expandedId, setExpandedId] = useState(highlightId || null);
+  const [vistaAgrupada, setVistaAgrupada] = useState(true); // Por defecto agrupada
+  const [gruposExpandidos, setGruposExpandidos] = useState(new Set());
 
   // Filtros aplicados (los que realmente se envían al backend)
   // Si el usuario tiene centro asignado (no es admin/farmacia), pre-filtrar por su centro
@@ -153,6 +155,62 @@ const Movimientos = () => {
       }
     });
     setStats({ entradas, salidas, balance: entradas - salidas });
+  };
+
+  // Función para extraer el grupo de salida del motivo/observaciones
+  const extraerGrupoSalida = (mov) => {
+    const motivo = mov.observaciones || mov.motivo || '';
+    const match = motivo.match(/\[(SAL-[^\]]+)\]/);
+    return match ? match[1] : null;
+  };
+
+  // Agrupar movimientos por grupo de salida
+  const movimientosAgrupados = useMemo(() => {
+    if (!vistaAgrupada) return null;
+    
+    const grupos = new Map();
+    const sinGrupo = [];
+    
+    movimientos.forEach(mov => {
+      const grupoId = extraerGrupoSalida(mov);
+      if (grupoId && mov.tipo === 'salida' && mov.subtipo_salida === 'transferencia') {
+        if (!grupos.has(grupoId)) {
+          grupos.set(grupoId, {
+            id: grupoId,
+            items: [],
+            centro_nombre: mov.centro_nombre || 'N/A',
+            fecha: mov.fecha || mov.fecha_movimiento,
+            usuario_nombre: mov.usuario_nombre || 'Sistema',
+            totalCantidad: 0,
+          });
+        }
+        const grupo = grupos.get(grupoId);
+        grupo.items.push(mov);
+        grupo.totalCantidad += Math.abs(mov.cantidad || 0);
+      } else {
+        sinGrupo.push(mov);
+      }
+    });
+    
+    // Convertir a array y ordenar por fecha descendente
+    const gruposArray = Array.from(grupos.values()).sort((a, b) => 
+      new Date(b.fecha) - new Date(a.fecha)
+    );
+    
+    return { grupos: gruposArray, sinGrupo };
+  }, [movimientos, vistaAgrupada]);
+
+  // Toggle para expandir/colapsar grupo
+  const toggleGrupo = (grupoId) => {
+    setGruposExpandidos(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(grupoId)) {
+        newSet.delete(grupoId);
+      } else {
+        newSet.add(grupoId);
+      }
+      return newSet;
+    });
   };
 
   const cargarMovimientos = useCallback(async () => {
@@ -489,6 +547,19 @@ const Movimientos = () => {
                 Salida Masiva
               </button>
             )}
+            {/* Toggle Vista Agrupada/Individual */}
+            <button
+              onClick={() => setVistaAgrupada(!vistaAgrupada)}
+              className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                vistaAgrupada 
+                  ? 'bg-white text-rose-700 hover:bg-rose-50' 
+                  : 'bg-white/20 text-white hover:bg-white/30'
+              }`}
+              title={vistaAgrupada ? "Ver movimientos individuales" : "Agrupar salidas masivas"}
+            >
+              {vistaAgrupada ? <FaLayerGroup /> : <FaList />}
+              {vistaAgrupada ? 'Agrupado' : 'Individual'}
+            </button>
             {puedeExportar && (
               <>
                 <button
@@ -973,7 +1044,146 @@ const Movimientos = () => {
                         Sin movimientos
                       </td>
                     </tr>
+                  ) : vistaAgrupada && movimientosAgrupados ? (
+                    <>
+                      {/* Mostrar grupos de salidas masivas */}
+                      {movimientosAgrupados.grupos.map((grupo, gIndex) => (
+                        <React.Fragment key={grupo.id}>
+                          {/* Fila del grupo colapsado */}
+                          <tr 
+                            className={`transition cursor-pointer ${gIndex % 2 === 0 ? 'bg-rose-50' : 'bg-rose-100/50'} hover:bg-rose-100 border-l-4 border-rose-500`}
+                            onClick={() => toggleGrupo(grupo.id)}
+                          >
+                            <td className="px-4 py-3 text-sm">
+                              <div className="flex items-center gap-2">
+                                {gruposExpandidos.has(grupo.id) ? <FaChevronDown className="text-rose-600" /> : <FaChevronRight className="text-rose-600" />}
+                                <div>
+                                  <div className="font-bold text-rose-800 flex items-center gap-2">
+                                    <FaTruck className="text-rose-600" />
+                                    Salida Masiva: {grupo.id}
+                                  </div>
+                                  <div className="text-xs text-rose-600">{grupo.items.length} productos</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-1 rounded text-xs font-semibold bg-rose-200 text-rose-800">
+                                SALIDA MASIVA
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right font-bold text-rose-800">
+                              -{grupo.totalCantidad}
+                            </td>
+                            <td className="px-4 py-3 text-rose-800 font-semibold">{grupo.centro_nombre}</td>
+                            <td className="px-4 py-3 text-rose-700">
+                              {grupo.fecha ? new Date(grupo.fecha).toLocaleString('es-MX') : ''}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-rose-600 text-sm font-semibold">
+                                {gruposExpandidos.has(grupo.id) ? '▲ Colapsar' : '▼ Ver items'}
+                              </span>
+                            </td>
+                          </tr>
+                          {/* Items del grupo expandidos */}
+                          {gruposExpandidos.has(grupo.id) && grupo.items.map((mov, iIndex) => (
+                            <tr 
+                              key={mov.id}
+                              className={`transition ${iIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100 border-l-4 border-rose-200`}
+                            >
+                              <td className="px-4 py-2 text-sm pl-10">
+                                <div className="font-medium text-gray-800">{mov.producto_nombre || mov.producto || ""}</div>
+                                <div className="text-xs text-gray-500">Lote: {mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
+                              </td>
+                              <td className="px-4 py-2">
+                                <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                                  item
+                                </span>
+                              </td>
+                              <td className="px-4 py-2 text-right font-semibold text-gray-700">
+                                -{Math.abs(mov.cantidad)}
+                              </td>
+                              <td className="px-4 py-2 text-gray-600 text-sm">{mov.centro_nombre || "Farmacia Central"}</td>
+                              <td className="px-4 py-2 text-gray-500 text-xs">
+                                Cad: {mov.lote?.fecha_caducidad ? new Date(mov.lote.fecha_caducidad).toLocaleDateString('es-MX') : 'N/A'}
+                              </td>
+                              <td className="px-4 py-2 text-xs text-gray-400">
+                                ID: {mov.id}
+                              </td>
+                            </tr>
+                          ))}
+                        </React.Fragment>
+                      ))}
+                      {/* Mostrar movimientos sin grupo (individuales) */}
+                      {movimientosAgrupados.sinGrupo.map((mov, index) => (
+                        <React.Fragment key={mov.id}>
+                          <tr 
+                            ref={highlightId === mov.id ? highlightRef : null}
+                            className={`transition cursor-pointer ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100 ${
+                              highlightId === mov.id ? 'bg-yellow-50 ring-2 ring-yellow-400' : ''
+                            } ${expandedId === mov.id ? 'bg-blue-50' : ''}`}
+                            onClick={() => setExpandedId(expandedId === mov.id ? null : mov.id)}
+                          >
+                            <td className="px-4 py-3 text-sm">
+                              <div className="font-semibold text-gray-800">{mov.producto_nombre || mov.producto || ""}</div>
+                              <div className="text-xs text-gray-500">Lote: {mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-col gap-1">
+                                <span className={`px-2 py-1 rounded text-xs font-semibold inline-block w-fit ${
+                                  mov.tipo === "entrada" ? "bg-green-100 text-green-800" :
+                                  mov.tipo === "salida" ? "bg-red-100 text-red-800" : "bg-yellow-100 text-yellow-800"
+                                }`}>
+                                  {mov.tipo?.toUpperCase()}
+                                </span>
+                                {mov.tipo === 'salida' && mov.subtipo_salida && (
+                                  <span className="text-xs text-gray-500">
+                                    {mov.subtipo_salida === 'receta' ? '💊 Receta' :
+                                     mov.subtipo_salida === 'consumo_interno' ? '🏥 Consumo' :
+                                     mov.subtipo_salida === 'merma' ? '📉 Merma' :
+                                     mov.subtipo_salida === 'caducidad' ? '⏰ Caducidad' :
+                                     mov.subtipo_salida === 'transferencia' ? '🔄 Transfer.' : mov.subtipo_salida}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                              {mov.tipo === 'salida' ? '-' : '+'}{Math.abs(mov.cantidad)}
+                            </td>
+                            <td className="px-4 py-3 text-gray-700">{mov.centro_nombre || mov.centro || "Farmacia Central"}</td>
+                            <td className="px-4 py-3 text-gray-600">
+                              {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleString('es-MX') :
+                               mov.fecha ? new Date(mov.fecha).toLocaleString('es-MX') : ""}
+                            </td>
+                            <td className="px-4 py-3">
+                              <button 
+                                className="text-blue-600 hover:text-blue-800 text-sm"
+                                onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === mov.id ? null : mov.id); }}
+                              >
+                                {expandedId === mov.id ? '▲ Ocultar' : '▼ Detalles'}
+                              </button>
+                            </td>
+                          </tr>
+                          {expandedId === mov.id && (
+                            <tr className="bg-gray-50">
+                              <td colSpan={columnas.length + 1} className="px-6 py-4">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                  <div><span className="font-semibold text-gray-600">ID:</span><p className="text-gray-800">{mov.id}</p></div>
+                                  <div><span className="font-semibold text-gray-600">Usuario:</span><p className="text-gray-800">{mov.usuario_nombre || 'Sistema'}</p></div>
+                                  {mov.observaciones && (
+                                    <div className="col-span-2 md:col-span-4">
+                                      <span className="font-semibold text-gray-600">Observaciones:</span>
+                                      <p className="text-gray-800 bg-white p-2 rounded border mt-1">{mov.observaciones}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </>
                   ) : (
+                    /* Vista individual (sin agrupar) */
                     movimientos.map((mov, index) => (
                       <React.Fragment key={mov.id}>
                         <tr 
