@@ -7268,7 +7268,8 @@ def dashboard_resumen(request):
             if lote:
                 lote_numero = lote.numero_lote or 'N/A'
                 if lote.producto:
-                    producto_desc = lote.producto.descripcion or 'N/A'
+                    # ISS-FIX: Usar nombre (NOT NULL) como principal, descripcion como fallback
+                    producto_desc = lote.producto.nombre or lote.producto.descripcion or 'N/A'
                     producto_clave = lote.producto.clave or 'N/A'
             
             # Determinar origen/destino
@@ -7293,7 +7294,7 @@ def dashboard_resumen(request):
                 'observaciones': mov.motivo or '',
                 'origen': origen,
                 'destino': destino,
-                'requisicion_folio': mov.requisicion.folio if mov.requisicion else None,
+                'requisicion_folio': mov.requisicion.numero if mov.requisicion else None,
                 'referencia': mov.referencia or None,
                 'usuario': (mov.usuario.get_full_name() or mov.usuario.username) if mov.usuario else 'Sistema',
             })

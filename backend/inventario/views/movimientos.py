@@ -371,7 +371,9 @@ class MovimientoViewSet(
                 pdf_buffer.getvalue(),
                 content_type='application/pdf'
             )
-            response['Content-Disposition'] = f'attachment; filename="Trazabilidad_Lote_{numero_lote}_{timezone.now().strftime("%Y%m%d")}.pdf"'
+            # ISS-FIX: Usar numero_lote del objeto lote (no del query param que puede ser None)
+            nombre_archivo = lote.numero_lote or f"ID_{lote.id}"
+            response['Content-Disposition'] = f'attachment; filename="Trazabilidad_Lote_{nombre_archivo}_{timezone.now().strftime("%Y%m%d")}.pdf"'
             
             return response
             
