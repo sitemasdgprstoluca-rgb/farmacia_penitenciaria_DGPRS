@@ -515,17 +515,19 @@ const Trazabilidad = () => {
             {/* Campo de búsqueda con autocomplete */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium mb-2">
-                {tipoBusqueda === 'producto' ? 'Clave o nombre del producto' : 'Número de lote'}
+                {tipoBusqueda === 'producto' ? 'Buscar producto (clave, nombre o descripción)' : 'Número de lote'}
               </label>
               {tipoBusqueda === 'producto' ? (
                 <AutocompleteInput
                   apiCall={productosAPI.getAll}
                   value={codigoBusqueda}
                   onChange={handleCodigoBusquedaChange}
-                  placeholder="Ej: MED-001 o Paracetamol"
+                  placeholder="Escribe para buscar... Ej: Paracetamol, MED-001"
                   displayField="clave"
                   secondaryField="nombre"
                   searchField="search"
+                  mode="product"
+                  minChars={1}
                   disabled={loading}
                 />
               ) : (
@@ -533,9 +535,11 @@ const Trazabilidad = () => {
                   apiCall={lotesAPI.getAll}
                   value={codigoBusqueda}
                   onChange={handleCodigoBusquedaChange}
-                  placeholder="Ej: L-2024-001"
+                  placeholder="Escribe número de lote... Ej: L-2024-001"
                   displayField="numero_lote"
                   searchField="search"
+                  mode="lote"
+                  minChars={1}
                   disabled={loading}
                 />
               )}
