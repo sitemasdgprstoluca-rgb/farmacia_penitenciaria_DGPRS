@@ -322,10 +322,10 @@ function AutocompleteInput({
   // Determinar el estado del input para estilos
   const hasValidSelection = selectedItem !== null && value === selectedItem[displayField];
   const inputBorderClass = hasValidSelection 
-    ? 'border-emerald-400 ring-2 ring-emerald-100' 
+    ? 'border-2 border-emerald-400 ring-2 ring-emerald-100' 
     : inputFocused 
-      ? 'border-blue-400 ring-2 ring-blue-100' 
-      : 'border-gray-300';
+      ? 'border-2 border-blue-400 ring-2 ring-blue-100' 
+      : 'border-2 border-gray-300';
 
   return (
     <div ref={containerRef} className="relative">
