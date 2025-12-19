@@ -1477,31 +1477,28 @@ class ReportesViewSet(viewsets.ViewSet):
         for producto in queryset:
             stock_actual = producto.get_stock_actual()
             nivel = producto.get_nivel_stock()
+            # Obtener lote principal para marca
+            lote_principal = producto.lotes.filter(activo=True, cantidad_actual__gt=0).order_by('-cantidad_actual').first()
             datos.append({
                 'id': producto.id,
                 'clave': producto.clave,
                 'descripcion': producto.descripcion,
+                'presentacion': producto.presentacion or '',
                 'unidad_medida': producto.unidad_medida,
                 'stock_actual': stock_actual,
-                'stock_minimo': producto.stock_minimo,
                 'nivel_stock': nivel,
                 'nivel': nivel,  # Alias para compatibilidad frontend
-                'precio_unitario': float(producto.precio_unitario),
-                'valor_inventario': float(stock_actual * producto.precio_unitario),
-                'lotes_activos': producto.lotes.filter(activo=True, cantidad_actual__gt=0).count()
+                'precio_unitario': float(producto.precio_unitario) if producto.precio_unitario else 0,
+                'valor_inventario': float(stock_actual * (producto.precio_unitario or 0)),
+                'lotes_activos': producto.lotes.filter(activo=True, cantidad_actual__gt=0).count(),
+                'marca': lote_principal.marca if lote_principal and lote_principal.marca else '',
             })
 
-        # Calcular productos bajo mínimo (stock_actual < stock_minimo)
-        productos_bajo_minimo = sum(
-            1 for d in datos 
-            if d['stock_actual'] < d['stock_minimo'] and d['stock_minimo'] > 0
-        )
-        
+        # Calcular resumen basado en niveles de stock
         resumen = {
             'total_productos': len(datos),
             'stock_total': sum(d['stock_actual'] for d in datos),
             'productos_sin_stock': sum(1 for d in datos if d['stock_actual'] == 0),
-            'productos_bajo_minimo': productos_bajo_minimo,
             'productos_stock_critico': sum(1 for d in datos if d['nivel_stock'] == 'critico'),
             'valor_total_inventario': sum(d['valor_inventario'] for d in datos)
         }
@@ -1520,18 +1517,19 @@ class ReportesViewSet(viewsets.ViewSet):
             sheet = workbook.active
             sheet.title = 'Inventario'
 
-            headers = ['Clave', 'Descripcion', 'Stock Actual', 'Stock Minimo', 'Nivel', 'Precio Unitario', 'Valor Total']
+            headers = ['Clave', 'Descripción', 'Presentación', 'Unidad', 'Inventario', 'Nivel', 'Precio', 'Marca']
             sheet.append(headers)
 
             for d in datos:
                 sheet.append([
                     d['clave'],
                     d['descripcion'],
+                    d['presentacion'],
+                    d['unidad_medida'],
                     d['stock_actual'],
-                    d['stock_minimo'],
                     d['nivel_stock'],
                     d['precio_unitario'],
-                    d['valor_inventario']
+                    d['marca']
                 ])
 
             for row in sheet.iter_rows(min_row=1, max_row=len(datos) + 1):

@@ -47,14 +47,15 @@ const baseFilters = {
 const COLUMNAS_CONFIG = {
   inventario: [
     { key: '#', label: '#', width: '60px' },
-    { key: 'clave', label: 'Clave', width: '120px' },
-    { key: 'descripcion', label: 'Descripción', width: '250px' },
-    { key: 'unidad_medida', label: 'Unidad', width: '100px' },
-    { key: 'stock_minimo', label: 'Inv. Mín.', width: '100px', align: 'right' },
-    { key: 'stock_actual', label: 'Inv. Actual', width: '100px', align: 'right' },
-    { key: 'lotes_activos', label: 'Lotes', width: '80px', align: 'center' },
-    { key: 'nivel_stock', label: 'Nivel', width: '100px', align: 'center' },
-    { key: 'precio_unitario', label: 'Precio', width: '100px', align: 'right' },
+    { key: 'clave', label: 'Clave', width: '100px' },
+    { key: 'descripcion', label: 'Descripción', width: '200px' },
+    { key: 'presentacion', label: 'Presentación', width: '120px' },
+    { key: 'unidad_medida', label: 'Unidad', width: '80px' },
+    { key: 'stock_actual', label: 'Inventario', width: '90px', align: 'right' },
+    { key: 'lotes_activos', label: 'Lotes', width: '60px', align: 'center' },
+    { key: 'nivel_stock', label: 'Nivel', width: '90px', align: 'center' },
+    { key: 'precio_unitario', label: 'Precio', width: '90px', align: 'right' },
+    { key: 'marca', label: 'Marca/Proveedor', width: '120px' },
   ],
   caducidades: [
     { key: 'producto', label: 'Producto', width: '300px' },

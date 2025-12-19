@@ -4232,11 +4232,20 @@ class MovimientoViewSet(
             producto_info = {
                 'clave': producto.clave,
                 'descripcion': producto.nombre,  # Usar nombre como descripción principal
+                'presentacion': producto.presentacion or '',
                 'unidad_medida': producto.unidad_medida,
                 'stock_actual': producto.get_stock_actual() if hasattr(producto, 'get_stock_actual') else 0,
-                'stock_minimo': producto.stock_minimo,
                 'precio_unitario': 0,  # precio_unitario está en Lote, no en Producto
             }
+            
+            # Obtener lote principal para info adicional
+            lote_principal = Lote.objects.filter(producto=producto, activo=True).order_by('-cantidad_actual').first()
+            if lote_principal:
+                producto_info['precio_unitario'] = float(lote_principal.precio_unitario) if lote_principal.precio_unitario else 0
+                producto_info['numero_contrato'] = lote_principal.numero_contrato or 'N/A'
+                producto_info['numero_lote'] = lote_principal.numero_lote or 'N/A'
+                producto_info['fecha_caducidad'] = lote_principal.fecha_caducidad.strftime('%d/%m/%Y') if lote_principal.fecha_caducidad else 'N/A'
+                producto_info['marca'] = lote_principal.marca or ''
             
             pdf_buffer = generar_reporte_trazabilidad(trazabilidad_data, producto_info=producto_info)
             
@@ -4297,18 +4306,21 @@ class MovimientoViewSet(
             
             # ISS-FIX: Usar nombre como fallback para descripcion, incluir numero_contrato
             descripcion_producto = 'N/A'
+            presentacion_producto = ''
             if lote.producto:
                 descripcion_producto = lote.producto.nombre or lote.producto.descripcion or 'N/A'
+                presentacion_producto = lote.producto.presentacion or ''
             
             producto_info = {
                 'clave': lote.producto.clave if lote.producto else 'N/A',
                 'descripcion': descripcion_producto,
+                'presentacion': presentacion_producto,
                 'unidad_medida': lote.producto.unidad_medida if lote.producto else 'N/A',
                 'stock_actual': lote.cantidad_actual,
-                'stock_minimo': lote.producto.stock_minimo if lote.producto else 0,
                 'numero_lote': lote.numero_lote,
                 'fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else 'N/A',
                 'proveedor': lote.marca or 'No especificado',
+                'marca': lote.marca or '',
                 'numero_contrato': lote.numero_contrato if lote.numero_contrato else 'N/A',
                 'precio_unitario': float(lote.precio_unitario) if lote.precio_unitario else 0,
             }
@@ -7633,6 +7645,7 @@ def trazabilidad_producto(request, clave):
                 'clave': producto.clave,
                 'nombre': producto.nombre,  # Campo nombre explícito
                 'descripcion': producto.descripcion or producto.nombre,  # Descripción o nombre como fallback
+                'presentacion': producto.presentacion or '',  # Campo presentación
                 'unidad_medida': producto.unidad_medida,
                 'stock_minimo': producto.stock_minimo,
                 'precio_unitario': None,  # precio_unitario está en Lote, no en Producto
@@ -7856,20 +7869,25 @@ def reporte_inventario(request):
             if nivel_stock_filtro and nivel != nivel_stock_filtro:
                 continue
 
+            # Obtener marca del lote principal
+            lote_principal = lotes_query.filter(cantidad_actual__gt=0).order_by('-cantidad_actual').first()
+            marca = lote_principal.marca if lote_principal and lote_principal.marca else ''
+
             # Se incluye 'nivel_stock' para compatibilidad con el frontend
             # Usar 'nombre' del producto como descripción principal
             datos.append({
                 '#': idx,
                 'clave': producto.clave,
                 'descripcion': producto.nombre,  # nombre es el campo principal del producto
+                'presentacion': producto.presentacion or '',
                 'unidad': producto.unidad_medida,
                 'unidad_medida': producto.unidad_medida,  # alias esperado por frontend
-                'stock_minimo': producto.stock_minimo,
                 'stock_actual': stock_total,
                 'lotes_activos': lotes_activos,
                 'nivel': nivel,
                 'nivel_stock': nivel,
                 'precio_unitario': float(precio_promedio),
+                'marca': marca,
             })
             total_productos += 1
             total_stock += stock_total
@@ -7878,8 +7896,8 @@ def reporte_inventario(request):
             'total_productos': total_productos,
             'total_stock': total_stock,
             'stock_total': total_stock,  # alias para compatibilidad frontend
-            'productos_bajo_minimo': productos_bajo_minimo,
             'productos_sin_stock': productos_sin_stock,
+            'productos_stock_critico': sum(1 for d in datos if d['nivel'] == 'sin_stock' or d['nivel'] == 'bajo'),
         }
         
         # Si formato es JSON, devolver datos
@@ -7893,18 +7911,19 @@ def reporte_inventario(request):
         if formato == 'pdf':
             from core.utils.pdf_reports import generar_reporte_inventario
             
-            # Preparar datos para el generador PDF
+            # Preparar datos para el generador PDF (ya están correctamente formateados)
             productos_data = []
             for item in datos:
                 productos_data.append({
                     'clave': item['clave'],
                     'descripcion': item['descripcion'],
+                    'presentacion': item.get('presentacion', ''),
                     'unidad_medida': item['unidad'],
-                    'stock_minimo': item['stock_minimo'],
                     'stock_actual': item['stock_actual'],
                     'lotes_activos': item['lotes_activos'],
                     'nivel': item['nivel'],
-                    'precio_unitario': item['precio_unitario']
+                    'precio_unitario': item['precio_unitario'],
+                    'marca': item.get('marca', ''),
                 })
             
             filtros = {
@@ -7924,20 +7943,20 @@ def reporte_inventario(request):
         ws = wb.active
         ws.title = 'Inventario'
 
-        ws.merge_cells('A1:I1')
+        ws.merge_cells('A1:J1')
         titulo = ws['A1']
         titulo.value = 'REPORTE DE INVENTARIO ACTUAL'
         titulo.font = Font(bold=True, size=14, color='632842')
         titulo.alignment = Alignment(horizontal='center', vertical='center')
 
-        ws.merge_cells('A2:I2')
+        ws.merge_cells('A2:J2')
         subtitulo = ws['A2']
         subtitulo.value = f"Generado el {timezone.now().strftime('%d/%m/%Y %H:%M:%S')}"
         subtitulo.alignment = Alignment(horizontal='center')
         subtitulo.font = Font(size=10, italic=True)
 
         ws.append([])
-        headers = ['#', 'Clave', 'Descripcin', 'Unidad', 'Stock Mn.', 'Stock Actual', 'Lotes', 'Nivel', 'Precio']
+        headers = ['#', 'Clave', 'Descripción', 'Presentación', 'Unidad', 'Inventario', 'Lotes', 'Nivel', 'Precio', 'Marca']
         ws.append(headers)
 
         header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
@@ -7952,24 +7971,25 @@ def reporte_inventario(request):
                 item['#'],
                 item['clave'],
                 item['descripcion'][:70],
+                item.get('presentacion', '')[:50] if item.get('presentacion') else '',
                 item['unidad'],
-                item['stock_minimo'],
                 item['stock_actual'],
                 item['lotes_activos'],
                 item['nivel'].upper(),
-                item['precio_unitario']
+                item['precio_unitario'],
+                item.get('marca', '')[:30] if item.get('marca') else ''
             ])
 
         ws.append([])
         resumen_row = ws.max_row + 1
         ws[f'B{resumen_row}'] = 'Total de Productos'
         ws[f'C{resumen_row}'] = resumen['total_productos']
-        ws[f'B{resumen_row + 1}'] = 'Stock Total'
+        ws[f'B{resumen_row + 1}'] = 'Inventario Total'
         ws[f'C{resumen_row + 1}'] = resumen['total_stock']
-        ws[f'B{resumen_row + 2}'] = 'Productos bajo mnimo'
-        ws[f'C{resumen_row + 2}'] = resumen['productos_bajo_minimo']
+        ws[f'B{resumen_row + 2}'] = 'Productos sin stock'
+        ws[f'C{resumen_row + 2}'] = resumen['productos_sin_stock']
 
-        for col, width in zip(['A','B','C','D','E','F','G','H','I'], [8,14,45,10,14,14,10,12,12]):
+        for col, width in zip(['A','B','C','D','E','F','G','H','I','J'], [8,14,40,20,10,12,8,10,10,20]):
             ws.column_dimensions[col].width = width
 
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

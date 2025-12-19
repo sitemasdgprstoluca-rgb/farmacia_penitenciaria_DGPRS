@@ -1930,6 +1930,8 @@ class ProductoDonacionSerializer(serializers.ModelSerializer):
     """
     Serializer para el catálogo independiente de productos de donaciones.
     Este catálogo es COMPLETAMENTE SEPARADO del catálogo principal de productos.
+    
+    Si no se proporciona clave, se genera automáticamente con formato DON-YYYYMMDD-XXXX
     """
     class Meta:
         model = ProductoDonacion
@@ -1939,7 +1941,7 @@ class ProductoDonacionSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['created_at', 'updated_at']
         extra_kwargs = {
-            'clave': {'required': True},
+            'clave': {'required': False, 'allow_blank': True},  # Ahora es opcional
             'nombre': {'required': True},
             'descripcion': {'required': False, 'allow_null': True, 'allow_blank': True},
             'unidad_medida': {'required': False, 'default': 'PIEZA'},
@@ -1948,8 +1950,37 @@ class ProductoDonacionSerializer(serializers.ModelSerializer):
             'notas': {'required': False, 'allow_null': True, 'allow_blank': True},
         }
     
+    def _generar_clave_automatica(self):
+        """
+        Genera una clave única automática con formato DON-YYYYMMDD-XXXX
+        Ejemplo: DON-20251219-0001
+        """
+        from datetime import date
+        import random
+        
+        hoy = date.today().strftime('%Y%m%d')
+        prefix = f"DON-{hoy}-"
+        
+        # Encontrar el siguiente número disponible
+        existentes = ProductoDonacion.objects.filter(clave__startswith=prefix).order_by('-clave')
+        if existentes.exists():
+            ultima_clave = existentes.first().clave
+            try:
+                ultimo_numero = int(ultima_clave.split('-')[-1])
+                siguiente = ultimo_numero + 1
+            except (ValueError, IndexError):
+                siguiente = random.randint(1, 9999)
+        else:
+            siguiente = 1
+        
+        return f"{prefix}{siguiente:04d}"
+    
     def validate_clave(self, value):
-        """Validar que la clave sea única (case insensitive)"""
+        """Validar que la clave sea única (case insensitive), o generar automáticamente si está vacía"""
+        # Si está vacía, se generará automáticamente en create()
+        if not value or not value.strip():
+            return None
+        
         clave_upper = value.upper().strip()
         qs = ProductoDonacion.objects.filter(clave__iexact=clave_upper)
         if self.instance:
@@ -1957,6 +1988,12 @@ class ProductoDonacionSerializer(serializers.ModelSerializer):
         if qs.exists():
             raise serializers.ValidationError("Ya existe un producto de donación con esta clave.")
         return clave_upper
+    
+    def create(self, validated_data):
+        """Si no se proporciona clave, genera una automática"""
+        if not validated_data.get('clave'):
+            validated_data['clave'] = self._generar_clave_automatica()
+        return super().create(validated_data)
 
 
 class DetalleDonacionSerializer(serializers.ModelSerializer):
@@ -2147,9 +2184,22 @@ class SalidaDonacionSerializer(serializers.ModelSerializer):
     
     def get_detalle_donacion_info(self, obj):
         if obj.detalle_donacion:
+            # Obtener nombre y código del producto (donación o legacy)
+            producto_nombre = None
+            producto_codigo = None
+            if obj.detalle_donacion.producto_donacion:
+                producto_nombre = obj.detalle_donacion.producto_donacion.nombre
+                producto_codigo = obj.detalle_donacion.producto_donacion.clave
+            elif obj.detalle_donacion.producto:
+                producto_nombre = obj.detalle_donacion.producto.nombre
+                producto_codigo = obj.detalle_donacion.producto.clave
+            
             return {
                 'id': obj.detalle_donacion.id,
                 'donacion_numero': obj.detalle_donacion.donacion.numero,
+                'producto_nombre': producto_nombre,
+                'producto_codigo': producto_codigo,
+                'numero_lote': obj.detalle_donacion.numero_lote,
                 'cantidad_original': obj.detalle_donacion.cantidad,
                 'cantidad_disponible': obj.detalle_donacion.cantidad_disponible,
             }
@@ -2161,8 +2211,14 @@ class SalidaDonacionSerializer(serializers.ModelSerializer):
         return None
     
     def get_producto_nombre(self, obj):
-        if obj.detalle_donacion and obj.detalle_donacion.producto:
-            return obj.detalle_donacion.producto.nombre
+        """Retorna el nombre del producto (donación o legacy)"""
+        if obj.detalle_donacion:
+            # Primero intentar con el nuevo catálogo de donaciones
+            if obj.detalle_donacion.producto_donacion:
+                return obj.detalle_donacion.producto_donacion.nombre
+            # Fallback al catálogo legacy
+            if obj.detalle_donacion.producto:
+                return obj.detalle_donacion.producto.nombre
         return None
     
     def validate_cantidad(self, value):

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { donacionesAPI, productosDonacionAPI, centrosAPI, lotesAPI, salidasDonacionesAPI, detallesDonacionAPI } from '../services/api';
+import { donacionesAPI, productosDonacionAPI, centrosAPI, salidasDonacionesAPI, detallesDonacionAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
 import {
   FaPlus,
@@ -128,6 +128,16 @@ const Donaciones = () => {
     activo: true,
     notas: '',
   });
+  
+  // Modal rápido para crear producto desde formulario de donación
+  const [showQuickProductModal, setShowQuickProductModal] = useState(false);
+  const [quickProductForm, setQuickProductForm] = useState({
+    clave: '',
+    nombre: '',
+    unidad_medida: 'PIEZA',
+    presentacion: '',
+  });
+  const [savingQuickProduct, setSavingQuickProduct] = useState(false);
   
   // Inventario de Donaciones (productos con stock disponible)
   const [inventarioDonaciones, setInventarioDonaciones] = useState([]);
@@ -528,6 +538,47 @@ const Donaciones = () => {
     }
   };
 
+  // Crear producto rápido desde el formulario de donación
+  const handleCrearProductoRapido = async () => {
+    if (!quickProductForm.clave || !quickProductForm.nombre) {
+      toast.error('La clave y el nombre son obligatorios');
+      return;
+    }
+
+    setSavingQuickProduct(true);
+    try {
+      const nuevoProducto = await productosDonacionAPI.create({
+        ...quickProductForm,
+        activo: true,
+      });
+      
+      toast.success('Producto creado correctamente');
+      
+      // Recargar catálogo para tener el nuevo producto
+      await cargarCatalogos();
+      
+      // Seleccionar automáticamente el nuevo producto en el formulario
+      setDetalleForm(prev => ({
+        ...prev,
+        producto_donacion: nuevoProducto.data.id.toString(),
+      }));
+      
+      // Cerrar modal y limpiar formulario
+      setShowQuickProductModal(false);
+      setQuickProductForm({
+        clave: '',
+        nombre: '',
+        unidad_medida: 'PIEZA',
+        presentacion: '',
+      });
+    } catch (err) {
+      console.error('Error creando producto rápido:', err);
+      toast.error(err.response?.data?.clave?.[0] || err.response?.data?.error || 'Error al crear producto');
+    } finally {
+      setSavingQuickProduct(false);
+    }
+  };
+
   useEffect(() => {
     cargarCatalogos();
   }, [cargarCatalogos]);
@@ -555,7 +606,6 @@ const Donaciones = () => {
       donante_contacto: '',
       fecha_donacion: new Date().toISOString().split('T')[0],
       fecha_recepcion: new Date().toISOString().split('T')[0],
-      centro_destino: '',
       notas: '',
       documento_donacion: '', // ISS-DB-ALIGN: Campo para referencia de documento
       detalles: [],
@@ -589,7 +639,6 @@ const Donaciones = () => {
       donante_contacto: donacion.donante_contacto || '',
       fecha_donacion: donacion.fecha_donacion || '',
       fecha_recepcion: donacion.fecha_recepcion || '',
-      centro_destino: donacion.centro_destino || '',
       notas: donacion.notas || '',
       documento_donacion: donacion.documento_donacion || '', // ISS-DB-ALIGN
       detalles: donacion.detalles || [],
@@ -648,8 +697,17 @@ const Donaciones = () => {
 
   // Guardar donación
   const handleGuardar = async () => {
-    if (!formData.donante_nombre || !formData.centro_destino || formData.detalles.length === 0) {
-      toast.error('Completa los campos obligatorios y agrega al menos un producto');
+    // Validaciones completas
+    if (!formData.donante_nombre?.trim()) {
+      toast.error('El nombre del donante es obligatorio');
+      return;
+    }
+    if (!formData.fecha_donacion) {
+      toast.error('La fecha de donación es obligatoria');
+      return;
+    }
+    if (formData.detalles.length === 0) {
+      toast.error('Debes agregar al menos un producto a la donación');
       return;
     }
 
@@ -657,7 +715,8 @@ const Donaciones = () => {
     try {
       const payload = {
         ...formData,
-        centro_destino: parseInt(formData.centro_destino),
+        // centro_destino es opcional - las donaciones llegan a farmacia central
+        centro_destino: formData.centro_destino ? parseInt(formData.centro_destino) : null,
         detalles: formData.detalles.map((d) => ({
           producto_donacion: d.producto_donacion,  // Nuevo catálogo independiente
           numero_lote: d.numero_lote || null,
@@ -1087,25 +1146,6 @@ const Donaciones = () => {
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Centro Destino</label>
-              <select
-                value={filtroCentro}
-                onChange={(e) => {
-                  setFiltroCentro(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
-              >
-                <option value="">Todos los centros</option>
-                {centros.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre}
-                  </option>
-                ))}
-              </select>
-            </div>
-
             <div className="flex gap-2">
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Desde</label>
@@ -1164,7 +1204,6 @@ const Donaciones = () => {
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Número</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Donante</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Tipo</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Centro Destino</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Fecha</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Items</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Estado</th>
@@ -1187,12 +1226,6 @@ const Donaciones = () => {
                       </td>
                       <td className="px-4 py-3 capitalize text-sm text-gray-600">
                         {TIPOS_DONANTE.find((t) => t.value === donacion.donante_tipo)?.label || donacion.donante_tipo}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <FaBuilding className="text-gray-400" />
-                          <span>{donacion.centro_destino_nombre || '-'}</span>
-                        </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
                         <div className="flex items-center gap-2">
@@ -1909,32 +1942,17 @@ const Donaciones = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">Centro Destino *</label>
-                    <select
-                      value={formData.centro_destino}
-                      onChange={(e) => setFormData({ ...formData, centro_destino: e.target.value })}
-                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
-                    >
-                      <option value="">Seleccionar centro</option>
-                      {centros.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.nombre}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">Documento de Donación</label>
+                    <label className="block text-sm font-medium text-gray-600 mb-1">Documento/Referencia</label>
                     <input
                       type="text"
                       value={formData.documento_donacion}
                       onChange={(e) => setFormData({ ...formData, documento_donacion: e.target.value })}
                       className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
-                      placeholder="Nº Factura, Carta de Donación, Acta, etc."
+                      placeholder="Folio, factura, carta..."
                     />
                   </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 mt-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-600 mb-1">Notas</label>
                     <textarea
@@ -1959,18 +1977,34 @@ const Donaciones = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
                     <div className="lg:col-span-2">
                       <label className="block text-xs font-medium text-gray-600 mb-1">Producto Donación *</label>
-                      <select
-                        value={detalleForm.producto_donacion}
-                        onChange={(e) => setDetalleForm({ ...detalleForm, producto_donacion: e.target.value })}
-                        className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary"
-                      >
-                        <option value="">Seleccionar producto</option>
-                        {productosDonacion.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.clave} - {p.nombre}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex gap-2">
+                        <select
+                          value={detalleForm.producto_donacion}
+                          onChange={(e) => setDetalleForm({ ...detalleForm, producto_donacion: e.target.value })}
+                          className="flex-1 border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary"
+                        >
+                          <option value="">Seleccionar producto</option>
+                          {productosDonacion.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.clave} - {p.nombre}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setShowQuickProductModal(true)}
+                          className="px-3 py-2 rounded-lg text-white transition-colors flex items-center justify-center"
+                          style={{ backgroundColor: COLORS.primary }}
+                          title="Crear nuevo producto"
+                        >
+                          <FaPlus />
+                        </button>
+                      </div>
+                      {productosDonacion.length === 0 && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          No hay productos en el catálogo. Crea uno con el botón +
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Lote</label>
@@ -2144,10 +2178,6 @@ const Donaciones = () => {
                 <div>
                   <span className="text-sm text-gray-500">Contacto</span>
                   <p className="font-medium">{viewingDonacion.donante_contacto || '-'}</p>
-                </div>
-                <div>
-                  <span className="text-sm text-gray-500">Centro Destino</span>
-                  <p className="font-medium">{viewingDonacion.centro_destino_nombre || '-'}</p>
                 </div>
                 <div>
                   <span className="text-sm text-gray-500">Fecha Donación</span>
@@ -2711,6 +2741,105 @@ const Donaciones = () => {
               >
                 {actionLoading === 'guardarProducto' && <FaSpinner className="animate-spin" />}
                 {editingProductoDonacion ? 'Actualizar' : 'Crear Producto'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========== MODAL RÁPIDO: Crear Producto desde Formulario de Donación ========== */}
+      {showQuickProductModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="px-6 py-4 border-b bg-gradient-to-r from-green-600 to-emerald-600 rounded-t-xl">
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <FaPlus />
+                Crear Producto Rápido
+              </h2>
+              <p className="text-green-100 text-sm mt-1">
+                El producto se agregará al catálogo de donaciones
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Clave *
+                  </label>
+                  <input
+                    type="text"
+                    value={quickProductForm.clave}
+                    onChange={(e) => setQuickProductForm({ ...quickProductForm, clave: e.target.value.toUpperCase() })}
+                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                    placeholder="Ej: DON-001"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Unidad de Medida
+                  </label>
+                  <select
+                    value={quickProductForm.unidad_medida}
+                    onChange={(e) => setQuickProductForm({ ...quickProductForm, unidad_medida: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="PIEZA">PIEZA</option>
+                    <option value="CAJA">CAJA</option>
+                    <option value="FRASCO">FRASCO</option>
+                    <option value="SOBRE">SOBRE</option>
+                    <option value="AMPOLLETA">AMPOLLETA</option>
+                    <option value="TUBO">TUBO</option>
+                    <option value="LITRO">LITRO</option>
+                    <option value="ML">ML</option>
+                    <option value="GRAMO">GRAMO</option>
+                    <option value="KG">KG</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nombre del Producto *
+                </label>
+                <input
+                  type="text"
+                  value={quickProductForm.nombre}
+                  onChange={(e) => setQuickProductForm({ ...quickProductForm, nombre: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                  placeholder="Nombre completo del producto donado"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Presentación
+                </label>
+                <input
+                  type="text"
+                  value={quickProductForm.presentacion}
+                  onChange={(e) => setQuickProductForm({ ...quickProductForm, presentacion: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                  placeholder="Ej: Caja con 30 tabletas de 500mg"
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 rounded-b-xl flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowQuickProductModal(false);
+                  setQuickProductForm({ clave: '', nombre: '', unidad_medida: 'PIEZA', presentacion: '' });
+                }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleCrearProductoRapido}
+                disabled={savingQuickProduct}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {savingQuickProduct && <FaSpinner className="animate-spin" />}
+                Crear y Seleccionar
               </button>
             </div>
           </div>

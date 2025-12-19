@@ -276,11 +276,15 @@ class MovimientoViewSet(
             producto_info = {
                 'clave': producto.clave,
                 'descripcion': producto.nombre,  # Usar nombre como descripción principal
+                'presentacion': producto.presentacion or '',
                 'unidad_medida': producto.unidad_medida,
                 'stock_actual': producto.get_stock_actual() if hasattr(producto, 'get_stock_actual') else 0,
-                'stock_minimo': producto.stock_minimo,
                 'precio_unitario': lote_principal.precio_unitario if lote_principal else 0,
                 'numero_contrato': lote_principal.numero_contrato if lote_principal else 'N/A',
+                # Información del lote principal (para mostrar en el PDF)
+                'numero_lote': lote_principal.numero_lote if lote_principal else 'N/A',
+                'fecha_caducidad': lote_principal.fecha_caducidad.strftime('%d/%m/%Y') if lote_principal and lote_principal.fecha_caducidad else 'N/A',
+                'marca': lote_principal.marca if lote_principal and lote_principal.marca else '',
             }
             
             pdf_buffer = generar_reporte_trazabilidad(trazabilidad_data, producto_info=producto_info)
@@ -349,18 +353,21 @@ class MovimientoViewSet(
             
             # ISS-FIX: Usar nombre como fallback para descripcion, manejar None correctamente
             descripcion_producto = 'N/A'
+            presentacion_producto = ''
             if lote.producto:
                 descripcion_producto = lote.producto.nombre or lote.producto.descripcion or 'N/A'
+                presentacion_producto = lote.producto.presentacion or ''
             
             producto_info = {
                 'clave': lote.producto.clave if lote.producto else 'N/A',
                 'descripcion': descripcion_producto,
+                'presentacion': presentacion_producto,
                 'unidad_medida': lote.producto.unidad_medida if lote.producto else 'N/A',
                 'stock_actual': lote.cantidad_actual,
-                'stock_minimo': lote.producto.stock_minimo if lote.producto else 0,
                 'numero_lote': lote.numero_lote,
                 'fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else 'N/A',
                 'proveedor': lote.marca or 'No especificado',
+                'marca': lote.marca or '',
                 'numero_contrato': lote.numero_contrato if lote.numero_contrato else 'N/A',
                 'precio_unitario': float(lote.precio_unitario) if lote.precio_unitario else 0,
             }

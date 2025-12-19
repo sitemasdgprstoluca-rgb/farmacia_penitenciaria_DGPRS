@@ -525,7 +525,7 @@ def generar_reporte_inventario(productos_data, formato='pdf', filtros=None):
     )
     
     # Tabla de datos con Paragraph para texto largo
-    data = [['Clave', 'Descripción', 'Stock', 'Mín.', 'Nivel', 'Unidad']]
+    data = [['Clave', 'Descripción', 'Presentación', 'Inventario', 'Nivel', 'Unidad', 'Precio', 'Marca']]
     
     for producto in productos_data:
         nivel = str(producto.get('nivel', producto.get('nivel_stock', 'N/A'))).upper()
@@ -535,23 +535,34 @@ def generar_reporte_inventario(productos_data, formato='pdf', filtros=None):
         # Usar Paragraph para unidad - permite texto largo
         unidad = str(producto.get('unidad', producto.get('unidad_medida', '')))
         unidad_paragraph = Paragraph(unidad, estilo_celda_unidad)
+        # Presentación
+        presentacion = str(producto.get('presentacion', ''))
+        pres_paragraph = Paragraph(presentacion, estilo_celda) if presentacion else ''
+        # Precio
+        precio_raw = producto.get('precio_unitario') or producto.get('precio')
+        precio_str = f"${float(precio_raw):.2f}" if precio_raw else 'N/A'
+        # Marca/Proveedor
+        marca = str(producto.get('marca', producto.get('proveedor', ''))) or '-'
         data.append([
             str(producto.get('clave', '')),
             desc_paragraph,
+            pres_paragraph,
             str(producto.get('stock_actual', 0)),
-            str(producto.get('stock_minimo', 0)),
             nivel,
-            unidad_paragraph
+            unidad_paragraph,
+            precio_str,
+            marca
         ])
     
     # Ajustar anchos para que sumen exactamente el ancho disponible (7 pulgadas)
-    # Descripción más ancha, Unidad ampliada para textos largos
-    col_widths = [0.9*inch, 3.0*inch, 0.6*inch, 0.5*inch, 0.6*inch, 1.4*inch]
+    # Campos: Clave, Descripción, Presentación, Inventario, Nivel, Unidad, Precio, Marca
+    col_widths = [0.7*inch, 1.9*inch, 0.9*inch, 0.6*inch, 0.6*inch, 0.8*inch, 0.6*inch, 0.9*inch]
     table = _crear_tabla_institucional(data, col_widths)
     # Alinear números a la derecha
     table.setStyle(TableStyle([
-        ('ALIGN', (2, 1), (3, -1), 'RIGHT'),  # Stock y Mín. alineados a la derecha
+        ('ALIGN', (3, 1), (3, -1), 'RIGHT'),  # Inventario alineado a la derecha
         ('ALIGN', (4, 1), (4, -1), 'CENTER'), # Nivel centrado
+        ('ALIGN', (6, 1), (6, -1), 'RIGHT'),  # Precio alineado a la derecha
     ]))
     elements.append(table)
     elements.append(Spacer(1, 0.3*inch))
@@ -1478,21 +1489,33 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
             leading=10,
             wordWrap='CJK',
         )
-        descripcion = str(producto_info.get('descripcion', 'N/A'))
+        
+        # Formatear descripción
+        descripcion = str(producto_info.get('descripcion', producto_info.get('nombre', 'N/A')))
         desc_paragraph = Paragraph(descripcion, estilo_desc)
         
+        # Formatear presentación
+        presentacion = str(producto_info.get('presentacion', 'N/A'))
+        pres_paragraph = Paragraph(presentacion, estilo_desc)
+        
+        # Formatear precio
+        precio_raw = producto_info.get('precio_unitario') or producto_info.get('precio')
+        precio_str = f"${float(precio_raw):.2f}" if precio_raw else 'N/A'
+        
+        # Campos reorganizados: Clave, Descripción, Presentación, Precio, Lote, Marca/Proveedor
         prod_data = [
             ['Clave:', str(producto_info.get('clave', 'N/A')), 'Descripción:', desc_paragraph],
-            ['Unidad:', str(producto_info.get('unidad_medida', 'N/A')), 'Precio:', f"${producto_info.get('precio_unitario', 0):.2f}" if producto_info.get('precio_unitario') else 'N/A'],
-            ['Stock Actual:', str(producto_info.get('stock_actual', 0)), 'Stock Mínimo:', str(producto_info.get('stock_minimo', 0))],
+            ['Unidad:', str(producto_info.get('unidad_medida', 'N/A')), 'Presentación:', pres_paragraph],
+            ['Inventario:', str(producto_info.get('stock_actual', 0)), 'Precio:', precio_str],
             ['No. Contrato:', str(producto_info.get('numero_contrato', 'N/A')), 'No. Lote:', str(producto_info.get('numero_lote', 'N/A'))],
         ]
         
-        # Agregar fila de caducidad y proveedor si están disponibles
-        if producto_info.get('fecha_caducidad') or producto_info.get('proveedor'):
+        # Agregar fila de caducidad y proveedor/marca
+        if producto_info.get('fecha_caducidad') or producto_info.get('proveedor') or producto_info.get('marca'):
+            marca_proveedor = producto_info.get('proveedor') or producto_info.get('marca') or 'N/A'
             prod_data.append([
                 'Caducidad:', str(producto_info.get('fecha_caducidad', 'N/A')), 
-                'Proveedor/Marca:', str(producto_info.get('proveedor', 'N/A'))
+                'Proveedor/Marca:', str(marca_proveedor)
             ])
         
         prod_table = Table(prod_data, colWidths=[1.1*inch, 2.4*inch, 1.1*inch, 2.4*inch])

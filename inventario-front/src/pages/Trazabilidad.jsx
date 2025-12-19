@@ -43,6 +43,7 @@ const normalizeProductoResponse = (data) => {
     return {
       codigo: data.codigo,
       nombre: data.nombre,
+      presentacion: data.presentacion || '',
       unidad_medida: data.unidad_medida,
       stock_actual: data.stock_actual ?? data.estadisticas?.stock_total ?? 0,
       stock_minimo: data.stock_minimo ?? data.estadisticas?.stock_minimo ?? null,
@@ -58,6 +59,7 @@ const normalizeProductoResponse = (data) => {
     return {
       codigo: producto.clave || producto.codigo,
       nombre: producto.nombre || producto.descripcion || '',  // Usar nombre o descripcion como fallback
+      presentacion: producto.presentacion || '',
       unidad_medida: producto.unidad_medida,
       stock_actual: data.estadisticas?.stock_total ?? producto.stock_actual ?? 0,
       stock_minimo: producto.stock_minimo ?? null,
@@ -364,7 +366,7 @@ const Trazabilidad = () => {
         <p className="font-semibold">{resultados.codigo}</p>
       </div>
       <div className="md:col-span-2">
-        <p className="text-xs text-gray-500">Nombre</p>
+        <p className="text-xs text-gray-500">Descripción</p>
         <p className="font-semibold">{resultados.nombre}</p>
       </div>
       <div>
@@ -374,10 +376,13 @@ const Trazabilidad = () => {
       <div>
         <p className="text-xs text-gray-500">Inventario actual</p>
         <p className="text-2xl font-bold text-violet-600">{resultados.stock_actual ?? 0}</p>
-        {resultados.stock_minimo != null && (
-          <p className="text-xs text-gray-500 mt-1">Inv. Mínimo: {resultados.stock_minimo}</p>
-        )}
       </div>
+      {resultados.presentacion && (
+        <div className="md:col-span-2">
+          <p className="text-xs text-gray-500">Presentación</p>
+          <p className="font-semibold">{resultados.presentacion}</p>
+        </div>
+      )}
     </div>
   );
 
@@ -510,15 +515,16 @@ const Trazabilidad = () => {
             {/* Campo de búsqueda con autocomplete */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium mb-2">
-                {tipoBusqueda === 'producto' ? 'Clave del producto' : 'Número de lote'}
+                {tipoBusqueda === 'producto' ? 'Clave o nombre del producto' : 'Número de lote'}
               </label>
               {tipoBusqueda === 'producto' ? (
                 <AutocompleteInput
                   apiCall={productosAPI.getAll}
                   value={codigoBusqueda}
                   onChange={handleCodigoBusquedaChange}
-                  placeholder="Ej: MED-001"
+                  placeholder="Ej: MED-001 o Paracetamol"
                   displayField="clave"
+                  secondaryField="nombre"
                   searchField="search"
                   disabled={loading}
                 />
