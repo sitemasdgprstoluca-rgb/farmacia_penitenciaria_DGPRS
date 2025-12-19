@@ -196,6 +196,25 @@ class LoteViewSet(viewsets.ModelViewSet):
                 fecha_caducidad__gt=date.today()
             )
         
+        # ISS-FIX: Filtrar por rango de fechas (para exportación de trazabilidad)
+        fecha_desde = self.request.query_params.get('fecha_desde')
+        if fecha_desde:
+            try:
+                from datetime import datetime
+                fecha_desde_dt = datetime.strptime(fecha_desde, '%Y-%m-%d').date()
+                queryset = queryset.filter(created_at__date__gte=fecha_desde_dt)
+            except (ValueError, TypeError):
+                pass
+        
+        fecha_hasta = self.request.query_params.get('fecha_hasta')
+        if fecha_hasta:
+            try:
+                from datetime import datetime
+                fecha_hasta_dt = datetime.strptime(fecha_hasta, '%Y-%m-%d').date()
+                queryset = queryset.filter(created_at__date__lte=fecha_hasta_dt)
+            except (ValueError, TypeError):
+                pass
+        
         return queryset.order_by('-created_at')
     
     def retrieve(self, request, *args, **kwargs):

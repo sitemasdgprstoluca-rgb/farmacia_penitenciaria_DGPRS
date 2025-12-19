@@ -8,48 +8,75 @@ import { usePermissions } from '../hooks/usePermissions';
 
 // ============================================
 // MAPEO Y NORMALIZACIÓN DE DATOS
+// Sincronizado con backend: views_legacy.py trazabilidad_producto/lote
+// BD: productos, lotes, movimientos
 // ============================================
+
+/**
+ * Extraer nombre del centro de forma segura
+ * El backend puede enviar: string, objeto {nombre, id}, null, o undefined
+ */
+const getCentroNombre = (centro, fallback = 'Farmacia Central') => {
+  if (!centro) return fallback;
+  if (typeof centro === 'string') return centro;
+  if (typeof centro === 'object' && centro.nombre) return centro.nombre;
+  return fallback;
+};
 
 const mapMovimiento = (mov = {}) => ({
   id: mov.id,
   fecha: mov.fecha || mov.fecha_movimiento || mov.fecha_mov || null,
   tipo: (mov.tipo || mov.tipo_movimiento || '').toString().toUpperCase(),
   cantidad: mov.cantidad,
-  centro: mov.centro || mov.centro_nombre || '',
+  centro: getCentroNombre(mov.centro || mov.centro_nombre),
   usuario: mov.usuario || mov.usuario_nombre || '',
   lote: mov.lote || mov.lote_numero || '',
-  observaciones: mov.observaciones || '',
+  observaciones: mov.observaciones || mov.motivo || '',
   saldo: mov.saldo,
 });
 
 const mapLote = (lote = {}) => ({
+  id: lote.id,
   numero_lote: lote.numero_lote,
   fecha_caducidad: lote.fecha_caducidad,
-  cantidad_actual: lote.cantidad_actual,
-  cantidad_inicial: lote.cantidad_inicial ?? lote.cantidad_actual,
-  estado: (lote.estado_caducidad || lote.estado || '').toString().toUpperCase(),
-  centro: lote.centro,
+  cantidad_actual: lote.cantidad_actual ?? 0,
+  cantidad_inicial: lote.cantidad_inicial ?? lote.cantidad_actual ?? 0,
+  estado: (lote.estado_caducidad || lote.estado || 'NORMAL').toString().toUpperCase(),
+  centro: getCentroNombre(lote.centro),
   numero_contrato: lote.numero_contrato || '',
   marca: lote.marca || '',
+  dias_para_caducar: lote.dias_para_caducar,
+  precio_unitario: lote.precio_unitario,
 });
 
+/**
+ * Normaliza respuesta de trazabilidad de PRODUCTO
+ * Backend retorna: {codigo, producto: {...}, estadisticas: {...}, lotes: [], movimientos: [], alertas: []}
+ */
 const normalizeProductoResponse = (data) => {
   if (!data) return null;
+
+  // DEBUG: Log para identificar estructura de datos (remover en producción)
+  if (import.meta.env.DEV) {
+    console.log('[Trazabilidad] Respuesta producto raw:', data);
+  }
 
   const lotes = Array.isArray(data.lotes) ? data.lotes.map(mapLote) : [];
   const movimientos = Array.isArray(data.movimientos) ? data.movimientos.map(mapMovimiento) : [];
 
   // Priorizar data.producto si existe (respuesta del backend tiene producto como objeto)
-  if (data.producto) {
+  if (data.producto && typeof data.producto === 'object') {
     const producto = data.producto;
     return {
-      codigo: producto.clave || producto.codigo || data.codigo,
-      nombre: producto.nombre || producto.descripcion || '',
+      tipo: 'producto',
+      codigo: producto.clave || producto.codigo || data.codigo || '-',
+      nombre: producto.nombre || '',
       descripcion: producto.descripcion || producto.nombre || '',
       presentacion: producto.presentacion || '',
       unidad_medida: producto.unidad_medida || producto.unidad || '-',
       stock_actual: data.estadisticas?.stock_total ?? producto.stock_actual ?? 0,
       stock_minimo: producto.stock_minimo ?? null,
+      activo: producto.activo !== false,
       lotes,
       movimientos,
       alertas: data.alertas || [],
@@ -57,16 +84,18 @@ const normalizeProductoResponse = (data) => {
     };
   }
 
-  // Fallback: datos directos en la raíz
+  // Fallback: datos directos en la raíz (formato antiguo o alternativo)
   if (data.codigo || data.clave) {
     return {
-      codigo: data.codigo || data.clave,
-      nombre: data.nombre || data.descripcion || '',
+      tipo: 'producto',
+      codigo: data.codigo || data.clave || '-',
+      nombre: data.nombre || '',
       descripcion: data.descripcion || data.nombre || '',
       presentacion: data.presentacion || '',
       unidad_medida: data.unidad_medida || data.unidad || '-',
       stock_actual: data.stock_actual ?? data.estadisticas?.stock_total ?? 0,
       stock_minimo: data.stock_minimo ?? data.estadisticas?.stock_minimo ?? null,
+      activo: data.activo !== false,
       lotes,
       movimientos,
       alertas: data.alertas || [],
@@ -74,31 +103,46 @@ const normalizeProductoResponse = (data) => {
     };
   }
 
-  return data;
+  // Si no hay estructura reconocible, retornar los datos con tipo
+  return { ...data, tipo: 'producto' };
 };
 
-// Normalizar respuesta de trazabilidad de lote
+/**
+ * Normaliza respuesta de trazabilidad de LOTE
+ * Backend retorna: {id, numero_lote, producto, lote: {...}, estadisticas: {...}, movimientos: [], alertas: []}
+ */
 const normalizeLoteResponse = (data) => {
   if (!data) return null;
 
+  // DEBUG: Log para identificar estructura de datos (remover en producción)
+  if (import.meta.env.DEV) {
+    console.log('[Trazabilidad] Respuesta lote raw:', data);
+  }
+
+  // El backend envía datos en data.lote para info detallada
   const loteData = data.lote || data;
-  const movimientos = Array.isArray(data.movimientos) ? data.movimientos.map(mapMovimiento) : [];
+  const movimientos = Array.isArray(data.movimientos || data.historial) 
+    ? (data.movimientos || data.historial).map(mapMovimiento) 
+    : [];
 
   return {
     tipo: 'lote',
     id: data.id || loteData.id,
-    numero_lote: loteData.numero_lote || data.numero_lote,
+    numero_lote: loteData.numero_lote || data.numero_lote || '-',
     producto: {
-      codigo: loteData.producto || data.producto,
+      codigo: loteData.producto || data.producto || '-',
       nombre: loteData.producto_nombre || loteData.producto_descripcion || '',
     },
     fecha_caducidad: loteData.fecha_caducidad,
-    cantidad_actual: loteData.cantidad_actual,
-    cantidad_inicial: loteData.cantidad_inicial,
-    estado: (loteData.estado_caducidad || loteData.estado || '').toString().toUpperCase(),
-    centro: loteData.centro || 'Farmacia Central',
+    dias_para_caducar: loteData.dias_para_caducar,
+    cantidad_actual: loteData.cantidad_actual ?? 0,
+    cantidad_inicial: loteData.cantidad_inicial ?? 0,
+    estado: (loteData.estado_caducidad || loteData.estado || 'NORMAL').toString().toUpperCase(),
+    centro: getCentroNombre(loteData.centro),
     numero_contrato: loteData.numero_contrato || '',
     marca: loteData.marca || '',
+    precio_unitario: loteData.precio_unitario,
+    activo: loteData.activo !== false,
     movimientos,
     alertas: data.alertas || [],
     estadisticas: data.estadisticas || {},
@@ -435,6 +479,9 @@ const Trazabilidad = () => {
     ? resultados.movimientos.slice(0, 100) 
     : [];
   const totalMovimientos = resultados?.movimientos?.length || 0;
+  
+  // Mostrar columna de saldo solo si los movimientos tienen el campo saldo (trazabilidad de lote)
+  const mostrarSaldo = esResultadoLote && movimientosParaMostrar.some(mov => mov.saldo !== undefined);
 
   const estadoClass = (estado = '') => {
     const upper = estado.toUpperCase();
@@ -770,9 +817,9 @@ const Trazabilidad = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {lotesParaMostrar.map((lote) => (
-                      <tr key={lote.numero_lote} className="hover:bg-gray-50">
-                        <td className="px-4 py-2 font-semibold">{lote.numero_lote}</td>
+                    {lotesParaMostrar.map((lote, idx) => (
+                      <tr key={lote.id || lote.numero_lote || idx} className="hover:bg-gray-50">
+                        <td className="px-4 py-2 font-semibold">{lote.numero_lote || '-'}</td>
                         <td className="px-4 py-2">
                           {lote.fecha_caducidad ? new Date(lote.fecha_caducidad).toLocaleDateString() : '-'}
                         </td>
