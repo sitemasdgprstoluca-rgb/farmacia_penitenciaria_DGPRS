@@ -384,20 +384,6 @@ function AutocompleteInput({
         </div>
       </div>
 
-      {/* Chip de producto seleccionado (modo producto) */}
-      {hasValidSelection && mode === 'product' && selectedItem && (
-        <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg text-sm">
-          <FaCheckCircle className="text-emerald-500" size={12} />
-          <span className="font-medium text-emerald-800">
-            {selectedItem.clave}
-          </span>
-          <span className="text-emerald-600">-</span>
-          <span className="text-emerald-700 truncate max-w-[200px]">
-            {selectedItem.nombre || selectedItem.descripcion}
-          </span>
-        </div>
-      )}
-
       {/* Hint de búsqueda */}
       {inputFocused && !showSuggestions && !loading && value.length > 0 && value.length < minChars && (
         <div className="absolute z-40 w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-500">

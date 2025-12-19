@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { trazabilidadAPI, productosAPI, lotesAPI, centrosAPI, descargarArchivo } from '../services/api';
 import { toast } from 'react-hot-toast';
-import { FaSearch, FaBox, FaWarehouse, FaHistory, FaExclamationTriangle, FaFilePdf, FaBuilding, FaLock, FaSpinner, FaInfoCircle } from 'react-icons/fa';
+import { FaSearch, FaBox, FaWarehouse, FaHistory, FaExclamationTriangle, FaFilePdf, FaBuilding, FaSpinner, FaInfoCircle } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import AutocompleteInput from '../components/AutocompleteInput';
 import { usePermissions } from '../hooks/usePermissions';
@@ -42,9 +42,10 @@ const normalizeProductoResponse = (data) => {
   if (data.codigo) {
     return {
       codigo: data.codigo,
-      nombre: data.nombre,
+      nombre: data.nombre || data.descripcion || '',
+      descripcion: data.descripcion || data.nombre || '',
       presentacion: data.presentacion || '',
-      unidad_medida: data.unidad_medida,
+      unidad_medida: data.unidad_medida || data.unidad || '-',
       stock_actual: data.stock_actual ?? data.estadisticas?.stock_total ?? 0,
       stock_minimo: data.stock_minimo ?? data.estadisticas?.stock_minimo ?? null,
       lotes,
@@ -58,9 +59,10 @@ const normalizeProductoResponse = (data) => {
     const producto = data.producto;
     return {
       codigo: producto.clave || producto.codigo,
-      nombre: producto.nombre || producto.descripcion || '',  // Usar nombre o descripcion como fallback
+      nombre: producto.nombre || producto.descripcion || '',
+      descripcion: producto.descripcion || producto.nombre || '',
       presentacion: producto.presentacion || '',
-      unidad_medida: producto.unidad_medida,
+      unidad_medida: producto.unidad_medida || producto.unidad || '-',
       stock_actual: data.estadisticas?.stock_total ?? producto.stock_actual ?? 0,
       stock_minimo: producto.stock_minimo ?? null,
       lotes,
@@ -360,29 +362,27 @@ const Trazabilidad = () => {
   };
 
   const renderInfoProducto = () => (
-    <div className="grid gap-4 md:grid-cols-4">
+    <div className="grid gap-4 md:grid-cols-5">
       <div>
         <p className="text-xs text-gray-500">Clave</p>
-        <p className="font-semibold">{resultados.codigo}</p>
+        <p className="font-semibold">{resultados.codigo || '-'}</p>
       </div>
       <div className="md:col-span-2">
         <p className="text-xs text-gray-500">Descripción</p>
-        <p className="font-semibold">{resultados.nombre}</p>
+        <p className="font-semibold">{resultados.descripcion || resultados.nombre || '-'}</p>
       </div>
       <div>
         <p className="text-xs text-gray-500">Unidad</p>
-        <p className="font-semibold">{resultados.unidad_medida}</p>
+        <p className="font-semibold">{resultados.unidad_medida || '-'}</p>
+      </div>
+      <div>
+        <p className="text-xs text-gray-500">Presentación</p>
+        <p className="font-semibold">{resultados.presentacion || '-'}</p>
       </div>
       <div>
         <p className="text-xs text-gray-500">Inventario actual</p>
         <p className="text-2xl font-bold text-violet-600">{resultados.stock_actual ?? 0}</p>
       </div>
-      {resultados.presentacion && (
-        <div className="md:col-span-2">
-          <p className="text-xs text-gray-500">Presentación</p>
-          <p className="font-semibold">{resultados.presentacion}</p>
-        </div>
-      )}
     </div>
   );
 
@@ -487,42 +487,37 @@ const Trazabilidad = () => {
 
       <div className="bg-white p-6 rounded-lg shadow">
         <form onSubmit={handleBuscar} className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-5">
+          {/* Formulario en una sola línea */}
+          <div className="flex flex-wrap items-end gap-3">
             {/* Selector de tipo de búsqueda */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Buscar por</label>
+            <div className="w-36">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Buscar por</label>
               <select
                 value={tipoBusqueda}
                 onChange={(e) => handleTipoBusquedaChange(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-sm"
                 disabled={loading}
               >
                 <option value="producto">📦 Producto</option>
                 {puedeBuscarPorLote ? (
                   <option value="lote">🏷️ Lote</option>
                 ) : (
-                  <option value="lote" disabled>🔒 Lote (requiere permisos)</option>
+                  <option value="lote" disabled>🔒 Lote</option>
                 )}
               </select>
-              {!puedeBuscarPorLote && (
-                <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                  <FaLock className="text-gray-400" />
-                  Solo Admin/Farmacia
-                </p>
-              )}
             </div>
 
             {/* Campo de búsqueda con autocomplete */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium mb-2">
-                {tipoBusqueda === 'producto' ? 'Buscar producto (clave, nombre o descripción)' : 'Número de lote'}
+            <div className="flex-1 min-w-[280px]">
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                {tipoBusqueda === 'producto' ? 'Clave, nombre o descripción' : 'Número de lote'}
               </label>
               {tipoBusqueda === 'producto' ? (
                 <AutocompleteInput
                   apiCall={productosAPI.getAll}
                   value={codigoBusqueda}
                   onChange={handleCodigoBusquedaChange}
-                  placeholder="Escribe para buscar... Ej: Paracetamol, MED-001"
+                  placeholder="Ej: 663, Paracetamol, Ibuprofeno..."
                   displayField="clave"
                   secondaryField="nombre"
                   searchField="search"
@@ -535,7 +530,7 @@ const Trazabilidad = () => {
                   apiCall={lotesAPI.getAll}
                   value={codigoBusqueda}
                   onChange={handleCodigoBusquedaChange}
-                  placeholder="Escribe número de lote... Ej: L-2024-001"
+                  placeholder="Ej: L-2024-001, 5060791..."
                   displayField="numero_lote"
                   searchField="search"
                   mode="lote"
@@ -547,12 +542,12 @@ const Trazabilidad = () => {
 
             {/* Selector de centro (solo para admin/farmacia) */}
             {esAdminOFarmacia && (
-              <div>
-                <label className="block text-sm font-medium mb-2">Centro</label>
+              <div className="w-48">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Centro</label>
                 <select
                   value={centroFiltro}
                   onChange={(e) => setCentroFiltro(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-sm"
                   disabled={loading}
                 >
                   <option value="">Todos los centros</option>
@@ -567,32 +562,30 @@ const Trazabilidad = () => {
             )}
 
             {/* Botones de acción */}
-            <div className="flex items-end gap-2">
-              <button
-                type="submit"
-                disabled={loading || !codigoBusqueda.trim()}
-                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all"
-              >
-                {loading ? (
-                  <>
-                    <FaSpinner className="animate-spin" />
-                    Buscando...
-                  </>
-                ) : (
-                  <>
-                    <FaSearch /> Buscar
-                  </>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={limpiarBusqueda}
-                disabled={loading || exportingPdf}
-                className="px-4 py-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              >
-                Limpiar
-              </button>
-            </div>
+            <button
+              type="submit"
+              disabled={loading || !codigoBusqueda.trim()}
+              className="bg-blue-600 text-white px-5 py-2.5 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all font-medium"
+            >
+              {loading ? (
+                <>
+                  <FaSpinner className="animate-spin" />
+                  Buscando...
+                </>
+              ) : (
+                <>
+                  <FaSearch /> Buscar
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={limpiarBusqueda}
+              disabled={loading || exportingPdf}
+              className="px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-gray-700"
+            >
+              Limpiar
+            </button>
           </div>
 
           {/* Indicador de código sincronizado */}

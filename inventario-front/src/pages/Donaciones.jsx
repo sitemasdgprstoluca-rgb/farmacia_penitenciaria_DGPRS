@@ -27,6 +27,8 @@ import {
   FaFileImport,
   FaDownload,
   FaShoppingCart,
+  FaTable,
+  FaClipboardCheck,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { COLORS } from '../constants/theme';
@@ -138,6 +140,12 @@ const Donaciones = () => {
     presentacion: '',
   });
   const [savingQuickProduct, setSavingQuickProduct] = useState(false);
+  
+  // Modal de carga masiva de productos
+  const [showBulkAddModal, setShowBulkAddModal] = useState(false);
+  const [bulkText, setBulkText] = useState('');
+  const [bulkProducts, setBulkProducts] = useState([]);
+  const [parsingBulk, setParsingBulk] = useState(false);
   
   // Inventario de Donaciones (productos con stock disponible)
   const [inventarioDonaciones, setInventarioDonaciones] = useState([]);
@@ -693,6 +701,126 @@ const Donaciones = () => {
       ...prev,
       detalles: prev.detalles.filter((_, i) => i !== index),
     }));
+  };
+
+  // ========== CARGA MASIVA DE PRODUCTOS ==========
+  
+  // Parsear texto pegado (formato: Clave | Nombre | Lote | Cantidad | Caducidad)
+  const handleParseBulkText = () => {
+    if (!bulkText.trim()) {
+      toast.error('Pega el texto con los productos');
+      return;
+    }
+    
+    setParsingBulk(true);
+    try {
+      const lines = bulkText.trim().split('\n').filter(line => line.trim());
+      const parsed = [];
+      const errors = [];
+      
+      lines.forEach((line, idx) => {
+        // Soporta separadores: | , ; TAB
+        const parts = line.split(/[|,;\t]/).map(p => p.trim());
+        
+        if (parts.length < 2) {
+          errors.push(`Línea ${idx + 1}: Formato incorrecto (mínimo clave y cantidad)`);
+          return;
+        }
+        
+        // Buscar producto por clave o nombre
+        const claveONombre = parts[0];
+        const producto = productosDonacion.find(
+          p => p.clave?.toLowerCase() === claveONombre.toLowerCase() ||
+               p.nombre?.toLowerCase().includes(claveONombre.toLowerCase())
+        );
+        
+        if (!producto) {
+          errors.push(`Línea ${idx + 1}: Producto "${claveONombre}" no encontrado en catálogo`);
+          return;
+        }
+        
+        // Parsear cantidad (puede estar en posición 1, 2, 3 o 4)
+        let cantidad = null;
+        let lote = '';
+        let caducidad = '';
+        
+        // Detectar formato basado en contenido
+        for (let i = 1; i < parts.length; i++) {
+          const val = parts[i];
+          if (!val) continue;
+          
+          // Es número? -> cantidad
+          if (/^\d+$/.test(val)) {
+            cantidad = parseInt(val);
+          }
+          // Es fecha? (YYYY-MM-DD o DD/MM/YYYY)
+          else if (/^\d{4}-\d{2}-\d{2}$/.test(val) || /^\d{2}\/\d{2}\/\d{4}$/.test(val)) {
+            // Convertir DD/MM/YYYY a YYYY-MM-DD
+            if (/^\d{2}\/\d{2}\/\d{4}$/.test(val)) {
+              const [d, m, y] = val.split('/');
+              caducidad = `${y}-${m}-${d}`;
+            } else {
+              caducidad = val;
+            }
+          }
+          // Es lote (alfanumérico)
+          else if (/^[A-Za-z0-9-]+$/.test(val) && val.length > 2) {
+            lote = val;
+          }
+        }
+        
+        if (!cantidad || cantidad <= 0) {
+          errors.push(`Línea ${idx + 1}: Cantidad no válida`);
+          return;
+        }
+        
+        parsed.push({
+          tempId: Date.now() + idx,
+          producto_donacion: producto.id,
+          producto_clave: producto.clave,
+          producto_nombre: producto.nombre,
+          numero_lote: lote,
+          cantidad,
+          fecha_caducidad: caducidad,
+          estado_producto: 'bueno',
+          notas: '',
+        });
+      });
+      
+      if (errors.length > 0 && parsed.length === 0) {
+        toast.error(errors.slice(0, 3).join('\n'));
+      } else {
+        setBulkProducts(parsed);
+        if (errors.length > 0) {
+          toast(`${parsed.length} productos listos, ${errors.length} con errores`, { icon: '⚠️' });
+        } else {
+          toast.success(`${parsed.length} productos listos para agregar`);
+        }
+      }
+    } catch (err) {
+      console.error('Error parseando:', err);
+      toast.error('Error al procesar el texto');
+    } finally {
+      setParsingBulk(false);
+    }
+  };
+  
+  // Agregar todos los productos parseados
+  const handleAddBulkProducts = () => {
+    if (bulkProducts.length === 0) {
+      toast.error('No hay productos para agregar');
+      return;
+    }
+    
+    setFormData(prev => ({
+      ...prev,
+      detalles: [...prev.detalles, ...bulkProducts],
+    }));
+    
+    toast.success(`${bulkProducts.length} productos agregados`);
+    setBulkProducts([]);
+    setBulkText('');
+    setShowBulkAddModal(false);
   };
 
   // Guardar donación
@@ -1968,12 +2096,22 @@ const Donaciones = () => {
 
               {/* Productos donados */}
               <div className="mb-6">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                  <FaBox /> Productos Donados (Catálogo Independiente)
-                </h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <FaBox /> Productos Donados ({formData.detalles.length})
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowBulkAddModal(true)}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-blue-300 text-blue-700 hover:bg-blue-50 transition-colors"
+                  >
+                    <FaTable /> Carga Masiva
+                  </button>
+                </div>
 
-                {/* Formulario para agregar producto */}
+                {/* Formulario para agregar producto individual */}
                 <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                  <p className="text-xs text-gray-500 mb-3">Agregar producto individual:</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
                     <div className="lg:col-span-2">
                       <label className="block text-xs font-medium text-gray-600 mb-1">Producto Donación *</label>
@@ -2741,6 +2879,127 @@ const Donaciones = () => {
               >
                 {actionLoading === 'guardarProducto' && <FaSpinner className="animate-spin" />}
                 {editingProductoDonacion ? 'Actualizar' : 'Crear Producto'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========== MODAL: Carga Masiva de Productos ========== */}
+      {showBulkAddModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600 to-indigo-600 rounded-t-xl">
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <FaTable />
+                Carga Masiva de Productos
+              </h2>
+              <p className="text-blue-100 text-sm mt-1">
+                Pega o escribe varios productos a la vez desde Excel o texto
+              </p>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Instrucciones */}
+              <div className="bg-blue-50 rounded-lg p-4 mb-4">
+                <h4 className="font-medium text-blue-800 mb-2">📋 Formato esperado:</h4>
+                <p className="text-sm text-blue-700 mb-2">
+                  Pega una línea por producto, con los valores separados por <code className="bg-blue-100 px-1 rounded">|</code> <code className="bg-blue-100 px-1 rounded">,</code> <code className="bg-blue-100 px-1 rounded">;</code> o <code className="bg-blue-100 px-1 rounded">TAB</code>
+                </p>
+                <div className="bg-white rounded p-3 text-xs font-mono text-gray-700">
+                  <div>CLAVE-001 | 100 | LOTE-ABC | 2025-12-31</div>
+                  <div>CLAVE-002 , 50</div>
+                  <div>Paracetamol ; 200 ; L123</div>
+                </div>
+                <p className="text-xs text-blue-600 mt-2">
+                  ✓ Clave o nombre del producto (debe existir en el catálogo)<br/>
+                  ✓ Cantidad (obligatorio)<br/>
+                  ✓ Lote y Caducidad (opcionales)
+                </p>
+              </div>
+
+              {/* Área de texto */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Pega aquí los productos:
+                </label>
+                <textarea
+                  value={bulkText}
+                  onChange={(e) => setBulkText(e.target.value)}
+                  rows={8}
+                  className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                  placeholder="Ejemplo:
+DON-001 | 100 | LOTE-123 | 2025-12-31
+DON-002 , 50
+Paracetamol ; 200"
+                />
+              </div>
+
+              {/* Botón de procesar */}
+              <button
+                onClick={handleParseBulkText}
+                disabled={!bulkText.trim() || parsingBulk}
+                className="w-full mb-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {parsingBulk ? <FaSpinner className="animate-spin" /> : <FaClipboardCheck />}
+                Procesar Texto
+              </button>
+
+              {/* Vista previa de productos parseados */}
+              {bulkProducts.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-gray-700 mb-2 flex items-center gap-2">
+                    <FaCheck className="text-green-500" />
+                    {bulkProducts.length} productos listos para agregar:
+                  </h4>
+                  <div className="border rounded-lg overflow-hidden max-h-48 overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 border-b sticky top-0">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Producto</th>
+                          <th className="px-3 py-2 text-center">Cantidad</th>
+                          <th className="px-3 py-2 text-left">Lote</th>
+                          <th className="px-3 py-2 text-left">Caducidad</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {bulkProducts.map((p, idx) => (
+                          <tr key={idx} className="hover:bg-gray-50">
+                            <td className="px-3 py-2">
+                              <span className="font-medium">{p.producto_clave}</span>
+                              <span className="block text-xs text-gray-500">{p.producto_nombre}</span>
+                            </td>
+                            <td className="px-3 py-2 text-center font-bold text-blue-600">{p.cantidad}</td>
+                            <td className="px-3 py-2 text-gray-600">{p.numero_lote || '-'}</td>
+                            <td className="px-3 py-2 text-gray-600">{p.fecha_caducidad || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t bg-gray-50 rounded-b-xl flex justify-between">
+              <button
+                onClick={() => {
+                  setShowBulkAddModal(false);
+                  setBulkText('');
+                  setBulkProducts([]);
+                }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAddBulkProducts}
+                disabled={bulkProducts.length === 0}
+                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                <FaPlus />
+                Agregar {bulkProducts.length} Productos
               </button>
             </div>
           </div>
