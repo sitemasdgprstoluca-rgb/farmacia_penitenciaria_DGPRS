@@ -39,15 +39,17 @@ const normalizeProductoResponse = (data) => {
   const lotes = Array.isArray(data.lotes) ? data.lotes.map(mapLote) : [];
   const movimientos = Array.isArray(data.movimientos) ? data.movimientos.map(mapMovimiento) : [];
 
-  if (data.codigo) {
+  // Priorizar data.producto si existe (respuesta del backend tiene producto como objeto)
+  if (data.producto) {
+    const producto = data.producto;
     return {
-      codigo: data.codigo,
-      nombre: data.nombre || data.descripcion || '',
-      descripcion: data.descripcion || data.nombre || '',
-      presentacion: data.presentacion || '',
-      unidad_medida: data.unidad_medida || data.unidad || '-',
-      stock_actual: data.stock_actual ?? data.estadisticas?.stock_total ?? 0,
-      stock_minimo: data.stock_minimo ?? data.estadisticas?.stock_minimo ?? null,
+      codigo: producto.clave || producto.codigo || data.codigo,
+      nombre: producto.nombre || producto.descripcion || '',
+      descripcion: producto.descripcion || producto.nombre || '',
+      presentacion: producto.presentacion || '',
+      unidad_medida: producto.unidad_medida || producto.unidad || '-',
+      stock_actual: data.estadisticas?.stock_total ?? producto.stock_actual ?? 0,
+      stock_minimo: producto.stock_minimo ?? null,
       lotes,
       movimientos,
       alertas: data.alertas || [],
@@ -55,16 +57,16 @@ const normalizeProductoResponse = (data) => {
     };
   }
 
-  if (data.producto) {
-    const producto = data.producto;
+  // Fallback: datos directos en la raíz
+  if (data.codigo || data.clave) {
     return {
-      codigo: producto.clave || producto.codigo,
-      nombre: producto.nombre || producto.descripcion || '',
-      descripcion: producto.descripcion || producto.nombre || '',
-      presentacion: producto.presentacion || '',
-      unidad_medida: producto.unidad_medida || producto.unidad || '-',
-      stock_actual: data.estadisticas?.stock_total ?? producto.stock_actual ?? 0,
-      stock_minimo: producto.stock_minimo ?? null,
+      codigo: data.codigo || data.clave,
+      nombre: data.nombre || data.descripcion || '',
+      descripcion: data.descripcion || data.nombre || '',
+      presentacion: data.presentacion || '',
+      unidad_medida: data.unidad_medida || data.unidad || '-',
+      stock_actual: data.stock_actual ?? data.estadisticas?.stock_total ?? 0,
+      stock_minimo: data.stock_minimo ?? data.estadisticas?.stock_minimo ?? null,
       lotes,
       movimientos,
       alertas: data.alertas || [],
