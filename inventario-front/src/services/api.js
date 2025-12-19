@@ -811,10 +811,14 @@ export const lotesAPI = {
   }),
   eliminarDocumento: (loteId, docId) => apiClient.delete(`/lotes/${loteId}/eliminar-documento/${docId}/`),
   // Exportaciones
-  exportar: (params) => apiClient.get('/lotes/exportar-excel/', { 
-    params, 
-    responseType: 'blob' 
-  }),
+  exportar: (params) => {
+    const formato = params?.formato || 'excel';
+    const endpoint = formato === 'pdf' ? '/lotes/exportar-pdf/' : '/lotes/exportar-excel/';
+    return apiClient.get(endpoint, { 
+      params, 
+      responseType: 'blob' 
+    });
+  },
   exportarPdf: (params) => apiClient.get('/lotes/exportar-pdf/', { 
     params, 
     responseType: 'blob' 

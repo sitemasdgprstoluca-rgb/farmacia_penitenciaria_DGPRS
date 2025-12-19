@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { trazabilidadAPI, productosAPI, lotesAPI, centrosAPI, descargarArchivo } from '../services/api';
 import { toast } from 'react-hot-toast';
-import { FaSearch, FaBox, FaWarehouse, FaHistory, FaExclamationTriangle, FaFilePdf, FaBuilding, FaSpinner, FaInfoCircle } from 'react-icons/fa';
+import { FaSearch, FaBox, FaWarehouse, FaHistory, FaExclamationTriangle, FaFilePdf, FaFileExcel, FaBuilding, FaSpinner, FaInfoCircle, FaCalendarAlt, FaDownload } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import AutocompleteInput from '../components/AutocompleteInput';
 import { usePermissions } from '../hooks/usePermissions';
@@ -132,6 +132,11 @@ const Trazabilidad = () => {
   const [centros, setCentros] = useState([]);
   const [centroFiltro, setCentroFiltro] = useState('');
   
+  // Filtros para exportación global
+  const [fechaInicio, setFechaInicio] = useState('');
+  const [fechaFin, setFechaFin] = useState('');
+  const [exportandoGlobal, setExportandoGlobal] = useState(false);
+  
   // Control de debounce
   const debounceRef = useRef(null);
   const lastSearchRef = useRef({ codigo: '', centro: '' });
@@ -159,32 +164,74 @@ const Trazabilidad = () => {
     }
   }, []);
 
-  // Exportar PDF
+  // Exportar PDF (producto o lote según el tipo de resultado)
   const handleExportarPdf = async () => {
     if (!resultados || !codigoResultados) {
-      toast.error('Primero busque un producto para exportar su trazabilidad');
+      toast.error('Primero busque un producto o lote para exportar su trazabilidad');
       return;
     }
 
+    const esLote = resultados?.tipo === 'lote';
     setExportingPdf(true);
     try {
-      const response = await trazabilidadAPI.exportarPdf(codigoResultados);
-      const filename = `trazabilidad_${codigoResultados}_${new Date().toISOString().split('T')[0]}.pdf`;
+      let response;
+      let filename;
+      
+      if (esLote) {
+        // Exportar trazabilidad de lote
+        response = await trazabilidadAPI.exportarLotePdf(codigoResultados, resultados.id);
+        filename = `trazabilidad_lote_${codigoResultados}_${new Date().toISOString().split('T')[0]}.pdf`;
+      } else {
+        // Exportar trazabilidad de producto
+        response = await trazabilidadAPI.exportarPdf(codigoResultados);
+        filename = `trazabilidad_producto_${codigoResultados}_${new Date().toISOString().split('T')[0]}.pdf`;
+      }
       
       descargarArchivo(response, filename);
-      toast.success('PDF de trazabilidad generado exitosamente');
+      toast.success(`PDF de trazabilidad de ${esLote ? 'lote' : 'producto'} generado`);
     } catch (error) {
       console.error('Error al exportar PDF:', error);
       
       if (error.response?.status === 403) {
         toast.error('No tienes permiso para exportar esta trazabilidad');
       } else if (error.response?.status === 404) {
-        toast.error('Producto no encontrado para exportar');
+        toast.error(`${resultados?.tipo === 'lote' ? 'Lote' : 'Producto'} no encontrado para exportar`);
       } else {
         toast.error(error.response?.data?.error || 'Error al generar el PDF');
       }
     } finally {
       setExportingPdf(false);
+    }
+  };
+
+  // Exportar trazabilidad global de lotes (con filtros de fecha)
+  const handleExportarGlobal = async (formato = 'pdf') => {
+    if (!esAdminOFarmacia) {
+      toast.error('Solo administradores y farmacia pueden exportar reportes globales');
+      return;
+    }
+
+    setExportandoGlobal(true);
+    try {
+      const params = {
+        formato,
+        ...(fechaInicio && { fecha_desde: fechaInicio }),
+        ...(fechaFin && { fecha_hasta: fechaFin }),
+        ...(centroFiltro && { centro: centroFiltro }),
+      };
+
+      const response = await lotesAPI.exportar(params);
+      const extension = formato === 'excel' ? 'xlsx' : 'pdf';
+      const fechaStr = new Date().toISOString().split('T')[0];
+      const filename = `trazabilidad_global_lotes_${fechaStr}.${extension}`;
+      
+      descargarArchivo(response, filename);
+      toast.success(`Reporte global de lotes exportado a ${formato.toUpperCase()}`);
+    } catch (error) {
+      console.error('Error al exportar reporte global:', error);
+      toast.error(error.response?.data?.error || 'Error al generar el reporte global');
+    } finally {
+      setExportandoGlobal(false);
     }
   };
 
@@ -507,6 +554,113 @@ const Trazabilidad = () => {
           </div>
         </form>
       </div>
+
+      {/* Sección de Exportación Global (solo para admin/farmacia) */}
+      {esAdminOFarmacia && (
+        <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="bg-emerald-100 p-2 rounded-lg">
+              <FaDownload className="text-emerald-600" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-800">Exportación Global de Lotes</h3>
+              <p className="text-sm text-gray-600">Descarga trazabilidad de todos los lotes con filtros opcionales</p>
+            </div>
+          </div>
+          
+          <div className="flex flex-wrap items-end gap-4">
+            {/* Fecha inicio */}
+            <div className="w-40">
+              <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <FaCalendarAlt className="text-gray-500" />
+                Desde
+              </label>
+              <input
+                type="date"
+                value={fechaInicio}
+                onChange={(e) => setFechaInicio(e.target.value)}
+                className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white text-sm"
+                disabled={exportandoGlobal}
+              />
+            </div>
+            
+            {/* Fecha fin */}
+            <div className="w-40">
+              <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <FaCalendarAlt className="text-gray-500" />
+                Hasta
+              </label>
+              <input
+                type="date"
+                value={fechaFin}
+                onChange={(e) => setFechaFin(e.target.value)}
+                className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white text-sm"
+                disabled={exportandoGlobal}
+              />
+            </div>
+            
+            {/* Selector de centro para exportación global */}
+            <div className="w-52">
+              <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <FaBuilding className="text-gray-500" />
+                Centro
+              </label>
+              <select
+                value={centroFiltro}
+                onChange={(e) => setCentroFiltro(e.target.value)}
+                className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white text-sm font-medium"
+                disabled={exportandoGlobal}
+              >
+                <option value="">Todos los centros</option>
+                <option value="central">🏥 Farmacia Central</option>
+                {centros.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Botones de exportación */}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => handleExportarGlobal('pdf')}
+                disabled={exportandoGlobal}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                style={{ background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' }}
+                title="Exportar a PDF"
+              >
+                {exportandoGlobal ? (
+                  <FaSpinner className="animate-spin" />
+                ) : (
+                  <FaFilePdf />
+                )}
+                PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExportarGlobal('excel')}
+                disabled={exportandoGlobal}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)' }}
+                title="Exportar a Excel"
+              >
+                {exportandoGlobal ? (
+                  <FaSpinner className="animate-spin" />
+                ) : (
+                  <FaFileExcel />
+                )}
+                Excel
+              </button>
+            </div>
+          </div>
+          
+          <p className="text-xs text-gray-500 mt-3">
+            💡 Deja las fechas vacías para exportar todos los lotes. El reporte incluye: número de lote, producto, cantidades, caducidad, estado, centro, contrato y marca.
+          </p>
+        </div>
+      )}
 
       {/* Indicador de código sincronizado */}
       {resultados && codigoResultados && codigoBusqueda !== codigoResultados && (
