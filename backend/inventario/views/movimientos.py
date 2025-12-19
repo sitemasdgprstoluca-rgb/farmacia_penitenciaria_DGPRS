@@ -238,9 +238,17 @@ class MovimientoViewSet(
         if not clave:
             return Response({'error': 'Se requiere producto_clave'}, status=status.HTTP_400_BAD_REQUEST)
         
+        # Buscar producto por clave, nombre o descripción (case-insensitive)
         producto = Producto.objects.filter(
-            Q(clave__iexact=clave) | Q(descripcion__iexact=clave)
+            Q(clave__iexact=clave) | Q(nombre__iexact=clave) | Q(descripcion__iexact=clave)
         ).first()
+        
+        # Si no se encuentra exacto, intentar búsqueda parcial por nombre
+        if not producto:
+            producto = Producto.objects.filter(
+                Q(nombre__icontains=clave) | Q(descripcion__icontains=clave)
+            ).first()
+        
         if not producto:
             return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
         
