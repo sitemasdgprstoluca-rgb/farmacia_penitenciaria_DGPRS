@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { trazabilidadAPI, productosAPI, centrosAPI, descargarArchivo } from '../services/api';
+import { trazabilidadAPI, productosAPI, lotesAPI, centrosAPI, descargarArchivo } from '../services/api';
 import { toast } from 'react-hot-toast';
 import { FaSearch, FaBox, FaWarehouse, FaHistory, FaExclamationTriangle, FaFilePdf, FaBuilding, FaSpinner, FaInfoCircle } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
@@ -27,7 +27,7 @@ const mapLote = (lote = {}) => ({
   fecha_caducidad: lote.fecha_caducidad,
   cantidad_actual: lote.cantidad_actual,
   cantidad_inicial: lote.cantidad_inicial ?? lote.cantidad_actual,
-  estado: (lote.estado || lote.estado_caducidad || '').toString().toUpperCase(),
+  estado: (lote.estado_caducidad || lote.estado || '').toString().toUpperCase(),
   centro: lote.centro,
   numero_contrato: lote.numero_contrato || '',
   marca: lote.marca || '',
@@ -75,6 +75,34 @@ const normalizeProductoResponse = (data) => {
   }
 
   return data;
+};
+
+// Normalizar respuesta de trazabilidad de lote
+const normalizeLoteResponse = (data) => {
+  if (!data) return null;
+
+  const loteData = data.lote || data;
+  const movimientos = Array.isArray(data.movimientos) ? data.movimientos.map(mapMovimiento) : [];
+
+  return {
+    tipo: 'lote',
+    id: data.id || loteData.id,
+    numero_lote: loteData.numero_lote || data.numero_lote,
+    producto: {
+      codigo: loteData.producto || data.producto,
+      nombre: loteData.producto_nombre || loteData.producto_descripcion || '',
+    },
+    fecha_caducidad: loteData.fecha_caducidad,
+    cantidad_actual: loteData.cantidad_actual,
+    cantidad_inicial: loteData.cantidad_inicial,
+    estado: (loteData.estado_caducidad || loteData.estado || '').toString().toUpperCase(),
+    centro: loteData.centro || 'Farmacia Central',
+    numero_contrato: loteData.numero_contrato || '',
+    marca: loteData.marca || '',
+    movimientos,
+    alertas: data.alertas || [],
+    estadisticas: data.estadisticas || {},
+  };
 };
 
 // ============================================
@@ -165,7 +193,7 @@ const Trazabilidad = () => {
 
     const codigoTrimmed = codigoBusqueda.trim();
     if (!codigoTrimmed) {
-      toast.error('Ingrese clave, nombre o descripción del producto');
+      toast.error('Ingrese clave de producto o número de lote');
       return;
     }
 
@@ -182,19 +210,38 @@ const Trazabilidad = () => {
       // Preparar parámetros con filtro de centro opcional
       const params = centroFiltro ? { centro: centroFiltro } : {};
 
-      const response = await trazabilidadAPI.producto(codigoTrimmed, params);
-      const datosNormalizados = normalizeProductoResponse(response.data);
-      
-      setResultados(datosNormalizados);
-      setCodigoResultados(codigoTrimmed);
-      lastSearchRef.current = { codigo: codigoTrimmed, centro: centroFiltro };
-      
-      toast.success('Trazabilidad cargada correctamente');
+      // Intentar primero búsqueda por producto
+      try {
+        const response = await trazabilidadAPI.producto(codigoTrimmed, params);
+        const datosNormalizados = normalizeProductoResponse(response.data);
+        
+        setResultados(datosNormalizados);
+        setCodigoResultados(codigoTrimmed);
+        lastSearchRef.current = { codigo: codigoTrimmed, centro: centroFiltro, tipo: 'producto' };
+        
+        toast.success('Trazabilidad de producto cargada');
+        return;
+      } catch (errorProducto) {
+        // Si no se encuentra producto (404), intentar por lote
+        if (errorProducto.response?.status === 404 && esAdminOFarmacia) {
+          const responseLote = await trazabilidadAPI.lote(codigoTrimmed, params);
+          const datosNormalizados = normalizeLoteResponse(responseLote.data);
+          
+          setResultados(datosNormalizados);
+          setCodigoResultados(codigoTrimmed);
+          lastSearchRef.current = { codigo: codigoTrimmed, centro: centroFiltro, tipo: 'lote' };
+          
+          toast.success('Trazabilidad de lote cargada');
+          return;
+        }
+        // Re-lanzar el error si no es 404 o no es admin
+        throw errorProducto;
+      }
     } catch (error) {
       if (error.response?.status === 403) {
         toast.error('No tienes permiso para acceder a esta trazabilidad');
       } else if (error.response?.status === 404) {
-        toast.error('Producto no encontrado');
+        toast.error('Producto o lote no encontrado');
       } else {
         toast.error(error.response?.data?.error || 'Error al cargar trazabilidad');
       }
@@ -284,6 +331,58 @@ const Trazabilidad = () => {
     </div>
   );
 
+  const renderInfoLote = () => (
+    <div className="grid gap-4 md:grid-cols-4">
+      <div>
+        <p className="text-xs text-gray-500">Número de Lote</p>
+        <p className="font-semibold">{resultados.numero_lote || '-'}</p>
+      </div>
+      <div className="md:col-span-2">
+        <p className="text-xs text-gray-500">Producto</p>
+        <p className="font-semibold">
+          {resultados.producto?.codigo} - {resultados.producto?.nombre || '-'}
+        </p>
+      </div>
+      <div>
+        <p className="text-xs text-gray-500">Caducidad</p>
+        <p className="font-semibold">
+          {resultados.fecha_caducidad ? new Date(resultados.fecha_caducidad).toLocaleDateString() : '-'}
+        </p>
+      </div>
+      <div>
+        <p className="text-xs text-gray-500">Cantidad actual</p>
+        <p className="text-2xl font-bold text-violet-600">{resultados.cantidad_actual ?? 0}</p>
+      </div>
+      <div>
+        <p className="text-xs text-gray-500">Cantidad inicial</p>
+        <p className="font-semibold">{resultados.cantidad_inicial ?? '-'}</p>
+      </div>
+      <div>
+        <p className="text-xs text-gray-500">Estado</p>
+        <p className="font-semibold">{resultados.estado || '-'}</p>
+      </div>
+      <div>
+        <p className="text-xs text-gray-500">Centro</p>
+        <p className="font-semibold">{resultados.centro || 'Farmacia Central'}</p>
+      </div>
+      {puedeVerContrato && resultados.numero_contrato && (
+        <div>
+          <p className="text-xs text-gray-500">Contrato</p>
+          <p className="font-semibold text-blue-600">{resultados.numero_contrato}</p>
+        </div>
+      )}
+      {resultados.marca && (
+        <div>
+          <p className="text-xs text-gray-500">Marca</p>
+          <p className="font-semibold">{resultados.marca}</p>
+        </div>
+      )}
+    </div>
+  );
+
+  // Determinar si es resultado de producto o lote
+  const esResultadoLote = resultados?.tipo === 'lote';
+
   const lotesParaMostrar = Array.isArray(resultados?.lotes) ? resultados.lotes : [];
   const movimientosParaMostrar = Array.isArray(resultados?.movimientos) 
     ? resultados.movimientos.slice(0, 100) 
@@ -333,19 +432,19 @@ const Trazabilidad = () => {
 
       <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
         <form onSubmit={handleBuscar}>
-          {/* Formulario simplificado - Solo búsqueda por producto */}
+          {/* Formulario - Búsqueda por producto o lote */}
           <div className="flex flex-wrap items-end gap-4">
             {/* Campo de búsqueda principal */}
             <div className="flex-1 min-w-[300px]">
               <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                <FaBox className="text-violet-500" />
-                Buscar Producto
+                <FaSearch className="text-violet-500" />
+                Buscar por Clave de Producto o Número de Lote
               </label>
               <AutocompleteInput
                 apiCall={productosAPI.getAll}
-                  value={codigoBusqueda}
+                value={codigoBusqueda}
                 onChange={handleCodigoBusquedaChange}
-                placeholder="Escribe clave, nombre o descripción del producto..."
+                placeholder="Escribe clave, nombre, descripción o número de lote..."
                 displayField="clave"
                 secondaryField="nombre"
                 searchField="search"
@@ -433,7 +532,7 @@ const Trazabilidad = () => {
         <div className="text-center py-8 bg-white rounded-lg shadow">
           <FaSearch className="text-4xl text-gray-300 mx-auto mb-3" />
           <p className="text-gray-500">
-            Ingresa la clave de un producto y presiona &quot;Buscar&quot;
+            Ingresa la clave de un producto o número de lote y presiona &quot;Buscar&quot;
           </p>
           {!esAdminOFarmacia && (
             <p className="text-xs text-gray-400 mt-2">
@@ -451,11 +550,15 @@ const Trazabilidad = () => {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div className="bg-violet-100 p-3 rounded-lg">
-                  <FaBox className="text-violet-600 text-2xl" />
+                  {esResultadoLote ? (
+                    <FaWarehouse className="text-violet-600 text-2xl" />
+                  ) : (
+                    <FaBox className="text-violet-600 text-2xl" />
+                  )}
                 </div>
                 <div>
                   <h2 className="text-lg font-bold">
-                    Información del producto
+                    Información del {esResultadoLote ? 'lote' : 'producto'}
                   </h2>
                   <p className="text-sm text-gray-600">
                     Datos generales y estado actual
@@ -488,14 +591,14 @@ const Trazabilidad = () => {
               </button>
             </div>
             
-            {renderInfoProducto()}
+            {esResultadoLote ? renderInfoLote() : renderInfoProducto()}
           </div>
 
           {/* Alertas */}
           {renderAlertas()}
 
-          {/* Lotes asociados */}
-          {lotesParaMostrar.length > 0 && (
+          {/* Lotes asociados (solo para productos) */}
+          {!esResultadoLote && lotesParaMostrar.length > 0 && (
             <div className="bg-white p-6 rounded-lg shadow">
               <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                 <FaWarehouse /> Lotes asociados ({lotesParaMostrar.length})
