@@ -3590,14 +3590,17 @@ class ProductoDonacionViewSet(viewsets.ModelViewSet):
             titulo_cell.font = Font(bold=True, size=14, color='632842')
             titulo_cell.alignment = Alignment(horizontal='center', vertical='center')
             
-            # Instrucciones
+            # Instrucciones - fila 2
             ws.merge_cells('A2:F2')
-            ws['A2'].value = 'Complete los datos siguiendo el formato indicado. Las columnas marcadas con * son obligatorias.'
+            ws['A2'].value = 'Complete los datos. Columnas con * son obligatorias. Unidades: PIEZA, CAJA, FRASCO, TABLETA, AMPOLLETA, etc.'
             ws['A2'].font = Font(size=10, italic=True)
             
-            ws.append([])
+            # Nota importante - fila 3
+            ws.merge_cells('A3:F3')
+            ws['A3'].value = '⚠️ BORRE las filas de ejemplo antes de importar (o simplemente inicie sus datos desde fila 5)'
+            ws['A3'].font = Font(size=9, italic=True, color='CC0000')
             
-            # Encabezados - Alineados con modelo ProductoDonacion en BD
+            # Encabezados - Alineados con modelo ProductoDonacion en BD - fila 4
             headers = [
                 'clave *',           # Clave única del producto
                 'nombre *',          # Nombre del producto
@@ -3605,25 +3608,35 @@ class ProductoDonacionViewSet(viewsets.ModelViewSet):
                 'unidad_medida',     # PIEZA, CAJA, FRASCO, etc.
                 'presentacion',      # Forma farmacéutica (tabletas, jarabe, etc.)
             ]
-            ws.append(headers)
+            # Escribir encabezados en fila 4 explícitamente
+            for col_idx, header in enumerate(headers, 1):
+                ws.cell(row=4, column=col_idx, value=header)
             
             # Estilo de encabezados
             header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
             header_font = Font(bold=True, color='FFFFFF', size=11)
             
-            for col_num, cell in enumerate(ws[4], 1):
+            for col_idx in range(1, len(headers) + 1):
+                cell = ws.cell(row=4, column=col_idx)
                 cell.fill = header_fill
                 cell.font = header_font
                 cell.alignment = Alignment(horizontal='center', vertical='center')
             
-            # Fila de ejemplo
-            ws.append(['DON001', 'Paracetamol 500mg', 'Tabletas para fiebre y dolor', 'PIEZA', 'Tabletas'])
-            ws.append(['DON002', 'Alcohol al 70%', 'Solución desinfectante', 'FRASCO', 'Frasco 250ml'])
+            # Filas de ejemplo (las elimina el usuario antes de importar)
+            # Escribir en filas 5 y 6 explícitamente
+            ejemplo1 = ['EJEMPLO-001', 'Paracetamol 500mg (BORRAR ESTA FILA)', 'Tabletas para fiebre y dolor', 'PIEZA', 'Tabletas']
+            ejemplo2 = ['EJEMPLO-002', 'Alcohol al 70% (BORRAR ESTA FILA)', 'Solución desinfectante', 'FRASCO', 'Frasco 250ml']
             
-            # Agregar nota sobre campos
-            ws.append([])
-            ws.append(['NOTA: Unidades válidas: PIEZA, CAJA, FRASCO, TABLETA, AMPOLLETA, SOBRES, LITRO, MILILITRO, GRAMO, KILOGRAMO. Presentación: forma farmacéutica (tabletas, jarabe, crema, etc.)'])
-            ws['A8'].font = Font(italic=True, color='666666')
+            for col_idx, val in enumerate(ejemplo1, 1):
+                ws.cell(row=5, column=col_idx, value=val)
+            for col_idx, val in enumerate(ejemplo2, 1):
+                ws.cell(row=6, column=col_idx, value=val)
+            
+            # Estilos de las filas de ejemplo (color gris para indicar que son ejemplos)
+            example_font = Font(italic=True, color='888888')
+            for row_num in [5, 6]:
+                for col in range(1, 6):
+                    ws.cell(row=row_num, column=col).font = example_font
             
             # Ajustar anchos
             ws.column_dimensions['A'].width = 15
@@ -3720,7 +3733,20 @@ class ProductoDonacionViewSet(viewsets.ModelViewSet):
             with transaction.atomic():
                 for row_num in range(header_row + 1, ws.max_row + 1):
                     clave = ws.cell(row=row_num, column=headers['clave']).value
+                    
+                    # Saltar filas vacías
                     if not clave:
+                        continue
+                    
+                    clave_str = str(clave).strip().upper()
+                    
+                    # Saltar filas de ejemplo, notas o instrucciones
+                    skip_keywords = ['NOTA', 'EJEMPLO', 'INSTRUCCION', 'BORRAR', '---', '***']
+                    if any(keyword in clave_str for keyword in skip_keywords):
+                        continue
+                    
+                    # Saltar si la clave empieza con palabras especiales
+                    if clave_str.startswith(('NOTA:', 'EJEMPLO-', 'EJ:', 'EJ-')):
                         continue
                     
                     try:
