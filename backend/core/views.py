@@ -3507,8 +3507,8 @@ class ProductoDonacionViewSet(viewsets.ModelViewSet):
             # Espacio
             ws.append([])
             
-            # Encabezados
-            headers = ['Clave', 'Nombre', 'Descripción', 'Unidad Medida', 'Categoría', 'Activo']
+            # Encabezados - Alineados con modelo ProductoDonacion
+            headers = ['Clave', 'Nombre', 'Descripción', 'Unidad Medida', 'Presentación', 'Activo']
             ws.append(headers)
             
             # Estilo de encabezados
@@ -3521,14 +3521,14 @@ class ProductoDonacionViewSet(viewsets.ModelViewSet):
                 cell.font = header_font
                 cell.alignment = header_alignment
             
-            # Datos
+            # Datos - campos alineados con modelo ProductoDonacion
             for producto in productos:
                 ws.append([
                     producto.clave,
                     producto.nombre,
                     producto.descripcion or '',
                     producto.unidad_medida or 'PIEZA',
-                    producto.categoria or '',
+                    producto.presentacion or '',
                     'Sí' if producto.activo else 'No'
                 ])
             
@@ -3597,13 +3597,13 @@ class ProductoDonacionViewSet(viewsets.ModelViewSet):
             
             ws.append([])
             
-            # Encabezados
+            # Encabezados - Alineados con modelo ProductoDonacion en BD
             headers = [
                 'clave *',           # Clave única del producto
                 'nombre *',          # Nombre del producto
                 'descripcion',       # Descripción
                 'unidad_medida',     # PIEZA, CAJA, FRASCO, etc.
-                'categoria',         # Categoría opcional
+                'presentacion',      # Forma farmacéutica (tabletas, jarabe, etc.)
             ]
             ws.append(headers)
             
@@ -3617,12 +3617,12 @@ class ProductoDonacionViewSet(viewsets.ModelViewSet):
                 cell.alignment = Alignment(horizontal='center', vertical='center')
             
             # Fila de ejemplo
-            ws.append(['DON001', 'Paracetamol 500mg', 'Tabletas para fiebre y dolor', 'PIEZA', 'Analgésicos'])
-            ws.append(['DON002', 'Alcohol al 70%', 'Solución desinfectante', 'FRASCO', 'Antisépticos'])
+            ws.append(['DON001', 'Paracetamol 500mg', 'Tabletas para fiebre y dolor', 'PIEZA', 'Tabletas'])
+            ws.append(['DON002', 'Alcohol al 70%', 'Solución desinfectante', 'FRASCO', 'Frasco 250ml'])
             
-            # Agregar nota sobre unidad_medida
+            # Agregar nota sobre campos
             ws.append([])
-            ws.append(['NOTA: Unidades de medida válidas: PIEZA, CAJA, FRASCO, TABLETA, AMPOLLETA, SOBRES, LITRO, MILILITRO, GRAMO, KILOGRAMO'])
+            ws.append(['NOTA: Unidades válidas: PIEZA, CAJA, FRASCO, TABLETA, AMPOLLETA, SOBRES, LITRO, MILILITRO, GRAMO, KILOGRAMO. Presentación: forma farmacéutica (tabletas, jarabe, crema, etc.)'])
             ws['A8'].font = Font(italic=True, color='666666')
             
             # Ajustar anchos
@@ -3652,12 +3652,12 @@ class ProductoDonacionViewSet(viewsets.ModelViewSet):
         """
         Importa productos de donación desde un archivo Excel.
         
-        Formato esperado:
+        Formato esperado (alineado con modelo ProductoDonacion en BD):
         - clave: Clave única del producto (obligatorio)
         - nombre: Nombre del producto (obligatorio)
         - descripcion: Descripción (opcional)
         - unidad_medida: Unidad de medida (opcional, default: PIEZA)
-        - categoria: Categoría (opcional)
+        - presentacion: Forma farmacéutica (opcional)
         """
         import openpyxl
         from django.db import transaction
@@ -3727,7 +3727,7 @@ class ProductoDonacionViewSet(viewsets.ModelViewSet):
                         nombre = ws.cell(row=row_num, column=headers['nombre']).value
                         descripcion = ws.cell(row=row_num, column=headers.get('descripcion', 0)).value if headers.get('descripcion') else None
                         unidad_medida = ws.cell(row=row_num, column=headers.get('unidad_medida', 0)).value if headers.get('unidad_medida') else 'PIEZA'
-                        categoria = ws.cell(row=row_num, column=headers.get('categoria', 0)).value if headers.get('categoria') else None
+                        presentacion = ws.cell(row=row_num, column=headers.get('presentacion', 0)).value if headers.get('presentacion') else None
                         
                         # Validaciones
                         if not nombre:
@@ -3743,14 +3743,14 @@ class ProductoDonacionViewSet(viewsets.ModelViewSet):
                         else:
                             unidad_medida = 'PIEZA'
                         
-                        # Crear o actualizar producto
+                        # Crear o actualizar producto - campos alineados con modelo ProductoDonacion
                         producto, created = ProductoDonacion.objects.update_or_create(
                             clave=clave,
                             defaults={
                                 'nombre': nombre,
                                 'descripcion': str(descripcion).strip() if descripcion else None,
                                 'unidad_medida': unidad_medida,
-                                'categoria': str(categoria).strip() if categoria else None,
+                                'presentacion': str(presentacion).strip() if presentacion else None,
                                 'activo': True
                             }
                         )
