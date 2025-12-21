@@ -1494,19 +1494,27 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
         descripcion = str(producto_info.get('descripcion', producto_info.get('nombre', 'N/A')))
         desc_paragraph = Paragraph(descripcion, estilo_desc)
         
-        # Formatear presentación
-        presentacion = str(producto_info.get('presentacion', 'N/A'))
+        # Formatear presentación - mostrar valor real o "N/A" si está vacío
+        presentacion_raw = producto_info.get('presentacion', '')
+        presentacion = str(presentacion_raw) if presentacion_raw and str(presentacion_raw).strip() else 'N/A'
         pres_paragraph = Paragraph(presentacion, estilo_desc)
+        
+        # Formatear unidad de medida - asegurar que tenga valor
+        unidad_raw = producto_info.get('unidad_medida', '')
+        unidad_medida = str(unidad_raw) if unidad_raw and str(unidad_raw).strip() else 'PIEZA'
         
         # Formatear precio
         precio_raw = producto_info.get('precio_unitario') or producto_info.get('precio')
         precio_str = f"${float(precio_raw):.2f}" if precio_raw else 'N/A'
         
-        # Campos reorganizados: Clave, Descripción, Presentación, Precio, Lote, Marca/Proveedor
+        # Formatear stock mínimo
+        stock_minimo = producto_info.get('stock_minimo', 0) or 0
+        
+        # Campos reorganizados: Clave, Descripción, Unidad, Presentación, Stock, Precio, Contrato, Lote
         prod_data = [
             ['Clave:', str(producto_info.get('clave', 'N/A')), 'Descripción:', desc_paragraph],
-            ['Unidad:', str(producto_info.get('unidad_medida', 'N/A')), 'Presentación:', pres_paragraph],
-            ['Inventario:', str(producto_info.get('stock_actual', 0)), 'Precio:', precio_str],
+            ['Unidad:', unidad_medida, 'Presentación:', pres_paragraph],
+            ['Stock Actual:', str(producto_info.get('stock_actual', 0)), 'Precio:', precio_str],
             ['No. Contrato:', str(producto_info.get('numero_contrato', 'N/A')), 'No. Lote:', str(producto_info.get('numero_lote', 'N/A'))],
         ]
         

@@ -4237,12 +4237,14 @@ class MovimientoViewSet(
                     'observaciones': mov.motivo or ''
                 })
             
+            # ISS-FIX: Agregar todos los campos del producto incluyendo stock_minimo y presentacion
             producto_info = {
                 'clave': producto.clave,
                 'descripcion': producto.nombre,  # Usar nombre como descripción principal
                 'presentacion': producto.presentacion or '',
-                'unidad_medida': producto.unidad_medida,
-                'stock_actual': producto.get_stock_actual() if hasattr(producto, 'get_stock_actual') else 0,
+                'unidad_medida': producto.unidad_medida or 'PIEZA',
+                'stock_actual': producto.get_stock_actual() if hasattr(producto, 'get_stock_actual') else producto.stock_actual,
+                'stock_minimo': producto.stock_minimo or 0,
                 'precio_unitario': 0,  # precio_unitario está en Lote, no en Producto
             }
             
@@ -4313,18 +4315,25 @@ class MovimientoViewSet(
                 })
             
             # ISS-FIX: Usar nombre como fallback para descripcion, incluir numero_contrato
+            # ISS-FIX: Agregar stock_minimo y mejorar campos para PDF
             descripcion_producto = 'N/A'
             presentacion_producto = ''
+            unidad_medida_producto = 'PIEZA'  # Default
+            stock_minimo_producto = 0
+            
             if lote.producto:
                 descripcion_producto = lote.producto.nombre or lote.producto.descripcion or 'N/A'
                 presentacion_producto = lote.producto.presentacion or ''
+                unidad_medida_producto = lote.producto.unidad_medida or 'PIEZA'
+                stock_minimo_producto = lote.producto.stock_minimo or 0
             
             producto_info = {
                 'clave': lote.producto.clave if lote.producto else 'N/A',
                 'descripcion': descripcion_producto,
                 'presentacion': presentacion_producto,
-                'unidad_medida': lote.producto.unidad_medida if lote.producto else 'N/A',
+                'unidad_medida': unidad_medida_producto,
                 'stock_actual': lote.cantidad_actual,
+                'stock_minimo': stock_minimo_producto,
                 'numero_lote': lote.numero_lote,
                 'fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else 'N/A',
                 'proveedor': lote.marca or 'No especificado',

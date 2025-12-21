@@ -256,11 +256,13 @@ const Trazabilidad = () => {
     }
 
     setLoading(true);
+    let encontrado = false;
+    
     try {
       // Preparar parámetros con filtro de centro opcional
       const params = centroFiltro ? { centro: centroFiltro } : {};
 
-      // Intentar primero búsqueda por producto
+      // Intentar primero búsqueda por producto (sin mostrar error si falla)
       try {
         const response = await trazabilidadAPI.producto(codigoTrimmed, params);
         const datosNormalizados = normalizeProductoResponse(response.data);
@@ -268,32 +270,40 @@ const Trazabilidad = () => {
         setResultados(datosNormalizados);
         setCodigoResultados(codigoTrimmed);
         lastSearchRef.current = { codigo: codigoTrimmed, centro: centroFiltro, tipo: 'producto' };
-        
+        encontrado = true;
         toast.success('Trazabilidad de producto cargada');
         return;
       } catch (errorProducto) {
-        // Si no se encuentra producto (404), intentar por lote
+        // Si no se encuentra producto (404), intentar por lote silenciosamente
         if (errorProducto.response?.status === 404 && esAdminOFarmacia) {
-          const responseLote = await trazabilidadAPI.lote(codigoTrimmed, params);
-          const datosNormalizados = normalizeLoteResponse(responseLote.data);
-          
-          setResultados(datosNormalizados);
-          setCodigoResultados(codigoTrimmed);
-          lastSearchRef.current = { codigo: codigoTrimmed, centro: centroFiltro, tipo: 'lote' };
-          
-          toast.success('Trazabilidad de lote cargada');
-          return;
+          try {
+            const responseLote = await trazabilidadAPI.lote(codigoTrimmed, params);
+            const datosNormalizados = normalizeLoteResponse(responseLote.data);
+            
+            setResultados(datosNormalizados);
+            setCodigoResultados(codigoTrimmed);
+            lastSearchRef.current = { codigo: codigoTrimmed, centro: centroFiltro, tipo: 'lote' };
+            encontrado = true;
+            toast.success('Trazabilidad de lote cargada');
+            return;
+          } catch (errorLote) {
+            // Ambas búsquedas fallaron - mostrar error final
+            throw errorLote;
+          }
         }
         // Re-lanzar el error si no es 404 o no es admin
         throw errorProducto;
       }
     } catch (error) {
-      if (error.response?.status === 403) {
-        toast.error('No tienes permiso para acceder a esta trazabilidad');
-      } else if (error.response?.status === 404) {
-        toast.error('Producto o lote no encontrado');
-      } else {
-        toast.error(error.response?.data?.error || 'Error al cargar trazabilidad');
+      // Solo mostrar error si no se encontró nada
+      if (!encontrado) {
+        if (error.response?.status === 403) {
+          toast.error('No tienes permiso para acceder a esta trazabilidad');
+        } else if (error.response?.status === 404) {
+          toast.error('Producto o lote no encontrado. Verifica la clave o número de lote.');
+        } else {
+          toast.error(error.response?.data?.error || 'Error al cargar trazabilidad');
+        }
       }
       console.error(error);
       setResultados(null);
