@@ -132,9 +132,8 @@ const Trazabilidad = () => {
   const [centros, setCentros] = useState([]);
   const [centroFiltro, setCentroFiltro] = useState('');
   
-  // Filtros para exportación global
-  const [fechaInicio, setFechaInicio] = useState('');
-  const [fechaFin, setFechaFin] = useState('');
+  // Filtros para exportación global (caducidad)
+  const [filtroCaducidad, setFiltroCaducidad] = useState('');
   const [exportandoGlobal, setExportandoGlobal] = useState(false);
   
   // Control de debounce
@@ -204,7 +203,7 @@ const Trazabilidad = () => {
     }
   };
 
-  // Exportar trazabilidad global de lotes (con filtros de fecha)
+  // Exportar trazabilidad global de lotes (con filtros de caducidad y centro)
   const handleExportarGlobal = async (formato = 'pdf') => {
     if (!esAdminOFarmacia) {
       toast.error('Solo administradores y farmacia pueden exportar reportes globales');
@@ -213,11 +212,15 @@ const Trazabilidad = () => {
 
     setExportandoGlobal(true);
     try {
+      // Usar parámetros correctos del backend LoteViewSet
       const params = {
         formato,
-        ...(fechaInicio && { fecha_desde: fechaInicio }),
-        ...(fechaFin && { fecha_hasta: fechaFin }),
+        // Filtro de caducidad
+        ...(filtroCaducidad && { caducidad: filtroCaducidad }),
+        // Filtro de centro
         ...(centroFiltro && { centro: centroFiltro }),
+        // Solo lotes con stock
+        con_stock: 'con_stock',
       };
 
       const response = await lotesAPI.exportar(params);
@@ -429,6 +432,9 @@ const Trazabilidad = () => {
 
   // Determinar si es resultado de producto o lote
   const esResultadoLote = resultados?.tipo === 'lote';
+  
+  // Mostrar saldo solo cuando se ve trazabilidad de un lote específico
+  const mostrarSaldo = esResultadoLote;
 
   const lotesParaMostrar = Array.isArray(resultados?.lotes) ? resultados.lotes : [];
   const movimientosParaMostrar = Array.isArray(resultados?.movimientos) 
@@ -569,34 +575,24 @@ const Trazabilidad = () => {
           </div>
           
           <div className="flex flex-wrap items-end gap-4">
-            {/* Fecha inicio */}
-            <div className="w-40">
+            {/* Filtro de caducidad */}
+            <div className="w-48">
               <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                 <FaCalendarAlt className="text-gray-500" />
-                Desde
+                Estado Caducidad
               </label>
-              <input
-                type="date"
-                value={fechaInicio}
-                onChange={(e) => setFechaInicio(e.target.value)}
-                className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white text-sm"
+              <select
+                value={filtroCaducidad}
+                onChange={(e) => setFiltroCaducidad(e.target.value)}
+                className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white text-sm font-medium"
                 disabled={exportandoGlobal}
-              />
-            </div>
-            
-            {/* Fecha fin */}
-            <div className="w-40">
-              <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                <FaCalendarAlt className="text-gray-500" />
-                Hasta
-              </label>
-              <input
-                type="date"
-                value={fechaFin}
-                onChange={(e) => setFechaFin(e.target.value)}
-                className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white text-sm"
-                disabled={exportandoGlobal}
-              />
+              >
+                <option value="">Todos</option>
+                <option value="vencido">🔴 Vencidos</option>
+                <option value="critico">🟠 Críticos (&lt;3 meses)</option>
+                <option value="proximo">🟡 Próximos (3-6 meses)</option>
+                <option value="normal">🟢 Normal (&gt;6 meses)</option>
+              </select>
             </div>
             
             {/* Selector de centro para exportación global */}
