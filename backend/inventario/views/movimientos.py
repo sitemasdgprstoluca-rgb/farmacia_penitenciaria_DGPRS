@@ -637,3 +637,77 @@ class MovimientoViewSet(
                 'error': 'Error al generar Excel de movimientos',
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['get'], url_path='recibo-salida-pdf')
+    def recibo_salida_pdf(self, request, pk=None):
+        """
+        Genera un recibo PDF para una salida de inventario con campos de firma.
+        Firmas: Autoriza (Jefa de Farmacia), Entrega (Farmacia), Recibe (Centro).
+        
+        Solo disponible para movimientos tipo 'salida'.
+        
+        Returns:
+            PDF descargable con formato institucional
+        """
+        from core.utils.pdf_reports import generar_recibo_salida_movimiento
+        
+        try:
+            movimiento = self.get_object()
+            
+            # Validar que sea una salida
+            if movimiento.tipo != 'salida':
+                return Response(
+                    {'error': 'Solo se pueden generar recibos para movimientos de salida'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Preparar datos del movimiento
+            producto_nombre = ''
+            producto_clave = ''
+            numero_lote = ''
+            
+            if movimiento.lote:
+                numero_lote = movimiento.lote.numero_lote or ''
+                if movimiento.lote.producto:
+                    producto_nombre = movimiento.lote.producto.nombre or movimiento.lote.producto.descripcion or ''
+                    producto_clave = movimiento.lote.producto.clave or ''
+            
+            centro_destino = ''
+            if movimiento.centro_destino:
+                centro_destino = movimiento.centro_destino.nombre
+            elif movimiento.centro_origen:
+                centro_destino = movimiento.centro_origen.nombre
+            
+            usuario = ''
+            if movimiento.usuario:
+                usuario = movimiento.usuario.get_full_name() or movimiento.usuario.username
+            
+            movimiento_data = {
+                'id': movimiento.id,
+                'fecha': movimiento.fecha,
+                'producto_nombre': producto_nombre,
+                'producto_clave': producto_clave,
+                'numero_lote': numero_lote,
+                'cantidad': movimiento.cantidad,
+                'centro_destino': centro_destino,
+                'motivo': movimiento.motivo or movimiento.subtipo_salida or '',
+                'subtipo_salida': movimiento.subtipo_salida or '',
+                'numero_expediente': movimiento.numero_expediente or '',
+                'observaciones': movimiento.observaciones or '',
+                'usuario': usuario,
+            }
+            
+            # Generar PDF
+            buffer = generar_recibo_salida_movimiento(movimiento_data)
+            
+            response = HttpResponse(buffer, content_type='application/pdf')
+            filename = f'recibo_salida_movimiento_{movimiento.id}.pdf'
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            
+            return response
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Error al generar PDF: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

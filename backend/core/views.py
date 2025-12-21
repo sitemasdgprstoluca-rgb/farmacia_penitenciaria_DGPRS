@@ -3471,6 +3471,314 @@ class ProductoDonacionViewSet(viewsets.ModelViewSet):
         
         return Response(ProductoDonacionSerializer(productos, many=True).data)
 
+    @action(detail=False, methods=['get'], url_path='exportar-excel')
+    def exportar_excel(self, request):
+        """
+        Exporta el catálogo de productos de donación a Excel con formato profesional.
+        """
+        import openpyxl
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from django.http import HttpResponse
+        from django.utils import timezone
+        from core.models import ProductoDonacion
+        
+        try:
+            productos = ProductoDonacion.objects.filter(activo=True).order_by('clave')
+            
+            # Crear libro de Excel
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = 'Catálogo Donaciones'
+            
+            # Título del reporte
+            ws.merge_cells('A1:F1')
+            titulo_cell = ws['A1']
+            titulo_cell.value = 'CATÁLOGO DE PRODUCTOS DE DONACIÓN'
+            titulo_cell.font = Font(bold=True, size=14, color='632842')
+            titulo_cell.alignment = Alignment(horizontal='center', vertical='center')
+            
+            # Fecha de generación
+            ws.merge_cells('A2:F2')
+            fecha_cell = ws['A2']
+            fecha_cell.value = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")}'
+            fecha_cell.font = Font(size=10, italic=True)
+            fecha_cell.alignment = Alignment(horizontal='center')
+            
+            # Espacio
+            ws.append([])
+            
+            # Encabezados
+            headers = ['Clave', 'Nombre', 'Descripción', 'Unidad Medida', 'Categoría', 'Activo']
+            ws.append(headers)
+            
+            # Estilo de encabezados
+            header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
+            header_font = Font(bold=True, color='FFFFFF', size=11)
+            header_alignment = Alignment(horizontal='center', vertical='center')
+            
+            for col_num, cell in enumerate(ws[4], 1):
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = header_alignment
+            
+            # Datos
+            for producto in productos:
+                ws.append([
+                    producto.clave,
+                    producto.nombre,
+                    producto.descripcion or '',
+                    producto.unidad_medida or 'PIEZA',
+                    producto.categoria or '',
+                    'Sí' if producto.activo else 'No'
+                ])
+            
+            # Ajustar anchos de columna
+            ws.column_dimensions['A'].width = 15
+            ws.column_dimensions['B'].width = 40
+            ws.column_dimensions['C'].width = 50
+            ws.column_dimensions['D'].width = 15
+            ws.column_dimensions['E'].width = 20
+            ws.column_dimensions['F'].width = 10
+            
+            # Agregar bordes
+            thin_border = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
+            
+            for row in ws.iter_rows(min_row=4, max_row=ws.max_row, min_col=1, max_col=6):
+                for cell in row:
+                    cell.border = thin_border
+            
+            # Preparar respuesta
+            response = HttpResponse(
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            filename = f'catalogo_donaciones_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            
+            wb.save(response)
+            return response
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Error al exportar: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['get'], url_path='plantilla-excel')
+    def plantilla_excel(self, request):
+        """
+        Genera una plantilla Excel para importación de productos de donación.
+        Incluye ejemplos y validaciones.
+        """
+        import openpyxl
+        from openpyxl.styles import Font, Alignment, PatternFill
+        from django.http import HttpResponse
+        
+        try:
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = 'Plantilla Productos'
+            
+            # Título
+            ws.merge_cells('A1:F1')
+            titulo_cell = ws['A1']
+            titulo_cell.value = 'PLANTILLA PARA IMPORTAR PRODUCTOS DE DONACIÓN'
+            titulo_cell.font = Font(bold=True, size=14, color='632842')
+            titulo_cell.alignment = Alignment(horizontal='center', vertical='center')
+            
+            # Instrucciones
+            ws.merge_cells('A2:F2')
+            ws['A2'].value = 'Complete los datos siguiendo el formato indicado. Las columnas marcadas con * son obligatorias.'
+            ws['A2'].font = Font(size=10, italic=True)
+            
+            ws.append([])
+            
+            # Encabezados
+            headers = [
+                'clave *',           # Clave única del producto
+                'nombre *',          # Nombre del producto
+                'descripcion',       # Descripción
+                'unidad_medida',     # PIEZA, CAJA, FRASCO, etc.
+                'categoria',         # Categoría opcional
+            ]
+            ws.append(headers)
+            
+            # Estilo de encabezados
+            header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
+            header_font = Font(bold=True, color='FFFFFF', size=11)
+            
+            for col_num, cell in enumerate(ws[4], 1):
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+            
+            # Fila de ejemplo
+            ws.append(['DON001', 'Paracetamol 500mg', 'Tabletas para fiebre y dolor', 'PIEZA', 'Analgésicos'])
+            ws.append(['DON002', 'Alcohol al 70%', 'Solución desinfectante', 'FRASCO', 'Antisépticos'])
+            
+            # Agregar nota sobre unidad_medida
+            ws.append([])
+            ws.append(['NOTA: Unidades de medida válidas: PIEZA, CAJA, FRASCO, TABLETA, AMPOLLETA, SOBRES, LITRO, MILILITRO, GRAMO, KILOGRAMO'])
+            ws['A8'].font = Font(italic=True, color='666666')
+            
+            # Ajustar anchos
+            ws.column_dimensions['A'].width = 15
+            ws.column_dimensions['B'].width = 35
+            ws.column_dimensions['C'].width = 40
+            ws.column_dimensions['D'].width = 15
+            ws.column_dimensions['E'].width = 20
+            
+            # Respuesta
+            response = HttpResponse(
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = 'attachment; filename="plantilla_catalogo_donaciones.xlsx"'
+            
+            wb.save(response)
+            return response
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Error al generar plantilla: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'], url_path='importar-excel')
+    def importar_excel(self, request):
+        """
+        Importa productos de donación desde un archivo Excel.
+        
+        Formato esperado:
+        - clave: Clave única del producto (obligatorio)
+        - nombre: Nombre del producto (obligatorio)
+        - descripcion: Descripción (opcional)
+        - unidad_medida: Unidad de medida (opcional, default: PIEZA)
+        - categoria: Categoría (opcional)
+        """
+        import openpyxl
+        from django.db import transaction
+        from core.models import ProductoDonacion
+        
+        archivo = request.FILES.get('archivo')
+        if not archivo:
+            return Response(
+                {'error': 'No se proporcionó archivo'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not archivo.name.endswith(('.xlsx', '.xls')):
+            return Response(
+                {'error': 'El archivo debe ser Excel (.xlsx o .xls)'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            wb = openpyxl.load_workbook(archivo, data_only=True)
+            ws = wb.active
+            
+            # Buscar fila de encabezados (puede estar en fila 4 si usa plantilla)
+            header_row = None
+            for row_num in range(1, 10):
+                cell_value = ws.cell(row=row_num, column=1).value
+                if cell_value and 'clave' in str(cell_value).lower():
+                    header_row = row_num
+                    break
+            
+            if not header_row:
+                header_row = 1
+            
+            # Mapear columnas
+            headers = {}
+            for col_num, cell in enumerate(ws[header_row], 1):
+                if cell.value:
+                    header_name = str(cell.value).lower().strip()
+                    header_name = header_name.replace(' *', '').replace('*', '')
+                    headers[header_name] = col_num
+            
+            required_cols = ['clave', 'nombre']
+            for col in required_cols:
+                if col not in headers:
+                    return Response(
+                        {'error': f'Columna requerida no encontrada: {col}'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            # Procesar filas
+            resultados = {
+                'creados': 0,
+                'actualizados': 0,
+                'fallidos': 0,
+                'errores': []
+            }
+            
+            unidades_validas = ['PIEZA', 'CAJA', 'FRASCO', 'TABLETA', 'AMPOLLETA', 'SOBRES', 'LITRO', 'MILILITRO', 'GRAMO', 'KILOGRAMO']
+            
+            with transaction.atomic():
+                for row_num in range(header_row + 1, ws.max_row + 1):
+                    clave = ws.cell(row=row_num, column=headers['clave']).value
+                    if not clave:
+                        continue
+                    
+                    try:
+                        nombre = ws.cell(row=row_num, column=headers['nombre']).value
+                        descripcion = ws.cell(row=row_num, column=headers.get('descripcion', 0)).value if headers.get('descripcion') else None
+                        unidad_medida = ws.cell(row=row_num, column=headers.get('unidad_medida', 0)).value if headers.get('unidad_medida') else 'PIEZA'
+                        categoria = ws.cell(row=row_num, column=headers.get('categoria', 0)).value if headers.get('categoria') else None
+                        
+                        # Validaciones
+                        if not nombre:
+                            raise ValueError('Nombre es requerido')
+                        
+                        clave = str(clave).strip().upper()
+                        nombre = str(nombre).strip()
+                        
+                        if unidad_medida:
+                            unidad_medida = str(unidad_medida).strip().upper()
+                            if unidad_medida not in unidades_validas:
+                                unidad_medida = 'PIEZA'
+                        else:
+                            unidad_medida = 'PIEZA'
+                        
+                        # Crear o actualizar producto
+                        producto, created = ProductoDonacion.objects.update_or_create(
+                            clave=clave,
+                            defaults={
+                                'nombre': nombre,
+                                'descripcion': str(descripcion).strip() if descripcion else None,
+                                'unidad_medida': unidad_medida,
+                                'categoria': str(categoria).strip() if categoria else None,
+                                'activo': True
+                            }
+                        )
+                        
+                        if created:
+                            resultados['creados'] += 1
+                        else:
+                            resultados['actualizados'] += 1
+                        
+                    except Exception as e:
+                        resultados['fallidos'] += 1
+                        resultados['errores'].append({
+                            'fila': row_num,
+                            'clave': str(clave) if clave else 'N/A',
+                            'error': str(e)
+                        })
+            
+            return Response({
+                'mensaje': f'Importación completada. Creados: {resultados["creados"]}, Actualizados: {resultados["actualizados"]}, Fallidos: {resultados["fallidos"]}',
+                'resultados': resultados
+            })
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Error al procesar archivo: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 class DetalleDonacionViewSet(viewsets.ModelViewSet):
     """
@@ -3979,6 +4287,292 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response(
                 {'error': f'Error al procesar archivo: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['get'], url_path='generar-pdf')
+    def generar_pdf(self, request, pk=None):
+        """
+        Genera un recibo PDF para una salida de donación específica.
+        Incluye campos de firma: Autoriza, Entrega, Recibe.
+        
+        Returns:
+            PDF descargable con formato institucional
+        """
+        from django.http import HttpResponse
+        from core.utils.pdf_reports import generar_recibo_salida_donacion
+        from core.models import SalidaDonacion, Centro
+        
+        try:
+            salida = self.get_object()
+            
+            # Preparar datos de la salida
+            producto_nombre = ''
+            lote = ''
+            donacion_numero = ''
+            
+            if salida.detalle_donacion:
+                if salida.detalle_donacion.producto:
+                    producto_nombre = salida.detalle_donacion.producto.nombre
+                lote = salida.detalle_donacion.numero_lote or ''
+                if salida.detalle_donacion.donacion:
+                    donacion_numero = salida.detalle_donacion.donacion.numero
+            
+            # Obtener nombre del centro si existe centro_destino
+            centro_destino_nombre = salida.destinatario
+            if hasattr(salida, 'centro_destino') and salida.centro_destino:
+                try:
+                    centro = Centro.objects.get(pk=salida.centro_destino)
+                    centro_destino_nombre = centro.nombre
+                except Centro.DoesNotExist:
+                    pass
+            
+            # Usuario que registró
+            usuario = ''
+            if salida.entregado_por:
+                usuario = f"{salida.entregado_por.first_name} {salida.entregado_por.last_name}".strip()
+                if not usuario:
+                    usuario = salida.entregado_por.username
+            
+            # Obtener estado de finalización
+            es_finalizado = getattr(salida, 'finalizado', False)
+            fecha_finalizado = getattr(salida, 'fecha_finalizado', None)
+            
+            salida_data = {
+                'id': salida.id,
+                'fecha': salida.fecha_entrega,
+                'centro_destino_nombre': centro_destino_nombre,
+                'destinatario': salida.destinatario,
+                'producto_nombre': producto_nombre,
+                'cantidad': salida.cantidad,
+                'motivo': salida.motivo or '',
+                'notas': salida.notas or '',
+                'numero_lote': lote,
+                'donacion_numero': donacion_numero,
+                'usuario': usuario,
+                'finalizado': es_finalizado,
+                'fecha_finalizado': fecha_finalizado,
+            }
+            
+            # Generar PDF (con firmas si no está finalizado, con sello si está finalizado)
+            buffer = generar_recibo_salida_donacion(salida_data, finalizado=es_finalizado)
+            
+            response = HttpResponse(buffer, content_type='application/pdf')
+            filename = f'recibo_salida_donacion_{salida.id}.pdf'
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            
+            return response
+            
+        except SalidaDonacion.DoesNotExist:
+            return Response(
+                {'error': 'Salida de donación no encontrada'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Error al generar PDF: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'], url_path='generar-pdf-masivo')
+    def generar_pdf_masivo(self, request):
+        """
+        Genera un recibo PDF para múltiples salidas de donación (salida masiva).
+        Espera una lista de IDs de salidas y genera un único PDF consolidado.
+        
+        Body:
+            {
+                "salidas_ids": [1, 2, 3],
+                "centro_destino": "Nombre del centro",
+                "motivo": "Motivo de la salida"
+            }
+        
+        Returns:
+            PDF descargable con formato institucional
+        """
+        from django.http import HttpResponse
+        from core.utils.pdf_reports import generar_recibo_salida_donacion
+        from core.models import SalidaDonacion, Centro
+        
+        try:
+            salidas_ids = request.data.get('salidas_ids', [])
+            centro_destino = request.data.get('centro_destino', '')
+            motivo = request.data.get('motivo', '')
+            
+            if not salidas_ids:
+                return Response(
+                    {'error': 'Se requiere al menos una salida'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Obtener las salidas
+            salidas = SalidaDonacion.objects.filter(
+                id__in=salidas_ids
+            ).select_related(
+                'detalle_donacion', 
+                'detalle_donacion__producto',
+                'detalle_donacion__donacion',
+                'entregado_por'
+            )
+            
+            if not salidas.exists():
+                return Response(
+                    {'error': 'No se encontraron las salidas especificadas'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Preparar datos para el PDF
+            primera_salida = salidas.first()
+            
+            # Obtener nombre del centro si es un ID
+            centro_nombre = centro_destino
+            if centro_destino and str(centro_destino).isdigit():
+                try:
+                    centro = Centro.objects.get(pk=int(centro_destino))
+                    centro_nombre = centro.nombre
+                except Centro.DoesNotExist:
+                    pass
+            
+            # Usuario que registró
+            usuario = ''
+            if primera_salida.entregado_por:
+                usuario = f"{primera_salida.entregado_por.first_name} {primera_salida.entregado_por.last_name}".strip()
+                if not usuario:
+                    usuario = primera_salida.entregado_por.username
+            
+            salida_data = {
+                'id': f"MAS-{primera_salida.id}",
+                'fecha': primera_salida.fecha_entrega,
+                'centro_destino_nombre': centro_nombre or primera_salida.destinatario,
+                'destinatario': centro_nombre or primera_salida.destinatario,
+                'motivo': motivo or primera_salida.motivo or '',
+                'notas': primera_salida.notas or '',
+                'usuario': usuario,
+            }
+            
+            # Preparar detalles de productos
+            detalles_data = []
+            for salida in salidas:
+                producto_nombre = ''
+                lote = ''
+                
+                if salida.detalle_donacion:
+                    if salida.detalle_donacion.producto:
+                        producto_nombre = salida.detalle_donacion.producto.nombre
+                    lote = salida.detalle_donacion.numero_lote or ''
+                
+                detalles_data.append({
+                    'producto_nombre': producto_nombre,
+                    'cantidad': salida.cantidad,
+                    'numero_lote': lote,
+                })
+            
+            # Generar PDF
+            buffer = generar_recibo_salida_donacion(salida_data, detalles_data)
+            
+            response = HttpResponse(buffer, content_type='application/pdf')
+            filename = f'recibo_salida_masiva_donacion_{primera_salida.id}.pdf'
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            
+            return response
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Error al generar PDF: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'], url_path='finalizar')
+    def finalizar(self, request, pk=None):
+        """
+        Marca una salida de donación como finalizada.
+        Una vez finalizada, el PDF mostrará sello de ENTREGADO en lugar de campos de firma.
+        
+        Returns:
+            Datos de la salida actualizada
+        """
+        from django.utils import timezone
+        from core.models import SalidaDonacion
+        
+        try:
+            salida = self.get_object()
+            
+            if salida.finalizado:
+                return Response(
+                    {'error': 'Esta salida ya fue finalizada'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            salida.finalizado = True
+            salida.fecha_finalizado = timezone.now()
+            salida.finalizado_por = request.user
+            salida.save()
+            
+            # Retornar datos actualizados
+            from core.serializers import SalidaDonacionSerializer
+            serializer = SalidaDonacionSerializer(salida)
+            
+            return Response({
+                'mensaje': 'Salida finalizada correctamente',
+                'salida': serializer.data
+            })
+            
+        except SalidaDonacion.DoesNotExist:
+            return Response(
+                {'error': 'Salida de donación no encontrada'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Error al finalizar: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'], url_path='finalizar-masivo')
+    def finalizar_masivo(self, request):
+        """
+        Marca múltiples salidas de donación como finalizadas.
+        
+        Body:
+            {
+                "salidas_ids": [1, 2, 3]
+            }
+        
+        Returns:
+            Resumen de salidas finalizadas
+        """
+        from django.utils import timezone
+        from core.models import SalidaDonacion
+        
+        try:
+            salidas_ids = request.data.get('salidas_ids', [])
+            
+            if not salidas_ids:
+                return Response(
+                    {'error': 'Se requiere al menos una salida'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Actualizar todas las salidas
+            salidas = SalidaDonacion.objects.filter(
+                id__in=salidas_ids,
+                finalizado=False
+            )
+            
+            count = salidas.update(
+                finalizado=True,
+                fecha_finalizado=timezone.now(),
+                finalizado_por=request.user
+            )
+            
+            return Response({
+                'mensaje': f'{count} salidas finalizadas correctamente',
+                'finalizadas': count
+            })
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Error al finalizar: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 

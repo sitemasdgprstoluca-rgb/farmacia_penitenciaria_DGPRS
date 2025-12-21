@@ -2862,6 +2862,10 @@ class SalidaDonacion(models.Model):
     """
     Registro de entregas/salidas del almacen de donaciones.
     Permite control interno sin afectar movimientos principales.
+    
+    Estado 'finalizado':
+    - False: Pendiente de entrega física, el PDF muestra campos de firma
+    - True: Entrega finalizada, el PDF muestra sello de ENTREGADO
     """
     detalle_donacion = models.ForeignKey(
         DetalleDonacion, 
@@ -2882,6 +2886,17 @@ class SalidaDonacion(models.Model):
     )
     fecha_entrega = models.DateTimeField(auto_now_add=True)
     notas = models.TextField(blank=True, null=True)
+    # Campo para marcar la entrega como finalizada (con firmas completadas)
+    finalizado = models.BooleanField(default=False)
+    fecha_finalizado = models.DateTimeField(blank=True, null=True)
+    finalizado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='finalizaciones_donaciones',
+        db_column='finalizado_por_id'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

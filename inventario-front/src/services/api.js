@@ -1094,6 +1094,8 @@ export const movimientosAPI = {
   create: (data) => apiClient.post('/movimientos/', data),
   exportarExcel: (params) => apiClient.get('/movimientos/exportar-excel/', { params, responseType: 'blob' }),
   exportarPdf: (params) => apiClient.get('/movimientos/exportar-pdf/', { params, responseType: 'blob' }),
+  // Recibo de salida con firmas (solo para salidas)
+  reciboSalidaPdf: (id) => apiClient.get(`/movimientos/${id}/recibo-salida-pdf/`, { responseType: 'blob' }),
 };
 
 // Salida Masiva (solo Farmacia)
@@ -1302,6 +1304,17 @@ export const productosDonacionAPI = {
   delete: (id) => apiClient.delete(`/productos-donacion/${id}/`),
   // Búsqueda rápida
   buscar: (q) => apiClient.get('/productos-donacion/buscar/', { params: { q } }),
+  // Exportación e importación Excel
+  exportarExcel: (params) => apiClient.get('/productos-donacion/exportar-excel/', { 
+    params, 
+    responseType: 'blob' 
+  }),
+  plantillaExcel: () => apiClient.get('/productos-donacion/plantilla-excel/', { 
+    responseType: 'blob' 
+  }),
+  importarExcel: (formData) => apiClient.post('/productos-donacion/importar-excel/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
 };
 
 // Detalles de Donación
@@ -1333,6 +1346,16 @@ export const salidasDonacionesAPI = {
   importarExcel: (formData) => apiClient.post('/salidas-donaciones/importar-excel/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
+  // Generación de PDF de recibo
+  generarPdf: (id) => apiClient.get(`/salidas-donaciones/${id}/generar-pdf/`, { 
+    responseType: 'blob' 
+  }),
+  generarPdfMasivo: (data) => apiClient.post('/salidas-donaciones/generar-pdf-masivo/', data, {
+    responseType: 'blob'
+  }),
+  // Finalizar entregas
+  finalizar: (id) => apiClient.post(`/salidas-donaciones/${id}/finalizar/`),
+  finalizarMasivo: (data) => apiClient.post('/salidas-donaciones/finalizar-masivo/', data),
 };
 
 // Imágenes de Productos - Múltiples fotos por producto

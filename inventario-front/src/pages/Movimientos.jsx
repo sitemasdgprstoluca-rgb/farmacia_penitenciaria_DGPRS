@@ -446,6 +446,28 @@ const Movimientos = () => {
     }
   };
 
+  // Descargar recibo de salida con firmas para un movimiento específico
+  const descargarReciboSalida = async (movimientoId) => {
+    try {
+      toast.loading('Generando recibo PDF...', { id: 'pdf-loading' });
+      const response = await movimientosAPI.reciboSalidaPdf(movimientoId);
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `recibo_salida_movimiento_${movimientoId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      toast.dismiss('pdf-loading');
+      toast.success('Recibo PDF generado correctamente');
+    } catch (err) {
+      toast.dismiss('pdf-loading');
+      toast.error(err.response?.data?.detail || 'Error al generar el recibo PDF');
+    }
+  };
+
   // Actualiza solo el estado local de filtros (sin disparar recarga)
   const handleFiltro = (field, value) => {
     // Protección: usuarios de centro no pueden cambiar el filtro de centro
@@ -710,21 +732,19 @@ const Movimientos = () => {
                 )}
               </div>
 
-              {/* MEJORA FLUJO 5: Subtipo de salida y número de expediente */}
+              {/* MEJORA FLUJO 5: Subtipo de salida - Simplificado para usuarios */}
               {formData.tipo === "salida" && (
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-700">Subtipo de salida</label>
+                  <label className="text-sm font-semibold text-gray-700">Motivo de salida</label>
                   <select
                     value={formData.subtipo_salida}
                     onChange={(e) => handleFormChange("subtipo_salida", e.target.value)}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="">-- Seleccionar subtipo --</option>
+                    <option value="">-- Seleccionar motivo --</option>
                     <option value="receta">Receta médica</option>
                     <option value="consumo_interno">Consumo interno</option>
-                    <option value="merma">Merma</option>
-                    <option value="caducidad">Caducidad</option>
-                    <option value="transferencia">Transferencia</option>
+                    <option value="transferencia">Transferencia a centro</option>
                     <option value="otro">Otro</option>
                   </select>
                 </div>
@@ -1224,12 +1244,23 @@ const Movimientos = () => {
                               : ""}
                           </td>
                           <td className="px-4 py-3">
-                            <button 
-                              className="text-blue-600 hover:text-blue-800 text-sm"
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === mov.id ? null : mov.id); }}
-                            >
-                              {expandedId === mov.id ? '▲ Ocultar' : '▼ Detalles'}
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button 
+                                className="text-blue-600 hover:text-blue-800 text-sm"
+                                onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === mov.id ? null : mov.id); }}
+                              >
+                                {expandedId === mov.id ? '▲ Ocultar' : '▼ Detalles'}
+                              </button>
+                              {mov.tipo === 'salida' && (
+                                <button 
+                                  className="text-red-600 hover:text-red-800 text-sm"
+                                  onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov.id); }}
+                                  title="Descargar recibo con firmas"
+                                >
+                                  📄 PDF
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                         {/* Fila expandida con detalles */}
