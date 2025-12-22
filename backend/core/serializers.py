@@ -2166,11 +2166,13 @@ class SalidaDonacionSerializer(serializers.ModelSerializer):
     """
     Serializer para salidas/entregas del almacen de donaciones.
     Control interno sin afectar movimientos principales.
+    
+    Nota: Los campos finalizado/fecha_finalizado/finalizado_por están
+    pendientes de migración SQL en Supabase.
     """
     detalle_donacion_info = serializers.SerializerMethodField()
     entregado_por_nombre = serializers.SerializerMethodField()
     producto_nombre = serializers.SerializerMethodField()
-    finalizado_por_nombre = serializers.SerializerMethodField()
     
     class Meta:
         model = SalidaDonacion
@@ -2180,22 +2182,15 @@ class SalidaDonacionSerializer(serializers.ModelSerializer):
             'entregado_por', 'entregado_por_nombre',
             'producto_nombre',
             'fecha_entrega', 'notas', 'created_at',
-            'finalizado', 'fecha_finalizado', 'finalizado_por', 'finalizado_por_nombre'
         ]
-        read_only_fields = ['created_at', 'fecha_entrega', 'entregado_por', 'fecha_finalizado', 'finalizado_por']
+        read_only_fields = ['created_at', 'fecha_entrega', 'entregado_por']
         extra_kwargs = {
             'detalle_donacion': {'required': True},
             'cantidad': {'required': True},
             'destinatario': {'required': True},
             'motivo': {'required': False, 'allow_null': True, 'allow_blank': True},
             'notas': {'required': False, 'allow_null': True, 'allow_blank': True},
-            'finalizado': {'required': False},
         }
-    
-    def get_finalizado_por_nombre(self, obj):
-        if hasattr(obj, 'finalizado_por') and obj.finalizado_por:
-            return f"{obj.finalizado_por.first_name} {obj.finalizado_por.last_name}".strip() or obj.finalizado_por.username
-        return None
     
     def get_detalle_donacion_info(self, obj):
         if obj.detalle_donacion:

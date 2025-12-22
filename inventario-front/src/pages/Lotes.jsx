@@ -144,7 +144,8 @@ const Lotes = () => {
     numero_contrato: '',
     marca: '',
     ubicacion: '',            // Campo real en DB
-    centro: ''                // Solo editable por admin/farmacia
+    centro: '',               // Solo editable por admin/farmacia
+    presentacion_producto: '' // Campo del producto (para editar desde lote)
   });
 
   const nivelCaducidad = [
@@ -323,6 +324,12 @@ const Lotes = () => {
       return;
     }
     
+    // Validación: presentación es obligatoria
+    if (!formData.presentacion_producto || formData.presentacion_producto.trim() === '') {
+      toast.error('La presentación del producto es obligatoria (requerida para reportes)');
+      return;
+    }
+    
     // Parsear precio si existe (campo real: precio_unitario)
     const precioUnitario = formData.precio_unitario ? parseFloat(formData.precio_unitario) : null;
     if (formData.precio_unitario && (isNaN(precioUnitario) || precioUnitario < 0)) {
@@ -333,8 +340,11 @@ const Lotes = () => {
     setSavingLote(true);
     
     try {
+      // Extraer presentacion_producto para actualizar el producto por separado
+      const { presentacion_producto, ...loteData } = formData;
+      
       const dataToSend = {
-        ...formData,
+        ...loteData,
         cantidad_inicial: cantidadInicial,
         precio_unitario: precioUnitario,
       };
@@ -356,6 +366,15 @@ const Lotes = () => {
         }
       });
       
+      // Actualizar presentación del producto si cambió
+      const productoId = formData.producto;
+      if (productoId && presentacion_producto) {
+        const productoActual = productos.find(p => p.id === productoId);
+        if (productoActual?.presentacion !== presentacion_producto) {
+          await productosAPI.patch(productoId, { presentacion: presentacion_producto });
+        }
+      }
+      
       if (editingLote) {
         await lotesAPI.update(editingLote.id, dataToSend);
         toast.success('Lote actualizado correctamente');
@@ -364,12 +383,15 @@ const Lotes = () => {
         toast.success('Lote creado correctamente');
       }
       
+      // Recargar productos para tener la presentación actualizada
+      cargarProductos();
       setShowModal(false);
       resetForm();
       cargarLotes();
     } catch (error) {
       const errorMsg = error.response?.data?.numero_lote?.[0] || 
                        error.response?.data?.error || 
+                       error.response?.data?.presentacion?.[0] ||
                        'Error al guardar lote';
       toast.error(errorMsg);
       console.error(error);
@@ -380,6 +402,8 @@ const Lotes = () => {
 
   const handleEdit = (lote) => {
     setEditingLote(lote);
+    // Buscar la presentación del producto asociado
+    const productoAsociado = productos.find(p => p.id === lote.producto);
     setFormData({
       producto: lote.producto,
       numero_lote: lote.numero_lote,
@@ -390,7 +414,8 @@ const Lotes = () => {
       numero_contrato: lote.numero_contrato || '',
       marca: lote.marca || '',
       ubicacion: lote.ubicacion || '',
-      centro: lote.centro || ''
+      centro: lote.centro || '',
+      presentacion_producto: productoAsociado?.presentacion || lote.producto_info?.presentacion || ''
     });
     setShowModal(true);
   };
@@ -524,7 +549,8 @@ const Lotes = () => {
       numero_contrato: '',
       marca: '',
       ubicacion: '',
-      centro: ''
+      centro: '',
+      presentacion_producto: ''
     });
     setEditingLote(null);
   };
@@ -1243,7 +1269,15 @@ const handleImportar = async (e) => {
                   </label>
                   <select
                     value={formData.producto}
-                    onChange={(e) => setFormData({...formData, producto: e.target.value})}
+                    onChange={(e) => {
+                      const productoId = e.target.value;
+                      const productoSel = productos.find(p => p.id.toString() === productoId || p.id === parseInt(productoId));
+                      setFormData({
+                        ...formData, 
+                        producto: productoId,
+                        presentacion_producto: productoSel?.presentacion || ''
+                      });
+                    }}
                     className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl transition-all focus:outline-none"
                     style={{
                       '--tw-ring-color': 'rgba(159, 34, 65, 0.2)'
@@ -1478,6 +1512,31 @@ const handleImportar = async (e) => {
                       maxLength={150}
                     />
                     <p className="text-xs text-gray-400 mt-1">Marca del medicamento</p>
+                  </div>
+
+                  {/* Presentación del Producto - Obligatoria para reportes */}
+                  <div>
+                    <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
+                      PRESENTACIÓN DEL PRODUCTO <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.presentacion_producto}
+                      onChange={(e) => setFormData({...formData, presentacion_producto: e.target.value})}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl transition-all focus:outline-none"
+                      onFocus={(e) => {
+                        e.target.style.borderColor = '#9F2241';
+                        e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = '#E5E7EB';
+                        e.target.style.boxShadow = 'none';
+                      }}
+                      placeholder="Ej: Caja con 20 tabletas de 500mg"
+                      maxLength={100}
+                      required
+                    />
+                    <p className="text-xs text-gray-400 mt-1">Este campo modifica la presentación del producto asociado (obligatorio para reportes)</p>
                   </div>
                 </div>
                 )}

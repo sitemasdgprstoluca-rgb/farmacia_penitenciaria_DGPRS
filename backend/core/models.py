@@ -2863,9 +2863,9 @@ class SalidaDonacion(models.Model):
     Registro de entregas/salidas del almacen de donaciones.
     Permite control interno sin afectar movimientos principales.
     
-    Estado 'finalizado':
-    - False: Pendiente de entrega física, el PDF muestra campos de firma
-    - True: Entrega finalizada, el PDF muestra sello de ENTREGADO
+    Nota: Tabla existente en Supabase con columnas limitadas.
+    Los campos finalizado/fecha_finalizado/finalizado_por se agregaran
+    cuando se ejecute la migración SQL correspondiente.
     """
     detalle_donacion = models.ForeignKey(
         DetalleDonacion, 
@@ -2886,17 +2886,11 @@ class SalidaDonacion(models.Model):
     )
     fecha_entrega = models.DateTimeField(auto_now_add=True)
     notas = models.TextField(blank=True, null=True)
-    # Campo para marcar la entrega como finalizada (con firmas completadas)
-    finalizado = models.BooleanField(default=False)
-    fecha_finalizado = models.DateTimeField(blank=True, null=True)
-    finalizado_por = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='finalizaciones_donaciones',
-        db_column='finalizado_por_id'
-    )
+    # Campos comentados hasta que se ejecute la migración SQL en Supabase:
+    # ALTER TABLE salidas_donaciones ADD COLUMN IF NOT EXISTS finalizado BOOLEAN DEFAULT FALSE;
+    # ALTER TABLE salidas_donaciones ADD COLUMN IF NOT EXISTS fecha_finalizado TIMESTAMP WITH TIME ZONE;
+    # ALTER TABLE salidas_donaciones ADD COLUMN IF NOT EXISTS finalizado_por_id INTEGER REFERENCES usuarios(id);
+    # ALTER TABLE salidas_donaciones ADD COLUMN IF NOT EXISTS centro_destino_id INTEGER REFERENCES centros(id);
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
