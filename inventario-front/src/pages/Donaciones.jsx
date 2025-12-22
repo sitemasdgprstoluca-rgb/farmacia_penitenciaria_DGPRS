@@ -7,6 +7,8 @@ import {
   FaTrash,
   FaEye,
   FaCheck,
+  FaCheckCircle,
+  FaClock,
   FaFilter,
   FaGift,
   FaChevronDown,
@@ -2907,7 +2909,7 @@ const Donaciones = () => {
                         <th className="px-4 py-3 text-left font-medium text-gray-600">Producto</th>
                         <th className="px-4 py-3 text-center font-medium text-gray-600">Cantidad</th>
                         <th className="px-4 py-3 text-left font-medium text-gray-600">Destinatario</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-600">Entregado por</th>
+                        <th className="px-4 py-3 text-center font-medium text-gray-600">Estado</th>
                         <th className="px-4 py-3 text-center font-medium text-gray-600">Acciones</th>
                       </tr>
                     </thead>
@@ -2926,15 +2928,44 @@ const Donaciones = () => {
                           <td className="px-4 py-3 font-medium">{salida.producto_nombre || '-'}</td>
                           <td className="px-4 py-3 text-center font-bold text-primary">{salida.cantidad}</td>
                           <td className="px-4 py-3">{salida.destinatario}</td>
-                          <td className="px-4 py-3 text-gray-600">{salida.entregado_por_nombre || '-'}</td>
                           <td className="px-4 py-3 text-center">
-                            <button
-                              onClick={() => generarPdfSalida(salida.id)}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Descargar recibo PDF"
-                            >
-                              <FaFilePdf />
-                            </button>
+                            {salida.finalizado ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                <FaCheckCircle />
+                                Entregado
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+                                <FaClock />
+                                Pendiente
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              {/* Botón de PDF - muestra firmas si pendiente, sello si finalizado */}
+                              <button
+                                onClick={() => generarPdfSalida(salida.id)}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title={salida.finalizado ? 'Ver comprobante de entrega' : 'Descargar hoja de firmas'}
+                              >
+                                <FaFilePdf />
+                              </button>
+                              {/* Botón de finalizar - solo si no está finalizado */}
+                              {!salida.finalizado && (
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm('¿Marcar esta entrega como finalizada? El PDF mostrará un sello de ENTREGADO.')) {
+                                      finalizarSalida(salida.id);
+                                    }
+                                  }}
+                                  className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                  title="Finalizar entrega (marcar como entregado)"
+                                >
+                                  <FaCheck />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
