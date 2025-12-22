@@ -73,16 +73,15 @@ const Movimientos = () => {
   const [lotesDisponibles, setLotesDisponibles] = useState([]);
 
   // Formulario de registro
-  // ISS-FIX: Tipo por defecto según rol - CENTRO solo puede salida/ajuste
-  const tipoDefault = puedeVerTodosCentros ? "entrada" : "salida";
+  // ISS-FIX: Tipo fijo en "salida" y subtipo en "transferencia" para simplificar flujo
   const [formData, setFormData] = useState({
     lote: "",
-    tipo: tipoDefault,
+    tipo: "salida",  // Fijo en salida
     cantidad: "",
     centro: "",
     observaciones: "",
     // MEJORA FLUJO 5: Campos para trazabilidad de pacientes
-    subtipo_salida: "",
+    subtipo_salida: "transferencia",  // Fijo en transferencia a centro
     numero_expediente: "",
   });
   const [productoFiltro, setProductoFiltro] = useState("");
@@ -378,11 +377,11 @@ const Movimientos = () => {
       toast.success("Movimiento registrado exitosamente");
       setFormData({
         lote: "",
-        tipo: tipoDefault, // ISS-FIX: Usar tipo correcto según rol
+        tipo: "salida",  // Fijo en salida
         cantidad: "",
         centro: "",
         observaciones: "",
-        subtipo_salida: "",
+        subtipo_salida: "transferencia",  // Fijo en transferencia
         numero_expediente: "",
       });
       setProductoFiltro("");
@@ -713,13 +712,13 @@ const Movimientos = () => {
                   value={formData.tipo}
                   onChange={(e) => handleFormChange("tipo", e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                  disabled={esMedico}
+                  disabled={true}
                 >
-                  {/* ISS-FIX: CENTRO solo puede hacer salidas y ajustes, no entradas */}
-                  {/* ISS-MEDICO FIX v2: Médicos SOLO pueden hacer salidas */}
-                  {puedeVerTodosCentros && <option value="entrada">Entrada</option>}
+                  {/* ISS-FIX: Solo salidas visibles para evitar confusión */}
+                  {/* Las otras opciones se mantienen en el código pero ocultas */}
+                  {false && puedeVerTodosCentros && <option value="entrada">Entrada</option>}
                   <option value="salida">Salida</option>
-                  {!esMedico && <option value="ajuste">Ajuste</option>}
+                  {false && !esMedico && <option value="ajuste">Ajuste</option>}
                 </select>
                 {esMedico && (
                   <p className="text-xs text-blue-600">
@@ -732,7 +731,7 @@ const Movimientos = () => {
                 )}
               </div>
 
-              {/* MEJORA FLUJO 5: Subtipo de salida - Simplificado para usuarios */}
+              {/* MEJORA FLUJO 5: Subtipo de salida - Solo transferencia a centro visible */}
               {formData.tipo === "salida" && (
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-gray-700">Motivo de salida</label>
@@ -741,11 +740,13 @@ const Movimientos = () => {
                     onChange={(e) => handleFormChange("subtipo_salida", e.target.value)}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="">-- Seleccionar motivo --</option>
-                    <option value="receta">Receta médica</option>
-                    <option value="consumo_interno">Consumo interno</option>
+                    {/* Solo transferencia a centro visible para evitar confusión */}
+                    {/* Las otras opciones se mantienen en el código pero ocultas */}
                     <option value="transferencia">Transferencia a centro</option>
-                    <option value="otro">Otro</option>
+                    {false && <option value="">-- Seleccionar motivo --</option>}
+                    {false && <option value="receta">Receta médica</option>}
+                    {false && <option value="consumo_interno">Consumo interno</option>}
+                    {false && <option value="otro">Otro</option>}
                   </select>
                 </div>
               )}
