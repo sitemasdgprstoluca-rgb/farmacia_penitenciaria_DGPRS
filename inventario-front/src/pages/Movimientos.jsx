@@ -126,9 +126,11 @@ const Movimientos = () => {
         con_stock: "con_stock",  // ISS-FIX: Solo lotes con stock > 0
       };
       
-      // ISS-FIX: Si usuario de centro, el backend filtra automáticamente
-      // pero podemos agregar el centro explícitamente si está disponible
-      if (!puedeVerTodosCentros && centroUsuario) {
+      // ISS-FIX: Farmacia/Admin hacen transferencias desde farmacia central
+      // Por lo que necesitan ver lotes de farmacia central (centro=null)
+      if (puedeVerTodosCentros) {
+        lotesParams.centro = 'central';  // Lotes de farmacia central
+      } else if (centroUsuario) {
         lotesParams.centro = centroUsuario;
       }
       

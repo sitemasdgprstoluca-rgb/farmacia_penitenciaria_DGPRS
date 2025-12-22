@@ -692,6 +692,7 @@ class ProductoSerializer(serializers.ModelSerializer):
             'clave': {'required': True},
             'nombre': {'required': True},
             'descripcion': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'presentacion': {'required': True},  # ISS-FIX: Presentación obligatoria
         }
     
     def get_stock_actual(self, obj):
@@ -765,6 +766,12 @@ class ProductoSerializer(serializers.ModelSerializer):
         if value < 0:
             raise serializers.ValidationError('El stock mínimo no puede ser negativo')
         return value
+    
+    def validate_presentacion(self, value):
+        """ISS-FIX: Presentación es obligatoria."""
+        if not value or str(value).strip() == '':
+            raise serializers.ValidationError('La presentación es obligatoria')
+        return str(value).strip()
     
     def validate(self, attrs):
         return attrs
