@@ -1494,36 +1494,42 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
         descripcion = str(producto_info.get('descripcion', producto_info.get('nombre', 'N/A')))
         desc_paragraph = Paragraph(descripcion, estilo_desc)
         
-        # Formatear presentación - mostrar valor real o "N/A" si está vacío
+        # Formatear presentación - ÚNICO campo para forma farmacéutica
+        # Combina presentacion y unidad_medida si está disponible
         presentacion_raw = producto_info.get('presentacion', '')
-        presentacion = str(presentacion_raw) if presentacion_raw and str(presentacion_raw).strip() else 'N/A'
-        pres_paragraph = Paragraph(presentacion, estilo_desc)
-        
-        # Formatear unidad de medida - asegurar que tenga valor
         unidad_raw = producto_info.get('unidad_medida', '')
-        unidad_medida = str(unidad_raw) if unidad_raw and str(unidad_raw).strip() else 'PIEZA'
+        # Construir presentación completa
+        if presentacion_raw and str(presentacion_raw).strip():
+            presentacion = str(presentacion_raw).strip()
+        elif unidad_raw and str(unidad_raw).strip():
+            presentacion = str(unidad_raw).strip()
+        else:
+            presentacion = 'N/A'
+        pres_paragraph = Paragraph(presentacion, estilo_desc)
         
         # Formatear precio
         precio_raw = producto_info.get('precio_unitario') or producto_info.get('precio')
         precio_str = f"${float(precio_raw):.2f}" if precio_raw else 'N/A'
         
-        # Formatear stock mínimo
-        stock_minimo = producto_info.get('stock_minimo', 0) or 0
-        
-        # Campos reorganizados: Clave, Descripción, Unidad, Presentación, Stock, Precio, Contrato, Lote
+        # Campos reorganizados SIN duplicados:
+        # Fila 1: Clave, Descripción
+        # Fila 2: Presentación, Stock
+        # Fila 3: Precio, Contrato
+        # Fila 4: No. Lote, Caducidad
+        # Fila 5: Proveedor/Marca (si existe)
         prod_data = [
             ['Clave:', str(producto_info.get('clave', 'N/A')), 'Descripción:', desc_paragraph],
-            ['Unidad:', unidad_medida, 'Presentación:', pres_paragraph],
-            ['Stock Actual:', str(producto_info.get('stock_actual', 0)), 'Precio:', precio_str],
+            ['Stock Actual:', str(producto_info.get('stock_actual', 0)), 'Presentación:', pres_paragraph],
             ['No. Contrato:', str(producto_info.get('numero_contrato', 'N/A')), 'No. Lote:', str(producto_info.get('numero_lote', 'N/A'))],
         ]
         
         # Agregar fila de caducidad y proveedor/marca
-        if producto_info.get('fecha_caducidad') or producto_info.get('proveedor') or producto_info.get('marca'):
-            marca_proveedor = producto_info.get('proveedor') or producto_info.get('marca') or 'N/A'
+        fecha_cad = producto_info.get('fecha_caducidad')
+        marca_proveedor = producto_info.get('proveedor') or producto_info.get('marca')
+        if fecha_cad or marca_proveedor:
             prod_data.append([
-                'Caducidad:', str(producto_info.get('fecha_caducidad', 'N/A')), 
-                'Proveedor/Marca:', str(marca_proveedor)
+                'Caducidad:', str(fecha_cad) if fecha_cad else 'N/A', 
+                'Proveedor/Marca:', str(marca_proveedor) if marca_proveedor else 'N/A'
             ])
         
         prod_table = Table(prod_data, colWidths=[1.1*inch, 2.4*inch, 1.1*inch, 2.4*inch])

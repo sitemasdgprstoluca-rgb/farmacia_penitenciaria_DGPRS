@@ -243,7 +243,7 @@ const Trazabilidad = () => {
 
     const codigoTrimmed = codigoBusqueda.trim();
     if (!codigoTrimmed) {
-      toast.error('Ingrese clave de producto o número de lote');
+      toast.error('Ingrese clave de producto, nombre o número de lote');
       return;
     }
 
@@ -262,7 +262,7 @@ const Trazabilidad = () => {
       // Preparar parámetros con filtro de centro opcional
       const params = centroFiltro ? { centro: centroFiltro } : {};
 
-      // Intentar primero búsqueda por producto (sin mostrar error si falla)
+      // Intentar primero búsqueda por producto (clave o nombre)
       try {
         const response = await trazabilidadAPI.producto(codigoTrimmed, params);
         const datosNormalizados = normalizeProductoResponse(response.data);
@@ -274,8 +274,9 @@ const Trazabilidad = () => {
         toast.success('Trazabilidad de producto cargada');
         return;
       } catch (errorProducto) {
-        // Si no se encuentra producto (404), intentar por lote silenciosamente
-        if (errorProducto.response?.status === 404 && esAdminOFarmacia) {
+        // Si no se encuentra producto (404), intentar por lote
+        // Ahora disponible para todos los usuarios (no solo admin)
+        if (errorProducto.response?.status === 404) {
           try {
             const responseLote = await trazabilidadAPI.lote(codigoTrimmed, params);
             const datosNormalizados = normalizeLoteResponse(responseLote.data);
@@ -291,7 +292,7 @@ const Trazabilidad = () => {
             throw errorLote;
           }
         }
-        // Re-lanzar el error si no es 404 o no es admin
+        // Re-lanzar el error si no es 404
         throw errorProducto;
       }
     } catch (error) {
@@ -300,7 +301,7 @@ const Trazabilidad = () => {
         if (error.response?.status === 403) {
           toast.error('No tienes permiso para acceder a esta trazabilidad');
         } else if (error.response?.status === 404) {
-          toast.error('Producto o lote no encontrado. Verifica la clave o número de lote.');
+          toast.error('Producto o lote no encontrado. Verifica la clave, nombre o número de lote.');
         } else {
           toast.error(error.response?.data?.error || 'Error al cargar trazabilidad');
         }
@@ -367,7 +368,7 @@ const Trazabilidad = () => {
   };
 
   const renderInfoProducto = () => (
-    <div className="grid gap-4 md:grid-cols-5">
+    <div className="grid gap-4 md:grid-cols-4">
       <div>
         <p className="text-xs text-gray-500">Clave</p>
         <p className="font-semibold">{resultados.codigo || '-'}</p>
@@ -377,12 +378,8 @@ const Trazabilidad = () => {
         <p className="font-semibold">{resultados.descripcion || resultados.nombre || '-'}</p>
       </div>
       <div>
-        <p className="text-xs text-gray-500">Unidad</p>
-        <p className="font-semibold">{resultados.unidad_medida || '-'}</p>
-      </div>
-      <div>
         <p className="text-xs text-gray-500">Presentación</p>
-        <p className="font-semibold">{resultados.presentacion || '-'}</p>
+        <p className="font-semibold">{resultados.presentacion || resultados.unidad_medida || '-'}</p>
       </div>
       <div>
         <p className="text-xs text-gray-500">Inventario actual</p>
