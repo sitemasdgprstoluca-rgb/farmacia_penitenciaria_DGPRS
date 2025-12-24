@@ -384,6 +384,12 @@ elif DATABASE_URL:
             ssl_require=ENFORCE_HTTPS
         )
     }
+    # Agregar timeouts de conexión para PostgreSQL/Supabase
+    DATABASES['default'].setdefault('OPTIONS', {})
+    DATABASES['default']['OPTIONS'].update({
+        'connect_timeout': 10,  # Timeout de conexión en segundos
+        'options': '-c statement_timeout=30000',  # Statement timeout 30s
+    })
 else:
     # Solo desarrollo local - NUNCA en producción
     if not DEBUG:
