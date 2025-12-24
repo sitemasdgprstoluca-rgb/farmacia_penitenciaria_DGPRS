@@ -15,29 +15,20 @@ class CoreConfig(AppConfig):
         # Importar signals al iniciar la app
         from . import signals  # noqa: F401
         
-        # ISS-001 FIX: Validar esquemas SOLO en producción y si está habilitado
-        # Esto evita lentitud en desarrollo (~2s extra por cada inicio)
-        import sys
+        # ISS-001 FIX: Validación de esquema DESHABILITADA por defecto
+        # La validación bloquea el inicio del servidor al conectarse a la BD
+        # y causa timeouts en Render/producción (especialmente con Supabase).
+        # 
+        # Para habilitar manualmente: ENABLE_SCHEMA_VALIDATION=1
+        # 
+        # IMPORTANTE: No validar durante el inicio del servidor porque:
+        # 1. Bloquea el binding del puerto (Render detecta "no open ports")
+        # 2. Los timeouts de conexión a Supabase causan retrasos de ~4 minutos
+        # 3. La validación debería ser un proceso separado, no parte del startup
         
-        # Condiciones para SALTAR validación de esquema:
-        # 1. Comandos de gestión (migrate, test, etc.)
-        # 2. Modo DEBUG (desarrollo)
-        # 3. Variable SKIP_SCHEMA_VALIDATION=1
-        is_management_command = any(cmd in sys.argv for cmd in [
-            'migrate', 'makemigrations', 'test', 'shell', 'dbshell',
-            'collectstatic', 'check', 'runserver', 'showmigrations'
-        ])
-        skip_validation = os.environ.get('SKIP_SCHEMA_VALIDATION', '0') == '1'
+        enable_validation = os.environ.get('ENABLE_SCHEMA_VALIDATION', '0') == '1'
         
-        # Solo validar en producción (no DEBUG) y si no es comando de gestión
-        from django.conf import settings
-        should_validate = (
-            not settings.DEBUG and 
-            not is_management_command and 
-            not skip_validation
-        )
-        
-        if should_validate:
+        if enable_validation:
             try:
                 from core.schema_validator import validate_unmanaged_schemas, check_transitions_constraint
                 
