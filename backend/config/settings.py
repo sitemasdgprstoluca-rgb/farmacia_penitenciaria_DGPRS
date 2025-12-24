@@ -600,7 +600,29 @@ IMPORT_ALLOWED_EXTENSIONS = ['.xlsx', '.xls']
 # CORS CONFIGURATION
 # ═══════════════════════════════════════════════════════════
 # Lee los orígenes permitidos desde una única variable de entorno
-CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='', cast=Csv())
+_cors_from_env = config('CORS_ALLOWED_ORIGINS', default='', cast=Csv())
+
+# Dominios de producción en Render (siempre permitidos)
+_cors_render_domains = [
+    'https://farmacia-penitenciaria-front.onrender.com',
+    'https://farmacia-penitenciaria.onrender.com',
+]
+
+# Dominios de desarrollo local
+_cors_dev_domains = [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:5173',
+] if DEBUG else []
+
+# Combinar todos los orígenes permitidos (sin duplicados)
+CORS_ALLOWED_ORIGINS = list(set(
+    [origin for origin in _cors_from_env if origin] +
+    _cors_render_domains +
+    _cors_dev_domains
+))
+
 CORS_ALLOW_CREDENTIALS = True  # IMPORTANTE: Permite envío de cookies cross-origin
 CORS_ALLOW_METHODS = [
     'DELETE',
