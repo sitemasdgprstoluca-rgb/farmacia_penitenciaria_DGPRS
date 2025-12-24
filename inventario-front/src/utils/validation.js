@@ -471,7 +471,8 @@ export const validarProducto = (producto, esEdicion = false) => {
     errores.unidad_medida = 'La unidad de medida es obligatoria';
   }
   
-  if (!producto.presentacion?.trim() && !esEdicion) {
+  // ISS-FIX: Presentación es obligatoria tanto en creación como en edición
+  if (!producto.presentacion?.trim()) {
     errores.presentacion = 'La presentación es obligatoria';
   }
   

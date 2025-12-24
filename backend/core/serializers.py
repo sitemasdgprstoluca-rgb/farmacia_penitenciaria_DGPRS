@@ -692,6 +692,7 @@ class ProductoSerializer(serializers.ModelSerializer):
             'clave': {'required': True},
             'nombre': {'required': True},
             'descripcion': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'presentacion': {'required': True},  # ISS-FIX: Presentación obligatoria
         }
     
     def get_stock_actual(self, obj):
@@ -765,6 +766,12 @@ class ProductoSerializer(serializers.ModelSerializer):
         if value < 0:
             raise serializers.ValidationError('El stock mínimo no puede ser negativo')
         return value
+    
+    def validate_presentacion(self, value):
+        """ISS-FIX: Presentación es obligatoria."""
+        if not value or str(value).strip() == '':
+            raise serializers.ValidationError('La presentación es obligatoria')
+        return str(value).strip()
     
     def validate(self, attrs):
         return attrs
@@ -2159,6 +2166,9 @@ class SalidaDonacionSerializer(serializers.ModelSerializer):
     """
     Serializer para salidas/entregas del almacen de donaciones.
     Control interno sin afectar movimientos principales.
+    
+    Nota: Los campos finalizado/fecha_finalizado/finalizado_por están
+    pendientes de migración SQL en Supabase.
     """
     detalle_donacion_info = serializers.SerializerMethodField()
     entregado_por_nombre = serializers.SerializerMethodField()
@@ -2171,7 +2181,7 @@ class SalidaDonacionSerializer(serializers.ModelSerializer):
             'cantidad', 'destinatario', 'motivo',
             'entregado_por', 'entregado_por_nombre',
             'producto_nombre',
-            'fecha_entrega', 'notas', 'created_at'
+            'fecha_entrega', 'notas', 'created_at',
         ]
         read_only_fields = ['created_at', 'fecha_entrega', 'entregado_por']
         extra_kwargs = {

@@ -176,9 +176,8 @@ const Trazabilidad = () => {
   const [centros, setCentros] = useState([]);
   const [centroFiltro, setCentroFiltro] = useState('');
   
-  // Filtros para exportación global
-  const [fechaInicio, setFechaInicio] = useState('');
-  const [fechaFin, setFechaFin] = useState('');
+  // Filtros para exportación global (caducidad)
+  const [filtroCaducidad, setFiltroCaducidad] = useState('');
   const [exportandoGlobal, setExportandoGlobal] = useState(false);
   
   // Control de debounce
@@ -248,7 +247,7 @@ const Trazabilidad = () => {
     }
   };
 
-  // Exportar trazabilidad global de lotes (con filtros de fecha)
+  // Exportar trazabilidad global de lotes (con filtros de caducidad y centro)
   const handleExportarGlobal = async (formato = 'pdf') => {
     if (!esAdminOFarmacia) {
       toast.error('Solo administradores y farmacia pueden exportar reportes globales');
@@ -257,11 +256,15 @@ const Trazabilidad = () => {
 
     setExportandoGlobal(true);
     try {
+      // Usar parámetros correctos del backend LoteViewSet
       const params = {
         formato,
-        ...(fechaInicio && { fecha_desde: fechaInicio }),
-        ...(fechaFin && { fecha_hasta: fechaFin }),
+        // Filtro de caducidad
+        ...(filtroCaducidad && { caducidad: filtroCaducidad }),
+        // Filtro de centro
         ...(centroFiltro && { centro: centroFiltro }),
+        // Solo lotes con stock
+        con_stock: 'con_stock',
       };
 
       const response = await lotesAPI.exportar(params);
@@ -284,7 +287,7 @@ const Trazabilidad = () => {
 
     const codigoTrimmed = codigoBusqueda.trim();
     if (!codigoTrimmed) {
-      toast.error('Ingrese clave de producto o número de lote');
+      toast.error('Ingrese clave de producto, nombre o número de lote');
       return;
     }
 
@@ -297,11 +300,13 @@ const Trazabilidad = () => {
     }
 
     setLoading(true);
+    let encontrado = false;
+    
     try {
       // Preparar parámetros con filtro de centro opcional
       const params = centroFiltro ? { centro: centroFiltro } : {};
 
-      // Intentar primero búsqueda por producto
+      // Intentar primero búsqueda por producto (clave o nombre)
       try {
         const response = await trazabilidadAPI.producto(codigoTrimmed, params);
         const datosNormalizados = normalizeProductoResponse(response.data);
@@ -309,32 +314,41 @@ const Trazabilidad = () => {
         setResultados(datosNormalizados);
         setCodigoResultados(codigoTrimmed);
         lastSearchRef.current = { codigo: codigoTrimmed, centro: centroFiltro, tipo: 'producto' };
-        
+        encontrado = true;
         toast.success('Trazabilidad de producto cargada');
         return;
       } catch (errorProducto) {
         // Si no se encuentra producto (404), intentar por lote
-        if (errorProducto.response?.status === 404 && esAdminOFarmacia) {
-          const responseLote = await trazabilidadAPI.lote(codigoTrimmed, params);
-          const datosNormalizados = normalizeLoteResponse(responseLote.data);
-          
-          setResultados(datosNormalizados);
-          setCodigoResultados(codigoTrimmed);
-          lastSearchRef.current = { codigo: codigoTrimmed, centro: centroFiltro, tipo: 'lote' };
-          
-          toast.success('Trazabilidad de lote cargada');
-          return;
+        // Ahora disponible para todos los usuarios (no solo admin)
+        if (errorProducto.response?.status === 404) {
+          try {
+            const responseLote = await trazabilidadAPI.lote(codigoTrimmed, params);
+            const datosNormalizados = normalizeLoteResponse(responseLote.data);
+            
+            setResultados(datosNormalizados);
+            setCodigoResultados(codigoTrimmed);
+            lastSearchRef.current = { codigo: codigoTrimmed, centro: centroFiltro, tipo: 'lote' };
+            encontrado = true;
+            toast.success('Trazabilidad de lote cargada');
+            return;
+          } catch (errorLote) {
+            // Ambas búsquedas fallaron - mostrar error final
+            throw errorLote;
+          }
         }
-        // Re-lanzar el error si no es 404 o no es admin
+        // Re-lanzar el error si no es 404
         throw errorProducto;
       }
     } catch (error) {
-      if (error.response?.status === 403) {
-        toast.error('No tienes permiso para acceder a esta trazabilidad');
-      } else if (error.response?.status === 404) {
-        toast.error('Producto o lote no encontrado');
-      } else {
-        toast.error(error.response?.data?.error || 'Error al cargar trazabilidad');
+      // Solo mostrar error si no se encontró nada
+      if (!encontrado) {
+        if (error.response?.status === 403) {
+          toast.error('No tienes permiso para acceder a esta trazabilidad');
+        } else if (error.response?.status === 404) {
+          toast.error('Producto o lote no encontrado. Verifica la clave, nombre o número de lote.');
+        } else {
+          toast.error(error.response?.data?.error || 'Error al cargar trazabilidad');
+        }
       }
       console.error(error);
       setResultados(null);
@@ -398,7 +412,7 @@ const Trazabilidad = () => {
   };
 
   const renderInfoProducto = () => (
-    <div className="grid gap-4 md:grid-cols-5">
+    <div className="grid gap-4 md:grid-cols-4">
       <div>
         <p className="text-xs text-gray-500">Clave</p>
         <p className="font-semibold">{resultados.codigo || '-'}</p>
@@ -408,12 +422,8 @@ const Trazabilidad = () => {
         <p className="font-semibold">{resultados.descripcion || resultados.nombre || '-'}</p>
       </div>
       <div>
-        <p className="text-xs text-gray-500">Unidad</p>
-        <p className="font-semibold">{resultados.unidad_medida || '-'}</p>
-      </div>
-      <div>
         <p className="text-xs text-gray-500">Presentación</p>
-        <p className="font-semibold">{resultados.presentacion || '-'}</p>
+        <p className="font-semibold">{resultados.presentacion || resultados.unidad_medida || '-'}</p>
       </div>
       <div>
         <p className="text-xs text-gray-500">Inventario actual</p>
@@ -535,7 +545,7 @@ const Trazabilidad = () => {
                 Buscar por Clave de Producto o Número de Lote
               </label>
               <AutocompleteInput
-                apiCall={productosAPI.getAll}
+                apiCall={productosAPI.busquedaCombinada}
                 value={codigoBusqueda}
                 onChange={handleCodigoBusquedaChange}
                 placeholder="Escribe clave, nombre, descripción o número de lote..."
@@ -543,7 +553,7 @@ const Trazabilidad = () => {
                 secondaryField="nombre"
                 searchField="search"
                 mode="product"
-                minChars={1}
+                minChars={2}
                 disabled={loading}
                 className="border-2 border-gray-300"
               />
@@ -616,34 +626,24 @@ const Trazabilidad = () => {
           </div>
           
           <div className="flex flex-wrap items-end gap-4">
-            {/* Fecha inicio */}
-            <div className="w-40">
+            {/* Filtro de caducidad */}
+            <div className="w-48">
               <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                 <FaCalendarAlt className="text-gray-500" />
-                Desde
+                Estado Caducidad
               </label>
-              <input
-                type="date"
-                value={fechaInicio}
-                onChange={(e) => setFechaInicio(e.target.value)}
-                className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white text-sm"
+              <select
+                value={filtroCaducidad}
+                onChange={(e) => setFiltroCaducidad(e.target.value)}
+                className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white text-sm font-medium"
                 disabled={exportandoGlobal}
-              />
-            </div>
-            
-            {/* Fecha fin */}
-            <div className="w-40">
-              <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                <FaCalendarAlt className="text-gray-500" />
-                Hasta
-              </label>
-              <input
-                type="date"
-                value={fechaFin}
-                onChange={(e) => setFechaFin(e.target.value)}
-                className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white text-sm"
-                disabled={exportandoGlobal}
-              />
+              >
+                <option value="">Todos</option>
+                <option value="vencido">🔴 Vencidos</option>
+                <option value="critico">🟠 Críticos (&lt;3 meses)</option>
+                <option value="proximo">🟡 Próximos (3-6 meses)</option>
+                <option value="normal">🟢 Normal (&gt;6 meses)</option>
+              </select>
             </div>
             
             {/* Selector de centro para exportación global */}

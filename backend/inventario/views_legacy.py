@@ -4237,12 +4237,14 @@ class MovimientoViewSet(
                     'observaciones': mov.motivo or ''
                 })
             
+            # ISS-FIX: Agregar todos los campos del producto incluyendo stock_minimo y presentacion
             producto_info = {
                 'clave': producto.clave,
                 'descripcion': producto.nombre,  # Usar nombre como descripción principal
                 'presentacion': producto.presentacion or '',
-                'unidad_medida': producto.unidad_medida,
-                'stock_actual': producto.get_stock_actual() if hasattr(producto, 'get_stock_actual') else 0,
+                'unidad_medida': producto.unidad_medida or 'PIEZA',
+                'stock_actual': producto.get_stock_actual() if hasattr(producto, 'get_stock_actual') else producto.stock_actual,
+                'stock_minimo': producto.stock_minimo or 0,
                 'precio_unitario': 0,  # precio_unitario está en Lote, no en Producto
             }
             
@@ -4313,18 +4315,25 @@ class MovimientoViewSet(
                 })
             
             # ISS-FIX: Usar nombre como fallback para descripcion, incluir numero_contrato
+            # ISS-FIX: Agregar stock_minimo y mejorar campos para PDF
             descripcion_producto = 'N/A'
             presentacion_producto = ''
+            unidad_medida_producto = 'PIEZA'  # Default
+            stock_minimo_producto = 0
+            
             if lote.producto:
                 descripcion_producto = lote.producto.nombre or lote.producto.descripcion or 'N/A'
                 presentacion_producto = lote.producto.presentacion or ''
+                unidad_medida_producto = lote.producto.unidad_medida or 'PIEZA'
+                stock_minimo_producto = lote.producto.stock_minimo or 0
             
             producto_info = {
                 'clave': lote.producto.clave if lote.producto else 'N/A',
                 'descripcion': descripcion_producto,
                 'presentacion': presentacion_producto,
-                'unidad_medida': lote.producto.unidad_medida if lote.producto else 'N/A',
+                'unidad_medida': unidad_medida_producto,
                 'stock_actual': lote.cantidad_actual,
+                'stock_minimo': stock_minimo_producto,
                 'numero_lote': lote.numero_lote,
                 'fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else 'N/A',
                 'proveedor': lote.marca or 'No especificado',
@@ -7694,15 +7703,31 @@ def trazabilidad_lote(request, codigo):
     Trazabilidad completa de un lote por su numero.
     
     SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
+    Permite acceso a usuarios autenticados (excepto rol 'vista').
     """
     try:
-        if not request.user or not request.user.is_authenticated or not is_farmacia_or_admin(request.user):
-            return Response({'error': 'Solo usuarios de farmacia o administradores pueden acceder a reportes'}, status=status.HTTP_403_FORBIDDEN)
+        # SEGURIDAD: Verificar autenticación
+        user = request.user
+        if not user or not user.is_authenticated:
+            return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Usuarios con rol 'vista' no pueden acceder a trazabilidad
+        rol_usuario = (getattr(user, 'rol', '') or '').lower()
+        if rol_usuario == 'vista':
+            return Response({'error': 'No tienes permiso para trazabilidad'}, status=status.HTTP_403_FORBIDDEN)
 
         # SEGURIDAD: Determinar filtro de centro
-        user = request.user
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
+        
+        # Permitir filtro de centro vía parámetro (solo admin/farmacia)
+        centro_param = request.query_params.get('centro')
+        if centro_param and is_farmacia_or_admin(user):
+            try:
+                user_centro = Centro.objects.get(pk=centro_param)
+                filtrar_por_centro = True
+            except Centro.DoesNotExist:
+                pass
         
         lote_query = Lote.objects.select_related('producto').filter(numero_lote__iexact=codigo)
         

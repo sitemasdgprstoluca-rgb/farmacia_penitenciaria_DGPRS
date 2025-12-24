@@ -6,7 +6,7 @@
  * Las salidas se registran SOLO en la tabla salidas_donaciones.
  * 
  * Permite seleccionar múltiples productos del almacén de donaciones
- * y registrar entregas masivas a destinatarios.
+ * y registrar salidas masivas a centros del sistema.
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { toast } from 'react-hot-toast';
@@ -25,16 +25,21 @@ import {
   FaArrowLeft,
   FaExclamationTriangle,
   FaGift,
-  FaUser,
+  FaBuilding,
+  FaFilePdf,
 } from 'react-icons/fa';
-import { detallesDonacionAPI, salidasDonacionesAPI } from '../services/api';
+import { detallesDonacionAPI, salidasDonacionesAPI, centrosAPI } from '../services/api';
 
 const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
-  // Estado del formulario
-  const [destinatario, setDestinatario] = useState('');
+  // Estado del formulario - Centro destino obligatorio
+  const [centroDestino, setCentroDestino] = useState('');
   const [motivo, setMotivo] = useState('');
   const [notas, setNotas] = useState('');
   const [items, setItems] = useState([]); // Carrito de items seleccionados
+  
+  // Lista de centros disponibles
+  const [centros, setCentros] = useState([]);
+  const [loadingCentros, setLoadingCentros] = useState(false);
   
   // Catálogo de productos donados disponibles
   const [catalogoProductos, setCatalogoProductos] = useState([]);
@@ -51,6 +56,20 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
   
   // Ref para debounce de búsqueda
   const searchTimeoutRef = useRef(null);
+  
+  // Cargar centros del sistema
+  const cargarCentros = useCallback(async () => {
+    setLoadingCentros(true);
+    try {
+      const resp = await centrosAPI.getAll({ page_size: 100, activo: true, ordering: 'nombre' });
+      setCentros(resp.data.results || resp.data || []);
+    } catch (err) {
+      console.error('Error cargando centros:', err);
+      toast.error('Error al cargar centros');
+    } finally {
+      setLoadingCentros(false);
+    }
+  }, []);
   
   // Cargar catálogo de productos donados con stock
   const cargarCatalogo = useCallback(async (termino = '') => {
@@ -78,10 +97,11 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
     }
   }, []);
   
-  // Cargar catálogo inicial
+  // Cargar datos iniciales
   useEffect(() => {
+    cargarCentros();
     cargarCatalogo();
-  }, [cargarCatalogo]);
+  }, [cargarCentros, cargarCatalogo]);
   
   // Handler de búsqueda con debounce
   const handleBusquedaChange = useCallback((valor) => {
@@ -230,8 +250,8 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
   
   // Procesar salida masiva de donaciones
   const procesarSalida = async () => {
-    if (!destinatario.trim()) {
-      toast.error('Ingrese el destinatario');
+    if (!centroDestino) {
+      toast.error('Seleccione el centro destino');
       return;
     }
     
@@ -245,6 +265,9 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
       toast.error('Todas las cantidades deben ser mayores a 0');
       return;
     }
+    
+    // Obtener nombre del centro para mostrar en resultado
+    const centroSeleccionado = centros.find(c => c.id === parseInt(centroDestino));
     
     setProcesando(true);
     
@@ -263,7 +286,8 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
           const resp = await salidasDonacionesAPI.create({
             detalle_donacion: item.detalle_id,
             cantidad: item.cantidad,
-            destinatario: destinatario.trim(),
+            centro_destino: parseInt(centroDestino),
+            destinatario: centroSeleccionado?.nombre || 'Centro',
             motivo: motivo.trim() || null,
             notas: notas.trim() || null,
           });
@@ -284,15 +308,15 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
       if (resultados.exitosos > 0) {
         setResultado({
           success: true,
-          message: `${resultados.exitosos} entregas registradas correctamente`,
-          destinatario: destinatario,
+          message: `${resultados.exitosos} salidas registradas correctamente`,
+          centro_destino: centroSeleccionado?.nombre || 'Centro',
           total_productos: resultados.exitosos,
           total_unidades: resultados.salidas.reduce((sum, s) => sum + s.cantidad, 0),
           salidas: resultados.salidas,
           errores: resultados.errores
         });
         
-        toast.success(`${resultados.exitosos} entregas procesadas`);
+        toast.success(`${resultados.exitosos} salidas procesadas`);
         
         if (onSuccess) {
           onSuccess(resultados);
@@ -300,20 +324,103 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
       }
       
       if (resultados.fallidos > 0) {
-        toast.error(`${resultados.fallidos} entregas fallaron`);
+        toast.error(`${resultados.fallidos} salidas fallaron`);
       }
       
     } catch (err) {
       console.error('Error procesando salidas:', err);
-      toast.error('Error al procesar entregas');
+      toast.error('Error al procesar salidas');
     } finally {
       setProcesando(false);
+    }
+  };
+
+  // Generar PDF de recibo masivo
+  const generarPdfMasivo = async () => {
+    if (!resultado || !resultado.salidas || resultado.salidas.length === 0) {
+      toast.error('No hay salidas para generar el PDF');
+      return;
+    }
+
+    try {
+      toast.loading('Generando recibo PDF...', { id: 'pdf-masivo' });
+      
+      // Obtener los IDs de las salidas exitosas
+      const salidasIds = resultado.salidas.map(s => s.salida_id).filter(id => id);
+      
+      if (salidasIds.length === 0) {
+        toast.dismiss('pdf-masivo');
+        toast.error('No se encontraron IDs de salidas válidos');
+        return;
+      }
+      
+      const response = await salidasDonacionesAPI.generarPdfMasivo({
+        salidas_ids: salidasIds,
+        centro_destino: resultado.centro_destino || centroDestino,
+        motivo: motivo
+      });
+      
+      // Crear blob y descargar
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `recibo_salida_masiva_donacion_${new Date().toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.dismiss('pdf-masivo');
+      toast.success('Recibo PDF generado correctamente');
+    } catch (err) {
+      console.error('Error generando PDF masivo:', err);
+      toast.dismiss('pdf-masivo');
+      toast.error('Error al generar el recibo PDF');
+    }
+  };
+
+  // Finalizar todas las salidas masivas (marcarlas como entregadas)
+  const finalizarSalidasMasivas = async () => {
+    if (!resultado || !resultado.salidas || resultado.salidas.length === 0) {
+      toast.error('No hay salidas para finalizar');
+      return;
+    }
+
+    try {
+      toast.loading('Finalizando entregas...', { id: 'finalizar-masivo' });
+      
+      const salidasIds = resultado.salidas.map(s => s.salida_id).filter(id => id);
+      
+      if (salidasIds.length === 0) {
+        toast.dismiss('finalizar-masivo');
+        toast.error('No se encontraron IDs de salidas válidos');
+        return;
+      }
+      
+      const response = await salidasDonacionesAPI.finalizarMasivo({
+        salidas_ids: salidasIds
+      });
+      
+      toast.dismiss('finalizar-masivo');
+      toast.success(response.data.mensaje || 'Entregas finalizadas correctamente');
+      
+      // Actualizar el estado del resultado para mostrar que está finalizado
+      setResultado(prev => ({
+        ...prev,
+        finalizado: true
+      }));
+      
+    } catch (err) {
+      console.error('Error finalizando salidas:', err);
+      toast.dismiss('finalizar-masivo');
+      toast.error(err.response?.data?.error || 'Error al finalizar las entregas');
     }
   };
   
   // Reiniciar
   const reiniciar = () => {
-    setDestinatario('');
+    setCentroDestino('');
     setMotivo('');
     setNotas('');
     setItems([]);
@@ -330,7 +437,7 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
           <div className="p-6">
             <div className="text-center mb-6">
               <FaCheckCircle className="text-6xl text-green-500 mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-gray-800">Entregas Registradas</h2>
+              <h2 className="text-2xl font-bold text-gray-800">Salidas Registradas</h2>
               <p className="text-gray-600 mt-2">{resultado.message}</p>
             </div>
             
@@ -340,7 +447,7 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
                 <span className="font-semibold text-purple-800">Almacén de Donaciones</span>
               </div>
               <p className="text-sm text-purple-700">
-                Estas entregas se registraron únicamente en el inventario de donaciones.
+                Estas salidas se registraron únicamente en el inventario de donaciones.
                 No afectan el inventario principal de farmacia.
               </p>
             </div>
@@ -348,8 +455,8 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
             <div className="bg-gray-50 rounded-lg p-4 mb-6">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="font-semibold text-gray-700">Destinatario:</span>
-                  <span className="ml-2 text-gray-900">{resultado.destinatario}</span>
+                  <span className="font-semibold text-gray-700">Centro Destino:</span>
+                  <span className="ml-2 text-gray-900">{resultado.centro_destino}</span>
                 </div>
                 <div>
                   <span className="font-semibold text-gray-700">Total Productos:</span>
@@ -362,7 +469,7 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
               </div>
             </div>
             
-            {/* Tabla de entregas */}
+            {/* Tabla de salidas */}
             <div className="overflow-x-auto mb-6">
               <table className="min-w-full divide-y divide-gray-200 text-sm">
                 <thead className="bg-gray-100">
@@ -402,8 +509,44 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
               </div>
             )}
             
+            {/* Estado de finalización */}
+            {resultado.finalizado && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 text-center">
+                <FaCheckCircle className="text-3xl text-green-500 mx-auto mb-2" />
+                <p className="text-green-700 font-semibold">✓ Entrega Finalizada</p>
+                <p className="text-sm text-green-600">Las firmas han sido completadas</p>
+              </div>
+            )}
+            
             {/* Botones */}
-            <div className="flex justify-center gap-4">
+            <div className="flex flex-wrap justify-center gap-4">
+              {!resultado.finalizado && (
+                <>
+                  <button
+                    onClick={generarPdfMasivo}
+                    className="flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    <FaFilePdf />
+                    Hoja de Firmas PDF
+                  </button>
+                  <button
+                    onClick={finalizarSalidasMasivas}
+                    className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    <FaCheckCircle />
+                    Finalizar Entrega
+                  </button>
+                </>
+              )}
+              {resultado.finalizado && (
+                <button
+                  onClick={generarPdfMasivo}
+                  className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  <FaFilePdf />
+                  Descargar Comprobante
+                </button>
+              )}
               <button
                 onClick={reiniciar}
                 className="flex items-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
@@ -459,25 +602,34 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
             <span className="font-semibold">Almacén de Donaciones Independiente</span>
           </div>
           <p className="text-sm text-purple-700 mt-1">
-            Las entregas aquí registradas NO afectan el inventario principal, lotes, ni movimientos de farmacia.
+            Las salidas aquí registradas NO afectan el inventario principal, lotes, ni movimientos de farmacia.
           </p>
         </div>
         
-        {/* Destinatario y Toggle Vista */}
+        {/* Centro Destino y Toggle Vista */}
         <div className="p-4 border-b bg-gray-50">
           <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
             <div className="flex-1 max-w-md">
               <label className="block text-sm font-semibold text-gray-700 mb-1">
-                <FaUser className="inline mr-2" />
-                Destinatario *
+                <FaBuilding className="inline mr-2" />
+                Centro Destino *
               </label>
-              <input
-                type="text"
-                value={destinatario}
-                onChange={(e) => setDestinatario(e.target.value)}
-                placeholder="Nombre del interno, paciente o área..."
+              <select
+                value={centroDestino}
+                onChange={(e) => setCentroDestino(e.target.value)}
                 className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-purple-500 transition-colors"
-              />
+                disabled={loadingCentros}
+              >
+                <option value="">Seleccionar centro destino...</option>
+                {centros.map((centro) => (
+                  <option key={centro.id} value={centro.id}>
+                    {centro.nombre}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Solo se puede entregar a centros registrados en el sistema
+              </p>
             </div>
             
             {/* Toggle Vista */}
@@ -804,10 +956,12 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
                 <span className="text-sm text-gray-500">Total unidades:</span>
                 <span className="ml-2 text-lg font-bold text-purple-700">{totalUnidades}</span>
               </div>
-              {destinatario && (
+              {centroDestino && (
                 <div>
-                  <span className="text-sm text-gray-500">Destinatario:</span>
-                  <span className="ml-2 text-sm font-medium text-gray-800">{destinatario}</span>
+                  <span className="text-sm text-gray-500">Centro destino:</span>
+                  <span className="ml-2 text-sm font-medium text-gray-800">
+                    {centros.find(c => c.id === parseInt(centroDestino))?.nombre || 'Centro'}
+                  </span>
                 </div>
               )}
             </div>
@@ -824,7 +978,7 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
               )}
               <button
                 onClick={procesarSalida}
-                disabled={procesando || items.length === 0 || !destinatario.trim()}
+                disabled={procesando || items.length === 0 || !centroDestino}
                 className="flex items-center gap-2 px-6 py-2 bg-purple-700 text-white rounded-lg hover:bg-purple-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {procesando ? (
@@ -835,7 +989,7 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
                 ) : (
                   <>
                     <FaHandHoldingMedical />
-                    Registrar Entregas ({totalProductos})
+                    Registrar Salidas ({totalProductos})
                   </>
                 )}
               </button>

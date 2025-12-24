@@ -7,6 +7,8 @@ import {
   FaTrash,
   FaEye,
   FaCheck,
+  FaCheckCircle,
+  FaClock,
   FaFilter,
   FaGift,
   FaChevronDown,
@@ -29,6 +31,7 @@ import {
   FaShoppingCart,
   FaTable,
   FaClipboardCheck,
+  FaFilePdf,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { COLORS } from '../constants/theme';
@@ -99,12 +102,12 @@ const Donaciones = () => {
   const [confirmRechazar, setConfirmRechazar] = useState(null);
   const [motivoRechazo, setMotivoRechazo] = useState('');
 
-  // Salidas de donaciones (entregas)
+  // Salidas de donaciones (entregas a centros)
   const [showSalidaModal, setShowSalidaModal] = useState(false);
   const [salidaDetalle, setSalidaDetalle] = useState(null);
   const [salidaForm, setSalidaForm] = useState({
     cantidad: '',
-    destinatario: '',
+    centro_destino: '',  // ID del centro destino (obligatorio)
     motivo: '',
     notas: '',
   });
@@ -130,6 +133,11 @@ const Donaciones = () => {
     activo: true,
     notas: '',
   });
+  
+  // Importación/Exportación de catálogo de productos de donaciones
+  const [exportingCatalogo, setExportingCatalogo] = useState(false);
+  const [importingCatalogo, setImportingCatalogo] = useState(false);
+  const catalogoFileInputRef = useRef(null);
   
   // Modal rápido para crear producto desde formulario de donación
   const [showQuickProductModal, setShowQuickProductModal] = useState(false);
@@ -199,6 +207,9 @@ const Donaciones = () => {
   const [centros, setCentros] = useState([]);
   const [lotes, setLotes] = useState([]);
 
+  // Estado para número de donación auto-generado
+  const [siguienteNumero, setSiguienteNumero] = useState('');
+  
   // Formulario - ISS-DB-ALIGN: donante_tipo default 'empresa' (primer valor del array)
   const [formData, setFormData] = useState({
     numero: '',
@@ -238,6 +249,44 @@ const Donaciones = () => {
       setCentros(centrosRes.data.results || centrosRes.data || []);
     } catch (err) {
       console.error('Error cargando catálogos:', err);
+    }
+  }, []);
+
+  // Generar siguiente número de donación automático
+  const generarSiguienteNumero = useCallback(async () => {
+    try {
+      // Obtener todas las donaciones para encontrar el último número
+      const response = await donacionesAPI.getAll({ page_size: 1, ordering: '-id' });
+      const ultimaDonacion = response.data.results?.[0] || response.data?.[0];
+      
+      // Generar el siguiente número basado en el formato DON-YYYY-NNNN
+      const year = new Date().getFullYear();
+      let siguienteSeq = 1;
+      
+      if (ultimaDonacion && ultimaDonacion.numero) {
+        // Intentar extraer el número secuencial del último registro
+        const match = ultimaDonacion.numero.match(/DON-(\d{4})-(\d+)/);
+        if (match) {
+          const lastYear = parseInt(match[1]);
+          const lastSeq = parseInt(match[2]);
+          if (lastYear === year) {
+            siguienteSeq = lastSeq + 1;
+          }
+        } else {
+          // Si el formato es diferente, usar el ID como base
+          siguienteSeq = (ultimaDonacion.id || 0) + 1;
+        }
+      }
+      
+      const nuevoNumero = `DON-${year}-${String(siguienteSeq).padStart(4, '0')}`;
+      setSiguienteNumero(nuevoNumero);
+      return nuevoNumero;
+    } catch (err) {
+      console.error('Error generando número:', err);
+      // Fallback: usar timestamp
+      const fallback = `DON-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
+      setSiguienteNumero(fallback);
+      return fallback;
     }
   }, []);
 
@@ -394,6 +443,52 @@ const Donaciones = () => {
     }
   };
 
+  // Generar PDF de recibo para una salida individual
+  const generarPdfSalida = async (salidaId) => {
+    try {
+      toast.loading('Generando recibo PDF...', { id: 'pdf-loading' });
+      
+      const response = await salidasDonacionesAPI.generarPdf(salidaId);
+      
+      // Crear blob y descargar
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `recibo_salida_donacion_${salidaId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.dismiss('pdf-loading');
+      toast.success('Recibo PDF generado correctamente');
+    } catch (err) {
+      console.error('Error generando PDF:', err);
+      toast.dismiss('pdf-loading');
+      toast.error('Error al generar el recibo PDF');
+    }
+  };
+
+  // Finalizar una salida de donación (marcarla como entregada)
+  const finalizarSalida = async (salidaId) => {
+    try {
+      toast.loading('Finalizando entrega...', { id: 'finalizar-loading' });
+      
+      await salidasDonacionesAPI.finalizar(salidaId);
+      
+      toast.dismiss('finalizar-loading');
+      toast.success('Entrega finalizada correctamente');
+      
+      // Recargar la lista de entregas
+      cargarTodasEntregas();
+    } catch (err) {
+      console.error('Error finalizando salida:', err);
+      toast.dismiss('finalizar-loading');
+      toast.error(err.response?.data?.error || 'Error al finalizar la entrega');
+    }
+  };
+
   // NOTA: Funciones handleDescargarPlantilla y handleImportarEntregas eliminadas
   // Las entregas solo se exportan para verificar movimientos, no se importan
 
@@ -546,6 +641,96 @@ const Donaciones = () => {
     }
   };
 
+  // === IMPORTACIÓN/EXPORTACIÓN DEL CATÁLOGO DE PRODUCTOS DE DONACIONES ===
+  
+  // Exportar catálogo a Excel
+  const handleExportarCatalogo = async () => {
+    setExportingCatalogo(true);
+    try {
+      const response = await productosDonacionAPI.exportarExcel({ search: searchCatalogo });
+      
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `catalogo_productos_donaciones_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Catálogo exportado correctamente');
+    } catch (err) {
+      console.error('Error exportando catálogo:', err);
+      toast.error('Error al exportar catálogo');
+    } finally {
+      setExportingCatalogo(false);
+    }
+  };
+
+  // Descargar plantilla de importación de catálogo
+  const handleDescargarPlantillaCatalogo = async () => {
+    try {
+      const response = await productosDonacionAPI.plantillaExcel();
+      
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'plantilla_catalogo_donaciones.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Plantilla descargada');
+    } catch (err) {
+      console.error('Error descargando plantilla:', err);
+      toast.error('Error al descargar plantilla');
+    }
+  };
+
+  // Importar catálogo desde Excel
+  const handleImportarCatalogo = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    setImportingCatalogo(true);
+    try {
+      const formData = new FormData();
+      formData.append('archivo', file);
+      
+      const response = await productosDonacionAPI.importarExcel(formData);
+      
+      const { resultados } = response.data;
+      
+      if (resultados.exitosos > 0) {
+        toast.success(`${resultados.exitosos} productos importados correctamente`);
+        cargarCatalogos();
+      }
+      
+      if (resultados.fallidos > 0) {
+        toast.error(`${resultados.fallidos} productos fallaron`);
+        resultados.errores?.slice(0, 3).forEach((err) => {
+          toast.error(`Fila ${err.fila}: ${err.error}`, { duration: 5000 });
+        });
+      }
+    } catch (err) {
+      console.error('Error importando catálogo:', err);
+      const errorMsg = err.response?.data?.error || 'Error al importar catálogo';
+      toast.error(errorMsg);
+    } finally {
+      setImportingCatalogo(false);
+      if (catalogoFileInputRef.current) {
+        catalogoFileInputRef.current.value = '';
+      }
+    }
+  };
+
   // Crear producto rápido desde el formulario de donación
   const handleCrearProductoRapido = async () => {
     if (!quickProductForm.clave || !quickProductForm.nombre) {
@@ -630,8 +815,11 @@ const Donaciones = () => {
   };
 
   // Abrir modal de creación
-  const handleNuevo = () => {
+  const handleNuevo = async () => {
     resetForm();
+    // Generar número de donación automático
+    const nuevoNumero = await generarSiguienteNumero();
+    setFormData(prev => ({ ...prev, numero: nuevoNumero }));
     setShowModal(true);
   };
 
@@ -958,7 +1146,7 @@ const Donaciones = () => {
     setSalidaDetalle({ ...detalle, donacion_numero: donacion.numero });
     setSalidaForm({
       cantidad: '',
-      destinatario: '',
+      centro_destino: '',  // Centro destino obligatorio
       motivo: '',
       notas: '',
     });
@@ -967,8 +1155,8 @@ const Donaciones = () => {
 
   // Registrar salida de donación
   const handleRegistrarSalida = async () => {
-    if (!salidaForm.cantidad || !salidaForm.destinatario) {
-      toast.error('Completa cantidad y destinatario');
+    if (!salidaForm.cantidad || !salidaForm.centro_destino) {
+      toast.error('Completa cantidad y centro destino');
       return;
     }
 
@@ -978,16 +1166,20 @@ const Donaciones = () => {
       return;
     }
 
+    // Obtener nombre del centro para el destinatario
+    const centroSeleccionado = centros.find(c => c.id === parseInt(salidaForm.centro_destino));
+
     setActionLoading('salida');
     try {
       await salidasDonacionesAPI.create({
         detalle_donacion: salidaDetalle.id,
         cantidad: cantidad,
-        destinatario: salidaForm.destinatario,
+        centro_destino: parseInt(salidaForm.centro_destino),
+        destinatario: centroSeleccionado?.nombre || 'Centro',  // Nombre del centro como destinatario
         motivo: salidaForm.motivo || null,
         notas: salidaForm.notas || null,
       });
-      toast.success('Entrega registrada correctamente');
+      toast.success('Salida registrada correctamente');
       setShowSalidaModal(false);
       setSalidaDetalle(null);
       // Refrescar donación si está abierta
@@ -1005,7 +1197,7 @@ const Donaciones = () => {
       }
     } catch (err) {
       console.error('Error registrando salida:', err);
-      toast.error(err.response?.data?.error || err.response?.data?.cantidad?.[0] || 'Error al registrar entrega');
+      toast.error(err.response?.data?.error || err.response?.data?.cantidad?.[0] || 'Error al registrar salida');
     } finally {
       setActionLoading(null);
     }
@@ -1103,7 +1295,7 @@ const Donaciones = () => {
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
-            <FaHandHoldingMedical /> Entregas
+            <FaHandHoldingMedical /> Salidas Donación
           </button>
         </div>
       </div>
@@ -1126,7 +1318,7 @@ const Donaciones = () => {
                   <FaArrowRight className="text-purple-400" />
                   <span className="flex items-center gap-1"><FaWarehouse className="text-purple-500" /> Inventario</span>
                   <FaArrowRight className="text-purple-400" />
-                  <span className="flex items-center gap-1"><FaHandHoldingMedical className="text-purple-500" /> Entregar</span>
+                  <span className="flex items-center gap-1"><FaHandHoldingMedical className="text-purple-500" /> Salida</span>
                 </div>
                 <p className="text-xs text-purple-600 mt-2">
                   Las donaciones procesadas aparecen en "Inventario" donde puedes dar salida a los productos.
@@ -1520,19 +1712,64 @@ const Donaciones = () => {
                 />
               </div>
 
-              {/* Botón Agregar Producto */}
-              {puede.crear && (
+              {/* Acciones del catálogo */}
+              <div className="flex gap-2 flex-wrap">
+                {/* Exportar Excel */}
                 <button
-                  onClick={() => {
-                    setCatalogoForm({ clave: '', nombre: '', descripcion: '', unidad_medida: 'PIEZA', presentacion: '', activo: true, notas: '' });
-                    setEditingProductoDonacion(null);
-                    setShowCatalogoModal(true);
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                  onClick={handleExportarCatalogo}
+                  disabled={exportingCatalogo || productosDonacion.length === 0}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border text-green-700 border-green-300 hover:bg-green-50 transition-colors disabled:opacity-50"
                 >
-                  <FaPlus /> Agregar Producto
+                  {exportingCatalogo ? <FaSpinner className="animate-spin" /> : <FaFileExport />}
+                  Exportar
                 </button>
-              )}
+
+                {/* Descargar Plantilla */}
+                {puede.crear && (
+                  <button
+                    onClick={handleDescargarPlantillaCatalogo}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg border text-blue-700 border-blue-300 hover:bg-blue-50 transition-colors"
+                    title="Descargar plantilla Excel para importar productos"
+                  >
+                    <FaDownload /> Plantilla
+                  </button>
+                )}
+
+                {/* Importar Excel */}
+                {puede.crear && (
+                  <>
+                    <input
+                      type="file"
+                      ref={catalogoFileInputRef}
+                      onChange={handleImportarCatalogo}
+                      accept=".xlsx,.xls"
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => catalogoFileInputRef.current?.click()}
+                      disabled={importingCatalogo}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg border text-purple-700 border-purple-300 hover:bg-purple-50 transition-colors disabled:opacity-50"
+                    >
+                      {importingCatalogo ? <FaSpinner className="animate-spin" /> : <FaFileImport />}
+                      Importar
+                    </button>
+                  </>
+                )}
+
+                {/* Agregar Producto */}
+                {puede.crear && (
+                  <button
+                    onClick={() => {
+                      setCatalogoForm({ clave: '', nombre: '', descripcion: '', unidad_medida: 'PIEZA', presentacion: '', activo: true, notas: '' });
+                      setEditingProductoDonacion(null);
+                      setShowCatalogoModal(true);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                  >
+                    <FaPlus /> Agregar Producto
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1827,10 +2064,10 @@ const Donaciones = () => {
         </>
       )}
 
-      {/* ========== TAB: HISTORIAL DE ENTREGAS ========== */}
+      {/* ========== TAB: SALIDAS DE DONACIÓN ========== */}
       {activeTab === 'entregas' && (
         <>
-          {/* Barra de búsqueda y acciones entregas */}
+          {/* Barra de búsqueda y acciones salidas */}
           <div className="bg-white rounded-xl shadow-sm border p-4 mb-6">
             <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
               <div className="relative flex-1 max-w-md">
@@ -1869,12 +2106,12 @@ const Donaciones = () => {
                   Exportar
                 </button>
                 
-                {/* NOTA: Importación de entregas removida - solo exportar para verificar movimientos */}
+                {/* NOTA: Importación de salidas removida - solo exportar para verificar movimientos */}
               </div>
             </div>
           </div>
 
-          {/* Tabla de entregas */}
+          {/* Tabla de salidas */}
           <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
             {loadingEntregas ? (
               <div className="flex items-center justify-center py-20">
@@ -1883,8 +2120,8 @@ const Donaciones = () => {
             ) : todasEntregas.length === 0 ? (
               <div className="text-center py-20 text-gray-500">
                 <FaHandHoldingMedical className="mx-auto text-5xl mb-4 opacity-30" />
-                <p>No hay entregas registradas</p>
-                <p className="text-sm mt-2">Las entregas aparecerán aquí cuando se registren desde el inventario</p>
+                <p>No hay salidas registradas</p>
+                <p className="text-sm mt-2">Las salidas aparecerán aquí cuando se registren desde el inventario</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1896,8 +2133,8 @@ const Donaciones = () => {
                       <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Cantidad</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Destinatario</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Motivo</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Entregado por</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Donación</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Estado</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -1918,9 +2155,36 @@ const Donaciones = () => {
                         </td>
                         <td className="px-4 py-3">{entrega.destinatario}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{entrega.motivo || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{entrega.entregado_por_nombre || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500">
-                          {entrega.detalle_donacion_info?.donacion_numero || '-'}
+                        <td className="px-4 py-3 text-center">
+                          {entrega.finalizado ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                              <FaCheck className="text-green-600" /> Entregado
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-medium">
+                              ⏳ Pendiente
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            {!entrega.finalizado && (
+                              <button
+                                onClick={() => finalizarSalida(entrega.id)}
+                                className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                title="Finalizar entrega"
+                              >
+                                <FaCheck />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => generarPdfSalida(entrega.id)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title={entrega.finalizado ? "Descargar comprobante" : "Descargar hoja de firmas"}
+                            >
+                              <FaFilePdf />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -2096,18 +2360,9 @@ const Donaciones = () => {
 
               {/* Productos donados */}
               <div className="mb-6">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                    <FaBox /> Productos Donados ({formData.detalles.length})
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => setShowBulkAddModal(true)}
-                    className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-blue-300 text-blue-700 hover:bg-blue-50 transition-colors"
-                  >
-                    <FaTable /> Carga Masiva
-                  </button>
-                </div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                  <FaBox /> Productos Donados ({formData.detalles.length})
+                </h3>
 
                 {/* Formulario para agregar producto individual */}
                 <div className="bg-gray-50 rounded-lg p-4 mb-4">
@@ -2523,7 +2778,7 @@ const Donaciones = () => {
         </div>
       )}
 
-      {/* Modal de Registrar Salida/Entrega */}
+      {/* Modal de Registrar Salida de Donación */}
       {showSalidaModal && salidaDetalle && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
@@ -2533,7 +2788,7 @@ const Donaciones = () => {
               style={{ backgroundColor: COLORS.primary }}
             >
               <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                <FaHandHoldingMedical /> Registrar Entrega
+                <FaHandHoldingMedical /> Registrar Salida Donación
               </h2>
               <button
                 onClick={() => {
@@ -2578,15 +2833,23 @@ const Donaciones = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Destinatario *
+                    <FaBuilding className="inline mr-1" /> Centro Destino *
                   </label>
-                  <input
-                    type="text"
-                    value={salidaForm.destinatario}
-                    onChange={(e) => setSalidaForm({ ...salidaForm, destinatario: e.target.value })}
+                  <select
+                    value={salidaForm.centro_destino}
+                    onChange={(e) => setSalidaForm({ ...salidaForm, centro_destino: e.target.value })}
                     className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
-                    placeholder="Nombre del paciente/interno o área"
-                  />
+                  >
+                    <option value="">Seleccionar centro destino...</option>
+                    {centros.map((centro) => (
+                      <option key={centro.id} value={centro.id}>
+                        {centro.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Solo se puede entregar a centros registrados en el sistema
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -2597,7 +2860,7 @@ const Donaciones = () => {
                     value={salidaForm.motivo}
                     onChange={(e) => setSalidaForm({ ...salidaForm, motivo: e.target.value })}
                     className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
-                    placeholder="Motivo de la entrega"
+                    placeholder="Motivo de la salida"
                   />
                 </div>
                 <div>
@@ -2638,7 +2901,7 @@ const Donaciones = () => {
                   </>
                 ) : (
                   <>
-                    <FaHandHoldingMedical /> Registrar Entrega
+                    <FaHandHoldingMedical /> Registrar Salida
                   </>
                 )}
               </button>
@@ -2690,7 +2953,8 @@ const Donaciones = () => {
                         <th className="px-4 py-3 text-left font-medium text-gray-600">Producto</th>
                         <th className="px-4 py-3 text-center font-medium text-gray-600">Cantidad</th>
                         <th className="px-4 py-3 text-left font-medium text-gray-600">Destinatario</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-600">Entregado por</th>
+                        <th className="px-4 py-3 text-center font-medium text-gray-600">Estado</th>
+                        <th className="px-4 py-3 text-center font-medium text-gray-600">Acciones</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -2708,7 +2972,45 @@ const Donaciones = () => {
                           <td className="px-4 py-3 font-medium">{salida.producto_nombre || '-'}</td>
                           <td className="px-4 py-3 text-center font-bold text-primary">{salida.cantidad}</td>
                           <td className="px-4 py-3">{salida.destinatario}</td>
-                          <td className="px-4 py-3 text-gray-600">{salida.entregado_por_nombre || '-'}</td>
+                          <td className="px-4 py-3 text-center">
+                            {salida.finalizado ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                <FaCheckCircle />
+                                Entregado
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+                                <FaClock />
+                                Pendiente
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              {/* Botón de PDF - muestra firmas si pendiente, sello si finalizado */}
+                              <button
+                                onClick={() => generarPdfSalida(salida.id)}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title={salida.finalizado ? 'Ver comprobante de entrega' : 'Descargar hoja de firmas'}
+                              >
+                                <FaFilePdf />
+                              </button>
+                              {/* Botón de finalizar - solo si no está finalizado */}
+                              {!salida.finalizado && (
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm('¿Marcar esta entrega como finalizada? El PDF mostrará un sello de ENTREGADO.')) {
+                                      finalizarSalida(salida.id);
+                                    }
+                                  }}
+                                  className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                  title="Finalizar entrega (marcar como entregado)"
+                                >
+                                  <FaCheck />
+                                </button>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

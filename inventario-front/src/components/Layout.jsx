@@ -4,6 +4,7 @@ import { usePermissions } from "../hooks/usePermissions";
 import { useTheme } from "../hooks/useTheme";
 import { DEV_CONFIG } from "../config/dev";
 import NotificacionesBell from "./NotificacionesBell";
+import ConnectionIndicator from "./ConnectionIndicator";
 import { notificacionesAPI, authAPI } from "../services/api";
 import { clearTokens } from "../services/tokenManager";
 import {
@@ -347,6 +348,9 @@ function Layout() {
           onClick={() => setSidebarOpen(false)}
         />
       )}
+      
+      {/* Indicador de estado de conexión - aparece cuando hay problemas */}
+      <ConnectionIndicator />
     </div>
   );
 }

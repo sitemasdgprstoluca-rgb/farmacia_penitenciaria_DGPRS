@@ -96,32 +96,41 @@ const HttpWarningBanner = () => (
 
 /**
  * ISS-005 FIX: Banner de healthcheck omitido o degradado
- * Muestra advertencia persistente cuando no se verificó compatibilidad con backend
+ * Muestra advertencia sutil cuando no se verificó compatibilidad con backend
+ * Ahora es más discreto - aparece como un pequeño indicador en esquina
  */
 const HealthCheckWarningBanner = ({ reason, onDismiss, onRetry }) => (
-  <div className="fixed bottom-0 left-0 right-0 z-40 bg-amber-100 border-t border-amber-300 px-4 py-3 shadow-lg">
-    <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-      <div className="flex items-center gap-3">
-        <span className="text-xl">🔌</span>
-        <div>
-          <p className="text-sm font-medium text-amber-800">
-            Verificación de API omitida
+  <div className="fixed bottom-4 left-4 z-40 max-w-xs bg-amber-50 border border-amber-200 rounded-lg shadow-lg overflow-hidden">
+    <div className="p-3">
+      <div className="flex items-start gap-2">
+        <span className="text-lg flex-shrink-0">🔌</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium text-amber-800">
+            Modo degradado
           </p>
-          <p className="text-xs text-amber-700">
-            {reason || 'No se pudo verificar la compatibilidad con el servidor. Algunas funciones podrían no estar disponibles.'}
+          <p className="text-xs text-amber-700 mt-0.5">
+            {reason || 'Verificación de servidor omitida'}
           </p>
         </div>
+        <button
+          onClick={onDismiss}
+          className="flex-shrink-0 text-amber-400 hover:text-amber-600"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="mt-2 flex gap-2">
         <button
           onClick={onRetry}
-          className="px-3 py-1.5 text-sm font-medium rounded-lg bg-amber-200 text-amber-800 hover:bg-amber-300 transition-colors"
+          className="flex-1 px-2 py-1 text-xs font-medium rounded bg-amber-200 text-amber-800 hover:bg-amber-300 transition-colors"
         >
-          🔄 Verificar ahora
+          Verificar
         </button>
         <button
           onClick={onDismiss}
-          className="px-3 py-1.5 text-sm font-medium rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+          className="flex-1 px-2 py-1 text-xs font-medium rounded bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors"
         >
           Ignorar
         </button>
@@ -134,32 +143,79 @@ const HealthCheckWarningBanner = ({ reason, onDismiss, onRetry }) => (
  * ISS-005 FIX: Banner de API no saludable
  * Muestra error cuando el healthcheck falló
  * ISS-FIX: Mejorado para mostrar mensaje amigable en cold starts
+ * Ahora incluye barra de progreso animada y es más discreto
  */
-const ApiUnhealthyBanner = ({ error, onRetry, isServerStarting }) => (
-  <div className={`fixed bottom-0 left-0 right-0 z-40 ${isServerStarting ? 'bg-amber-100 border-amber-300' : 'bg-red-100 border-red-300'} border-t px-4 py-3 shadow-lg`}>
-    <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-      <div className="flex items-center gap-3">
-        <span className="text-xl">{isServerStarting ? '⏳' : '⚠️'}</span>
-        <div>
-          <p className={`text-sm font-medium ${isServerStarting ? 'text-amber-800' : 'text-red-800'}`}>
-            {isServerStarting ? 'Servidor iniciando...' : 'Conexión con servidor inestable'}
-          </p>
-          <p className={`text-xs ${isServerStarting ? 'text-amber-700' : 'text-red-700'}`}>
-            {isServerStarting 
-              ? 'El servidor está despertando. Esto puede tomar hasta 60 segundos en servicios gratuitos.'
-              : error || 'No se pudo conectar al servidor. Las operaciones podrían fallar.'}
-          </p>
+const ApiUnhealthyBanner = ({ error, onRetry, isServerStarting, onDismiss }) => {
+  const [progress, setProgress] = useState(0);
+  const [dismissed, setDismissed] = useState(false);
+
+  // Animar progreso cuando el servidor está iniciando
+  useEffect(() => {
+    if (isServerStarting) {
+      const interval = setInterval(() => {
+        setProgress(prev => Math.min(prev + Math.random() * 10, 95));
+      }, 1000);
+      return () => clearInterval(interval);
+    } else {
+      setProgress(0);
+    }
+  }, [isServerStarting]);
+
+  if (dismissed) return null;
+
+  return (
+    <div className={`fixed bottom-4 right-4 z-40 max-w-sm rounded-lg shadow-xl overflow-hidden 
+      ${isServerStarting ? 'bg-amber-50 border border-amber-200' : 'bg-red-50 border border-red-200'}`}
+    >
+      <div className="p-4">
+        <div className="flex items-start gap-3">
+          <span className="text-xl flex-shrink-0">{isServerStarting ? '⏳' : '⚠️'}</span>
+          <div className="flex-1 min-w-0">
+            <p className={`text-sm font-medium ${isServerStarting ? 'text-amber-800' : 'text-red-800'}`}>
+              {isServerStarting ? 'Servidor iniciando...' : 'Conexión inestable'}
+            </p>
+            <p className={`text-xs mt-1 ${isServerStarting ? 'text-amber-700' : 'text-red-700'}`}>
+              {isServerStarting 
+                ? 'El servidor gratuito está despertando. Esto puede tomar hasta 60 segundos.'
+                : error || 'Verificando conexión con el servidor...'}
+            </p>
+          </div>
+          <button
+            onClick={() => { setDismissed(true); onDismiss?.(); }}
+            className="flex-shrink-0 text-gray-400 hover:text-gray-600"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
+        
+        {/* Barra de progreso para servidor iniciando */}
+        {isServerStarting && (
+          <div className="mt-3 w-full bg-amber-200 rounded-full h-1.5 overflow-hidden">
+            <div 
+              className="bg-amber-500 h-1.5 rounded-full transition-all duration-500"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        )}
+        
+        <button
+          onClick={onRetry}
+          className={`mt-3 w-full py-2 text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-2
+            ${isServerStarting 
+              ? 'bg-amber-200 text-amber-800 hover:bg-amber-300' 
+              : 'bg-red-200 text-red-800 hover:bg-red-300'}`}
+        >
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          Reintentar conexión
+        </button>
       </div>
-      <button
-        onClick={onRetry}
-        className={`px-3 py-1.5 text-sm font-medium rounded-lg ${isServerStarting ? 'bg-amber-200 text-amber-800 hover:bg-amber-300' : 'bg-red-200 text-red-800 hover:bg-red-300'} transition-colors`}
-      >
-        🔄 Reintentar conexión
-      </button>
     </div>
-  </div>
-);
+  );
+};
 
 // Componente de error de configuración (ISS-001)
 // ISS-001 FIX (audit33): Bloquea render completo con instrucciones claras y enlace a documentación

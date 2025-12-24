@@ -2862,6 +2862,10 @@ class SalidaDonacion(models.Model):
     """
     Registro de entregas/salidas del almacen de donaciones.
     Permite control interno sin afectar movimientos principales.
+    
+    Nota: Tabla existente en Supabase con columnas limitadas.
+    Los campos finalizado/fecha_finalizado/finalizado_por se agregaran
+    cuando se ejecute la migración SQL correspondiente.
     """
     detalle_donacion = models.ForeignKey(
         DetalleDonacion, 
@@ -2882,6 +2886,11 @@ class SalidaDonacion(models.Model):
     )
     fecha_entrega = models.DateTimeField(auto_now_add=True)
     notas = models.TextField(blank=True, null=True)
+    # Campos comentados hasta que se ejecute la migración SQL en Supabase:
+    # ALTER TABLE salidas_donaciones ADD COLUMN IF NOT EXISTS finalizado BOOLEAN DEFAULT FALSE;
+    # ALTER TABLE salidas_donaciones ADD COLUMN IF NOT EXISTS fecha_finalizado TIMESTAMP WITH TIME ZONE;
+    # ALTER TABLE salidas_donaciones ADD COLUMN IF NOT EXISTS finalizado_por_id INTEGER REFERENCES usuarios(id);
+    # ALTER TABLE salidas_donaciones ADD COLUMN IF NOT EXISTS centro_destino_id INTEGER REFERENCES centros(id);
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
