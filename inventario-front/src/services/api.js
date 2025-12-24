@@ -1106,6 +1106,11 @@ export const salidaMasivaAPI = {
 
 // Trazabilidad -  NUEVO
 export const trazabilidadAPI = {
+  // Búsqueda unificada (detecta si es lote o producto)
+  buscar: (termino, params = {}) => apiClient.get('/trazabilidad/buscar/', { params: { q: termino, ...params } }),
+  // Autocompletado unificado
+  autocomplete: (search, params = {}) => apiClient.get('/trazabilidad/autocomplete/', { params: { search, ...params } }),
+  // Endpoints específicos
   producto: (clave, params = {}) => apiClient.get(`/trazabilidad/producto/${clave}/`, { params }),
   lote: (numeroLote, params = {}) => apiClient.get(`/trazabilidad/lote/${numeroLote}/`, { params }),
   exportarPdf: (clave) => apiClient.get(`/movimientos/trazabilidad-pdf/`, { 

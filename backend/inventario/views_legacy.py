@@ -9049,6 +9049,210 @@ class HojaRecoleccionViewSet(viewsets.ReadOnlyModelViewSet):
             }, status=status.HTTP_200_OK)  # No es error crítico
 
 
+# ============================================
+# BÚSQUEDA UNIFICADA DE TRAZABILIDAD
+# ============================================
+
+@api_view(['GET'])
+def trazabilidad_buscar(request):
+    """
+    Búsqueda unificada de trazabilidad: busca por lote, producto o clave.
+    
+    Primero intenta buscar como lote, luego como producto.
+    Retorna el tipo encontrado y los datos correspondientes.
+    
+    Query params:
+    - q: término de búsqueda (requerido)
+    - centro: filtro de centro (opcional, solo admin/farmacia)
+    
+    SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
+    """
+    try:
+        user = request.user
+        if not user or not user.is_authenticated:
+            return Response({'error': 'Autenticación requerida'}, status=status.HTTP_403_FORBIDDEN)
+        
+        rol_usuario = (getattr(user, 'rol', '') or '').lower()
+        if rol_usuario == 'vista':
+            return Response({'error': 'No tienes permiso para trazabilidad'}, status=status.HTTP_403_FORBIDDEN)
+        
+        query = request.query_params.get('q', '').strip()
+        if not query:
+            return Response({'error': 'Parámetro de búsqueda requerido'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Determinar filtro de centro
+        es_admin_farmacia = is_farmacia_or_admin(user)
+        filtrar_por_centro = not es_admin_farmacia
+        user_centro = get_user_centro(user) if filtrar_por_centro else None
+        
+        centro_param = request.query_params.get('centro')
+        if centro_param and es_admin_farmacia:
+            if centro_param != 'todos':
+                try:
+                    user_centro = Centro.objects.get(pk=centro_param)
+                    filtrar_por_centro = True
+                except Centro.DoesNotExist:
+                    pass
+        
+        # 1. Intentar buscar como lote (solo admin/farmacia)
+        if es_admin_farmacia:
+            lote_query = Lote.objects.select_related('producto', 'centro').filter(
+                Q(numero_lote__iexact=query) |
+                Q(numero_lote__icontains=query)
+            )
+            if filtrar_por_centro and user_centro:
+                lote_query = lote_query.filter(centro=user_centro)
+            
+            lote = lote_query.first()
+            if lote:
+                # Encontrado como lote - retornar tipo 'lote'
+                return Response({
+                    'tipo': 'lote',
+                    'encontrado': True,
+                    'identificador': lote.numero_lote,
+                    'id': lote.id,
+                    'datos': {
+                        'numero_lote': lote.numero_lote,
+                        'producto_clave': lote.producto.clave,
+                        'producto_nombre': lote.producto.nombre,
+                    }
+                })
+        
+        # 2. Buscar como producto (clave o nombre)
+        producto = Producto.objects.filter(
+            Q(clave__iexact=query) |
+            Q(clave__icontains=query) |
+            Q(nombre__icontains=query)
+        ).first()
+        
+        if producto:
+            # Verificar si hay lotes accesibles para este usuario
+            lotes_accesibles = Lote.objects.filter(producto=producto, activo=True)
+            if filtrar_por_centro and user_centro:
+                lotes_accesibles = lotes_accesibles.filter(centro=user_centro)
+            
+            if lotes_accesibles.exists() or es_admin_farmacia:
+                return Response({
+                    'tipo': 'producto',
+                    'encontrado': True,
+                    'identificador': producto.clave,
+                    'id': producto.id,
+                    'datos': {
+                        'clave': producto.clave,
+                        'nombre': producto.nombre,
+                        'descripcion': producto.descripcion,
+                    }
+                })
+        
+        # 3. No encontrado
+        return Response({
+            'tipo': None,
+            'encontrado': False,
+            'identificador': query,
+            'mensaje': 'No se encontró producto ni lote con ese término'
+        }, status=status.HTTP_404_NOT_FOUND)
+        
+    except Exception as exc:
+        logger.exception('Error en trazabilidad_buscar')
+        return Response({
+            'error': 'Error al buscar',
+            'mensaje': str(exc)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def trazabilidad_autocomplete(request):
+    """
+    Autocompletado unificado para búsqueda de trazabilidad.
+    Retorna productos y lotes que coincidan con el término de búsqueda.
+    
+    Query params:
+    - search: término de búsqueda (mínimo 2 caracteres)
+    - centro: filtro de centro (opcional)
+    
+    SEGURIDAD: 
+    - Usuarios de centro solo ven productos con lotes en su centro
+    - Solo admin/farmacia ven lotes directamente
+    """
+    try:
+        user = request.user
+        if not user or not user.is_authenticated:
+            return Response({'results': []})
+        
+        search = request.query_params.get('search', '').strip()
+        if len(search) < 2:
+            return Response({'results': []})
+        
+        es_admin_farmacia = is_farmacia_or_admin(user)
+        filtrar_por_centro = not es_admin_farmacia
+        user_centro = get_user_centro(user) if filtrar_por_centro else None
+        
+        centro_param = request.query_params.get('centro')
+        if centro_param and es_admin_farmacia and centro_param != 'todos':
+            try:
+                user_centro = Centro.objects.get(pk=centro_param)
+                filtrar_por_centro = True
+            except Centro.DoesNotExist:
+                pass
+        
+        results = []
+        
+        # 1. Buscar productos
+        productos_query = Producto.objects.filter(
+            activo=True
+        ).filter(
+            Q(clave__icontains=search) |
+            Q(nombre__icontains=search)
+        )
+        
+        # Filtrar productos que tengan lotes accesibles
+        if filtrar_por_centro and user_centro:
+            productos_con_lotes = Lote.objects.filter(
+                centro=user_centro, activo=True, cantidad_actual__gt=0
+            ).values_list('producto_id', flat=True).distinct()
+            productos_query = productos_query.filter(id__in=productos_con_lotes)
+        
+        for producto in productos_query[:5]:
+            results.append({
+                'tipo': 'producto',
+                'id': producto.id,
+                'identificador': producto.clave,
+                'display': f"📦 {producto.clave}",
+                'secundario': producto.nombre[:50] + ('...' if len(producto.nombre) > 50 else ''),
+            })
+        
+        # 2. Buscar lotes (solo admin/farmacia)
+        if es_admin_farmacia:
+            lotes_query = Lote.objects.select_related('producto').filter(
+                activo=True
+            ).filter(
+                Q(numero_lote__icontains=search) |
+                Q(producto__clave__icontains=search) |
+                Q(producto__nombre__icontains=search)
+            )
+            
+            if filtrar_por_centro and user_centro:
+                lotes_query = lotes_query.filter(centro=user_centro)
+            
+            for lote in lotes_query[:5]:
+                results.append({
+                    'tipo': 'lote',
+                    'id': lote.id,
+                    'identificador': lote.numero_lote,
+                    'display': f"🏷️ {lote.numero_lote}",
+                    'secundario': f"{lote.producto.clave} - {lote.producto.nombre[:30]}",
+                })
+        
+        return Response({
+            'results': results,
+            'count': len(results)
+        })
+        
+    except Exception as exc:
+        logger.exception('Error en trazabilidad_autocomplete')
+        return Response({'results': [], 'error': str(exc)})
+
+
 
 
 

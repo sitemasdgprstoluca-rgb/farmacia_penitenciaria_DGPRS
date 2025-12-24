@@ -38,6 +38,8 @@ from inventario.views_legacy import (
     # Funciones de trazabilidad
     trazabilidad_producto,
     trazabilidad_lote,
+    trazabilidad_buscar,
+    trazabilidad_autocomplete,
     # Funciones de reportes
     reporte_inventario,
     reporte_movimientos,
@@ -78,6 +80,8 @@ __all__ = [
     # Trazabilidad
     'trazabilidad_producto',
     'trazabilidad_lote',
+    'trazabilidad_buscar',
+    'trazabilidad_autocomplete',
     # Reportes
     'reporte_inventario',
     'reporte_movimientos',
