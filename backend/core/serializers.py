@@ -2139,10 +2139,19 @@ class SalidaDonacionSerializer(serializers.ModelSerializer):
     """
     Serializer para salidas/entregas del almacen de donaciones.
     Control interno sin afectar movimientos principales.
+    
+    ISS-DB-ALIGN: Incluye campos de trazabilidad:
+    - centro_destino: Centro penitenciario destino
+    - finalizado: Si la entrega fue confirmada
+    - fecha_finalizado: Timestamp de finalización
+    - finalizado_por: Usuario que finalizó
     """
     detalle_donacion_info = serializers.SerializerMethodField()
     entregado_por_nombre = serializers.SerializerMethodField()
     producto_nombre = serializers.SerializerMethodField()
+    centro_destino_nombre = serializers.CharField(source='centro_destino.nombre', read_only=True, allow_null=True)
+    finalizado_por_nombre = serializers.SerializerMethodField()
+    estado_entrega = serializers.CharField(read_only=True)  # Property del modelo
     
     class Meta:
         model = SalidaDonacion
@@ -2151,15 +2160,22 @@ class SalidaDonacionSerializer(serializers.ModelSerializer):
             'cantidad', 'destinatario', 'motivo',
             'entregado_por', 'entregado_por_nombre',
             'producto_nombre',
-            'fecha_entrega', 'notas', 'created_at'
+            'fecha_entrega', 'notas', 'created_at',
+            # ISS-DB-ALIGN: Campos de trazabilidad
+            'centro_destino', 'centro_destino_nombre',
+            'finalizado', 'fecha_finalizado',
+            'finalizado_por', 'finalizado_por_nombre',
+            'estado_entrega'
         ]
-        read_only_fields = ['created_at', 'fecha_entrega', 'entregado_por']
+        read_only_fields = ['created_at', 'fecha_entrega', 'entregado_por', 'fecha_finalizado', 'finalizado_por']
         extra_kwargs = {
             'detalle_donacion': {'required': True},
             'cantidad': {'required': True},
             'destinatario': {'required': True},
             'motivo': {'required': False, 'allow_null': True, 'allow_blank': True},
             'notas': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'centro_destino': {'required': False, 'allow_null': True},
+            'finalizado': {'required': False, 'default': False},
         }
     
     def get_detalle_donacion_info(self, obj):
@@ -2175,6 +2191,12 @@ class SalidaDonacionSerializer(serializers.ModelSerializer):
     def get_entregado_por_nombre(self, obj):
         if obj.entregado_por:
             return f"{obj.entregado_por.first_name} {obj.entregado_por.last_name}".strip() or obj.entregado_por.username
+        return None
+    
+    def get_finalizado_por_nombre(self, obj):
+        """ISS-DB-ALIGN: Nombre del usuario que finalizó la entrega"""
+        if obj.finalizado_por:
+            return f"{obj.finalizado_por.first_name} {obj.finalizado_por.last_name}".strip() or obj.finalizado_por.username
         return None
     
     def get_producto_nombre(self, obj):

@@ -3586,9 +3586,11 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         from core.models import SalidaDonacion
+        # ISS-DB-ALIGN: Incluir centro_destino y finalizado_por en select_related
         queryset = SalidaDonacion.objects.select_related(
             'detalle_donacion', 'detalle_donacion__producto', 
-            'detalle_donacion__donacion', 'entregado_por'
+            'detalle_donacion__donacion', 'entregado_por',
+            'centro_destino', 'finalizado_por'
         ).all()
         
         # Filtrar por detalle de donacion
@@ -3605,6 +3607,17 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
         destinatario = self.request.query_params.get('destinatario')
         if destinatario:
             queryset = queryset.filter(destinatario__icontains=destinatario)
+        
+        # ISS-DB-ALIGN: Filtrar por centro destino
+        centro_destino = self.request.query_params.get('centro_destino')
+        if centro_destino:
+            queryset = queryset.filter(centro_destino_id=centro_destino)
+        
+        # ISS-DB-ALIGN: Filtrar por estado de finalización
+        finalizado = self.request.query_params.get('finalizado')
+        if finalizado is not None:
+            is_finalizado = finalizado.lower() in ('true', '1', 'si', 'yes')
+            queryset = queryset.filter(finalizado=is_finalizado)
         
         # Filtrar por fecha
         fecha_desde = self.request.query_params.get('fecha_desde')
@@ -4018,14 +4031,23 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
     def finalizar(self, request, pk=None):
         """
         Marca una entrega de donación como finalizada/entregada.
-        Registra notas de finalización para indicar que fue entregada.
+        
+        ISS-DB-ALIGN: Ahora usa los campos reales de la BD:
+        - finalizado: Boolean que indica si fue entregada
+        - fecha_finalizado: Timestamp de la finalización
+        - finalizado_por: Usuario que confirmó la entrega
         """
         from django.utils import timezone
         
         try:
             salida = self.get_object()
             
-            # Agregar nota de finalización (el modelo no tiene campo 'finalizado')
+            # ISS-DB-ALIGN: Usar campos reales del modelo
+            salida.finalizado = True
+            salida.fecha_finalizado = timezone.now()
+            salida.finalizado_por = request.user
+            
+            # Mantener nota para compatibilidad/trazabilidad adicional
             nota_finalizacion = f"\n[ENTREGADO] Confirmado por {request.user.username} el {timezone.now().strftime('%d/%m/%Y %H:%M')}"
             salida.notas = (salida.notas or '') + nota_finalizacion
             salida.save()
@@ -4051,6 +4073,8 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
         
         Parámetros:
         - finalizado: si es 'true', muestra sello de ENTREGADO en lugar de campos de firma
+        
+        ISS-DB-ALIGN: Ahora usa el campo 'finalizado' del modelo
         """
         from django.http import HttpResponse
         from django.utils import timezone
@@ -4059,19 +4083,25 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
         try:
             salida = self.get_object()
             
-            finalizado = request.query_params.get('finalizado', 'false').lower() == 'true'
-            # También detectar si fue finalizado por la nota
-            if salida.notas and '[ENTREGADO]' in salida.notas:
+            # ISS-DB-ALIGN: Priorizar el campo real del modelo
+            finalizado = salida.finalizado or request.query_params.get('finalizado', 'false').lower() == 'true'
+            # Fallback: detectar por la nota (compatibilidad con datos antiguos)
+            if not finalizado and salida.notas and '[ENTREGADO]' in salida.notas:
                 finalizado = True
             
             # Construir datos para el PDF
+            # ISS-DB-ALIGN: Usar centro_destino del modelo si existe
+            centro_destino_nombre = salida.destinatario or 'Destinatario no especificado'
+            if salida.centro_destino:
+                centro_destino_nombre = salida.centro_destino.nombre
+            
             salida_data = {
                 'folio': salida.id,
                 'fecha': salida.fecha_entrega.strftime('%Y-%m-%d %H:%M') if salida.fecha_entrega else timezone.now().strftime('%Y-%m-%d %H:%M'),
                 'tipo': 'salida',
                 'subtipo_salida': 'donacion',
                 'centro_origen': {'nombre': 'Almacén de Donaciones'},
-                'centro_destino': {'nombre': salida.destinatario or 'Destinatario no especificado'},
+                'centro_destino': {'nombre': centro_destino_nombre},
                 'cantidad': salida.cantidad,
                 'observaciones': salida.motivo or '',
                 'producto': salida.detalle_donacion.producto.nombre if salida.detalle_donacion and salida.detalle_donacion.producto else 'N/A',
@@ -4079,9 +4109,11 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
                 'presentacion': salida.detalle_donacion.producto.presentacion if salida.detalle_donacion and salida.detalle_donacion.producto else 'N/A',
             }
             
-            # Si está finalizado, usar fecha de entrega
-            if finalizado and salida.fecha_entrega:
-                salida_data['fecha_entrega'] = salida.fecha_entrega.strftime('%Y-%m-%d %H:%M')
+            # Si está finalizado, usar fecha de finalización o entrega
+            if finalizado:
+                fecha_fin = salida.fecha_finalizado or salida.fecha_entrega
+                if fecha_fin:
+                    salida_data['fecha_entrega'] = fecha_fin.strftime('%Y-%m-%d %H:%M')
             
             # Generar PDF
             pdf_buffer = generar_recibo_salida_donacion(
