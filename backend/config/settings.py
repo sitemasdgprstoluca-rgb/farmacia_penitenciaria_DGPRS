@@ -859,3 +859,19 @@ else:
 CACHE_TTL_DASHBOARD = config('CACHE_TTL_DASHBOARD', default=60, cast=int)  # 1 minuto
 CACHE_TTL_ESTADISTICAS = config('CACHE_TTL_ESTADISTICAS', default=300, cast=int)  # 5 minutos
 CACHE_TTL_REPORTES = config('CACHE_TTL_REPORTES', default=600, cast=int)  # 10 minutos
+
+# ═══════════════════════════════════════════════════════════
+# SILENCED SYSTEM CHECKS (para desarrollo)
+# ═══════════════════════════════════════════════════════════
+# En modo DEBUG, silenciar warnings de seguridad que no aplican en desarrollo
+# Estas configuraciones SÍ se aplican en producción (DEBUG=False)
+if DEBUG:
+    SILENCED_SYSTEM_CHECKS = [
+        'security.W004',  # HSTS no configurado (no necesario en dev)
+        'security.W008',  # SECURE_SSL_REDIRECT no True (localhost no usa SSL)
+        'security.W012',  # SESSION_COOKIE_SECURE no True (localhost)
+        'security.W016',  # CSRF_COOKIE_SECURE no True (localhost)
+        'security.W018',  # DEBUG=True (esperado en desarrollo)
+    ]
+else:
+    SILENCED_SYSTEM_CHECKS = []
