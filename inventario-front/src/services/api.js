@@ -366,12 +366,10 @@ let failedQueue = [];
 
 // ISS-005 FIX (audit32): Configuración de reintentos
 const RETRY_CONFIG = {
-  maxRetries: 4,              // Máximo 4 reintentos antes de fallar (aumentado para cold starts)
-  retryDelay: 1500,           // Delay base entre reintentos (ms)
-  retryableStatusCodes: [408, 429, 500, 502, 503, 504], // Códigos que justifican reintento
+  maxRetries: 3,              // Máximo 3 reintentos antes de fallar
+  retryDelay: 1000,           // Delay base entre reintentos (ms)
+  retryableStatusCodes: [408, 429, 502, 503, 504], // Códigos que justifican reintento
   exponentialBackoff: true,   // Usar backoff exponencial
-  maxRetryDelay: 15000,       // Máximo delay entre reintentos (15s)
-  silentRetries: 2,           // Primeros N reintentos son silenciosos (sin notificar al usuario)
 };
 
 // ISS-005 FIX (audit32): Mapa de errores específicos por código de estado
@@ -493,34 +491,23 @@ apiClient.interceptors.response.use(
     const now = Date.now();
     
     // ISS-005 FIX (audit32): Verificar límite de reintentos para errores de red/timeout
-    const isNetworkError = !status || error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK';
-    const isRetryableError = isNetworkError || RETRY_CONFIG.retryableStatusCodes.includes(status);
+    const isRetryableError = !status || RETRY_CONFIG.retryableStatusCodes.includes(status);
     const retryCount = originalRequest._retryCount || 0;
     
     if (isRetryableError && retryCount < RETRY_CONFIG.maxRetries && !originalRequest._noRetry) {
       originalRequest._retryCount = retryCount + 1;
       
-      // Calcular delay con backoff exponencial si está habilitado, con límite máximo
-      let delay = RETRY_CONFIG.exponentialBackoff 
+      // Calcular delay con backoff exponencial si está habilitado
+      const delay = RETRY_CONFIG.exponentialBackoff 
         ? RETRY_CONFIG.retryDelay * Math.pow(2, retryCount)
         : RETRY_CONFIG.retryDelay;
-      delay = Math.min(delay, RETRY_CONFIG.maxRetryDelay);
       
-      // Solo loguear en desarrollo y reintentos silenciosos no muestran nada al usuario
-      const isSilentRetry = retryCount < RETRY_CONFIG.silentRetries;
-      
+      // HALLAZGO #5: Solo loguear en desarrollo para evitar fuga de información
       if (isDev) {
         console.log(
           `[API] Reintento ${originalRequest._retryCount}/${RETRY_CONFIG.maxRetries} ` +
-          `para ${originalRequest.url} (delay: ${delay}ms, status: ${status || 'network error'}, silent: ${isSilentRetry})`
+          `para ${originalRequest.url} (delay: ${delay}ms, status: ${status || 'network error'})`
         );
-      }
-      
-      // Emitir evento para que la UI pueda mostrar indicador de reconexión (si no es silencioso)
-      if (!isSilentRetry && isNetworkError) {
-        window.dispatchEvent(new CustomEvent('api-reconnecting', { 
-          detail: { retryCount: originalRequest._retryCount, maxRetries: RETRY_CONFIG.maxRetries }
-        }));
       }
       
       await new Promise(resolve => setTimeout(resolve, delay));
@@ -642,22 +629,9 @@ apiClient.interceptors.response.use(
     } else if (status >= 400 && status < 500) {
       if (detail) toastDebounce.error(detail);
     } else if (!error.response) {
-      // Error de red - ser más silencioso, solo mostrar si realmente falló después de reintentos
-      const wasRetried = originalRequest._retryCount >= RETRY_CONFIG.maxRetries;
-      if (wasRetried) {
-        // Solo mostrar mensaje si ya agotamos los reintentos
-        toastDebounce.error('Conexión con el servidor interrumpida. Reintentando...');
-        // Emitir evento para que la UI muestre indicador
-        window.dispatchEvent(new CustomEvent('api-connection-lost', { 
-          detail: { url: originalRequest.url }
-        }));
-      }
+      toastDebounce.error('Error al conectar con el servidor.');
     } else if (status >= 500) {
-      // Error del servidor - también ser más amigable
-      const wasRetried = originalRequest._retryCount >= RETRY_CONFIG.maxRetries;
-      if (wasRetried) {
-        toastDebounce.error('El servidor está experimentando problemas. Intenta de nuevo.');
-      }
+      toastDebounce.error('Error interno del servidor.');
     }
     return Promise.reject(error);
   }
@@ -815,49 +789,6 @@ export const productosAPI = {
   auditoria: (id) => apiClient.get(`/productos/${id}/auditoria/`),
   // ISS-FIX: Obtener lotes de un producto específico con semáforo de caducidad
   lotes: (id) => apiClient.get(`/productos/${id}/lotes/`),
-  
-  /**
-   * ISS-FIX: Búsqueda combinada de productos y lotes para trazabilidad
-   * Devuelve resultados de ambos endpoints marcados con su tipo
-   */
-  busquedaCombinada: async (params) => {
-    const search = params?.search || '';
-    if (!search || search.length < 2) {
-      return { data: { results: [] } };
-    }
-    
-    try {
-      // Buscar en paralelo en productos y lotes
-      const [productosResp, lotesResp] = await Promise.allSettled([
-        apiClient.get('/productos/', { params: { search, page_size: 10 } }),
-        apiClient.get('/lotes/', { params: { search, page_size: 10 } }),
-      ]);
-      
-      const productos = (productosResp.status === 'fulfilled' 
-        ? (productosResp.value?.data?.results || productosResp.value?.data || [])
-        : []
-      ).map(p => ({ ...p, _tipo: 'producto' }));
-      
-      const lotes = (lotesResp.status === 'fulfilled'
-        ? (lotesResp.value?.data?.results || lotesResp.value?.data || [])
-        : []
-      ).map(l => ({ 
-        ...l, 
-        _tipo: 'lote',
-        // Campos adicionales para mostrar en autocomplete
-        clave: l.numero_lote,
-        nombre: l.producto_nombre || l.producto?.nombre || `Lote ${l.numero_lote}`,
-      }));
-      
-      // Combinar resultados (productos primero, luego lotes)
-      const combinados = [...productos.slice(0, 8), ...lotes.slice(0, 7)];
-      
-      return { data: { results: combinados } };
-    } catch (error) {
-      console.error('Error en búsqueda combinada:', error);
-      return { data: { results: [] } };
-    }
-  },
 };
 
 // Lotes
@@ -880,14 +811,10 @@ export const lotesAPI = {
   }),
   eliminarDocumento: (loteId, docId) => apiClient.delete(`/lotes/${loteId}/eliminar-documento/${docId}/`),
   // Exportaciones
-  exportar: (params) => {
-    const formato = params?.formato || 'excel';
-    const endpoint = formato === 'pdf' ? '/lotes/exportar-pdf/' : '/lotes/exportar-excel/';
-    return apiClient.get(endpoint, { 
-      params, 
-      responseType: 'blob' 
-    });
-  },
+  exportar: (params) => apiClient.get('/lotes/exportar-excel/', { 
+    params, 
+    responseType: 'blob' 
+  }),
   exportarPdf: (params) => apiClient.get('/lotes/exportar-pdf/', { 
     params, 
     responseType: 'blob' 
@@ -1163,8 +1090,8 @@ export const movimientosAPI = {
   create: (data) => apiClient.post('/movimientos/', data),
   exportarExcel: (params) => apiClient.get('/movimientos/exportar-excel/', { params, responseType: 'blob' }),
   exportarPdf: (params) => apiClient.get('/movimientos/exportar-pdf/', { params, responseType: 'blob' }),
-  // Recibo de salida con firmas (solo para salidas)
-  reciboSalidaPdf: (id) => apiClient.get(`/movimientos/${id}/recibo-salida-pdf/`, { responseType: 'blob' }),
+  // Recibo de salida con campos de firma (PDF)
+  getReciboSalida: (movimientoId) => apiClient.get(`/movimientos/${movimientoId}/recibo-salida/`, { responseType: 'blob' }),
 };
 
 // Salida Masiva (solo Farmacia)
@@ -1341,6 +1268,8 @@ export const donacionesAPI = {
   procesar: (id) => apiClient.post(`/donaciones/${id}/procesar/`),
   // Rechazar donación
   rechazar: (id, data) => apiClient.post(`/donaciones/${id}/rechazar/`, data),
+  // Obtener siguiente número de donación
+  getSiguienteNumero: () => apiClient.get('/donaciones/siguiente-numero/'),
   // Exportar (legacy)
   exportar: (params) => apiClient.get('/donaciones/exportar/', { 
     params, 
@@ -1373,17 +1302,6 @@ export const productosDonacionAPI = {
   delete: (id) => apiClient.delete(`/productos-donacion/${id}/`),
   // Búsqueda rápida
   buscar: (q) => apiClient.get('/productos-donacion/buscar/', { params: { q } }),
-  // Exportación e importación Excel
-  exportarExcel: (params) => apiClient.get('/productos-donacion/exportar-excel/', { 
-    params, 
-    responseType: 'blob' 
-  }),
-  plantillaExcel: () => apiClient.get('/productos-donacion/plantilla-excel/', { 
-    responseType: 'blob' 
-  }),
-  importarExcel: (formData) => apiClient.post('/productos-donacion/importar-excel/', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  }),
 };
 
 // Detalles de Donación
@@ -1404,6 +1322,13 @@ export const salidasDonacionesAPI = {
   getAll: (params) => apiClient.get('/salidas-donaciones/', { params }),
   getById: (id) => apiClient.get(`/salidas-donaciones/${id}/`),
   create: (data) => apiClient.post('/salidas-donaciones/', data),
+  // Finalizar entrega (marcar como entregado)
+  finalizar: (id) => apiClient.post(`/salidas-donaciones/${id}/finalizar/`),
+  // Descargar recibo PDF
+  getReciboPdf: (id, finalizado = false) => apiClient.get(`/salidas-donaciones/${id}/recibo-pdf/`, { 
+    params: { finalizado: finalizado ? 'true' : 'false' },
+    responseType: 'blob' 
+  }),
   // Exportación e importación Excel
   exportarExcel: (params) => apiClient.get('/salidas-donaciones/exportar-excel/', { 
     params, 
@@ -1415,16 +1340,6 @@ export const salidasDonacionesAPI = {
   importarExcel: (formData) => apiClient.post('/salidas-donaciones/importar-excel/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
-  // Generación de PDF de recibo
-  generarPdf: (id) => apiClient.get(`/salidas-donaciones/${id}/generar-pdf/`, { 
-    responseType: 'blob' 
-  }),
-  generarPdfMasivo: (data) => apiClient.post('/salidas-donaciones/generar-pdf-masivo/', data, {
-    responseType: 'blob'
-  }),
-  // Finalizar entregas
-  finalizar: (id) => apiClient.post(`/salidas-donaciones/${id}/finalizar/`),
-  finalizarMasivo: (data) => apiClient.post('/salidas-donaciones/finalizar-masivo/', data),
 };
 
 // Imágenes de Productos - Múltiples fotos por producto

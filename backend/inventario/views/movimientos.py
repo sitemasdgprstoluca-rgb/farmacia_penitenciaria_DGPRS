@@ -204,28 +204,12 @@ class MovimientoViewSet(
         subtipo_salida = serializer.validated_data.get('subtipo_salida')
         numero_expediente = serializer.validated_data.get('numero_expediente')
         
-        # FIX: Convertir centro_id (int del frontend) a instancia de Centro
-        centro_raw = serializer.validated_data.get('centro')
-        centro_obj = None
-        if centro_raw:
-            if isinstance(centro_raw, Centro):
-                centro_obj = centro_raw
-            else:
-                try:
-                    centro_obj = Centro.objects.get(pk=centro_raw)
-                except Centro.DoesNotExist:
-                    centro_obj = None
-        
-        # Si no se especificó centro, usar el centro del lote
-        if centro_obj is None and lote:
-            centro_obj = lote.centro
-        
         movimiento, _ = registrar_movimiento_stock(
             lote=lote,
             tipo=serializer.validated_data.get('tipo'),
             cantidad=serializer.validated_data.get('cantidad'),
             usuario=user,
-            centro=centro_obj,
+            centro=serializer.validated_data.get('centro') or (lote.centro if lote else None),
             requisicion=serializer.validated_data.get('requisicion'),
             # FIX: El serializer mapea 'observaciones' del frontend a 'motivo' via to_internal_value
             observaciones=serializer.validated_data.get('motivo', ''),
@@ -254,17 +238,9 @@ class MovimientoViewSet(
         if not clave:
             return Response({'error': 'Se requiere producto_clave'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Buscar producto por clave, nombre o descripción (case-insensitive)
         producto = Producto.objects.filter(
-            Q(clave__iexact=clave) | Q(nombre__iexact=clave) | Q(descripcion__iexact=clave)
+            Q(clave__iexact=clave) | Q(descripcion__iexact=clave)
         ).first()
-        
-        # Si no se encuentra exacto, intentar búsqueda parcial por nombre
-        if not producto:
-            producto = Producto.objects.filter(
-                Q(nombre__icontains=clave) | Q(descripcion__icontains=clave)
-            ).first()
-        
         if not producto:
             return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
         
@@ -300,15 +276,11 @@ class MovimientoViewSet(
             producto_info = {
                 'clave': producto.clave,
                 'descripcion': producto.nombre,  # Usar nombre como descripción principal
-                'presentacion': producto.presentacion or '',
                 'unidad_medida': producto.unidad_medida,
                 'stock_actual': producto.get_stock_actual() if hasattr(producto, 'get_stock_actual') else 0,
+                'stock_minimo': producto.stock_minimo,
                 'precio_unitario': lote_principal.precio_unitario if lote_principal else 0,
                 'numero_contrato': lote_principal.numero_contrato if lote_principal else 'N/A',
-                # Información del lote principal (para mostrar en el PDF)
-                'numero_lote': lote_principal.numero_lote if lote_principal else 'N/A',
-                'fecha_caducidad': lote_principal.fecha_caducidad.strftime('%d/%m/%Y') if lote_principal and lote_principal.fecha_caducidad else 'N/A',
-                'marca': lote_principal.marca if lote_principal and lote_principal.marca else '',
             }
             
             pdf_buffer = generar_reporte_trazabilidad(trazabilidad_data, producto_info=producto_info)
@@ -377,21 +349,18 @@ class MovimientoViewSet(
             
             # ISS-FIX: Usar nombre como fallback para descripcion, manejar None correctamente
             descripcion_producto = 'N/A'
-            presentacion_producto = ''
             if lote.producto:
                 descripcion_producto = lote.producto.nombre or lote.producto.descripcion or 'N/A'
-                presentacion_producto = lote.producto.presentacion or ''
             
             producto_info = {
                 'clave': lote.producto.clave if lote.producto else 'N/A',
                 'descripcion': descripcion_producto,
-                'presentacion': presentacion_producto,
                 'unidad_medida': lote.producto.unidad_medida if lote.producto else 'N/A',
                 'stock_actual': lote.cantidad_actual,
+                'stock_minimo': lote.producto.stock_minimo if lote.producto else 0,
                 'numero_lote': lote.numero_lote,
                 'fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else 'N/A',
                 'proveedor': lote.marca or 'No especificado',
-                'marca': lote.marca or '',
                 'numero_contrato': lote.numero_contrato if lote.numero_contrato else 'N/A',
                 'precio_unitario': float(lote.precio_unitario) if lote.precio_unitario else 0,
             }
@@ -654,76 +623,92 @@ class MovimientoViewSet(
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    @action(detail=True, methods=['get'], url_path='recibo-salida-pdf')
-    def recibo_salida_pdf(self, request, pk=None):
+    @action(detail=True, methods=['get'], url_path='recibo-salida')
+    def recibo_salida(self, request, pk=None):
         """
-        Genera un recibo PDF para una salida de inventario con campos de firma.
-        Firmas: Autoriza (Jefa de Farmacia), Entrega (Farmacia), Recibe (Centro).
+        Genera PDF de recibo de salida para un movimiento específico.
         
-        Solo disponible para movimientos tipo 'salida'.
+        Parámetros opcionales:
+        - finalizado: si es 'true', muestra sello ENTREGADO en lugar de firmas
         
-        Returns:
-            PDF descargable con formato institucional
+        SEGURIDAD: Usuarios pueden generar recibos de movimientos que les correspondan.
         """
-        from core.utils.pdf_reports import generar_recibo_salida_movimiento
+        from core.utils.pdf_reports import generar_recibo_salida_donacion
         
         try:
             movimiento = self.get_object()
             
-            # Validar que sea una salida
+            # Verificar que es un movimiento de salida
             if movimiento.tipo != 'salida':
                 return Response(
                     {'error': 'Solo se pueden generar recibos para movimientos de salida'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Preparar datos del movimiento
-            producto_nombre = ''
-            producto_clave = ''
-            numero_lote = ''
+            # Verificar permisos - admin/farmacia pueden ver todos, otros solo sus centros
+            user = request.user
+            if not is_farmacia_or_admin(user):
+                user_centro = get_user_centro(user)
+                if user_centro:
+                    # Usuario de centro puede ver si es origen o destino
+                    if movimiento.centro_origen != user_centro and movimiento.centro_destino != user_centro:
+                        if movimiento.lote and movimiento.lote.centro != user_centro:
+                            return Response(
+                                {'error': 'No tienes permiso para ver este movimiento'},
+                                status=status.HTTP_403_FORBIDDEN
+                            )
             
-            if movimiento.lote:
-                numero_lote = movimiento.lote.numero_lote or ''
-                if movimiento.lote.producto:
-                    producto_nombre = movimiento.lote.producto.nombre or movimiento.lote.producto.descripcion or ''
-                    producto_clave = movimiento.lote.producto.clave or ''
+            finalizado = request.query_params.get('finalizado', 'false').lower() == 'true'
             
-            centro_destino = ''
-            if movimiento.centro_destino:
-                centro_destino = movimiento.centro_destino.nombre
-            elif movimiento.centro_origen:
-                centro_destino = movimiento.centro_origen.nombre
-            
-            usuario = ''
-            if movimiento.usuario:
-                usuario = movimiento.usuario.get_full_name() or movimiento.usuario.username
-            
+            # Construir datos del movimiento
             movimiento_data = {
-                'id': movimiento.id,
-                'fecha': movimiento.fecha,
-                'producto_nombre': producto_nombre,
-                'producto_clave': producto_clave,
-                'numero_lote': numero_lote,
+                'folio': movimiento.id,
+                'fecha': movimiento.fecha.strftime('%Y-%m-%d %H:%M') if movimiento.fecha else 'N/A',
+                'tipo': movimiento.tipo,
+                'subtipo_salida': movimiento.subtipo_salida or 'transferencia',
+                'centro_origen': {
+                    'id': movimiento.centro_origen.id if movimiento.centro_origen else None,
+                    'nombre': movimiento.centro_origen.nombre if movimiento.centro_origen else 'Farmacia Central'
+                },
+                'centro_destino': {
+                    'id': movimiento.centro_destino.id if movimiento.centro_destino else None,
+                    'nombre': movimiento.centro_destino.nombre if movimiento.centro_destino else ''
+                },
                 'cantidad': movimiento.cantidad,
-                'centro_destino': centro_destino,
-                'motivo': movimiento.motivo or movimiento.subtipo_salida or '',
-                'subtipo_salida': movimiento.subtipo_salida or '',
-                'numero_expediente': movimiento.numero_expediente or '',
-                'observaciones': movimiento.observaciones or '',
-                'usuario': usuario,
+                'observaciones': movimiento.motivo or '',
+                'producto': movimiento.lote.producto.nombre if movimiento.lote and movimiento.lote.producto else 'N/A',
+                'lote': movimiento.lote.numero_lote if movimiento.lote else 'N/A',
+                'presentacion': movimiento.lote.producto.presentacion if movimiento.lote and movimiento.lote.producto else 'N/A',
             }
             
+            # Si hay fecha de entrega registrada, usarla
+            if hasattr(movimiento, 'fecha_entrega') and movimiento.fecha_entrega:
+                movimiento_data['fecha_entrega'] = movimiento.fecha_entrega.strftime('%Y-%m-%d %H:%M')
+            
             # Generar PDF
-            buffer = generar_recibo_salida_movimiento(movimiento_data)
+            pdf_buffer = generar_recibo_salida_donacion(
+                movimiento_data,
+                items_data=None,
+                finalizado=finalizado
+            )
             
-            response = HttpResponse(buffer, content_type='application/pdf')
-            filename = f'recibo_salida_movimiento_{movimiento.id}.pdf'
-            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            response = HttpResponse(
+                pdf_buffer.getvalue(),
+                content_type='application/pdf'
+            )
+            response['Content-Disposition'] = f'attachment; filename="Recibo_Salida_{movimiento.id}_{timezone.now().strftime("%Y%m%d")}.pdf"'
             
+            logger.info(f"Recibo de salida generado para movimiento {movimiento.id} por usuario {user.username}")
             return response
             
-        except Exception as e:
+        except Movimiento.DoesNotExist:
             return Response(
-                {'error': f'Error al generar PDF: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {'error': 'Movimiento no encontrado'},
+                status=status.HTTP_404_NOT_FOUND
             )
+        except Exception as e:
+            logger.error(f"Error generando recibo de salida: {str(e)}")
+            return Response({
+                'error': 'Error al generar recibo de salida',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

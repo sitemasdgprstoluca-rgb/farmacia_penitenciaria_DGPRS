@@ -73,15 +73,15 @@ const Movimientos = () => {
   const [lotesDisponibles, setLotesDisponibles] = useState([]);
 
   // Formulario de registro
-  // ISS-FIX: Tipo fijo en "salida" y subtipo en "transferencia" para simplificar flujo
+  // ISS-FIX: Movimientos simplificados - tipo FIJO a "salida", subtipo FIJO a "transferencia"
   const [formData, setFormData] = useState({
     lote: "",
-    tipo: "salida",  // Fijo en salida
+    tipo: "salida",  // FIJO: Solo salidas
     cantidad: "",
     centro: "",
     observaciones: "",
-    // MEJORA FLUJO 5: Campos para trazabilidad de pacientes
-    subtipo_salida: "transferencia",  // Fijo en transferencia a centro
+    // Subtipo fijo a transferencia para salidas a centros
+    subtipo_salida: "transferencia",
     numero_expediente: "",
   });
   const [productoFiltro, setProductoFiltro] = useState("");
@@ -116,9 +116,8 @@ const Movimientos = () => {
         setCentros([]);
       }
       
-      // ISS-FIX (lotes-centro): Cargar lotes con filtro explícito de centro
-      // El backend ya filtra por centro del usuario, pero enviamos el parámetro
-      // para asegurar consistencia y logging
+      // ISS-FIX (lotes-central): Para Farmacia/Admin, cargar lotes de Farmacia Central
+      // Para usuarios de centro, cargar lotes de su centro
       const lotesParams = { 
         page_size: 500, 
         ordering: "-fecha_caducidad", 
@@ -126,11 +125,11 @@ const Movimientos = () => {
         con_stock: "con_stock",  // ISS-FIX: Solo lotes con stock > 0
       };
       
-      // ISS-FIX: Farmacia/Admin hacen transferencias desde farmacia central
-      // Por lo que necesitan ver lotes de farmacia central (centro=null)
+      // ISS-FIX: Farmacia/Admin ven lotes de farmacia central para transferencias
       if (puedeVerTodosCentros) {
-        lotesParams.centro = 'central';  // Lotes de farmacia central
-      } else if (centroUsuario) {
+        lotesParams.centro = "central";  // Farmacia central
+      } else if (!puedeVerTodosCentros && centroUsuario) {
+        // Usuario de centro ve sus propios lotes
         lotesParams.centro = centroUsuario;
       }
       
@@ -331,28 +330,20 @@ const Movimientos = () => {
       toast.error("Ingresa una cantidad válida mayor a 0");
       return;
     }
-
-    // ISS-MEDICO FIX v2: Observaciones obligatorias para médicos
-    if (esMedico && (!formData.observaciones || formData.observaciones.trim().length < 5)) {
-      toast.error("Las observaciones son obligatorias (mínimo 5 caracteres). Indique motivo de la salida.");
+    
+    // Validar centro destino obligatorio para transferencias
+    if (puedeVerTodosCentros && !formData.centro) {
+      toast.error("Selecciona el centro destino para la transferencia");
       return;
     }
 
     const loteSeleccionado = lotes.find(l => l.id === parseInt(formData.lote));
-    if (formData.tipo === "salida" && loteSeleccionado && Number(formData.cantidad) > loteSeleccionado.cantidad_actual) {
+    if (loteSeleccionado && Number(formData.cantidad) > loteSeleccionado.cantidad_actual) {
       toast.error(`Inventario insuficiente. Disponible: ${loteSeleccionado.cantidad_actual}`);
       return;
     }
 
-    // MEJORA FLUJO 5: Validar numero_expediente si es salida por receta
-    if (formData.tipo === "salida" && formData.subtipo_salida === "receta") {
-      if (!formData.numero_expediente || formData.numero_expediente.trim().length < 3) {
-        toast.error("El número de expediente es obligatorio para salidas por receta (mínimo 3 caracteres)");
-        return;
-      }
-    }
-
-    // ISS-FIX: Forzar centro del usuario si no tiene permisos globales
+    // Determinar centro final
     const centroFinal = !puedeVerTodosCentros && centroUsuario 
       ? parseInt(centroUsuario) 
       : (formData.centro ? parseInt(formData.centro) : null);
@@ -361,29 +352,22 @@ const Movimientos = () => {
     try {
       const payload = {
         lote: parseInt(formData.lote),
-        tipo: formData.tipo,
+        tipo: "salida",  // FIJO: Solo salidas
         cantidad: Number(formData.cantidad),
         centro: centroFinal,
         observaciones: formData.observaciones,
+        subtipo_salida: "transferencia",  // FIJO: transferencia a centro
       };
       
-      // MEJORA FLUJO 5: Incluir campos de trazabilidad si es salida
-      if (formData.tipo === "salida" && formData.subtipo_salida) {
-        payload.subtipo_salida = formData.subtipo_salida;
-        if (formData.subtipo_salida === "receta") {
-          payload.numero_expediente = formData.numero_expediente.trim();
-        }
-      }
-      
       await movimientosAPI.create(payload);
-      toast.success("Movimiento registrado exitosamente");
+      toast.success("Salida registrada exitosamente");
       setFormData({
         lote: "",
-        tipo: "salida",  // Fijo en salida
+        tipo: "salida",  // FIJO: Solo salidas
         cantidad: "",
         centro: "",
         observaciones: "",
-        subtipo_salida: "transferencia",  // Fijo en transferencia
+        subtipo_salida: "transferencia",  // FIJO: transferencia
         numero_expediente: "",
       });
       setProductoFiltro("");
@@ -447,25 +431,17 @@ const Movimientos = () => {
     }
   };
 
-  // Descargar recibo de salida con firmas para un movimiento específico
-  const descargarReciboSalida = async (movimientoId) => {
+  // Descargar recibo de salida con campos de firma
+  const descargarReciboSalida = async (movimiento) => {
     try {
-      toast.loading('Generando recibo PDF...', { id: 'pdf-loading' });
-      const response = await movimientosAPI.reciboSalidaPdf(movimientoId);
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `recibo_salida_movimiento_${movimientoId}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      toast.dismiss('pdf-loading');
-      toast.success('Recibo PDF generado correctamente');
+      toast.loading("Generando recibo...", { id: "recibo" });
+      const response = await movimientosAPI.getReciboSalida(movimiento.id);
+      const fecha = new Date(movimiento.fecha || movimiento.fecha_movimiento).toISOString().split("T")[0];
+      descargarArchivo(response, `recibo_salida_${movimiento.id}_${fecha}.pdf`);
+      toast.success("Recibo generado", { id: "recibo" });
     } catch (err) {
-      toast.dismiss('pdf-loading');
-      toast.error(err.response?.data?.detail || 'Error al generar el recibo PDF');
+      toast.error("No se pudo generar el recibo", { id: "recibo" });
+      console.error("Error generando recibo:", err);
     }
   };
 
@@ -708,69 +684,39 @@ const Movimientos = () => {
                 })()}
               </div>
 
+              {/* Tipo FIJO: Salida - Solo informativo */}
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">Tipo *</label>
-                <select
-                  value={formData.tipo}
-                  onChange={(e) => handleFormChange("tipo", e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                  disabled={true}
-                >
-                  {/* ISS-FIX: Solo salidas visibles para evitar confusión */}
-                  {/* Las otras opciones se mantienen en el código pero ocultas */}
-                  {false && puedeVerTodosCentros && <option value="entrada">Entrada</option>}
-                  <option value="salida">Salida</option>
-                  {false && !esMedico && <option value="ajuste">Ajuste</option>}
-                </select>
-                {esMedico && (
-                  <p className="text-xs text-blue-600">
-                    <FaInfoCircle className="inline mr-1" />
-                    Como médico, solo puedes registrar salidas para dispensación a pacientes.
-                  </p>
-                )}
-                {!puedeVerTodosCentros && !esMedico && (
-                  <p className="text-xs text-gray-500">Las entradas solo se realizan desde Farmacia Central.</p>
-                )}
+                <label className="text-sm font-semibold text-gray-700">Tipo de Movimiento</label>
+                <div className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 font-medium">
+                  <FaTruck className="inline mr-2 text-blue-600" />
+                  Salida / Transferencia a Centro
+                </div>
+                <p className="text-xs text-gray-500">
+                  Las salidas desde Farmacia Central se registran como transferencias a centros penitenciarios.
+                </p>
               </div>
 
-              {/* MEJORA FLUJO 5: Subtipo de salida - Solo transferencia a centro visible */}
-              {formData.tipo === "salida" && (
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-700">Motivo de salida</label>
-                  <select
-                    value={formData.subtipo_salida}
-                    onChange={(e) => handleFormChange("subtipo_salida", e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {/* Solo transferencia a centro visible para evitar confusión */}
-                    {/* Las otras opciones se mantienen en el código pero ocultas */}
-                    <option value="transferencia">Transferencia a centro</option>
-                    {false && <option value="">-- Seleccionar motivo --</option>}
-                    {false && <option value="receta">Receta médica</option>}
-                    {false && <option value="consumo_interno">Consumo interno</option>}
-                    {false && <option value="otro">Otro</option>}
-                  </select>
-                </div>
-              )}
-
-              {/* MEJORA FLUJO 5: Número de expediente (obligatorio para receta) */}
-              {formData.tipo === "salida" && formData.subtipo_salida === "receta" && (
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-700">
-                    Número de expediente *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.numero_expediente}
-                    onChange={(e) => handleFormChange("numero_expediente", e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Ej: EXP-2024-001234"
-                  />
-                  <p className="text-xs text-gray-500">
-                    Obligatorio para salidas por receta médica (mín. 3 caracteres).
-                  </p>
-                </div>
-              )}
+              {/* Centro destino OBLIGATORIO */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700">Centro Destino <span className="text-red-500">*</span></label>
+                <select
+                  value={!puedeVerTodosCentros && centroUsuario ? centroUsuario.toString() : formData.centro}
+                  onChange={(e) => handleFormChange("centro", e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  disabled={!puedeVerTodosCentros}
+                  required
+                >
+                  <option value="">-- Seleccione centro destino --</option>
+                  {centros.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500">
+                  Seleccione el centro penitenciario al que se transferirá el medicamento.
+                </p>
+              </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-700">Cantidad *</label>
@@ -784,43 +730,16 @@ const Movimientos = () => {
                 />
               </div>
 
-              {/* Centro opcional - bloqueado para usuarios de centro */}
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">Centro</label>
-                <select
-                  value={!puedeVerTodosCentros && centroUsuario ? centroUsuario.toString() : formData.centro}
-                  onChange={(e) => handleFormChange("centro", e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                  disabled={!puedeVerTodosCentros}
-                  title={!puedeVerTodosCentros ? "Solo puedes registrar movimientos en tu centro" : ""}
-                >
-                  {puedeVerTodosCentros && <option value="">-- Sin centro --</option>}
-                  {centros.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nombre}
-                    </option>
-                  ))}
-                </select>
-                {!puedeVerTodosCentros && (
-                  <p className="text-xs text-gray-500">Movimientos limitados a tu centro asignado.</p>
-                )}
-              </div>
-
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-700">
-                  Observaciones {esMedico && <span className="text-red-500">*</span>}
+                  Observaciones
                 </label>
                 <textarea
                   value={formData.observaciones}
                   onChange={(e) => handleFormChange("observaciones", e.target.value)}
-                  className={`w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    esMedico ? 'border-blue-400 bg-blue-50' : 'border-gray-300'
-                  }`}
-                  placeholder={esMedico 
-                    ? "OBLIGATORIO: Indique motivo de salida, paciente, diagnóstico, etc."
-                    : "Notas adicionales..."
-                  }
-                  rows={esMedico ? 3 : 2}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Notas adicionales (opcional)..."
+                  rows={2}
                   required={esMedico}
                 />
                 {esMedico && (
@@ -1247,23 +1166,12 @@ const Movimientos = () => {
                               : ""}
                           </td>
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <button 
-                                className="text-blue-600 hover:text-blue-800 text-sm"
-                                onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === mov.id ? null : mov.id); }}
-                              >
-                                {expandedId === mov.id ? '▲ Ocultar' : '▼ Detalles'}
-                              </button>
-                              {mov.tipo === 'salida' && (
-                                <button 
-                                  className="text-red-600 hover:text-red-800 text-sm"
-                                  onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov.id); }}
-                                  title="Descargar recibo con firmas"
-                                >
-                                  📄 PDF
-                                </button>
-                              )}
-                            </div>
+                            <button 
+                              className="text-blue-600 hover:text-blue-800 text-sm"
+                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === mov.id ? null : mov.id); }}
+                            >
+                              {expandedId === mov.id ? '▲ Ocultar' : '▼ Detalles'}
+                            </button>
                           </td>
                         </tr>
                         {/* Fila expandida con detalles */}

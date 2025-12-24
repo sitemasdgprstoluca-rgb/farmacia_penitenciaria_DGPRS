@@ -1477,28 +1477,31 @@ class ReportesViewSet(viewsets.ViewSet):
         for producto in queryset:
             stock_actual = producto.get_stock_actual()
             nivel = producto.get_nivel_stock()
-            # Obtener lote principal para marca
-            lote_principal = producto.lotes.filter(activo=True, cantidad_actual__gt=0).order_by('-cantidad_actual').first()
             datos.append({
                 'id': producto.id,
                 'clave': producto.clave,
                 'descripcion': producto.descripcion,
-                'presentacion': producto.presentacion or '',
                 'unidad_medida': producto.unidad_medida,
                 'stock_actual': stock_actual,
+                'stock_minimo': producto.stock_minimo,
                 'nivel_stock': nivel,
                 'nivel': nivel,  # Alias para compatibilidad frontend
-                'precio_unitario': float(producto.precio_unitario) if producto.precio_unitario else 0,
-                'valor_inventario': float(stock_actual * (producto.precio_unitario or 0)),
-                'lotes_activos': producto.lotes.filter(activo=True, cantidad_actual__gt=0).count(),
-                'marca': lote_principal.marca if lote_principal and lote_principal.marca else '',
+                'precio_unitario': float(producto.precio_unitario),
+                'valor_inventario': float(stock_actual * producto.precio_unitario),
+                'lotes_activos': producto.lotes.filter(activo=True, cantidad_actual__gt=0).count()
             })
 
-        # Calcular resumen basado en niveles de stock
+        # Calcular productos bajo mínimo (stock_actual < stock_minimo)
+        productos_bajo_minimo = sum(
+            1 for d in datos 
+            if d['stock_actual'] < d['stock_minimo'] and d['stock_minimo'] > 0
+        )
+        
         resumen = {
             'total_productos': len(datos),
             'stock_total': sum(d['stock_actual'] for d in datos),
             'productos_sin_stock': sum(1 for d in datos if d['stock_actual'] == 0),
+            'productos_bajo_minimo': productos_bajo_minimo,
             'productos_stock_critico': sum(1 for d in datos if d['nivel_stock'] == 'critico'),
             'valor_total_inventario': sum(d['valor_inventario'] for d in datos)
         }
@@ -1517,19 +1520,18 @@ class ReportesViewSet(viewsets.ViewSet):
             sheet = workbook.active
             sheet.title = 'Inventario'
 
-            headers = ['Clave', 'Descripción', 'Presentación', 'Unidad', 'Inventario', 'Nivel', 'Precio', 'Marca']
+            headers = ['Clave', 'Descripcion', 'Stock Actual', 'Stock Minimo', 'Nivel', 'Precio Unitario', 'Valor Total']
             sheet.append(headers)
 
             for d in datos:
                 sheet.append([
                     d['clave'],
                     d['descripcion'],
-                    d['presentacion'],
-                    d['unidad_medida'],
                     d['stock_actual'],
+                    d['stock_minimo'],
                     d['nivel_stock'],
                     d['precio_unitario'],
-                    d['marca']
+                    d['valor_inventario']
                 ])
 
             for row in sheet.iter_rows(min_row=1, max_row=len(datos) + 1):
@@ -2664,6 +2666,36 @@ class DonacionViewSet(viewsets.ModelViewSet):
         from core.serializers import DonacionSerializer
         return Response(DonacionSerializer(donacion).data)
     
+    @action(detail=False, methods=['get'], url_path='siguiente-numero')
+    def siguiente_numero(self, request):
+        """
+        Genera el siguiente número de donación disponible.
+        Formato: DON-YYYY-NNNN
+        """
+        from core.models import Donacion
+        import datetime
+        
+        year = datetime.datetime.now().year
+        prefix = f'DON-{year}-'
+        
+        # Buscar el último número de este año
+        ultima = Donacion.objects.filter(
+            numero__startswith=prefix
+        ).order_by('-numero').first()
+        
+        if ultima:
+            try:
+                # Extraer el número secuencial
+                ultimo_num = int(ultima.numero.replace(prefix, ''))
+                siguiente = ultimo_num + 1
+            except (ValueError, AttributeError):
+                siguiente = 1
+        else:
+            siguiente = 1
+        
+        numero = f"{prefix}{siguiente:04d}"
+        return Response({'numero': numero})
+    
     @action(detail=False, methods=['get'], url_path='diagnostico')
     def diagnostico(self, request):
         """
@@ -2818,13 +2850,11 @@ class DonacionViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='plantilla-excel')
     def plantilla_excel(self, request):
         """
-        Genera plantilla Excel simplificada para importar donaciones.
-        UNA SOLA HOJA con todos los campos necesarios.
-        Se vincula al catálogo de productos de donación mediante clave.
+        Genera plantilla Excel para importar donaciones con detalles.
+        Incluye ejemplos marcados con [EJEMPLO] que se ignoran al importar.
         """
         import openpyxl
         from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-        from openpyxl.worksheet.datavalidation import DataValidation
         from django.http import HttpResponse
         
         try:
@@ -2832,142 +2862,177 @@ class DonacionViewSet(viewsets.ModelViewSet):
             
             # Estilos
             header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
+            # Estilo para ejemplos: gris itálica sin fondo de color
             example_font = Font(italic=True, color='888888')
             thin_border = Border(
                 left=Side(style='thin'), right=Side(style='thin'),
                 top=Side(style='thin'), bottom=Side(style='thin')
             )
             
-            # Obtener productos del catálogo de donaciones para validación
+            # Obtener un producto real del catálogo de donaciones para el ejemplo
             from core.models import ProductoDonacion
-            productos_donacion = ProductoDonacion.objects.filter(activo=True).order_by('nombre')
-            claves_validas = [p.clave for p in productos_donacion]
-            producto_ejemplo = productos_donacion.first()
+            producto_ejemplo = ProductoDonacion.objects.filter(activo=True).first()
             clave_ejemplo = producto_ejemplo.clave if producto_ejemplo else 'DON-001'
+            nombre_ejemplo = producto_ejemplo.nombre[:30] if producto_ejemplo else 'PRODUCTO DONACION'
             
-            # ========== HOJA PRINCIPAL DE DONACIONES ==========
-            ws = wb.active
-            ws.title = 'Donaciones'
+            # ========== HOJA DE INSTRUCCIONES ==========
+            ws_inst = wb.active
+            ws_inst.title = 'INSTRUCCIONES'
             
-            # Título
-            ws.merge_cells('A1:L1')
-            ws['A1'].value = 'PLANTILLA DE IMPORTACIÓN DE DONACIONES'
+            instrucciones = [
+                ('INSTRUCCIONES DE USO - PLANTILLA DE DONACIONES', True, 16),
+                ('', False, 11),
+                ('⚠️ IMPORTANTE: Las filas grises con [EJEMPLO] son de muestra. ELIMÍNELAS antes de importar.', True, 12),
+                ('', False, 11),
+                ('PASOS:', True, 12),
+                ('1. Vaya a la hoja "Donaciones" y complete los datos de la donación', False, 11),
+                ('2. Vaya a la hoja "Detalles" y agregue los productos de cada donación', False, 11),
+                ('3. Use "Catálogo Productos Donación" para ver las claves válidas', False, 11),
+                ('4. IMPORTANTE: Solo use productos del Catálogo de Donaciones (NO del inventario principal)', False, 11),
+                ('5. ELIMINE las filas de ejemplo (texto gris con [EJEMPLO])', False, 11),
+                ('6. Guarde el archivo y súbalo al sistema', False, 11),
+                ('', False, 11),
+                ('CAMPOS OBLIGATORIOS:', True, 12),
+                ('  Donaciones: numero, donante_nombre, fecha_donacion', False, 11),
+                ('  Detalles: numero_donacion, producto_clave, cantidad', False, 11),
+                ('', False, 11),
+                ('TIPOS DE DONANTE VÁLIDOS:', True, 12),
+                ('  empresa, gobierno, ong, particular, otro', False, 11),
+                ('', False, 11),
+                ('ESTADOS DE PRODUCTO VÁLIDOS:', True, 12),
+                ('  bueno, regular, malo', False, 11),
+            ]
+            
+            for i, (texto, bold, size) in enumerate(instrucciones, 1):
+                cell = ws_inst.cell(row=i, column=1, value=texto)
+                cell.font = Font(bold=bold, size=size, color='632842' if bold else '333333')
+            
+            ws_inst.column_dimensions['A'].width = 80
+            
+            # ========== HOJA DE DONACIONES ==========
+            ws = wb.create_sheet(title='Donaciones')
+            
+            ws.merge_cells('A1:J1')
+            ws['A1'].value = 'DATOS DE DONACIONES'
             ws['A1'].font = Font(bold=True, size=14, color='632842')
             ws['A1'].alignment = Alignment(horizontal='center')
             
-            # Instrucciones breves
-            ws.merge_cells('A2:L2')
-            ws['A2'].value = '⚠️ Columnas con * son obligatorias. ELIMINE las filas de ejemplo (grises) antes de importar.'
+            ws['A2'].value = '⚠️ ELIMINE las filas de ejemplo (grises con [EJEMPLO]) antes de importar. Columnas con * son obligatorias.'
             ws['A2'].font = Font(italic=True, size=10, color='CC0000')
+            ws.merge_cells('A2:J2')
+            ws.append([])
             
-            ws.append([])  # Fila 3 vacía
-            
-            # Encabezados - Fila 4
             headers = [
-                'numero *',           # Número de la donación
-                'donante_nombre *',   # Nombre del donante
-                'fecha_donacion *',   # Fecha de la donación (YYYY-MM-DD)
-                'donante_tipo',       # empresa, gobierno, ong, particular, otro
-                'producto_clave *',   # Clave del producto (del catálogo)
-                'cantidad *',         # Cantidad donada
-                'numero_lote',        # Número de lote (opcional)
-                'fecha_caducidad',    # Fecha de caducidad (opcional)
-                'estado_producto',    # bueno, regular, malo
-                'donante_contacto',   # Email o teléfono del donante
-                'notas',              # Notas adicionales
-                'documento_donacion'  # Número de documento/factura
+                'numero *', 'donante_nombre *', 'donante_tipo', 'donante_rfc',
+                'donante_direccion', 'donante_contacto', 'fecha_donacion *',
+                'centro_destino_id', 'notas', 'documento_donacion'
             ]
             ws.append(headers)
             
-            # Estilo de encabezados
             for cell in ws[4]:
                 cell.fill = header_fill
                 cell.font = Font(bold=True, color='FFFFFF')
                 cell.border = thin_border
-                cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
             
-            # Filas de ejemplo
-            ejemplos = [
-                ['DON-2024-001', 'Farmacéutica Nacional SA', '2024-06-15', 'empresa',
-                 clave_ejemplo, 100, 'LOTE-001', '2025-12-31', 'bueno', 
-                 'contacto@farma.com', 'Donación anual', 'FAC-12345'],
-                ['DON-2024-001', 'Farmacéutica Nacional SA', '2024-06-15', 'empresa',
-                 clave_ejemplo, 50, 'LOTE-002', '2026-06-30', 'bueno', 
-                 '', 'Mismo donante, otro producto', ''],
-                ['DON-2024-002', 'Cruz Roja Mexicana', '2024-07-20', 'ong',
-                 clave_ejemplo, 200, '', '', 'regular', 
-                 'donaciones@cruzroja.mx', '', 'DOC-CRM-789'],
+            # Ejemplos con marcador [EJEMPLO] - texto gris itálica
+            ejemplos_donacion = [
+                ['[EJEMPLO] PRUEBA-DON-001 - ELIMINAR', '[EJEMPLO] Donante Prueba SA - ELIMINAR', 
+                 'empresa', 'XXX000000XX0', 'Calle Ejemplo 123', 'ejemplo@test.com', 
+                 '2024-01-15', '', 'Donación de prueba - ELIMINAR', 'DOC-PRUEBA-001'],
+                ['[EJEMPLO] PRUEBA-DON-002 - ELIMINAR', '[EJEMPLO] ONG Prueba - ELIMINAR', 
+                 'ong', '', '', 'contacto@ong.org', 
+                 '2024-02-20', '', 'Segunda donación de prueba - ELIMINAR', ''],
             ]
             
-            for ejemplo in ejemplos:
+            for ejemplo in ejemplos_donacion:
                 ws.append(ejemplo)
             
-            # Aplicar formato gris a ejemplos (filas 5, 6, 7)
-            for row_num in [5, 6, 7]:
+            # Aplicar formato gris itálica a filas de ejemplo (sin fondo de color)
+            for row_num in [5, 6]:
                 for cell in ws[row_num]:
                     cell.font = example_font
                     cell.border = thin_border
             
-            # Validación para tipo de donante
-            dv_tipo = DataValidation(
-                type='list',
-                formula1='"empresa,gobierno,ong,particular,otro"',
-                allow_blank=True
-            )
-            dv_tipo.error = 'Seleccione un tipo válido'
-            dv_tipo.errorTitle = 'Tipo inválido'
-            ws.add_data_validation(dv_tipo)
-            dv_tipo.add('D5:D1000')
+            # Ajustar anchos
+            column_widths = [35, 40, 15, 18, 30, 25, 15, 18, 35, 20]
+            for i, width in enumerate(column_widths, 1):
+                ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
             
-            # Validación para estado del producto
-            dv_estado = DataValidation(
-                type='list',
-                formula1='"bueno,regular,malo"',
-                allow_blank=True
-            )
-            dv_estado.error = 'Seleccione un estado válido'
-            dv_estado.errorTitle = 'Estado inválido'
-            ws.add_data_validation(dv_estado)
-            dv_estado.add('I5:I1000')
+            # ========== HOJA DE DETALLES ==========
+            ws2 = wb.create_sheet(title='Detalles')
             
-            # Ajustar anchos de columna
-            column_widths = {
-                'A': 18, 'B': 35, 'C': 15, 'D': 12, 'E': 15, 'F': 10,
-                'G': 15, 'H': 15, 'I': 12, 'J': 25, 'K': 30, 'L': 18
-            }
-            for col, width in column_widths.items():
-                ws.column_dimensions[col].width = width
+            ws2.merge_cells('A1:G1')
+            ws2['A1'].value = 'DETALLES DE DONACIONES (productos)'
+            ws2['A1'].font = Font(bold=True, size=14, color='632842')
+            ws2['A1'].alignment = Alignment(horizontal='center')
             
-            # ========== HOJA DE CATÁLOGO (referencia) ==========
-            ws_cat = wb.create_sheet(title='Catálogo Productos')
-            ws_cat.merge_cells('A1:D1')
-            ws_cat['A1'].value = 'CATÁLOGO DE PRODUCTOS DE DONACIÓN'
-            ws_cat['A1'].font = Font(bold=True, size=12, color='632842')
-            ws_cat['A1'].alignment = Alignment(horizontal='center')
+            ws2['A2'].value = '⚠️ ELIMINE las filas de ejemplo (grises con [EJEMPLO]). Use claves del Catálogo Productos.'
+            ws2['A2'].font = Font(italic=True, size=10, color='CC0000')
+            ws2.merge_cells('A2:G2')
+            ws2.append([])
             
-            ws_cat['A2'].value = 'Use estas claves en la columna "producto_clave" de la hoja Donaciones'
-            ws_cat['A2'].font = Font(italic=True, size=10)
-            ws_cat.merge_cells('A2:D2')
+            headers2 = [
+                'numero_donacion *', 'producto_clave *', 'numero_lote',
+                'cantidad *', 'fecha_caducidad', 'estado_producto', 'notas'
+            ]
+            ws2.append(headers2)
             
-            ws_cat.append([])
-            ws_cat.append(['Clave', 'Nombre', 'Unidad', 'Presentación'])
-            
-            for cell in ws_cat[4]:
+            for cell in ws2[4]:
                 cell.fill = header_fill
                 cell.font = Font(bold=True, color='FFFFFF')
                 cell.border = thin_border
             
-            if productos_donacion.count() == 0:
-                ws_cat.append(['⚠️ NO HAY PRODUCTOS EN EL CATÁLOGO'])
-                ws_cat['A5'].font = Font(color='CC0000', bold=True)
-            else:
-                for prod in productos_donacion[:500]:
-                    ws_cat.append([prod.clave, prod.nombre, prod.unidad_medida, prod.presentacion or ''])
+            # Ejemplos de detalles usando claves reales
+            ejemplos_detalles = [
+                ['[EJEMPLO] PRUEBA-DON-001 - ELIMINAR', f'{clave_ejemplo}', 
+                 'LOTE-PRUEBA-001', 100, '2025-12-31', 'bueno', '[EJEMPLO] - ELIMINAR'],
+                ['[EJEMPLO] PRUEBA-DON-001 - ELIMINAR', f'{clave_ejemplo}', 
+                 'LOTE-PRUEBA-002', 50, '2026-06-30', 'bueno', '[EJEMPLO] - ELIMINAR'],
+                ['[EJEMPLO] PRUEBA-DON-002 - ELIMINAR', f'{clave_ejemplo}', 
+                 '', 200, '', 'regular', '[EJEMPLO] - ELIMINAR'],
+            ]
             
-            ws_cat.column_dimensions['A'].width = 15
-            ws_cat.column_dimensions['B'].width = 45
-            ws_cat.column_dimensions['C'].width = 15
-            ws_cat.column_dimensions['D'].width = 25
+            for ejemplo in ejemplos_detalles:
+                ws2.append(ejemplo)
+            
+            # Aplicar formato gris itálica (sin fondo de color)
+            for row_num in [5, 6, 7]:
+                for cell in ws2[row_num]:
+                    cell.font = example_font
+                    cell.border = thin_border
+            
+            # Ajustar anchos
+            column_widths2 = [35, 15, 20, 12, 15, 15, 30]
+            for i, width in enumerate(column_widths2, 1):
+                ws2.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
+            
+            # ========== HOJA DE CATÁLOGO DE DONACIONES ==========
+            ws3 = wb.create_sheet(title='Catálogo Productos Donación')
+            ws3['A1'].value = 'CATÁLOGO INDEPENDIENTE DE PRODUCTOS DE DONACIONES'
+            ws3['A1'].font = Font(bold=True, size=12, color='632842')
+            ws3['A2'].value = '⚠️ IMPORTANTE: Este catálogo es INDEPENDIENTE del inventario principal de farmacia'
+            ws3['A2'].font = Font(italic=True, size=10, color='CC0000')
+            ws3.append([])
+            ws3.append(['Clave', 'Nombre', 'Unidad', 'Presentación'])
+            
+            for cell in ws3[4]:
+                cell.fill = header_fill
+                cell.font = Font(bold=True, color='FFFFFF')
+            
+            # Usar catálogo independiente de donaciones
+            productos_donacion = ProductoDonacion.objects.filter(activo=True).order_by('nombre')[:500]
+            
+            if productos_donacion.count() == 0:
+                ws3.append(['⚠️ NO HAY PRODUCTOS EN EL CATÁLOGO DE DONACIONES'])
+                ws3.append(['Agregue productos desde: Donaciones → Catálogo antes de importar'])
+            else:
+                for prod in productos_donacion:
+                    ws3.append([prod.clave, prod.nombre, prod.unidad_medida, prod.presentacion or ''])
+            
+            ws3.column_dimensions['A'].width = 20
+            ws3.column_dimensions['B'].width = 50
+            ws3.column_dimensions['C'].width = 15
+            ws3.column_dimensions['D'].width = 25
             
             response = HttpResponse(
                 content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -2983,23 +3048,26 @@ class DonacionViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='importar-excel')
     def importar_excel(self, request):
         """
-        Importa donaciones desde archivo Excel con formato simplificado.
+        Importa donaciones desde archivo Excel con detección automática de columnas.
         
-        UNA SOLA HOJA 'Donaciones' con campos combinados:
-        - numero *: Número único de la donación
-        - donante_nombre *: Nombre del donante
-        - fecha_donacion *: Fecha de la donación
+        Acepta dos hojas:
+        - 'Donaciones': Datos principales de la donación
+        - 'Detalles': Productos incluidos en cada donación
+        
+        Columnas de Donaciones (flexibles):
+        - numero (requerido): Número único de la donación
+        - donante_nombre (requerido): Nombre del donante
         - donante_tipo: empresa, gobierno, ong, particular, otro
-        - producto_clave *: Clave del producto (del catálogo)
-        - cantidad *: Cantidad donada
-        - numero_lote: Número de lote (opcional)
-        - fecha_caducidad: Fecha de caducidad (opcional)
-        - estado_producto: bueno, regular, malo
-        - donante_contacto: Email o teléfono del donante
-        - notas: Notas adicionales
-        - documento_donacion: Número de documento/factura
+        - donante_rfc, donante_direccion, donante_contacto: Opcionales
+        - fecha_donacion (requerido): Fecha de la donación
+        - centro_destino: ID o nombre del centro
+        - notas, documento_donacion: Opcionales
         
-        Agrupa automáticamente las filas por número de donación.
+        Columnas de Detalles (flexibles):
+        - numero_donacion (requerido): Referencia al número de donación
+        - producto (requerido): Clave o nombre del producto
+        - cantidad (requerido): Cantidad donada
+        - numero_lote, fecha_caducidad, estado_producto, notas: Opcionales
         """
         import openpyxl
         from django.db import transaction
@@ -3012,19 +3080,21 @@ class DonacionViewSet(viewsets.ModelViewSet):
         try:
             wb = openpyxl.load_workbook(archivo, data_only=True)
             
-            # Buscar hoja de donaciones
-            ws = None
+            # Buscar hoja de donaciones (flexible en nombre)
+            ws_donaciones = None
+            ws_detalles = None
+            
             for sheet_name in wb.sheetnames:
                 name_lower = sheet_name.lower().strip()
                 if 'donacion' in name_lower or name_lower == 'hoja1' or name_lower == 'sheet1':
-                    ws = wb[sheet_name]
-                    break
-                # Ignorar hojas de detalles - ya no usamos hoja separada
+                    ws_donaciones = wb[sheet_name]
+                elif 'detalle' in name_lower or name_lower == 'hoja2' or name_lower == 'sheet2':
+                    ws_detalles = wb[sheet_name]
             
-            if not ws:
-                ws = wb.active
+            if not ws_donaciones:
+                ws_donaciones = wb.active
             
-            if not ws:
+            if not ws_donaciones:
                 return Response({'error': 'No se encontró hoja de donaciones válida'}, 
                               status=status.HTTP_400_BAD_REQUEST)
             
@@ -3034,7 +3104,7 @@ class DonacionViewSet(viewsets.ModelViewSet):
                     return ''
                 return str(val).lower().strip().replace('_', ' ').replace('-', ' ').replace('*', '')
             
-            def buscar_encabezados(ws, aliases_dict, min_matches=3):
+            def buscar_encabezados(ws, aliases_dict, min_matches=2):
                 """Busca fila de encabezados en las primeras 10 filas"""
                 for row_num in range(1, min(11, ws.max_row + 1)):
                     row_values = [cell.value for cell in ws[row_num]]
@@ -3056,7 +3126,7 @@ class DonacionViewSet(viewsets.ModelViewSet):
                     if matches >= min_matches:
                         return row_num, col_map
                 
-                return 4, {}  # Asume fila 4 como encabezado si no encuentra
+                return 1, {}
             
             def get_val(row, field, col_map, default=None):
                 if field not in col_map:
@@ -3082,33 +3152,29 @@ class DonacionViewSet(viewsets.ModelViewSet):
                         continue
                 return None
             
-            def es_fila_ejemplo(row):
-                """Detecta si una fila es un ejemplo que debe ignorarse"""
-                for cell in row:
-                    if cell:
-                        cell_str = str(cell).upper()
-                        # Detecta filas de ejemplo por contenido típico
-                        if any(marca in cell_str for marca in ['[EJEMPLO]', 'EJEMPLO', 'PRUEBA', 'TEST', 'SAMPLE']):
-                            return True
-                        # También detecta patrones de ejemplo comunes
-                        if 'FARMACÉUTICA NACIONAL' in cell_str or 'CRUZ ROJA' in cell_str:
-                            return True
-                return False
-            
-            # Aliases para la hoja unificada (formato simplificado)
-            FIELD_ALIASES = {
+            # Aliases para donaciones
+            DONACION_ALIASES = {
                 'numero': ['numero', 'número', 'num', 'no', 'id', 'codigo', 'folio'],
-                'donante_nombre': ['donante nombre', 'donante', 'nombre donante', 'nombre'],
-                'fecha_donacion': ['fecha donacion', 'fecha', 'fecha recepcion'],
+                'donante_nombre': ['donante nombre', 'donante', 'nombre donante', 'nombre', 'razon social'],
                 'donante_tipo': ['donante tipo', 'tipo donante', 'tipo'],
-                'producto_clave': ['producto clave', 'clave producto', 'producto', 'clave'],
-                'cantidad': ['cantidad', 'cant', 'unidades'],
-                'numero_lote': ['numero lote', 'lote', 'no lote'],
-                'fecha_caducidad': ['fecha caducidad', 'caducidad', 'vencimiento'],
-                'estado_producto': ['estado producto', 'estado', 'condicion'],
+                'donante_rfc': ['donante rfc', 'rfc'],
+                'donante_direccion': ['donante direccion', 'direccion', 'domicilio'],
                 'donante_contacto': ['donante contacto', 'contacto', 'telefono', 'email'],
+                'fecha_donacion': ['fecha donacion', 'fecha', 'fecha recepcion'],
+                'centro_destino': ['centro destino', 'centro', 'destino'],
                 'notas': ['notas', 'observaciones', 'comentarios'],
-                'documento': ['documento donacion', 'documento', 'referencia', 'factura'],
+                'documento': ['documento donacion', 'documento', 'referencia'],
+            }
+            
+            # Aliases para detalles - usa catálogo independiente de donaciones
+            DETALLE_ALIASES = {
+                'numero_donacion': ['numero donacion', 'número donación', 'donacion', 'folio'],
+                'producto': ['producto clave', 'clave producto', 'producto', 'clave', 'medicamento', 'producto donacion'],
+                'numero_lote': ['numero lote', 'lote', 'no lote'],
+                'cantidad': ['cantidad', 'cant', 'unidades'],
+                'fecha_caducidad': ['fecha caducidad', 'caducidad', 'vencimiento', 'expiracion'],
+                'estado_producto': ['estado producto', 'estado', 'condicion'],
+                'notas': ['notas', 'observaciones'],
             }
             
             resultados = {
@@ -3118,22 +3184,32 @@ class DonacionViewSet(viewsets.ModelViewSet):
                 'exitos': []
             }
             
-            # Detectar encabezados
-            header_row, col_map = buscar_encabezados(ws, FIELD_ALIASES)
+            donaciones_map = {}  # numero -> instancia
             
-            # Si no hay mapa, usar posiciones por defecto del formato simplificado
-            if not col_map or len(col_map) < 3:
-                col_map = {
-                    'numero': 0, 'donante_nombre': 1, 'fecha_donacion': 2, 'donante_tipo': 3,
-                    'producto_clave': 4, 'cantidad': 5, 'numero_lote': 6, 'fecha_caducidad': 7,
-                    'estado_producto': 8, 'donante_contacto': 9, 'notas': 10, 'documento': 11
+            # Detectar encabezados de donaciones
+            header_row_don, col_map_don = buscar_encabezados(ws_donaciones, DONACION_ALIASES)
+            
+            # Si no hay mapa, usar posiciones por defecto
+            if not col_map_don:
+                col_map_don = {
+                    'numero': 0, 'donante_nombre': 1, 'donante_tipo': 2,
+                    'donante_rfc': 3, 'donante_direccion': 4, 'donante_contacto': 5,
+                    'fecha_donacion': 6, 'centro_destino': 7, 'notas': 8, 'documento': 9
                 }
             
-            donaciones_map = {}  # numero -> instancia Donacion
+            # Función para detectar filas de ejemplo
+            def es_fila_ejemplo(row):
+                """Detecta si una fila es un ejemplo que debe ignorarse"""
+                for cell in row:
+                    if cell:
+                        cell_str = str(cell).upper()
+                        if '[EJEMPLO]' in cell_str or 'PRUEBA-DON-' in cell_str or '- ELIMINAR' in cell_str:
+                            return True
+                return False
             
             with transaction.atomic():
-                # Procesar todas las filas agrupando por número de donación
-                for row_num, row in enumerate(ws.iter_rows(min_row=header_row + 1, values_only=True), start=header_row + 1):
+                # Crear donaciones
+                for row_num, row in enumerate(ws_donaciones.iter_rows(min_row=header_row_don + 1, values_only=True), start=header_row_don + 1):
                     if not row or all(cell is None or str(cell).strip() == '' for cell in row):
                         continue
                     
@@ -3142,135 +3218,195 @@ class DonacionViewSet(viewsets.ModelViewSet):
                         continue
                     
                     try:
-                        numero = get_val(row, 'numero', col_map)
-                        donante_nombre = get_val(row, 'donante_nombre', col_map)
-                        producto_clave = get_val(row, 'producto_clave', col_map)
-                        cantidad_raw = get_val(row, 'cantidad', col_map)
+                        numero = get_val(row, 'numero', col_map_don)
+                        donante_nombre = get_val(row, 'donante_nombre', col_map_don)
                         
-                        # Validar campos requeridos
                         if not numero:
                             resultados['errores'].append({
-                                'fila': row_num, 'error': 'Número de donación es obligatorio'
+                                'fila': row_num, 'hoja': 'Donaciones',
+                                'error': 'Número de donación es obligatorio'
                             })
                             continue
                         
                         if not donante_nombre:
                             resultados['errores'].append({
-                                'fila': row_num, 'error': 'Nombre del donante es obligatorio'
-                            })
-                            continue
-                        
-                        if not producto_clave:
-                            resultados['errores'].append({
-                                'fila': row_num, 'error': 'Clave de producto es obligatoria'
+                                'fila': row_num, 'hoja': 'Donaciones',
+                                'error': 'Nombre del donante es obligatorio'
                             })
                             continue
                         
                         numero = str(numero).strip()
-                        producto_clave = str(producto_clave).strip()
                         
-                        # Parsear cantidad
-                        try:
-                            cantidad = int(float(cantidad_raw)) if cantidad_raw else 0
-                        except:
-                            cantidad = 0
-                        
-                        if cantidad <= 0:
+                        # Verificar si ya existe
+                        if Donacion.objects.filter(numero=numero).exists():
                             resultados['errores'].append({
-                                'fila': row_num, 'error': 'Cantidad debe ser mayor a 0'
+                                'fila': row_num, 'hoja': 'Donaciones',
+                                'error': f'Donación {numero} ya existe'
                             })
                             continue
                         
-                        # Buscar producto en catálogo de donaciones
-                        producto_donacion = ProductoDonacion.objects.filter(clave__iexact=producto_clave, activo=True).first()
-                        if not producto_donacion:
-                            producto_donacion = ProductoDonacion.objects.filter(nombre__icontains=producto_clave, activo=True).first()
+                        # Buscar centro por ID o nombre
+                        centro_destino = None
+                        centro_val = get_val(row, 'centro_destino', col_map_don)
+                        if centro_val:
+                            try:
+                                centro_destino = Centro.objects.get(pk=int(centro_val))
+                            except (ValueError, Centro.DoesNotExist):
+                                centro_destino = Centro.objects.filter(nombre__icontains=str(centro_val)).first()
                         
-                        if not producto_donacion:
-                            resultados['errores'].append({
-                                'fila': row_num, 
-                                'error': f'Producto "{producto_clave}" no encontrado en Catálogo de Donaciones'
-                            })
-                            continue
+                        # Parsear fecha
+                        fecha_val = get_val(row, 'fecha_donacion', col_map_don)
+                        fecha = parse_fecha(fecha_val) or timezone.now().date()
                         
-                        # Crear donación si no existe para este número
-                        if numero not in donaciones_map:
-                            # Verificar si ya existe en BD
-                            donacion_existente = Donacion.objects.filter(numero=numero).first()
-                            if donacion_existente:
-                                donaciones_map[numero] = donacion_existente
-                            else:
-                                # Buscar centro (opcional)
-                                centro_destino = None
-                                
-                                # Parsear fecha
-                                fecha_val = get_val(row, 'fecha_donacion', col_map)
-                                fecha = parse_fecha(fecha_val) or timezone.now().date()
-                                
-                                # Normalizar tipo de donante
-                                tipo_donante = str(get_val(row, 'donante_tipo', col_map, 'empresa')).lower().strip()
-                                if tipo_donante not in ['empresa', 'gobierno', 'ong', 'particular', 'otro']:
-                                    tipo_donante = 'empresa'
-                                
-                                donacion = Donacion.objects.create(
-                                    numero=numero,
-                                    donante_nombre=str(donante_nombre).strip()[:200],
-                                    donante_tipo=tipo_donante,
-                                    donante_contacto=str(get_val(row, 'donante_contacto', col_map, '')).strip()[:200] or None,
-                                    fecha_donacion=fecha,
-                                    centro_destino=centro_destino,
-                                    notas=str(get_val(row, 'notas', col_map, '')).strip() or None,
-                                    documento_donacion=str(get_val(row, 'documento', col_map, '')).strip()[:100] or None,
-                                    recibido_por=request.user,
-                                    estado='pendiente'
-                                )
-                                donaciones_map[numero] = donacion
-                                resultados['donaciones_creadas'] += 1
+                        # Normalizar tipo de donante
+                        tipo_donante = str(get_val(row, 'donante_tipo', col_map_don, 'empresa')).lower().strip()
+                        if tipo_donante not in ['empresa', 'gobierno', 'ong', 'particular', 'otro']:
+                            tipo_donante = 'empresa'
                         
-                        # Obtener donación
-                        donacion = donaciones_map[numero]
-                        
-                        # Parsear fecha caducidad
-                        fecha_cad = parse_fecha(get_val(row, 'fecha_caducidad', col_map))
-                        
-                        # Normalizar estado
-                        estado = str(get_val(row, 'estado_producto', col_map, 'bueno')).lower().strip()
-                        if estado not in ['bueno', 'regular', 'malo']:
-                            estado = 'bueno'
-                        
-                        # Crear detalle de donación
-                        DetalleDonacion.objects.create(
-                            donacion=donacion,
-                            producto_donacion=producto_donacion,
-                            producto=None,  # Legacy - no usar catálogo principal
-                            numero_lote=str(get_val(row, 'numero_lote', col_map, '')).strip()[:50] or None,
-                            cantidad=cantidad,
-                            cantidad_disponible=cantidad,
-                            fecha_caducidad=fecha_cad,
-                            estado_producto=estado,
-                            notas=str(get_val(row, 'notas', col_map, '')).strip() or None
+                        donacion = Donacion.objects.create(
+                            numero=numero,
+                            donante_nombre=str(donante_nombre).strip()[:200],
+                            donante_tipo=tipo_donante,
+                            donante_rfc=str(get_val(row, 'donante_rfc', col_map_don, '')).strip()[:15] or None,
+                            donante_direccion=str(get_val(row, 'donante_direccion', col_map_don, '')).strip()[:300] or None,
+                            donante_contacto=str(get_val(row, 'donante_contacto', col_map_don, '')).strip()[:200] or None,
+                            fecha_donacion=fecha,
+                            centro_destino=centro_destino,
+                            notas=str(get_val(row, 'notas', col_map_don, '')).strip() or None,
+                            documento_donacion=str(get_val(row, 'documento', col_map_don, '')).strip()[:100] or None,
+                            recibido_por=request.user,
+                            estado='pendiente'
                         )
-                        resultados['detalles_creados'] += 1
+                        donaciones_map[numero] = donacion
+                        resultados['donaciones_creadas'] += 1
                         resultados['exitos'].append({
-                            'fila': row_num, 'donacion': numero, 'producto': producto_clave, 'cantidad': cantidad
+                            'fila': row_num, 'hoja': 'Donaciones',
+                            'donacion_id': donacion.id, 'numero': numero
                         })
                         
                     except Exception as e:
                         resultados['errores'].append({
-                            'fila': row_num, 'error': str(e)
+                            'fila': row_num, 'hoja': 'Donaciones',
+                            'error': str(e)
                         })
+                
+                # Crear detalles si existe hoja
+                if ws_detalles:
+                    header_row_det, col_map_det = buscar_encabezados(ws_detalles, DETALLE_ALIASES)
+                    
+                    if not col_map_det:
+                        col_map_det = {
+                            'numero_donacion': 0, 'producto': 1, 'numero_lote': 2,
+                            'cantidad': 3, 'fecha_caducidad': 4, 'estado_producto': 5, 'notas': 6
+                        }
+                    
+                    for row_num, row in enumerate(ws_detalles.iter_rows(min_row=header_row_det + 1, values_only=True), start=header_row_det + 1):
+                        if not row or all(cell is None or str(cell).strip() == '' for cell in row):
+                            continue
+                        
+                        # Ignorar filas de ejemplo
+                        if es_fila_ejemplo(row):
+                            continue
+                        
+                        try:
+                            numero_donacion = get_val(row, 'numero_donacion', col_map_det)
+                            producto_ref = get_val(row, 'producto', col_map_det)
+                            
+                            if not numero_donacion:
+                                resultados['errores'].append({
+                                    'fila': row_num, 'hoja': 'Detalles',
+                                    'error': 'Número de donación es obligatorio'
+                                })
+                                continue
+                            
+                            numero_donacion = str(numero_donacion).strip()
+                            
+                            # Buscar donación
+                            donacion = donaciones_map.get(numero_donacion)
+                            if not donacion:
+                                donacion = Donacion.objects.filter(numero=numero_donacion).first()
+                            
+                            if not donacion:
+                                resultados['errores'].append({
+                                    'fila': row_num, 'hoja': 'Detalles',
+                                    'error': f'Donación "{numero_donacion}" no encontrada'
+                                })
+                                continue
+                            
+                            # Buscar producto en catálogo INDEPENDIENTE de donaciones
+                            if not producto_ref:
+                                resultados['errores'].append({
+                                    'fila': row_num, 'hoja': 'Detalles',
+                                    'error': 'Producto es obligatorio'
+                                })
+                                continue
+                            
+                            producto_ref = str(producto_ref).strip()
+                            # Buscar en catálogo independiente de donaciones (NO en productos principales)
+                            producto_donacion = ProductoDonacion.objects.filter(clave__iexact=producto_ref).first()
+                            if not producto_donacion:
+                                producto_donacion = ProductoDonacion.objects.filter(nombre__icontains=producto_ref).first()
+                            
+                            if not producto_donacion:
+                                resultados['errores'].append({
+                                    'fila': row_num, 'hoja': 'Detalles',
+                                    'error': f'Producto "{producto_ref}" no encontrado en Catálogo de Donaciones. Asegúrese de agregarlo primero en Donaciones → Catálogo.'
+                                })
+                                continue
+                            
+                            # Parsear cantidad
+                            cantidad_raw = get_val(row, 'cantidad', col_map_det)
+                            try:
+                                cantidad = int(float(cantidad_raw)) if cantidad_raw else 0
+                            except:
+                                cantidad = 0
+                            
+                            if cantidad <= 0:
+                                resultados['errores'].append({
+                                    'fila': row_num, 'hoja': 'Detalles',
+                                    'error': 'Cantidad debe ser mayor a 0'
+                                })
+                                continue
+                            
+                            # Parsear fecha caducidad
+                            fecha_cad = parse_fecha(get_val(row, 'fecha_caducidad', col_map_det))
+                            
+                            # Normalizar estado
+                            estado = str(get_val(row, 'estado_producto', col_map_det, 'bueno')).lower().strip()
+                            if estado not in ['bueno', 'regular', 'malo']:
+                                estado = 'bueno'
+                            
+                            DetalleDonacion.objects.create(
+                                donacion=donacion,
+                                producto_donacion=producto_donacion,  # Usa catálogo independiente
+                                producto=None,  # Legacy - no usar catálogo principal
+                                numero_lote=str(get_val(row, 'numero_lote', col_map_det, '')).strip()[:50] or None,
+                                cantidad=cantidad,
+                                cantidad_disponible=cantidad,  # Stock disponible desde inicio
+                                fecha_caducidad=fecha_cad,
+                                estado_producto=estado,
+                                notas=str(get_val(row, 'notas', col_map_det, '')).strip() or None
+                            )
+                            resultados['detalles_creados'] += 1
+                            
+                        except Exception as e:
+                            resultados['errores'].append({
+                                'fila': row_num, 'hoja': 'Detalles',
+                                'error': str(e)
+                            })
             
             logger.info(f"Importación de donaciones por {request.user.username}: "
                        f"{resultados['donaciones_creadas']} donaciones, {resultados['detalles_creados']} detalles")
             
             status_code = status.HTTP_200_OK if len(resultados['errores']) == 0 else status.HTTP_207_MULTI_STATUS
             
+            # ISS-FIX: Formato compatible con frontend (espera resultados.exitosos y resultados.fallidos)
             return Response({
                 'mensaje': 'Importación completada',
                 'resultados': {
-                    'exitosos': resultados['detalles_creados'],
+                    'exitosos': resultados['donaciones_creadas'],
                     'fallidos': len(resultados['errores']),
-                    'donaciones_creadas': resultados['donaciones_creadas'],
+                    'detalles_creados': resultados['detalles_creados'],
                     'errores': resultados['errores']
                 },
                 'resumen': {
@@ -3287,7 +3423,7 @@ class DonacionViewSet(viewsets.ModelViewSet):
             return Response({
                 'error': 'Error al procesar archivo',
                 'mensaje': str(e),
-                'sugerencia': 'Verifique que el archivo tenga la hoja "Donaciones" con los campos requeridos'
+                'sugerencia': 'Verifique que el archivo tenga hojas "Donaciones" y "Detalles" con los campos requeridos'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -3366,340 +3502,6 @@ class ProductoDonacionViewSet(viewsets.ModelViewSet):
         )[:20]
         
         return Response(ProductoDonacionSerializer(productos, many=True).data)
-
-    @action(detail=False, methods=['get'], url_path='exportar-excel')
-    def exportar_excel(self, request):
-        """
-        Exporta el catálogo de productos de donación a Excel con formato profesional.
-        """
-        import openpyxl
-        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-        from django.http import HttpResponse
-        from django.utils import timezone
-        from core.models import ProductoDonacion
-        
-        try:
-            productos = ProductoDonacion.objects.filter(activo=True).order_by('clave')
-            
-            # Crear libro de Excel
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.title = 'Catálogo Donaciones'
-            
-            # Título del reporte
-            ws.merge_cells('A1:F1')
-            titulo_cell = ws['A1']
-            titulo_cell.value = 'CATÁLOGO DE PRODUCTOS DE DONACIÓN'
-            titulo_cell.font = Font(bold=True, size=14, color='632842')
-            titulo_cell.alignment = Alignment(horizontal='center', vertical='center')
-            
-            # Fecha de generación
-            ws.merge_cells('A2:F2')
-            fecha_cell = ws['A2']
-            fecha_cell.value = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")}'
-            fecha_cell.font = Font(size=10, italic=True)
-            fecha_cell.alignment = Alignment(horizontal='center')
-            
-            # Espacio
-            ws.append([])
-            
-            # Encabezados - Alineados con modelo ProductoDonacion
-            headers = ['Clave', 'Nombre', 'Descripción', 'Unidad Medida', 'Presentación', 'Activo']
-            ws.append(headers)
-            
-            # Estilo de encabezados
-            header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
-            header_font = Font(bold=True, color='FFFFFF', size=11)
-            header_alignment = Alignment(horizontal='center', vertical='center')
-            
-            for col_num, cell in enumerate(ws[4], 1):
-                cell.fill = header_fill
-                cell.font = header_font
-                cell.alignment = header_alignment
-            
-            # Datos - campos alineados con modelo ProductoDonacion
-            for producto in productos:
-                ws.append([
-                    producto.clave,
-                    producto.nombre,
-                    producto.descripcion or '',
-                    producto.unidad_medida or 'PIEZA',
-                    producto.presentacion or '',
-                    'Sí' if producto.activo else 'No'
-                ])
-            
-            # Ajustar anchos de columna
-            ws.column_dimensions['A'].width = 15
-            ws.column_dimensions['B'].width = 40
-            ws.column_dimensions['C'].width = 50
-            ws.column_dimensions['D'].width = 15
-            ws.column_dimensions['E'].width = 20
-            ws.column_dimensions['F'].width = 10
-            
-            # Agregar bordes
-            thin_border = Border(
-                left=Side(style='thin'),
-                right=Side(style='thin'),
-                top=Side(style='thin'),
-                bottom=Side(style='thin')
-            )
-            
-            for row in ws.iter_rows(min_row=4, max_row=ws.max_row, min_col=1, max_col=6):
-                for cell in row:
-                    cell.border = thin_border
-            
-            # Preparar respuesta
-            response = HttpResponse(
-                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            )
-            filename = f'catalogo_donaciones_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
-            response['Content-Disposition'] = f'attachment; filename="{filename}"'
-            
-            wb.save(response)
-            return response
-            
-        except Exception as e:
-            return Response(
-                {'error': f'Error al exportar: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    @action(detail=False, methods=['get'], url_path='plantilla-excel')
-    def plantilla_excel(self, request):
-        """
-        Genera una plantilla Excel para importación de productos de donación.
-        Incluye ejemplos y validaciones.
-        """
-        import openpyxl
-        from openpyxl.styles import Font, Alignment, PatternFill
-        from django.http import HttpResponse
-        
-        try:
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.title = 'Plantilla Productos'
-            
-            # Título
-            ws.merge_cells('A1:F1')
-            titulo_cell = ws['A1']
-            titulo_cell.value = 'PLANTILLA PARA IMPORTAR PRODUCTOS DE DONACIÓN'
-            titulo_cell.font = Font(bold=True, size=14, color='632842')
-            titulo_cell.alignment = Alignment(horizontal='center', vertical='center')
-            
-            # Instrucciones - fila 2
-            ws.merge_cells('A2:F2')
-            ws['A2'].value = 'Complete los datos. Columnas con * son obligatorias. Unidades: PIEZA, CAJA, FRASCO, TABLETA, AMPOLLETA, etc.'
-            ws['A2'].font = Font(size=10, italic=True)
-            
-            # Nota importante - fila 3
-            ws.merge_cells('A3:F3')
-            ws['A3'].value = '⚠️ BORRE las filas de ejemplo antes de importar (o simplemente inicie sus datos desde fila 5)'
-            ws['A3'].font = Font(size=9, italic=True, color='CC0000')
-            
-            # Encabezados - Alineados con modelo ProductoDonacion en BD - fila 4
-            headers = [
-                'clave *',           # Clave única del producto
-                'nombre *',          # Nombre del producto
-                'descripcion',       # Descripción
-                'unidad_medida',     # PIEZA, CAJA, FRASCO, etc.
-                'presentacion',      # Forma farmacéutica (tabletas, jarabe, etc.)
-            ]
-            # Escribir encabezados en fila 4 explícitamente
-            for col_idx, header in enumerate(headers, 1):
-                ws.cell(row=4, column=col_idx, value=header)
-            
-            # Estilo de encabezados
-            header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
-            header_font = Font(bold=True, color='FFFFFF', size=11)
-            
-            for col_idx in range(1, len(headers) + 1):
-                cell = ws.cell(row=4, column=col_idx)
-                cell.fill = header_fill
-                cell.font = header_font
-                cell.alignment = Alignment(horizontal='center', vertical='center')
-            
-            # Filas de ejemplo (las elimina el usuario antes de importar)
-            # Escribir en filas 5 y 6 explícitamente
-            ejemplo1 = ['EJEMPLO-001', 'Paracetamol 500mg (BORRAR ESTA FILA)', 'Tabletas para fiebre y dolor', 'PIEZA', 'Tabletas']
-            ejemplo2 = ['EJEMPLO-002', 'Alcohol al 70% (BORRAR ESTA FILA)', 'Solución desinfectante', 'FRASCO', 'Frasco 250ml']
-            
-            for col_idx, val in enumerate(ejemplo1, 1):
-                ws.cell(row=5, column=col_idx, value=val)
-            for col_idx, val in enumerate(ejemplo2, 1):
-                ws.cell(row=6, column=col_idx, value=val)
-            
-            # Estilos de las filas de ejemplo (color gris para indicar que son ejemplos)
-            example_font = Font(italic=True, color='888888')
-            for row_num in [5, 6]:
-                for col in range(1, 6):
-                    ws.cell(row=row_num, column=col).font = example_font
-            
-            # Ajustar anchos
-            ws.column_dimensions['A'].width = 15
-            ws.column_dimensions['B'].width = 35
-            ws.column_dimensions['C'].width = 40
-            ws.column_dimensions['D'].width = 15
-            ws.column_dimensions['E'].width = 20
-            
-            # Respuesta
-            response = HttpResponse(
-                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            )
-            response['Content-Disposition'] = 'attachment; filename="plantilla_catalogo_donaciones.xlsx"'
-            
-            wb.save(response)
-            return response
-            
-        except Exception as e:
-            return Response(
-                {'error': f'Error al generar plantilla: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    @action(detail=False, methods=['post'], url_path='importar-excel')
-    def importar_excel(self, request):
-        """
-        Importa productos de donación desde un archivo Excel.
-        
-        Formato esperado (alineado con modelo ProductoDonacion en BD):
-        - clave: Clave única del producto (obligatorio)
-        - nombre: Nombre del producto (obligatorio)
-        - descripcion: Descripción (opcional)
-        - unidad_medida: Unidad de medida (opcional, default: PIEZA)
-        - presentacion: Forma farmacéutica (opcional)
-        """
-        import openpyxl
-        from django.db import transaction
-        from core.models import ProductoDonacion
-        
-        archivo = request.FILES.get('archivo')
-        if not archivo:
-            return Response(
-                {'error': 'No se proporcionó archivo'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        if not archivo.name.endswith(('.xlsx', '.xls')):
-            return Response(
-                {'error': 'El archivo debe ser Excel (.xlsx o .xls)'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            wb = openpyxl.load_workbook(archivo, data_only=True)
-            ws = wb.active
-            
-            # Buscar fila de encabezados (puede estar en fila 4 si usa plantilla)
-            header_row = None
-            for row_num in range(1, 10):
-                cell_value = ws.cell(row=row_num, column=1).value
-                if cell_value and 'clave' in str(cell_value).lower():
-                    header_row = row_num
-                    break
-            
-            if not header_row:
-                header_row = 1
-            
-            # Mapear columnas
-            headers = {}
-            for col_num, cell in enumerate(ws[header_row], 1):
-                if cell.value:
-                    header_name = str(cell.value).lower().strip()
-                    header_name = header_name.replace(' *', '').replace('*', '')
-                    headers[header_name] = col_num
-            
-            required_cols = ['clave', 'nombre']
-            for col in required_cols:
-                if col not in headers:
-                    return Response(
-                        {'error': f'Columna requerida no encontrada: {col}'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-            
-            # Procesar filas
-            resultados = {
-                'creados': 0,
-                'actualizados': 0,
-                'fallidos': 0,
-                'errores': []
-            }
-            
-            unidades_validas = ['PIEZA', 'CAJA', 'FRASCO', 'TABLETA', 'AMPOLLETA', 'SOBRES', 'LITRO', 'MILILITRO', 'GRAMO', 'KILOGRAMO']
-            
-            with transaction.atomic():
-                for row_num in range(header_row + 1, ws.max_row + 1):
-                    clave = ws.cell(row=row_num, column=headers['clave']).value
-                    
-                    # Saltar filas vacías
-                    if not clave:
-                        continue
-                    
-                    clave_str = str(clave).strip().upper()
-                    
-                    # Saltar filas de ejemplo, notas o instrucciones
-                    skip_keywords = ['NOTA', 'EJEMPLO', 'INSTRUCCION', 'BORRAR', '---', '***']
-                    if any(keyword in clave_str for keyword in skip_keywords):
-                        continue
-                    
-                    # Saltar si la clave empieza con palabras especiales
-                    if clave_str.startswith(('NOTA:', 'EJEMPLO-', 'EJ:', 'EJ-')):
-                        continue
-                    
-                    try:
-                        nombre = ws.cell(row=row_num, column=headers['nombre']).value
-                        descripcion = ws.cell(row=row_num, column=headers.get('descripcion', 0)).value if headers.get('descripcion') else None
-                        unidad_medida = ws.cell(row=row_num, column=headers.get('unidad_medida', 0)).value if headers.get('unidad_medida') else 'PIEZA'
-                        presentacion = ws.cell(row=row_num, column=headers.get('presentacion', 0)).value if headers.get('presentacion') else None
-                        
-                        # Validaciones
-                        if not nombre:
-                            raise ValueError('Nombre es requerido')
-                        
-                        clave = str(clave).strip().upper()
-                        nombre = str(nombre).strip()
-                        
-                        if unidad_medida:
-                            unidad_medida = str(unidad_medida).strip().upper()
-                            if unidad_medida not in unidades_validas:
-                                unidad_medida = 'PIEZA'
-                        else:
-                            unidad_medida = 'PIEZA'
-                        
-                        # Crear o actualizar producto - campos alineados con modelo ProductoDonacion
-                        producto, created = ProductoDonacion.objects.update_or_create(
-                            clave=clave,
-                            defaults={
-                                'nombre': nombre,
-                                'descripcion': str(descripcion).strip() if descripcion else None,
-                                'unidad_medida': unidad_medida,
-                                'presentacion': str(presentacion).strip() if presentacion else None,
-                                'activo': True
-                            }
-                        )
-                        
-                        if created:
-                            resultados['creados'] += 1
-                        else:
-                            resultados['actualizados'] += 1
-                        
-                    except Exception as e:
-                        resultados['fallidos'] += 1
-                        resultados['errores'].append({
-                            'fila': row_num,
-                            'clave': str(clave) if clave else 'N/A',
-                            'error': str(e)
-                        })
-            
-            return Response({
-                'mensaje': f'Importación completada. Creados: {resultados["creados"]}, Actualizados: {resultados["actualizados"]}, Fallidos: {resultados["fallidos"]}',
-                'resultados': resultados
-            })
-            
-        except Exception as e:
-            return Response(
-                {'error': f'Error al procesar archivo: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
 
 
 class DetalleDonacionViewSet(viewsets.ModelViewSet):
@@ -3784,9 +3586,11 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         from core.models import SalidaDonacion
+        # ISS-DB-ALIGN: Incluir centro_destino y finalizado_por en select_related
         queryset = SalidaDonacion.objects.select_related(
             'detalle_donacion', 'detalle_donacion__producto', 
-            'detalle_donacion__donacion', 'entregado_por'
+            'detalle_donacion__donacion', 'entregado_por',
+            'centro_destino', 'finalizado_por'
         ).all()
         
         # Filtrar por detalle de donacion
@@ -3803,6 +3607,17 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
         destinatario = self.request.query_params.get('destinatario')
         if destinatario:
             queryset = queryset.filter(destinatario__icontains=destinatario)
+        
+        # ISS-DB-ALIGN: Filtrar por centro destino
+        centro_destino = self.request.query_params.get('centro_destino')
+        if centro_destino:
+            queryset = queryset.filter(centro_destino_id=centro_destino)
+        
+        # ISS-DB-ALIGN: Filtrar por estado de finalización
+        finalizado = self.request.query_params.get('finalizado')
+        if finalizado is not None:
+            is_finalizado = finalizado.lower() in ('true', '1', 'si', 'yes')
+            queryset = queryset.filter(finalizado=is_finalizado)
         
         # Filtrar por fecha
         fecha_desde = self.request.query_params.get('fecha_desde')
@@ -4212,289 +4027,115 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    @action(detail=True, methods=['get'], url_path='generar-pdf')
-    def generar_pdf(self, request, pk=None):
-        """
-        Genera un recibo PDF para una salida de donación específica.
-        Incluye campos de firma: Autoriza, Entrega, Recibe.
-        
-        Returns:
-            PDF descargable con formato institucional
-        """
-        from django.http import HttpResponse
-        from core.utils.pdf_reports import generar_recibo_salida_donacion
-        from core.models import SalidaDonacion, Centro
-        
-        try:
-            salida = self.get_object()
-            
-            # Preparar datos de la salida
-            producto_nombre = ''
-            lote = ''
-            donacion_numero = ''
-            
-            if salida.detalle_donacion:
-                if salida.detalle_donacion.producto:
-                    producto_nombre = salida.detalle_donacion.producto.nombre
-                lote = salida.detalle_donacion.numero_lote or ''
-                if salida.detalle_donacion.donacion:
-                    donacion_numero = salida.detalle_donacion.donacion.numero
-            
-            # Obtener nombre del centro si existe centro_destino
-            centro_destino_nombre = salida.destinatario
-            if hasattr(salida, 'centro_destino') and salida.centro_destino:
-                try:
-                    centro = Centro.objects.get(pk=salida.centro_destino)
-                    centro_destino_nombre = centro.nombre
-                except Centro.DoesNotExist:
-                    pass
-            
-            # Usuario que registró
-            usuario = ''
-            if salida.entregado_por:
-                usuario = f"{salida.entregado_por.first_name} {salida.entregado_por.last_name}".strip()
-                if not usuario:
-                    usuario = salida.entregado_por.username
-            
-            # Obtener estado de finalización
-            es_finalizado = getattr(salida, 'finalizado', False)
-            fecha_finalizado = getattr(salida, 'fecha_finalizado', None)
-            
-            salida_data = {
-                'id': salida.id,
-                'fecha': salida.fecha_entrega,
-                'centro_destino_nombre': centro_destino_nombre,
-                'destinatario': salida.destinatario,
-                'producto_nombre': producto_nombre,
-                'cantidad': salida.cantidad,
-                'motivo': salida.motivo or '',
-                'notas': salida.notas or '',
-                'numero_lote': lote,
-                'donacion_numero': donacion_numero,
-                'usuario': usuario,
-                'finalizado': es_finalizado,
-                'fecha_finalizado': fecha_finalizado,
-            }
-            
-            # Generar PDF (con firmas si no está finalizado, con sello si está finalizado)
-            buffer = generar_recibo_salida_donacion(salida_data, finalizado=es_finalizado)
-            
-            response = HttpResponse(buffer, content_type='application/pdf')
-            filename = f'recibo_salida_donacion_{salida.id}.pdf'
-            response['Content-Disposition'] = f'attachment; filename="{filename}"'
-            
-            return response
-            
-        except SalidaDonacion.DoesNotExist:
-            return Response(
-                {'error': 'Salida de donación no encontrada'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            return Response(
-                {'error': f'Error al generar PDF: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    @action(detail=False, methods=['post'], url_path='generar-pdf-masivo')
-    def generar_pdf_masivo(self, request):
-        """
-        Genera un recibo PDF para múltiples salidas de donación (salida masiva).
-        Espera una lista de IDs de salidas y genera un único PDF consolidado.
-        
-        Body:
-            {
-                "salidas_ids": [1, 2, 3],
-                "centro_destino": "Nombre del centro",
-                "motivo": "Motivo de la salida"
-            }
-        
-        Returns:
-            PDF descargable con formato institucional
-        """
-        from django.http import HttpResponse
-        from core.utils.pdf_reports import generar_recibo_salida_donacion
-        from core.models import SalidaDonacion, Centro
-        
-        try:
-            salidas_ids = request.data.get('salidas_ids', [])
-            centro_destino = request.data.get('centro_destino', '')
-            motivo = request.data.get('motivo', '')
-            
-            if not salidas_ids:
-                return Response(
-                    {'error': 'Se requiere al menos una salida'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Obtener las salidas
-            salidas = SalidaDonacion.objects.filter(
-                id__in=salidas_ids
-            ).select_related(
-                'detalle_donacion', 
-                'detalle_donacion__producto',
-                'detalle_donacion__donacion',
-                'entregado_por'
-            )
-            
-            if not salidas.exists():
-                return Response(
-                    {'error': 'No se encontraron las salidas especificadas'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            
-            # Preparar datos para el PDF
-            primera_salida = salidas.first()
-            
-            # Obtener nombre del centro si es un ID
-            centro_nombre = centro_destino
-            if centro_destino and str(centro_destino).isdigit():
-                try:
-                    centro = Centro.objects.get(pk=int(centro_destino))
-                    centro_nombre = centro.nombre
-                except Centro.DoesNotExist:
-                    pass
-            
-            # Usuario que registró
-            usuario = ''
-            if primera_salida.entregado_por:
-                usuario = f"{primera_salida.entregado_por.first_name} {primera_salida.entregado_por.last_name}".strip()
-                if not usuario:
-                    usuario = primera_salida.entregado_por.username
-            
-            salida_data = {
-                'id': f"MAS-{primera_salida.id}",
-                'fecha': primera_salida.fecha_entrega,
-                'centro_destino_nombre': centro_nombre or primera_salida.destinatario,
-                'destinatario': centro_nombre or primera_salida.destinatario,
-                'motivo': motivo or primera_salida.motivo or '',
-                'notas': primera_salida.notas or '',
-                'usuario': usuario,
-            }
-            
-            # Preparar detalles de productos
-            detalles_data = []
-            for salida in salidas:
-                producto_nombre = ''
-                lote = ''
-                
-                if salida.detalle_donacion:
-                    if salida.detalle_donacion.producto:
-                        producto_nombre = salida.detalle_donacion.producto.nombre
-                    lote = salida.detalle_donacion.numero_lote or ''
-                
-                detalles_data.append({
-                    'producto_nombre': producto_nombre,
-                    'cantidad': salida.cantidad,
-                    'numero_lote': lote,
-                })
-            
-            # Generar PDF
-            buffer = generar_recibo_salida_donacion(salida_data, detalles_data)
-            
-            response = HttpResponse(buffer, content_type='application/pdf')
-            filename = f'recibo_salida_masiva_donacion_{primera_salida.id}.pdf'
-            response['Content-Disposition'] = f'attachment; filename="{filename}"'
-            
-            return response
-            
-        except Exception as e:
-            return Response(
-                {'error': f'Error al generar PDF: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
     @action(detail=True, methods=['post'], url_path='finalizar')
     def finalizar(self, request, pk=None):
         """
-        Marca una salida de donación como finalizada.
-        Una vez finalizada, el PDF mostrará sello de ENTREGADO en lugar de campos de firma.
+        Marca una entrega de donación como finalizada/entregada.
         
-        Returns:
-            Datos de la salida actualizada
+        ISS-DB-ALIGN: Ahora usa los campos reales de la BD:
+        - finalizado: Boolean que indica si fue entregada
+        - fecha_finalizado: Timestamp de la finalización
+        - finalizado_por: Usuario que confirmó la entrega
         """
         from django.utils import timezone
-        from core.models import SalidaDonacion
         
         try:
             salida = self.get_object()
             
-            if salida.finalizado:
-                return Response(
-                    {'error': 'Esta salida ya fue finalizada'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
+            # ISS-DB-ALIGN: Usar campos reales del modelo
             salida.finalizado = True
             salida.fecha_finalizado = timezone.now()
             salida.finalizado_por = request.user
+            
+            # Mantener nota para compatibilidad/trazabilidad adicional
+            nota_finalizacion = f"\n[ENTREGADO] Confirmado por {request.user.username} el {timezone.now().strftime('%d/%m/%Y %H:%M')}"
+            salida.notas = (salida.notas or '') + nota_finalizacion
             salida.save()
             
-            # Retornar datos actualizados
+            logger.info(f"Salida de donación {salida.id} finalizada por {request.user.username}")
+            
             from core.serializers import SalidaDonacionSerializer
-            serializer = SalidaDonacionSerializer(salida)
-            
             return Response({
-                'mensaje': 'Salida finalizada correctamente',
-                'salida': serializer.data
+                'mensaje': 'Entrega finalizada correctamente',
+                'salida': SalidaDonacionSerializer(salida).data
             })
-            
-        except SalidaDonacion.DoesNotExist:
-            return Response(
-                {'error': 'Salida de donación no encontrada'},
-                status=status.HTTP_404_NOT_FOUND
-            )
         except Exception as e:
+            logger.error(f"Error finalizando salida de donación: {str(e)}")
             return Response(
-                {'error': f'Error al finalizar: {str(e)}'},
+                {'error': f'Error al finalizar entrega: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    @action(detail=False, methods=['post'], url_path='finalizar-masivo')
-    def finalizar_masivo(self, request):
+    @action(detail=True, methods=['get'], url_path='recibo-pdf')
+    def recibo_pdf(self, request, pk=None):
         """
-        Marca múltiples salidas de donación como finalizadas.
+        Genera un PDF de recibo para una salida de donación.
         
-        Body:
-            {
-                "salidas_ids": [1, 2, 3]
-            }
+        Parámetros:
+        - finalizado: si es 'true', muestra sello de ENTREGADO en lugar de campos de firma
         
-        Returns:
-            Resumen de salidas finalizadas
+        ISS-DB-ALIGN: Ahora usa el campo 'finalizado' del modelo
         """
+        from django.http import HttpResponse
         from django.utils import timezone
-        from core.models import SalidaDonacion
+        from core.utils.pdf_reports import generar_recibo_salida_donacion
         
         try:
-            salidas_ids = request.data.get('salidas_ids', [])
+            salida = self.get_object()
             
-            if not salidas_ids:
-                return Response(
-                    {'error': 'Se requiere al menos una salida'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            # ISS-DB-ALIGN: Priorizar el campo real del modelo
+            finalizado = salida.finalizado or request.query_params.get('finalizado', 'false').lower() == 'true'
+            # Fallback: detectar por la nota (compatibilidad con datos antiguos)
+            if not finalizado and salida.notas and '[ENTREGADO]' in salida.notas:
+                finalizado = True
             
-            # Actualizar todas las salidas
-            salidas = SalidaDonacion.objects.filter(
-                id__in=salidas_ids,
-                finalizado=False
+            # Construir datos para el PDF
+            # ISS-DB-ALIGN: Usar centro_destino del modelo si existe
+            centro_destino_nombre = salida.destinatario or 'Destinatario no especificado'
+            if salida.centro_destino:
+                centro_destino_nombre = salida.centro_destino.nombre
+            
+            salida_data = {
+                'folio': salida.id,
+                'fecha': salida.fecha_entrega.strftime('%Y-%m-%d %H:%M') if salida.fecha_entrega else timezone.now().strftime('%Y-%m-%d %H:%M'),
+                'tipo': 'salida',
+                'subtipo_salida': 'donacion',
+                'centro_origen': {'nombre': 'Almacén de Donaciones'},
+                'centro_destino': {'nombre': centro_destino_nombre},
+                'cantidad': salida.cantidad,
+                'observaciones': salida.motivo or '',
+                'producto': salida.detalle_donacion.producto.nombre if salida.detalle_donacion and salida.detalle_donacion.producto else 'N/A',
+                'lote': salida.detalle_donacion.numero_lote if salida.detalle_donacion else 'N/A',
+                'presentacion': salida.detalle_donacion.producto.presentacion if salida.detalle_donacion and salida.detalle_donacion.producto else 'N/A',
+            }
+            
+            # Si está finalizado, usar fecha de finalización o entrega
+            if finalizado:
+                fecha_fin = salida.fecha_finalizado or salida.fecha_entrega
+                if fecha_fin:
+                    salida_data['fecha_entrega'] = fecha_fin.strftime('%Y-%m-%d %H:%M')
+            
+            # Generar PDF
+            pdf_buffer = generar_recibo_salida_donacion(
+                salida_data,
+                items_data=None,
+                finalizado=finalizado
             )
             
-            count = salidas.update(
-                finalizado=True,
-                fecha_finalizado=timezone.now(),
-                finalizado_por=request.user
+            response = HttpResponse(
+                pdf_buffer.getvalue(),
+                content_type='application/pdf'
             )
+            estado = 'Entregado' if finalizado else 'Pendiente'
+            response['Content-Disposition'] = f'attachment; filename="Recibo_Donacion_{salida.id}_{estado}_{timezone.now().strftime("%Y%m%d")}.pdf"'
             
-            return Response({
-                'mensaje': f'{count} salidas finalizadas correctamente',
-                'finalizadas': count
-            })
+            logger.info(f"Recibo de donación generado para salida {salida.id} por {request.user.username}")
+            return response
             
         except Exception as e:
+            logger.error(f"Error generando recibo de donación: {str(e)}")
             return Response(
-                {'error': f'Error al finalizar: {str(e)}'},
+                {'error': f'Error al generar recibo: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 

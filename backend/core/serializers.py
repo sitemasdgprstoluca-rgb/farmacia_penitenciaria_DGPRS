@@ -677,6 +677,7 @@ class CentroSerializer(serializers.ModelSerializer):
 class ProductoSerializer(serializers.ModelSerializer):
     stock_actual = serializers.SerializerMethodField()
     lotes_activos = serializers.SerializerMethodField()
+    marca = serializers.SerializerMethodField()
     
     class Meta:
         model = Producto
@@ -685,14 +686,13 @@ class ProductoSerializer(serializers.ModelSerializer):
             'categoria', 'sustancia_activa', 'presentacion', 'concentracion',
             'via_administracion', 'requiere_receta', 'es_controlado',
             'stock_minimo', 'stock_actual', 'activo', 'imagen',
-            'lotes_activos', 'created_at', 'updated_at'
+            'lotes_activos', 'marca', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'stock_actual']
+        read_only_fields = ['created_at', 'updated_at', 'stock_actual', 'marca']
         extra_kwargs = {
             'clave': {'required': True},
             'nombre': {'required': True},
             'descripcion': {'required': False, 'allow_null': True, 'allow_blank': True},
-            'presentacion': {'required': True},  # ISS-FIX: Presentación obligatoria
         }
     
     def get_stock_actual(self, obj):
@@ -707,6 +707,11 @@ class ProductoSerializer(serializers.ModelSerializer):
             return lotes_centro
         # Fallback: conteo global (para casos donde no hay anotación)
         return obj.lotes.filter(activo=True, cantidad_actual__gt=0).count()
+    
+    def get_marca(self, obj):
+        """Obtiene marca del lote principal (mayor cantidad actual)."""
+        lote = obj.lotes.filter(activo=True, cantidad_actual__gt=0).order_by('-cantidad_actual').first()
+        return lote.marca if lote and lote.marca else None
     
     def validate_clave(self, value):
         """Clave es requerida, única, entre 1 y 50 caracteres."""
@@ -767,12 +772,6 @@ class ProductoSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('El stock mínimo no puede ser negativo')
         return value
     
-    def validate_presentacion(self, value):
-        """ISS-FIX: Presentación es obligatoria."""
-        if not value or str(value).strip() == '':
-            raise serializers.ValidationError('La presentación es obligatoria')
-        return str(value).strip()
-    
     def validate(self, attrs):
         return attrs
 
@@ -786,6 +785,7 @@ class LoteSerializer(serializers.ModelSerializer):
     producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
     producto_clave = serializers.CharField(source='producto.clave', read_only=True)
     producto_descripcion = serializers.CharField(source='producto.nombre', read_only=True)  # Alias para compatibilidad
+    producto_info = serializers.SerializerMethodField()  # Info adicional del producto (presentación, unidad)
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, allow_null=True)
     dias_para_caducar = serializers.SerializerMethodField()
     estado = serializers.SerializerMethodField()
@@ -805,6 +805,7 @@ class LoteSerializer(serializers.ModelSerializer):
         model = Lote
         fields = [
             'id', 'producto', 'producto_nombre', 'producto_clave', 'producto_descripcion',
+            'producto_info',  # Información adicional del producto
             'centro', 'centro_nombre',
             'numero_lote', 'fecha_caducidad', 'fecha_fabricacion',
             'cantidad_inicial', 'cantidad_actual', 'precio_unitario', 'precio_compra',
@@ -820,6 +821,15 @@ class LoteSerializer(serializers.ModelSerializer):
             'marca': {'required': False, 'allow_null': True, 'allow_blank': True},
             'ubicacion': {'required': False, 'allow_null': True, 'allow_blank': True},
         }
+    
+    def get_producto_info(self, obj):
+        """Devuelve información adicional del producto para mostrar en tabla/formulario."""
+        if obj.producto:
+            return {
+                'presentacion': obj.producto.presentacion or '',
+                'unidad_medida': obj.producto.unidad_medida or 'PIEZA',
+            }
+        return None
     
     def to_internal_value(self, data):
         # Si viene 'precio_compra' pero no 'precio_unitario', mapear automáticamente
@@ -1937,8 +1947,6 @@ class ProductoDonacionSerializer(serializers.ModelSerializer):
     """
     Serializer para el catálogo independiente de productos de donaciones.
     Este catálogo es COMPLETAMENTE SEPARADO del catálogo principal de productos.
-    
-    Si no se proporciona clave, se genera automáticamente con formato DON-YYYYMMDD-XXXX
     """
     class Meta:
         model = ProductoDonacion
@@ -1948,7 +1956,7 @@ class ProductoDonacionSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['created_at', 'updated_at']
         extra_kwargs = {
-            'clave': {'required': False, 'allow_blank': True},  # Ahora es opcional
+            'clave': {'required': True},
             'nombre': {'required': True},
             'descripcion': {'required': False, 'allow_null': True, 'allow_blank': True},
             'unidad_medida': {'required': False, 'default': 'PIEZA'},
@@ -1957,37 +1965,8 @@ class ProductoDonacionSerializer(serializers.ModelSerializer):
             'notas': {'required': False, 'allow_null': True, 'allow_blank': True},
         }
     
-    def _generar_clave_automatica(self):
-        """
-        Genera una clave única automática con formato DON-YYYYMMDD-XXXX
-        Ejemplo: DON-20251219-0001
-        """
-        from datetime import date
-        import random
-        
-        hoy = date.today().strftime('%Y%m%d')
-        prefix = f"DON-{hoy}-"
-        
-        # Encontrar el siguiente número disponible
-        existentes = ProductoDonacion.objects.filter(clave__startswith=prefix).order_by('-clave')
-        if existentes.exists():
-            ultima_clave = existentes.first().clave
-            try:
-                ultimo_numero = int(ultima_clave.split('-')[-1])
-                siguiente = ultimo_numero + 1
-            except (ValueError, IndexError):
-                siguiente = random.randint(1, 9999)
-        else:
-            siguiente = 1
-        
-        return f"{prefix}{siguiente:04d}"
-    
     def validate_clave(self, value):
-        """Validar que la clave sea única (case insensitive), o generar automáticamente si está vacía"""
-        # Si está vacía, se generará automáticamente en create()
-        if not value or not value.strip():
-            return None
-        
+        """Validar que la clave sea única (case insensitive)"""
         clave_upper = value.upper().strip()
         qs = ProductoDonacion.objects.filter(clave__iexact=clave_upper)
         if self.instance:
@@ -1995,12 +1974,6 @@ class ProductoDonacionSerializer(serializers.ModelSerializer):
         if qs.exists():
             raise serializers.ValidationError("Ya existe un producto de donación con esta clave.")
         return clave_upper
-    
-    def create(self, validated_data):
-        """Si no se proporciona clave, genera una automática"""
-        if not validated_data.get('clave'):
-            validated_data['clave'] = self._generar_clave_automatica()
-        return super().create(validated_data)
 
 
 class DetalleDonacionSerializer(serializers.ModelSerializer):
@@ -2167,12 +2140,18 @@ class SalidaDonacionSerializer(serializers.ModelSerializer):
     Serializer para salidas/entregas del almacen de donaciones.
     Control interno sin afectar movimientos principales.
     
-    Nota: Los campos finalizado/fecha_finalizado/finalizado_por están
-    pendientes de migración SQL en Supabase.
+    ISS-DB-ALIGN: Incluye campos de trazabilidad:
+    - centro_destino: Centro penitenciario destino
+    - finalizado: Si la entrega fue confirmada
+    - fecha_finalizado: Timestamp de finalización
+    - finalizado_por: Usuario que finalizó
     """
     detalle_donacion_info = serializers.SerializerMethodField()
     entregado_por_nombre = serializers.SerializerMethodField()
     producto_nombre = serializers.SerializerMethodField()
+    centro_destino_nombre = serializers.CharField(source='centro_destino.nombre', read_only=True, allow_null=True)
+    finalizado_por_nombre = serializers.SerializerMethodField()
+    estado_entrega = serializers.CharField(read_only=True)  # Property del modelo
     
     class Meta:
         model = SalidaDonacion
@@ -2182,34 +2161,28 @@ class SalidaDonacionSerializer(serializers.ModelSerializer):
             'entregado_por', 'entregado_por_nombre',
             'producto_nombre',
             'fecha_entrega', 'notas', 'created_at',
+            # ISS-DB-ALIGN: Campos de trazabilidad
+            'centro_destino', 'centro_destino_nombre',
+            'finalizado', 'fecha_finalizado',
+            'finalizado_por', 'finalizado_por_nombre',
+            'estado_entrega'
         ]
-        read_only_fields = ['created_at', 'fecha_entrega', 'entregado_por']
+        read_only_fields = ['created_at', 'fecha_entrega', 'entregado_por', 'fecha_finalizado', 'finalizado_por']
         extra_kwargs = {
             'detalle_donacion': {'required': True},
             'cantidad': {'required': True},
             'destinatario': {'required': True},
             'motivo': {'required': False, 'allow_null': True, 'allow_blank': True},
             'notas': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'centro_destino': {'required': False, 'allow_null': True},
+            'finalizado': {'required': False, 'default': False},
         }
     
     def get_detalle_donacion_info(self, obj):
         if obj.detalle_donacion:
-            # Obtener nombre y código del producto (donación o legacy)
-            producto_nombre = None
-            producto_codigo = None
-            if obj.detalle_donacion.producto_donacion:
-                producto_nombre = obj.detalle_donacion.producto_donacion.nombre
-                producto_codigo = obj.detalle_donacion.producto_donacion.clave
-            elif obj.detalle_donacion.producto:
-                producto_nombre = obj.detalle_donacion.producto.nombre
-                producto_codigo = obj.detalle_donacion.producto.clave
-            
             return {
                 'id': obj.detalle_donacion.id,
                 'donacion_numero': obj.detalle_donacion.donacion.numero,
-                'producto_nombre': producto_nombre,
-                'producto_codigo': producto_codigo,
-                'numero_lote': obj.detalle_donacion.numero_lote,
                 'cantidad_original': obj.detalle_donacion.cantidad,
                 'cantidad_disponible': obj.detalle_donacion.cantidad_disponible,
             }
@@ -2220,15 +2193,15 @@ class SalidaDonacionSerializer(serializers.ModelSerializer):
             return f"{obj.entregado_por.first_name} {obj.entregado_por.last_name}".strip() or obj.entregado_por.username
         return None
     
+    def get_finalizado_por_nombre(self, obj):
+        """ISS-DB-ALIGN: Nombre del usuario que finalizó la entrega"""
+        if obj.finalizado_por:
+            return f"{obj.finalizado_por.first_name} {obj.finalizado_por.last_name}".strip() or obj.finalizado_por.username
+        return None
+    
     def get_producto_nombre(self, obj):
-        """Retorna el nombre del producto (donación o legacy)"""
-        if obj.detalle_donacion:
-            # Primero intentar con el nuevo catálogo de donaciones
-            if obj.detalle_donacion.producto_donacion:
-                return obj.detalle_donacion.producto_donacion.nombre
-            # Fallback al catálogo legacy
-            if obj.detalle_donacion.producto:
-                return obj.detalle_donacion.producto.nombre
+        if obj.detalle_donacion and obj.detalle_donacion.producto:
+            return obj.detalle_donacion.producto.nombre
         return None
     
     def validate_cantidad(self, value):

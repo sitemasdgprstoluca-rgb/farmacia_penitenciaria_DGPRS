@@ -525,7 +525,7 @@ def generar_reporte_inventario(productos_data, formato='pdf', filtros=None):
     )
     
     # Tabla de datos con Paragraph para texto largo
-    data = [['Clave', 'Descripción', 'Presentación', 'Inventario', 'Nivel', 'Unidad', 'Precio', 'Marca']]
+    data = [['Clave', 'Descripción', 'Stock', 'Mín.', 'Nivel', 'Unidad']]
     
     for producto in productos_data:
         nivel = str(producto.get('nivel', producto.get('nivel_stock', 'N/A'))).upper()
@@ -535,34 +535,23 @@ def generar_reporte_inventario(productos_data, formato='pdf', filtros=None):
         # Usar Paragraph para unidad - permite texto largo
         unidad = str(producto.get('unidad', producto.get('unidad_medida', '')))
         unidad_paragraph = Paragraph(unidad, estilo_celda_unidad)
-        # Presentación
-        presentacion = str(producto.get('presentacion', ''))
-        pres_paragraph = Paragraph(presentacion, estilo_celda) if presentacion else ''
-        # Precio
-        precio_raw = producto.get('precio_unitario') or producto.get('precio')
-        precio_str = f"${float(precio_raw):.2f}" if precio_raw else 'N/A'
-        # Marca/Proveedor
-        marca = str(producto.get('marca', producto.get('proveedor', ''))) or '-'
         data.append([
             str(producto.get('clave', '')),
             desc_paragraph,
-            pres_paragraph,
             str(producto.get('stock_actual', 0)),
+            str(producto.get('stock_minimo', 0)),
             nivel,
-            unidad_paragraph,
-            precio_str,
-            marca
+            unidad_paragraph
         ])
     
     # Ajustar anchos para que sumen exactamente el ancho disponible (7 pulgadas)
-    # Campos: Clave, Descripción, Presentación, Inventario, Nivel, Unidad, Precio, Marca
-    col_widths = [0.7*inch, 1.9*inch, 0.9*inch, 0.6*inch, 0.6*inch, 0.8*inch, 0.6*inch, 0.9*inch]
+    # Descripción más ancha, Unidad ampliada para textos largos
+    col_widths = [0.9*inch, 3.0*inch, 0.6*inch, 0.5*inch, 0.6*inch, 1.4*inch]
     table = _crear_tabla_institucional(data, col_widths)
     # Alinear números a la derecha
     table.setStyle(TableStyle([
-        ('ALIGN', (3, 1), (3, -1), 'RIGHT'),  # Inventario alineado a la derecha
+        ('ALIGN', (2, 1), (3, -1), 'RIGHT'),  # Stock y Mín. alineados a la derecha
         ('ALIGN', (4, 1), (4, -1), 'CENTER'), # Nivel centrado
-        ('ALIGN', (6, 1), (6, -1), 'RIGHT'),  # Precio alineado a la derecha
     ]))
     elements.append(table)
     elements.append(Spacer(1, 0.3*inch))
@@ -1489,47 +1478,21 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
             leading=10,
             wordWrap='CJK',
         )
-        
-        # Formatear descripción
-        descripcion = str(producto_info.get('descripcion', producto_info.get('nombre', 'N/A')))
+        descripcion = str(producto_info.get('descripcion', 'N/A'))
         desc_paragraph = Paragraph(descripcion, estilo_desc)
         
-        # Formatear presentación - ÚNICO campo para forma farmacéutica
-        # Combina presentacion y unidad_medida si está disponible
-        presentacion_raw = producto_info.get('presentacion', '')
-        unidad_raw = producto_info.get('unidad_medida', '')
-        # Construir presentación completa
-        if presentacion_raw and str(presentacion_raw).strip():
-            presentacion = str(presentacion_raw).strip()
-        elif unidad_raw and str(unidad_raw).strip():
-            presentacion = str(unidad_raw).strip()
-        else:
-            presentacion = 'N/A'
-        pres_paragraph = Paragraph(presentacion, estilo_desc)
-        
-        # Formatear precio
-        precio_raw = producto_info.get('precio_unitario') or producto_info.get('precio')
-        precio_str = f"${float(precio_raw):.2f}" if precio_raw else 'N/A'
-        
-        # Campos reorganizados SIN duplicados:
-        # Fila 1: Clave, Descripción
-        # Fila 2: Presentación, Stock
-        # Fila 3: Precio, Contrato
-        # Fila 4: No. Lote, Caducidad
-        # Fila 5: Proveedor/Marca (si existe)
         prod_data = [
             ['Clave:', str(producto_info.get('clave', 'N/A')), 'Descripción:', desc_paragraph],
-            ['Stock Actual:', str(producto_info.get('stock_actual', 0)), 'Presentación:', pres_paragraph],
+            ['Unidad:', str(producto_info.get('unidad_medida', 'N/A')), 'Precio:', f"${producto_info.get('precio_unitario', 0):.2f}" if producto_info.get('precio_unitario') else 'N/A'],
+            ['Stock Actual:', str(producto_info.get('stock_actual', 0)), 'Stock Mínimo:', str(producto_info.get('stock_minimo', 0))],
             ['No. Contrato:', str(producto_info.get('numero_contrato', 'N/A')), 'No. Lote:', str(producto_info.get('numero_lote', 'N/A'))],
         ]
         
-        # Agregar fila de caducidad y proveedor/marca
-        fecha_cad = producto_info.get('fecha_caducidad')
-        marca_proveedor = producto_info.get('proveedor') or producto_info.get('marca')
-        if fecha_cad or marca_proveedor:
+        # Agregar fila de caducidad y proveedor si están disponibles
+        if producto_info.get('fecha_caducidad') or producto_info.get('proveedor'):
             prod_data.append([
-                'Caducidad:', str(fecha_cad) if fecha_cad else 'N/A', 
-                'Proveedor/Marca:', str(marca_proveedor) if marca_proveedor else 'N/A'
+                'Caducidad:', str(producto_info.get('fecha_caducidad', 'N/A')), 
+                'Proveedor/Marca:', str(producto_info.get('proveedor', 'N/A'))
             ])
         
         prod_table = Table(prod_data, colWidths=[1.1*inch, 2.4*inch, 1.1*inch, 2.4*inch])
@@ -1659,518 +1622,249 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
     return buffer
 
 
-def generar_recibo_salida_donacion(salida_data, detalles_data=None, finalizado=False):
+def generar_recibo_salida_donacion(movimiento_data, items_data=None, finalizado=False):
     """
-    Genera un recibo PDF para una salida de donación.
-    
-    Si finalizado=False: Muestra campos de firma (Autoriza, Entrega, Recibe)
-    Si finalizado=True: Muestra sello de ENTREGADO
+    Genera un PDF de recibo de salida con campos para firmas.
     
     Args:
-        salida_data: dict con datos de la salida:
-            - id
-            - fecha
-            - centro_destino_nombre
-            - destinatario
-            - producto_nombre
-            - cantidad
-            - motivo
-            - notas
-            - usuario
-            - finalizado (opcional, se puede pasar también como parámetro)
-        detalles_data: Lista de items (para salidas masivas)
-        finalizado: bool indicando si la entrega ya fue finalizada
+        movimiento_data: dict con datos del movimiento
+        items_data: lista de items del movimiento (opcional)
+        finalizado: si True, muestra sello de ENTREGADO en lugar de firmas
     
     Returns:
-        BytesIO buffer con el PDF
+        BytesIO: Buffer con el PDF generado
     """
     buffer = BytesIO()
-    
-    # Verificar si está finalizado (del parámetro o de los datos)
-    es_finalizado = finalizado or salida_data.get('finalizado', False)
-    
-    colores_tema = _obtener_colores_tema()
-    fondo_path = colores_tema.get('fondo_reportes_path')
-    
     doc = SimpleDocTemplate(
         buffer,
         pagesize=letter,
-        topMargin=1.5*inch,
-        bottomMargin=1*inch,
-        leftMargin=0.75*inch,
-        rightMargin=0.75*inch
+        rightMargin=50,
+        leftMargin=50,
+        topMargin=60,
+        bottomMargin=50
     )
     
     elements = []
-    styles = _obtener_estilos_institucionales(colores_tema)
+    styles = getSampleStyleSheet()
     
-    color_primario = colores_tema.get('primario', COLOR_GUINDA)
+    # Estilos personalizados
+    title_style = ParagraphStyle(
+        'TitleRecibo',
+        parent=styles['Heading1'],
+        fontSize=16,
+        alignment=1,
+        spaceAfter=20
+    )
     
-    # Título
-    titulo = f"RECIBO DE SALIDA DE DONACIÓN"
-    elements.append(Paragraph(titulo, styles['TituloReporte']))
+    subtitle_style = ParagraphStyle(
+        'SubtitleRecibo',
+        parent=styles['Normal'],
+        fontSize=12,
+        alignment=1,
+        spaceAfter=10
+    )
     
-    # Número de folio
-    folio = salida_data.get('id', 'N/A')
-    fecha = salida_data.get('fecha', '')
-    if hasattr(fecha, 'strftime'):
-        fecha = fecha.strftime('%d/%m/%Y %H:%M')
-    else:
-        fecha = str(fecha)[:16] if fecha else timezone.now().strftime('%d/%m/%Y %H:%M')
-    
-    info_style = ParagraphStyle(
-        'InfoSalida',
+    normal_style = ParagraphStyle(
+        'NormalRecibo',
         parent=styles['Normal'],
         fontSize=10,
-        alignment=TA_CENTER,
-        spaceAfter=15
-    )
-    elements.append(Paragraph(f"<b>Folio:</b> DON-SAL-{folio}  |  <b>Fecha:</b> {fecha}", info_style))
-    elements.append(Spacer(1, 0.3*inch))
-    
-    # Información del destino
-    seccion_style = ParagraphStyle(
-        'SeccionTitulo',
-        parent=styles['Normal'],
-        fontSize=11,
-        textColor=color_primario,
-        fontName='Helvetica-Bold',
-        spaceAfter=8,
-        spaceBefore=12
+        spaceAfter=6
     )
     
-    elements.append(Paragraph("INFORMACIÓN DE LA SALIDA", seccion_style))
+    # Título
+    elements.append(Paragraph("RECIBO DE SALIDA DE MEDICAMENTOS", title_style))
+    elements.append(Paragraph("Sistema de Farmacia Penitenciaria", subtitle_style))
+    elements.append(Spacer(1, 15))
     
-    # Datos de la salida en tabla
-    centro_destino = salida_data.get('centro_destino_nombre', salida_data.get('destinatario', 'N/A'))
-    motivo = salida_data.get('motivo', 'N/A')
-    notas = salida_data.get('notas', '-')
-    usuario = salida_data.get('usuario', salida_data.get('usuario_username', 'N/A'))
+    # Información del movimiento
+    folio = movimiento_data.get('folio', movimiento_data.get('id', 'N/A'))
+    fecha = movimiento_data.get('fecha', datetime.now().strftime('%Y-%m-%d'))
+    if isinstance(fecha, str) and 'T' in fecha:
+        fecha = fecha.split('T')[0]
     
+    centro_origen = movimiento_data.get('centro_origen', 'Central')
+    if isinstance(centro_origen, dict):
+        centro_origen = centro_origen.get('nombre', centro_origen.get('id', 'Central'))
+    
+    centro_destino = movimiento_data.get('centro_destino', '')
+    if isinstance(centro_destino, dict):
+        centro_destino = centro_destino.get('nombre', centro_destino.get('id', ''))
+    
+    tipo = movimiento_data.get('tipo', 'Salida')
+    subtipo = movimiento_data.get('subtipo_salida', 'Transferencia')
+    
+    # Tabla de información general
     info_data = [
-        ["Centro Destino:", centro_destino],
-        ["Motivo:", motivo],
-        ["Registrado por:", usuario],
-        ["Observaciones:", notas if notas else "-"],
+        ['Folio:', str(folio), 'Fecha:', str(fecha)],
+        ['Origen:', str(centro_origen), 'Destino:', str(centro_destino)],
+        ['Tipo:', str(tipo).capitalize(), 'Subtipo:', str(subtipo).capitalize()],
     ]
     
-    info_table = Table(info_data, colWidths=[1.5*inch, 5*inch])
+    info_table = Table(info_data, colWidths=[70, 170, 70, 170])
     info_table.setStyle(TableStyle([
-        ('FONT', (0, 0), (0, -1), 'Helvetica-Bold'),
-        ('FONT', (1, 0), (1, -1), 'Helvetica'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
-        ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
-        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('BACKGROUND', (0, 0), (0, -1), colors.Color(0.95, 0.95, 0.95)),
+        ('BACKGROUND', (2, 0), (2, -1), colors.Color(0.95, 0.95, 0.95)),
     ]))
     elements.append(info_table)
-    elements.append(Spacer(1, 0.3*inch))
+    elements.append(Spacer(1, 20))
     
-    # Detalle de productos
-    elements.append(Paragraph("DETALLE DE PRODUCTOS", seccion_style))
-    
-    if detalles_data and len(detalles_data) > 0:
-        # Salida masiva con múltiples productos
-        productos_header = [["#", "Producto", "Cantidad", "Lote"]]
-        productos_data = productos_header.copy()
+    # Tabla de items si hay
+    if items_data and len(items_data) > 0:
+        elements.append(Paragraph("<b>Detalle de Productos:</b>", normal_style))
+        elements.append(Spacer(1, 10))
         
-        total_items = 0
-        for i, detalle in enumerate(detalles_data, 1):
-            producto = detalle.get('producto_nombre', detalle.get('producto', 'N/A'))
-            cantidad = detalle.get('cantidad', 0)
-            lote = detalle.get('numero_lote', detalle.get('lote', '-'))
-            total_items += cantidad
-            productos_data.append([str(i), producto, str(cantidad), str(lote)])
+        items_header = ['#', 'Producto', 'Lote', 'Cantidad', 'Presentación']
+        items_rows = [items_header]
         
-        col_widths = [0.4*inch, 3.5*inch, 0.8*inch, 1.5*inch]
-        productos_table = _crear_tabla_institucional(productos_data, col_widths, colores_tema=colores_tema)
-        elements.append(productos_table)
+        for idx, item in enumerate(items_data, 1):
+            producto = item.get('producto', item.get('producto_nombre', ''))
+            if isinstance(producto, dict):
+                producto = producto.get('nombre', str(producto.get('id', '')))
+            
+            lote = item.get('lote', item.get('numero_lote', ''))
+            if isinstance(lote, dict):
+                lote = lote.get('numero_lote', str(lote.get('id', '')))
+            
+            cantidad = item.get('cantidad', 0)
+            presentacion = item.get('presentacion', item.get('presentacion_producto', 'N/A'))
+            
+            items_rows.append([
+                str(idx),
+                str(producto)[:40],
+                str(lote)[:20],
+                str(cantidad),
+                str(presentacion)[:25]
+            ])
         
-        # Total
-        total_style = ParagraphStyle(
-            'TotalSalida',
-            parent=styles['Normal'],
-            fontSize=11,
-            fontName='Helvetica-Bold',
-            alignment=TA_RIGHT,
-            spaceBefore=10
-        )
-        elements.append(Paragraph(f"Total de unidades: {total_items}", total_style))
-    else:
-        # Salida individual
-        producto = salida_data.get('producto_nombre', salida_data.get('producto', 'N/A'))
-        cantidad = salida_data.get('cantidad', 0)
-        lote = salida_data.get('numero_lote', salida_data.get('lote', '-'))
-        
-        productos_data = [
-            ["#", "Producto", "Cantidad", "Lote"],
-            ["1", producto, str(cantidad), str(lote)]
-        ]
-        
-        col_widths = [0.4*inch, 3.5*inch, 0.8*inch, 1.5*inch]
-        productos_table = _crear_tabla_institucional(productos_data, col_widths, colores_tema=colores_tema)
-        elements.append(productos_table)
-    
-    elements.append(Spacer(1, 0.5*inch))
-    
-    # Sección de firmas o sello según estado de finalización
-    if es_finalizado:
-        # SELLO DE ENTREGADO para salidas finalizadas
-        elements.append(Spacer(1, 0.3*inch))
-        
-        sello_style = ParagraphStyle(
-            'SelloEntregado',
-            parent=styles['Normal'],
-            fontSize=36,
-            textColor=colors.HexColor('#228B22'),  # Verde bosque
-            alignment=TA_CENTER,
-            fontName='Helvetica-Bold',
-            borderColor=colors.HexColor('#228B22'),
-            borderWidth=3,
-            borderPadding=15,
-        )
-        
-        fecha_finalizado = salida_data.get('fecha_finalizado', '')
-        if hasattr(fecha_finalizado, 'strftime'):
-            fecha_finalizado = fecha_finalizado.strftime('%d/%m/%Y %H:%M')
-        elif fecha_finalizado:
-            fecha_finalizado = str(fecha_finalizado)[:16]
-        else:
-            fecha_finalizado = fecha  # Usar fecha de entrega si no hay fecha de finalizado
-        
-        # Crear tabla con sello
-        sello_data = [
-            [Paragraph("✓ ENTREGADO", sello_style)],
-            [Paragraph(f"<font size='12' color='#228B22'>{fecha_finalizado}</font>", 
-                      ParagraphStyle('FechaEntregado', alignment=TA_CENTER))],
-        ]
-        
-        sello_table = Table(sello_data, colWidths=[4*inch])
-        sello_table.setStyle(TableStyle([
+        items_table = Table(items_rows, colWidths=[30, 180, 100, 60, 110])
+        items_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.2, 0.4, 0.6)),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('BOX', (0, 0), (-1, -1), 3, colors.HexColor('#228B22')),
-            ('TOPPADDING', (0, 0), (-1, -1), 20),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 20),
-            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F0FFF0')),
+            ('ALIGN', (1, 1), (1, -1), 'LEFT'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.Color(0.95, 0.95, 0.95)]),
         ]))
-        
-        # Centrar el sello
-        elements.append(Table([[sello_table]], colWidths=[6.5*inch]))
-        
-        elements.append(Spacer(1, 0.3*inch))
-        
-        # Nota de entrega completada
-        nota_style = ParagraphStyle(
-            'NotaEntregado',
-            parent=styles['Normal'],
-            fontSize=10,
-            textColor=colors.HexColor('#228B22'),
-            alignment=TA_CENTER
-        )
-        elements.append(Paragraph(
-            "La entrega de los productos ha sido completada y verificada.",
-            nota_style
-        ))
-        
+        elements.append(items_table)
     else:
-        # CAMPOS DE FIRMA para salidas pendientes
-        elements.append(Paragraph("FIRMAS DE AUTORIZACIÓN", seccion_style))
-        elements.append(Spacer(1, 0.4*inch))
+        # Si no hay items detallados, mostrar resumen del movimiento
+        producto = movimiento_data.get('producto', movimiento_data.get('producto_nombre', ''))
+        if isinstance(producto, dict):
+            producto = producto.get('nombre', str(producto.get('id', '')))
         
-        firma_box_style = ParagraphStyle(
-            'FirmaBox',
-            parent=styles['Normal'],
-            fontSize=10,
-            alignment=TA_CENTER,
-            fontName='Helvetica-Bold'
-        )
+        lote = movimiento_data.get('lote', movimiento_data.get('numero_lote', ''))
+        if isinstance(lote, dict):
+            lote = lote.get('numero_lote', str(lote.get('id', '')))
         
-        nombre_style = ParagraphStyle(
-            'NombreFirma',
-            parent=styles['Normal'],
-            fontSize=8,
-            alignment=TA_CENTER,
-            textColor=COLOR_GRIS
-        )
+        cantidad = movimiento_data.get('cantidad', 0)
+        presentacion = movimiento_data.get('presentacion', 'N/A')
         
-        # Crear cajas de firma
-        firma_data = [
-            [
-                Paragraph("AUTORIZA", firma_box_style),
-                Paragraph("ENTREGA", firma_box_style),
-                Paragraph("RECIBE", firma_box_style)
-            ],
-            ["", "", ""],  # Espacio para firma
-            ["", "", ""],  # Espacio para firma
-            ["", "", ""],  # Espacio para firma
-            [
-                Paragraph("____________________", nombre_style),
-                Paragraph("____________________", nombre_style),
-                Paragraph("____________________", nombre_style)
-            ],
-            [
-                Paragraph("Jefa de Farmacia", nombre_style),
-                Paragraph("Farmacia", nombre_style),
-                Paragraph("Centro receptor", nombre_style)
-            ],
+        simple_data = [
+            ['Producto', 'Lote', 'Cantidad', 'Presentación'],
+            [str(producto)[:40], str(lote)[:20], str(cantidad), str(presentacion)[:25]]
         ]
         
-        firma_table = Table(firma_data, colWidths=[2.2*inch, 2.2*inch, 2.2*inch])
-        firma_table.setStyle(TableStyle([
+        simple_table = Table(simple_data, colWidths=[180, 120, 80, 100])
+        simple_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.2, 0.4, 0.6)),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('TOPPADDING', (0, 0), (-1, -1), 8),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-            ('BOX', (0, 0), (0, -1), 1, COLOR_GRIS),
-            ('BOX', (1, 0), (1, -1), 1, COLOR_GRIS),
-            ('BOX', (2, 0), (2, -1), 1, COLOR_GRIS),
-            ('LINEABOVE', (0, 0), (-1, 0), 1, COLOR_GRIS),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ]))
+        elements.append(Paragraph("<b>Detalle:</b>", normal_style))
+        elements.append(Spacer(1, 10))
+        elements.append(simple_table)
+    
+    elements.append(Spacer(1, 30))
+    
+    # Observaciones si hay
+    observaciones = movimiento_data.get('observaciones', movimiento_data.get('motivo', ''))
+    if observaciones:
+        elements.append(Paragraph(f"<b>Observaciones:</b> {observaciones}", normal_style))
+        elements.append(Spacer(1, 20))
+    
+    # Sección de firmas o sello de entregado
+    if finalizado:
+        # Mostrar sello de ENTREGADO
+        elements.append(Spacer(1, 30))
+        
+        entregado_style = ParagraphStyle(
+            'Entregado',
+            parent=styles['Heading1'],
+            fontSize=24,
+            alignment=1,
+            textColor=colors.Color(0.2, 0.6, 0.2),
+            borderWidth=2,
+            borderColor=colors.Color(0.2, 0.6, 0.2),
+            borderPadding=10
+        )
+        
+        fecha_entrega = movimiento_data.get('fecha_entrega', datetime.now().strftime('%Y-%m-%d %H:%M'))
+        elements.append(Paragraph("✓ ENTREGADO", entregado_style))
+        elements.append(Spacer(1, 10))
+        elements.append(Paragraph(f"Fecha de entrega: {fecha_entrega}", ParagraphStyle(
+            'FechaEntrega',
+            parent=styles['Normal'],
+            fontSize=10,
+            alignment=1
+        )))
+    else:
+        # Campos para firmas
+        elements.append(Paragraph("<b>FIRMAS DE CONFORMIDAD</b>", ParagraphStyle(
+            'FirmasTitle',
+            parent=styles['Normal'],
+            fontSize=12,
+            alignment=1,
+            spaceAfter=20
+        )))
+        
+        firma_data = [
+            ['', '', ''],
+            ['_' * 30, '_' * 30, '_' * 30],
+            ['AUTORIZA', 'ENTREGA', 'RECIBE'],
+            ['Nombre:', 'Nombre:', 'Nombre:'],
+            ['Cargo:', 'Cargo:', 'Cargo:'],
+            ['Fecha:', 'Fecha:', 'Fecha:'],
+        ]
+        
+        firma_table = Table(firma_data, colWidths=[160, 160, 160])
+        firma_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTNAME', (0, 2), (-1, 2), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, 0), 40),  # Espacio para firma
         ]))
         elements.append(firma_table)
     
-    elements.append(Spacer(1, 0.3*inch))
-    
-    # Nota legal
-    nota_style = ParagraphStyle(
-        'NotaLegal',
-        parent=styles['Normal'],
-        fontSize=8,
-        textColor=COLOR_GRIS,
-        alignment=TA_CENTER
-    )
+    # Pie de página con fecha/hora de generación
+    elements.append(Spacer(1, 30))
     elements.append(Paragraph(
-        "Este documento ampara la salida de productos del almacén de donaciones. "
-        "Las firmas certifican la correcta entrega y recepción de los productos listados.",
-        nota_style
+        f"Documento generado el {datetime.now().strftime('%d/%m/%Y a las %H:%M:%S')}",
+        ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, alignment=1, textColor=colors.grey)
     ))
     
-    # Usar canvas con fondo institucional
-    def make_canvas(*args, **kwargs):
-        return FondoOficialCanvas(*args, fondo_path=fondo_path, titulo_reporte='SALIDA DONACIÓN', **kwargs)
-    
-    doc.build(elements, canvasmaker=make_canvas)
+    # Construir PDF
+    doc.build(elements)
     
     buffer.seek(0)
-    logger.info(f"Recibo de salida de donación PDF generado: Folio DON-SAL-{folio}")
-    return buffer
-
-
-def generar_recibo_salida_movimiento(movimiento_data):
-    """
-    Genera un recibo PDF para una salida de inventario (movimientos principales).
-    Incluye campos de firma: Autoriza (Jefa de Farmacia), Entrega (Farmacia), Recibe (Centro).
-    
-    Args:
-        movimiento_data: dict con datos del movimiento:
-            - id
-            - fecha
-            - producto_nombre
-            - producto_clave
-            - numero_lote
-            - cantidad
-            - centro_destino
-            - motivo
-            - subtipo_salida
-            - numero_expediente
-            - observaciones
-            - usuario
-    
-    Returns:
-        BytesIO buffer con el PDF
-    """
-    buffer = BytesIO()
-    
-    colores_tema = _obtener_colores_tema()
-    fondo_path = colores_tema.get('fondo_reportes_path')
-    
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=letter,
-        topMargin=1.5*inch,
-        bottomMargin=1*inch,
-        leftMargin=0.75*inch,
-        rightMargin=0.75*inch
-    )
-    
-    elements = []
-    styles = _obtener_estilos_institucionales(colores_tema)
-    
-    color_primario = colores_tema.get('primario', COLOR_GUINDA)
-    
-    # Título
-    titulo = "RECIBO DE SALIDA DE MEDICAMENTOS"
-    elements.append(Paragraph(titulo, styles['TituloReporte']))
-    
-    # Número de folio
-    folio = movimiento_data.get('id', 'N/A')
-    fecha = movimiento_data.get('fecha', '')
-    if hasattr(fecha, 'strftime'):
-        fecha = fecha.strftime('%d/%m/%Y %H:%M')
-    else:
-        fecha = str(fecha)[:16] if fecha else timezone.now().strftime('%d/%m/%Y %H:%M')
-    
-    info_style = ParagraphStyle(
-        'InfoSalida',
-        parent=styles['Normal'],
-        fontSize=10,
-        alignment=TA_CENTER,
-        spaceAfter=15
-    )
-    elements.append(Paragraph(f"<b>Folio:</b> MOV-SAL-{folio}  |  <b>Fecha:</b> {fecha}", info_style))
-    elements.append(Spacer(1, 0.3*inch))
-    
-    # Información del destino
-    seccion_style = ParagraphStyle(
-        'SeccionTitulo',
-        parent=styles['Normal'],
-        fontSize=11,
-        textColor=color_primario,
-        fontName='Helvetica-Bold',
-        spaceAfter=8,
-        spaceBefore=12
-    )
-    
-    elements.append(Paragraph("INFORMACIÓN DE LA SALIDA", seccion_style))
-    
-    # Datos de la salida en tabla
-    centro_destino = movimiento_data.get('centro_destino', 'N/A')
-    motivo = movimiento_data.get('motivo', '')
-    subtipo = movimiento_data.get('subtipo_salida', '')
-    expediente = movimiento_data.get('numero_expediente', '')
-    observaciones = movimiento_data.get('observaciones', '-')
-    usuario = movimiento_data.get('usuario', 'N/A')
-    
-    # Mapeo de subtipos a texto legible
-    subtipos_labels = {
-        'receta': 'Receta médica',
-        'consumo_interno': 'Consumo interno',
-        'transferencia': 'Transferencia a centro',
-        'merma': 'Merma',
-        'caducidad': 'Caducidad',
-        'otro': 'Otro'
-    }
-    subtipo_label = subtipos_labels.get(subtipo, subtipo or 'N/A')
-    
-    info_data = [
-        ["Centro Destino:", centro_destino],
-        ["Motivo de Salida:", subtipo_label],
-        ["Registrado por:", usuario],
-    ]
-    
-    if expediente:
-        info_data.append(["No. Expediente:", expediente])
-    
-    if observaciones and observaciones != '-':
-        info_data.append(["Observaciones:", observaciones])
-    
-    info_table = Table(info_data, colWidths=[1.5*inch, 5*inch])
-    info_table.setStyle(TableStyle([
-        ('FONT', (0, 0), (0, -1), 'Helvetica-Bold'),
-        ('FONT', (1, 0), (1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
-        ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
-        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-    ]))
-    elements.append(info_table)
-    elements.append(Spacer(1, 0.3*inch))
-    
-    # Detalle del producto
-    elements.append(Paragraph("DETALLE DEL PRODUCTO", seccion_style))
-    
-    producto = movimiento_data.get('producto_nombre', 'N/A')
-    clave = movimiento_data.get('producto_clave', '')
-    cantidad = movimiento_data.get('cantidad', 0)
-    lote = movimiento_data.get('numero_lote', '-')
-    
-    productos_data = [
-        ["Clave", "Producto", "Lote", "Cantidad"],
-        [clave, producto, lote, str(cantidad)]
-    ]
-    
-    col_widths = [1*inch, 3.2*inch, 1.3*inch, 0.8*inch]
-    productos_table = _crear_tabla_institucional(productos_data, col_widths, colores_tema=colores_tema)
-    elements.append(productos_table)
-    
-    elements.append(Spacer(1, 0.5*inch))
-    
-    # Sección de firmas
-    elements.append(Paragraph("FIRMAS DE AUTORIZACIÓN", seccion_style))
-    elements.append(Spacer(1, 0.4*inch))
-    
-    firma_box_style = ParagraphStyle(
-        'FirmaBox',
-        parent=styles['Normal'],
-        fontSize=10,
-        alignment=TA_CENTER,
-        fontName='Helvetica-Bold'
-    )
-    
-    nombre_style = ParagraphStyle(
-        'NombreFirma',
-        parent=styles['Normal'],
-        fontSize=8,
-        alignment=TA_CENTER,
-        textColor=COLOR_GRIS
-    )
-    
-    # Crear cajas de firma
-    firma_data = [
-        [
-            Paragraph("AUTORIZA", firma_box_style),
-            Paragraph("ENTREGA", firma_box_style),
-            Paragraph("RECIBE", firma_box_style)
-        ],
-        ["", "", ""],  # Espacio para firma
-        ["", "", ""],  # Espacio para firma
-        ["", "", ""],  # Espacio para firma
-        [
-            Paragraph("____________________", nombre_style),
-            Paragraph("____________________", nombre_style),
-            Paragraph("____________________", nombre_style)
-        ],
-    ]
-    
-    firma_table = Table(firma_data, colWidths=[2.2*inch, 2.2*inch, 2.2*inch])
-    firma_table.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('BOX', (0, 0), (0, -1), 1, COLOR_GRIS),
-        ('BOX', (1, 0), (1, -1), 1, COLOR_GRIS),
-        ('BOX', (2, 0), (2, -1), 1, COLOR_GRIS),
-        ('LINEABOVE', (0, 0), (-1, 0), 1, COLOR_GRIS),
-    ]))
-    elements.append(firma_table)
-    
-    elements.append(Spacer(1, 0.3*inch))
-    
-    # Nota legal
-    nota_style = ParagraphStyle(
-        'NotaLegal',
-        parent=styles['Normal'],
-        fontSize=8,
-        textColor=COLOR_GRIS,
-        alignment=TA_CENTER
-    )
-    elements.append(Paragraph(
-        "Este documento ampara la salida de medicamentos del inventario de farmacia. "
-        "Las firmas certifican la correcta entrega y recepción de los productos.",
-        nota_style
-    ))
-    
-    # Usar canvas con fondo institucional
-    def make_canvas(*args, **kwargs):
-        return FondoOficialCanvas(*args, fondo_path=fondo_path, titulo_reporte='SALIDA MEDICAMENTOS', **kwargs)
-    
-    doc.build(elements, canvasmaker=make_canvas)
-    
-    buffer.seek(0)
-    logger.info(f"Recibo de salida de movimiento PDF generado: Folio MOV-SAL-{folio}")
+    logger.info(f"Recibo de salida PDF generado - Folio: {folio}")
     return buffer

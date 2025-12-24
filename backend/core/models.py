@@ -2863,9 +2863,11 @@ class SalidaDonacion(models.Model):
     Registro de entregas/salidas del almacen de donaciones.
     Permite control interno sin afectar movimientos principales.
     
-    Nota: Tabla existente en Supabase con columnas limitadas.
-    Los campos finalizado/fecha_finalizado/finalizado_por se agregaran
-    cuando se ejecute la migración SQL correspondiente.
+    ISS-DB-ALIGN: Campos agregados para coincidir con BD Supabase:
+    - centro_destino_id: Centro penitenciario destino de la entrega
+    - finalizado: Si la entrega fue confirmada/completada
+    - fecha_finalizado: Timestamp de finalización
+    - finalizado_por_id: Usuario que finalizó la entrega
     """
     detalle_donacion = models.ForeignKey(
         DetalleDonacion, 
@@ -2886,12 +2888,27 @@ class SalidaDonacion(models.Model):
     )
     fecha_entrega = models.DateTimeField(auto_now_add=True)
     notas = models.TextField(blank=True, null=True)
-    # Campos comentados hasta que se ejecute la migración SQL en Supabase:
-    # ALTER TABLE salidas_donaciones ADD COLUMN IF NOT EXISTS finalizado BOOLEAN DEFAULT FALSE;
-    # ALTER TABLE salidas_donaciones ADD COLUMN IF NOT EXISTS fecha_finalizado TIMESTAMP WITH TIME ZONE;
-    # ALTER TABLE salidas_donaciones ADD COLUMN IF NOT EXISTS finalizado_por_id INTEGER REFERENCES usuarios(id);
-    # ALTER TABLE salidas_donaciones ADD COLUMN IF NOT EXISTS centro_destino_id INTEGER REFERENCES centros(id);
     created_at = models.DateTimeField(auto_now_add=True)
+    
+    # ISS-DB-ALIGN: Campos nuevos para trazabilidad de entregas a centros
+    centro_destino = models.ForeignKey(
+        Centro,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='salidas_donaciones',
+        db_column='centro_destino_id'
+    )
+    finalizado = models.BooleanField(default=False)
+    fecha_finalizado = models.DateTimeField(null=True, blank=True)
+    finalizado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='entregas_finalizadas',
+        db_column='finalizado_por_id'
+    )
 
     class Meta:
         db_table = 'salidas_donaciones'
@@ -2900,6 +2917,11 @@ class SalidaDonacion(models.Model):
 
     def __str__(self):
         return f"Salida {self.id} - {self.destinatario} x {self.cantidad}"
+    
+    @property
+    def estado_entrega(self):
+        """Estado de la entrega para mostrar en frontend"""
+        return 'entregado' if self.finalizado else 'pendiente'
     
     def save(self, *args, **kwargs):
         # Validar que hay stock disponible
