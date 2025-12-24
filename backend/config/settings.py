@@ -317,6 +317,7 @@ MIDDLEWARE = [
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',  # CORS antes de CommonMiddleware
+    'middleware.CORSErrorHandlingMiddleware',  # ISS-FIX: CORS headers en errores 500
     'core.middleware.CurrentRequestMiddleware',  # Para auditoría (request en signals)
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',

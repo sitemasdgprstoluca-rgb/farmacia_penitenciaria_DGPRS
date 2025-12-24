@@ -1462,99 +1462,163 @@ class ReportesViewSet(viewsets.ViewSet):
     """ViewSet para reportes del sistema"""
     permission_classes = [IsAuthenticated, IsFarmaciaRole]
 
-    @method_decorator(cache_page(60 * 5))  # Cache 5 minutos
     @action(detail=False, methods=['get'])
     def inventario(self, request):
-        """GET /api/reportes/inventario/?formato=excel|pdf|json"""
+        """
+        GET /api/reportes/inventario/?formato=excel|pdf|json&centro=id|todos
+        
+        ISS-OPT: Optimizado con annotations para evitar N+1 queries.
+        """
         from django.http import FileResponse
-        from core.utils.pdf_reports import generar_reporte_inventario
+        from django.db.models import Sum, Count, Q, F, Case, When, Value, CharField
+        from django.db.models.functions import Coalesce
         
-        formato = request.query_params.get('formato', 'json')
+        try:
+            formato = request.query_params.get('formato', 'json')
+            centro_filtro = request.query_params.get('centro', 'todos')
+            hoy = timezone.now().date()
+            
+            # Filtro de lotes activos y vigentes (no vencidos)
+            filtro_lotes_vigentes = Q(
+                lotes__activo=True,
+                lotes__cantidad_actual__gt=0
+            ) & (Q(lotes__fecha_caducidad__gte=hoy) | Q(lotes__fecha_caducidad__isnull=True))
+            
+            # Filtro por centro si se especifica
+            if centro_filtro and centro_filtro != 'todos':
+                if centro_filtro == 'central':
+                    filtro_lotes_vigentes &= Q(lotes__centro__isnull=True)
+                else:
+                    try:
+                        centro_id = int(centro_filtro)
+                        filtro_lotes_vigentes &= Q(lotes__centro_id=centro_id)
+                    except (ValueError, TypeError):
+                        pass
+            
+            # Query optimizada con annotations
+            queryset = Producto.objects.filter(activo=True).annotate(
+                stock_calculado=Coalesce(
+                    Sum('lotes__cantidad_actual', filter=filtro_lotes_vigentes),
+                    0
+                ),
+                lotes_activos_count=Count(
+                    'lotes',
+                    filter=filtro_lotes_vigentes
+                )
+            ).values(
+                'id', 'clave', 'descripcion', 'unidad_medida',
+                'stock_minimo', 'precio_unitario',
+                'stock_calculado', 'lotes_activos_count'
+            )
+            
+            datos = []
+            for p in queryset:
+                stock = p['stock_calculado'] or 0
+                stock_minimo = p['stock_minimo'] or 0
+                precio = float(p['precio_unitario'] or 0)
+                
+                # Calcular nivel de stock
+                if stock == 0:
+                    nivel = 'critico'
+                elif stock_minimo > 0:
+                    ratio = stock / stock_minimo
+                    if ratio < 0.5:
+                        nivel = 'critico'
+                    elif ratio < 1:
+                        nivel = 'bajo'
+                    elif ratio > 2:
+                        nivel = 'alto'
+                    else:
+                        nivel = 'normal'
+                else:
+                    nivel = 'normal'
+                
+                datos.append({
+                    'id': p['id'],
+                    'clave': p['clave'],
+                    'descripcion': p['descripcion'],
+                    'unidad_medida': p['unidad_medida'],
+                    'stock_actual': stock,
+                    'stock_minimo': stock_minimo,
+                    'nivel_stock': nivel,
+                    'nivel': nivel,
+                    'precio_unitario': precio,
+                    'valor_inventario': float(stock * precio),
+                    'lotes_activos': p['lotes_activos_count'] or 0
+                })
 
-        queryset = Producto.objects.prefetch_related('lotes')
+            # Calcular resumen
+            productos_bajo_minimo = sum(
+                1 for d in datos 
+                if d['stock_actual'] < d['stock_minimo'] and d['stock_minimo'] > 0
+            )
+            
+            resumen = {
+                'total_productos': len(datos),
+                'stock_total': sum(d['stock_actual'] for d in datos),
+                'productos_sin_stock': sum(1 for d in datos if d['stock_actual'] == 0),
+                'productos_bajo_minimo': productos_bajo_minimo,
+                'productos_stock_critico': sum(1 for d in datos if d['nivel_stock'] == 'critico'),
+                'valor_total_inventario': sum(d['valor_inventario'] for d in datos)
+            }
 
-        datos = []
-        for producto in queryset:
-            stock_actual = producto.get_stock_actual()
-            nivel = producto.get_nivel_stock()
-            datos.append({
-                'id': producto.id,
-                'clave': producto.clave,
-                'descripcion': producto.descripcion,
-                'unidad_medida': producto.unidad_medida,
-                'stock_actual': stock_actual,
-                'stock_minimo': producto.stock_minimo,
-                'nivel_stock': nivel,
-                'nivel': nivel,  # Alias para compatibilidad frontend
-                'precio_unitario': float(producto.precio_unitario),
-                'valor_inventario': float(stock_actual * producto.precio_unitario),
-                'lotes_activos': producto.lotes.filter(activo=True, cantidad_actual__gt=0).count()
+            if formato == 'pdf':
+                from core.utils.pdf_reports import generar_reporte_inventario
+                pdf_buffer = generar_reporte_inventario(datos)
+                return FileResponse(
+                    pdf_buffer,
+                    content_type='application/pdf',
+                    as_attachment=True,
+                    filename=f'reporte_inventario_{timezone.now().strftime("%Y%m%d")}.pdf'
+                )
+
+            if formato == 'excel':
+                workbook = openpyxl.Workbook()
+                sheet = workbook.active
+                sheet.title = 'Inventario'
+
+                headers = ['Clave', 'Descripcion', 'Stock Actual', 'Stock Minimo', 'Nivel', 'Precio Unitario', 'Valor Total']
+                sheet.append(headers)
+
+                for d in datos:
+                    sheet.append([
+                        d['clave'],
+                        d['descripcion'],
+                        d['stock_actual'],
+                        d['stock_minimo'],
+                        d['nivel_stock'],
+                        d['precio_unitario'],
+                        d['valor_inventario']
+                    ])
+
+                for row in sheet.iter_rows(min_row=1, max_row=len(datos) + 1):
+                    for cell in row:
+                        cell.alignment = openpyxl.styles.Alignment(horizontal='center')
+
+                buffer = BytesIO()
+                workbook.save(buffer)
+                buffer.seek(0)
+
+                return FileResponse(
+                    buffer,
+                    content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    as_attachment=True,
+                    filename='reporte_inventario.xlsx'
+                )
+
+            return Response({
+                'reporte': 'inventario',
+                'fecha_generacion': timezone.now().isoformat(),
+                'centro': centro_filtro,
+                'datos': datos,
+                'resumen': resumen
             })
-
-        # Calcular productos bajo mínimo (stock_actual < stock_minimo)
-        productos_bajo_minimo = sum(
-            1 for d in datos 
-            if d['stock_actual'] < d['stock_minimo'] and d['stock_minimo'] > 0
-        )
-        
-        resumen = {
-            'total_productos': len(datos),
-            'stock_total': sum(d['stock_actual'] for d in datos),
-            'productos_sin_stock': sum(1 for d in datos if d['stock_actual'] == 0),
-            'productos_bajo_minimo': productos_bajo_minimo,
-            'productos_stock_critico': sum(1 for d in datos if d['nivel_stock'] == 'critico'),
-            'valor_total_inventario': sum(d['valor_inventario'] for d in datos)
-        }
-
-        if formato == 'pdf':
-            pdf_buffer = generar_reporte_inventario(datos)
-            return FileResponse(
-                pdf_buffer,
-                content_type='application/pdf',
-                as_attachment=True,
-                filename=f'reporte_inventario_{timezone.now().strftime("%Y%m%d")}.pdf'
+        except Exception as e:
+            logger.error(f"Error en reporte inventario: {e}")
+            return Response(
+                {'error': 'Error generando reporte de inventario', 'detail': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-        if formato == 'excel':
-            workbook = openpyxl.Workbook()
-            sheet = workbook.active
-            sheet.title = 'Inventario'
-
-            headers = ['Clave', 'Descripcion', 'Stock Actual', 'Stock Minimo', 'Nivel', 'Precio Unitario', 'Valor Total']
-            sheet.append(headers)
-
-            for d in datos:
-                sheet.append([
-                    d['clave'],
-                    d['descripcion'],
-                    d['stock_actual'],
-                    d['stock_minimo'],
-                    d['nivel_stock'],
-                    d['precio_unitario'],
-                    d['valor_inventario']
-                ])
-
-            for row in sheet.iter_rows(min_row=1, max_row=len(datos) + 1):
-                for cell in row:
-                    cell.alignment = openpyxl.styles.Alignment(horizontal='center')
-
-            buffer = BytesIO()
-            workbook.save(buffer)
-            buffer.seek(0)
-
-            return FileResponse(
-                buffer,
-                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                as_attachment=True,
-                filename='reporte_inventario.xlsx'
-            )
-
-        return Response({
-            'reporte': 'inventario',
-            'fecha_generacion': timezone.now().isoformat(),
-            'datos': datos,
-            'resumen': resumen
-        })
 
     @method_decorator(cache_page(60 * 5))  # Cache 5 minutos
     @action(detail=False, methods=['get'])
