@@ -660,13 +660,22 @@ class CentroSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at']
     
     def get_total_requisiciones(self, obj):
-        # Centro puede ser origen o destino de requisiciones
+        # PERFORMANCE: Usar anotación del ViewSet si existe, evita N+1 queries
+        total_anotado = getattr(obj, 'requisiciones_count', None)
+        if total_anotado is not None:
+            return total_anotado
+        # Fallback: query directa (evitar si es posible)
         from django.db.models import Q
         return Requisicion.objects.filter(
             Q(centro_origen=obj) | Q(centro_destino=obj)
         ).count()
     
     def get_total_usuarios(self, obj):
+        # PERFORMANCE: Usar anotación del ViewSet si existe, evita N+1 queries
+        total_anotado = getattr(obj, 'usuarios_count', None)
+        if total_anotado is not None:
+            return total_anotado
+        # Fallback: query directa
         return obj.usuarios.filter(is_active=True).count()
 
 
@@ -700,16 +709,34 @@ class ProductoSerializer(serializers.ModelSerializer):
         return getattr(obj, 'stock_calculado', None) or obj.stock_actual or 0
     
     def get_lotes_activos(self, obj):
-        # ISS-FIX: Priorizar lotes_centro_count (anotación por centro) sobre conteo global
-        # Esto asegura que usuarios de centro vean solo SUS lotes
+        # PERFORMANCE: Usar anotación del ViewSet si existe, evita N+1 queries
         lotes_centro = getattr(obj, 'lotes_centro_count', None)
         if lotes_centro is not None:
             return lotes_centro
-        # Fallback: conteo global (para casos donde no hay anotación)
+        # Fallback: usar prefetch_related si disponible
+        if hasattr(obj, '_prefetched_objects_cache') and 'lotes' in obj._prefetched_objects_cache:
+            return len([l for l in obj.lotes.all() if l.activo and l.cantidad_actual > 0])
+        # Último recurso: query directa (evitar si es posible)
         return obj.lotes.filter(activo=True, cantidad_actual__gt=0).count()
     
     def get_marca(self, obj):
-        """Obtiene marca del lote principal (mayor cantidad actual)."""
+        """
+        PERFORMANCE: Obtiene marca del lote principal (mayor cantidad).
+        Usa anotación del ViewSet o prefetch_related para evitar N+1 queries.
+        """
+        # Priorizar anotación del ViewSet
+        marca_anotada = getattr(obj, 'marca_principal', None)
+        if marca_anotada:
+            return marca_anotada
+        # Usar prefetch_related si disponible
+        if hasattr(obj, '_prefetched_objects_cache') and 'lotes' in obj._prefetched_objects_cache:
+            lotes_ordenados = sorted(
+                [l for l in obj.lotes.all() if l.activo and l.cantidad_actual > 0],
+                key=lambda x: x.cantidad_actual,
+                reverse=True
+            )
+            return lotes_ordenados[0].marca if lotes_ordenados and lotes_ordenados[0].marca else None
+        # Último recurso: query directa
         lote = obj.lotes.filter(activo=True, cantidad_actual__gt=0).order_by('-cantidad_actual').first()
         return lote.marca if lote and lote.marca else None
     

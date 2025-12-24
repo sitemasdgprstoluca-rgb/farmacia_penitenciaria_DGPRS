@@ -1,5 +1,6 @@
 from django.apps import AppConfig
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -14,35 +15,46 @@ class CoreConfig(AppConfig):
         # Importar signals al iniciar la app
         from . import signals  # noqa: F401
         
-        # ISS-001 FIX (audit8): Validar esquemas de tablas unmanaged al iniciar
-        # ISS-005 FIX (audit18): Mejorada verificación de esquema
-        # Solo ejecutar si no estamos en modo de migración o test
+        # ISS-001 FIX: Validar esquemas SOLO en producción y si está habilitado
+        # Esto evita lentitud en desarrollo (~2s extra por cada inicio)
         import sys
-        if 'migrate' not in sys.argv and 'makemigrations' not in sys.argv and 'test' not in sys.argv:
+        
+        # Condiciones para SALTAR validación de esquema:
+        # 1. Comandos de gestión (migrate, test, etc.)
+        # 2. Modo DEBUG (desarrollo)
+        # 3. Variable SKIP_SCHEMA_VALIDATION=1
+        is_management_command = any(cmd in sys.argv for cmd in [
+            'migrate', 'makemigrations', 'test', 'shell', 'dbshell',
+            'collectstatic', 'check', 'runserver', 'showmigrations'
+        ])
+        skip_validation = os.environ.get('SKIP_SCHEMA_VALIDATION', '0') == '1'
+        
+        # Solo validar en producción (no DEBUG) y si no es comando de gestión
+        from django.conf import settings
+        should_validate = (
+            not settings.DEBUG and 
+            not is_management_command and 
+            not skip_validation
+        )
+        
+        if should_validate:
             try:
                 from core.schema_validator import validate_unmanaged_schemas, check_transitions_constraint
                 
                 # Validar esquemas (solo warning, no bloquear inicio)
                 results = validate_unmanaged_schemas(raise_on_error=False)
-                
-                # Verificar constraints de estados
                 check_transitions_constraint()
                 
-                # Resumen
                 total_errors = sum(len(e) for e in results.values())
                 if total_errors:
                     logger.warning(
-                        f"ISS-001: Validación de esquema completada con {total_errors} advertencia(s). "
-                        "Ver logs para detalles."
+                        f"ISS-001: Validación de esquema completada con {total_errors} advertencia(s)."
                     )
-                else:
-                    logger.info("ISS-001: Validación de esquema completada sin errores.")
                 
-                # ISS-005 FIX (audit18): Verificación adicional de columnas críticas
+                # ISS-005: Verificación adicional
                 from core.schema_check import verificar_esquema_al_iniciar
                 verificar_esquema_al_iniciar()
                     
             except Exception as e:
-                # No bloquear inicio de la app por errores de validación
                 logger.warning(f"ISS-001: No se pudo validar esquema: {e}")
 

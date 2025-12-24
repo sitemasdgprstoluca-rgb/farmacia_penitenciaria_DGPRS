@@ -7,8 +7,9 @@ from django.core.paginator import InvalidPage
 from django.core.cache import cache
 from django.http import HttpResponse
 from django.db import transaction
-from django.db.models import Q, Sum, Count, F, IntegerField
+from django.db.models import Q, Sum, Count, F, IntegerField, Subquery, OuterRef
 from django.db.models.functions import Coalesce
+from django.db import models
 from django.utils import timezone
 from django.conf import settings
 from django.contrib.auth.models import Group
@@ -1091,6 +1092,29 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     )
                 )
         
+        # PERFORMANCE: Agregar anotación de marca del lote principal
+        # Subquery para obtener la marca del lote con mayor cantidad_actual
+        from core.models import Lote
+        lote_principal = Lote.objects.filter(
+            producto=OuterRef('pk'),
+            activo=True,
+            cantidad_actual__gt=0
+        ).order_by('-cantidad_actual').values('marca')[:1]
+        
+        queryset = queryset.annotate(
+            marca_principal=Subquery(lote_principal)
+        )
+        
+        # PERFORMANCE: Prefetch lotes activos para evitar N+1 en serializer
+        from django.db.models import Prefetch
+        queryset = queryset.prefetch_related(
+            Prefetch(
+                'lotes',
+                queryset=Lote.objects.filter(activo=True, cantidad_actual__gt=0).select_related('centro'),
+                to_attr='lotes_activos_prefetch'
+            )
+        )
+        
         return queryset.order_by('-created_at')
     
     def create(self, request, *args, **kwargs):
@@ -1979,6 +2003,28 @@ class CentroViewSet(viewsets.ModelViewSet):
         else:
             queryset = queryset.order_by('-created_at')
         
+        # PERFORMANCE: Agregar anotaciones para evitar N+1 queries en serializer
+        from core.models import Requisicion
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        
+        # Contar requisiciones donde el centro es origen O destino
+        # Nota: Los related_name correctos son 'requisiciones_origen' y 'requisiciones_destino'
+        queryset = queryset.annotate(
+            requisiciones_count=Count(
+                'requisiciones_origen',
+                distinct=True
+            ) + Count(
+                'requisiciones_destino',
+                distinct=True
+            ),
+            usuarios_count=Count(
+                'usuarios',
+                filter=Q(usuarios__is_active=True),
+                distinct=True
+            )
+        )
+        
         return queryset
     
     def create(self, request, *args, **kwargs):
@@ -2703,7 +2749,8 @@ class LoteViewSet(viewsets.ModelViewSet):
                 fecha_caducidad__gt=date.today()
             )
         
-        return queryset.order_by('-created_at')
+        # PERFORMANCE: Prefetch documentos para evitar N+1 queries
+        return queryset.order_by('-created_at').prefetch_related('documentos')
     
     @transaction.atomic  # HALLAZGO #10 FIX: Garantizar atomicidad
     def create(self, request, *args, **kwargs):
