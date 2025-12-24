@@ -136,6 +136,7 @@ const Lotes = () => {
   // fecha_fabricacion, fecha_caducidad, precio_unitario, numero_contrato, marca, ubicacion, centro_id, activo
   const [formData, setFormData] = useState({
     producto: '',
+    presentacion_producto: '', // Campo para mostrar/editar presentación del producto
     numero_lote: '',
     fecha_fabricacion: '',    // Campo real en DB
     fecha_caducidad: '',
@@ -302,6 +303,12 @@ const Lotes = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    // Validar presentación obligatoria
+    if (!formData.presentacion_producto?.trim()) {
+      toast.error('La presentación es obligatoria');
+      return;
+    }
+    
     // Validar y parsear cantidades antes de enviar
     const cantidadInicial = parseInt(formData.cantidad_inicial, 10);
     
@@ -333,11 +340,28 @@ const Lotes = () => {
     setSavingLote(true);
     
     try {
+      // Verificar si la presentación cambió y actualizar el producto
+      const productoSeleccionado = productos.find(p => String(p.id) === String(formData.producto));
+      const presentacionOriginal = productoSeleccionado?.presentacion || '';
+      const presentacionNueva = formData.presentacion_producto?.trim();
+      
+      if (presentacionNueva && presentacionNueva !== presentacionOriginal) {
+        // Actualizar presentación del producto
+        try {
+          await productosAPI.update(formData.producto, { presentacion: presentacionNueva });
+        } catch (err) {
+          console.warn('No se pudo actualizar la presentación del producto:', err);
+        }
+      }
+      
       const dataToSend = {
         ...formData,
         cantidad_inicial: cantidadInicial,
         precio_unitario: precioUnitario,
       };
+      
+      // Remover presentacion_producto ya que no es campo del modelo Lote
+      delete dataToSend.presentacion_producto;
       
       // Solo inicializar cantidad_actual en creación, no en edición
       // En edición, mantener el valor actual del backend para no sobrescribir ajustes de inventario
@@ -380,8 +404,12 @@ const Lotes = () => {
 
   const handleEdit = (lote) => {
     setEditingLote(lote);
+    // Obtener presentación del producto si está disponible
+    const productoInfo = lote.producto_info || {};
+    const presentacionProducto = productoInfo.presentacion || lote.presentacion || '';
     setFormData({
       producto: lote.producto,
+      presentacion_producto: presentacionProducto,
       numero_lote: lote.numero_lote,
       fecha_fabricacion: lote.fecha_fabricacion || '',
       fecha_caducidad: lote.fecha_caducidad,
@@ -516,6 +544,7 @@ const Lotes = () => {
   const resetForm = () => {
     setFormData({
       producto: '',
+      presentacion_producto: '',
       numero_lote: '',
       fecha_fabricacion: '',
       fecha_caducidad: '',
@@ -1081,7 +1110,7 @@ const handleImportar = async (e) => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="thead-theme">
               <tr>
-                {['#', 'Producto', 'Número Lote', 'Marca', 'Caducidad', 'Días', 'Alerta', 'Stock', 'Acciones'].map((col) => (
+                {['#', 'Producto', 'Presentación', 'Número Lote', 'Marca', 'Caducidad', 'Días', 'Alerta', 'Stock', 'Acciones'].map((col) => (
                   <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
                     {col}
                   </th>
@@ -1091,13 +1120,13 @@ const handleImportar = async (e) => {
             <tbody className="bg-white divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan="9" className="p-0">
+                  <td colSpan="10" className="p-0">
                     <LotesSkeleton />
                   </td>
                 </tr>
               ) : lotes.length === 0 ? (
                 <tr>
-                  <td colSpan="9" className="text-center py-8 text-gray-500">
+                  <td colSpan="10" className="text-center py-8 text-gray-500">
                     No hay lotes registrados
                   </td>
                 </tr>
@@ -1113,7 +1142,7 @@ const handleImportar = async (e) => {
                         className="text-gray-500 text-xs cursor-help relative group"
                         title={lote.producto_nombre}
                       >
-                        {lote.producto_nombre?.substring(0, 40)}{lote.producto_nombre?.length > 40 ? '...' : ''}
+                        {lote.producto_nombre?.substring(0, 30)}{lote.producto_nombre?.length > 30 ? '...' : ''}
                         {/* Tooltip on hover */}
                         <div className="absolute z-50 hidden group-hover:block bg-gray-900 text-white text-xs rounded-lg py-2 px-3 -top-2 left-0 transform -translate-y-full w-64 shadow-lg">
                           <p className="font-semibold mb-1">Nombre completo:</p>
@@ -1121,6 +1150,9 @@ const handleImportar = async (e) => {
                           <div className="absolute bottom-0 left-4 transform translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900"></div>
                         </div>
                       </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {lote.producto_info?.presentacion || lote.presentacion || <span className="text-gray-400 italic text-xs">-</span>}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm font-mono font-bold text-gray-800">
                       {lote.numero_lote}
@@ -1243,7 +1275,16 @@ const handleImportar = async (e) => {
                   </label>
                   <select
                     value={formData.producto}
-                    onChange={(e) => setFormData({...formData, producto: e.target.value})}
+                    onChange={(e) => {
+                      const productoId = e.target.value;
+                      const productoSeleccionado = productos.find(p => String(p.id) === String(productoId));
+                      setFormData({
+                        ...formData, 
+                        producto: productoId,
+                        // Auto-rellenar presentación del producto si existe
+                        presentacion_producto: productoSeleccionado?.presentacion || ''
+                      });
+                    }}
                     className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl transition-all focus:outline-none"
                     style={{
                       '--tw-ring-color': 'rgba(159, 34, 65, 0.2)'
@@ -1267,6 +1308,31 @@ const handleImportar = async (e) => {
                     ))}
                   </select>
                   <p className="text-xs text-gray-500 italic mt-1">No se puede cambiar el producto de un lote existente</p>
+                </div>
+
+                {/* Presentación del Producto */}
+                <div>
+                  <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
+                    PRESENTACIÓN <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.presentacion_producto}
+                    onChange={(e) => setFormData({...formData, presentacion_producto: e.target.value})}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl transition-all focus:outline-none"
+                    onFocus={(e) => {
+                      e.target.style.borderColor = '#9F2241';
+                      e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                    }}
+                    onBlur={(e) => {
+                      e.target.style.borderColor = '#E5E7EB';
+                      e.target.style.boxShadow = 'none';
+                    }}
+                    placeholder="Ej: TABLETA 500MG, CAJA CON 30 COMPRIMIDOS"
+                    required
+                    maxLength={200}
+                  />
+                  <p className="text-xs text-gray-500 italic mt-1">Forma farmacéutica y cantidad por envase. Si modifica, se actualizará en el producto.</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

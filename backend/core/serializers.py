@@ -677,6 +677,7 @@ class CentroSerializer(serializers.ModelSerializer):
 class ProductoSerializer(serializers.ModelSerializer):
     stock_actual = serializers.SerializerMethodField()
     lotes_activos = serializers.SerializerMethodField()
+    marca = serializers.SerializerMethodField()
     
     class Meta:
         model = Producto
@@ -685,9 +686,9 @@ class ProductoSerializer(serializers.ModelSerializer):
             'categoria', 'sustancia_activa', 'presentacion', 'concentracion',
             'via_administracion', 'requiere_receta', 'es_controlado',
             'stock_minimo', 'stock_actual', 'activo', 'imagen',
-            'lotes_activos', 'created_at', 'updated_at'
+            'lotes_activos', 'marca', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'stock_actual']
+        read_only_fields = ['created_at', 'updated_at', 'stock_actual', 'marca']
         extra_kwargs = {
             'clave': {'required': True},
             'nombre': {'required': True},
@@ -706,6 +707,11 @@ class ProductoSerializer(serializers.ModelSerializer):
             return lotes_centro
         # Fallback: conteo global (para casos donde no hay anotación)
         return obj.lotes.filter(activo=True, cantidad_actual__gt=0).count()
+    
+    def get_marca(self, obj):
+        """Obtiene marca del lote principal (mayor cantidad actual)."""
+        lote = obj.lotes.filter(activo=True, cantidad_actual__gt=0).order_by('-cantidad_actual').first()
+        return lote.marca if lote and lote.marca else None
     
     def validate_clave(self, value):
         """Clave es requerida, única, entre 1 y 50 caracteres."""
@@ -779,6 +785,7 @@ class LoteSerializer(serializers.ModelSerializer):
     producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
     producto_clave = serializers.CharField(source='producto.clave', read_only=True)
     producto_descripcion = serializers.CharField(source='producto.nombre', read_only=True)  # Alias para compatibilidad
+    producto_info = serializers.SerializerMethodField()  # Info adicional del producto (presentación, unidad)
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, allow_null=True)
     dias_para_caducar = serializers.SerializerMethodField()
     estado = serializers.SerializerMethodField()
@@ -798,6 +805,7 @@ class LoteSerializer(serializers.ModelSerializer):
         model = Lote
         fields = [
             'id', 'producto', 'producto_nombre', 'producto_clave', 'producto_descripcion',
+            'producto_info',  # Información adicional del producto
             'centro', 'centro_nombre',
             'numero_lote', 'fecha_caducidad', 'fecha_fabricacion',
             'cantidad_inicial', 'cantidad_actual', 'precio_unitario', 'precio_compra',
@@ -813,6 +821,15 @@ class LoteSerializer(serializers.ModelSerializer):
             'marca': {'required': False, 'allow_null': True, 'allow_blank': True},
             'ubicacion': {'required': False, 'allow_null': True, 'allow_blank': True},
         }
+    
+    def get_producto_info(self, obj):
+        """Devuelve información adicional del producto para mostrar en tabla/formulario."""
+        if obj.producto:
+            return {
+                'presentacion': obj.producto.presentacion or '',
+                'unidad_medida': obj.producto.unidad_medida or 'PIEZA',
+            }
+        return None
     
     def to_internal_value(self, data):
         # Si viene 'precio_compra' pero no 'precio_unitario', mapear automáticamente

@@ -7,6 +7,8 @@ import {
   FaTrash,
   FaEye,
   FaCheck,
+  FaCheckCircle,
+  FaClock,
   FaFilter,
   FaGift,
   FaChevronDown,
@@ -21,12 +23,15 @@ import {
   FaHistory,
   FaWarehouse,
   FaClipboardList,
+  FaClipboardCheck,
   FaArrowRight,
   FaExclamationTriangle,
   FaFileExport,
   FaFileImport,
   FaDownload,
   FaShoppingCart,
+  FaTable,
+  FaFilePdf,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { COLORS } from '../constants/theme';
@@ -97,12 +102,12 @@ const Donaciones = () => {
   const [confirmRechazar, setConfirmRechazar] = useState(null);
   const [motivoRechazo, setMotivoRechazo] = useState('');
 
-  // Salidas de donaciones (entregas)
+  // Salidas de donaciones (entregas a centros)
   const [showSalidaModal, setShowSalidaModal] = useState(false);
   const [salidaDetalle, setSalidaDetalle] = useState(null);
   const [salidaForm, setSalidaForm] = useState({
     cantidad: '',
-    destinatario: '',
+    centro_destino: '',  // ID del centro destino (obligatorio)
     motivo: '',
     notas: '',
   });
@@ -153,6 +158,27 @@ const Donaciones = () => {
   
   // Modal de Entrega Masiva de Donaciones
   const [showSalidaMasiva, setShowSalidaMasiva] = useState(false);
+  
+  // Número de donación auto-generado
+  const [siguienteNumero, setSiguienteNumero] = useState('');
+  
+  // Modal de creación rápida de producto
+  const [showQuickProductModal, setShowQuickProductModal] = useState(false);
+  const [quickProductForm, setQuickProductForm] = useState({
+    clave: '',
+    nombre: '',
+    descripcion: '',
+    unidad_medida: 'PIEZA',
+    presentacion: '',
+  });
+  
+  // Modal de carga masiva de productos
+  const [showBulkAddModal, setShowBulkAddModal] = useState(false);
+  const [bulkText, setBulkText] = useState('');
+  const [bulkProducts, setBulkProducts] = useState([]);
+  
+  // Confirmación de finalización de entrega
+  const [confirmFinalizarEntrega, setConfirmFinalizarEntrega] = useState(null);
   
   // Estadísticas del almacén de donaciones
   const [estadisticas, setEstadisticas] = useState({
@@ -209,6 +235,19 @@ const Donaciones = () => {
 
   const filtrosActivos = [searchTerm, filtroEstado, filtroTipoDonante, filtroCentro, filtroFechaDesde, filtroFechaHasta].filter(Boolean).length;
 
+  // Cargar siguiente número de donación
+  const cargarSiguienteNumero = useCallback(async () => {
+    try {
+      const response = await donacionesAPI.getSiguienteNumero();
+      setSiguienteNumero(response.data?.numero || '');
+    } catch (err) {
+      // Si no existe el endpoint, generar localmente
+      const year = new Date().getFullYear();
+      const randomNum = Math.floor(Math.random() * 1000).toString().padStart(4, '0');
+      setSiguienteNumero(`DON-${year}-${randomNum}`);
+    }
+  }, []);
+
   // Cargar catálogos - USA CATÁLOGO INDEPENDIENTE DE DONACIONES
   const cargarCatalogos = useCallback(async () => {
     try {
@@ -218,10 +257,13 @@ const Donaciones = () => {
       ]);
       setProductosDonacion(prodDonRes.data.results || prodDonRes.data || []);
       setCentros(centrosRes.data.results || centrosRes.data || []);
+      
+      // Cargar siguiente número de donación
+      await cargarSiguienteNumero();
     } catch (err) {
       console.error('Error cargando catálogos:', err);
     }
-  }, []);
+  }, [cargarSiguienteNumero]);
 
   // Cargar donaciones
   const cargarDonaciones = useCallback(async () => {
@@ -528,6 +570,152 @@ const Donaciones = () => {
     }
   };
 
+  // ========== CREACIÓN RÁPIDA DE PRODUCTO ==========
+  
+  // Guardar producto rápido desde modal
+  const handleGuardarQuickProduct = async () => {
+    if (!quickProductForm.clave || !quickProductForm.nombre) {
+      toast.error('Clave y nombre son obligatorios');
+      return;
+    }
+
+    setActionLoading('quickProduct');
+    try {
+      await productosDonacionAPI.create({
+        ...quickProductForm,
+        activo: true,
+      });
+      toast.success('Producto creado correctamente');
+      setShowQuickProductModal(false);
+      setQuickProductForm({ clave: '', nombre: '', descripcion: '', unidad_medida: 'PIEZA', presentacion: '' });
+      cargarCatalogos();
+    } catch (err) {
+      console.error('Error creando producto rápido:', err);
+      toast.error(err.response?.data?.clave?.[0] || err.response?.data?.error || 'Error al crear producto');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // ========== CARGA MASIVA DE PRODUCTOS ==========
+  
+  // Parsear texto de carga masiva
+  const parseBulkText = () => {
+    if (!bulkText.trim()) {
+      setBulkProducts([]);
+      return;
+    }
+    
+    const lines = bulkText.split('\n').filter(line => line.trim());
+    const products = lines.map((line, idx) => {
+      // Formato esperado: CLAVE | NOMBRE | DESCRIPCION | UNIDAD
+      // O simplemente: CLAVE - NOMBRE
+      const parts = line.includes('|') 
+        ? line.split('|').map(p => p.trim())
+        : line.split('-').map(p => p.trim());
+      
+      return {
+        id: idx,
+        clave: parts[0] || '',
+        nombre: parts[1] || parts[0] || '',
+        descripcion: parts[2] || '',
+        unidad_medida: parts[3] || 'PIEZA',
+        valid: Boolean(parts[0] && parts[1]),
+      };
+    });
+    
+    setBulkProducts(products);
+  };
+
+  // Importar productos masivamente
+  const handleBulkImport = async () => {
+    const validProducts = bulkProducts.filter(p => p.valid);
+    if (validProducts.length === 0) {
+      toast.error('No hay productos válidos para importar');
+      return;
+    }
+
+    setActionLoading('bulkImport');
+    let exitosos = 0;
+    let fallidos = 0;
+
+    for (const product of validProducts) {
+      try {
+        await productosDonacionAPI.create({
+          clave: product.clave,
+          nombre: product.nombre,
+          descripcion: product.descripcion,
+          unidad_medida: product.unidad_medida,
+          activo: true,
+        });
+        exitosos++;
+      } catch (err) {
+        console.error(`Error importando ${product.clave}:`, err);
+        fallidos++;
+      }
+    }
+
+    setActionLoading(null);
+    
+    if (exitosos > 0) {
+      toast.success(`${exitosos} productos importados correctamente`);
+      cargarCatalogos();
+    }
+    if (fallidos > 0) {
+      toast.error(`${fallidos} productos fallaron (posibles duplicados)`);
+    }
+
+    setShowBulkAddModal(false);
+    setBulkText('');
+    setBulkProducts([]);
+  };
+
+  // ========== FINALIZACIÓN DE ENTREGAS ==========
+  
+  // Finalizar una entrega (marcar como entregado)
+  const handleFinalizarEntrega = async (entrega) => {
+    setActionLoading(entrega.id);
+    try {
+      await salidasDonacionesAPI.finalizar(entrega.id);
+      toast.success('Entrega marcada como finalizada');
+      cargarTodasEntregas();
+      if (historialSalidas.length > 0) {
+        // Actualizar también el historial del modal si está abierto
+        setHistorialSalidas(prev => prev.map(s => 
+          s.id === entrega.id ? { ...s, estado_entrega: 'entregado', finalizado: true } : s
+        ));
+      }
+    } catch (err) {
+      console.error('Error finalizando entrega:', err);
+      toast.error(err.response?.data?.error || 'Error al finalizar entrega');
+    } finally {
+      setActionLoading(null);
+      setConfirmFinalizarEntrega(null);
+    }
+  };
+
+  // Descargar recibo de salida como PDF
+  const handleDescargarReciboSalida = async (salida, finalizado = false) => {
+    try {
+      const response = await salidasDonacionesAPI.getReciboPdf(salida.id, finalizado);
+      
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `recibo_salida_donacion_${salida.id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Recibo descargado');
+    } catch (err) {
+      console.error('Error descargando recibo:', err);
+      toast.error('Error al descargar recibo');
+    }
+  };
+
   useEffect(() => {
     cargarCatalogos();
   }, [cargarCatalogos]);
@@ -574,6 +762,10 @@ const Donaciones = () => {
   // Abrir modal de creación
   const handleNuevo = () => {
     resetForm();
+    // Auto-rellenar número de donación
+    if (siguienteNumero) {
+      setFormData(prev => ({ ...prev, numero: siguienteNumero }));
+    }
     setShowModal(true);
   };
 
@@ -1361,16 +1553,32 @@ const Donaciones = () => {
 
               {/* Botón Agregar Producto */}
               {puede.crear && (
-                <button
-                  onClick={() => {
-                    setCatalogoForm({ clave: '', nombre: '', descripcion: '', unidad_medida: 'PIEZA', presentacion: '', activo: true, notas: '' });
-                    setEditingProductoDonacion(null);
-                    setShowCatalogoModal(true);
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
-                >
-                  <FaPlus /> Agregar Producto
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowQuickProductModal(true)}
+                    className="flex items-center gap-2 px-3 py-2 border border-primary text-primary rounded-lg hover:bg-primary/5 transition-colors"
+                    title="Crear producto rápido"
+                  >
+                    <FaPlus /> Rápido
+                  </button>
+                  <button
+                    onClick={() => setShowBulkAddModal(true)}
+                    className="flex items-center gap-2 px-3 py-2 border border-green-600 text-green-600 rounded-lg hover:bg-green-50 transition-colors"
+                    title="Carga masiva de productos"
+                  >
+                    <FaTable /> Masivo
+                  </button>
+                  <button
+                    onClick={() => {
+                      setCatalogoForm({ clave: '', nombre: '', descripcion: '', unidad_medida: 'PIEZA', presentacion: '', activo: true, notas: '' });
+                      setEditingProductoDonacion(null);
+                      setShowCatalogoModal(true);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                  >
+                    <FaPlus /> Agregar Producto
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -1734,9 +1942,9 @@ const Donaciones = () => {
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Producto</th>
                       <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Cantidad</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Destinatario</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Motivo</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Estado</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Entregado por</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Donación</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -1756,10 +1964,46 @@ const Donaciones = () => {
                           <span className="font-bold text-primary">{entrega.cantidad}</span>
                         </td>
                         <td className="px-4 py-3">{entrega.destinatario}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{entrega.motivo || '-'}</td>
+                        <td className="px-4 py-3 text-center">
+                          {entrega.estado_entrega === 'entregado' || entrega.finalizado ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              <FaCheckCircle className="text-green-600" />
+                              Entregado
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                              <FaClock className="text-yellow-600" />
+                              Pendiente
+                            </span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-sm text-gray-600">{entrega.entregado_por_nombre || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500">
-                          {entrega.detalle_donacion_info?.donacion_numero || '-'}
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            {/* Botón Finalizar - solo si no está entregado */}
+                            {!(entrega.estado_entrega === 'entregado' || entrega.finalizado) && puede.procesar && (
+                              <button
+                                onClick={() => setConfirmFinalizarEntrega(entrega)}
+                                disabled={actionLoading === entrega.id}
+                                className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                title="Marcar como entregado"
+                              >
+                                {actionLoading === entrega.id ? (
+                                  <FaSpinner className="animate-spin" />
+                                ) : (
+                                  <FaCheck />
+                                )}
+                              </button>
+                            )}
+                            {/* Botón PDF */}
+                            <button
+                              onClick={() => handleDescargarReciboSalida(entrega, entrega.estado_entrega === 'entregado' || entrega.finalizado)}
+                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Descargar recibo PDF"
+                            >
+                              <FaFilePdf />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -2717,6 +2961,192 @@ const Donaciones = () => {
         </div>
       )}
 
+      {/* Modal de creación rápida de producto */}
+      {showQuickProductModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div
+              className="px-6 py-4 border-b flex items-center justify-between"
+              style={{ backgroundColor: COLORS.primary }}
+            >
+              <h2 className="text-lg font-semibold text-white">Crear Producto Rápido</h2>
+              <button
+                onClick={() => {
+                  setShowQuickProductModal(false);
+                  setQuickProductForm({ clave: '', nombre: '', descripcion: '', unidad_medida: 'PIEZA', presentacion: '' });
+                }}
+                className="text-white/80 hover:text-white"
+              >
+                <FaTimes size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Clave *</label>
+                <input
+                  type="text"
+                  value={quickProductForm.clave}
+                  onChange={(e) => setQuickProductForm({ ...quickProductForm, clave: e.target.value.toUpperCase() })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                  placeholder="Ej: PROD-001"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                <input
+                  type="text"
+                  value={quickProductForm.nombre}
+                  onChange={(e) => setQuickProductForm({ ...quickProductForm, nombre: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                  placeholder="Nombre del producto"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Presentación</label>
+                <input
+                  type="text"
+                  value={quickProductForm.presentacion}
+                  onChange={(e) => setQuickProductForm({ ...quickProductForm, presentacion: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                  placeholder="Ej: Caja con 30 tabletas"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Unidad de Medida</label>
+                <select
+                  value={quickProductForm.unidad_medida}
+                  onChange={(e) => setQuickProductForm({ ...quickProductForm, unidad_medida: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                >
+                  <option value="PIEZA">Pieza</option>
+                  <option value="CAJA">Caja</option>
+                  <option value="FRASCO">Frasco</option>
+                  <option value="SOBRE">Sobre</option>
+                  <option value="TUBO">Tubo</option>
+                </select>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowQuickProductModal(false);
+                  setQuickProductForm({ clave: '', nombre: '', descripcion: '', unidad_medida: 'PIEZA', presentacion: '' });
+                }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleGuardarQuickProduct}
+                disabled={actionLoading === 'quickProduct'}
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {actionLoading === 'quickProduct' && <FaSpinner className="animate-spin" />}
+                Crear Producto
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de carga masiva de productos */}
+      {showBulkAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div
+              className="px-6 py-4 border-b flex items-center justify-between"
+              style={{ backgroundColor: COLORS.primary }}
+            >
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <FaTable /> Carga Masiva de Productos
+              </h2>
+              <button
+                onClick={() => {
+                  setShowBulkAddModal(false);
+                  setBulkText('');
+                  setBulkProducts([]);
+                }}
+                className="text-white/80 hover:text-white"
+              >
+                <FaTimes size={20} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                <p className="font-medium">Formato de entrada:</p>
+                <p>Una línea por producto. Usar <code>|</code> o <code>-</code> como separador.</p>
+                <p className="mt-1">Ejemplo: <code>CLAVE | NOMBRE | DESCRIPCION | UNIDAD</code></p>
+                <p>O simplemente: <code>CLAVE - NOMBRE</code></p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Productos (uno por línea)</label>
+                <textarea
+                  value={bulkText}
+                  onChange={(e) => setBulkText(e.target.value)}
+                  onBlur={parseBulkText}
+                  rows={8}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary font-mono text-sm"
+                  placeholder="PROD-001 | Paracetamol 500mg | Analgésico | CAJA&#10;PROD-002 | Ibuprofeno 400mg | Antiinflamatorio | CAJA&#10;PROD-003 - Aspirina 100mg"
+                />
+              </div>
+              {bulkProducts.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-gray-700 mb-2">
+                    Vista previa: {bulkProducts.filter(p => p.valid).length} productos válidos de {bulkProducts.length}
+                  </p>
+                  <div className="max-h-40 overflow-y-auto border rounded-lg">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-2 py-1 text-left">Clave</th>
+                          <th className="px-2 py-1 text-left">Nombre</th>
+                          <th className="px-2 py-1 text-center">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bulkProducts.map((p) => (
+                          <tr key={p.id} className={p.valid ? '' : 'bg-red-50'}>
+                            <td className="px-2 py-1">{p.clave || '-'}</td>
+                            <td className="px-2 py-1">{p.nombre || '-'}</td>
+                            <td className="px-2 py-1 text-center">
+                              {p.valid ? (
+                                <FaCheckCircle className="text-green-500 inline" />
+                              ) : (
+                                <FaExclamationTriangle className="text-red-500 inline" />
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowBulkAddModal(false);
+                  setBulkText('');
+                  setBulkProducts([]);
+                }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleBulkImport}
+                disabled={actionLoading === 'bulkImport' || bulkProducts.filter(p => p.valid).length === 0}
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {actionLoading === 'bulkImport' && <FaSpinner className="animate-spin" />}
+                Importar {bulkProducts.filter(p => p.valid).length} Productos
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de confirmación eliminar producto del catálogo */}
       <ConfirmModal
         open={!!confirmDeleteProducto}
@@ -2727,6 +3157,18 @@ const Donaciones = () => {
         tone="danger"
         onConfirm={() => confirmDeleteProducto && handleEliminarProductoDonacion(confirmDeleteProducto)}
         onCancel={() => setConfirmDeleteProducto(null)}
+      />
+
+      {/* Modal de confirmación finalizar entrega */}
+      <ConfirmModal
+        open={!!confirmFinalizarEntrega}
+        title="Finalizar Entrega"
+        message={confirmFinalizarEntrega ? `¿Confirmas que la entrega de ${confirmFinalizarEntrega.cantidad} unidades a "${confirmFinalizarEntrega.destinatario}" ha sido completada?` : ''}
+        confirmText="Sí, Finalizar"
+        cancelText="Cancelar"
+        tone="primary"
+        onConfirm={() => confirmFinalizarEntrega && handleFinalizarEntrega(confirmFinalizarEntrega)}
+        onCancel={() => setConfirmFinalizarEntrega(null)}
       />
     </div>
   );

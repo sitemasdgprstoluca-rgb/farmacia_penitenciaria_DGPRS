@@ -7,6 +7,23 @@ import AutocompleteInput from '../components/AutocompleteInput';
 import { usePermissions } from '../hooks/usePermissions';
 
 // ============================================
+// HELPERS
+// ============================================
+
+/**
+ * Obtiene el nombre del centro de forma segura
+ * Maneja centros como string, objeto, o null
+ */
+const getCentroNombre = (centro) => {
+  if (!centro) return 'Sin centro';
+  if (typeof centro === 'string') return centro;
+  if (typeof centro === 'object') {
+    return centro.nombre || centro.name || `Centro ${centro.id || ''}`;
+  }
+  return String(centro);
+};
+
+// ============================================
 // MAPEO Y NORMALIZACIÓN DE DATOS
 // ============================================
 
@@ -15,7 +32,7 @@ const mapMovimiento = (mov = {}) => ({
   fecha: mov.fecha || mov.fecha_movimiento || mov.fecha_mov || null,
   tipo: (mov.tipo || mov.tipo_movimiento || '').toString().toUpperCase(),
   cantidad: mov.cantidad,
-  centro: mov.centro || mov.centro_nombre || '',
+  centro: getCentroNombre(mov.centro || mov.centro_nombre),
   usuario: mov.usuario || mov.usuario_nombre || '',
   lote: mov.lote || mov.lote_numero || '',
   observaciones: mov.observaciones || '',
@@ -28,7 +45,7 @@ const mapLote = (lote = {}) => ({
   cantidad_actual: lote.cantidad_actual,
   cantidad_inicial: lote.cantidad_inicial ?? lote.cantidad_actual,
   estado: (lote.estado || lote.estado_caducidad || '').toString().toUpperCase(),
-  centro: lote.centro,
+  centro: getCentroNombre(lote.centro),
   numero_contrato: lote.numero_contrato || '',
   marca: lote.marca || '',
 });
@@ -43,7 +60,10 @@ const normalizeProductoResponse = (data) => {
     return {
       codigo: data.codigo,
       nombre: data.nombre,
-      unidad_medida: data.unidad_medida,
+      descripcion: data.descripcion || data.nombre || '',
+      presentacion: data.presentacion || '',
+      unidad_medida: data.unidad_medida || 'PIEZA',
+      precio_unitario: data.precio_unitario || data.precio || 0,
       stock_actual: data.stock_actual ?? data.estadisticas?.stock_total ?? 0,
       stock_minimo: data.stock_minimo ?? data.estadisticas?.stock_minimo ?? null,
       lotes,
@@ -57,8 +77,11 @@ const normalizeProductoResponse = (data) => {
     const producto = data.producto;
     return {
       codigo: producto.clave || producto.codigo,
-      nombre: producto.nombre || producto.descripcion || '',  // Usar nombre o descripcion como fallback
-      unidad_medida: producto.unidad_medida,
+      nombre: producto.nombre || producto.descripcion || '',
+      descripcion: producto.descripcion || producto.nombre || '',
+      presentacion: producto.presentacion || '',
+      unidad_medida: producto.unidad_medida || 'PIEZA',
+      precio_unitario: producto.precio_unitario || producto.precio || 0,
       stock_actual: data.estadisticas?.stock_total ?? producto.stock_actual ?? 0,
       stock_minimo: producto.stock_minimo ?? null,
       lotes,
@@ -84,12 +107,13 @@ const normalizeLoteResponse = (data) => {
       producto: {
         codigo: lote.producto,
         nombre: lote.producto_nombre || lote.producto_descripcion,
+        presentacion: lote.producto_presentacion || '',
       },
       fecha_caducidad: lote.fecha_caducidad,
       cantidad_actual: lote.cantidad_actual,
       cantidad_inicial: lote.cantidad_inicial,
       estado: (lote.estado_caducidad || lote.estado || '').toString().toUpperCase(),
-      centro: lote.centro,
+      centro: getCentroNombre(lote.centro),
       numero_contrato: lote.numero_contrato || '',
       marca: lote.marca || '',
       movimientos: (data.movimientos || data.historial || []).map(mapMovimiento),
@@ -364,13 +388,27 @@ const Trazabilidad = () => {
         <p className="font-semibold">{resultados.codigo}</p>
       </div>
       <div className="md:col-span-2">
-        <p className="text-xs text-gray-500">Nombre</p>
-        <p className="font-semibold">{resultados.nombre}</p>
+        <p className="text-xs text-gray-500">Nombre / Descripción</p>
+        <p className="font-semibold">{resultados.nombre || resultados.descripcion}</p>
       </div>
       <div>
         <p className="text-xs text-gray-500">Unidad</p>
-        <p className="font-semibold">{resultados.unidad_medida}</p>
+        <p className="font-semibold">{resultados.unidad_medida || 'PIEZA'}</p>
       </div>
+      {/* Presentación - forma farmacéutica */}
+      {resultados.presentacion && (
+        <div className="md:col-span-2">
+          <p className="text-xs text-gray-500">Presentación</p>
+          <p className="font-semibold">{resultados.presentacion}</p>
+        </div>
+      )}
+      {/* Precio unitario */}
+      {resultados.precio_unitario > 0 && (
+        <div>
+          <p className="text-xs text-gray-500">Precio Unitario</p>
+          <p className="font-semibold text-green-600">${parseFloat(resultados.precio_unitario).toFixed(2)}</p>
+        </div>
+      )}
       <div>
         <p className="text-xs text-gray-500">Inventario actual</p>
         <p className="text-2xl font-bold text-violet-600">{resultados.stock_actual ?? 0}</p>
@@ -392,6 +430,9 @@ const Trazabilidad = () => {
         <p className="font-semibold">
           {resultados.producto?.codigo} - {resultados.producto?.nombre}
         </p>
+        {resultados.producto?.presentacion && (
+          <p className="text-xs text-gray-500 mt-1">Presentación: {resultados.producto.presentacion}</p>
+        )}
       </div>
       <div>
         <p className="text-xs text-gray-500">Caducidad</p>

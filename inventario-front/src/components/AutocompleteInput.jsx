@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { FaSpinner, FaSearch } from 'react-icons/fa';
+import { FaSpinner, FaSearch, FaTimes } from 'react-icons/fa';
 
 /**
  * Componente de autocompletado con búsqueda en API
@@ -13,6 +13,7 @@ import { FaSpinner, FaSearch } from 'react-icons/fa';
  * @param {string} secondaryField - Campo secundario opcional para mostrar (ej: 'descripcion')
  * @param {number} minChars - Mínimo de caracteres para iniciar búsqueda (default: 2)
  * @param {number} debounceMs - Tiempo de espera antes de buscar (default: 300ms)
+ * @param {boolean} showClearButton - Muestra botón de limpiar (default: true)
  */
 function AutocompleteInput({
   apiCall,
@@ -25,6 +26,7 @@ function AutocompleteInput({
   minChars = 2,
   debounceMs = 300,
   className = '',
+  showClearButton = true,
 }) {
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -70,6 +72,15 @@ function AutocompleteInput({
     debounceRef.current = setTimeout(() => {
       searchItems(newValue);
     }, debounceMs);
+  };
+
+  // Limpiar valor
+  const handleClear = () => {
+    onChange('');
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setSelectedIndex(-1);
+    inputRef.current?.focus();
   };
 
   // Seleccionar una sugerencia
@@ -165,14 +176,26 @@ function AutocompleteInput({
             }
           }}
           placeholder={placeholder}
-          className={`w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${className}`}
+          className={`w-full px-4 py-2 pr-16 border-2 border-gray-400 rounded-lg focus:ring-2 focus:ring-guinda focus:border-guinda transition-colors ${className}`}
           autoComplete="off"
         />
-        <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+        <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
           {loading ? (
-            <FaSpinner className="animate-spin" />
+            <FaSpinner className="animate-spin text-gray-400" />
           ) : (
-            <FaSearch />
+            <>
+              {showClearButton && value && (
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                  title="Limpiar"
+                >
+                  <FaTimes className="w-3 h-3" />
+                </button>
+              )}
+              <FaSearch className="text-gray-400" />
+            </>
           )}
         </div>
       </div>
@@ -181,7 +204,7 @@ function AutocompleteInput({
       {showSuggestions && suggestions.length > 0 && (
         <ul
           ref={suggestionsRef}
-          className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+          className="absolute z-50 w-full mt-1 bg-white border-2 border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"
         >
           {suggestions.map((item, index) => (
             <li

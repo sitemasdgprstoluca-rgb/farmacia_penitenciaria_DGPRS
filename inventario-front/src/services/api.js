@@ -1090,6 +1090,8 @@ export const movimientosAPI = {
   create: (data) => apiClient.post('/movimientos/', data),
   exportarExcel: (params) => apiClient.get('/movimientos/exportar-excel/', { params, responseType: 'blob' }),
   exportarPdf: (params) => apiClient.get('/movimientos/exportar-pdf/', { params, responseType: 'blob' }),
+  // Recibo de salida con campos de firma (PDF)
+  getReciboSalida: (movimientoId) => apiClient.get(`/movimientos/${movimientoId}/recibo-salida/`, { responseType: 'blob' }),
 };
 
 // Salida Masiva (solo Farmacia)
@@ -1266,6 +1268,8 @@ export const donacionesAPI = {
   procesar: (id) => apiClient.post(`/donaciones/${id}/procesar/`),
   // Rechazar donación
   rechazar: (id, data) => apiClient.post(`/donaciones/${id}/rechazar/`, data),
+  // Obtener siguiente número de donación
+  getSiguienteNumero: () => apiClient.get('/donaciones/siguiente-numero/'),
   // Exportar (legacy)
   exportar: (params) => apiClient.get('/donaciones/exportar/', { 
     params, 
@@ -1318,6 +1322,13 @@ export const salidasDonacionesAPI = {
   getAll: (params) => apiClient.get('/salidas-donaciones/', { params }),
   getById: (id) => apiClient.get(`/salidas-donaciones/${id}/`),
   create: (data) => apiClient.post('/salidas-donaciones/', data),
+  // Finalizar entrega (marcar como entregado)
+  finalizar: (id) => apiClient.post(`/salidas-donaciones/${id}/finalizar/`),
+  // Descargar recibo PDF
+  getReciboPdf: (id, finalizado = false) => apiClient.get(`/salidas-donaciones/${id}/recibo-pdf/`, { 
+    params: { finalizado: finalizado ? 'true' : 'false' },
+    responseType: 'blob' 
+  }),
   // Exportación e importación Excel
   exportarExcel: (params) => apiClient.get('/salidas-donaciones/exportar-excel/', { 
     params, 

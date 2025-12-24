@@ -2666,6 +2666,36 @@ class DonacionViewSet(viewsets.ModelViewSet):
         from core.serializers import DonacionSerializer
         return Response(DonacionSerializer(donacion).data)
     
+    @action(detail=False, methods=['get'], url_path='siguiente-numero')
+    def siguiente_numero(self, request):
+        """
+        Genera el siguiente número de donación disponible.
+        Formato: DON-YYYY-NNNN
+        """
+        from core.models import Donacion
+        import datetime
+        
+        year = datetime.datetime.now().year
+        prefix = f'DON-{year}-'
+        
+        # Buscar el último número de este año
+        ultima = Donacion.objects.filter(
+            numero__startswith=prefix
+        ).order_by('-numero').first()
+        
+        if ultima:
+            try:
+                # Extraer el número secuencial
+                ultimo_num = int(ultima.numero.replace(prefix, ''))
+                siguiente = ultimo_num + 1
+            except (ValueError, AttributeError):
+                siguiente = 1
+        else:
+            siguiente = 1
+        
+        numero = f"{prefix}{siguiente:04d}"
+        return Response({'numero': numero})
+    
     @action(detail=False, methods=['get'], url_path='diagnostico')
     def diagnostico(self, request):
         """
@@ -3981,6 +4011,99 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response(
                 {'error': f'Error al procesar archivo: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'], url_path='finalizar')
+    def finalizar(self, request, pk=None):
+        """
+        Marca una entrega de donación como finalizada/entregada.
+        Registra notas de finalización para indicar que fue entregada.
+        """
+        from django.utils import timezone
+        
+        try:
+            salida = self.get_object()
+            
+            # Agregar nota de finalización (el modelo no tiene campo 'finalizado')
+            nota_finalizacion = f"\n[ENTREGADO] Confirmado por {request.user.username} el {timezone.now().strftime('%d/%m/%Y %H:%M')}"
+            salida.notas = (salida.notas or '') + nota_finalizacion
+            salida.save()
+            
+            logger.info(f"Salida de donación {salida.id} finalizada por {request.user.username}")
+            
+            from core.serializers import SalidaDonacionSerializer
+            return Response({
+                'mensaje': 'Entrega finalizada correctamente',
+                'salida': SalidaDonacionSerializer(salida).data
+            })
+        except Exception as e:
+            logger.error(f"Error finalizando salida de donación: {str(e)}")
+            return Response(
+                {'error': f'Error al finalizar entrega: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['get'], url_path='recibo-pdf')
+    def recibo_pdf(self, request, pk=None):
+        """
+        Genera un PDF de recibo para una salida de donación.
+        
+        Parámetros:
+        - finalizado: si es 'true', muestra sello de ENTREGADO en lugar de campos de firma
+        """
+        from django.http import HttpResponse
+        from django.utils import timezone
+        from core.utils.pdf_reports import generar_recibo_salida_donacion
+        
+        try:
+            salida = self.get_object()
+            
+            finalizado = request.query_params.get('finalizado', 'false').lower() == 'true'
+            # También detectar si fue finalizado por la nota
+            if salida.notas and '[ENTREGADO]' in salida.notas:
+                finalizado = True
+            
+            # Construir datos para el PDF
+            salida_data = {
+                'folio': salida.id,
+                'fecha': salida.fecha_entrega.strftime('%Y-%m-%d %H:%M') if salida.fecha_entrega else timezone.now().strftime('%Y-%m-%d %H:%M'),
+                'tipo': 'salida',
+                'subtipo_salida': 'donacion',
+                'centro_origen': {'nombre': 'Almacén de Donaciones'},
+                'centro_destino': {'nombre': salida.destinatario or 'Destinatario no especificado'},
+                'cantidad': salida.cantidad,
+                'observaciones': salida.motivo or '',
+                'producto': salida.detalle_donacion.producto.nombre if salida.detalle_donacion and salida.detalle_donacion.producto else 'N/A',
+                'lote': salida.detalle_donacion.numero_lote if salida.detalle_donacion else 'N/A',
+                'presentacion': salida.detalle_donacion.producto.presentacion if salida.detalle_donacion and salida.detalle_donacion.producto else 'N/A',
+            }
+            
+            # Si está finalizado, usar fecha de entrega
+            if finalizado and salida.fecha_entrega:
+                salida_data['fecha_entrega'] = salida.fecha_entrega.strftime('%Y-%m-%d %H:%M')
+            
+            # Generar PDF
+            pdf_buffer = generar_recibo_salida_donacion(
+                salida_data,
+                items_data=None,
+                finalizado=finalizado
+            )
+            
+            response = HttpResponse(
+                pdf_buffer.getvalue(),
+                content_type='application/pdf'
+            )
+            estado = 'Entregado' if finalizado else 'Pendiente'
+            response['Content-Disposition'] = f'attachment; filename="Recibo_Donacion_{salida.id}_{estado}_{timezone.now().strftime("%Y%m%d")}.pdf"'
+            
+            logger.info(f"Recibo de donación generado para salida {salida.id} por {request.user.username}")
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error generando recibo de donación: {str(e)}")
+            return Response(
+                {'error': f'Error al generar recibo: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
