@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { PermissionContext } from './contexts';
 import apiClient, { authAPI } from '../services/api';
-import { setAccessToken, hasAccessToken, migrateFromLocalStorage } from '../services/tokenManager';
+import { setAccessToken, hasAccessToken, migrateFromLocalStorage, isLogoutInProgress } from '../services/tokenManager';
 // ISS-009 FIX: Usar lógica de roles centralizada
 // ISS-AUDIT FIX: getRolPrincipal importado como getRolPrincipalUtil, función local getRolPrincipal para navegación
 import { 
@@ -657,11 +657,23 @@ export function PermissionProvider({ children }) {
 
   const cargarUsuario = useCallback(async (forceRefresh = false) => {
     try {
+      // ISS-003 FIX: No intentar cargar usuario si hay logout en progreso
+      if (isLogoutInProgress()) {
+        setLoading(false);
+        return;
+      }
+      
       // Primero intentar migrar tokens viejos de localStorage
       migrateFromLocalStorage();
       
       // Si no hay token en memoria Y hay evidencia de sesión previa, intentar refresh
       if (!hasAccessToken()) {
+        // ISS-003 FIX: Doble verificación de logout en progreso
+        if (isLogoutInProgress()) {
+          setLoading(false);
+          return;
+        }
+        
         // ISS-002/005 FIX: Verificar sessionStorage en lugar de localStorage
         const storedUserId = sessionStorage.getItem(SESSION_KEYS.USER_ID);
         if (!storedUserId && !forceRefresh) {
