@@ -213,11 +213,16 @@ def hoja_entrega_pdf(request, grupo_salida):
     Args:
         grupo_salida: ID del grupo de salida (ej: SAL-20251217120000-1)
     
+    Query params:
+        finalizado: si es 'true', genera comprobante con sello ENTREGADO en lugar de firmas
+    
     Returns:
-        PDF con hoja de entrega para firma
+        PDF con hoja de entrega para firma o comprobante de entrega
     """
     try:
         from core.utils.pdf_generator import generar_hoja_entrega
+        
+        finalizado = request.query_params.get('finalizado', 'false').lower() == 'true'
         
         # Buscar movimientos de este grupo
         movimientos = Movimiento.objects.filter(
@@ -263,14 +268,15 @@ def hoja_entrega_pdf(request, grupo_salida):
             })
         
         # Generar PDF
-        pdf_buffer = generar_hoja_entrega(datos_entrega)
+        pdf_buffer = generar_hoja_entrega(datos_entrega, finalizado=finalizado)
         
         response = HttpResponse(
             pdf_buffer.getvalue(),
             content_type='application/pdf'
         )
         folio_safe = grupo_salida.replace('/', '-')
-        response['Content-Disposition'] = f'attachment; filename="Hoja_Entrega_{folio_safe}.pdf"'
+        nombre_archivo = f"Comprobante_Entrega_{folio_safe}.pdf" if finalizado else f"Hoja_Entrega_{folio_safe}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{nombre_archivo}"'
         
         return response
         

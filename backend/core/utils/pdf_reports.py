@@ -15,7 +15,7 @@ from reportlab.pdfgen import canvas
 from django.conf import settings
 from django.utils import timezone
 from io import BytesIO
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from pathlib import Path
 import os
 import logging
@@ -1184,13 +1184,16 @@ def generar_reporte_movimientos(transacciones_data, filtros=None, resumen=None):
         elements.append(resumen_table)
         elements.append(Spacer(1, 0.2*inch))
     
-    # Estilo para celdas de texto
+    # Estilo para celdas de texto - mejorado para ajuste de texto
     estilo_celda = ParagraphStyle(
         'CeldaTextoMov',
         parent=styles['Normal'],
         fontSize=7,
-        leading=9,
+        leading=8,
         wordWrap='CJK',
+        splitLongWords=True,
+        spaceBefore=0,
+        spaceAfter=0,
     )
     
     estilo_celda_pequena = ParagraphStyle(
@@ -1199,6 +1202,9 @@ def generar_reporte_movimientos(transacciones_data, filtros=None, resumen=None):
         fontSize=6,
         leading=7,
         wordWrap='CJK',
+        splitLongWords=True,
+        spaceBefore=0,
+        spaceAfter=0,
     )
     
     # Tabla de transacciones agrupadas
@@ -1210,13 +1216,15 @@ def generar_reporte_movimientos(transacciones_data, filtros=None, resumen=None):
     
     for trans in transacciones_data:
         tipo = str(trans.get('tipo', '')).upper()
-        referencia_p = Paragraph(str(trans.get('referencia', ''))[:20], estilo_celda)
-        origen_p = Paragraph(str(trans.get('centro_origen', 'F. Central'))[:18], estilo_celda)
-        destino_p = Paragraph(str(trans.get('centro_destino', 'F. Central'))[:18], estilo_celda)
+        # Usar Paragraph para todos los textos largos para que se ajusten
+        referencia_p = Paragraph(str(trans.get('referencia', ''))[:25], estilo_celda)
+        fecha_p = Paragraph(str(trans.get('fecha', ''))[:16], estilo_celda)
+        origen_p = Paragraph(str(trans.get('centro_origen', 'F. Central'))[:22], estilo_celda)
+        destino_p = Paragraph(str(trans.get('centro_destino', 'F. Central'))[:22], estilo_celda)
         
         data.append([
             referencia_p,
-            str(trans.get('fecha', ''))[:16],
+            fecha_p,
             tipo,
             origen_p,
             destino_p,
@@ -1224,8 +1232,8 @@ def generar_reporte_movimientos(transacciones_data, filtros=None, resumen=None):
             str(trans.get('total_cantidad', 0))
         ])
     
-    # Anchos de columnas para tabla de transacciones
-    col_widths = [1.4*inch, 1.0*inch, 0.7*inch, 1.2*inch, 1.2*inch, 0.55*inch, 0.55*inch]
+    # Anchos de columnas para tabla de transacciones - ajustados para mejor visualización
+    col_widths = [1.3*inch, 0.95*inch, 0.65*inch, 1.3*inch, 1.3*inch, 0.5*inch, 0.5*inch]
     table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
     elements.append(Spacer(1, 0.25*inch))
@@ -1257,18 +1265,23 @@ def generar_reporte_movimientos(transacciones_data, filtros=None, resumen=None):
         # Tabla de productos
         det_data = [['#', 'Producto', 'Lote', 'Cantidad']]
         for idx, det in enumerate(detalles, 1):
-            producto_p = Paragraph(str(det.get('producto', ''))[:50], estilo_celda_pequena)
+            # Usar Paragraph para producto para que se ajuste el texto
+            producto_texto = str(det.get('producto', ''))
+            # Limitar a longitud razonable pero permitir wrap
+            producto_p = Paragraph(producto_texto[:60], estilo_celda_pequena)
+            lote_p = Paragraph(str(det.get('lote', 'N/A'))[:20], estilo_celda_pequena)
             det_data.append([
                 str(idx),
                 producto_p,
-                str(det.get('lote', 'N/A'))[:15],
+                lote_p,
                 str(det.get('cantidad', 0))
             ])
         
         # Fila de total
         det_data.append(['', '', 'TOTAL:', str(trans.get('total_cantidad', 0))])
         
-        det_col_widths = [0.35*inch, 4.0*inch, 1.0*inch, 0.7*inch]
+        # Aumentar ancho de columna de producto para mejor ajuste
+        det_col_widths = [0.3*inch, 4.2*inch, 1.0*inch, 0.6*inch]
         det_table = Table(det_data, colWidths=det_col_widths)
         det_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E5E7EB')),
