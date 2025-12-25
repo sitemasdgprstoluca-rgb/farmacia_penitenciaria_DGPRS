@@ -1,5 +1,6 @@
 from django.apps import AppConfig
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -14,35 +15,37 @@ class CoreConfig(AppConfig):
         # Importar signals al iniciar la app
         from . import signals  # noqa: F401
         
-        # ISS-001 FIX (audit8): Validar esquemas de tablas unmanaged al iniciar
-        # ISS-005 FIX (audit18): Mejorada verificación de esquema
-        # Solo ejecutar si no estamos en modo de migración o test
-        import sys
-        if 'migrate' not in sys.argv and 'makemigrations' not in sys.argv and 'test' not in sys.argv:
+        # ISS-001 FIX: Validación de esquema DESHABILITADA por defecto
+        # La validación bloquea el inicio del servidor al conectarse a la BD
+        # y causa timeouts en Render/producción (especialmente con Supabase).
+        # 
+        # Para habilitar manualmente: ENABLE_SCHEMA_VALIDATION=1
+        # 
+        # IMPORTANTE: No validar durante el inicio del servidor porque:
+        # 1. Bloquea el binding del puerto (Render detecta "no open ports")
+        # 2. Los timeouts de conexión a Supabase causan retrasos de ~4 minutos
+        # 3. La validación debería ser un proceso separado, no parte del startup
+        
+        enable_validation = os.environ.get('ENABLE_SCHEMA_VALIDATION', '0') == '1'
+        
+        if enable_validation:
             try:
                 from core.schema_validator import validate_unmanaged_schemas, check_transitions_constraint
                 
                 # Validar esquemas (solo warning, no bloquear inicio)
                 results = validate_unmanaged_schemas(raise_on_error=False)
-                
-                # Verificar constraints de estados
                 check_transitions_constraint()
                 
-                # Resumen
                 total_errors = sum(len(e) for e in results.values())
                 if total_errors:
                     logger.warning(
-                        f"ISS-001: Validación de esquema completada con {total_errors} advertencia(s). "
-                        "Ver logs para detalles."
+                        f"ISS-001: Validación de esquema completada con {total_errors} advertencia(s)."
                     )
-                else:
-                    logger.info("ISS-001: Validación de esquema completada sin errores.")
                 
-                # ISS-005 FIX (audit18): Verificación adicional de columnas críticas
+                # ISS-005: Verificación adicional
                 from core.schema_check import verificar_esquema_al_iniciar
                 verificar_esquema_al_iniciar()
                     
             except Exception as e:
-                # No bloquear inicio de la app por errores de validación
                 logger.warning(f"ISS-001: No se pudo validar esquema: {e}")
 

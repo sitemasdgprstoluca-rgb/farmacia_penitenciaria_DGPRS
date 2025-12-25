@@ -910,7 +910,7 @@ def generar_hoja_consulta(requisicion):
     logger.info(f"Hoja de consulta generada para requisición {requisicion.folio}")
     return buffer
 
-def generar_hoja_entrega(datos_entrega):
+def generar_hoja_entrega(datos_entrega, finalizado=False):
     """
     Genera PDF de hoja de entrega para salida masiva de Farmacia.
     Con fondo oficial del Gobierno del Estado de México.
@@ -923,6 +923,7 @@ def generar_hoja_entrega(datos_entrega):
             - usuario: Nombre del usuario que procesa
             - observaciones: Notas adicionales
             - items: Lista de productos entregados
+        finalizado: bool - Si es True, muestra sello de ENTREGADO en lugar de firmas
     
     Returns:
         BytesIO: Buffer con PDF generado
@@ -1084,42 +1085,7 @@ def generar_hoja_entrega(datos_entrega):
     story.append(productos_table)
     story.append(Spacer(1, 0.4*inch))
     
-    # Sección de firmas
-    firmas_titulo = Paragraph("<b>FIRMAS DE ENTREGA Y RECEPCIÓN</b>", ParagraphStyle(
-        'FirmasTitulo', fontSize=10, textColor=COLOR_GUINDA, 
-        alignment=TA_CENTER, spaceAfter=15
-    ))
-    story.append(firmas_titulo)
-    
-    # Firmas: Farmacia entrega y Centro recibe
-    firmas_data = [
-        ['ENTREGA FARMACIA CENTRAL:', 'RECIBE CENTRO PENITENCIARIO:'],
-        ['', ''],
-        ['', ''],
-        ['_' * 35, '_' * 35],
-        ['Nombre y Firma', 'Nombre y Firma'],
-        ['', ''],
-        ['Fecha: ____/____/________', 'Fecha: ____/____/________'],
-        ['Hora: ____:____', 'Hora: ____:____'],
-    ]
-    
-    firmas_table = Table(firmas_data, colWidths=[3.5*inch, 3.5*inch])
-    firmas_table.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-    ]))
-    
-    # Mantener firmas juntas
-    seccion_firmas = KeepTogether([firmas_table])
-    story.append(seccion_firmas)
-    
-    story.append(Spacer(1, 0.3*inch))
-    
-    # Nota legal
+    # Estilo para notas
     nota_style = ParagraphStyle(
         'NotaLegal',
         parent=styles['Normal'],
@@ -1127,12 +1093,97 @@ def generar_hoja_entrega(datos_entrega):
         textColor=COLOR_GRIS,
         alignment=TA_CENTER,
     )
-    nota = Paragraph(
-        "Este documento ampara la entrega de medicamentos de Farmacia Central al Centro Penitenciario. "
-        "Ambas partes conservarán una copia firmada.",
-        nota_style
-    )
-    story.append(nota)
+    
+    if finalizado:
+        # Mostrar sello de ENTREGADO en lugar de firmas
+        entregado_style = ParagraphStyle(
+            'EntregadoSello',
+            parent=styles['Heading1'],
+            fontSize=36,
+            textColor=colors.HexColor('#22c55e'),  # Verde
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold',
+            spaceBefore=20,
+            spaceAfter=10,
+        )
+        
+        entregado_box_style = ParagraphStyle(
+            'EntregadoBox',
+            parent=styles['Normal'],
+            fontSize=11,
+            textColor=COLOR_TEXTO,
+            alignment=TA_CENTER,
+        )
+        
+        # Sello ENTREGADO
+        sello_data = [
+            [Paragraph("✓ ENTREGADO", entregado_style)],
+            [Spacer(1, 0.1*inch)],
+            [Paragraph(f"Entrega confirmada el {datos_entrega['fecha'].strftime('%d/%m/%Y %H:%M') if datos_entrega.get('fecha') else 'N/A'}", entregado_box_style)],
+            [Paragraph(f"Procesado por: {datos_entrega.get('usuario', 'N/A')}", entregado_box_style)],
+        ]
+        
+        sello_table = Table(sello_data, colWidths=[5*inch])
+        sello_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('BOX', (0, 0), (-1, -1), 2, colors.HexColor('#22c55e')),
+            ('TOPPADDING', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+        ]))
+        
+        story.append(sello_table)
+        story.append(Spacer(1, 0.3*inch))
+        
+        # Nota de comprobante
+        comprobante_nota = Paragraph(
+            "Este documento es el comprobante oficial de entrega de medicamentos. "
+            "La entrega ha sido registrada en el sistema.",
+            nota_style
+        )
+        story.append(comprobante_nota)
+    else:
+        # Sección de firmas (PDF para firmar)
+        firmas_titulo = Paragraph("<b>FIRMAS DE ENTREGA Y RECEPCIÓN</b>", ParagraphStyle(
+            'FirmasTitulo', fontSize=10, textColor=COLOR_GUINDA, 
+            alignment=TA_CENTER, spaceAfter=15
+        ))
+        story.append(firmas_titulo)
+        
+        # Firmas: Farmacia entrega y Centro recibe
+        firmas_data = [
+            ['ENTREGA FARMACIA CENTRAL:', 'RECIBE CENTRO PENITENCIARIO:'],
+            ['', ''],
+            ['', ''],
+            ['_' * 35, '_' * 35],
+            ['Nombre y Firma', 'Nombre y Firma'],
+            ['', ''],
+            ['Fecha: ____/____/________', 'Fecha: ____/____/________'],
+            ['Hora: ____:____', 'Hora: ____:____'],
+        ]
+        
+        firmas_table = Table(firmas_data, colWidths=[3.5*inch, 3.5*inch])
+        firmas_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        
+        # Mantener firmas juntas
+        seccion_firmas = KeepTogether([firmas_table])
+        story.append(seccion_firmas)
+        
+        story.append(Spacer(1, 0.3*inch))
+        
+        # Nota legal
+        nota = Paragraph(
+            "Este documento ampara la entrega de medicamentos de Farmacia Central al Centro Penitenciario. "
+            "Ambas partes conservarán una copia firmada.",
+            nota_style
+        )
+        story.append(nota)
     
     # Construir PDF
     def make_canvas(*args, **kwargs):

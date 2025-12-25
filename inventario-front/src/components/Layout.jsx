@@ -6,7 +6,7 @@ import { DEV_CONFIG } from "../config/dev";
 import NotificacionesBell from "./NotificacionesBell";
 import ConnectionIndicator from "./ConnectionIndicator";
 import { notificacionesAPI, authAPI } from "../services/api";
-import { clearTokens } from "../services/tokenManager";
+import { clearTokens, setLogoutInProgress } from "../services/tokenManager";
 import {
   FaHome,
   FaBox,
@@ -43,6 +43,10 @@ function Layout() {
     // Evitar múltiples clics durante el logout
     if (loggingOut) return;
     setLoggingOut(true);
+    
+    // ISS-003 FIX: Marcar logout en progreso ANTES de cualquier operación
+    // Esto previene que otros componentes intenten refresh mientras se cierra sesión
+    setLogoutInProgress(true);
     
     let navegacionExitosa = false;
     try {
@@ -188,7 +192,7 @@ function Layout() {
       <aside
         className={`fixed top-0 left-0 z-40 h-screen shadow-lg transition-transform ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } w-64 lg:translate-x-0`}
+        } w-64 lg:translate-x-0 flex flex-col`}
         style={{ background: "var(--color-sidebar-bg, linear-gradient(180deg, #9F2241 0%, #6B1839 100%))" }}
       >
         {/* Header del Sidebar - Logo y Título integrados */}
@@ -237,7 +241,7 @@ function Layout() {
           </div>
         </div>
 
-        <nav className="p-4 space-y-1 overflow-y-auto h-[calc(100vh-220px)]">
+        <nav className="p-4 space-y-1 overflow-y-auto flex-1">
           {visibleMenuItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
@@ -276,8 +280,9 @@ function Layout() {
           })}
         </nav>
 
+        {/* Botón de Logout - Siempre visible al final del sidebar */}
         <div
-          className="absolute bottom-0 left-0 right-0 p-4 border-t"
+          className="p-4 border-t mt-auto"
           style={{ borderTopColor: "rgba(255,255,255,0.2)", backgroundColor: "rgba(0,0,0,0.1)" }}
         >
           <button

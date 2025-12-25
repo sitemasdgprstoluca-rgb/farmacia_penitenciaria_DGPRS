@@ -318,17 +318,31 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
     }
   };
   
-  // Descargar hoja de entrega
+  // Descargar hoja de entrega (con campos para firmas)
   const descargarHojaEntrega = async () => {
     if (!resultado?.grupo_salida) return;
     
     try {
-      const resp = await salidaMasivaAPI.hojaEntregaPdf(resultado.grupo_salida);
+      const resp = await salidaMasivaAPI.hojaEntregaPdf(resultado.grupo_salida, false);
       descargarArchivo(resp.data, `Hoja_Entrega_${resultado.grupo_salida}.pdf`);
       toast.success('Hoja de entrega descargada');
     } catch (err) {
       console.error('Error descargando hoja:', err);
       toast.error('Error al descargar hoja de entrega');
+    }
+  };
+  
+  // Descargar comprobante de entrega finalizado (con sello ENTREGADO)
+  const descargarComprobanteEntregado = async () => {
+    if (!resultado?.grupo_salida) return;
+    
+    try {
+      const resp = await salidaMasivaAPI.hojaEntregaPdf(resultado.grupo_salida, true);
+      descargarArchivo(resp.data, `Comprobante_Entrega_${resultado.grupo_salida}.pdf`);
+      toast.success('Comprobante de entrega descargado');
+    } catch (err) {
+      console.error('Error descargando comprobante:', err);
+      toast.error('Error al descargar comprobante');
     }
   };
   
@@ -404,13 +418,20 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
             </div>
             
             {/* Botones de acción */}
-            <div className="flex justify-center gap-4">
+            <div className="flex flex-wrap justify-center gap-4">
               <button
                 onClick={descargarHojaEntrega}
                 className="flex items-center gap-2 px-6 py-3 bg-rose-700 text-white rounded-lg hover:bg-rose-800 transition-colors"
               >
                 <FaFileDownload />
-                Descargar Hoja de Entrega
+                Hoja de Entrega
+              </button>
+              <button
+                onClick={descargarComprobanteEntregado}
+                className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+              >
+                <FaFileDownload />
+                Comprobante Entregado
               </button>
               <button
                 onClick={reiniciar}

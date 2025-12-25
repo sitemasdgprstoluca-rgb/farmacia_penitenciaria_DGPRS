@@ -1091,7 +1091,11 @@ export const movimientosAPI = {
   exportarExcel: (params) => apiClient.get('/movimientos/exportar-excel/', { params, responseType: 'blob' }),
   exportarPdf: (params) => apiClient.get('/movimientos/exportar-pdf/', { params, responseType: 'blob' }),
   // Recibo de salida con campos de firma (PDF)
-  getReciboSalida: (movimientoId) => apiClient.get(`/movimientos/${movimientoId}/recibo-salida/`, { responseType: 'blob' }),
+  // Si finalizado=true, genera comprobante con sello ENTREGADO en lugar de firmas
+  getReciboSalida: (movimientoId, finalizado = false) => apiClient.get(`/movimientos/${movimientoId}/recibo-salida/`, { 
+    params: finalizado ? { finalizado: 'true' } : {},
+    responseType: 'blob' 
+  }),
 };
 
 // Salida Masiva (solo Farmacia)
@@ -1100,12 +1104,23 @@ export const salidaMasivaAPI = {
   procesar: (data) => apiClient.post('/salida-masiva/', data),
   // Obtener lotes disponibles en Farmacia Central
   lotesDisponibles: (params) => apiClient.get('/salida-masiva/lotes-disponibles/', { params }),
-  // Descargar hoja de entrega PDF
-  hojaEntregaPdf: (grupoSalida) => apiClient.get(`/salida-masiva/hoja-entrega/${grupoSalida}/`, { responseType: 'blob' }),
+  // Descargar hoja de entrega PDF (finalizado=true para comprobante con sello ENTREGADO)
+  hojaEntregaPdf: (grupoSalida, finalizado = false) => apiClient.get(
+    `/salida-masiva/hoja-entrega/${grupoSalida}/`, 
+    { 
+      params: finalizado ? { finalizado: 'true' } : {},
+      responseType: 'blob' 
+    }
+  ),
 };
 
 // Trazabilidad -  NUEVO
 export const trazabilidadAPI = {
+  // Búsqueda unificada (detecta si es lote o producto)
+  buscar: (termino, params = {}) => apiClient.get('/trazabilidad/buscar/', { params: { q: termino, ...params } }),
+  // Autocompletado unificado
+  autocomplete: (search, params = {}) => apiClient.get('/trazabilidad/autocomplete/', { params: { search, ...params } }),
+  // Endpoints específicos
   producto: (clave, params = {}) => apiClient.get(`/trazabilidad/producto/${clave}/`, { params }),
   lote: (numeroLote, params = {}) => apiClient.get(`/trazabilidad/lote/${numeroLote}/`, { params }),
   exportarPdf: (clave) => apiClient.get(`/movimientos/trazabilidad-pdf/`, { 

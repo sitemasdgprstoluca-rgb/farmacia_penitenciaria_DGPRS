@@ -204,17 +204,25 @@ class MovimientoViewSet(
         subtipo_salida = serializer.validated_data.get('subtipo_salida')
         numero_expediente = serializer.validated_data.get('numero_expediente')
         
+        # ISS-FIX: Para transferencias desde Farmacia Central a Centro,
+        # el lote es de Farmacia Central (centro=None) pero el destino es un Centro específico.
+        # Debemos permitir esto para admin/farmacia usando skip_centro_check=True
+        centro_destino = serializer.validated_data.get('centro')
+        es_transferencia_farmacia = is_farmacia_or_admin(user) and centro_destino and lote and lote.centro is None
+        
         movimiento, _ = registrar_movimiento_stock(
             lote=lote,
             tipo=serializer.validated_data.get('tipo'),
             cantidad=serializer.validated_data.get('cantidad'),
             usuario=user,
-            centro=serializer.validated_data.get('centro') or (lote.centro if lote else None),
+            centro=centro_destino or (lote.centro if lote else None),
             requisicion=serializer.validated_data.get('requisicion'),
             # FIX: El serializer mapea 'observaciones' del frontend a 'motivo' via to_internal_value
             observaciones=serializer.validated_data.get('motivo', ''),
             subtipo_salida=subtipo_salida,
-            numero_expediente=numero_expediente
+            numero_expediente=numero_expediente,
+            # ISS-FIX: Saltear validación de centro para transferencias de Farmacia Central
+            skip_centro_check=es_transferencia_farmacia
         )
         # Dejar instancia lista para serializer.data
         serializer.instance = movimiento

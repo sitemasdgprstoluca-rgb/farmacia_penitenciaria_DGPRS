@@ -30,7 +30,7 @@ from core.password_reset import (
 from inventario.views import (
     ProductoViewSet, LoteViewSet, RequisicionViewSet, CentroViewSet,
     MovimientoViewSet, HojaRecoleccionViewSet, dashboard_resumen, dashboard_graficas, trazabilidad_producto,
-    trazabilidad_lote, reporte_inventario, reporte_movimientos,
+    trazabilidad_lote, trazabilidad_buscar, trazabilidad_autocomplete, reporte_inventario, reporte_movimientos,
     reporte_caducidades, reporte_requisiciones, reportes_precarga,
     reporte_medicamentos_por_caducar, reporte_bajo_stock, reporte_consumo
 )
@@ -114,6 +114,8 @@ urlpatterns = [
     # Dashboard y reportes
     path('dashboard/', dashboard_resumen, name='dashboard'),
     path('dashboard/graficas/', dashboard_graficas, name='dashboard-graficas'),
+    path('trazabilidad/buscar/', trazabilidad_buscar, name='trazabilidad-buscar'),
+    path('trazabilidad/autocomplete/', trazabilidad_autocomplete, name='trazabilidad-autocomplete'),
     path('trazabilidad/producto/<str:clave>/', trazabilidad_producto, name='trazabilidad-producto'),
     path('trazabilidad/lote/<str:codigo>/', trazabilidad_lote, name='trazabilidad-lote'),
     path('reportes/inventario/', reporte_inventario, name='reporte-inventario'),

@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { trazabilidadAPI, productosAPI, lotesAPI, centrosAPI, descargarArchivo } from '../services/api';
+import { trazabilidadAPI, centrosAPI, descargarArchivo } from '../services/api';
 import { toast } from 'react-hot-toast';
-import { FaSearch, FaBox, FaWarehouse, FaHistory, FaExclamationTriangle, FaFilePdf, FaBuilding, FaLock, FaSpinner, FaInfoCircle } from 'react-icons/fa';
+import { FaSearch, FaBox, FaWarehouse, FaHistory, FaExclamationTriangle, FaFilePdf, FaBuilding, FaSpinner, FaInfoCircle, FaTimes } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
-import AutocompleteInput from '../components/AutocompleteInput';
 import { usePermissions } from '../hooks/usePermissions';
 
 // ============================================
@@ -152,40 +151,42 @@ const Trazabilidad = () => {
   const { getRolPrincipal, permisos, user } = usePermissions();
   const rolPrincipal = getRolPrincipal();
   
-  // PERMISOS: Solo ADMIN y FARMACIA pueden buscar por lote y ver contratos
+  // PERMISOS
   const esAdminOFarmacia = ['ADMIN', 'FARMACIA'].includes(rolPrincipal) || permisos?.isSuperuser;
   const puedeVerContrato = esAdminOFarmacia;
-  const puedeBuscarPorLote = esAdminOFarmacia;
   const esCentroUser = rolPrincipal === 'CENTRO';
   
-  // ISS-FIX: Obtener centro del usuario desde el hook en lugar de localStorage
   const centroUsuarioId = user?.centro?.id || user?.centro || user?.centro_id;
   const centroUsuarioNombre = user?.centro?.nombre || user?.centro_nombre || null;
 
   // Estados principales
-  const [tipoBusqueda, setTipoBusqueda] = useState('producto');
-  const [codigoBusqueda, setCodigoBusqueda] = useState('');
-  const [codigoResultados, setCodigoResultados] = useState(''); // Código sincronizado con resultados
+  const [terminoBusqueda, setTerminoBusqueda] = useState('');
+  const [tipoBusqueda, setTipoBusqueda] = useState(null); // 'producto' o 'lote' - detectado automáticamente
+  const [identificadorResultados, setIdentificadorResultados] = useState('');
   const [loading, setLoading] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [resultados, setResultados] = useState(null);
+  
+  // Autocompletado
+  const [sugerencias, setSugerencias] = useState([]);
+  const [loadingSugerencias, setLoadingSugerencias] = useState(false);
+  const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
+  const [indiceSugerencia, setIndiceSugerencia] = useState(-1);
   
   // Filtro de centro (solo para admin/farmacia)
   const [centros, setCentros] = useState([]);
   const [centroFiltro, setCentroFiltro] = useState('');
   
-  // Control de debounce para evitar múltiples llamadas
+  // Refs
   const debounceRef = useRef(null);
-  const lastSearchRef = useRef({ tipo: '', codigo: '', centro: '' });
+  const inputRef = useRef(null);
+  const sugerenciasRef = useRef(null);
+  const lastSearchRef = useRef({ termino: '', centro: '' });
 
   // Cargar centros al montar (solo para admin/farmacia)
   useEffect(() => {
     const cargarCentros = async () => {
-      if (!esAdminOFarmacia) {
-        // Usuario de centro: el centro se obtiene del hook usePermissions
-        return;
-      }
-      
+      if (!esAdminOFarmacia) return;
       try {
         const resp = await centrosAPI.getAll({ page_size: 100, ordering: 'nombre', activo: true });
         setCentros(resp.data?.results || resp.data || []);
@@ -196,36 +197,189 @@ const Trazabilidad = () => {
     cargarCentros();
   }, [esAdminOFarmacia]);
 
-  // Cambiar tipo de búsqueda con validación de permisos
-  const handleTipoBusquedaChange = (nuevoTipo) => {
-    if (nuevoTipo === 'lote' && !puedeBuscarPorLote) {
-      toast.error('Solo administradores y farmacia pueden buscar por lote');
-      return;
-    }
-    setTipoBusqueda(nuevoTipo);
-    setCodigoBusqueda('');
-    setResultados(null);
-    setCodigoResultados('');
-  };
-
-  // Debounce para el campo de búsqueda
-  const handleCodigoBusquedaChange = useCallback((valor) => {
-    setCodigoBusqueda(valor);
-    
-    // Debounce: no limpiar resultados inmediatamente
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
+  // Cerrar sugerencias al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (
+        inputRef.current && !inputRef.current.contains(e.target) &&
+        sugerenciasRef.current && !sugerenciasRef.current.contains(e.target)
+      ) {
+        setMostrarSugerencias(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Exportar PDF con código sincronizado
-  const handleExportarPdf = async () => {
-    if (!resultados || !codigoResultados) {
-      toast.error('Primero busque un producto o lote para exportar su trazabilidad');
+  // Búsqueda de autocompletado con debounce
+  const buscarSugerencias = useCallback(async (termino) => {
+    if (!termino || termino.length < 2) {
+      setSugerencias([]);
       return;
     }
 
-    // Validar permisos para lotes
+    setLoadingSugerencias(true);
+    try {
+      const params = centroFiltro ? { centro: centroFiltro } : {};
+      const response = await trazabilidadAPI.autocomplete(termino, params);
+      setSugerencias(response.data?.results || []);
+    } catch (error) {
+      console.warn('Error en autocompletado:', error);
+      setSugerencias([]);
+    } finally {
+      setLoadingSugerencias(false);
+    }
+  }, [centroFiltro]);
+
+  // Manejar cambio en el input de búsqueda
+  const handleTerminoBusquedaChange = (e) => {
+    const valor = e.target.value;
+    setTerminoBusqueda(valor);
+    setIndiceSugerencia(-1);
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    
+    if (valor.length >= 2) {
+      setMostrarSugerencias(true);
+      debounceRef.current = setTimeout(() => {
+        buscarSugerencias(valor);
+      }, 300);
+    } else {
+      setSugerencias([]);
+      setMostrarSugerencias(false);
+    }
+  };
+
+  // Seleccionar sugerencia
+  const seleccionarSugerencia = (sugerencia) => {
+    setTerminoBusqueda(sugerencia.identificador);
+    setMostrarSugerencias(false);
+    setSugerencias([]);
+    // Auto-buscar al seleccionar
+    ejecutarBusqueda(sugerencia.identificador, sugerencia.tipo);
+  };
+
+  // Manejar teclas en el input
+  const handleKeyDown = (e) => {
+    if (!mostrarSugerencias || sugerencias.length === 0) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleBuscar(e);
+      }
+      return;
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setIndiceSugerencia(prev => Math.min(prev + 1, sugerencias.length - 1));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setIndiceSugerencia(prev => Math.max(prev - 1, -1));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (indiceSugerencia >= 0 && sugerencias[indiceSugerencia]) {
+          seleccionarSugerencia(sugerencias[indiceSugerencia]);
+        } else {
+          handleBuscar(e);
+        }
+        break;
+      case 'Escape':
+        setMostrarSugerencias(false);
+        break;
+    }
+  };
+
+  // Ejecutar búsqueda
+  const ejecutarBusqueda = async (termino, tipoForzado = null) => {
+    const terminoTrimmed = termino.trim();
+    if (!terminoTrimmed) {
+      toast.error('Ingrese un término para buscar');
+      return;
+    }
+
+    // Evitar búsquedas duplicadas
+    if (lastSearchRef.current.termino === terminoTrimmed &&
+        lastSearchRef.current.centro === centroFiltro &&
+        resultados) {
+      toast('Ya tienes estos resultados cargados', { icon: 'ℹ️' });
+      return;
+    }
+
+    setLoading(true);
+    setMostrarSugerencias(false);
+    
+    try {
+      // Primero detectamos el tipo si no viene forzado
+      let tipo = tipoForzado;
+      let identificador = terminoTrimmed;
+      
+      if (!tipo) {
+        // Usar búsqueda unificada para detectar el tipo
+        try {
+          const params = centroFiltro ? { centro: centroFiltro } : {};
+          const buscarResp = await trazabilidadAPI.buscar(terminoTrimmed, params);
+          tipo = buscarResp.data?.tipo;
+          identificador = buscarResp.data?.identificador || terminoTrimmed;
+        } catch (error) {
+          // Si la búsqueda unificada falla, intentamos como producto
+          tipo = 'producto';
+        }
+      }
+
+      if (!tipo) {
+        toast.error('No se encontró producto ni lote con ese término');
+        setResultados(null);
+        setLoading(false);
+        return;
+      }
+
+      // Ahora obtenemos los datos completos
+      const params = centroFiltro ? { centro: centroFiltro } : {};
+      const normalizer = tipo === 'producto' ? normalizeProductoResponse : normalizeLoteResponse;
+      
+      const response = tipo === 'producto'
+        ? await trazabilidadAPI.producto(identificador, params)
+        : await trazabilidadAPI.lote(identificador, params);
+
+      const datosNormalizados = normalizer(response.data);
+      setResultados(datosNormalizados);
+      setTipoBusqueda(tipo);
+      setIdentificadorResultados(identificador);
+      lastSearchRef.current = { termino: terminoTrimmed, centro: centroFiltro };
+      
+      toast.success(`Trazabilidad de ${tipo === 'producto' ? 'producto' : 'lote'} cargada`);
+    } catch (error) {
+      if (error.response?.status === 403) {
+        toast.error('No tienes permiso para acceder a esta trazabilidad');
+      } else if (error.response?.status === 404) {
+        toast.error('No se encontró el producto o lote');
+      } else {
+        toast.error(error.response?.data?.error || 'Error al cargar trazabilidad');
+      }
+      console.error(error);
+      setResultados(null);
+      setTipoBusqueda(null);
+      setIdentificadorResultados('');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBuscar = (e) => {
+    e.preventDefault();
+    ejecutarBusqueda(terminoBusqueda);
+  };
+
+  // Exportar PDF
+  const handleExportarPdf = async () => {
+    if (!resultados || !identificadorResultados) {
+      toast.error('Primero busque un producto o lote para exportar');
+      return;
+    }
+
     if (tipoBusqueda === 'lote' && !esAdminOFarmacia) {
       toast.error('No tienes permiso para exportar trazabilidad de lotes');
       return;
@@ -236,112 +390,47 @@ const Trazabilidad = () => {
       let response;
       let filename;
       
-      // Usar codigoResultados (sincronizado) en lugar de codigoBusqueda
-      const codigoParaExportar = codigoResultados;
-      
       if (tipoBusqueda === 'producto') {
-        response = await trazabilidadAPI.exportarPdf(codigoParaExportar);
-        filename = `trazabilidad_producto_${codigoParaExportar}_${new Date().toISOString().split('T')[0]}.pdf`;
+        response = await trazabilidadAPI.exportarPdf(identificadorResultados);
+        filename = `trazabilidad_producto_${identificadorResultados}_${new Date().toISOString().split('T')[0]}.pdf`;
       } else {
-        // ISS-FIX: Usar lote_id para evitar ambigüedad, SIEMPRE pasar numero_lote como fallback
         const loteId = resultados?.id;
-        console.log('[Trazabilidad] Exportando PDF lote:', { codigoParaExportar, loteId, resultados_id: resultados?.id });
-        response = await trazabilidadAPI.exportarLotePdf(codigoParaExportar, loteId);
-        filename = `trazabilidad_lote_${codigoParaExportar}_${new Date().toISOString().split('T')[0]}.pdf`;
+        response = await trazabilidadAPI.exportarLotePdf(identificadorResultados, loteId);
+        filename = `trazabilidad_lote_${identificadorResultados}_${new Date().toISOString().split('T')[0]}.pdf`;
       }
       
       descargarArchivo(response, filename);
-      toast.success('PDF de trazabilidad generado exitosamente');
+      toast.success('PDF generado exitosamente');
     } catch (error) {
       console.error('Error al exportar PDF:', error);
-      
-      // Manejo específico de errores
       if (error.response?.status === 403) {
-        toast.error('No tienes permiso para exportar esta trazabilidad');
+        toast.error('No tienes permiso para exportar');
       } else if (error.response?.status === 404) {
-        toast.error('El registro no fue encontrado para exportar');
+        toast.error('Registro no encontrado');
       } else {
-        toast.error(error.response?.data?.error || 'Error al generar el PDF de trazabilidad');
+        toast.error(error.response?.data?.error || 'Error al generar PDF');
       }
     } finally {
       setExportingPdf(false);
     }
   };
 
-  const handleBuscar = async (e) => {
-    e.preventDefault();
-
-    const codigoTrimmed = codigoBusqueda.trim();
-    if (!codigoTrimmed) {
-      toast.error('Ingrese un código para buscar');
-      return;
-    }
-
-    // Validar permisos para lotes
-    if (tipoBusqueda === 'lote' && !puedeBuscarPorLote) {
-      toast.error('No tienes permiso para buscar por lote. Solo administradores y farmacia pueden hacerlo.');
-      return;
-    }
-
-    // Evitar búsquedas duplicadas
-    if (lastSearchRef.current.tipo === tipoBusqueda && 
-        lastSearchRef.current.codigo === codigoTrimmed &&
-        lastSearchRef.current.centro === centroFiltro &&
-        resultados) {
-      toast('Ya tienes estos resultados cargados', { icon: 'ℹ️' });
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const normalizer = tipoBusqueda === 'producto' ? normalizeProductoResponse : normalizeLoteResponse;
-      
-      // Preparar parámetros con filtro de centro opcional (solo para admin/farmacia)
-      const params = centroFiltro ? { centro: centroFiltro } : {};
-
-      const response = tipoBusqueda === 'producto'
-        ? await trazabilidadAPI.producto(codigoTrimmed, params)
-        : await trazabilidadAPI.lote(codigoTrimmed, params);
-
-      const datosNormalizados = normalizer(response.data);
-      setResultados(datosNormalizados);
-      setCodigoResultados(codigoTrimmed); // Sincronizar código con resultados
-      lastSearchRef.current = { tipo: tipoBusqueda, codigo: codigoTrimmed, centro: centroFiltro };
-      
-      toast.success('Trazabilidad cargada correctamente');
-    } catch (error) {
-      // Manejo específico de errores HTTP
-      if (error.response?.status === 403) {
-        toast.error('No tienes permiso para acceder a esta trazabilidad. Verifica tu rol.');
-      } else if (error.response?.status === 404) {
-        toast.error(`${tipoBusqueda === 'producto' ? 'Producto' : 'Lote'} no encontrado`);
-      } else {
-        toast.error(error.response?.data?.error || 'Error al cargar trazabilidad');
-      }
-      console.error(error);
-      setResultados(null);
-      setCodigoResultados('');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Limpiar búsqueda - restablece TODOS los estados
+  // Limpiar búsqueda
   const limpiarBusqueda = () => {
-    // No permitir limpiar mientras hay operaciones activas
     if (loading || exportingPdf) {
-      toast('Espera a que termine la operación actual', { icon: '⏳' });
+      toast('Espera a que termine la operación', { icon: '⏳' });
       return;
     }
     
-    setCodigoBusqueda('');
-    setCodigoResultados('');
+    setTerminoBusqueda('');
+    setIdentificadorResultados('');
     setResultados(null);
-    setTipoBusqueda('producto'); // Restablecer a producto (siempre permitido)
+    setTipoBusqueda(null);
     setCentroFiltro('');
-    lastSearchRef.current = { tipo: '', codigo: '', centro: '' };
+    setSugerencias([]);
+    setMostrarSugerencias(false);
+    lastSearchRef.current = { termino: '', centro: '' };
     
-    // Limpiar debounce pendiente
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
@@ -523,56 +612,83 @@ const Trazabilidad = () => {
 
       <div className="bg-white p-6 rounded-lg shadow">
         <form onSubmit={handleBuscar} className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-5">
-            {/* Selector de tipo de búsqueda */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Buscar por</label>
-              <select
-                value={tipoBusqueda}
-                onChange={(e) => handleTipoBusquedaChange(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                disabled={loading}
-              >
-                <option value="producto">📦 Producto</option>
-                {puedeBuscarPorLote ? (
-                  <option value="lote">🏷️ Lote</option>
-                ) : (
-                  <option value="lote" disabled>🔒 Lote (requiere permisos)</option>
-                )}
-              </select>
-              {!puedeBuscarPorLote && (
-                <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                  <FaLock className="text-gray-400" />
-                  Solo Admin/Farmacia
-                </p>
-              )}
-            </div>
-
-            {/* Campo de búsqueda con autocomplete */}
-            <div className="md:col-span-2">
+          <div className="grid gap-4 md:grid-cols-4">
+            {/* Buscador unificado */}
+            <div className="md:col-span-2 relative">
               <label className="block text-sm font-medium mb-2">
-                {tipoBusqueda === 'producto' ? 'Clave del producto' : 'Número de lote'}
+                Buscar por lote, producto o clave
               </label>
-              {tipoBusqueda === 'producto' ? (
-                <AutocompleteInput
-                  apiCall={productosAPI.getAll}
-                  value={codigoBusqueda}
-                  onChange={handleCodigoBusquedaChange}
-                  placeholder="Ej: MED-001"
-                  displayField="clave"
-                  searchField="search"
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  {loadingSugerencias ? (
+                    <FaSpinner className="animate-spin text-gray-400" />
+                  ) : (
+                    <FaSearch className="text-gray-400" />
+                  )}
+                </div>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={terminoBusqueda}
+                  onChange={handleTerminoBusquedaChange}
+                  onKeyDown={handleKeyDown}
+                  onFocus={() => terminoBusqueda.length >= 2 && setMostrarSugerencias(true)}
+                  placeholder="Ej: L-2024-001, MED-001, Paracetamol..."
+                  className="w-full pl-10 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   disabled={loading}
+                  autoComplete="off"
                 />
-              ) : (
-                <AutocompleteInput
-                  apiCall={lotesAPI.getAll}
-                  value={codigoBusqueda}
-                  onChange={handleCodigoBusquedaChange}
-                  placeholder="Ej: L-2024-001"
-                  displayField="numero_lote"
-                  searchField="search"
-                  disabled={loading}
-                />
+                {terminoBusqueda && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTerminoBusqueda('');
+                      setSugerencias([]);
+                      setMostrarSugerencias(false);
+                    }}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  >
+                    <FaTimes />
+                  </button>
+                )}
+              </div>
+              
+              {/* Lista de sugerencias */}
+              {mostrarSugerencias && sugerencias.length > 0 && (
+                <div
+                  ref={sugerenciasRef}
+                  className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-auto"
+                >
+                  {sugerencias.map((sug, idx) => (
+                    <button
+                      key={`${sug.tipo}-${sug.id}`}
+                      type="button"
+                      onClick={() => seleccionarSugerencia(sug)}
+                      className={`w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-3 ${
+                        idx === indiceSugerencia ? 'bg-blue-50' : ''
+                      }`}
+                    >
+                      <span className="text-lg">{sug.tipo === 'producto' ? '📦' : '🏷️'}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{sug.display?.replace(/^[📦🏷️]\s*/, '') || sug.identificador}</p>
+                        {sug.secundario && (
+                          <p className="text-xs text-gray-500 truncate">{sug.secundario}</p>
+                        )}
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        sug.tipo === 'producto' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                      }`}>
+                        {sug.tipo === 'producto' ? 'Producto' : 'Lote'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              
+              {mostrarSugerencias && terminoBusqueda.length >= 2 && sugerencias.length === 0 && !loadingSugerencias && (
+                <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg p-3 text-center text-gray-500 text-sm">
+                  No se encontraron coincidencias
+                </div>
               )}
             </div>
 
@@ -601,7 +717,7 @@ const Trazabilidad = () => {
             <div className="flex items-end gap-2">
               <button
                 type="submit"
-                disabled={loading || !codigoBusqueda.trim()}
+                disabled={loading || !terminoBusqueda.trim()}
                 className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all"
               >
                 {loading ? (
@@ -626,12 +742,15 @@ const Trazabilidad = () => {
             </div>
           </div>
 
-          {/* Indicador de código sincronizado */}
-          {resultados && codigoResultados && codigoBusqueda !== codigoResultados && (
-            <div className="text-xs text-amber-600 flex items-center gap-1 mt-2">
-              <FaExclamationTriangle />
-              Los resultados corresponden a: <strong>{codigoResultados}</strong>. 
-              Presiona &quot;Buscar&quot; para actualizar con el nuevo código.
+          {/* Indicador de tipo detectado */}
+          {resultados && tipoBusqueda && (
+            <div className="text-xs text-gray-500 flex items-center gap-2">
+              <span className={`px-2 py-0.5 rounded-full ${
+                tipoBusqueda === 'producto' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+              }`}>
+                {tipoBusqueda === 'producto' ? '📦 Producto' : '🏷️ Lote'}
+              </span>
+              <span>Resultados para: <strong>{identificadorResultados}</strong></span>
             </div>
           )}
         </form>
@@ -650,13 +769,11 @@ const Trazabilidad = () => {
         <div className="text-center py-8 bg-white rounded-lg shadow">
           <FaSearch className="text-4xl text-gray-300 mx-auto mb-3" />
           <p className="text-gray-500">
-            Ingresa la clave de un producto o número de lote y presiona &quot;Buscar&quot;
+            Ingresa la clave de un producto, número de lote o nombre y presiona &quot;Buscar&quot;
           </p>
-          {!esAdminOFarmacia && (
-            <p className="text-xs text-gray-400 mt-2">
-              Nota: Los resultados se filtran automáticamente por tu centro asignado
-            </p>
-          )}
+          <p className="text-xs text-gray-400 mt-2">
+            El sistema detectará automáticamente si buscas un producto o un lote
+          </p>
         </div>
       )}
 
@@ -680,8 +797,8 @@ const Trazabilidad = () => {
                   </h2>
                   <p className="text-sm text-gray-600">
                     Datos generales y estado actual
-                    {codigoResultados && (
-                      <span className="ml-2 text-violet-600 font-medium">({codigoResultados})</span>
+                    {identificadorResultados && (
+                      <span className="ml-2 text-violet-600 font-medium">({identificadorResultados})</span>
                     )}
                   </p>
                 </div>

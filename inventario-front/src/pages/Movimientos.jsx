@@ -445,6 +445,20 @@ const Movimientos = () => {
     }
   };
 
+  // Descargar recibo de entrega finalizada (con sello ENTREGADO en lugar de firmas)
+  const descargarReciboFinalizado = async (movimiento) => {
+    try {
+      toast.loading("Generando comprobante de entrega...", { id: "recibo-final" });
+      const response = await movimientosAPI.getReciboSalida(movimiento.id, true);
+      const fecha = new Date(movimiento.fecha || movimiento.fecha_movimiento).toISOString().split("T")[0];
+      descargarArchivo(response, `comprobante_entrega_${movimiento.id}_${fecha}.pdf`);
+      toast.success("Comprobante generado", { id: "recibo-final" });
+    } catch (err) {
+      toast.error("No se pudo generar el comprobante", { id: "recibo-final" });
+      console.error("Error generando comprobante:", err);
+    }
+  };
+
   // Actualiza solo el estado local de filtros (sin disparar recarga)
   const handleFiltro = (field, value) => {
     // Protección: usuarios de centro no pueden cambiar el filtro de centro
@@ -1107,6 +1121,27 @@ const Movimientos = () => {
                                       <p className="text-gray-800 bg-white p-2 rounded border mt-1">{mov.observaciones}</p>
                                     </div>
                                   )}
+                                  {/* Botones de acción para movimientos de salida */}
+                                  {mov.tipo === 'salida' && (
+                                    <div className="col-span-2 md:col-span-4 flex flex-wrap gap-3 mt-4 pt-4 border-t border-gray-200">
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov); }}
+                                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"
+                                        title="Descargar hoja de entrega con campos para firmas"
+                                      >
+                                        <FaFilePdf className="text-lg" />
+                                        Hoja de Entrega
+                                      </button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
+                                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
+                                        title="Descargar comprobante con sello de ENTREGADO"
+                                      >
+                                        <FaFilePdf className="text-lg" />
+                                        Comprobante Entregado
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -1230,6 +1265,27 @@ const Movimientos = () => {
                                   <div className="col-span-2 md:col-span-4">
                                     <span className="font-semibold text-gray-600">Observaciones:</span>
                                     <p className="text-gray-800 bg-white p-2 rounded border mt-1">{mov.observaciones}</p>
+                                  </div>
+                                )}
+                                {/* Botones de acción para movimientos de salida */}
+                                {mov.tipo === 'salida' && (
+                                  <div className="col-span-2 md:col-span-4 flex flex-wrap gap-3 mt-4 pt-4 border-t border-gray-200">
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov); }}
+                                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"
+                                      title="Descargar hoja de entrega con campos para firmas"
+                                    >
+                                      <FaFilePdf className="text-lg" />
+                                      Hoja de Entrega
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
+                                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
+                                      title="Descargar comprobante con sello de ENTREGADO"
+                                    >
+                                      <FaFilePdf className="text-lg" />
+                                      Comprobante Entregado
+                                    </button>
                                   </div>
                                 )}
                               </div>
