@@ -773,12 +773,27 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         lote_ref.save(update_fields=update_fields)
 
         # Crear movimiento con campos correctos de la BD
+        # ISS-FIX: Para salidas (transferencias), centro_destino es el destino, centro_origen es el origen del lote
+        # Para entradas, centro_destino es donde entra el stock
+        if tipo_normalizado == 'salida':
+            # Salida: el lote sale del centro del lote (o Farmacia Central si es None) hacia el centro especificado
+            mov_centro_origen = lote_ref.centro  # None si es Farmacia Central
+            mov_centro_destino = centro  # El centro destino de la transferencia
+        elif tipo_normalizado == 'entrada':
+            # Entrada: el stock entra al centro especificado
+            mov_centro_origen = None  # No aplica para entradas
+            mov_centro_destino = centro
+        else:
+            # Ajuste: se hace en el centro del lote
+            mov_centro_origen = lote_ref.centro
+            mov_centro_destino = None
+        
         movimiento = Movimiento(
             tipo=tipo_normalizado,
             producto=lote_ref.producto,
             lote=lote_ref,
-            centro_destino=centro if tipo_normalizado == 'entrada' else None,
-            centro_origen=centro if tipo_normalizado != 'entrada' else None,
+            centro_destino=mov_centro_destino,
+            centro_origen=mov_centro_origen,
             requisicion=requisicion,
             usuario=usuario if usuario and getattr(usuario, 'is_authenticated', False) else None,
             cantidad=delta,
