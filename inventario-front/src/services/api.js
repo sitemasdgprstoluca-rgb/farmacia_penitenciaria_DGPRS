@@ -154,12 +154,12 @@ export const getSecurityMetrics = () => securityMetrics.getMetrics();
 const API_VERSION = import.meta.env.VITE_API_VERSION || 'v1';
 const HEALTH_ENDPOINT = import.meta.env.VITE_HEALTH_ENDPOINT || '/health/';
 const HEALTH_CHECK_ENABLED = import.meta.env.VITE_ENABLE_HEALTHCHECK !== 'false';
-// ISS-FIX: Aumentar timeout default a 30s para cold starts de Render/Heroku
-const HEALTH_TIMEOUT = parseInt(import.meta.env.VITE_HEALTHCHECK_TIMEOUT || '30000', 10);
+// ISS-FIX: Aumentar timeout default a 60s para cold starts de Render (free tier tarda ~50s)
+const HEALTH_TIMEOUT = parseInt(import.meta.env.VITE_HEALTHCHECK_TIMEOUT || '60000', 10);
 const AUTH_ONLY_MODE = import.meta.env.VITE_AUTH_ONLY_MODE === 'true'; // Modo sin healthcheck
-// ISS-FIX: Configuración de reintentos para cold starts
-const HEALTH_RETRIES = parseInt(import.meta.env.VITE_HEALTHCHECK_RETRIES || '3', 10);
-const HEALTH_RETRY_DELAY = parseInt(import.meta.env.VITE_HEALTHCHECK_RETRY_DELAY || '2000', 10);
+// ISS-FIX: Configuración de reintentos para cold starts - aumentado a 5 reintentos
+const HEALTH_RETRIES = parseInt(import.meta.env.VITE_HEALTHCHECK_RETRIES || '5', 10);
+const HEALTH_RETRY_DELAY = parseInt(import.meta.env.VITE_HEALTHCHECK_RETRY_DELAY || '3000', 10);
 
 // ISS-003 FIX (audit33): Configuración parametrizable de rutas de autenticación
 const AUTH_CONFIG = {
@@ -347,6 +347,7 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
   withCredentials: true, // IMPORTANTE: Enviar cookies en cada request
+  timeout: 60000, // ISS-FIX: 60 segundos de timeout para cold starts de Render
 });
 
 // Cliente público para endpoints que NO requieren autenticación
@@ -364,11 +365,11 @@ let redirectingToLogin = false;
 let isRefreshing = false;
 let failedQueue = [];
 
-// ISS-005 FIX (audit32): Configuración de reintentos
+// ISS-005 FIX (audit32): Configuración de reintentos para cold starts de Render
 const RETRY_CONFIG = {
-  maxRetries: 3,              // Máximo 3 reintentos antes de fallar
-  retryDelay: 1000,           // Delay base entre reintentos (ms)
-  retryableStatusCodes: [408, 429, 502, 503, 504], // Códigos que justifican reintento
+  maxRetries: 5,              // Máximo 5 reintentos para cold starts (~50s de espera total)
+  retryDelay: 2000,           // Delay base entre reintentos (ms) - aumentado
+  retryableStatusCodes: [0, 408, 429, 500, 502, 503, 504], // 0 = error de red, 500 para cold starts
   exponentialBackoff: true,   // Usar backoff exponencial
 };
 
@@ -490,8 +491,17 @@ apiClient.interceptors.response.use(
     const currentPath = window.location?.pathname || '';
     const now = Date.now();
     
+    // ISS-FIX: Detectar si es un error de red/timeout (servidor no responde - cold start)
+    const isNetworkError = !error.response && (
+      error.code === 'ECONNABORTED' || 
+      error.code === 'ERR_NETWORK' || 
+      error.code === 'ECONNREFUSED' ||
+      error.message?.includes('timeout') ||
+      error.message?.includes('Network Error')
+    );
+    
     // ISS-005 FIX (audit32): Verificar límite de reintentos para errores de red/timeout
-    const isRetryableError = !status || RETRY_CONFIG.retryableStatusCodes.includes(status);
+    const isRetryableError = isNetworkError || !status || RETRY_CONFIG.retryableStatusCodes.includes(status);
     const retryCount = originalRequest._retryCount || 0;
     
     if (isRetryableError && retryCount < RETRY_CONFIG.maxRetries && !originalRequest._noRetry) {
@@ -502,16 +512,28 @@ apiClient.interceptors.response.use(
         ? RETRY_CONFIG.retryDelay * Math.pow(2, retryCount)
         : RETRY_CONFIG.retryDelay;
       
+      // Mostrar mensaje al usuario cuando hay reintentos por cold start
+      if (retryCount === 0 && isNetworkError) {
+        console.info('[API] El servidor está iniciando, esperando respuesta...');
+      }
+      
       // HALLAZGO #5: Solo loguear en desarrollo para evitar fuga de información
       if (isDev) {
         console.log(
           `[API] Reintento ${originalRequest._retryCount}/${RETRY_CONFIG.maxRetries} ` +
-          `para ${originalRequest.url} (delay: ${delay}ms, status: ${status || 'network error'})`
+          `para ${originalRequest.url} (delay: ${delay}ms, status: ${status || 'network/timeout'})`
         );
       }
       
       await new Promise(resolve => setTimeout(resolve, delay));
       return apiClient(originalRequest);
+    }
+    
+    // ISS-FIX: Si todos los reintentos fallaron por error de red, NO redirigir al login
+    // Solo mostrar mensaje de error de conexión
+    if (isNetworkError && retryCount >= RETRY_CONFIG.maxRetries) {
+      toastDebounce.error('El servidor no responde. Por favor, espera un momento e intenta de nuevo.');
+      return Promise.reject(error);
     }
     
     // Intentar refresh automático en caso de 401

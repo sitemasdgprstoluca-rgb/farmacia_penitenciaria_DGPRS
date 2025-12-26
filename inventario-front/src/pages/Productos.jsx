@@ -1497,7 +1497,7 @@ const Productos = () => {
 
                 'Nombre',
 
-                'Unidad',
+                'Presentación',
 
                 'Inventario',
 
@@ -1554,7 +1554,7 @@ const Productos = () => {
 
                 <td className="px-4 py-3 text-sm text-gray-600">{producto.nombre}</td>
 
-                <td className="px-4 py-3 text-sm">{producto.unidad_medida}</td>
+                <td className="px-4 py-3 text-sm text-gray-600">{producto.presentacion || producto.unidad_medida || <span className="text-gray-400 italic text-xs">-</span>}</td>
 
                 <td className="px-4 py-3 text-sm">{formatInventario(producto)}</td>
 
