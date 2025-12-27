@@ -378,19 +378,38 @@ if TESTING:
         'django.contrib.auth.hashers.MD5PasswordHasher',
     ]
 elif DATABASE_URL:
+    # Detectar si es Supabase Pooler (puerto 6543) vs conexión directa (5432)
+    _is_supabase_pooler = 'pooler.supabase' in DATABASE_URL and ':6543' in DATABASE_URL
+    
     DATABASES = {
         'default': dj_database_url.parse(
             DATABASE_URL,
-            conn_max_age=config('DB_CONN_MAX_AGE', default=600, cast=int),
-            ssl_require=ENFORCE_HTTPS
+            conn_max_age=config('DB_CONN_MAX_AGE', default=600 if not _is_supabase_pooler else 0, cast=int),
+            ssl_require=config('DB_SSL_REQUIRE', default=True, cast=bool)
         )
     }
+    
     # Agregar timeouts de conexión para PostgreSQL/Supabase
     DATABASES['default'].setdefault('OPTIONS', {})
-    DATABASES['default']['OPTIONS'].update({
-        'connect_timeout': 10,  # Timeout de conexión en segundos
-        'options': '-c statement_timeout=30000',  # Statement timeout 30s
-    })
+    
+    if _is_supabase_pooler:
+        # Configuración optimizada para Supabase Connection Pooler
+        # - conn_max_age=0: Pooler maneja las conexiones, no Django
+        # - sslmode=require: SSL requerido pero sin verificación de certificado (compatible con pooler)
+        # - connect_timeout mayor para cold starts de Supabase
+        DATABASES['default']['OPTIONS'].update({
+            'connect_timeout': 30,  # Mayor timeout para cold start de Supabase
+            'sslmode': 'require',  # SSL requerido pero flexible con certificados
+            'options': '-c statement_timeout=30000',  # Statement timeout 30s
+        })
+        import sys
+        print(f"[DB CONFIG] Usando Supabase Connection Pooler (puerto 6543)", file=sys.stderr)
+    else:
+        # Configuración para conexión directa PostgreSQL
+        DATABASES['default']['OPTIONS'].update({
+            'connect_timeout': 10,  # Timeout de conexión en segundos
+            'options': '-c statement_timeout=30000',  # Statement timeout 30s
+        })
 else:
     # Solo desarrollo local - NUNCA en producción
     if not DEBUG:
