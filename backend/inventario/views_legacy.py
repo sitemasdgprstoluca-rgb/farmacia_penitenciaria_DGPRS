@@ -9990,7 +9990,7 @@ def _exportar_lote_excel(movimientos, producto_info):
         buffer.getvalue(),
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
-    response['Content-Disposition'] = f'attachment; filename="Trazabilidad_Lote_{producto_info['numero_lote']}_{timezone.now().strftime('%Y%m%d')}.xlsx"'
+    response['Content-Disposition'] = f'attachment; filename="Trazabilidad_Lote_{producto_info["numero_lote"]}_{timezone.now().strftime("%Y%m%d")}.xlsx"'
     return response
 
 
