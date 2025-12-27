@@ -1145,19 +1145,50 @@ export const trazabilidadAPI = {
   // Endpoints específicos
   producto: (clave, params = {}) => apiClient.get(`/trazabilidad/producto/${clave}/`, { params }),
   lote: (numeroLote, params = {}) => apiClient.get(`/trazabilidad/lote/${numeroLote}/`, { params }),
-  exportarPdf: (clave) => apiClient.get(`/movimientos/trazabilidad-pdf/`, { 
-    params: { producto_clave: clave }, 
+  
+  // Trazabilidad global (todos los lotes)
+  global: (params = {}) => apiClient.get('/trazabilidad/global/', { params }),
+  
+  // Exportar PDF de producto (con filtros de fecha)
+  exportarPdf: (clave, params = {}) => apiClient.get(`/trazabilidad/producto/${clave}/exportar/`, { 
+    params: { ...params, formato: 'pdf' }, 
     responseType: 'blob' 
   }),
-  // ISS-FIX: Enviar ambos parámetros para máxima compatibilidad
-  exportarLotePdf: (numeroLote, loteId = null) => {
-    const params = { numero_lote: numeroLote };
-    if (loteId) params.lote_id = loteId;
-    return apiClient.get(`/movimientos/trazabilidad-lote-pdf/`, { 
-      params, 
+  // Exportar Excel de producto (con filtros de fecha)
+  exportarExcel: (clave, params = {}) => apiClient.get(`/trazabilidad/producto/${clave}/exportar/`, { 
+    params: { ...params, formato: 'excel' }, 
+    responseType: 'blob' 
+  }),
+  
+  // Exportar PDF de lote (con filtros de fecha)
+  exportarLotePdf: (numeroLote, loteId = null, params = {}) => {
+    const queryParams = { ...params, formato: 'pdf' };
+    if (loteId) queryParams.lote_id = loteId;
+    return apiClient.get(`/trazabilidad/lote/${numeroLote}/exportar/`, { 
+      params: queryParams, 
       responseType: 'blob' 
     });
   },
+  // Exportar Excel de lote (con filtros de fecha)
+  exportarLoteExcel: (numeroLote, loteId = null, params = {}) => {
+    const queryParams = { ...params, formato: 'excel' };
+    if (loteId) queryParams.lote_id = loteId;
+    return apiClient.get(`/trazabilidad/lote/${numeroLote}/exportar/`, { 
+      params: queryParams, 
+      responseType: 'blob' 
+    });
+  },
+  
+  // Exportar global PDF (todos los lotes con filtros)
+  exportarGlobalPdf: (params = {}) => apiClient.get('/trazabilidad/global/', { 
+    params: { ...params, formato: 'pdf' }, 
+    responseType: 'blob' 
+  }),
+  // Exportar global Excel (todos los lotes con filtros)
+  exportarGlobalExcel: (params = {}) => apiClient.get('/trazabilidad/global/', { 
+    params: { ...params, formato: 'excel' }, 
+    responseType: 'blob' 
+  }),
 };
 
 // Dashboard

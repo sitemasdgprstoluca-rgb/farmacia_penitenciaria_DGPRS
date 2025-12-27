@@ -40,6 +40,9 @@ from inventario.views_legacy import (
     trazabilidad_lote,
     trazabilidad_buscar,
     trazabilidad_autocomplete,
+    trazabilidad_global,
+    trazabilidad_producto_exportar,
+    trazabilidad_lote_exportar,
     # Funciones de reportes
     reporte_inventario,
     reporte_movimientos,
@@ -82,6 +85,9 @@ __all__ = [
     'trazabilidad_lote',
     'trazabilidad_buscar',
     'trazabilidad_autocomplete',
+    'trazabilidad_global',
+    'trazabilidad_producto_exportar',
+    'trazabilidad_lote_exportar',
     # Reportes
     'reporte_inventario',
     'reporte_movimientos',
