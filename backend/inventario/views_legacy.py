@@ -9968,6 +9968,211 @@ def trazabilidad_lote_exportar(request, codigo):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def exportar_control_inventarios(request):
+    """
+    Exporta el inventario en formato "Control de Inventarios del Almacén Central de Medicamentos"
+    con el mismo estilo que el archivo de referencia de licitación.
+    
+    Columnas:
+    - NO. PARTIDA (secuencial por producto)
+    - CLAVE (clave del producto)  
+    - ARTÍCULO (nombre/descripción)
+    - LOTE
+    - NOMBRE COMERCIAL O GENÉRICO (marca)
+    - CONCENTRACIÓN (del producto)
+    - PRESENTACIÓN
+    - MESES (meses para caducidad)
+    - VENCIMIENTO / FECHA CADUCIDAD
+    - CANTIDAD
+    - FECHA DE INGRESO
+    - FECHA DE SALIDA (ULTIMA)
+    - EVIDENCIA FOTOGRAFICA (ruta de imagen si existe)
+    """
+    from datetime import datetime
+    from dateutil.relativedelta import relativedelta
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.utils import get_column_letter
+    from io import BytesIO
+    
+    user = request.user
+    if not user or not user.is_authenticated:
+        return Response({'error': 'Autenticación requerida'}, status=status.HTTP_403_FORBIDDEN)
+    
+    if not is_farmacia_or_admin(user):
+        return Response({'error': 'Solo administradores y farmacia pueden exportar este formato'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        # Obtener todos los lotes activos con stock, agrupados por producto
+        lotes = Lote.objects.select_related('producto').filter(
+            activo=True,
+            cantidad_actual__gt=0,
+            centro__isnull=True  # Solo farmacia central
+        ).order_by('producto__clave', 'numero_lote')
+        
+        # Crear workbook
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Control Inventarios"
+        
+        # Estilos
+        header_font = Font(bold=True, size=10)
+        header_fill = PatternFill(start_color="C4D79B", end_color="C4D79B", fill_type="solid")  # Verde claro
+        yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")  # Amarillo para evidencia
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        center_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        left_align = Alignment(horizontal='left', vertical='center', wrap_text=True)
+        
+        # Folio en esquina superior derecha
+        ws.merge_cells('H2:I2')
+        ws['H2'] = "Folio:________________"
+        ws['H2'].alignment = Alignment(horizontal='right')
+        
+        # Título principal
+        ws.merge_cells('A4:M4')
+        ws['A4'] = "CONTROL DE INVENTARIOS DEL ALMACÉN CENTRAL DE MEDICAMENTOS"
+        ws['A4'].font = Font(bold=True, size=14)
+        ws['A4'].alignment = Alignment(horizontal='center')
+        
+        # Encabezados en fila 6
+        headers = [
+            'NO.\nPARTIDA', 'CLAVE', 'ARTÍCULO', 'LOTE', 
+            'NOMBRE COMERCIAL\nO GENÉRICO', 'CONCENTRACIÓN', 'PRESENTACIÓN',
+            'MESES', 'VENCIMIENTO\n(SEMAFORIZACIÓN)\n/ FECHA DE\nCADUCIDAD',
+            'CANTIDAD', 'FECHA DE\nINGRESO', 'FECHA DE\nSALIDA\n(ULTIMA)',
+            'EVIDENCIA\nFOTOGRAFICA'
+        ]
+        
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=6, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.border = thin_border
+            cell.alignment = center_align
+        
+        # Ajustar altura de fila de encabezados
+        ws.row_dimensions[6].height = 50
+        
+        # Datos
+        row = 7
+        partida_actual = 0
+        producto_anterior = None
+        
+        for lote in lotes:
+            producto = lote.producto
+            
+            # Nueva partida si cambia el producto
+            if producto.id != producto_anterior:
+                partida_actual += 1
+                producto_anterior = producto.id
+            
+            # Calcular meses hasta caducidad
+            meses_caducidad = ''
+            if lote.fecha_caducidad:
+                hoy = datetime.now().date()
+                diff = relativedelta(lote.fecha_caducidad, hoy)
+                meses_caducidad = diff.years * 12 + diff.months
+            
+            # Obtener última fecha de salida para este lote
+            ultima_salida = Movimiento.objects.filter(
+                lote=lote,
+                tipo='salida'
+            ).order_by('-fecha').values_list('fecha', flat=True).first()
+            
+            # Obtener primera fecha de entrada (ingreso)
+            fecha_ingreso = Movimiento.objects.filter(
+                lote=lote,
+                tipo='entrada'
+            ).order_by('fecha').values_list('fecha', flat=True).first()
+            
+            # Si no hay movimiento de entrada, usar fecha de creación del lote
+            if not fecha_ingreso and hasattr(lote, 'fecha_creacion'):
+                fecha_ingreso = lote.fecha_creacion
+            
+            # Ruta de evidencia fotográfica
+            evidencia = ''
+            if hasattr(producto, 'imagenes') and producto.imagenes.exists():
+                img = producto.imagenes.first()
+                if img and img.imagen:
+                    evidencia = f"Evidencia fotografica\\Fotos concentrado\\PARTIDA {partida_actual} Lote {lote.numero_lote}.jpeg"
+            
+            # Datos de la fila
+            data = [
+                partida_actual,  # NO. PARTIDA
+                producto.clave,  # CLAVE
+                producto.nombre or producto.descripcion,  # ARTÍCULO
+                lote.numero_lote,  # LOTE
+                lote.marca or 'GENERICO',  # NOMBRE COMERCIAL O GENÉRICO
+                producto.concentracion or '',  # CONCENTRACIÓN
+                producto.presentacion or '',  # PRESENTACIÓN
+                meses_caducidad,  # MESES
+                lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else '',  # FECHA CADUCIDAD
+                lote.cantidad_actual,  # CANTIDAD
+                fecha_ingreso.strftime('%d/%m/%Y') if fecha_ingreso else '',  # FECHA INGRESO
+                ultima_salida.strftime('%d/%m/%Y') if ultima_salida else '',  # FECHA SALIDA
+                evidencia,  # EVIDENCIA
+            ]
+            
+            for col, value in enumerate(data, 1):
+                cell = ws.cell(row=row, column=col, value=value)
+                cell.border = thin_border
+                if col in [1, 8, 10]:  # Partida, Meses, Cantidad - centrados
+                    cell.alignment = center_align
+                else:
+                    cell.alignment = left_align
+                
+                # Fondo amarillo para evidencia
+                if col == 13:
+                    cell.fill = yellow_fill
+                    cell.font = Font(color="0000FF", underline="single", size=9)  # Azul con subrayado
+            
+            # Color de semaforización según meses
+            if isinstance(meses_caducidad, int):
+                meses_cell = ws.cell(row=row, column=8)
+                if meses_caducidad <= 3:
+                    meses_cell.fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")  # Rojo
+                    meses_cell.font = Font(color="FFFFFF", bold=True)
+                elif meses_caducidad <= 6:
+                    meses_cell.fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")  # Naranja
+                elif meses_caducidad <= 12:
+                    meses_cell.fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")  # Amarillo
+                else:
+                    meses_cell.fill = PatternFill(start_color="92D050", end_color="92D050", fill_type="solid")  # Verde
+            
+            row += 1
+        
+        # Ajustar anchos de columna
+        column_widths = [8, 8, 35, 12, 20, 22, 22, 8, 15, 10, 12, 12, 35]
+        for i, width in enumerate(column_widths, 1):
+            ws.column_dimensions[get_column_letter(i)].width = width
+        
+        # Guardar
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="Control_Inventarios_Almacen_Central_{timezone.now().strftime("%Y%m%d")}.xlsx"'
+        return response
+        
+    except Exception as exc:
+        logger.exception('Error al exportar control de inventarios')
+        return Response({
+            'error': 'Error al exportar control de inventarios',
+            'mensaje': str(exc)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 def _exportar_lote_excel(movimientos, producto_info):
     """Genera Excel de trazabilidad de lote."""
     import openpyxl

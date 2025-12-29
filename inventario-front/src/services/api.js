@@ -1193,6 +1193,11 @@ export const trazabilidadAPI = {
     params: { ...params, formato: 'excel' }, 
     responseType: 'blob' 
   }),
+  
+  // Exportar Control de Inventarios (formato licitación)
+  exportarControlInventarios: () => apiClient.get('/trazabilidad/exportar-control-inventarios/', { 
+    responseType: 'blob' 
+  }),
 };
 
 // Dashboard

@@ -1013,24 +1013,22 @@ const Movimientos = () => {
                 </div>
               )}
             </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
+            <div className="overflow-hidden">
+              <table className="w-full text-sm table-fixed">
                 <thead className="thead-theme">
                   <tr>
-                    {columnas.map((col) => (
-                      <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
-                        {col.toUpperCase()}
-                      </th>
-                    ))}
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
-                      Acciones
-                    </th>
+                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white w-[30%]">Producto</th>
+                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white w-[10%]">Tipo</th>
+                    <th className="px-2 py-3 text-right text-xs font-semibold uppercase tracking-wider text-white w-[8%]">Cant.</th>
+                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white w-[18%]">Centro</th>
+                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white w-[14%]">Fecha</th>
+                    <th className="px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white w-[20%]">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-100">
                   {loading ? (
                     <tr>
-                      <td colSpan={columnas.length + 1} className="text-center py-8">
+                      <td colSpan={6} className="text-center py-8">
                         <div className="flex justify-center items-center">
                           <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent spinner-institucional"></div>
                           <span className="ml-2 text-gray-600">Cargando movimientos...</span>
@@ -1039,7 +1037,7 @@ const Movimientos = () => {
                     </tr>
                   ) : !movimientos.length ? (
                     <tr>
-                      <td colSpan={columnas.length + 1} className="px-4 py-8 text-center text-gray-500">
+                      <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                         Sin movimientos
                       </td>
                     </tr>
@@ -1055,51 +1053,48 @@ const Movimientos = () => {
                           >
                             <td className="px-4 py-3 text-sm">
                               <div className="flex items-center gap-2">
-                                {gruposExpandidos.has(grupo.id) ? <FaChevronDown className="text-rose-600" /> : <FaChevronRight className="text-rose-600" />}
-                                <div>
-                                  <div className="font-bold text-rose-800 flex items-center gap-2">
-                                    <FaTruck className="text-rose-600" />
-                                    Salida Masiva: {grupo.id}
+                                {gruposExpandidos.has(grupo.id) ? <FaChevronDown className="text-rose-600 flex-shrink-0" /> : <FaChevronRight className="text-rose-600 flex-shrink-0" />}
+                                <div className="min-w-0">
+                                  <div className="font-bold text-rose-800 flex items-center gap-1 flex-wrap">
+                                    <FaTruck className="text-rose-600 flex-shrink-0" />
+                                    <span className="truncate">SM: {grupo.id.slice(-8)}</span>
                                     {grupo.confirmado && (
-                                      <span className="ml-2 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">
-                                        ✓ Confirmada
-                                      </span>
+                                      <span className="px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">✓</span>
                                     )}
                                   </div>
-                                  <div className="text-xs text-rose-600">{grupo.items.length} productos</div>
+                                  <div className="text-xs text-rose-600">{grupo.items.length} prod.</div>
                                 </div>
                               </div>
                             </td>
-                            <td className="px-4 py-3">
-                              <span className="px-2 py-1 rounded text-xs font-semibold bg-rose-200 text-rose-800">
-                                SALIDA MASIVA
+                            <td className="px-2 py-3">
+                              <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-rose-200 text-rose-800">
+                                MASIVA
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-right font-bold text-rose-800">
+                            <td className="px-2 py-3 text-right font-bold text-rose-800">
                               -{grupo.totalCantidad}
                             </td>
-                            <td className="px-4 py-3 text-rose-800 font-semibold">{grupo.centro_nombre}</td>
-                            <td className="px-4 py-3 text-rose-700">
-                              {grupo.fecha ? new Date(grupo.fecha).toLocaleString('es-MX') : ''}
+                            <td className="px-2 py-3 text-rose-800 font-semibold text-xs truncate" title={grupo.centro_nombre}>{grupo.centro_nombre}</td>
+                            <td className="px-2 py-3 text-rose-700 text-xs">
+                              {grupo.fecha ? new Date(grupo.fecha).toLocaleDateString('es-MX') : ''}
                             </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-1 flex-wrap">
+                            <td className="px-2 py-3">
+                              <div className="flex items-center justify-center gap-1">
                                 {!grupo.confirmado ? (
                                   <>
                                     {/* Hoja de Entrega (para firmas) */}
                                     <button
                                       onClick={(e) => { e.stopPropagation(); descargarHojaEntregaGrupo(grupo.id); }}
-                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-600 text-white rounded-md text-xs font-medium hover:bg-rose-700 transition shadow-sm"
-                                      title="Descargar hoja de entrega para firmas"
+                                      className="inline-flex items-center gap-1 px-2 py-1 bg-rose-600 text-white rounded text-xs font-medium hover:bg-rose-700 transition"
+                                      title="Hoja de entrega"
                                     >
                                       <FaClipboardCheck className="text-xs" />
-                                      <span className="hidden sm:inline">Hoja</span>
                                     </button>
                                     {/* Confirmar Entrega */}
                                     <button
                                       onClick={(e) => { e.stopPropagation(); confirmarEntregaGrupo(grupo.id); }}
                                       disabled={confirmandoGrupo === grupo.id}
-                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                      className="inline-flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                                       title="Confirmar entrega física"
                                     >
                                       {confirmandoGrupo === grupo.id ? (
@@ -1107,18 +1102,16 @@ const Movimientos = () => {
                                       ) : (
                                         <FaCheckCircle className="text-xs" />
                                       )}
-                                      <span className="hidden sm:inline">Confirmar</span>
                                     </button>
                                   </>
                                 ) : (
                                   /* Solo comprobante si ya está confirmado */
                                   <button
                                     onClick={(e) => { e.stopPropagation(); descargarComprobanteGrupo(grupo.id); }}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 transition shadow-sm"
+                                    className="inline-flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition"
                                     title="Descargar comprobante de entrega"
                                   >
                                     <FaFileDownload className="text-xs" />
-                                    Comprobante
                                   </button>
                                 )}
                               </div>
@@ -1130,24 +1123,24 @@ const Movimientos = () => {
                               key={mov.id}
                               className={`transition ${iIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100 border-l-4 border-rose-200`}
                             >
-                              <td className="px-4 py-2 text-sm pl-10">
-                                <div className="font-medium text-gray-800">{mov.producto_nombre || mov.producto || ""}</div>
+                              <td className="px-2 py-2 text-sm pl-8">
+                                <div className="font-medium text-gray-800 truncate text-xs">{mov.producto_nombre || mov.producto || ""}</div>
                                 <div className="text-xs text-gray-500">Lote: {mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
                               </td>
-                              <td className="px-4 py-2">
-                                <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                              <td className="px-2 py-2">
+                                <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
                                   item
                                 </span>
                               </td>
-                              <td className="px-4 py-2 text-right font-semibold text-gray-700">
+                              <td className="px-2 py-2 text-right font-semibold text-gray-700">
                                 -{Math.abs(mov.cantidad)}
                               </td>
-                              <td className="px-4 py-2 text-gray-600 text-sm">{mov.centro_nombre || "Farmacia Central"}</td>
-                              <td className="px-4 py-2 text-gray-500 text-xs">
-                                Cad: {mov.lote?.fecha_caducidad ? new Date(mov.lote.fecha_caducidad).toLocaleDateString('es-MX') : 'N/A'}
+                              <td className="px-2 py-2 text-gray-600 text-xs truncate">{mov.centro_nombre || "Farmacia Central"}</td>
+                              <td className="px-2 py-2 text-gray-500 text-xs">
+                                {mov.lote?.fecha_caducidad ? new Date(mov.lote.fecha_caducidad).toLocaleDateString('es-MX') : ''}
                               </td>
-                              <td className="px-4 py-2 text-xs text-gray-400">
-                                ID: {mov.id}
+                              <td className="px-2 py-2 text-center text-xs text-gray-400">
+                                #{mov.id}
                               </td>
                             </tr>
                           ))}
@@ -1163,13 +1156,13 @@ const Movimientos = () => {
                             } ${expandedId === mov.id ? 'bg-blue-50' : ''}`}
                             onClick={() => setExpandedId(expandedId === mov.id ? null : mov.id)}
                           >
-                            <td className="px-4 py-3 text-sm">
-                              <div className="font-semibold text-gray-800">{mov.producto_nombre || mov.producto || ""}</div>
+                            <td className="px-2 py-3">
+                              <div className="font-semibold text-gray-800 truncate text-sm">{mov.producto_nombre || mov.producto || ""}</div>
                               <div className="text-xs text-gray-500">Lote: {mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
                             </td>
-                            <td className="px-4 py-3">
-                              <div className="flex flex-col gap-1">
-                                <span className={`px-2 py-1 rounded text-xs font-semibold inline-block w-fit ${
+                            <td className="px-2 py-3">
+                              <div className="flex flex-col gap-0.5">
+                                <span className={`px-1.5 py-0.5 rounded text-xs font-semibold inline-block w-fit ${
                                   mov.tipo === "entrada" ? "bg-green-100 text-green-800" :
                                   mov.tipo === "salida" ? "bg-red-100 text-red-800" : "bg-yellow-100 text-yellow-800"
                                 }`}>
@@ -1177,36 +1170,36 @@ const Movimientos = () => {
                                 </span>
                                 {mov.tipo === 'salida' && mov.subtipo_salida && (
                                   <span className="text-xs text-gray-500">
-                                    {mov.subtipo_salida === 'receta' ? '💊 Receta' :
-                                     mov.subtipo_salida === 'consumo_interno' ? '🏥 Consumo' :
-                                     mov.subtipo_salida === 'merma' ? '📉 Merma' :
-                                     mov.subtipo_salida === 'caducidad' ? '⏰ Caducidad' :
-                                     mov.subtipo_salida === 'transferencia' ? '🔄 Transfer.' : mov.subtipo_salida}
+                                    {mov.subtipo_salida === 'receta' ? '💊' :
+                                     mov.subtipo_salida === 'consumo_interno' ? '🏥' :
+                                     mov.subtipo_salida === 'merma' ? '📉' :
+                                     mov.subtipo_salida === 'caducidad' ? '⏰' :
+                                     mov.subtipo_salida === 'transferencia' ? '🔄' : ''}
                                   </span>
                                 )}
                               </div>
                             </td>
-                            <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                            <td className="px-2 py-3 text-right font-semibold text-gray-900">
                               {mov.tipo === 'salida' ? '-' : '+'}{Math.abs(mov.cantidad)}
                             </td>
-                            <td className="px-4 py-3 text-gray-700">{mov.centro_nombre || mov.centro || "Farmacia Central"}</td>
-                            <td className="px-4 py-3 text-gray-600">
-                              {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleString('es-MX') :
-                               mov.fecha ? new Date(mov.fecha).toLocaleString('es-MX') : ""}
+                            <td className="px-2 py-3 text-gray-700 text-xs truncate">{mov.centro_nombre || mov.centro || "Farmacia Central"}</td>
+                            <td className="px-2 py-3 text-gray-600 text-xs">
+                              {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX') :
+                               mov.fecha ? new Date(mov.fecha).toLocaleDateString('es-MX') : ""}
                             </td>
-                            <td className="px-4 py-3">
+                            <td className="px-2 py-3 text-center">
                               <button 
-                                className="text-blue-600 hover:text-blue-800 text-sm"
+                                className="text-blue-600 hover:text-blue-800 text-xs"
                                 onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === mov.id ? null : mov.id); }}
                               >
-                                {expandedId === mov.id ? '▲ Ocultar' : '▼ Detalles'}
+                                {expandedId === mov.id ? '▲' : '▼'}
                               </button>
                             </td>
                           </tr>
                           {expandedId === mov.id && (
                             <tr className="bg-gray-50">
-                              <td colSpan={columnas.length + 1} className="px-6 py-4">
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                              <td colSpan={6} className="px-4 py-3">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                                   <div><span className="font-semibold text-gray-600">ID:</span><p className="text-gray-800">{mov.id}</p></div>
                                   <div><span className="font-semibold text-gray-600">Usuario:</span><p className="text-gray-800">{mov.usuario_nombre || 'Sistema'}</p></div>
                                   {mov.observaciones && (
@@ -1254,14 +1247,14 @@ const Movimientos = () => {
                           } ${expandedId === mov.id ? 'bg-blue-50' : ''}`}
                           onClick={() => setExpandedId(expandedId === mov.id ? null : mov.id)}
                         >
-                          <td className="px-4 py-3 text-sm">
-                            <div className="font-semibold text-gray-800">{mov.producto_nombre || mov.producto || ""}</div>
+                          <td className="px-2 py-3">
+                            <div className="font-semibold text-gray-800 truncate text-sm">{mov.producto_nombre || mov.producto || ""}</div>
                             <div className="text-xs text-gray-500">Lote: {mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="flex flex-col gap-1">
+                          <td className="px-2 py-3">
+                            <div className="flex flex-col gap-0.5">
                               <span
-                                className={`px-2 py-1 rounded text-xs font-semibold inline-block w-fit ${
+                                className={`px-1.5 py-0.5 rounded text-xs font-semibold inline-block w-fit ${
                                   mov.tipo === "entrada"
                                     ? "bg-green-100 text-green-800"
                                     : mov.tipo === "salida"
@@ -1273,41 +1266,40 @@ const Movimientos = () => {
                               </span>
                               {mov.tipo === 'salida' && mov.subtipo_salida && (
                                 <span className="text-xs text-gray-500">
-                                  {mov.subtipo_salida === 'receta' ? '💊 Receta' :
-                                   mov.subtipo_salida === 'consumo_interno' ? '🏥 Consumo' :
-                                   mov.subtipo_salida === 'merma' ? '📉 Merma' :
-                                   mov.subtipo_salida === 'caducidad' ? '⏰ Caducidad' :
-                                   mov.subtipo_salida === 'transferencia' ? '🔄 Transfer.' :
-                                   mov.subtipo_salida}
+                                  {mov.subtipo_salida === 'receta' ? '💊' :
+                                   mov.subtipo_salida === 'consumo_interno' ? '🏥' :
+                                   mov.subtipo_salida === 'merma' ? '📉' :
+                                   mov.subtipo_salida === 'caducidad' ? '⏰' :
+                                   mov.subtipo_salida === 'transferencia' ? '🔄' : ''}
                                 </span>
                               )}
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                          <td className="px-2 py-3 text-right font-semibold text-gray-900">
                             {mov.tipo === 'salida' ? '-' : '+'}{Math.abs(mov.cantidad)}
                           </td>
-                          <td className="px-4 py-3 text-gray-700">{mov.centro_nombre || mov.centro || "Farmacia Central"}</td>
-                          <td className="px-4 py-3 text-gray-600">
+                          <td className="px-2 py-3 text-gray-700 text-xs truncate">{mov.centro_nombre || mov.centro || "Farmacia Central"}</td>
+                          <td className="px-2 py-3 text-gray-600 text-xs">
                             {mov.fecha_movimiento
-                              ? new Date(mov.fecha_movimiento).toLocaleString('es-MX')
+                              ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX')
                               : mov.fecha
-                              ? new Date(mov.fecha).toLocaleString('es-MX')
+                              ? new Date(mov.fecha).toLocaleDateString('es-MX')
                               : ""}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-3 text-center">
                             <button 
-                              className="text-blue-600 hover:text-blue-800 text-sm"
+                              className="text-blue-600 hover:text-blue-800 text-xs"
                               onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === mov.id ? null : mov.id); }}
                             >
-                              {expandedId === mov.id ? '▲ Ocultar' : '▼ Detalles'}
+                              {expandedId === mov.id ? '▲' : '▼'}
                             </button>
                           </td>
                         </tr>
                         {/* Fila expandida con detalles */}
                         {expandedId === mov.id && (
                           <tr className="bg-gray-50">
-                            <td colSpan={columnas.length + 1} className="px-6 py-4">
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <td colSpan={6} className="px-4 py-3">
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                                 <div>
                                   <span className="font-semibold text-gray-600">ID Movimiento:</span>
                                   <p className="text-gray-800">{mov.id}</p>

@@ -64,6 +64,8 @@ from inventario.views_legacy import (
     cargar_workbook_seguro,
     validar_filas_excel,
     invalidar_cache_dashboard,
+    # Export Control de Inventarios
+    exportar_control_inventarios,
     # Constantes usadas en tests
     EXCEL_MAGIC_BYTES,
     leer_archivo_con_limite,
@@ -97,6 +99,8 @@ __all__ = [
     'reporte_medicamentos_por_caducar',
     'reporte_bajo_stock',
     'reporte_consumo',
+    # Export Control Inventarios
+    'exportar_control_inventarios',
     # Helpers
     'CustomPagination',
     'is_farmacia_or_admin',

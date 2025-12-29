@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { trazabilidadAPI, centrosAPI, productosAPI, descargarArchivo } from '../services/api';
 import { toast } from 'react-hot-toast';
-import { FaSearch, FaBox, FaWarehouse, FaHistory, FaExclamationTriangle, FaFilePdf, FaFileExcel, FaBuilding, FaSpinner, FaInfoCircle, FaTimes, FaGlobe, FaCalendarAlt, FaFilter } from 'react-icons/fa';
+import { FaSearch, FaBox, FaWarehouse, FaHistory, FaExclamationTriangle, FaFilePdf, FaFileExcel, FaBuilding, FaSpinner, FaInfoCircle, FaTimes, FaGlobe, FaCalendarAlt, FaFilter, FaClipboardList } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { usePermissions } from '../hooks/usePermissions';
 
@@ -166,6 +166,7 @@ const Trazabilidad = () => {
   const [loading, setLoading] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
+  const [exportingControl, setExportingControl] = useState(false);
   const [resultados, setResultados] = useState(null);
   
   // Modo global (reporte de todos los lotes)
@@ -528,6 +529,27 @@ const Trazabilidad = () => {
       }
     } finally {
       setExportingExcel(false);
+    }
+  };
+
+  // Exportar Control de Inventarios (formato licitación)
+  const handleExportarControlInventarios = async () => {
+    if (!esAdminOFarmacia) {
+      toast.error('Solo administradores y farmacia pueden exportar este formato');
+      return;
+    }
+    
+    setExportingControl(true);
+    try {
+      const response = await trazabilidadAPI.exportarControlInventarios();
+      const filename = `Control_Inventarios_Almacen_Central_${new Date().toISOString().split('T')[0]}.xlsx`;
+      descargarArchivo(response, filename);
+      toast.success('Control de inventarios exportado exitosamente');
+    } catch (error) {
+      console.error('Error al exportar control de inventarios:', error);
+      toast.error(error.response?.data?.error || 'Error al generar el archivo');
+    } finally {
+      setExportingControl(false);
     }
   };
 
@@ -960,6 +982,36 @@ const Trazabilidad = () => {
                   </div>
                 )}
               </div>
+              
+              {/* Botón especial de Control de Inventarios (formato licitación) */}
+              {esAdminOFarmacia && (
+                <div className="pt-3 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={handleExportarControlInventarios}
+                    disabled={exportingControl || loading}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                    style={{ background: 'linear-gradient(135deg, #047857 0%, #065f46 100%)' }}
+                    title="Exportar Control de Inventarios del Almacén Central (Formato Licitación)"
+                  >
+                    {exportingControl ? (
+                      <>
+                        <FaSpinner className="animate-spin" />
+                        Generando...
+                      </>
+                    ) : (
+                      <>
+                        <FaClipboardList />
+                        📊 Exportar Control de Inventarios (Formato Licitación)
+                      </>
+                    )}
+                  </button>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Genera el Excel con el formato oficial de &quot;Control de Inventarios del Almacén Central de Medicamentos&quot;
+                  </p>
+                </div>
+              )}
+              
               {(fechaInicio || fechaFin || tipoMovimiento) && (
                 <p className="text-xs text-blue-600 font-medium">
                   ℹ️ Los filtros de fecha se aplicarán a la búsqueda y las exportaciones
