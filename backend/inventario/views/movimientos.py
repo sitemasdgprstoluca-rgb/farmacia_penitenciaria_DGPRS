@@ -648,14 +648,14 @@ class MovimientoViewSet(
     @action(detail=True, methods=['get'], url_path='recibo-salida')
     def recibo_salida(self, request, pk=None):
         """
-        Genera PDF de recibo de salida para un movimiento especÃ­fico.
+        Genera PDF de recibo de salida para un movimiento específico.
         
-        ParÃ¡metros opcionales:
+        Parámetros opcionales:
         - finalizado: si es 'true', muestra sello ENTREGADO en lugar de firmas
         
         SEGURIDAD: Usuarios pueden generar recibos de movimientos que les correspondan.
         """
-        from core.utils.pdf_reports import generar_recibo_salida_donacion
+        from core.utils.pdf_reports import generar_recibo_salida_movimiento
         
         try:
             movimiento = self.get_object()
@@ -696,21 +696,18 @@ class MovimientoViewSet(
                     'id': movimiento.centro_destino.id if movimiento.centro_destino else None,
                     'nombre': movimiento.centro_destino.nombre if movimiento.centro_destino else ''
                 },
-                'cantidad': movimiento.cantidad,
+                'cantidad': abs(movimiento.cantidad),  # ISS-FIX: Usar valor absoluto
                 'observaciones': movimiento.motivo or '',
                 'producto': movimiento.lote.producto.nombre if movimiento.lote and movimiento.lote.producto else 'N/A',
+                'producto_clave': movimiento.lote.producto.clave if movimiento.lote and movimiento.lote.producto else 'N/A',
                 'lote': movimiento.lote.numero_lote if movimiento.lote else 'N/A',
                 'presentacion': movimiento.lote.producto.presentacion if movimiento.lote and movimiento.lote.producto else 'N/A',
+                'usuario': movimiento.usuario.get_full_name() if movimiento.usuario else 'Sistema',
             }
             
-            # Si hay fecha de entrega registrada, usarla
-            if hasattr(movimiento, 'fecha_entrega') and movimiento.fecha_entrega:
-                movimiento_data['fecha_entrega'] = movimiento.fecha_entrega.strftime('%Y-%m-%d %H:%M')
-            
-            # Generar PDF
-            pdf_buffer = generar_recibo_salida_donacion(
+            # Generar PDF usando la función específica para movimientos
+            pdf_buffer = generar_recibo_salida_movimiento(
                 movimiento_data,
-                items_data=None,
                 finalizado=finalizado
             )
             
@@ -718,7 +715,8 @@ class MovimientoViewSet(
                 pdf_buffer.getvalue(),
                 content_type='application/pdf'
             )
-            response['Content-Disposition'] = f'attachment; filename="Recibo_Salida_{movimiento.id}_{timezone.now().strftime("%Y%m%d")}.pdf"'
+            tipo_doc = 'Comprobante_Entrega' if finalizado else 'Recibo_Salida'
+            response['Content-Disposition'] = f'attachment; filename="{tipo_doc}_{movimiento.id}_{timezone.now().strftime("%Y%m%d")}.pdf"'
             
             logger.info(f"Recibo de salida generado para movimiento {movimiento.id} por usuario {user.username}")
             return response
