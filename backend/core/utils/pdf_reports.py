@@ -1702,6 +1702,24 @@ def generar_recibo_salida_movimiento(movimiento_data, finalizado=False):
         spaceAfter=6
     )
     
+    # Estilo para celdas de tabla con wrap
+    cell_style = ParagraphStyle(
+        'CellStyle',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=11,
+        wordWrap='CJK'
+    )
+    
+    cell_style_center = ParagraphStyle(
+        'CellStyleCenter',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=11,
+        alignment=1,
+        wordWrap='CJK'
+    )
+    
     # Título según tipo
     subtipo = movimiento_data.get('subtipo_salida', 'transferencia') or 'transferencia'
     if subtipo.lower() == 'transferencia':
@@ -1733,20 +1751,20 @@ def generar_recibo_salida_movimiento(movimiento_data, finalizado=False):
     
     usuario = movimiento_data.get('usuario', 'Sistema')
     
-    # ISS-FIX: Tabla de información con 2 filas para mejor legibilidad
-    # y evitar que nombres largos de centros se sobrepongan
+    # Tabla de información con Paragraphs para word wrap
     info_data = [
-        ['Folio:', f'MOV-{folio}', 'Fecha:', str(fecha)],
-        ['Origen:', str(centro_origen_nombre)[:45], 'Destino:', ''],
-        ['Registrado por:', str(usuario)[:25], 'Tipo:', str(subtipo).capitalize()],
+        [Paragraph('<b>Folio:</b>', cell_style), Paragraph(f'MOV-{folio}', cell_style), 
+         Paragraph('<b>Fecha:</b>', cell_style), Paragraph(str(fecha), cell_style)],
+        [Paragraph('<b>Origen:</b>', cell_style), Paragraph(str(centro_origen_nombre), cell_style), 
+         Paragraph('<b>Destino:</b>', cell_style), Paragraph(str(centro_destino_nombre), cell_style)],
+        [Paragraph('<b>Registrado por:</b>', cell_style), Paragraph(str(usuario), cell_style), 
+         Paragraph('<b>Tipo:</b>', cell_style), Paragraph(str(subtipo).capitalize(), cell_style)],
     ]
     
-    # ISS-FIX: Anchos ajustados para evitar sobreposición
-    info_table = Table(info_data, colWidths=[90, 175, 55, 160])
+    # Anchos de columna balanceados
+    info_table = Table(info_data, colWidths=[85, 155, 55, 185])
     info_table.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 9),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
         ('TOPPADDING', (0, 0), (-1, -1), 6),
@@ -1757,22 +1775,6 @@ def generar_recibo_salida_movimiento(movimiento_data, finalizado=False):
     ]))
     elements.append(info_table)
     
-    # ISS-FIX: Mostrar destino en fila separada si es largo
-    if centro_destino_nombre and centro_destino_nombre != 'N/A':
-        elements.append(Spacer(1, 5))
-        destino_data = [['Destino:', str(centro_destino_nombre)]]
-        destino_table = Table(destino_data, colWidths=[90, 390])
-        destino_table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
-            ('FONTNAME', (1, 0), (1, 0), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('BACKGROUND', (0, 0), (0, 0), colors.Color(0.95, 0.95, 0.95)),
-        ]))
-        elements.append(destino_table)
-    
     elements.append(Spacer(1, 15))
     
     # Tabla de detalle del producto
@@ -1782,18 +1784,31 @@ def generar_recibo_salida_movimiento(movimiento_data, finalizado=False):
     producto = movimiento_data.get('producto', 'N/A')
     producto_clave = movimiento_data.get('producto_clave', 'N/A')
     lote = movimiento_data.get('lote', 'N/A')
-    # ISS-FIX: Asegurar cantidad nunca negativa
+    # Asegurar cantidad nunca negativa
     cantidad = max(0, abs(int(movimiento_data.get('cantidad', 0))))
     presentacion = movimiento_data.get('presentacion', 'N/A') or 'N/A'
     
-    # ISS-FIX: Mostrar cantidad y presentación juntas para mejor legibilidad
+    # Encabezados con estilo
+    header_style = ParagraphStyle(
+        'HeaderStyle',
+        parent=styles['Normal'],
+        fontSize=9,
+        textColor=colors.white,
+        alignment=1
+    )
+    
+    # Tabla de detalle con Paragraphs para word wrap
     detalle_data = [
-        ['Clave', 'Producto', 'Lote', 'Cantidad', 'Presentación'],
-        [str(producto_clave), str(producto)[:50], str(lote), str(cantidad), str(presentacion)]
+        [Paragraph('<b>Clave</b>', header_style), Paragraph('<b>Producto</b>', header_style), 
+         Paragraph('<b>Lote</b>', header_style), Paragraph('<b>Cantidad</b>', header_style), 
+         Paragraph('<b>Presentación</b>', header_style)],
+        [Paragraph(str(producto_clave), cell_style_center), Paragraph(str(producto), cell_style_center), 
+         Paragraph(str(lote), cell_style_center), Paragraph(str(cantidad), cell_style_center), 
+         Paragraph(str(presentacion), cell_style_center)]
     ]
     
-    # ISS-FIX: Anchos ajustados para evitar texto cortado
-    detalle_table = Table(detalle_data, colWidths=[60, 175, 95, 55, 95])
+    # Anchos ajustados para mejor visualización (total ~480)
+    detalle_table = Table(detalle_data, colWidths=[50, 160, 80, 50, 140])
     detalle_table.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 9),
