@@ -8252,10 +8252,11 @@ def reporte_movimientos(request):
                 Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
             )
         
+        # FIX: Usar fecha__date para comparar solo la fecha (ignorar hora)
         if fecha_inicio:
-            movimientos = movimientos.filter(fecha__gte=fecha_inicio)
+            movimientos = movimientos.filter(fecha__date__gte=fecha_inicio)
         if fecha_fin:
-            movimientos = movimientos.filter(fecha__lte=fecha_fin)
+            movimientos = movimientos.filter(fecha__date__lte=fecha_fin)
         if tipo:
             movimientos = movimientos.filter(tipo=tipo.lower())
         
@@ -9495,20 +9496,19 @@ def trazabilidad_global(request):
             'centro_origen', 'centro_destino', 'usuario'
         ).filter(lote__activo=True)
         
-        # Filtrar movimientos por fecha
+        # FIX: Filtrar movimientos por fecha usando fecha__date para ignorar hora
         if fecha_inicio:
             try:
-                fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
-                movimientos_query = movimientos_query.filter(fecha__gte=fecha_inicio_dt)
+                fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d').date()
+                movimientos_query = movimientos_query.filter(fecha__date__gte=fecha_inicio_dt)
             except ValueError:
                 pass
         
         if fecha_fin:
             try:
-                fecha_fin_dt = datetime.strptime(fecha_fin, '%Y-%m-%d')
-                # Incluir todo el día
-                fecha_fin_dt = fecha_fin_dt.replace(hour=23, minute=59, second=59)
-                movimientos_query = movimientos_query.filter(fecha__lte=fecha_fin_dt)
+                fecha_fin_dt = datetime.strptime(fecha_fin, '%Y-%m-%d').date()
+                # Usar fecha__date__lte para incluir todo el día automáticamente
+                movimientos_query = movimientos_query.filter(fecha__date__lte=fecha_fin_dt)
             except ValueError:
                 pass
         
@@ -10231,7 +10231,7 @@ def exportar_control_inventarios(request):
                 producto.nombre_comercial or '',  # E - Nombre comercial del producto (vacío si no tiene)
                 producto.concentracion or '',  # F
                 producto.presentacion or '',  # G
-                f'=(I{row}-K{row})/30',  # H - Fórmula MESES
+                f'=ROUND((I{row}-K{row})/30,0)',  # H - Fórmula MESES (redondeado a entero)
                 lote.fecha_caducidad,  # I - Fecha caducidad
                 max(0, lote.cantidad_actual),  # J - ISS-FIX: Nunca mostrar stock negativo
                 fecha_ingreso_date,  # K

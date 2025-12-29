@@ -422,15 +422,15 @@ class MovimientoViewSet(
             if tipo:
                 queryset = queryset.filter(tipo=tipo.lower())
             
+            # FIX: Usar fecha__date para comparar solo la fecha (ignorar hora)
             fecha_inicio = request.query_params.get('fecha_inicio')
             if fecha_inicio:
-                queryset = queryset.filter(fecha__gte=fecha_inicio)
+                queryset = queryset.filter(fecha__date__gte=fecha_inicio)
             
             fecha_fin = request.query_params.get('fecha_fin')
             if fecha_fin:
-                queryset = queryset.filter(fecha__lte=fecha_fin)
+                queryset = queryset.filter(fecha__date__lte=fecha_fin)
             
-            # FIX: Agregar filtros faltantes para consistencia total
             producto = request.query_params.get('producto')
             if producto:
                 queryset = queryset.filter(lote__producto_id=producto)
@@ -538,13 +538,14 @@ class MovimientoViewSet(
             if tipo:
                 queryset = queryset.filter(tipo=tipo.lower())
             
+            # FIX: Usar fecha__date para comparar solo la fecha (ignorar hora)
             fecha_inicio = request.query_params.get('fecha_inicio')
             if fecha_inicio:
-                queryset = queryset.filter(fecha__gte=fecha_inicio)
+                queryset = queryset.filter(fecha__date__gte=fecha_inicio)
             
             fecha_fin = request.query_params.get('fecha_fin')
             if fecha_fin:
-                queryset = queryset.filter(fecha__lte=fecha_fin)
+                queryset = queryset.filter(fecha__date__lte=fecha_fin)
             
             producto = request.query_params.get('producto')
             if producto:
@@ -554,7 +555,6 @@ class MovimientoViewSet(
             if centro:
                 queryset = queryset.filter(Q(centro_origen_id=centro) | Q(centro_destino_id=centro) | Q(lote__centro_id=centro))
             
-            # FIX: Agregar filtros faltantes para consistencia total
             lote = request.query_params.get('lote')
             if lote:
                 if lote.isdigit():
