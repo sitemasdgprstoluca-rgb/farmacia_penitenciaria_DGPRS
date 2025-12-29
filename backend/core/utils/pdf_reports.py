@@ -1640,6 +1640,231 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
     return buffer
 
 
+def generar_recibo_salida_movimiento(movimiento_data, finalizado=False):
+    """
+    Genera un PDF de recibo de salida para transferencias de inventario.
+    
+    Args:
+        movimiento_data: dict con datos del movimiento:
+            - folio: ID del movimiento
+            - fecha: fecha del movimiento
+            - tipo: tipo de movimiento (salida)
+            - subtipo_salida: subtipo (transferencia, consumo, etc.)
+            - centro_origen: dict con id y nombre del origen
+            - centro_destino: dict con id y nombre del destino
+            - cantidad: cantidad transferida
+            - producto: nombre del producto
+            - producto_clave: clave del producto
+            - lote: número de lote
+            - presentacion: presentación del producto
+            - usuario: nombre del usuario que realizó el movimiento
+            - observaciones: observaciones/motivo
+        finalizado: si True, muestra sello de ENTREGADO en lugar de firmas
+    
+    Returns:
+        BytesIO: Buffer con el PDF generado
+    """
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=50,
+        leftMargin=50,
+        topMargin=60,
+        bottomMargin=50
+    )
+    
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Estilos personalizados
+    title_style = ParagraphStyle(
+        'TitleRecibo',
+        parent=styles['Heading1'],
+        fontSize=16,
+        alignment=1,
+        spaceAfter=20,
+        textColor=colors.Color(0.39, 0.14, 0.25)  # Color institucional
+    )
+    
+    subtitle_style = ParagraphStyle(
+        'SubtitleRecibo',
+        parent=styles['Normal'],
+        fontSize=12,
+        alignment=1,
+        spaceAfter=10
+    )
+    
+    normal_style = ParagraphStyle(
+        'NormalRecibo',
+        parent=styles['Normal'],
+        fontSize=10,
+        spaceAfter=6
+    )
+    
+    # Título según tipo
+    subtipo = movimiento_data.get('subtipo_salida', 'transferencia') or 'transferencia'
+    if subtipo.lower() == 'transferencia':
+        titulo = "RECIBO DE TRANSFERENCIA DE MEDICAMENTOS"
+    else:
+        titulo = f"RECIBO DE SALIDA - {subtipo.upper()}"
+    
+    elements.append(Paragraph(titulo, title_style))
+    elements.append(Paragraph("Sistema de Inventario Farmacéutico Penitenciario", subtitle_style))
+    elements.append(Spacer(1, 15))
+    
+    # Información del movimiento
+    folio = movimiento_data.get('folio', movimiento_data.get('id', 'N/A'))
+    fecha = movimiento_data.get('fecha', datetime.now().strftime('%Y-%m-%d %H:%M'))
+    if isinstance(fecha, str) and 'T' in fecha:
+        fecha = fecha.replace('T', ' ')[:16]
+    
+    centro_origen = movimiento_data.get('centro_origen', {})
+    if isinstance(centro_origen, dict):
+        centro_origen_nombre = centro_origen.get('nombre', 'Almacén Central')
+    else:
+        centro_origen_nombre = str(centro_origen) or 'Almacén Central'
+    
+    centro_destino = movimiento_data.get('centro_destino', {})
+    if isinstance(centro_destino, dict):
+        centro_destino_nombre = centro_destino.get('nombre', '')
+    else:
+        centro_destino_nombre = str(centro_destino) or ''
+    
+    usuario = movimiento_data.get('usuario', 'Sistema')
+    
+    # Tabla de información general
+    info_data = [
+        ['Folio:', f'MOV-{folio}', 'Fecha:', str(fecha)],
+        ['Origen:', str(centro_origen_nombre), 'Destino:', str(centro_destino_nombre)],
+        ['Registrado por:', str(usuario), 'Tipo:', str(subtipo).capitalize()],
+    ]
+    
+    info_table = Table(info_data, colWidths=[80, 160, 80, 160])
+    info_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('BACKGROUND', (0, 0), (0, -1), colors.Color(0.95, 0.95, 0.95)),
+        ('BACKGROUND', (2, 0), (2, -1), colors.Color(0.95, 0.95, 0.95)),
+    ]))
+    elements.append(info_table)
+    elements.append(Spacer(1, 20))
+    
+    # Tabla de detalle del producto
+    elements.append(Paragraph("<b>Detalle del Producto:</b>", normal_style))
+    elements.append(Spacer(1, 10))
+    
+    producto = movimiento_data.get('producto', 'N/A')
+    producto_clave = movimiento_data.get('producto_clave', 'N/A')
+    lote = movimiento_data.get('lote', 'N/A')
+    cantidad = abs(int(movimiento_data.get('cantidad', 0)))
+    presentacion = movimiento_data.get('presentacion', 'N/A') or 'N/A'
+    
+    detalle_data = [
+        ['Clave', 'Producto', 'Lote', 'Cantidad', 'Presentación'],
+        [str(producto_clave)[:15], str(producto)[:40], str(lote)[:20], str(cantidad), str(presentacion)[:20]]
+    ]
+    
+    detalle_table = Table(detalle_data, colWidths=[70, 180, 100, 60, 70])
+    detalle_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.39, 0.14, 0.25)),  # Color institucional
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+    ]))
+    elements.append(detalle_table)
+    elements.append(Spacer(1, 20))
+    
+    # Observaciones si hay
+    observaciones = movimiento_data.get('observaciones', '') or ''
+    if observaciones:
+        elements.append(Paragraph(f"<b>Observaciones:</b> {observaciones}", normal_style))
+        elements.append(Spacer(1, 20))
+    
+    # Sección de firmas o sello de entregado
+    if finalizado:
+        # Mostrar sello de ENTREGADO
+        elements.append(Spacer(1, 30))
+        
+        entregado_box = Table(
+            [['✓ ENTREGADO']],
+            colWidths=[200]
+        )
+        entregado_box.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 24),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.Color(0.2, 0.6, 0.2)),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('BOX', (0, 0), (-1, -1), 3, colors.Color(0.2, 0.6, 0.2)),
+            ('TOPPADDING', (0, 0), (-1, -1), 15),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 15),
+        ]))
+        
+        # Centrar la tabla
+        elements.append(Table([[entregado_box]], colWidths=[480]))
+        elements.append(Spacer(1, 10))
+        
+        fecha_entrega = movimiento_data.get('fecha_entrega', datetime.now().strftime('%d/%m/%Y %H:%M'))
+        elements.append(Paragraph(
+            f"Fecha de confirmación: {fecha_entrega}",
+            ParagraphStyle('FechaEntrega', parent=styles['Normal'], fontSize=10, alignment=1)
+        ))
+    else:
+        # Campos para firmas
+        elements.append(Spacer(1, 20))
+        elements.append(Paragraph("<b>FIRMAS DE CONFORMIDAD</b>", ParagraphStyle(
+            'FirmasTitle',
+            parent=styles['Normal'],
+            fontSize=12,
+            alignment=1,
+            spaceAfter=30
+        )))
+        
+        firma_data = [
+            ['', ''],
+            ['_' * 35, '_' * 35],
+            ['ENTREGA', 'RECIBE'],
+            ['Nombre: ____________________', 'Nombre: ____________________'],
+            ['Cargo: _____________________', 'Cargo: _____________________'],
+            ['Fecha: _____________________', 'Fecha: _____________________'],
+        ]
+        
+        firma_table = Table(firma_data, colWidths=[240, 240])
+        firma_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTNAME', (0, 2), (-1, 2), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, 0), 50),  # Espacio para firma
+        ]))
+        elements.append(firma_table)
+    
+    # Pie de página con fecha/hora de generación
+    elements.append(Spacer(1, 30))
+    elements.append(Paragraph(
+        f"Documento generado el {datetime.now().strftime('%d/%m/%Y a las %H:%M:%S')}",
+        ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, alignment=1, textColor=colors.grey)
+    ))
+    
+    # Construir PDF
+    doc.build(elements)
+    
+    buffer.seek(0)
+    logger.info(f"Recibo de salida/transferencia PDF generado - Folio: MOV-{folio}")
+    return buffer
+
+
 def generar_recibo_salida_donacion(movimiento_data, items_data=None, finalizado=False):
     """
     Genera un PDF de recibo de salida con campos para firmas.

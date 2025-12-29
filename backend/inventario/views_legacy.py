@@ -4632,6 +4632,94 @@ class MovimientoViewSet(
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=True, methods=['get'], url_path='recibo-salida')
+    def recibo_salida(self, request, pk=None):
+        """
+        Genera PDF de recibo de salida para un movimiento específico.
+        
+        Parámetros opcionales:
+        - finalizado: si es 'true', muestra sello ENTREGADO en lugar de firmas
+        
+        SEGURIDAD: Usuarios pueden generar recibos de movimientos que les correspondan.
+        """
+        from core.utils.pdf_reports import generar_recibo_salida_movimiento
+        
+        try:
+            movimiento = self.get_object()
+            
+            # Verificar que es un movimiento de salida
+            if movimiento.tipo != 'salida':
+                return Response(
+                    {'error': 'Solo se pueden generar recibos para movimientos de salida'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Verificar permisos - admin/farmacia pueden ver todos, otros solo sus centros
+            user = request.user
+            if not is_farmacia_or_admin(user):
+                user_centro = get_user_centro(user)
+                if user_centro:
+                    # Usuario de centro puede ver si es origen o destino
+                    if movimiento.centro_origen != user_centro and movimiento.centro_destino != user_centro:
+                        if movimiento.lote and movimiento.lote.centro != user_centro:
+                            return Response(
+                                {'error': 'No tienes permiso para ver este movimiento'},
+                                status=status.HTTP_403_FORBIDDEN
+                            )
+            
+            finalizado = request.query_params.get('finalizado', 'false').lower() == 'true'
+            
+            # Construir datos del movimiento
+            movimiento_data = {
+                'folio': movimiento.id,
+                'fecha': movimiento.fecha.strftime('%Y-%m-%d %H:%M') if movimiento.fecha else 'N/A',
+                'tipo': movimiento.tipo,
+                'subtipo_salida': movimiento.subtipo_salida or 'transferencia',
+                'centro_origen': {
+                    'id': movimiento.centro_origen.id if movimiento.centro_origen else None,
+                    'nombre': movimiento.centro_origen.nombre if movimiento.centro_origen else 'Almacén Central'
+                },
+                'centro_destino': {
+                    'id': movimiento.centro_destino.id if movimiento.centro_destino else None,
+                    'nombre': movimiento.centro_destino.nombre if movimiento.centro_destino else ''
+                },
+                'cantidad': abs(movimiento.cantidad),  # ISS-FIX: Usar valor absoluto
+                'observaciones': movimiento.motivo or '',
+                'producto': movimiento.lote.producto.nombre if movimiento.lote and movimiento.lote.producto else 'N/A',
+                'producto_clave': movimiento.lote.producto.clave if movimiento.lote and movimiento.lote.producto else 'N/A',
+                'lote': movimiento.lote.numero_lote if movimiento.lote else 'N/A',
+                'presentacion': movimiento.lote.producto.presentacion if movimiento.lote and movimiento.lote.producto else 'N/A',
+                'usuario': movimiento.usuario.get_full_name() if movimiento.usuario else 'Sistema',
+            }
+            
+            # Generar PDF usando la función específica para movimientos
+            pdf_buffer = generar_recibo_salida_movimiento(
+                movimiento_data,
+                finalizado=finalizado
+            )
+            
+            response = HttpResponse(
+                pdf_buffer.getvalue(),
+                content_type='application/pdf'
+            )
+            tipo_doc = 'Comprobante_Entrega' if finalizado else 'Recibo_Salida'
+            response['Content-Disposition'] = f'attachment; filename="{tipo_doc}_{movimiento.id}_{timezone.now().strftime("%Y%m%d")}.pdf"'
+            
+            logger.info(f"Recibo de salida generado para movimiento {movimiento.id} por usuario {user.username}")
+            return response
+            
+        except Movimiento.DoesNotExist:
+            return Response(
+                {'error': 'Movimiento no encontrado'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            logger.error(f"Error generando recibo de salida: {str(e)}")
+            return Response({
+                'error': 'Error al generar recibo de salida',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     """

@@ -444,10 +444,12 @@ const Movimientos = () => {
       toast.loading("Generando recibo...", { id: "recibo" });
       const response = await movimientosAPI.getReciboSalida(movimiento.id);
       const fecha = new Date(movimiento.fecha || movimiento.fecha_movimiento).toISOString().split("T")[0];
-      descargarArchivo(response, `recibo_salida_${movimiento.id}_${fecha}.pdf`);
+      // ISS-FIX: Usar response.data ya que axios devuelve los datos en .data
+      descargarArchivo(response.data || response, `recibo_salida_${movimiento.id}_${fecha}.pdf`);
       toast.success("Recibo generado", { id: "recibo" });
     } catch (err) {
-      toast.error("No se pudo generar el recibo", { id: "recibo" });
+      const errorMsg = err.response?.data?.error || err.response?.data?.detail || err.message || "No se pudo generar el recibo";
+      toast.error(errorMsg, { id: "recibo" });
       console.error("Error generando recibo:", err);
     }
   };
@@ -458,10 +460,12 @@ const Movimientos = () => {
       toast.loading("Generando comprobante de entrega...", { id: "recibo-final" });
       const response = await movimientosAPI.getReciboSalida(movimiento.id, true);
       const fecha = new Date(movimiento.fecha || movimiento.fecha_movimiento).toISOString().split("T")[0];
-      descargarArchivo(response, `comprobante_entrega_${movimiento.id}_${fecha}.pdf`);
+      // ISS-FIX: Usar response.data ya que axios devuelve los datos en .data
+      descargarArchivo(response.data || response, `comprobante_entrega_${movimiento.id}_${fecha}.pdf`);
       toast.success("Comprobante generado", { id: "recibo-final" });
     } catch (err) {
-      toast.error("No se pudo generar el comprobante", { id: "recibo-final" });
+      const errorMsg = err.response?.data?.error || err.response?.data?.detail || err.message || "No se pudo generar el comprobante";
+      toast.error(errorMsg, { id: "recibo-final" });
       console.error("Error generando comprobante:", err);
     }
   };
