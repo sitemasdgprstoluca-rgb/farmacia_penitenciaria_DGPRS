@@ -7557,8 +7557,16 @@ def trazabilidad_producto(request, clave):
     Trazabilidad de un producto identificado por clave (case-insensitive).
     Retorna lotes, movimientos y alertas de stock/caducidad.
     
+    Filtros soportados:
+    - centro: ID del centro (solo admin/farmacia)
+    - fecha_inicio: Fecha inicio (YYYY-MM-DD) para filtrar movimientos
+    - fecha_fin: Fecha fin (YYYY-MM-DD) para filtrar movimientos
+    - tipo: Tipo de movimiento (entrada, salida, ajuste)
+    
     SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
     """
+    from datetime import datetime, date, timedelta
+    
     try:
         # SEGURIDAD: Determinar filtro de centro
         user = request.user
@@ -7570,7 +7578,12 @@ def trazabilidad_producto(request, clave):
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
+        # Obtener parámetros de filtro
         centro_param = request.query_params.get('centro')
+        fecha_inicio = request.query_params.get('fecha_inicio')
+        fecha_fin = request.query_params.get('fecha_fin')
+        tipo_movimiento = request.query_params.get('tipo')
+        
         if centro_param and is_farmacia_or_admin(user):
             try:
                 user_centro = Centro.objects.get(pk=centro_param)
@@ -7592,7 +7605,6 @@ def trazabilidad_producto(request, clave):
         
         lotes = lotes.order_by('-created_at')
         lotes_data = []
-        from datetime import date, timedelta
 
         for lote in lotes:
             dias_caducidad = (lote.fecha_caducidad - date.today()).days if lote.fecha_caducidad else None
@@ -7636,6 +7648,26 @@ def trazabilidad_producto(request, clave):
             movimientos = movimientos.filter(
                 Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
             )
+        
+        # Aplicar filtros de fecha a movimientos
+        if fecha_inicio:
+            try:
+                fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+                movimientos = movimientos.filter(fecha__gte=fecha_inicio_dt)
+            except ValueError:
+                pass
+        
+        if fecha_fin:
+            try:
+                fecha_fin_dt = datetime.strptime(fecha_fin, '%Y-%m-%d')
+                fecha_fin_dt = fecha_fin_dt.replace(hour=23, minute=59, second=59)
+                movimientos = movimientos.filter(fecha__lte=fecha_fin_dt)
+            except ValueError:
+                pass
+        
+        # Aplicar filtro de tipo de movimiento
+        if tipo_movimiento:
+            movimientos = movimientos.filter(tipo=tipo_movimiento.lower())
         
         movimientos = movimientos.order_by('-fecha')[:100]
         movimientos_data = []
@@ -7710,8 +7742,15 @@ def trazabilidad_lote(request, codigo):
     """
     Trazabilidad completa de un lote por su numero.
     
+    Filtros soportados:
+    - fecha_inicio: Fecha inicio (YYYY-MM-DD) para filtrar movimientos
+    - fecha_fin: Fecha fin (YYYY-MM-DD) para filtrar movimientos
+    - tipo: Tipo de movimiento (entrada, salida, ajuste)
+    
     SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
     """
+    from datetime import datetime
+    
     try:
         if not request.user or not request.user.is_authenticated or not is_farmacia_or_admin(request.user):
             return Response({'error': 'Solo usuarios de farmacia o administradores pueden acceder a reportes'}, status=status.HTTP_403_FORBIDDEN)
@@ -7720,6 +7759,11 @@ def trazabilidad_lote(request, codigo):
         user = request.user
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
+        
+        # Obtener parámetros de filtro
+        fecha_inicio = request.query_params.get('fecha_inicio')
+        fecha_fin = request.query_params.get('fecha_fin')
+        tipo_movimiento = request.query_params.get('tipo')
         
         lote_query = Lote.objects.select_related('producto').filter(numero_lote__iexact=codigo)
         
@@ -7731,7 +7775,29 @@ def trazabilidad_lote(request, codigo):
         if not lote:
             return Response({'error': 'Lote no encontrado', 'codigo_buscado': codigo}, status=status.HTTP_404_NOT_FOUND)
 
-        movimientos = Movimiento.objects.select_related('centro_origen', 'centro_destino', 'usuario').filter(lote=lote).order_by('fecha')
+        movimientos = Movimiento.objects.select_related('centro_origen', 'centro_destino', 'usuario').filter(lote=lote)
+        
+        # Aplicar filtros de fecha
+        if fecha_inicio:
+            try:
+                fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+                movimientos = movimientos.filter(fecha__gte=fecha_inicio_dt)
+            except ValueError:
+                pass
+        
+        if fecha_fin:
+            try:
+                fecha_fin_dt = datetime.strptime(fecha_fin, '%Y-%m-%d')
+                fecha_fin_dt = fecha_fin_dt.replace(hour=23, minute=59, second=59)
+                movimientos = movimientos.filter(fecha__lte=fecha_fin_dt)
+            except ValueError:
+                pass
+        
+        # Aplicar filtro de tipo
+        if tipo_movimiento:
+            movimientos = movimientos.filter(tipo=tipo_movimiento.lower())
+        
+        movimientos = movimientos.order_by('fecha')
         historial = []
         saldo = 0
         for mov in movimientos:

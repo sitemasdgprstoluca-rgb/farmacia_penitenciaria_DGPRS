@@ -347,8 +347,13 @@ const Trazabilidad = () => {
         return;
       }
 
-      // Ahora obtenemos los datos completos
-      const params = centroFiltro ? { centro: centroFiltro } : {};
+      // Ahora obtenemos los datos completos - incluyendo filtros de fecha
+      const params = {};
+      if (centroFiltro) params.centro = centroFiltro;
+      if (fechaInicio) params.fecha_inicio = fechaInicio;
+      if (fechaFin) params.fecha_fin = fechaFin;
+      if (tipoMovimiento) params.tipo = tipoMovimiento;
+      
       const normalizer = tipo === 'producto' ? normalizeProductoResponse : normalizeLoteResponse;
       
       const response = tipo === 'producto'
@@ -359,7 +364,7 @@ const Trazabilidad = () => {
       setResultados(datosNormalizados);
       setTipoBusqueda(tipo);
       setIdentificadorResultados(identificador);
-      lastSearchRef.current = { termino: terminoTrimmed, centro: centroFiltro };
+      lastSearchRef.current = { termino: terminoTrimmed, centro: centroFiltro, fechaInicio, fechaFin };
       
       toast.success(`Trazabilidad de ${tipo === 'producto' ? 'producto' : 'lote'} cargada`);
     } catch (error) {
@@ -956,8 +961,8 @@ const Trazabilidad = () => {
                 )}
               </div>
               {(fechaInicio || fechaFin || tipoMovimiento) && (
-                <p className="text-xs text-gray-500">
-                  Los filtros de fecha se aplicarán a la búsqueda y las exportaciones
+                <p className="text-xs text-blue-600 font-medium">
+                  ℹ️ Los filtros de fecha se aplicarán a la búsqueda y las exportaciones
                 </p>
               )}
             </div>
@@ -965,13 +970,23 @@ const Trazabilidad = () => {
 
           {/* Indicador de tipo detectado */}
           {resultados && tipoBusqueda && !modoGlobal && (
-            <div className="text-xs text-gray-500 flex items-center gap-2">
+            <div className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
               <span className={`px-2 py-0.5 rounded-full ${
                 tipoBusqueda === 'producto' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
               }`}>
                 {tipoBusqueda === 'producto' ? '📦 Producto' : '🏷️ Lote'}
               </span>
               <span>Resultados para: <strong>{identificadorResultados}</strong></span>
+              {(fechaInicio || fechaFin) && (
+                <span className="text-blue-600">
+                  | Período: {fechaInicio || '---'} a {fechaFin || 'hoy'}
+                </span>
+              )}
+              {tipoMovimiento && (
+                <span className="text-blue-600">
+                  | Tipo: {tipoMovimiento}
+                </span>
+              )}
             </div>
           )}
           

@@ -163,6 +163,12 @@ const Movimientos = () => {
     const match = motivo.match(/\[(SAL-[^\]]+)\]/);
     return match ? match[1] : null;
   };
+  
+  // Función para verificar si un movimiento está confirmado
+  const estaConfirmado = (mov) => {
+    const motivo = mov.observaciones || mov.motivo || '';
+    return motivo.includes('[CONFIRMADO]');
+  };
 
   // Agrupar movimientos por grupo de salida
   const movimientosAgrupados = useMemo(() => {
@@ -182,6 +188,7 @@ const Movimientos = () => {
             fecha: mov.fecha || mov.fecha_movimiento,
             usuario_nombre: mov.usuario_nombre || 'Sistema',
             totalCantidad: 0,
+            confirmado: estaConfirmado(mov), // Detectar si está confirmado
           });
         }
         const grupo = grupos.get(grupoId);
@@ -482,6 +489,26 @@ const Movimientos = () => {
     } catch (err) {
       toast.error("No se pudo generar el comprobante", { id: "comp-grupo" });
       console.error("Error generando comprobante:", err);
+    }
+  };
+  
+  // Confirmar entrega de grupo de salida masiva
+  const [confirmandoGrupo, setConfirmandoGrupo] = useState(null);
+  
+  const confirmarEntregaGrupo = async (grupoId) => {
+    setConfirmandoGrupo(grupoId);
+    try {
+      toast.loading("Confirmando entrega...", { id: "confirmar-grupo" });
+      await salidaMasivaAPI.confirmarEntrega(grupoId);
+      toast.success("Entrega confirmada exitosamente", { id: "confirmar-grupo" });
+      // Recargar movimientos para actualizar el estado
+      cargarMovimientos();
+    } catch (err) {
+      const msg = err.response?.data?.message || "No se pudo confirmar la entrega";
+      toast.error(msg, { id: "confirmar-grupo" });
+      console.error("Error confirmando entrega:", err);
+    } finally {
+      setConfirmandoGrupo(null);
     }
   };
 
@@ -1023,7 +1050,7 @@ const Movimientos = () => {
                         <React.Fragment key={grupo.id}>
                           {/* Fila del grupo colapsado */}
                           <tr 
-                            className={`transition cursor-pointer ${gIndex % 2 === 0 ? 'bg-rose-50' : 'bg-rose-100/50'} hover:bg-rose-100 border-l-4 border-rose-500`}
+                            className={`transition cursor-pointer ${gIndex % 2 === 0 ? 'bg-rose-50' : 'bg-rose-100/50'} hover:bg-rose-100 border-l-4 ${grupo.confirmado ? 'border-green-500' : 'border-rose-500'}`}
                             onClick={() => toggleGrupo(grupo.id)}
                           >
                             <td className="px-4 py-3 text-sm">
@@ -1033,6 +1060,11 @@ const Movimientos = () => {
                                   <div className="font-bold text-rose-800 flex items-center gap-2">
                                     <FaTruck className="text-rose-600" />
                                     Salida Masiva: {grupo.id}
+                                    {grupo.confirmado && (
+                                      <span className="ml-2 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">
+                                        ✓ Confirmada
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="text-xs text-rose-600">{grupo.items.length} productos</div>
                                 </div>
@@ -1051,15 +1083,44 @@ const Movimientos = () => {
                               {grupo.fecha ? new Date(grupo.fecha).toLocaleString('es-MX') : ''}
                             </td>
                             <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); descargarComprobanteGrupo(grupo.id); }}
-                                  className="flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition"
-                                  title="Descargar comprobante de entrega"
-                                >
-                                  <FaFileDownload className="text-xs" />
-                                  Comprobante
-                                </button>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {!grupo.confirmado ? (
+                                  <>
+                                    {/* Hoja de Entrega (para firmas) */}
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); descargarHojaEntregaGrupo(grupo.id); }}
+                                      className="flex items-center gap-1 px-2 py-1 bg-rose-700 text-white rounded text-xs font-medium hover:bg-rose-800 transition"
+                                      title="Descargar hoja de entrega para firmas"
+                                    >
+                                      <FaFileDownload className="text-xs" />
+                                      Hoja Entrega
+                                    </button>
+                                    {/* Confirmar Entrega */}
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); confirmarEntregaGrupo(grupo.id); }}
+                                      disabled={confirmandoGrupo === grupo.id}
+                                      className="flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition disabled:opacity-50"
+                                      title="Confirmar entrega física"
+                                    >
+                                      {confirmandoGrupo === grupo.id ? (
+                                        <FaSpinner className="text-xs animate-spin" />
+                                      ) : (
+                                        <FaFileDownload className="text-xs" />
+                                      )}
+                                      Confirmar
+                                    </button>
+                                  </>
+                                ) : (
+                                  /* Solo comprobante si ya está confirmado */
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); descargarComprobanteGrupo(grupo.id); }}
+                                    className="flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition"
+                                    title="Descargar comprobante de entrega"
+                                  >
+                                    <FaFileDownload className="text-xs" />
+                                    Comprobante
+                                  </button>
+                                )}
                                 <span className="text-rose-600 text-sm font-semibold">
                                   {gruposExpandidos.has(grupo.id) ? '▲' : '▼'}
                                 </span>

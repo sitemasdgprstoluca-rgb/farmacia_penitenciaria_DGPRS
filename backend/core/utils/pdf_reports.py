@@ -1527,13 +1527,18 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
     info_text = f"<b>Fecha de generación:</b> {timezone.now().strftime('%d/%m/%Y %H:%M')}<br/>"
     info_text += f"<b>Total de movimientos:</b> {len(trazabilidad_data)}"
     
-    if filtros:
-        if filtros.get('fecha_inicio'):
-            info_text += f"<br/><b>Desde:</b> {filtros['fecha_inicio']}"
-        if filtros.get('fecha_fin'):
-            info_text += f"<br/><b>Hasta:</b> {filtros['fecha_fin']}"
-        if filtros.get('lote'):
-            info_text += f"<br/><b>Lote:</b> {filtros['lote']}"
+    # Obtener filtros de parámetro o de producto_info
+    filtros_aplicados = filtros or (producto_info.get('filtros') if producto_info else None)
+    
+    if filtros_aplicados:
+        if filtros_aplicados.get('fecha_inicio'):
+            info_text += f"<br/><b>Desde:</b> {filtros_aplicados['fecha_inicio']}"
+        if filtros_aplicados.get('fecha_fin'):
+            info_text += f"<br/><b>Hasta:</b> {filtros_aplicados['fecha_fin']}"
+        if filtros_aplicados.get('lote'):
+            info_text += f"<br/><b>Lote:</b> {filtros_aplicados['lote']}"
+        if filtros_aplicados.get('centro'):
+            info_text += f"<br/><b>Centro:</b> {filtros_aplicados['centro']}"
     
     info = Paragraph(info_text, styles['Normal'])
     elements.append(info)

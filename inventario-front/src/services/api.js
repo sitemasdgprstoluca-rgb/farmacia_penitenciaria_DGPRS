@@ -1134,6 +1134,10 @@ export const salidaMasivaAPI = {
       responseType: 'blob' 
     }
   ),
+  // Confirmar entrega física
+  confirmarEntrega: (grupoSalida) => apiClient.post(`/salida-masiva/confirmar-entrega/${grupoSalida}/`),
+  // Consultar estado de entrega
+  estadoEntrega: (grupoSalida) => apiClient.get(`/salida-masiva/estado-entrega/${grupoSalida}/`),
 };
 
 // Trazabilidad -  NUEVO

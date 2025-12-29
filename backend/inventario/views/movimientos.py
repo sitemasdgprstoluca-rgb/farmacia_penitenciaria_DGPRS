@@ -207,7 +207,21 @@ class MovimientoViewSet(
         # ISS-FIX: Para transferencias desde Farmacia Central a Centro,
         # el lote es de Farmacia Central (centro=None) pero el destino es un Centro específico.
         # Debemos permitir esto para admin/farmacia usando skip_centro_check=True
-        centro_destino = serializer.validated_data.get('centro')
+        
+        # ISS-FIX-500: Convertir centro_id a objeto Centro si se pasa un ID
+        centro_destino_raw = serializer.validated_data.get('centro')
+        centro_destino = None
+        if centro_destino_raw:
+            if isinstance(centro_destino_raw, Centro):
+                centro_destino = centro_destino_raw
+            else:
+                try:
+                    centro_destino = Centro.objects.get(pk=int(centro_destino_raw))
+                except (Centro.DoesNotExist, ValueError, TypeError):
+                    raise serializers.ValidationError({
+                        'centro': f'Centro con ID {centro_destino_raw} no encontrado'
+                    })
+        
         es_transferencia_farmacia = is_farmacia_or_admin(user) and centro_destino and lote and lote.centro is None
         
         movimiento, _ = registrar_movimiento_stock(

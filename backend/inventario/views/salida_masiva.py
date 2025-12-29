@@ -289,6 +289,107 @@ def hoja_entrega_pdf(request, grupo_salida):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def confirmar_entrega(request, grupo_salida):
+    """
+    Confirma la entrega física de una salida masiva.
+    Esto marca los movimientos como finalizados agregando [CONFIRMADO] al motivo.
+    
+    Args:
+        grupo_salida: ID del grupo de salida (ej: SAL-1229-0917-1)
+    
+    Returns:
+        - 200: Entrega confirmada exitosamente
+        - 404: Grupo de salida no encontrado
+        - 400: Ya estaba confirmado
+    """
+    try:
+        # Buscar movimientos de este grupo
+        movimientos = Movimiento.objects.filter(
+            motivo__contains=f'[{grupo_salida}]'
+        )
+        
+        if not movimientos.exists():
+            return Response({
+                'error': True,
+                'message': 'No se encontraron movimientos para este grupo de salida'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Verificar si ya está confirmado
+        primer_mov = movimientos.first()
+        if '[CONFIRMADO]' in (primer_mov.motivo or ''):
+            return Response({
+                'error': True,
+                'message': 'Esta entrega ya fue confirmada anteriormente'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Marcar todos los movimientos como confirmados
+        with transaction.atomic():
+            for mov in movimientos:
+                if '[CONFIRMADO]' not in (mov.motivo or ''):
+                    mov.motivo = f'[CONFIRMADO] {mov.motivo or ""}'.strip()
+                    mov.save(update_fields=['motivo'])
+        
+        logger.info(
+            f'Entrega {grupo_salida} confirmada por {request.user.username}'
+        )
+        
+        return Response({
+            'success': True,
+            'message': 'Entrega confirmada exitosamente',
+            'grupo_salida': grupo_salida
+        })
+        
+    except Exception as e:
+        logger.error(f'Error confirmando entrega: {str(e)}')
+        return Response({
+            'error': True,
+            'message': f'Error al confirmar entrega: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def estado_entrega(request, grupo_salida):
+    """
+    Consulta el estado de una entrega (si está confirmada o no).
+    
+    Args:
+        grupo_salida: ID del grupo de salida
+    
+    Returns:
+        - confirmada: boolean
+        - fecha_confirmacion: datetime si está confirmada
+    """
+    try:
+        movimientos = Movimiento.objects.filter(
+            motivo__contains=f'[{grupo_salida}]'
+        )
+        
+        if not movimientos.exists():
+            return Response({
+                'error': True,
+                'message': 'Grupo de salida no encontrado'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        primer_mov = movimientos.first()
+        confirmada = '[CONFIRMADO]' in (primer_mov.motivo or '')
+        
+        return Response({
+            'grupo_salida': grupo_salida,
+            'confirmada': confirmada,
+            'total_items': movimientos.count()
+        })
+        
+    except Exception as e:
+        logger.error(f'Error consultando estado de entrega: {str(e)}')
+        return Response({
+            'error': True,
+            'message': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, IsFarmaciaRole])
 def lotes_disponibles_farmacia(request):

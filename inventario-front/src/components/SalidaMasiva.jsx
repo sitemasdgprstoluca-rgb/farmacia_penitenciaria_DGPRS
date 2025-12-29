@@ -346,12 +346,34 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
     }
   };
   
+  // Confirmar entrega física
+  const [confirmando, setConfirmando] = useState(false);
+  const [entregaConfirmada, setEntregaConfirmada] = useState(false);
+  
+  const confirmarEntrega = async () => {
+    if (!resultado?.grupo_salida) return;
+    
+    setConfirmando(true);
+    try {
+      await salidaMasivaAPI.confirmarEntrega(resultado.grupo_salida);
+      setEntregaConfirmada(true);
+      toast.success('Entrega confirmada exitosamente');
+    } catch (err) {
+      console.error('Error confirmando entrega:', err);
+      const msg = err.response?.data?.message || 'Error al confirmar entrega';
+      toast.error(msg);
+    } finally {
+      setConfirmando(false);
+    }
+  };
+  
   // Reiniciar formulario
   const reiniciar = () => {
     setCentroDestino('');
     setObservaciones('');
     setItems([]);
     setResultado(null);
+    setEntregaConfirmada(false);
     setVista('catalogo');
     cargarCatalogo();
   };
@@ -419,15 +441,40 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
             
             {/* Botones de acción */}
             <div className="flex flex-wrap justify-center gap-4">
-              {/* Solo mostrar Hoja de Entrega - El comprobante se obtiene desde Movimientos después de confirmar */}
-              <button
-                onClick={descargarHojaEntrega}
-                className="flex items-center gap-2 px-6 py-3 bg-rose-700 text-white rounded-lg hover:bg-rose-800 transition-colors"
-                title="Descargar hoja de entrega con campos para firmas de Aprobó, Entregó y Recibió"
-              >
-                <FaFileDownload />
-                Hoja de Entrega
-              </button>
+              {/* Mostrar botones según si la entrega está confirmada o no */}
+              {!entregaConfirmada ? (
+                <>
+                  {/* Hoja de Entrega (para firmas) */}
+                  <button
+                    onClick={descargarHojaEntrega}
+                    className="flex items-center gap-2 px-6 py-3 bg-rose-700 text-white rounded-lg hover:bg-rose-800 transition-colors"
+                    title="Descargar hoja de entrega con campos para firmas de Aprobó, Entregó y Recibió"
+                  >
+                    <FaFileDownload />
+                    Hoja de Entrega
+                  </button>
+                  {/* Confirmar Entrega */}
+                  <button
+                    onClick={confirmarEntrega}
+                    disabled={confirmando}
+                    className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                    title="Confirmar que la entrega física fue realizada"
+                  >
+                    {confirmando ? <FaSpinner className="animate-spin" /> : <FaCheckCircle />}
+                    {confirmando ? 'Confirmando...' : 'Confirmar Entrega'}
+                  </button>
+                </>
+              ) : (
+                /* Solo mostrar Comprobante después de confirmar */
+                <button
+                  onClick={descargarComprobanteEntregado}
+                  className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  title="Descargar comprobante de entrega con sello ENTREGADO"
+                >
+                  <FaFileDownload />
+                  Comprobante
+                </button>
+              )}
               <button
                 onClick={reiniciar}
                 className="flex items-center gap-2 px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
@@ -448,10 +495,18 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
             {/* Nota informativa */}
             <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
               <p className="text-sm text-blue-800">
-                <strong>📋 Nota:</strong> Descargue la Hoja de Entrega para obtener las firmas de 
-                <strong> Aprobó</strong>, <strong>Entregó</strong> y <strong>Recibió</strong>. 
-                El comprobante de entrega estará disponible en la sección de <strong>Movimientos</strong> 
-                una vez confirmada la recepción física.
+                {!entregaConfirmada ? (
+                  <>
+                    <strong>📋 Nota:</strong> Descargue la <strong>Hoja de Entrega</strong> para obtener las firmas de 
+                    <strong> Aprobó</strong>, <strong>Entregó</strong> y <strong>Recibió</strong>. 
+                    Una vez completadas las firmas, presione <strong>Confirmar Entrega</strong> para generar el comprobante final.
+                  </>
+                ) : (
+                  <>
+                    <strong>✅ Entrega Confirmada:</strong> Puede descargar el <strong>Comprobante</strong> con el sello de ENTREGADO.
+                    Este documento está disponible también en la sección de <strong>Movimientos</strong>.
+                  </>
+                )}
               </p>
             </div>
           </div>
