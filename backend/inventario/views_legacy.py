@@ -10231,7 +10231,7 @@ def exportar_control_inventarios(request):
                 producto.clave,  # B
                 producto.nombre or producto.descripcion or '',  # C
                 lote.numero_lote,  # D
-                lote.marca or 'GENERICO',  # E
+                producto.nombre_comercial or '',  # E - Nombre comercial del producto (vacío si no tiene)
                 producto.concentracion or '',  # F
                 producto.presentacion or '',  # G
                 f'=(I{row}-K{row})/30',  # H - Fórmula MESES
@@ -10269,10 +10269,10 @@ def exportar_control_inventarios(request):
             
             row += 1
         
-        # Aplicar IconSet (semáforo con circulitos) a columnas H e I
-        # IconSet tipo "3TrafficLights1" para semáforo de 3 colores
+        # Aplicar IconSet (semáforo con circulitos) SOLO a columna H (MESES)
+        # Columna I solo muestra la fecha de caducidad, SIN semáforo
         for fila in filas_con_iconset:
-            # Columna H - basado en valor numérico (meses)
+            # Columna H - semáforo basado en valor numérico (meses)
             rule_h = IconSetRule(
                 '3TrafficLights1',
                 'num',
@@ -10281,16 +10281,6 @@ def exportar_control_inventarios(request):
                 reverse=False
             )
             ws.conditional_formatting.add(f'H{fila}', rule_h)
-            
-            # Columna I - basado en fecha
-            rule_i = IconSetRule(
-                '3TrafficLights1',
-                'num',
-                [0, 90, 180],
-                showValue=False,
-                reverse=False
-            )
-            ws.conditional_formatting.add(f'I{fila}', rule_i)
         
         # Anchos de columna EXACTOS
         column_widths = {

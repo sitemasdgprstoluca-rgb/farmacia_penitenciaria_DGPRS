@@ -1110,7 +1110,7 @@ const handleImportar = async (e) => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="thead-theme">
               <tr>
-                {['#', 'Producto', 'Presentación', 'Número Lote', 'Marca', 'Caducidad', 'Días', 'Alerta', 'Stock', 'Acciones'].map((col) => (
+                {['#', 'Producto', 'Presentación', 'Número Lote', 'Nombre Comercial', 'Caducidad', 'Días', 'Alerta', 'Stock', 'Acciones'].map((col) => (
                   <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
                     {col}
                   </th>
@@ -1158,7 +1158,7 @@ const handleImportar = async (e) => {
                       {lote.numero_lote}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                      {lote.marca || <span className="text-gray-400 italic">Sin marca</span>}
+                      {lote.marca || <span className="text-gray-400 italic">-</span>}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm">
                       {new Date(lote.fecha_caducidad).toLocaleDateString()}
@@ -1525,7 +1525,7 @@ const handleImportar = async (e) => {
 
                   <div>
                     <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      MARCA
+                      MARCA / LABORATORIO
                     </label>
                     <input
                       type="text"
@@ -1543,7 +1543,7 @@ const handleImportar = async (e) => {
                       placeholder="Ej: Bayer, Pfizer, Genérico"
                       maxLength={150}
                     />
-                    <p className="text-xs text-gray-400 mt-1">Marca del medicamento</p>
+                    <p className="text-xs text-gray-400 mt-1">Marca o laboratorio del lote</p>
                   </div>
                 </div>
                 )}
@@ -1634,6 +1634,7 @@ const handleImportar = async (e) => {
                   <li>Precio Unitario (opcional, default = 0)</li>
                   <li>Número Contrato (opcional)</li>
                   <li>Marca (opcional)</li>
+                  <li>Nombre Comercial (opcional)</li>
                   <li>Ubicación (opcional)</li>
                   <li>Centro ID (opcional)</li>
                 </ul>

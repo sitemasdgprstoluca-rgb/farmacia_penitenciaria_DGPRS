@@ -292,6 +292,7 @@ const renderStockBadge = (nivel) => {
 const DEFAULT_FORM = {
   clave: '',
   nombre: '',
+  nombre_comercial: '',
   descripcion: '',
   unidad_medida: 'PIEZA',
   categoria: 'medicamento',
@@ -738,6 +739,7 @@ const Productos = () => {
       setFormData({
         clave: producto.clave || '',
         nombre: producto.nombre || '',
+        nombre_comercial: producto.nombre_comercial || '',
         descripcion: producto.descripcion || '',
         unidad_medida: producto.unidad_medida || 'PIEZA',
         categoria: producto.categoria || 'medicamento',
@@ -901,6 +903,7 @@ const Productos = () => {
         dataToSend = new FormData();
         dataToSend.append('clave', formData.clave || '');
         dataToSend.append('nombre', formData.nombre);
+        dataToSend.append('nombre_comercial', formData.nombre_comercial || '');
         dataToSend.append('descripcion', formData.descripcion || '');
         dataToSend.append('unidad_medida', formData.unidad_medida);
         dataToSend.append('categoria', formData.categoria || 'medicamento');
@@ -917,6 +920,7 @@ const Productos = () => {
         dataToSend = {
           clave: formData.clave || '',
           nombre: formData.nombre,
+          nombre_comercial: formData.nombre_comercial || '',
           descripcion: formData.descripcion || '',
           unidad_medida: formData.unidad_medida,
           categoria: formData.categoria || 'medicamento',
@@ -2155,6 +2159,30 @@ const Productos = () => {
 
                 </div>
 
+                <div>
+
+                  <label className="text-xs font-semibold text-theme-primary-hover">Nombre Comercial</label>
+
+                  <input
+
+                    type="text"
+
+                    value={formData.nombre_comercial}
+
+                    onChange={(e) => setFormData({ ...formData, nombre_comercial: e.target.value })}
+
+                    maxLength={200}
+
+                    placeholder="Ej: Tylenol, Aspirina, Tempra"
+
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+
+                  />
+
+                  <p className="text-xs text-gray-400 mt-1">Opcional - Nombre comercial del producto</p>
+
+                </div>
+
               </div>
 
               {/* Unidad y Stock Mínimo */}
@@ -2213,7 +2241,7 @@ const Productos = () => {
 
               </div>
 
-              {/* Categoría y Descripción */}
+              {/* Categoría y Presentación */}
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label className="text-xs font-semibold text-theme-primary-hover">Categoría *</label>
@@ -2231,15 +2259,16 @@ const Productos = () => {
                   {formErrors.categoria && <p className="text-xs text-red-600">{formErrors.categoria}</p>}
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-theme-primary-hover">Descripción</label>
+                  <label className="text-xs font-semibold text-theme-primary-hover">Presentación *</label>
                   <input
                     type="text"
-                    value={formData.descripcion}
-                    onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-                    maxLength={500}
-                    placeholder="Descripción adicional del producto"
-                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                    value={formData.presentacion}
+                    onChange={(e) => setFormData({ ...formData, presentacion: e.target.value })}
+                    maxLength={200}
+                    placeholder="Ej: CAJA CON 10 TABLETAS, FRASCO 120ML"
+                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.presentacion ? 'border-red-500' : 'border-theme-primary'}`}
                   />
+                  {formErrors.presentacion && <p className="text-xs text-red-600">{formErrors.presentacion}</p>}
                 </div>
               </div>
 
@@ -2249,7 +2278,19 @@ const Productos = () => {
                   📋 Datos Farmacéuticos (opcional)
                 </summary>
                 <div className="space-y-4 px-4 pb-4 pt-2">
-                  {/* Sustancia Activa y Presentación */}
+                  {/* Descripción (opcional) */}
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600">Descripción adicional</label>
+                    <input
+                      type="text"
+                      value={formData.descripcion}
+                      onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
+                      maxLength={500}
+                      placeholder="Descripción adicional del producto (opcional)"
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-gray-300"
+                    />
+                  </div>
+                  {/* Sustancia Activa y Concentración */}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
                       <label className="text-xs font-semibold text-gray-600">Sustancia Activa</label>
@@ -2263,20 +2304,6 @@ const Productos = () => {
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-gray-600">Presentación</label>
-                      <input
-                        type="text"
-                        value={formData.presentacion}
-                        onChange={(e) => setFormData({ ...formData, presentacion: e.target.value })}
-                        maxLength={200}
-                        placeholder="Ej: Tabletas, Cápsulas, Jarabe"
-                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-gray-300"
-                      />
-                    </div>
-                  </div>
-                  {/* Concentración y Vía de Administración */}
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
                       <label className="text-xs font-semibold text-gray-600">Concentración</label>
                       <input
                         type="text"
@@ -2287,6 +2314,9 @@ const Productos = () => {
                         className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-gray-300"
                       />
                     </div>
+                  </div>
+                  {/* Vía de Administración */}
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
                       <label className="text-xs font-semibold text-gray-600">Vía de Administración</label>
                       <select

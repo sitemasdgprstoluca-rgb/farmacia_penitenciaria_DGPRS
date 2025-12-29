@@ -609,6 +609,7 @@ class Producto(models.Model):
     # Campo principal: clave (mapea a columna 'clave' después del rename de codigo_barras)
     clave = models.CharField(max_length=50, unique=True, db_column='clave')
     nombre = models.CharField(max_length=500, db_column='nombre')
+    nombre_comercial = models.CharField(max_length=200, blank=True, null=True)  # Nombre comercial del producto (ej: Tylenol, Aspirina)
     descripcion = models.TextField(blank=True, null=True)
     # ISS-FIX: max_length ampliado para soportar textos como "CAJA CON 7 OVULOS"
     unidad_medida = models.CharField(max_length=100, default='PIEZA')
