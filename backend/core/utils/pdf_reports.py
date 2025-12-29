@@ -1721,39 +1721,59 @@ def generar_recibo_salida_movimiento(movimiento_data, finalizado=False):
     
     centro_origen = movimiento_data.get('centro_origen', {})
     if isinstance(centro_origen, dict):
-        centro_origen_nombre = centro_origen.get('nombre', 'Almacén Central')
+        centro_origen_nombre = centro_origen.get('nombre', '') or 'Farmacia Central'
     else:
-        centro_origen_nombre = str(centro_origen) or 'Almacén Central'
+        centro_origen_nombre = str(centro_origen) if centro_origen else 'Farmacia Central'
     
     centro_destino = movimiento_data.get('centro_destino', {})
     if isinstance(centro_destino, dict):
-        centro_destino_nombre = centro_destino.get('nombre', '')
+        centro_destino_nombre = centro_destino.get('nombre', '') or 'N/A'
     else:
-        centro_destino_nombre = str(centro_destino) or ''
+        centro_destino_nombre = str(centro_destino) if centro_destino else 'N/A'
     
     usuario = movimiento_data.get('usuario', 'Sistema')
     
-    # Tabla de información general
+    # ISS-FIX: Tabla de información con 2 filas para mejor legibilidad
+    # y evitar que nombres largos de centros se sobrepongan
     info_data = [
         ['Folio:', f'MOV-{folio}', 'Fecha:', str(fecha)],
-        ['Origen:', str(centro_origen_nombre), 'Destino:', str(centro_destino_nombre)],
-        ['Registrado por:', str(usuario), 'Tipo:', str(subtipo).capitalize()],
+        ['Origen:', str(centro_origen_nombre)[:45], 'Destino:', ''],
+        ['Registrado por:', str(usuario)[:25], 'Tipo:', str(subtipo).capitalize()],
     ]
     
-    info_table = Table(info_data, colWidths=[80, 160, 80, 160])
+    # ISS-FIX: Anchos ajustados para evitar sobreposición
+    info_table = Table(info_data, colWidths=[90, 175, 55, 160])
     info_table.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
         ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
         ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ('BACKGROUND', (0, 0), (0, -1), colors.Color(0.95, 0.95, 0.95)),
         ('BACKGROUND', (2, 0), (2, -1), colors.Color(0.95, 0.95, 0.95)),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]))
     elements.append(info_table)
-    elements.append(Spacer(1, 20))
+    
+    # ISS-FIX: Mostrar destino en fila separada si es largo
+    if centro_destino_nombre and centro_destino_nombre != 'N/A':
+        elements.append(Spacer(1, 5))
+        destino_data = [['Destino:', str(centro_destino_nombre)]]
+        destino_table = Table(destino_data, colWidths=[90, 390])
+        destino_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, 0), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('BACKGROUND', (0, 0), (0, 0), colors.Color(0.95, 0.95, 0.95)),
+        ]))
+        elements.append(destino_table)
+    
+    elements.append(Spacer(1, 15))
     
     # Tabla de detalle del producto
     elements.append(Paragraph("<b>Detalle del Producto:</b>", normal_style))
@@ -1762,24 +1782,30 @@ def generar_recibo_salida_movimiento(movimiento_data, finalizado=False):
     producto = movimiento_data.get('producto', 'N/A')
     producto_clave = movimiento_data.get('producto_clave', 'N/A')
     lote = movimiento_data.get('lote', 'N/A')
-    cantidad = abs(int(movimiento_data.get('cantidad', 0)))
+    # ISS-FIX: Asegurar cantidad nunca negativa
+    cantidad = max(0, abs(int(movimiento_data.get('cantidad', 0))))
     presentacion = movimiento_data.get('presentacion', 'N/A') or 'N/A'
     
+    # ISS-FIX: Mostrar cantidad y presentación juntas para mejor legibilidad
     detalle_data = [
         ['Clave', 'Producto', 'Lote', 'Cantidad', 'Presentación'],
-        [str(producto_clave)[:15], str(producto)[:40], str(lote)[:20], str(cantidad), str(presentacion)[:20]]
+        [str(producto_clave), str(producto)[:50], str(lote), str(cantidad), str(presentacion)]
     ]
     
-    detalle_table = Table(detalle_data, colWidths=[70, 180, 100, 60, 70])
+    # ISS-FIX: Anchos ajustados para evitar texto cortado
+    detalle_table = Table(detalle_data, colWidths=[60, 175, 95, 55, 95])
     detalle_table.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
         ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.39, 0.14, 0.25)),  # Color institucional
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
         ('TOPPADDING', (0, 0), (-1, -1), 8),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('WORDWRAP', (0, 0), (-1, -1), True),
     ]))
     elements.append(detalle_table)
     elements.append(Spacer(1, 20))
@@ -1857,8 +1883,17 @@ def generar_recibo_salida_movimiento(movimiento_data, finalizado=False):
         ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, alignment=1, textColor=colors.grey)
     ))
     
-    # Construir PDF
-    doc.build(elements)
+    # Usar canvas con fondo institucional
+    colores_tema = _obtener_colores_tema()
+    fondo_path = colores_tema.get('fondo_reportes_path')
+    if not fondo_path:
+        fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
+    
+    def make_canvas(*args, **kwargs):
+        return FondoOficialCanvas(*args, fondo_path=fondo_path, titulo_reporte='TRANSFERENCIA', **kwargs)
+    
+    # Construir PDF con fondo institucional
+    doc.build(elements, canvasmaker=make_canvas)
     
     buffer.seek(0)
     logger.info(f"Recibo de salida/transferencia PDF generado - Folio: MOV-{folio}")
@@ -2105,8 +2140,17 @@ def generar_recibo_salida_donacion(movimiento_data, items_data=None, finalizado=
         ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, alignment=1, textColor=colors.grey)
     ))
     
-    # Construir PDF
-    doc.build(elements)
+    # Usar canvas con fondo institucional
+    colores_tema = _obtener_colores_tema()
+    fondo_path = colores_tema.get('fondo_reportes_path')
+    if not fondo_path:
+        fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
+    
+    def make_canvas(*args, **kwargs):
+        return FondoOficialCanvas(*args, fondo_path=fondo_path, titulo_reporte='DONACIÓN', **kwargs)
+    
+    # Construir PDF con fondo institucional
+    doc.build(elements, canvasmaker=make_canvas)
     
     buffer.seek(0)
     logger.info(f"Recibo de salida PDF generado - Folio: {folio}")

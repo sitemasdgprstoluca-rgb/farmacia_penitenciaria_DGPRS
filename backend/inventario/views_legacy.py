@@ -9739,7 +9739,8 @@ def _exportar_trazabilidad_global_pdf(movimientos, data):
         'clave': 'GLOBAL',
         'descripcion': 'Reporte de Trazabilidad Global',
         'unidad_medida': '-',
-        'stock_actual': data['estadisticas']['total_entradas'] - data['estadisticas']['total_salidas'],
+        # ISS-FIX: Nunca mostrar stock negativo - usar max(0, ...)
+        'stock_actual': max(0, data['estadisticas']['total_entradas'] - data['estadisticas']['total_salidas']),
         'stock_minimo': 0,
         'es_global': True,
         'filtros': data['filtros_aplicados'],
@@ -10121,7 +10122,8 @@ def exportar_control_inventarios(request):
         ws.title = "Hoja1"
         
         # Estilos EXACTOS del formato de referencia
-        header_fill = PatternFill(start_color="C4D79B", end_color="C4D79B", fill_type="solid")
+        # ISS-FIX: Cambio de verde (#C4D79B) a gris (#D9D9D9) según especificación
+        header_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
         
         # Bordes - Columna A tiene medium, las demás thin
         medium_border_left = Border(
@@ -10231,7 +10233,7 @@ def exportar_control_inventarios(request):
                 producto.presentacion or '',  # G
                 f'=(I{row}-K{row})/30',  # H - Fórmula MESES
                 lote.fecha_caducidad,  # I - Fecha caducidad
-                lote.cantidad_actual,  # J
+                max(0, lote.cantidad_actual),  # J - ISS-FIX: Nunca mostrar stock negativo
                 fecha_ingreso_date,  # K
                 fecha_salida_date,  # L
             ]

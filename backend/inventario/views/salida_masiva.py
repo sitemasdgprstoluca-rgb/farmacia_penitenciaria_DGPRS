@@ -139,8 +139,15 @@ def salida_masiva(request):
                 stock_anterior = lote_locked.cantidad_actual
                 nuevo_stock = stock_anterior - cantidad
                 
+                # ISS-FIX: Nunca permitir stock negativo
+                if nuevo_stock < 0:
+                    raise Exception(
+                        f'La operación dejaría stock negativo en lote {lote_locked.numero_lote}. '
+                        f'Disponible: {stock_anterior}, Solicitado: {cantidad}'
+                    )
+                
                 # Actualizar stock del lote origen (Farmacia Central)
-                lote_locked.cantidad_actual = nuevo_stock
+                lote_locked.cantidad_actual = max(0, nuevo_stock)  # Garantía extra: nunca negativo
                 
                 # Marcar como inactivo si se agotó el stock
                 if nuevo_stock == 0:
@@ -177,7 +184,7 @@ def salida_masiva(request):
                     'producto_nombre': lote_locked.producto.nombre,
                     'cantidad': cantidad,
                     'stock_anterior': stock_anterior,
-                    'stock_actual': nuevo_stock
+                    'stock_actual': max(0, nuevo_stock)  # ISS-FIX: Nunca mostrar stock negativo
                 })
         
         logger.info(

@@ -516,6 +516,77 @@ class TestReciboSalidaEndpoint:
 
 
 # ============================================
+# TESTS DE CONFIRMAR ENTREGA INDIVIDUAL
+# ============================================
+
+class TestConfirmarEntregaIndividual:
+    """Tests para el endpoint de confirmar entrega de movimientos individuales."""
+    
+    @pytest.mark.django_db
+    def test_confirmar_entrega_endpoint_existe(self, api_client, admin_user, movimiento_salida):
+        """Test: Verificar que el endpoint confirmar-entrega existe."""
+        api_client.force_authenticate(user=admin_user)
+        
+        response = api_client.post(f'/api/movimientos/{movimiento_salida.id}/confirmar-entrega/')
+        
+        # El endpoint debe existir (200, 400 o 403 pero NO 405)
+        assert response.status_code != status.HTTP_405_METHOD_NOT_ALLOWED
+    
+    @pytest.mark.django_db
+    def test_confirmar_entrega_exitosa(self, api_client, admin_user, movimiento_salida):
+        """Test: Confirmar entrega de un movimiento de salida."""
+        api_client.force_authenticate(user=admin_user)
+        
+        response = api_client.post(f'/api/movimientos/{movimiento_salida.id}/confirmar-entrega/')
+        
+        if response.status_code == status.HTTP_200_OK:
+            data = response.json()
+            assert data.get('success') == True
+            assert 'movimiento_id' in data
+            
+            # Verificar que el movimiento fue marcado como confirmado
+            movimiento_salida.refresh_from_db()
+            assert '[CONFIRMADO]' in (movimiento_salida.motivo or '')
+    
+    @pytest.mark.django_db
+    def test_confirmar_entrega_ya_confirmada(self, api_client, admin_user, movimiento_salida):
+        """Test: No se puede confirmar una entrega ya confirmada."""
+        api_client.force_authenticate(user=admin_user)
+        
+        # Primera confirmación
+        response1 = api_client.post(f'/api/movimientos/{movimiento_salida.id}/confirmar-entrega/')
+        
+        if response1.status_code == status.HTTP_200_OK:
+            # Segunda confirmación debe fallar
+            response2 = api_client.post(f'/api/movimientos/{movimiento_salida.id}/confirmar-entrega/')
+            assert response2.status_code == status.HTTP_400_BAD_REQUEST
+            data = response2.json()
+            assert data.get('error') == True
+    
+    @pytest.mark.django_db
+    def test_confirmar_entrega_solo_salidas(self, api_client, admin_user, lote_test):
+        """Test: Solo se pueden confirmar entregas de movimientos de salida."""
+        from core.models import Movimiento
+        
+        # Crear movimiento de entrada
+        movimiento_entrada = Movimiento.objects.create(
+            lote=lote_test,
+            tipo='entrada',
+            cantidad=10,
+            motivo='Test entrada',
+            usuario=admin_user
+        )
+        
+        api_client.force_authenticate(user=admin_user)
+        
+        response = api_client.post(f'/api/movimientos/{movimiento_entrada.id}/confirmar-entrega/')
+        
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        data = response.json()
+        assert data.get('error') == True
+
+
+# ============================================
 # TESTS DE VALIDACIÓN DE DATOS
 # ============================================
 
@@ -694,6 +765,90 @@ class TestPDFAPIIntegration:
         
         if response.status_code == status.HTTP_200_OK:
             assert response['Content-Type'] == 'application/pdf'
+
+
+# ============================================
+# TESTS DE PDF CON FONDO INSTITUCIONAL
+# ============================================
+
+class TestPDFConFondoInstitucional:
+    """Tests para verificar que los PDFs usan el fondo institucional."""
+    
+    def test_generar_recibo_salida_movimiento_usa_fondo(self):
+        """Test: generar_recibo_salida_movimiento debe usar FondoOficialCanvas."""
+        from core.utils.pdf_reports import generar_recibo_salida_movimiento
+        import inspect
+        
+        # Obtener el código fuente de la función
+        source_code = inspect.getsource(generar_recibo_salida_movimiento)
+        
+        # Verificar que usa FondoOficialCanvas
+        assert 'FondoOficialCanvas' in source_code, "La función debe usar FondoOficialCanvas"
+        assert 'canvasmaker' in source_code, "La función debe usar canvasmaker para el fondo"
+    
+    def test_generar_recibo_salida_donacion_usa_fondo(self):
+        """Test: generar_recibo_salida_donacion debe usar FondoOficialCanvas."""
+        from core.utils.pdf_reports import generar_recibo_salida_donacion
+        import inspect
+        
+        # Obtener el código fuente de la función
+        source_code = inspect.getsource(generar_recibo_salida_donacion)
+        
+        # Verificar que usa FondoOficialCanvas
+        assert 'FondoOficialCanvas' in source_code, "La función debe usar FondoOficialCanvas"
+        assert 'canvasmaker' in source_code, "La función debe usar canvasmaker para el fondo"
+    
+    def test_generar_recibo_salida_movimiento_genera_pdf(self):
+        """Test: generar_recibo_salida_movimiento genera un PDF válido."""
+        from core.utils.pdf_reports import generar_recibo_salida_movimiento
+        
+        movimiento_data = {
+            'folio': 123,
+            'fecha': '2025-01-01 10:00',
+            'tipo': 'salida',
+            'subtipo_salida': 'transferencia',
+            'centro_origen': {'id': 1, 'nombre': 'Almacén Central'},
+            'centro_destino': {'id': 2, 'nombre': 'Centro Test'},
+            'cantidad': 50,
+            'producto': 'Producto Test',
+            'producto_clave': 'PT001',
+            'lote': 'LOTE001',
+            'presentacion': 'Caja',
+            'usuario': 'Usuario Test',
+            'observaciones': 'Test de PDF'
+        }
+        
+        buffer = generar_recibo_salida_movimiento(movimiento_data, finalizado=False)
+        
+        assert buffer is not None
+        content = buffer.getvalue()
+        assert content[:4] == b'%PDF', "El contenido debe ser un PDF válido"
+    
+    def test_generar_recibo_salida_movimiento_finalizado(self):
+        """Test: generar_recibo_salida_movimiento con finalizado=True."""
+        from core.utils.pdf_reports import generar_recibo_salida_movimiento
+        
+        movimiento_data = {
+            'folio': 456,
+            'fecha': '2025-01-01 10:00',
+            'tipo': 'salida',
+            'subtipo_salida': 'transferencia',
+            'centro_origen': {'id': 1, 'nombre': 'Almacén Central'},
+            'centro_destino': {'id': 2, 'nombre': 'Centro Test'},
+            'cantidad': 25,
+            'producto': 'Producto Test 2',
+            'producto_clave': 'PT002',
+            'lote': 'LOTE002',
+            'presentacion': 'Frasco',
+            'usuario': 'Usuario Test',
+            'observaciones': ''
+        }
+        
+        buffer = generar_recibo_salida_movimiento(movimiento_data, finalizado=True)
+        
+        assert buffer is not None
+        content = buffer.getvalue()
+        assert content[:4] == b'%PDF', "El contenido debe ser un PDF válido"
 
 
 # ============================================

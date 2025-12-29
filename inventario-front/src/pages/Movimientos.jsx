@@ -237,9 +237,14 @@ const Movimientos = () => {
       });
       const response = await movimientosAPI.getAll(params);
       const data = response.data?.results || response.data || [];
-      setMovimientos(Array.isArray(data) ? data : []);
+      // Agregar campo 'confirmado' a cada movimiento
+      const dataConConfirmado = (Array.isArray(data) ? data : []).map(mov => ({
+        ...mov,
+        confirmado: estaConfirmado(mov)
+      }));
+      setMovimientos(dataConConfirmado);
       setTotal(response.data?.count || data.length || 0);
-      calcularStats(Array.isArray(data) ? data : []);
+      calcularStats(dataConConfirmado);
     } catch (err) {
       toast.error(err.response?.data?.detail || "No se pudieron cargar los movimientos");
     } finally {
@@ -499,6 +504,9 @@ const Movimientos = () => {
   // Confirmar entrega de grupo de salida masiva
   const [confirmandoGrupo, setConfirmandoGrupo] = useState(null);
   
+  // Estado para confirmar entregas individuales
+  const [confirmandoMovimiento, setConfirmandoMovimiento] = useState(null);
+  
   const confirmarEntregaGrupo = async (grupoId) => {
     setConfirmandoGrupo(grupoId);
     try {
@@ -513,6 +521,24 @@ const Movimientos = () => {
       console.error("Error confirmando entrega:", err);
     } finally {
       setConfirmandoGrupo(null);
+    }
+  };
+  
+  // Confirmar entrega individual de un movimiento
+  const confirmarEntregaIndividual = async (movimientoId) => {
+    setConfirmandoMovimiento(movimientoId);
+    try {
+      toast.loading("Confirmando entrega...", { id: "confirmar-individual" });
+      await movimientosAPI.confirmarEntrega(movimientoId);
+      toast.success("Entrega confirmada exitosamente", { id: "confirmar-individual" });
+      // Recargar movimientos para actualizar el estado
+      cargarMovimientos();
+    } catch (err) {
+      const msg = err.response?.data?.message || "No se pudo confirmar la entrega";
+      toast.error(msg, { id: "confirmar-individual" });
+      console.error("Error confirmando entrega individual:", err);
+    } finally {
+      setConfirmandoMovimiento(null);
     }
   };
 
@@ -1223,14 +1249,32 @@ const Movimientos = () => {
                                         <FaFilePdf className="text-lg" />
                                         Hoja de Entrega
                                       </button>
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
-                                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
-                                        title="Descargar comprobante con sello de ENTREGADO"
-                                      >
-                                        <FaFilePdf className="text-lg" />
-                                        Comprobante Entregado
-                                      </button>
+                                      {!mov.confirmado ? (
+                                        /* Botón confirmar entrega si no está confirmado */
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); confirmarEntregaIndividual(mov.id); }}
+                                          disabled={confirmandoMovimiento === mov.id}
+                                          className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition text-sm font-medium disabled:opacity-50"
+                                          title="Confirmar que la entrega fue recibida"
+                                        >
+                                          {confirmandoMovimiento === mov.id ? (
+                                            <FaSpinner className="animate-spin text-lg" />
+                                          ) : (
+                                            <FaClipboardCheck className="text-lg" />
+                                          )}
+                                          {confirmandoMovimiento === mov.id ? 'Confirmando...' : 'Confirmar Entrega'}
+                                        </button>
+                                      ) : (
+                                        /* Botón comprobante solo si ya está confirmado */
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
+                                          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
+                                          title="Descargar comprobante con sello de ENTREGADO"
+                                        >
+                                          <FaCheckCircle className="text-lg" />
+                                          Comprobante Entregado
+                                        </button>
+                                      )}
                                     </div>
                                   )}
                                 </div>
@@ -1368,14 +1412,32 @@ const Movimientos = () => {
                                       <FaFilePdf className="text-lg" />
                                       Hoja de Entrega
                                     </button>
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
-                                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
-                                      title="Descargar comprobante con sello de ENTREGADO"
-                                    >
-                                      <FaFilePdf className="text-lg" />
-                                      Comprobante Entregado
-                                    </button>
+                                    {!mov.confirmado ? (
+                                      /* Botón confirmar entrega si no está confirmado */
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); confirmarEntregaIndividual(mov.id); }}
+                                        disabled={confirmandoMovimiento === mov.id}
+                                        className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition text-sm font-medium disabled:opacity-50"
+                                        title="Confirmar que la entrega fue recibida"
+                                      >
+                                        {confirmandoMovimiento === mov.id ? (
+                                          <FaSpinner className="animate-spin text-lg" />
+                                        ) : (
+                                          <FaClipboardCheck className="text-lg" />
+                                        )}
+                                        {confirmandoMovimiento === mov.id ? 'Confirmando...' : 'Confirmar Entrega'}
+                                      </button>
+                                    ) : (
+                                      /* Botón comprobante solo si ya está confirmado */
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
+                                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
+                                        title="Descargar comprobante con sello de ENTREGADO"
+                                      >
+                                        <FaCheckCircle className="text-lg" />
+                                        Comprobante Entregado
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                               </div>

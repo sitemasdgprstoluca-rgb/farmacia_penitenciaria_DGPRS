@@ -1118,6 +1118,8 @@ export const movimientosAPI = {
     params: finalizado ? { finalizado: 'true' } : {},
     responseType: 'blob' 
   }),
+  // Confirmar entrega física de un movimiento individual
+  confirmarEntrega: (movimientoId) => apiClient.post(`/movimientos/${movimientoId}/confirmar-entrega/`),
 };
 
 // Salida Masiva (solo Farmacia)

@@ -732,3 +732,69 @@ class MovimientoViewSet(
                 'error': 'Error al generar recibo de salida',
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'], url_path='confirmar-entrega')
+    def confirmar_entrega(self, request, pk=None):
+        """
+        Confirma la entrega física de un movimiento de salida individual.
+        Marca el movimiento como confirmado agregando [CONFIRMADO] al motivo.
+        
+        Returns:
+            - 200: Entrega confirmada exitosamente
+            - 404: Movimiento no encontrado
+            - 400: No es movimiento de salida o ya está confirmado
+        """
+        try:
+            movimiento = self.get_object()
+            
+            # Verificar que es un movimiento de salida
+            if movimiento.tipo != 'salida':
+                return Response({
+                    'error': True,
+                    'message': 'Solo se pueden confirmar entregas de movimientos de salida'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Verificar permisos - admin/farmacia o usuario del centro destino
+            user = request.user
+            if not is_farmacia_or_admin(user):
+                user_centro = get_user_centro(user)
+                if user_centro and movimiento.centro_destino:
+                    if movimiento.centro_destino.id != user_centro.id:
+                        return Response({
+                            'error': True,
+                            'message': 'No tienes permiso para confirmar esta entrega'
+                        }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Verificar si ya está confirmado
+            motivo_actual = movimiento.motivo or ''
+            if '[CONFIRMADO]' in motivo_actual:
+                return Response({
+                    'error': True,
+                    'message': 'Esta entrega ya fue confirmada anteriormente'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Marcar como confirmado
+            movimiento.motivo = f'[CONFIRMADO] {motivo_actual}'.strip()
+            movimiento.save(update_fields=['motivo'])
+            
+            logger.info(
+                f'Entrega de movimiento {movimiento.id} confirmada por {request.user.username}'
+            )
+            
+            return Response({
+                'success': True,
+                'message': 'Entrega confirmada exitosamente',
+                'movimiento_id': movimiento.id
+            })
+            
+        except Movimiento.DoesNotExist:
+            return Response({
+                'error': True,
+                'message': 'Movimiento no encontrado'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f'Error confirmando entrega individual: {str(e)}')
+            return Response({
+                'error': True,
+                'message': f'Error al confirmar entrega: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
