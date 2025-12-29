@@ -10122,7 +10122,6 @@ def exportar_control_inventarios(request):
         
         # Estilos EXACTOS del formato de referencia
         header_fill = PatternFill(start_color="C4D79B", end_color="C4D79B", fill_type="solid")
-        yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
         
         # Bordes - Columna A tiene medium, las demás thin
         medium_border_left = Border(
@@ -10154,7 +10153,7 @@ def exportar_control_inventarios(request):
         ws['B4'].alignment = Alignment(horizontal='center', vertical='center')
         ws.row_dimensions[4].height = 42.75
         
-        # Encabezados en fila 6
+        # Encabezados en fila 6 (12 columnas, sin evidencia por ahora)
         headers = [
             'NO. PARTIDA',
             'CLAVE',
@@ -10167,8 +10166,7 @@ def exportar_control_inventarios(request):
             'VENCIMIENTO (SEMAFORIZACIÓN) / FECHA DE CADUCIDAD',
             'CANTIDAD',
             'FECHA DE INGRESO',
-            'FECHA DE SALIDA (ULTIMA)',
-            'EVIDENCIA FOTOGRAFICA'
+            'FECHA DE SALIDA (ULTIMA)'
         ]
         
         for col, header in enumerate(headers, 1):
@@ -10222,10 +10220,7 @@ def exportar_control_inventarios(request):
             if ultima_salida:
                 fecha_salida_date = ultima_salida.date() if hasattr(ultima_salida, 'date') else ultima_salida
             
-            # Ruta de evidencia
-            evidencia = f"Evidencia fotografica\\Fotos concentrado\\PARTIDA {partida_actual} Lote {lote.numero_lote}.jpeg"
-            
-            # Datos de la fila
+            # Datos de la fila (12 columnas, sin evidencia por ahora)
             data = [
                 partida_actual,  # A
                 producto.clave,  # B
@@ -10239,7 +10234,6 @@ def exportar_control_inventarios(request):
                 lote.cantidad_actual,  # J
                 fecha_ingreso_date,  # K
                 fecha_salida_date,  # L
-                evidencia,  # M
             ]
             
             for col, value in enumerate(data, 1):
@@ -10258,11 +10252,6 @@ def exportar_control_inventarios(request):
                 # Formato fecha para columnas I, K, L
                 if col in [9, 11, 12] and value:
                     cell.number_format = 'DD/MM/YYYY'
-                
-                # Evidencia: fondo amarillo + texto azul subrayado
-                if col == 13:
-                    cell.fill = yellow_fill
-                    cell.font = Font(color="0000FF", underline="single", size=8)
             
             # Guardar fila para IconSet
             filas_con_iconset.append(row)
@@ -10282,7 +10271,7 @@ def exportar_control_inventarios(request):
             )
             ws.conditional_formatting.add(f'H{fila}', rule_h)
         
-        # Anchos de columna EXACTOS
+        # Anchos de columna EXACTOS (12 columnas, A-L)
         column_widths = {
             'A': 3.71,
             'B': 6.71,
@@ -10296,7 +10285,6 @@ def exportar_control_inventarios(request):
             'J': 6.14,
             'K': 9.71,
             'L': 8.29,
-            'M': 12.86,
         }
         for col_letter, width in column_widths.items():
             ws.column_dimensions[col_letter].width = width
