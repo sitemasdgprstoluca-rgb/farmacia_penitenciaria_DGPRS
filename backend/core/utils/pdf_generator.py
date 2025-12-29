@@ -1152,30 +1152,34 @@ def generar_hoja_entrega(datos_entrega, finalizado=False):
         # Obtener nombre del centro para el apartado de RECIBIÓ
         centro_nombre = datos_entrega.get('centro_destino', 'CENTRO PENITENCIARIO')
         
-        # Firmas: APROBÓ, ENTREGÓ y RECIBIÓ
+        # Firmas: APROBÓ, ENTREGÓ y RECIBIÓ - Solo etiquetas, el usuario escribe nombre y cargo
         firmas_data = [
-            ['APROBÓ:', 'ENTREGÓ:', f'RECIBIÓ {centro_nombre}:'],
+            ['APROBÓ', 'ENTREGÓ', 'RECIBIÓ'],
             ['', '', ''],
             ['', '', ''],
             ['_' * 28, '_' * 28, '_' * 28],
             ['Nombre y Firma', 'Nombre y Firma', 'Nombre y Firma'],
-            ['Responsable Farmacia', 'Farmacia Central', centro_nombre],
+            ['', '', ''],
+            ['_' * 28, '_' * 28, '_' * 28],
+            ['Cargo', 'Cargo', 'Cargo'],
             ['', '', ''],
             ['Fecha: ____/____/____', 'Fecha: ____/____/____', 'Fecha: ____/____/____'],
-            ['Hora: ____:____', 'Hora: ____:____', 'Hora: ____:____'],
         ]
         
         firmas_table = Table(firmas_data, colWidths=[2.4*inch, 2.4*inch, 2.4*inch])
         firmas_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
             ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
             ('TOPPADDING', (0, 0), (-1, -1), 3),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-            # Subtítulos de cargo
-            ('FONTSIZE', (0, 5), (-1, 5), 7),
-            ('TEXTCOLOR', (0, 5), (-1, 5), COLOR_GRIS),
+            # Labels "Nombre y Firma" y "Cargo"
+            ('FONTSIZE', (0, 4), (-1, 4), 7),
+            ('TEXTCOLOR', (0, 4), (-1, 4), COLOR_GRIS),
+            ('FONTSIZE', (0, 7), (-1, 7), 7),
+            ('TEXTCOLOR', (0, 7), (-1, 7), COLOR_GRIS),
         ]))
         
         # Mantener firmas juntas
