@@ -1512,7 +1512,7 @@ class MovimientoSerializer(serializers.ModelSerializer):
             return obj.centro_origen.nombre
         if obj.lote and obj.lote.centro:
             return obj.lote.centro.nombre
-        return 'Farmacia Central'
+        return 'Almacén Central'
     
     def validate_subtipo_salida(self, value):
         """Validar que el subtipo de salida sea válido."""

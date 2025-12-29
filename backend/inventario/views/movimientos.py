@@ -1,12 +1,12 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
-Módulo MovimientoViewSet para gestión de movimientos de inventario.
+MÃ³dulo MovimientoViewSet para gestiÃ³n de movimientos de inventario.
 
 Contiene el ViewSet para operaciones CRUD sobre movimientos de stock,
-incluyendo exportación a PDF/Excel y trazabilidad de productos y lotes.
+incluyendo exportaciÃ³n a PDF/Excel y trazabilidad de productos y lotes.
 
-Refactorización audit34: Extraído del monolítico views.py (7654 líneas)
-para mejorar mantenibilidad y separación de responsabilidades.
+RefactorizaciÃ³n audit34: ExtraÃ­do del monolÃ­tico views.py (7654 lÃ­neas)
+para mejorar mantenibilidad y separaciÃ³n de responsabilidades.
 """
 import logging
 import openpyxl
@@ -23,7 +23,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from core.models import Producto, Lote, Movimiento, Centro
 from core.serializers import MovimientoSerializer
-# ISS-MEDICO FIX: Usar IsCentroCanManageInventory para excluir médico
+# ISS-MEDICO FIX: Usar IsCentroCanManageInventory para excluir mÃ©dico
 from core.permissions import IsFarmaciaRole, IsCentroRole, IsCentroCanManageInventory, RoleHelper
 
 from .base import (
@@ -65,7 +65,7 @@ class MovimientoViewSet(
     """
     queryset = Movimiento.objects.select_related('lote__producto', 'centro_origen', 'centro_destino', 'usuario').all()
     serializer_class = MovimientoSerializer
-    # ISS-MEDICO FIX: Usar permiso que excluye médico de operaciones de escritura
+    # ISS-MEDICO FIX: Usar permiso que excluye mÃ©dico de operaciones de escritura
     permission_classes = [IsCentroCanManageInventory]
     pagination_class = CustomPagination
     http_method_names = ['get', 'post', 'head', 'options']
@@ -121,14 +121,14 @@ class MovimientoViewSet(
         if producto:
             queryset = queryset.filter(lote__producto_id=producto)
         
-        # Filtro por lote (acepta ID numérico o número de lote como texto)
+        # Filtro por lote (acepta ID numÃ©rico o nÃºmero de lote como texto)
         lote = self.request.query_params.get('lote')
         if lote:
             if lote.isdigit():
-                # Si es un número, buscar por ID
+                # Si es un nÃºmero, buscar por ID
                 queryset = queryset.filter(lote_id=lote)
             else:
-                # Si es texto, buscar por número de lote (coincidencia parcial)
+                # Si es texto, buscar por nÃºmero de lote (coincidencia parcial)
                 queryset = queryset.filter(lote__numero_lote__icontains=lote)
         
         # Filtro por subtipo de salida (receta, consumo_interno, merma, etc.)
@@ -166,16 +166,16 @@ class MovimientoViewSet(
         SEGURIDAD:
         - Admin/farmacia: pueden crear cualquier movimiento en cualquier lote
         - Usuario de centro (administrador/director): pueden crear movimientos en lotes de su centro
-          y solo ciertos tipos: 'salida' (consumo), 'ajuste' (inventario físico)
-        - Médico: NO puede crear movimientos (ISS-MEDICO FIX)
-        - Usuario de centro NO puede crear 'entrada' (solo vía surtido de requisición)
+          y solo ciertos tipos: 'salida' (consumo), 'ajuste' (inventario fÃ­sico)
+        - MÃ©dico: NO puede crear movimientos (ISS-MEDICO FIX)
+        - Usuario de centro NO puede crear 'entrada' (solo vÃ­a surtido de requisiciÃ³n)
         """
         user = self.request.user
         
-        # ISS-MEDICO FIX: Bloquear explícitamente a médicos
+        # ISS-MEDICO FIX: Bloquear explÃ­citamente a mÃ©dicos
         if RoleHelper.is_medico(user):
             raise serializers.ValidationError({
-                'detail': 'Los médicos no tienen permiso para crear movimientos de inventario. Use requisiciones para solicitar medicamentos.'
+                'detail': 'Los mÃ©dicos no tienen permiso para crear movimientos de inventario. Use requisiciones para solicitar medicamentos.'
             })
         
         lote = serializer.validated_data.get('lote')
@@ -204,8 +204,8 @@ class MovimientoViewSet(
         subtipo_salida = serializer.validated_data.get('subtipo_salida')
         numero_expediente = serializer.validated_data.get('numero_expediente')
         
-        # ISS-FIX: Para transferencias desde Farmacia Central a Centro,
-        # el lote es de Farmacia Central (centro=None) pero el destino es un Centro específico.
+        # ISS-FIX: Para transferencias desde Almacén Central a Centro,
+        # el lote es de Almacén Central (centro=None) pero el destino es un Centro especÃ­fico.
         # Debemos permitir esto para admin/farmacia usando skip_centro_check=True
         
         # ISS-FIX-500: Convertir centro_id a objeto Centro si se pasa un ID
@@ -235,7 +235,7 @@ class MovimientoViewSet(
             observaciones=serializer.validated_data.get('motivo', ''),
             subtipo_salida=subtipo_salida,
             numero_expediente=numero_expediente,
-            # ISS-FIX: Saltear validación de centro para transferencias de Farmacia Central
+            # ISS-FIX: Saltear validaciÃ³n de centro para transferencias de Almacén Central
             skip_centro_check=es_transferencia_farmacia
         )
         # Dejar instancia lista para serializer.data
@@ -287,7 +287,7 @@ class MovimientoViewSet(
                     'tipo': mov.tipo.upper(),
                     'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                     'cantidad': mov.cantidad,
-                    'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
+                    'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Almacén Central'),
                     'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
                     'observaciones': mov.motivo or ''
                 })
@@ -297,7 +297,7 @@ class MovimientoViewSet(
             
             producto_info = {
                 'clave': producto.clave,
-                'descripcion': producto.nombre,  # Usar nombre como descripción principal
+                'descripcion': producto.nombre,  # Usar nombre como descripciÃ³n principal
                 'unidad_medida': producto.unidad_medida,
                 'stock_actual': producto.get_stock_actual() if hasattr(producto, 'get_stock_actual') else 0,
                 'stock_minimo': producto.stock_minimo,
@@ -342,7 +342,7 @@ class MovimientoViewSet(
         if not numero_lote and not lote_id:
             return Response({'error': 'Se requiere numero_lote o lote_id'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # ISS-FIX: Preferir lote_id para evitar ambigüedad con lotes duplicados en diferentes centros
+        # ISS-FIX: Preferir lote_id para evitar ambigÃ¼edad con lotes duplicados en diferentes centros
         if lote_id:
             lote = Lote.objects.filter(id=lote_id).select_related('producto', 'centro').first()
         else:
@@ -364,7 +364,7 @@ class MovimientoViewSet(
                     'tipo': mov.tipo.upper(),
                     'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                     'cantidad': mov.cantidad,
-                    'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
+                    'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Almacén Central'),
                     'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
                     'observaciones': mov.motivo or ''
                 })
@@ -415,7 +415,7 @@ class MovimientoViewSet(
         from core.utils.pdf_reports import generar_reporte_movimientos
         
         try:
-            # Aplicar filtros (get_queryset ya aplica filtros base, aquí se duplican por consistencia explícita)
+            # Aplicar filtros (get_queryset ya aplica filtros base, aquÃ­ se duplican por consistencia explÃ­cita)
             queryset = self.get_queryset()
             
             tipo = request.query_params.get('tipo')
@@ -462,7 +462,7 @@ class MovimientoViewSet(
             
             movimientos = queryset[:200]  # Limitar para PDF
             
-            # Agrupar movimientos por referencia/transacción para PDF
+            # Agrupar movimientos por referencia/transacciÃ³n para PDF
             transacciones = {}
             total_entradas = 0
             total_salidas = 0
@@ -476,8 +476,8 @@ class MovimientoViewSet(
                         'referencia': ref,
                         'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
                         'tipo': mov.tipo.upper(),
-                        'centro_origen': mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central',
-                        'centro_destino': mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central',
+                        'centro_origen': mov.centro_origen.nombre if mov.centro_origen else 'Almacén Central',
+                        'centro_destino': mov.centro_destino.nombre if mov.centro_destino else 'Almacén Central',
                         'total_productos': 0,
                         'total_cantidad': 0,
                         'detalles': []
@@ -531,7 +531,7 @@ class MovimientoViewSet(
         Filtros soportados: tipo, fecha_inicio, fecha_fin, producto, centro, lote, subtipo_salida, search
         """
         try:
-            # Aplicar filtros (get_queryset ya aplica filtros base, aquí se duplican por consistencia explícita)
+            # Aplicar filtros (get_queryset ya aplica filtros base, aquÃ­ se duplican por consistencia explÃ­cita)
             queryset = self.get_queryset()
             
             tipo = request.query_params.get('tipo')
@@ -583,7 +583,7 @@ class MovimientoViewSet(
             ws = wb.active
             ws.title = 'Movimientos'
             
-            # Título - Con columnas de centro origen y destino
+            # TÃ­tulo - Con columnas de centro origen y destino
             ws.merge_cells('A1:J1')
             ws['A1'] = 'REPORTE DE MOVIMIENTOS'
             ws['A1'].font = Font(bold=True, size=14, color='632842')
@@ -619,8 +619,8 @@ class MovimientoViewSet(
                     producto_nombre or 'N/A',
                     mov.lote.numero_lote if mov.lote else 'N/A',
                     mov.cantidad,
-                    mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central',
-                    mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central',
+                    mov.centro_origen.nombre if mov.centro_origen else 'Almacén Central',
+                    mov.centro_destino.nombre if mov.centro_destino else 'Almacén Central',
                     mov.usuario.get_full_name() or mov.usuario.username if mov.usuario else 'Sistema',
                     (mov.motivo or '')[:100],
                 ])
@@ -648,9 +648,9 @@ class MovimientoViewSet(
     @action(detail=True, methods=['get'], url_path='recibo-salida')
     def recibo_salida(self, request, pk=None):
         """
-        Genera PDF de recibo de salida para un movimiento específico.
+        Genera PDF de recibo de salida para un movimiento especÃ­fico.
         
-        Parámetros opcionales:
+        ParÃ¡metros opcionales:
         - finalizado: si es 'true', muestra sello ENTREGADO en lugar de firmas
         
         SEGURIDAD: Usuarios pueden generar recibos de movimientos que les correspondan.
@@ -690,7 +690,7 @@ class MovimientoViewSet(
                 'subtipo_salida': movimiento.subtipo_salida or 'transferencia',
                 'centro_origen': {
                     'id': movimiento.centro_origen.id if movimiento.centro_origen else None,
-                    'nombre': movimiento.centro_origen.nombre if movimiento.centro_origen else 'Farmacia Central'
+                    'nombre': movimiento.centro_origen.nombre if movimiento.centro_origen else 'Almacén Central'
                 },
                 'centro_destino': {
                     'id': movimiento.centro_destino.id if movimiento.centro_destino else None,

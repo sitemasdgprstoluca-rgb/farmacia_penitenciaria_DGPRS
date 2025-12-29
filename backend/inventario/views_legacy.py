@@ -1355,7 +1355,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     'dias_para_caducar': dias_para_caducar,
                     'alerta_caducidad': alerta_caducidad,
                     'centro_id': lote.centro_id,
-                    'centro_nombre': lote.centro.nombre if lote.centro else 'Farmacia Central',
+                    'centro_nombre': lote.centro.nombre if lote.centro else 'Almacén Central',
                 })
                 
                 # ISS-FIX: Log detallado de cada lote
@@ -1422,7 +1422,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     'fecha_caducidad': lote.fecha_caducidad.isoformat() if lote.fecha_caducidad else None,
                     'activo': lote.activo,
                     'centro_id': lote.centro_id,
-                    'centro_nombre': lote.centro.nombre if lote.centro else 'Farmacia Central (NULL)',
+                    'centro_nombre': lote.centro.nombre if lote.centro else 'Almacén Central (NULL)',
                     'created_at': lote.created_at.isoformat() if lote.created_at else None,
                     'updated_at': lote.updated_at.isoformat() if lote.updated_at else None,
                 })
@@ -2923,7 +2923,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                     'fecha_caducidad_raw': lote.fecha_caducidad,
                     'cantidad_inicial': lote.cantidad_inicial,
                     'cantidad_actual': lote.cantidad_actual,
-                    'centro_nombre': getattr(lote.centro, 'nombre', 'Farmacia Central') if lote.centro else 'Farmacia Central',
+                    'centro_nombre': getattr(lote.centro, 'nombre', 'Almacén Central') if lote.centro else 'Almacén Central',
                     'activo': lote.activo,
                 })
             
@@ -2938,7 +2938,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             if request.query_params.get('centro'):
                 centro_param = request.query_params.get('centro')
                 if centro_param == 'central':
-                    filtros['centro'] = 'Farmacia Central'
+                    filtros['centro'] = 'Almacén Central'
                 else:
                     try:
                         centro = Centro.objects.get(pk=centro_param)
@@ -3025,7 +3025,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                     lote.numero_contrato or '',
                     lote.marca or '',
                     lote.ubicacion or '',
-                    getattr(lote.centro, 'nombre', 'Farmacia Central') if lote.centro else 'Farmacia Central',
+                    getattr(lote.centro, 'nombre', 'Almacén Central') if lote.centro else 'Almacén Central',
                     'Sí' if lote.activo else 'No'
                 ])
 
@@ -3774,7 +3774,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                     'cantidad_actual': lote.cantidad_actual,
                     'fecha_caducidad': lote.fecha_caducidad,
                     'es_lote_farmacia': lote.centro is None,
-                    'ubicacion': lote.centro.nombre if lote.centro else 'Farmacia Central'
+                    'ubicacion': lote.centro.nombre if lote.centro else 'Almacén Central'
                 },
                 'origen': None,
                 'derivados': []
@@ -4210,17 +4210,38 @@ class MovimientoViewSet(
         subtipo_salida = serializer.validated_data.get('subtipo_salida')
         numero_expediente = serializer.validated_data.get('numero_expediente')
         
+        # ISS-FIX-500: Convertir centro_id a objeto Centro si se pasa un ID
+        centro_destino_raw = serializer.validated_data.get('centro')
+        centro_destino = None
+        if centro_destino_raw:
+            if isinstance(centro_destino_raw, Centro):
+                centro_destino = centro_destino_raw
+            else:
+                try:
+                    centro_destino = Centro.objects.get(pk=int(centro_destino_raw))
+                except (Centro.DoesNotExist, ValueError, TypeError):
+                    raise serializers.ValidationError({
+                        'centro': f'Centro con ID {centro_destino_raw} no encontrado'
+                    })
+        
+        # ISS-FIX: Para transferencias desde Almacén Central a Centro,
+        # el lote es del Almacén Central (centro=None) pero el destino es un Centro específico.
+        # Debemos permitir esto para admin/farmacia usando skip_centro_check=True
+        es_transferencia_almacen = is_farmacia_or_admin(user) and centro_destino and lote and lote.centro is None
+        
         movimiento, _ = registrar_movimiento_stock(
             lote=lote,
             tipo=serializer.validated_data.get('tipo'),
             cantidad=serializer.validated_data.get('cantidad'),
             usuario=user,
-            centro=serializer.validated_data.get('centro') or (lote.centro if lote else None),
+            centro=centro_destino or (lote.centro if lote else None),
             requisicion=serializer.validated_data.get('requisicion'),
             # FIX: El serializer mapea 'observaciones' del frontend a 'motivo' via to_internal_value
             observaciones=serializer.validated_data.get('motivo', ''),
             subtipo_salida=subtipo_salida,
-            numero_expediente=numero_expediente
+            numero_expediente=numero_expediente,
+            # ISS-FIX: Saltear validación de centro para transferencias del Almacén Central
+            skip_centro_check=es_transferencia_almacen
         )
         # Dejar instancia lista para serializer.data
         serializer.instance = movimiento
@@ -4271,7 +4292,7 @@ class MovimientoViewSet(
                     'tipo': mov.tipo.upper(),
                     'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                     'cantidad': mov.cantidad,
-                    'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
+                    'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Almacén Central'),
                     'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
                     'observaciones': mov.motivo or ''
                 })
@@ -4337,7 +4358,7 @@ class MovimientoViewSet(
                     'tipo': mov.tipo.upper(),
                     'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                     'cantidad': mov.cantidad,
-                    'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
+                    'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Almacén Central'),
                     'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
                     'observaciones': mov.motivo or ''
                 })
@@ -4447,8 +4468,8 @@ class MovimientoViewSet(
                         'referencia': ref,
                         'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
                         'tipo': mov.tipo.upper(),
-                        'centro_origen': mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central',
-                        'centro_destino': mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central',
+                        'centro_origen': mov.centro_origen.nombre if mov.centro_origen else 'Almacén Central',
+                        'centro_destino': mov.centro_destino.nombre if mov.centro_destino else 'Almacén Central',
                         'total_productos': 0,
                         'total_cantidad': 0,
                         'detalles': []
@@ -4585,7 +4606,7 @@ class MovimientoViewSet(
                     mov.lote.producto.descripcion[:50] if mov.lote and mov.lote.producto else 'N/A',
                     mov.lote.numero_lote if mov.lote else 'N/A',
                     mov.cantidad,
-                    mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
+                    mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Almacén Central'),
                     mov.usuario.get_full_name() or mov.usuario.username if mov.usuario else 'Sistema',
                     mov.numero_expediente or '',
                     (mov.motivo or '')[:100],
