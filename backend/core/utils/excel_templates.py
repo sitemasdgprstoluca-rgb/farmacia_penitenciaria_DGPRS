@@ -59,6 +59,7 @@ def generar_plantilla_productos():
     headers = [
         "Clave",
         "Nombre",
+        "Nombre Comercial",
         "Unidad",
         "Stock Minimo",
         "Categoria",
@@ -72,7 +73,7 @@ def generar_plantilla_productos():
     ]
 
     # Anchos personalizados por columna para mejor legibilidad
-    column_widths = [15, 45, 18, 15, 20, 25, 25, 20, 20, 18, 15, 12]
+    column_widths = [15, 45, 30, 18, 15, 20, 25, 25, 20, 20, 18, 15, 12]
     
     for col_num, header in enumerate(headers, 1):
         ws.cell(row=1, column=col_num, value=header)
@@ -86,11 +87,11 @@ def generar_plantilla_productos():
     # Texto gris itálico para que sea obvio
     # ============================================================
     ejemplos = [
-        ["PRUEBA001", "[EJEMPLO] Paracetamol 500mg - ELIMINAR", "CAJA", 50, "medicamento",
+        ["PRUEBA001", "[EJEMPLO] Paracetamol 500mg - ELIMINAR", "Tylenol", "CAJA", 50, "medicamento",
          "Paracetamol", "Tableta", "500 mg", "oral", "No", "No", "Activo"],
-        ["PRUEBA002", "[EJEMPLO] Ibuprofeno 400mg - ELIMINAR", "FRASCO", 30, "medicamento",
+        ["PRUEBA002", "[EJEMPLO] Ibuprofeno 400mg - ELIMINAR", "Advil", "FRASCO", 30, "medicamento",
          "Ibuprofeno", "Cápsula", "400 mg", "oral", "No", "No", "Activo"],
-        ["PRUEBA003", "[EJEMPLO] Jeringa 10ml - ELIMINAR", "PIEZA", 100, "material_curacion",
+        ["PRUEBA003", "[EJEMPLO] Jeringa 10ml - ELIMINAR", "", "PIEZA", 100, "material_curacion",
          "", "", "", "", "No", "No", "Activo"],
     ]
     
@@ -118,11 +119,12 @@ def generar_plantilla_productos():
         ["COLUMNAS REQUERIDAS (obligatorias):"],
         ["────────────────────────────────────────────────────────────────────────"],
         ["• Clave      - Código único del producto (ej: 001, MED001, ABC123)"],
-        ["• Nombre     - Nombre completo del producto"],
+        ["• Nombre     - Nombre completo del producto (nombre genérico)"],
         [""],
         ["────────────────────────────────────────────────────────────────────────"],
         ["COLUMNAS OPCIONALES:"],
         ["────────────────────────────────────────────────────────────────────────"],
+        ["• Nombre Comercial - Nombre de marca del producto (ej: Tylenol, Aspirina)"],
         ["• Unidad         - CAJA, PIEZA, FRASCO, SOBRE, TABLETA, etc. (default: PIEZA)"],
         ["• Stock Minimo   - Cantidad mínima para alertas (default: 10)"],
         ["• Categoria      - medicamento, material_curacion, insumo (default: medicamento)"],

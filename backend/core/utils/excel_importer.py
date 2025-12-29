@@ -183,6 +183,7 @@ def importar_productos_desde_excel(archivo, usuario):
                   'codigo barras', 'codigo de barras', 'barcode'],
         'nombre': ['nombre', 'descripcion', 'nombre generico', 'medicamento', 'producto', 
                    'nombre del medicamento', 'nombre generico del medicamento', 'articulo'],
+        'nombre_comercial': ['nombre comercial', 'marca comercial', 'nombre de marca', 'brand'],
         'unidad_medida': ['unidad', 'unidad medida', 'um', 'unidad de medida'],
         'categoria': ['categoria', 'tipo', 'clasificacion', 'clase', 'grupo'],
         'presentacion': ['presentacion', 'forma farmaceutica', 'forma', 'envase'],
@@ -258,6 +259,9 @@ def importar_productos_desde_excel(archivo, usuario):
                     continue
                 nombre = nombre_raw[:500]
                 
+                # ========== NOMBRE COMERCIAL ==========
+                nombre_comercial = get_val('nombre_comercial', '')
+                
                 # ========== UNIDAD DE MEDIDA ==========
                 # Guardar texto libre completo (ej: "CAJA CON 7 OVULOS")
                 unidad_raw = get_val('unidad_medida', 'PIEZA')
@@ -314,6 +318,7 @@ def importar_productos_desde_excel(archivo, usuario):
                     clave=clave,
                     defaults={
                         'nombre': nombre,
+                        'nombre_comercial': nombre_comercial[:200] if nombre_comercial else None,
                         'descripcion': descripcion,
                         'unidad_medida': unidad_medida,
                         'categoria': categoria,
