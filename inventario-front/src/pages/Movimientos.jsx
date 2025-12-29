@@ -3,9 +3,9 @@ import { useLocation } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import Pagination from "../components/Pagination";
 import SalidaMasiva from "../components/SalidaMasiva";
-import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, descargarArchivo } from "../services/api";
+import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, salidaMasivaAPI, descargarArchivo } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
-import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList } from "react-icons/fa";
+import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList, FaFileDownload } from "react-icons/fa";
 import { COLORS } from "../constants/theme";
 
 const PAGE_SIZE = 25;
@@ -455,6 +455,32 @@ const Movimientos = () => {
       toast.success("Comprobante generado", { id: "recibo-final" });
     } catch (err) {
       toast.error("No se pudo generar el comprobante", { id: "recibo-final" });
+      console.error("Error generando comprobante:", err);
+    }
+  };
+
+  // Descargar hoja de entrega para grupo de salida masiva
+  const descargarHojaEntregaGrupo = async (grupoId) => {
+    try {
+      toast.loading("Generando hoja de entrega...", { id: "hoja-grupo" });
+      const response = await salidaMasivaAPI.hojaEntregaPdf(grupoId, false);
+      descargarArchivo(response.data, `Hoja_Entrega_${grupoId}.pdf`);
+      toast.success("Hoja de entrega descargada", { id: "hoja-grupo" });
+    } catch (err) {
+      toast.error("No se pudo generar la hoja de entrega", { id: "hoja-grupo" });
+      console.error("Error generando hoja:", err);
+    }
+  };
+
+  // Descargar comprobante de entrega para grupo de salida masiva
+  const descargarComprobanteGrupo = async (grupoId) => {
+    try {
+      toast.loading("Generando comprobante de entrega...", { id: "comp-grupo" });
+      const response = await salidaMasivaAPI.hojaEntregaPdf(grupoId, true);
+      descargarArchivo(response.data, `Comprobante_Entrega_${grupoId}.pdf`);
+      toast.success("Comprobante de entrega descargado", { id: "comp-grupo" });
+    } catch (err) {
+      toast.error("No se pudo generar el comprobante", { id: "comp-grupo" });
       console.error("Error generando comprobante:", err);
     }
   };
@@ -1025,9 +1051,19 @@ const Movimientos = () => {
                               {grupo.fecha ? new Date(grupo.fecha).toLocaleString('es-MX') : ''}
                             </td>
                             <td className="px-4 py-3">
-                              <span className="text-rose-600 text-sm font-semibold">
-                                {gruposExpandidos.has(grupo.id) ? '▲ Colapsar' : '▼ Ver items'}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); descargarComprobanteGrupo(grupo.id); }}
+                                  className="flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition"
+                                  title="Descargar comprobante de entrega"
+                                >
+                                  <FaFileDownload className="text-xs" />
+                                  Comprobante
+                                </button>
+                                <span className="text-rose-600 text-sm font-semibold">
+                                  {gruposExpandidos.has(grupo.id) ? '▲' : '▼'}
+                                </span>
+                              </div>
                             </td>
                           </tr>
                           {/* Items del grupo expandidos */}

@@ -1142,33 +1142,40 @@ def generar_hoja_entrega(datos_entrega, finalizado=False):
         )
         story.append(comprobante_nota)
     else:
-        # Sección de firmas (PDF para firmar)
-        firmas_titulo = Paragraph("<b>FIRMAS DE ENTREGA Y RECEPCIÓN</b>", ParagraphStyle(
+        # Sección de firmas (PDF para firmar) - 3 firmas: APROBÓ, ENTREGÓ, RECIBIÓ
+        firmas_titulo = Paragraph("<b>FIRMAS DE AUTORIZACIÓN, ENTREGA Y RECEPCIÓN</b>", ParagraphStyle(
             'FirmasTitulo', fontSize=10, textColor=COLOR_GUINDA, 
             alignment=TA_CENTER, spaceAfter=15
         ))
         story.append(firmas_titulo)
         
-        # Firmas: Farmacia entrega y Centro recibe
+        # Obtener nombre del centro para el apartado de RECIBIÓ
+        centro_nombre = datos_entrega.get('centro_destino', 'CENTRO PENITENCIARIO')
+        
+        # Firmas: APROBÓ, ENTREGÓ y RECIBIÓ
         firmas_data = [
-            ['ENTREGA FARMACIA CENTRAL:', 'RECIBE CENTRO PENITENCIARIO:'],
-            ['', ''],
-            ['', ''],
-            ['_' * 35, '_' * 35],
-            ['Nombre y Firma', 'Nombre y Firma'],
-            ['', ''],
-            ['Fecha: ____/____/________', 'Fecha: ____/____/________'],
-            ['Hora: ____:____', 'Hora: ____:____'],
+            ['APROBÓ:', 'ENTREGÓ:', f'RECIBIÓ {centro_nombre}:'],
+            ['', '', ''],
+            ['', '', ''],
+            ['_' * 28, '_' * 28, '_' * 28],
+            ['Nombre y Firma', 'Nombre y Firma', 'Nombre y Firma'],
+            ['Responsable Farmacia', 'Farmacia Central', centro_nombre],
+            ['', '', ''],
+            ['Fecha: ____/____/____', 'Fecha: ____/____/____', 'Fecha: ____/____/____'],
+            ['Hora: ____:____', 'Hora: ____:____', 'Hora: ____:____'],
         ]
         
-        firmas_table = Table(firmas_data, colWidths=[3.5*inch, 3.5*inch])
+        firmas_table = Table(firmas_data, colWidths=[2.4*inch, 2.4*inch, 2.4*inch])
         firmas_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
             ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            # Subtítulos de cargo
+            ('FONTSIZE', (0, 5), (-1, 5), 7),
+            ('TEXTCOLOR', (0, 5), (-1, 5), COLOR_GRIS),
         ]))
         
         # Mantener firmas juntas

@@ -114,8 +114,9 @@ def salida_masiva(request):
                 'errores': errores
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Generar ID de grupo para esta salida masiva
-        timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
+        # Generar ID de grupo para esta salida masiva (formato corto: SAL-MMDD-HHMM-CentroID)
+        now = timezone.now()
+        timestamp = now.strftime('%m%d-%H%M')
         grupo_salida = f'SAL-{timestamp}-{centro_destino.id}'
         
         movimientos_creados = []
