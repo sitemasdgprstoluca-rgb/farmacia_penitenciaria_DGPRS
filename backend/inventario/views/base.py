@@ -796,7 +796,9 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
             centro_origen=mov_centro_origen,
             requisicion=requisicion,
             usuario=usuario if usuario and getattr(usuario, 'is_authenticated', False) else None,
-            cantidad=delta,
+            # ISS-FIX-CONSTRAINT: La BD tiene constraint que exige cantidad POSITIVA
+            # El tipo (salida/entrada) indica si suma o resta, la cantidad es siempre positiva
+            cantidad=abs(delta),
             motivo=observaciones or '',
             # MEJORA FLUJO 5: Campos de trazabilidad para pacientes
             subtipo_salida=subtipo_salida if tipo_normalizado == 'salida' else None,

@@ -5,7 +5,7 @@ import Pagination from "../components/Pagination";
 import SalidaMasiva from "../components/SalidaMasiva";
 import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, salidaMasivaAPI, descargarArchivo } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
-import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList, FaFileDownload } from "react-icons/fa";
+import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList, FaFileDownload, FaCheckCircle, FaClipboardCheck } from "react-icons/fa";
 import { COLORS } from "../constants/theme";
 
 const PAGE_SIZE = 25;
@@ -1083,47 +1083,44 @@ const Movimientos = () => {
                               {grupo.fecha ? new Date(grupo.fecha).toLocaleString('es-MX') : ''}
                             </td>
                             <td className="px-4 py-3">
-                              <div className="flex items-center gap-2 flex-wrap">
+                              <div className="flex items-center gap-1 flex-wrap">
                                 {!grupo.confirmado ? (
                                   <>
                                     {/* Hoja de Entrega (para firmas) */}
                                     <button
                                       onClick={(e) => { e.stopPropagation(); descargarHojaEntregaGrupo(grupo.id); }}
-                                      className="flex items-center gap-1 px-2 py-1 bg-rose-700 text-white rounded text-xs font-medium hover:bg-rose-800 transition"
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-600 text-white rounded-md text-xs font-medium hover:bg-rose-700 transition shadow-sm"
                                       title="Descargar hoja de entrega para firmas"
                                     >
-                                      <FaFileDownload className="text-xs" />
-                                      Hoja Entrega
+                                      <FaClipboardCheck className="text-xs" />
+                                      <span className="hidden sm:inline">Hoja</span>
                                     </button>
                                     {/* Confirmar Entrega */}
                                     <button
                                       onClick={(e) => { e.stopPropagation(); confirmarEntregaGrupo(grupo.id); }}
                                       disabled={confirmandoGrupo === grupo.id}
-                                      className="flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition disabled:opacity-50"
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                       title="Confirmar entrega física"
                                     >
                                       {confirmandoGrupo === grupo.id ? (
                                         <FaSpinner className="text-xs animate-spin" />
                                       ) : (
-                                        <FaFileDownload className="text-xs" />
+                                        <FaCheckCircle className="text-xs" />
                                       )}
-                                      Confirmar
+                                      <span className="hidden sm:inline">Confirmar</span>
                                     </button>
                                   </>
                                 ) : (
                                   /* Solo comprobante si ya está confirmado */
                                   <button
                                     onClick={(e) => { e.stopPropagation(); descargarComprobanteGrupo(grupo.id); }}
-                                    className="flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition"
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 transition shadow-sm"
                                     title="Descargar comprobante de entrega"
                                   >
                                     <FaFileDownload className="text-xs" />
                                     Comprobante
                                   </button>
                                 )}
-                                <span className="text-rose-600 text-sm font-semibold">
-                                  {gruposExpandidos.has(grupo.id) ? '▲' : '▼'}
-                                </span>
                               </div>
                             </td>
                           </tr>
