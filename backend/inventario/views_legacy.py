@@ -10084,7 +10084,11 @@ def exportar_control_inventarios(request):
     Exporta el inventario en formato "Control de Inventarios del Almacén Central de Medicamentos"
     con el mismo estilo que el archivo de referencia de licitación.
     
-    Columnas:
+    Parámetros opcionales:
+    - fecha_inicio: Fecha inicio del rango (YYYY-MM-DD)
+    - fecha_fin: Fecha fin del rango (YYYY-MM-DD)
+    
+    Columnas (idénticas al formato de referencia):
     - NO. PARTIDA (secuencial por producto)
     - CLAVE (clave del producto)  
     - ARTÍCULO (nombre/descripción)
@@ -10092,8 +10096,8 @@ def exportar_control_inventarios(request):
     - NOMBRE COMERCIAL O GENÉRICO (marca)
     - CONCENTRACIÓN (del producto)
     - PRESENTACIÓN
-    - MESES (meses para caducidad)
-    - VENCIMIENTO / FECHA CADUCIDAD
+    - MESES (meses para caducidad - con semaforización)
+    - VENCIMIENTO (SEMAFORIZACIÓN) / FECHA DE CADUCIDAD
     - CANTIDAD
     - FECHA DE INGRESO
     - FECHA DE SALIDA (ULTIMA)
@@ -10114,22 +10118,40 @@ def exportar_control_inventarios(request):
         return Response({'error': 'Solo administradores y farmacia pueden exportar este formato'}, status=status.HTTP_403_FORBIDDEN)
     
     try:
+        # Obtener parámetros de fecha
+        fecha_inicio_param = request.query_params.get('fecha_inicio')
+        fecha_fin_param = request.query_params.get('fecha_fin')
+        
+        # Parsear fechas
+        fecha_inicio = None
+        fecha_fin = None
+        if fecha_inicio_param:
+            try:
+                fecha_inicio = datetime.strptime(fecha_inicio_param, '%Y-%m-%d').date()
+            except ValueError:
+                pass
+        if fecha_fin_param:
+            try:
+                fecha_fin = datetime.strptime(fecha_fin_param, '%Y-%m-%d').date()
+            except ValueError:
+                pass
+        
         # Obtener todos los lotes activos con stock, agrupados por producto
         lotes = Lote.objects.select_related('producto').filter(
             activo=True,
             cantidad_actual__gt=0,
-            centro__isnull=True  # Solo farmacia central
+            centro__isnull=True  # Solo farmacia central (Almacén Central)
         ).order_by('producto__clave', 'numero_lote')
         
         # Crear workbook
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws.title = "Control Inventarios"
+        ws.title = "Hoja1"  # Nombre de hoja como el original
         
-        # Estilos
+        # Estilos exactos del formato de referencia
         header_font = Font(bold=True, size=10)
         header_fill = PatternFill(start_color="C4D79B", end_color="C4D79B", fill_type="solid")  # Verde claro
-        yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")  # Amarillo para evidencia
+        yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")  # Amarillo
         thin_border = Border(
             left=Side(style='thin'),
             right=Side(style='thin'),
@@ -10139,24 +10161,44 @@ def exportar_control_inventarios(request):
         center_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
         left_align = Alignment(horizontal='left', vertical='center', wrap_text=True)
         
-        # Folio en esquina superior derecha
-        ws.merge_cells('H2:I2')
-        ws['H2'] = "Folio:________________"
-        ws['H2'].alignment = Alignment(horizontal='right')
+        # Folio en esquina superior derecha (celdas I2:L2 combinadas) - EXACTO al formato
+        ws.merge_cells('I2:L2')
+        ws['I2'] = "Folio:_____________________"
+        ws['I2'].alignment = Alignment(horizontal='right')
         
-        # Título principal
-        ws.merge_cells('A4:M4')
-        ws['A4'] = "CONTROL DE INVENTARIOS DEL ALMACÉN CENTRAL DE MEDICAMENTOS"
-        ws['A4'].font = Font(bold=True, size=14)
-        ws['A4'].alignment = Alignment(horizontal='center')
+        # Título principal con fechas (celdas B4:L4 combinadas) - EXACTO al formato
+        ws.merge_cells('B4:L4')
         
-        # Encabezados en fila 6 - Exactos al formato original
+        # Construir título con fechas si se proporcionaron
+        if fecha_inicio and fecha_fin:
+            titulo = f"CONTROL DE INVENTARIOS DEL ALMACÉN CENTRAL DE MEDICAMENTOS DEL {fecha_inicio.strftime('%d/%m/%Y')} AL {fecha_fin.strftime('%d/%m/%Y')}"
+        elif fecha_inicio:
+            titulo = f"CONTROL DE INVENTARIOS DEL ALMACÉN CENTRAL DE MEDICAMENTOS DESDE {fecha_inicio.strftime('%d/%m/%Y')}"
+        elif fecha_fin:
+            titulo = f"CONTROL DE INVENTARIOS DEL ALMACÉN CENTRAL DE MEDICAMENTOS HASTA {fecha_fin.strftime('%d/%m/%Y')}"
+        else:
+            titulo = "CONTROL DE INVENTARIOS DEL ALMACÉN CENTRAL DE MEDICAMENTOS"
+        
+        ws['B4'] = titulo
+        ws['B4'].font = Font(bold=True, size=12)
+        ws['B4'].alignment = Alignment(horizontal='center', vertical='center')
+        ws.row_dimensions[4].height = 43  # Altura exacta del original
+        
+        # Encabezados en fila 6 - EXACTOS al formato original
         headers = [
-            'NO.\nPARTIDA', 'CLAVE', 'ARTÍCULO', 'LOTE', 
-            'NOMBRE COMERCIAL\nO GENÉRICO', 'CONCENTRACIÓN', 'PRESENTACIÓN',
-            'MESES', 'VENCIMIENTO\n(SEMAFORIZACIÓN)\n/ FECHA DE',
-            'CANTIDAD', 'FECHA DE\nINGRESO', 'FECHA DE\nSALIDA\n(ULTIMA)',
-            'EVIDENCIA\nFOTOGRAFICA'
+            'NO. PARTIDA',        # A
+            'CLAVE',              # B
+            'ARTÍCULO',           # C
+            'LOTE',               # D
+            'NOMBRE COMERCIAL O GENÉRICO',  # E (sin salto de línea)
+            'CONCENTRACIÓN',      # F
+            'PRESENTACIÓN',       # G (sin espacio extra)
+            'MESES',              # H
+            'VENCIMIENTO (SEMAFORIZACIÓN) / FECHA DE CADUCIDAD',  # I
+            'CANTIDAD',           # J
+            'FECHA DE INGRESO',   # K
+            'FECHA DE SALIDA (ULTIMA)',  # L
+            'EVIDENCIA FOTOGRAFICA'  # M
         ]
         
         for col, header in enumerate(headers, 1):
@@ -10167,7 +10209,7 @@ def exportar_control_inventarios(request):
             cell.alignment = center_align
         
         # Ajustar altura de fila de encabezados
-        ws.row_dimensions[6].height = 50
+        ws.row_dimensions[6].height = 24
         
         # Datos
         row = 7
@@ -10182,7 +10224,7 @@ def exportar_control_inventarios(request):
                 partida_actual += 1
                 producto_anterior = producto.id
             
-            # Calcular meses hasta caducidad
+            # Calcular meses hasta caducidad (fórmula: =(I{row}-K{row})/30)
             meses_caducidad = ''
             if lote.fecha_caducidad:
                 hoy = datetime.now().date()
@@ -10201,31 +10243,31 @@ def exportar_control_inventarios(request):
                 tipo='entrada'
             ).order_by('fecha').values_list('fecha', flat=True).first()
             
-            # Si no hay movimiento de entrada, usar fecha de creación del lote (created_at)
+            # Si no hay movimiento de entrada, usar fecha de creación del lote
             if not fecha_ingreso and hasattr(lote, 'created_at') and lote.created_at:
                 fecha_ingreso = lote.created_at
             
-            # Ruta de evidencia fotográfica
+            # Ruta de evidencia fotográfica (formato exacto del original)
             evidencia = ''
             if hasattr(producto, 'imagenes') and producto.imagenes.exists():
                 img = producto.imagenes.first()
                 if img and img.imagen:
                     evidencia = f"Evidencia fotografica\\Fotos concentrado\\PARTIDA {partida_actual} Lote {lote.numero_lote}.jpeg"
             
-            # Datos de la fila
+            # Datos de la fila - EXACTO al formato original
             data = [
                 partida_actual,  # NO. PARTIDA
                 producto.clave,  # CLAVE
-                producto.nombre or producto.descripcion,  # ARTÍCULO
+                producto.nombre or producto.descripcion or '',  # ARTÍCULO
                 lote.numero_lote,  # LOTE
                 lote.marca or 'GENERICO',  # NOMBRE COMERCIAL O GENÉRICO
                 producto.concentracion or '',  # CONCENTRACIÓN
                 producto.presentacion or '',  # PRESENTACIÓN
-                meses_caducidad,  # MESES
-                lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else '',  # FECHA CADUCIDAD
+                f'=(I{row}-K{row})/30' if lote.fecha_caducidad and fecha_ingreso else meses_caducidad,  # MESES (fórmula como original)
+                lote.fecha_caducidad,  # FECHA CADUCIDAD (como fecha, no texto)
                 lote.cantidad_actual,  # CANTIDAD
-                fecha_ingreso.strftime('%d/%m/%Y') if fecha_ingreso else '',  # FECHA INGRESO
-                ultima_salida.strftime('%d/%m/%Y') if ultima_salida else '',  # FECHA SALIDA
+                fecha_ingreso.date() if hasattr(fecha_ingreso, 'date') else fecha_ingreso,  # FECHA INGRESO
+                ultima_salida.date() if ultima_salida and hasattr(ultima_salida, 'date') else '',  # FECHA SALIDA
                 evidencia,  # EVIDENCIA
             ]
             
@@ -10237,41 +10279,78 @@ def exportar_control_inventarios(request):
                 else:
                     cell.alignment = left_align
                 
-                # Fondo amarillo para evidencia
-                if col == 13:
+                # Formato de fecha para columnas de fecha
+                if col in [9, 11, 12] and value and not isinstance(value, str):
+                    cell.number_format = 'DD/MM/YYYY'
+                
+                # Fondo amarillo y link azul para evidencia (como original)
+                if col == 13 and value:
                     cell.fill = yellow_fill
-                    cell.font = Font(color="0000FF", underline="single", size=9)  # Azul con subrayado
+                    cell.font = Font(color="0000FF", underline="single", size=9)
             
-            # Color de semaforización según meses
+            # Color de semaforización según meses (columna H) - EXACTO al original
             if isinstance(meses_caducidad, int):
                 meses_cell = ws.cell(row=row, column=8)
+                venc_cell = ws.cell(row=row, column=9)
                 if meses_caducidad <= 3:
-                    meses_cell.fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")  # Rojo
+                    # Rojo - crítico
+                    fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+                    meses_cell.fill = fill
+                    venc_cell.fill = fill
                     meses_cell.font = Font(color="FFFFFF", bold=True)
                 elif meses_caducidad <= 6:
-                    meses_cell.fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")  # Naranja
+                    # Naranja - advertencia
+                    fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+                    meses_cell.fill = fill
+                    venc_cell.fill = fill
                 elif meses_caducidad <= 12:
-                    meses_cell.fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")  # Amarillo
+                    # Amarillo - precaución
+                    fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+                    meses_cell.fill = fill
+                    venc_cell.fill = fill
                 else:
-                    meses_cell.fill = PatternFill(start_color="92D050", end_color="92D050", fill_type="solid")  # Verde
+                    # Verde - OK
+                    fill = PatternFill(start_color="92D050", end_color="92D050", fill_type="solid")
+                    meses_cell.fill = fill
+                    venc_cell.fill = fill
             
             row += 1
         
-        # Ajustar anchos de columna
-        column_widths = [8, 8, 35, 12, 20, 22, 22, 8, 15, 10, 12, 12, 35]
-        for i, width in enumerate(column_widths, 1):
-            ws.column_dimensions[get_column_letter(i)].width = width
+        # Ajustar anchos de columna - EXACTOS al formato original
+        column_widths = {
+            'A': 4,      # NO. PARTIDA
+            'B': 7,      # CLAVE
+            'C': 27,     # ARTÍCULO
+            'D': 10,     # LOTE
+            'E': 10,     # NOMBRE COMERCIAL
+            'F': 15,     # CONCENTRACIÓN
+            'G': 19,     # PRESENTACIÓN
+            'H': 6,      # MESES
+            'I': 10,     # VENCIMIENTO
+            'J': 6,      # CANTIDAD
+            'K': 10,     # FECHA INGRESO
+            'L': 8,      # FECHA SALIDA
+            'M': 13,     # EVIDENCIA
+        }
+        for col_letter, width in column_widths.items():
+            ws.column_dimensions[col_letter].width = width
         
         # Guardar
         buffer = BytesIO()
         wb.save(buffer)
         buffer.seek(0)
         
+        # Nombre de archivo con fechas si se proporcionaron
+        if fecha_inicio and fecha_fin:
+            filename = f"Control_Inventarios_Almacen_Central_{fecha_inicio.strftime('%Y%m%d')}_{fecha_fin.strftime('%Y%m%d')}.xlsx"
+        else:
+            filename = f"Control_Inventarios_Almacen_Central_{timezone.now().strftime('%Y%m%d')}.xlsx"
+        
         response = HttpResponse(
             buffer.getvalue(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-        response['Content-Disposition'] = f'attachment; filename="Control_Inventarios_Almacen_Central_{timezone.now().strftime("%Y%m%d")}.xlsx"'
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
         
     except Exception as exc:
