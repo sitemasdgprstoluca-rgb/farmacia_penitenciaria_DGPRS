@@ -1845,34 +1845,34 @@ def generar_recibo_salida_movimiento(movimiento_data, finalizado=False):
             ParagraphStyle('FechaEntrega', parent=styles['Normal'], fontSize=10, alignment=1)
         ))
     else:
-        # Campos para firmas
+        # Campos para firmas (AUTORIZA, ENTREGA, RECIBE)
         elements.append(Spacer(1, 20))
         elements.append(Paragraph("<b>FIRMAS DE CONFORMIDAD</b>", ParagraphStyle(
             'FirmasTitle',
             parent=styles['Normal'],
             fontSize=12,
             alignment=1,
-            spaceAfter=30
+            spaceAfter=20
         )))
         
         firma_data = [
-            ['', ''],
-            ['_' * 35, '_' * 35],
-            ['ENTREGA', 'RECIBE'],
-            ['Nombre: ____________________', 'Nombre: ____________________'],
-            ['Cargo: _____________________', 'Cargo: _____________________'],
-            ['Fecha: _____________________', 'Fecha: _____________________'],
+            ['', '', ''],
+            ['_' * 30, '_' * 30, '_' * 30],
+            ['AUTORIZA', 'ENTREGA', 'RECIBE'],
+            ['Nombre:', 'Nombre:', 'Nombre:'],
+            ['Cargo:', 'Cargo:', 'Cargo:'],
+            ['Fecha:', 'Fecha:', 'Fecha:'],
         ]
         
-        firma_table = Table(firma_data, colWidths=[240, 240])
+        firma_table = Table(firma_data, colWidths=[160, 160, 160])
         firma_table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
             ('FONTNAME', (0, 2), (-1, 2), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
             ('TOPPADDING', (0, 0), (-1, -1), 8),
-            ('TOPPADDING', (0, 0), (-1, 0), 50),  # Espacio para firma
+            ('TOPPADDING', (0, 0), (-1, 0), 40),  # Espacio para firma
         ]))
         elements.append(firma_table)
     
