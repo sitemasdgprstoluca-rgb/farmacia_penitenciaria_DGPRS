@@ -336,7 +336,7 @@ export const ESTADOS_UI = {
     textClass: 'text-blue-700',
     badgeClass: 'bg-blue-100 text-blue-700',
     icon: '📤',
-    descripcion: 'Enviada a Farmacia Central',
+    descripcion: 'Enviada al Almacén Central',
   },
   [ESTADOS_REQUISICION.EN_REVISION]: {
     label: 'En Revisión',

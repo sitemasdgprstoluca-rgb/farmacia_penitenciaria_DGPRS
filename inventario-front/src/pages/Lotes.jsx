@@ -1081,7 +1081,7 @@ const handleImportar = async (e) => {
                     className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                   >
                     <option value="">Todos los centros</option>
-                    <option value="central">Farmacia Central</option>
+                    <option value="central">Almacén Central</option>
                     {centros.map(c => (
                       <option key={c.id} value={c.id}>
                         {c.nombre}

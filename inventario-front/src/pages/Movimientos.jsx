@@ -759,7 +759,7 @@ const Movimientos = () => {
                   Salida / Transferencia a Centro
                 </div>
                 <p className="text-xs text-gray-500">
-                  Las salidas desde Farmacia Central se registran como transferencias a centros penitenciarios.
+                  Las salidas desde Almacén Central se registran como transferencias a centros penitenciarios.
                 </p>
               </div>
 
@@ -1135,7 +1135,7 @@ const Movimientos = () => {
                               <td className="px-2 py-2 text-right font-semibold text-gray-700">
                                 -{Math.abs(mov.cantidad)}
                               </td>
-                              <td className="px-2 py-2 text-gray-600 text-xs truncate">{mov.centro_nombre || "Farmacia Central"}</td>
+                              <td className="px-2 py-2 text-gray-600 text-xs truncate">{mov.centro_nombre || "Almacén Central"}</td>
                               <td className="px-2 py-2 text-gray-500 text-xs">
                                 {mov.lote?.fecha_caducidad ? new Date(mov.lote.fecha_caducidad).toLocaleDateString('es-MX') : ''}
                               </td>
@@ -1182,7 +1182,7 @@ const Movimientos = () => {
                             <td className="px-2 py-3 text-right font-semibold text-gray-900">
                               {mov.tipo === 'salida' ? '-' : '+'}{Math.abs(mov.cantidad)}
                             </td>
-                            <td className="px-2 py-3 text-gray-700 text-xs truncate">{mov.centro_nombre || mov.centro || "Farmacia Central"}</td>
+                            <td className="px-2 py-3 text-gray-700 text-xs truncate">{mov.centro_nombre || mov.centro || "Almacén Central"}</td>
                             <td className="px-2 py-3 text-gray-600 text-xs">
                               {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX') :
                                mov.fecha ? new Date(mov.fecha).toLocaleDateString('es-MX') : ""}
@@ -1278,7 +1278,7 @@ const Movimientos = () => {
                           <td className="px-2 py-3 text-right font-semibold text-gray-900">
                             {mov.tipo === 'salida' ? '-' : '+'}{Math.abs(mov.cantidad)}
                           </td>
-                          <td className="px-2 py-3 text-gray-700 text-xs truncate">{mov.centro_nombre || mov.centro || "Farmacia Central"}</td>
+                          <td className="px-2 py-3 text-gray-700 text-xs truncate">{mov.centro_nombre || mov.centro || "Almacén Central"}</td>
                           <td className="px-2 py-3 text-gray-600 text-xs">
                             {mov.fecha_movimiento
                               ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX')
@@ -1314,7 +1314,7 @@ const Movimientos = () => {
                                 </div>
                                 <div>
                                   <span className="font-semibold text-gray-600">Centro:</span>
-                                  <p className="text-gray-800">{mov.centro_nombre || 'Farmacia Central'}</p>
+                                  <p className="text-gray-800">{mov.centro_nombre || 'Almacén Central'}</p>
                                 </div>
                                 <div>
                                   <span className="font-semibold text-gray-600">Usuario:</span>

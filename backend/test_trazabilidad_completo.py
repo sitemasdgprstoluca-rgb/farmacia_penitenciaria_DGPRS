@@ -300,7 +300,7 @@ for mov in Movimiento.objects.filter(lote__producto=producto_test).order_by('-fe
         'lote': mov.lote.numero_lote if mov.lote else 'N/A',
         'cantidad': mov.cantidad,
         'centro': mov.centro_destino.nombre if mov.centro_destino else (
-            mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'
+            mov.centro_origen.nombre if mov.centro_origen else 'Almacén Central'
         ),
         'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
         'observaciones': mov.motivo or ''

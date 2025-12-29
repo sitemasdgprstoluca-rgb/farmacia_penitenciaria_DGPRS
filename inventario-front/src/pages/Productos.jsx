@@ -2573,7 +2573,7 @@ const Productos = () => {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-600">
-                            {lote.centro_nombre || 'Farmacia Central'}
+                            {lote.centro_nombre || 'Almacén Central'}
                           </td>
                         </tr>
                       );

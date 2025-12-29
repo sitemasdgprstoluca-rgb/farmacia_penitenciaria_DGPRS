@@ -644,7 +644,7 @@ const Reportes = () => {
                   {esAdminOFarmacia ? (
                     <>
                       <option value="">Todos los centros</option>
-                      <option value="central">🏥 Farmacia Central</option>
+                      <option value="central">🏥 Almacén Central</option>
                       {centros.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.nombre}

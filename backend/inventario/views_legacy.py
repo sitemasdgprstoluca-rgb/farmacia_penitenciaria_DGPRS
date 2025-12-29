@@ -10041,11 +10041,11 @@ def exportar_control_inventarios(request):
         ws['A4'].font = Font(bold=True, size=14)
         ws['A4'].alignment = Alignment(horizontal='center')
         
-        # Encabezados en fila 6
+        # Encabezados en fila 6 - Exactos al formato original
         headers = [
             'NO.\nPARTIDA', 'CLAVE', 'ARTÍCULO', 'LOTE', 
             'NOMBRE COMERCIAL\nO GENÉRICO', 'CONCENTRACIÓN', 'PRESENTACIÓN',
-            'MESES', 'VENCIMIENTO\n(SEMAFORIZACIÓN)\n/ FECHA DE\nCADUCIDAD',
+            'MESES', 'VENCIMIENTO\n(SEMAFORIZACIÓN)\n/ FECHA DE',
             'CANTIDAD', 'FECHA DE\nINGRESO', 'FECHA DE\nSALIDA\n(ULTIMA)',
             'EVIDENCIA\nFOTOGRAFICA'
         ]
@@ -10092,9 +10092,9 @@ def exportar_control_inventarios(request):
                 tipo='entrada'
             ).order_by('fecha').values_list('fecha', flat=True).first()
             
-            # Si no hay movimiento de entrada, usar fecha de creación del lote
-            if not fecha_ingreso and hasattr(lote, 'fecha_creacion'):
-                fecha_ingreso = lote.fecha_creacion
+            # Si no hay movimiento de entrada, usar fecha de creación del lote (created_at)
+            if not fecha_ingreso and hasattr(lote, 'created_at') and lote.created_at:
+                fecha_ingreso = lote.created_at
             
             # Ruta de evidencia fotográfica
             evidencia = ''
