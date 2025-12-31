@@ -2914,8 +2914,9 @@ class DonacionViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='plantilla-excel')
     def plantilla_excel(self, request):
         """
-        Genera plantilla Excel para importar donaciones con detalles.
-        Incluye ejemplos marcados con [EJEMPLO] que se ignoran al importar.
+        Genera plantilla Excel SIMPLIFICADA para importar donaciones.
+        Solo requiere datos básicos de la donación y los productos.
+        Los productos DEBEN existir en el catálogo principal de productos.
         """
         import openpyxl
         from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -2926,70 +2927,42 @@ class DonacionViewSet(viewsets.ModelViewSet):
             
             # Estilos
             header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
-            # Estilo para ejemplos: gris itálica sin fondo de color
             example_font = Font(italic=True, color='888888')
             thin_border = Border(
                 left=Side(style='thin'), right=Side(style='thin'),
                 top=Side(style='thin'), bottom=Side(style='thin')
             )
             
-            # Obtener un producto real del catálogo de donaciones para el ejemplo
-            from core.models import ProductoDonacion
-            producto_ejemplo = ProductoDonacion.objects.filter(activo=True).first()
-            clave_ejemplo = producto_ejemplo.clave if producto_ejemplo else 'DON-001'
-            nombre_ejemplo = producto_ejemplo.nombre[:30] if producto_ejemplo else 'PRODUCTO DONACION'
+            # Obtener productos del catálogo PRINCIPAL para ejemplos
+            from core.models import Producto
+            productos_ejemplo = list(Producto.objects.filter(activo=True).order_by('clave')[:3])
             
-            # ========== HOJA DE INSTRUCCIONES ==========
-            ws_inst = wb.active
-            ws_inst.title = 'INSTRUCCIONES'
+            # ========== HOJA PRINCIPAL: DONACIONES ==========
+            ws = wb.active
+            ws.title = 'Donaciones'
             
-            instrucciones = [
-                ('INSTRUCCIONES DE USO - PLANTILLA DE DONACIONES', True, 16),
-                ('', False, 11),
-                ('⚠️ IMPORTANTE: Las filas grises con [EJEMPLO] son de muestra. ELIMÍNELAS antes de importar.', True, 12),
-                ('', False, 11),
-                ('PASOS:', True, 12),
-                ('1. Vaya a la hoja "Donaciones" y complete los datos de la donación', False, 11),
-                ('2. Vaya a la hoja "Detalles" y agregue los productos de cada donación', False, 11),
-                ('3. Use "Catálogo Productos Donación" para ver las claves válidas', False, 11),
-                ('4. IMPORTANTE: Solo use productos del Catálogo de Donaciones (NO del inventario principal)', False, 11),
-                ('5. ELIMINE las filas de ejemplo (texto gris con [EJEMPLO])', False, 11),
-                ('6. Guarde el archivo y súbalo al sistema', False, 11),
-                ('', False, 11),
-                ('CAMPOS OBLIGATORIOS:', True, 12),
-                ('  Donaciones: numero, donante_nombre, fecha_donacion', False, 11),
-                ('  Detalles: numero_donacion, producto_clave, cantidad', False, 11),
-                ('', False, 11),
-                ('TIPOS DE DONANTE VÁLIDOS:', True, 12),
-                ('  empresa, gobierno, ong, particular, otro', False, 11),
-                ('', False, 11),
-                ('ESTADOS DE PRODUCTO VÁLIDOS:', True, 12),
-                ('  bueno, regular, malo', False, 11),
-            ]
-            
-            for i, (texto, bold, size) in enumerate(instrucciones, 1):
-                cell = ws_inst.cell(row=i, column=1, value=texto)
-                cell.font = Font(bold=bold, size=size, color='632842' if bold else '333333')
-            
-            ws_inst.column_dimensions['A'].width = 80
-            
-            # ========== HOJA DE DONACIONES ==========
-            ws = wb.create_sheet(title='Donaciones')
-            
-            ws.merge_cells('A1:J1')
-            ws['A1'].value = 'DATOS DE DONACIONES'
+            # Título
+            ws.merge_cells('A1:H1')
+            ws['A1'].value = 'PLANTILLA DE DONACIONES (SIMPLIFICADA)'
             ws['A1'].font = Font(bold=True, size=14, color='632842')
             ws['A1'].alignment = Alignment(horizontal='center')
             
-            ws['A2'].value = '⚠️ ELIMINE las filas de ejemplo (grises con [EJEMPLO]) antes de importar. Columnas con * son obligatorias.'
+            # Instrucciones breves
+            ws['A2'].value = '⚠️ Elimine las filas de ejemplo (grises). Los productos DEBEN existir en el Catálogo de Productos.'
             ws['A2'].font = Font(italic=True, size=10, color='CC0000')
-            ws.merge_cells('A2:J2')
+            ws.merge_cells('A2:H2')
             ws.append([])
             
+            # Headers simplificados
             headers = [
-                'numero *', 'donante_nombre *', 'donante_tipo', 'donante_rfc',
-                'donante_direccion', 'donante_contacto', 'fecha_donacion *',
-                'centro_destino_id', 'notas', 'documento_donacion'
+                'numero *',
+                'donante *', 
+                'tipo_donante',
+                'fecha *',
+                'producto_clave *',
+                'cantidad *',
+                'lote',
+                'notas'
             ]
             ws.append(headers)
             
@@ -2998,105 +2971,74 @@ class DonacionViewSet(viewsets.ModelViewSet):
                 cell.font = Font(bold=True, color='FFFFFF')
                 cell.border = thin_border
             
-            # Ejemplos con marcador [EJEMPLO] - texto gris itálica
-            ejemplos_donacion = [
-                ['[EJEMPLO] PRUEBA-DON-001 - ELIMINAR', '[EJEMPLO] Donante Prueba SA - ELIMINAR', 
-                 'empresa', 'XXX000000XX0', 'Calle Ejemplo 123', 'ejemplo@test.com', 
-                 '2024-01-15', '', 'Donación de prueba - ELIMINAR', 'DOC-PRUEBA-001'],
-                ['[EJEMPLO] PRUEBA-DON-002 - ELIMINAR', '[EJEMPLO] ONG Prueba - ELIMINAR', 
-                 'ong', '', '', 'contacto@ong.org', 
-                 '2024-02-20', '', 'Segunda donación de prueba - ELIMINAR', ''],
-            ]
+            # Ejemplos simplificados: una fila por producto donado
+            # Cada fila tiene: donación + producto
+            ejemplos = []
+            if productos_ejemplo:
+                for i, prod in enumerate(productos_ejemplo):
+                    ejemplos.append([
+                        '[EJEMPLO] DON-001 - ELIMINAR' if i == 0 else '',  # numero (solo primera fila de la donación)
+                        '[EJEMPLO] Empresa Donante SA - ELIMINAR' if i == 0 else '',  # donante
+                        'empresa' if i == 0 else '',  # tipo
+                        '2024-01-15' if i == 0 else '',  # fecha
+                        prod.clave,  # clave del producto del catálogo principal
+                        100 + i * 50,  # cantidad
+                        f'LOTE-{i+1}',  # lote
+                        '[EJEMPLO] - ELIMINAR' if i == 0 else ''  # notas
+                    ])
+            else:
+                # Si no hay productos, poner ejemplo genérico
+                ejemplos.append([
+                    '[EJEMPLO] DON-001 - ELIMINAR',
+                    '[EJEMPLO] Empresa Donante SA - ELIMINAR',
+                    'empresa',
+                    '2024-01-15',
+                    '⚠️ AGREGAR PRODUCTOS AL CATÁLOGO PRIMERO',
+                    100,
+                    'LOTE-001',
+                    '[EJEMPLO] - ELIMINAR'
+                ])
             
-            for ejemplo in ejemplos_donacion:
+            for ejemplo in ejemplos:
                 ws.append(ejemplo)
             
-            # Aplicar formato gris itálica a filas de ejemplo (sin fondo de color)
-            for row_num in [5, 6]:
+            # Aplicar formato gris itálica a filas de ejemplo
+            for row_num in range(5, 5 + len(ejemplos)):
                 for cell in ws[row_num]:
                     cell.font = example_font
                     cell.border = thin_border
             
             # Ajustar anchos
-            column_widths = [35, 40, 15, 18, 30, 25, 15, 18, 35, 20]
+            column_widths = [30, 35, 15, 12, 15, 10, 15, 30]
             for i, width in enumerate(column_widths, 1):
                 ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
             
-            # ========== HOJA DE DETALLES ==========
-            ws2 = wb.create_sheet(title='Detalles')
-            
-            ws2.merge_cells('A1:G1')
-            ws2['A1'].value = 'DETALLES DE DONACIONES (productos)'
-            ws2['A1'].font = Font(bold=True, size=14, color='632842')
-            ws2['A1'].alignment = Alignment(horizontal='center')
-            
-            ws2['A2'].value = '⚠️ ELIMINE las filas de ejemplo (grises con [EJEMPLO]). Use claves del Catálogo Productos.'
-            ws2['A2'].font = Font(italic=True, size=10, color='CC0000')
-            ws2.merge_cells('A2:G2')
+            # ========== HOJA CATÁLOGO DE PRODUCTOS ==========
+            ws2 = wb.create_sheet(title='Catálogo Productos')
+            ws2['A1'].value = 'CATÁLOGO DE PRODUCTOS DISPONIBLES'
+            ws2['A1'].font = Font(bold=True, size=12, color='632842')
+            ws2['A2'].value = 'Use estas claves en la columna "producto_clave" de la hoja Donaciones'
+            ws2['A2'].font = Font(italic=True, size=10, color='333333')
             ws2.append([])
-            
-            headers2 = [
-                'numero_donacion *', 'producto_clave *', 'numero_lote',
-                'cantidad *', 'fecha_caducidad', 'estado_producto', 'notas'
-            ]
-            ws2.append(headers2)
+            ws2.append(['Clave', 'Nombre', 'Unidad'])
             
             for cell in ws2[4]:
                 cell.fill = header_fill
                 cell.font = Font(bold=True, color='FFFFFF')
-                cell.border = thin_border
             
-            # Ejemplos de detalles usando claves reales
-            ejemplos_detalles = [
-                ['[EJEMPLO] PRUEBA-DON-001 - ELIMINAR', f'{clave_ejemplo}', 
-                 'LOTE-PRUEBA-001', 100, '2025-12-31', 'bueno', '[EJEMPLO] - ELIMINAR'],
-                ['[EJEMPLO] PRUEBA-DON-001 - ELIMINAR', f'{clave_ejemplo}', 
-                 'LOTE-PRUEBA-002', 50, '2026-06-30', 'bueno', '[EJEMPLO] - ELIMINAR'],
-                ['[EJEMPLO] PRUEBA-DON-002 - ELIMINAR', f'{clave_ejemplo}', 
-                 '', 200, '', 'regular', '[EJEMPLO] - ELIMINAR'],
-            ]
+            # Mostrar productos del catálogo principal
+            productos = Producto.objects.filter(activo=True).order_by('nombre')[:500]
             
-            for ejemplo in ejemplos_detalles:
-                ws2.append(ejemplo)
-            
-            # Aplicar formato gris itálica (sin fondo de color)
-            for row_num in [5, 6, 7]:
-                for cell in ws2[row_num]:
-                    cell.font = example_font
-                    cell.border = thin_border
-            
-            # Ajustar anchos
-            column_widths2 = [35, 15, 20, 12, 15, 15, 30]
-            for i, width in enumerate(column_widths2, 1):
-                ws2.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
-            
-            # ========== HOJA DE CATÁLOGO DE DONACIONES ==========
-            ws3 = wb.create_sheet(title='Catálogo Productos Donación')
-            ws3['A1'].value = 'CATÁLOGO INDEPENDIENTE DE PRODUCTOS DE DONACIONES'
-            ws3['A1'].font = Font(bold=True, size=12, color='632842')
-            ws3['A2'].value = '⚠️ IMPORTANTE: Este catálogo es INDEPENDIENTE del inventario principal de farmacia'
-            ws3['A2'].font = Font(italic=True, size=10, color='CC0000')
-            ws3.append([])
-            ws3.append(['Clave', 'Nombre', 'Unidad', 'Presentación'])
-            
-            for cell in ws3[4]:
-                cell.fill = header_fill
-                cell.font = Font(bold=True, color='FFFFFF')
-            
-            # Usar catálogo independiente de donaciones
-            productos_donacion = ProductoDonacion.objects.filter(activo=True).order_by('nombre')[:500]
-            
-            if productos_donacion.count() == 0:
-                ws3.append(['⚠️ NO HAY PRODUCTOS EN EL CATÁLOGO DE DONACIONES'])
-                ws3.append(['Agregue productos desde: Donaciones → Catálogo antes de importar'])
+            if productos.count() == 0:
+                ws2.append(['⚠️ NO HAY PRODUCTOS EN EL CATÁLOGO'])
+                ws2.append(['Agregue productos primero en: Inventario → Productos'])
             else:
-                for prod in productos_donacion:
-                    ws3.append([prod.clave, prod.nombre, prod.unidad_medida, prod.presentacion or ''])
+                for prod in productos:
+                    ws2.append([prod.clave, prod.nombre, prod.unidad_medida])
             
-            ws3.column_dimensions['A'].width = 20
-            ws3.column_dimensions['B'].width = 50
-            ws3.column_dimensions['C'].width = 15
-            ws3.column_dimensions['D'].width = 25
+            ws2.column_dimensions['A'].width = 15
+            ws2.column_dimensions['B'].width = 50
+            ws2.column_dimensions['C'].width = 15
             
             response = HttpResponse(
                 content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -3112,30 +3054,23 @@ class DonacionViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='importar-excel')
     def importar_excel(self, request):
         """
-        Importa donaciones desde archivo Excel con detección automática de columnas.
+        Importa donaciones desde archivo Excel SIMPLIFICADO.
         
-        Acepta dos hojas:
-        - 'Donaciones': Datos principales de la donación
-        - 'Detalles': Productos incluidos en cada donación
+        Formato simplificado (una sola hoja):
+        - numero: Número de la donación
+        - donante: Nombre del donante  
+        - tipo_donante: empresa, gobierno, ong, particular, otro
+        - fecha: Fecha de la donación
+        - producto_clave: Clave del producto (del catálogo PRINCIPAL)
+        - cantidad: Cantidad donada
+        - lote: Número de lote (opcional)
+        - notas: Observaciones (opcional)
         
-        Columnas de Donaciones (flexibles):
-        - numero (requerido): Número único de la donación
-        - donante_nombre (requerido): Nombre del donante
-        - donante_tipo: empresa, gobierno, ong, particular, otro
-        - donante_rfc, donante_direccion, donante_contacto: Opcionales
-        - fecha_donacion (requerido): Fecha de la donación
-        - centro_destino: ID o nombre del centro
-        - notas, documento_donacion: Opcionales
-        
-        Columnas de Detalles (flexibles):
-        - numero_donacion (requerido): Referencia al número de donación
-        - producto (requerido): Clave o nombre del producto
-        - cantidad (requerido): Cantidad donada
-        - numero_lote, fecha_caducidad, estado_producto, notas: Opcionales
+        Los productos DEBEN existir en el catálogo principal de productos.
         """
         import openpyxl
         from django.db import transaction
-        from core.models import Donacion, DetalleDonacion, ProductoDonacion, Centro
+        from core.models import Donacion, DetalleDonacion, Producto, Centro
         
         archivo = request.FILES.get('archivo') or request.FILES.get('file')
         if not archivo:
@@ -3143,63 +3078,13 @@ class DonacionViewSet(viewsets.ModelViewSet):
         
         try:
             wb = openpyxl.load_workbook(archivo, data_only=True)
-            
-            # Buscar hoja de donaciones (flexible en nombre)
-            ws_donaciones = None
-            ws_detalles = None
-            
-            for sheet_name in wb.sheetnames:
-                name_lower = sheet_name.lower().strip()
-                if 'donacion' in name_lower or name_lower == 'hoja1' or name_lower == 'sheet1':
-                    ws_donaciones = wb[sheet_name]
-                elif 'detalle' in name_lower or name_lower == 'hoja2' or name_lower == 'sheet2':
-                    ws_detalles = wb[sheet_name]
-            
-            if not ws_donaciones:
-                ws_donaciones = wb.active
-            
-            if not ws_donaciones:
-                return Response({'error': 'No se encontró hoja de donaciones válida'}, 
-                              status=status.HTTP_400_BAD_REQUEST)
+            ws = wb.active
             
             # Funciones auxiliares
             def normalizar_header(val):
                 if not val:
                     return ''
                 return str(val).lower().strip().replace('_', ' ').replace('-', ' ').replace('*', '')
-            
-            def buscar_encabezados(ws, aliases_dict, min_matches=2):
-                """Busca fila de encabezados en las primeras 10 filas"""
-                for row_num in range(1, min(11, ws.max_row + 1)):
-                    row_values = [cell.value for cell in ws[row_num]]
-                    matches = 0
-                    col_map = {}
-                    
-                    for col_idx, val in enumerate(row_values):
-                        header_norm = normalizar_header(val)
-                        if not header_norm:
-                            continue
-                        
-                        for field, aliases in aliases_dict.items():
-                            if field not in col_map:
-                                if header_norm in aliases or any(alias in header_norm for alias in aliases):
-                                    col_map[field] = col_idx
-                                    matches += 1
-                                    break
-                    
-                    if matches >= min_matches:
-                        return row_num, col_map
-                
-                return 1, {}
-            
-            def get_val(row, field, col_map, default=None):
-                if field not in col_map:
-                    return default
-                idx = col_map[field]
-                if idx < len(row):
-                    val = row[idx]
-                    return val if val not in [None, '', 'None'] else default
-                return default
             
             def parse_fecha(val):
                 if not val:
@@ -3216,30 +3101,67 @@ class DonacionViewSet(viewsets.ModelViewSet):
                         continue
                 return None
             
-            # Aliases para donaciones
-            DONACION_ALIASES = {
+            def es_fila_ejemplo(row):
+                """Detecta si una fila es un ejemplo que debe ignorarse"""
+                for cell in row:
+                    if cell:
+                        cell_str = str(cell).upper()
+                        if '[EJEMPLO]' in cell_str or 'ELIMINAR' in cell_str:
+                            return True
+                return False
+            
+            # Detectar encabezados
+            ALIASES = {
                 'numero': ['numero', 'número', 'num', 'no', 'id', 'codigo', 'folio'],
-                'donante_nombre': ['donante nombre', 'donante', 'nombre donante', 'nombre', 'razon social'],
-                'donante_tipo': ['donante tipo', 'tipo donante', 'tipo'],
-                'donante_rfc': ['donante rfc', 'rfc'],
-                'donante_direccion': ['donante direccion', 'direccion', 'domicilio'],
-                'donante_contacto': ['donante contacto', 'contacto', 'telefono', 'email'],
-                'fecha_donacion': ['fecha donacion', 'fecha', 'fecha recepcion'],
-                'centro_destino': ['centro destino', 'centro', 'destino'],
+                'donante': ['donante', 'nombre donante', 'donante nombre', 'nombre', 'razon social'],
+                'tipo_donante': ['tipo donante', 'donante tipo', 'tipo'],
+                'fecha': ['fecha', 'fecha donacion', 'fecha recepcion'],
+                'producto_clave': ['producto clave', 'clave producto', 'producto', 'clave', 'medicamento'],
+                'cantidad': ['cantidad', 'cant', 'unidades'],
+                'lote': ['lote', 'numero lote', 'no lote'],
                 'notas': ['notas', 'observaciones', 'comentarios'],
-                'documento': ['documento donacion', 'documento', 'referencia'],
             }
             
-            # Aliases para detalles - usa catálogo independiente de donaciones
-            DETALLE_ALIASES = {
-                'numero_donacion': ['numero donacion', 'número donación', 'donacion', 'folio'],
-                'producto': ['producto clave', 'clave producto', 'producto', 'clave', 'medicamento', 'producto donacion'],
-                'numero_lote': ['numero lote', 'lote', 'no lote'],
-                'cantidad': ['cantidad', 'cant', 'unidades'],
-                'fecha_caducidad': ['fecha caducidad', 'caducidad', 'vencimiento', 'expiracion'],
-                'estado_producto': ['estado producto', 'estado', 'condicion'],
-                'notas': ['notas', 'observaciones'],
-            }
+            # Buscar fila de encabezados
+            header_row = 1
+            col_map = {}
+            for row_num in range(1, min(11, ws.max_row + 1)):
+                row_values = [cell.value for cell in ws[row_num]]
+                matches = 0
+                temp_map = {}
+                
+                for col_idx, val in enumerate(row_values):
+                    header_norm = normalizar_header(val)
+                    if not header_norm:
+                        continue
+                    for field, aliases in ALIASES.items():
+                        if field not in temp_map:
+                            if header_norm in aliases or any(alias in header_norm for alias in aliases):
+                                temp_map[field] = col_idx
+                                matches += 1
+                                break
+                
+                if matches >= 3:  # Al menos numero, donante/producto, cantidad
+                    header_row = row_num
+                    col_map = temp_map
+                    break
+            
+            if not col_map:
+                # Usar posiciones por defecto
+                col_map = {
+                    'numero': 0, 'donante': 1, 'tipo_donante': 2,
+                    'fecha': 3, 'producto_clave': 4, 'cantidad': 5,
+                    'lote': 6, 'notas': 7
+                }
+            
+            def get_val(row, field, default=None):
+                if field not in col_map:
+                    return default
+                idx = col_map[field]
+                if idx < len(row):
+                    val = row[idx]
+                    return val if val not in [None, '', 'None'] else default
+                return default
             
             resultados = {
                 'donaciones_creadas': 0,
@@ -3250,30 +3172,8 @@ class DonacionViewSet(viewsets.ModelViewSet):
             
             donaciones_map = {}  # numero -> instancia
             
-            # Detectar encabezados de donaciones
-            header_row_don, col_map_don = buscar_encabezados(ws_donaciones, DONACION_ALIASES)
-            
-            # Si no hay mapa, usar posiciones por defecto
-            if not col_map_don:
-                col_map_don = {
-                    'numero': 0, 'donante_nombre': 1, 'donante_tipo': 2,
-                    'donante_rfc': 3, 'donante_direccion': 4, 'donante_contacto': 5,
-                    'fecha_donacion': 6, 'centro_destino': 7, 'notas': 8, 'documento': 9
-                }
-            
-            # Función para detectar filas de ejemplo
-            def es_fila_ejemplo(row):
-                """Detecta si una fila es un ejemplo que debe ignorarse"""
-                for cell in row:
-                    if cell:
-                        cell_str = str(cell).upper()
-                        if '[EJEMPLO]' in cell_str or 'PRUEBA-DON-' in cell_str or '- ELIMINAR' in cell_str:
-                            return True
-                return False
-            
             with transaction.atomic():
-                # Crear donaciones
-                for row_num, row in enumerate(ws_donaciones.iter_rows(min_row=header_row_don + 1, values_only=True), start=header_row_don + 1):
+                for row_num, row in enumerate(ws.iter_rows(min_row=header_row + 1, values_only=True), start=header_row + 1):
                     if not row or all(cell is None or str(cell).strip() == '' for cell in row):
                         continue
                     
@@ -3282,144 +3182,71 @@ class DonacionViewSet(viewsets.ModelViewSet):
                         continue
                     
                     try:
-                        numero = get_val(row, 'numero', col_map_don)
-                        donante_nombre = get_val(row, 'donante_nombre', col_map_don)
+                        numero = get_val(row, 'numero')
+                        donante = get_val(row, 'donante')
+                        producto_clave = get_val(row, 'producto_clave')
+                        cantidad_raw = get_val(row, 'cantidad')
+                        
+                        # Si no hay número pero hay producto, es continuación de donación anterior
+                        if not numero and producto_clave and donaciones_map:
+                            # Usar última donación
+                            numero = list(donaciones_map.keys())[-1]
                         
                         if not numero:
-                            resultados['errores'].append({
-                                'fila': row_num, 'hoja': 'Donaciones',
-                                'error': 'Número de donación es obligatorio'
-                            })
-                            continue
-                        
-                        if not donante_nombre:
-                            resultados['errores'].append({
-                                'fila': row_num, 'hoja': 'Donaciones',
-                                'error': 'Nombre del donante es obligatorio'
-                            })
-                            continue
+                            continue  # Fila vacía o incompleta
                         
                         numero = str(numero).strip()
                         
-                        # Verificar si ya existe
-                        if Donacion.objects.filter(numero=numero).exists():
-                            resultados['errores'].append({
-                                'fila': row_num, 'hoja': 'Donaciones',
-                                'error': f'Donación {numero} ya existe'
-                            })
-                            continue
-                        
-                        # Buscar centro por ID o nombre
-                        centro_destino = None
-                        centro_val = get_val(row, 'centro_destino', col_map_don)
-                        if centro_val:
-                            try:
-                                centro_destino = Centro.objects.get(pk=int(centro_val))
-                            except (ValueError, Centro.DoesNotExist):
-                                centro_destino = Centro.objects.filter(nombre__icontains=str(centro_val)).first()
-                        
-                        # Parsear fecha
-                        fecha_val = get_val(row, 'fecha_donacion', col_map_don)
-                        fecha = parse_fecha(fecha_val) or timezone.now().date()
-                        
-                        # Normalizar tipo de donante
-                        tipo_donante = str(get_val(row, 'donante_tipo', col_map_don, 'empresa')).lower().strip()
-                        if tipo_donante not in ['empresa', 'gobierno', 'ong', 'particular', 'otro']:
-                            tipo_donante = 'empresa'
-                        
-                        donacion = Donacion.objects.create(
-                            numero=numero,
-                            donante_nombre=str(donante_nombre).strip()[:200],
-                            donante_tipo=tipo_donante,
-                            donante_rfc=str(get_val(row, 'donante_rfc', col_map_don, '')).strip()[:15] or None,
-                            donante_direccion=str(get_val(row, 'donante_direccion', col_map_don, '')).strip()[:300] or None,
-                            donante_contacto=str(get_val(row, 'donante_contacto', col_map_don, '')).strip()[:200] or None,
-                            fecha_donacion=fecha,
-                            centro_destino=centro_destino,
-                            notas=str(get_val(row, 'notas', col_map_don, '')).strip() or None,
-                            documento_donacion=str(get_val(row, 'documento', col_map_don, '')).strip()[:100] or None,
-                            recibido_por=request.user,
-                            estado='pendiente'
-                        )
-                        donaciones_map[numero] = donacion
-                        resultados['donaciones_creadas'] += 1
-                        resultados['exitos'].append({
-                            'fila': row_num, 'hoja': 'Donaciones',
-                            'donacion_id': donacion.id, 'numero': numero
-                        })
-                        
-                    except Exception as e:
-                        resultados['errores'].append({
-                            'fila': row_num, 'hoja': 'Donaciones',
-                            'error': str(e)
-                        })
-                
-                # Crear detalles si existe hoja
-                if ws_detalles:
-                    header_row_det, col_map_det = buscar_encabezados(ws_detalles, DETALLE_ALIASES)
-                    
-                    if not col_map_det:
-                        col_map_det = {
-                            'numero_donacion': 0, 'producto': 1, 'numero_lote': 2,
-                            'cantidad': 3, 'fecha_caducidad': 4, 'estado_producto': 5, 'notas': 6
-                        }
-                    
-                    for row_num, row in enumerate(ws_detalles.iter_rows(min_row=header_row_det + 1, values_only=True), start=header_row_det + 1):
-                        if not row or all(cell is None or str(cell).strip() == '' for cell in row):
-                            continue
-                        
-                        # Ignorar filas de ejemplo
-                        if es_fila_ejemplo(row):
-                            continue
-                        
-                        try:
-                            numero_donacion = get_val(row, 'numero_donacion', col_map_det)
-                            producto_ref = get_val(row, 'producto', col_map_det)
-                            
-                            if not numero_donacion:
+                        # Crear donación si no existe
+                        if numero not in donaciones_map:
+                            if not donante:
                                 resultados['errores'].append({
-                                    'fila': row_num, 'hoja': 'Detalles',
-                                    'error': 'Número de donación es obligatorio'
+                                    'fila': row_num,
+                                    'error': f'Donación {numero}: nombre del donante es obligatorio'
                                 })
                                 continue
                             
-                            numero_donacion = str(numero_donacion).strip()
+                            # Verificar si ya existe en BD
+                            donacion_existente = Donacion.objects.filter(numero=numero).first()
+                            if donacion_existente:
+                                donaciones_map[numero] = donacion_existente
+                            else:
+                                # Parsear fecha
+                                fecha = parse_fecha(get_val(row, 'fecha')) or timezone.now().date()
+                                
+                                # Normalizar tipo
+                                tipo = str(get_val(row, 'tipo_donante', 'empresa')).lower().strip()
+                                if tipo not in ['empresa', 'gobierno', 'ong', 'particular', 'otro']:
+                                    tipo = 'empresa'
+                                
+                                donacion = Donacion.objects.create(
+                                    numero=numero,
+                                    donante_nombre=str(donante).strip()[:200],
+                                    donante_tipo=tipo,
+                                    fecha_donacion=fecha,
+                                    recibido_por=request.user,
+                                    estado='pendiente'
+                                )
+                                donaciones_map[numero] = donacion
+                                resultados['donaciones_creadas'] += 1
+                        
+                        # Agregar producto si existe
+                        if producto_clave:
+                            producto_clave = str(producto_clave).strip()
                             
-                            # Buscar donación
-                            donacion = donaciones_map.get(numero_donacion)
-                            if not donacion:
-                                donacion = Donacion.objects.filter(numero=numero_donacion).first()
+                            # Buscar en catálogo PRINCIPAL
+                            producto = Producto.objects.filter(clave__iexact=producto_clave, activo=True).first()
+                            if not producto:
+                                producto = Producto.objects.filter(nombre__icontains=producto_clave, activo=True).first()
                             
-                            if not donacion:
+                            if not producto:
                                 resultados['errores'].append({
-                                    'fila': row_num, 'hoja': 'Detalles',
-                                    'error': f'Donación "{numero_donacion}" no encontrada'
-                                })
-                                continue
-                            
-                            # Buscar producto en catálogo INDEPENDIENTE de donaciones
-                            if not producto_ref:
-                                resultados['errores'].append({
-                                    'fila': row_num, 'hoja': 'Detalles',
-                                    'error': 'Producto es obligatorio'
-                                })
-                                continue
-                            
-                            producto_ref = str(producto_ref).strip()
-                            # Buscar en catálogo independiente de donaciones (NO en productos principales)
-                            producto_donacion = ProductoDonacion.objects.filter(clave__iexact=producto_ref).first()
-                            if not producto_donacion:
-                                producto_donacion = ProductoDonacion.objects.filter(nombre__icontains=producto_ref).first()
-                            
-                            if not producto_donacion:
-                                resultados['errores'].append({
-                                    'fila': row_num, 'hoja': 'Detalles',
-                                    'error': f'Producto "{producto_ref}" no encontrado en Catálogo de Donaciones. Asegúrese de agregarlo primero en Donaciones → Catálogo.'
+                                    'fila': row_num,
+                                    'error': f'Producto "{producto_clave}" no encontrado en el catálogo. Asegúrese de que exista y esté activo.'
                                 })
                                 continue
                             
                             # Parsear cantidad
-                            cantidad_raw = get_val(row, 'cantidad', col_map_det)
                             try:
                                 cantidad = int(float(cantidad_raw)) if cantidad_raw else 0
                             except:
@@ -3427,56 +3254,44 @@ class DonacionViewSet(viewsets.ModelViewSet):
                             
                             if cantidad <= 0:
                                 resultados['errores'].append({
-                                    'fila': row_num, 'hoja': 'Detalles',
+                                    'fila': row_num,
                                     'error': 'Cantidad debe ser mayor a 0'
                                 })
                                 continue
                             
-                            # Parsear fecha caducidad
-                            fecha_cad = parse_fecha(get_val(row, 'fecha_caducidad', col_map_det))
-                            
-                            # Normalizar estado
-                            estado = str(get_val(row, 'estado_producto', col_map_det, 'bueno')).lower().strip()
-                            if estado not in ['bueno', 'regular', 'malo']:
-                                estado = 'bueno'
+                            donacion = donaciones_map[numero]
                             
                             DetalleDonacion.objects.create(
                                 donacion=donacion,
-                                producto_donacion=producto_donacion,  # Usa catálogo independiente
-                                producto=None,  # Legacy - no usar catálogo principal
-                                numero_lote=str(get_val(row, 'numero_lote', col_map_det, '')).strip()[:50] or None,
+                                producto=producto,  # Usa catálogo principal
+                                producto_donacion=None,
+                                numero_lote=str(get_val(row, 'lote', '')).strip()[:50] or None,
                                 cantidad=cantidad,
-                                cantidad_disponible=cantidad,  # Stock disponible desde inicio
-                                fecha_caducidad=fecha_cad,
-                                estado_producto=estado,
-                                notas=str(get_val(row, 'notas', col_map_det, '')).strip() or None
+                                cantidad_disponible=cantidad,
+                                estado_producto='bueno',
+                                notas=str(get_val(row, 'notas', '')).strip() or None
                             )
                             resultados['detalles_creados'] += 1
                             
-                        except Exception as e:
-                            resultados['errores'].append({
-                                'fila': row_num, 'hoja': 'Detalles',
-                                'error': str(e)
-                            })
+                    except Exception as e:
+                        resultados['errores'].append({
+                            'fila': row_num,
+                            'error': str(e)
+                        })
             
             logger.info(f"Importación de donaciones por {request.user.username}: "
                        f"{resultados['donaciones_creadas']} donaciones, {resultados['detalles_creados']} detalles")
             
             status_code = status.HTTP_200_OK if len(resultados['errores']) == 0 else status.HTTP_207_MULTI_STATUS
             
-            # ISS-FIX: Formato compatible con frontend (espera resultados.exitosos y resultados.fallidos)
             return Response({
                 'mensaje': 'Importación completada',
                 'resultados': {
-                    'exitosos': resultados['donaciones_creadas'],
+                    'exitosos': resultados['donaciones_creadas'] + resultados['detalles_creados'],
                     'fallidos': len(resultados['errores']),
-                    'detalles_creados': resultados['detalles_creados'],
-                    'errores': resultados['errores']
-                },
-                'resumen': {
                     'donaciones_creadas': resultados['donaciones_creadas'],
                     'detalles_creados': resultados['detalles_creados'],
-                    'total_errores': len(resultados['errores'])
+                    'errores': resultados['errores']
                 },
                 'exitos': resultados['exitos'],
                 'errores': resultados['errores']
@@ -3486,8 +3301,7 @@ class DonacionViewSet(viewsets.ModelViewSet):
             logger.error(f"Error importando donaciones: {e}")
             return Response({
                 'error': 'Error al procesar archivo',
-                'mensaje': str(e),
-                'sugerencia': 'Verifique que el archivo tenga hojas "Donaciones" y "Detalles" con los campos requeridos'
+                'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
