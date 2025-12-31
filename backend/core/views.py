@@ -2916,7 +2916,7 @@ class DonacionViewSet(viewsets.ModelViewSet):
         """
         Genera plantilla Excel SIMPLIFICADA para importar donaciones.
         Solo requiere datos básicos de la donación y los productos.
-        Los productos DEBEN existir en el catálogo principal de productos.
+        Los productos DEBEN existir en el catálogo INDEPENDIENTE de productos de donación.
         """
         import openpyxl
         from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -2933,9 +2933,9 @@ class DonacionViewSet(viewsets.ModelViewSet):
                 top=Side(style='thin'), bottom=Side(style='thin')
             )
             
-            # Obtener productos del catálogo PRINCIPAL para ejemplos
-            from core.models import Producto
-            productos_ejemplo = list(Producto.objects.filter(activo=True).order_by('clave')[:3])
+            # Obtener productos del catálogo INDEPENDIENTE de donaciones para ejemplos
+            from core.models import ProductoDonacion
+            productos_ejemplo = list(ProductoDonacion.objects.filter(activo=True).order_by('clave')[:3])
             
             # ========== HOJA PRINCIPAL: DONACIONES ==========
             ws = wb.active
@@ -2948,7 +2948,7 @@ class DonacionViewSet(viewsets.ModelViewSet):
             ws['A1'].alignment = Alignment(horizontal='center')
             
             # Instrucciones breves
-            ws['A2'].value = '⚠️ Elimine las filas de ejemplo (grises). Los productos DEBEN existir en el Catálogo de Productos.'
+            ws['A2'].value = '⚠️ Elimine las filas de ejemplo (grises). Los productos DEBEN existir en el Catálogo de Productos de Donación.'
             ws['A2'].font = Font(italic=True, size=10, color='CC0000')
             ws.merge_cells('A2:H2')
             ws.append([])
@@ -2993,7 +2993,7 @@ class DonacionViewSet(viewsets.ModelViewSet):
                     '[EJEMPLO] Empresa Donante SA - ELIMINAR',
                     'empresa',
                     '2024-01-15',
-                    '⚠️ AGREGAR PRODUCTOS AL CATÁLOGO PRIMERO',
+                    '⚠️ AGREGAR PRODUCTOS AL CATÁLOGO DE DONACIONES PRIMERO',
                     100,
                     'LOTE-001',
                     '[EJEMPLO] - ELIMINAR'
@@ -3013,32 +3013,35 @@ class DonacionViewSet(viewsets.ModelViewSet):
             for i, width in enumerate(column_widths, 1):
                 ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
             
-            # ========== HOJA CATÁLOGO DE PRODUCTOS ==========
-            ws2 = wb.create_sheet(title='Catálogo Productos')
-            ws2['A1'].value = 'CATÁLOGO DE PRODUCTOS DISPONIBLES'
+            # ========== HOJA CATÁLOGO DE PRODUCTOS DE DONACIÓN ==========
+            ws2 = wb.create_sheet(title='Catálogo Productos Donación')
+            ws2['A1'].value = 'CATÁLOGO INDEPENDIENTE DE PRODUCTOS DE DONACIÓN'
             ws2['A1'].font = Font(bold=True, size=12, color='632842')
             ws2['A2'].value = 'Use estas claves en la columna "producto_clave" de la hoja Donaciones'
             ws2['A2'].font = Font(italic=True, size=10, color='333333')
+            ws2['A3'].value = '⚠️ Este catálogo es INDEPENDIENTE del catálogo principal de la farmacia'
+            ws2['A3'].font = Font(italic=True, size=10, color='CC0000')
             ws2.append([])
-            ws2.append(['Clave', 'Nombre', 'Unidad'])
+            ws2.append(['Clave', 'Nombre', 'Unidad', 'Presentación'])
             
-            for cell in ws2[4]:
+            for cell in ws2[5]:
                 cell.fill = header_fill
                 cell.font = Font(bold=True, color='FFFFFF')
             
-            # Mostrar productos del catálogo principal
-            productos = Producto.objects.filter(activo=True).order_by('nombre')[:500]
+            # Mostrar productos del catálogo INDEPENDIENTE de donaciones
+            productos = ProductoDonacion.objects.filter(activo=True).order_by('nombre')[:500]
             
             if productos.count() == 0:
-                ws2.append(['⚠️ NO HAY PRODUCTOS EN EL CATÁLOGO'])
-                ws2.append(['Agregue productos primero en: Inventario → Productos'])
+                ws2.append(['⚠️ NO HAY PRODUCTOS EN EL CATÁLOGO DE DONACIONES'])
+                ws2.append(['Agregue productos primero en: Donaciones → Catálogo Productos'])
             else:
                 for prod in productos:
-                    ws2.append([prod.clave, prod.nombre, prod.unidad_medida])
+                    ws2.append([prod.clave, prod.nombre, prod.unidad_medida or 'PIEZA', prod.presentacion or ''])
             
-            ws2.column_dimensions['A'].width = 15
+            ws2.column_dimensions['A'].width = 20
             ws2.column_dimensions['B'].width = 50
             ws2.column_dimensions['C'].width = 15
+            ws2.column_dimensions['D'].width = 25
             
             response = HttpResponse(
                 content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -3061,16 +3064,16 @@ class DonacionViewSet(viewsets.ModelViewSet):
         - donante: Nombre del donante  
         - tipo_donante: empresa, gobierno, ong, particular, otro
         - fecha: Fecha de la donación
-        - producto_clave: Clave del producto (del catálogo PRINCIPAL)
+        - producto_clave: Clave del producto (del catálogo INDEPENDIENTE de donaciones)
         - cantidad: Cantidad donada
         - lote: Número de lote (opcional)
         - notas: Observaciones (opcional)
         
-        Los productos DEBEN existir en el catálogo principal de productos.
+        Los productos DEBEN existir en el catálogo INDEPENDIENTE de productos de donación.
         """
         import openpyxl
         from django.db import transaction
-        from core.models import Donacion, DetalleDonacion, Producto, Centro
+        from core.models import Donacion, DetalleDonacion, ProductoDonacion, Centro
         
         archivo = request.FILES.get('archivo') or request.FILES.get('file')
         if not archivo:
@@ -3234,15 +3237,15 @@ class DonacionViewSet(viewsets.ModelViewSet):
                         if producto_clave:
                             producto_clave = str(producto_clave).strip()
                             
-                            # Buscar en catálogo PRINCIPAL
-                            producto = Producto.objects.filter(clave__iexact=producto_clave, activo=True).first()
-                            if not producto:
-                                producto = Producto.objects.filter(nombre__icontains=producto_clave, activo=True).first()
+                            # Buscar en catálogo INDEPENDIENTE de productos de donación
+                            producto_donacion = ProductoDonacion.objects.filter(clave__iexact=producto_clave, activo=True).first()
+                            if not producto_donacion:
+                                producto_donacion = ProductoDonacion.objects.filter(nombre__icontains=producto_clave, activo=True).first()
                             
-                            if not producto:
+                            if not producto_donacion:
                                 resultados['errores'].append({
                                     'fila': row_num,
-                                    'error': f'Producto "{producto_clave}" no encontrado en el catálogo. Asegúrese de que exista y esté activo.'
+                                    'error': f'Producto "{producto_clave}" no encontrado en el catálogo de donaciones. Agregue el producto en Donaciones → Catálogo Productos.'
                                 })
                                 continue
                             
@@ -3263,8 +3266,8 @@ class DonacionViewSet(viewsets.ModelViewSet):
                             
                             DetalleDonacion.objects.create(
                                 donacion=donacion,
-                                producto=producto,  # Usa catálogo principal
-                                producto_donacion=None,
+                                producto=None,  # No usa catálogo principal
+                                producto_donacion=producto_donacion,  # Usa catálogo independiente
                                 numero_lote=str(get_val(row, 'lote', '')).strip()[:50] or None,
                                 cantidad=cantidad,
                                 cantidad_disponible=cantidad,
@@ -3380,6 +3383,253 @@ class ProductoDonacionViewSet(viewsets.ModelViewSet):
         )[:20]
         
         return Response(ProductoDonacionSerializer(productos, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='plantilla-excel')
+    def plantilla_excel(self, request):
+        """Genera plantilla Excel para importar productos de donación."""
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+        from django.http import HttpResponse
+        
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Productos Donación'
+        
+        # Estilos
+        header_font = Font(bold=True, color='FFFFFF')
+        header_fill = PatternFill(start_color='9F2241', end_color='9F2241', fill_type='solid')
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # Headers - campos de productos_donacion
+        headers = [
+            'clave *',
+            'nombre *',
+            'descripcion',
+            'unidad_medida',
+            'presentacion',
+            'activo',
+            'notas'
+        ]
+        
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = thin_border
+            ws.column_dimensions[get_column_letter(col)].width = 20
+        
+        # Fila de ejemplo
+        ejemplo = [
+            '[EJEMPLO] DON-MED-001',
+            'Paracetamol 500mg Donación',
+            'Tabletas analgésicas',
+            'CAJA',
+            'Caja con 20 tabletas',
+            'SI',
+            'Producto de ejemplo - eliminar esta fila'
+        ]
+        for col, val in enumerate(ejemplo, 1):
+            cell = ws.cell(row=2, column=col, value=val)
+            cell.border = thin_border
+            cell.font = Font(italic=True, color='888888')
+        
+        # Segunda fila de ejemplo
+        ejemplo2 = [
+            '[EJEMPLO] DON-INS-001',
+            'Jeringa 5ml Donación',
+            'Jeringa desechable',
+            'PIEZA',
+            'Unidad',
+            'SI',
+            ''
+        ]
+        for col, val in enumerate(ejemplo2, 1):
+            cell = ws.cell(row=3, column=col, value=val)
+            cell.border = thin_border
+            cell.font = Font(italic=True, color='888888')
+        
+        # Hoja de instrucciones
+        ws_inst = wb.create_sheet('Instrucciones')
+        instrucciones = [
+            ['INSTRUCCIONES PARA IMPORTAR PRODUCTOS DE DONACIÓN'],
+            [''],
+            ['Este catálogo es INDEPENDIENTE del catálogo principal de productos.'],
+            ['Puede usar claves y nombres diferentes a los del inventario general.'],
+            [''],
+            ['CAMPOS:'],
+            ['- clave *: Código único del producto (requerido)'],
+            ['- nombre *: Nombre del producto (requerido)'],
+            ['- descripcion: Descripción detallada (opcional)'],
+            ['- unidad_medida: PIEZA, CAJA, FRASCO, etc. (default: PIEZA)'],
+            ['- presentacion: Forma de presentación (opcional)'],
+            ['- activo: SI o NO (default: SI)'],
+            ['- notas: Observaciones adicionales (opcional)'],
+            [''],
+            ['NOTAS:'],
+            ['- Las filas con [EJEMPLO] serán ignoradas'],
+            ['- Los campos marcados con * son obligatorios'],
+            ['- Las claves duplicadas actualizarán el producto existente'],
+        ]
+        for row_idx, row in enumerate(instrucciones, 1):
+            ws_inst.cell(row=row_idx, column=1, value=row[0] if row else '')
+        ws_inst.column_dimensions['A'].width = 60
+        
+        # Preparar respuesta
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename=plantilla_productos_donacion.xlsx'
+        wb.save(response)
+        
+        return response
+
+    @action(detail=False, methods=['get'], url_path='exportar-excel')
+    def exportar_excel(self, request):
+        """Exporta todos los productos de donación a Excel."""
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+        from django.http import HttpResponse
+        from core.models import ProductoDonacion
+        
+        productos = ProductoDonacion.objects.all().order_by('clave')
+        
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Productos Donación'
+        
+        # Estilos
+        header_font = Font(bold=True, color='FFFFFF')
+        header_fill = PatternFill(start_color='9F2241', end_color='9F2241', fill_type='solid')
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        headers = ['clave', 'nombre', 'descripcion', 'unidad_medida', 'presentacion', 'activo', 'notas']
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = thin_border
+            ws.column_dimensions[get_column_letter(col)].width = 20
+        
+        for row_idx, prod in enumerate(productos, 2):
+            ws.cell(row=row_idx, column=1, value=prod.clave).border = thin_border
+            ws.cell(row=row_idx, column=2, value=prod.nombre).border = thin_border
+            ws.cell(row=row_idx, column=3, value=prod.descripcion or '').border = thin_border
+            ws.cell(row=row_idx, column=4, value=prod.unidad_medida or 'PIEZA').border = thin_border
+            ws.cell(row=row_idx, column=5, value=prod.presentacion or '').border = thin_border
+            ws.cell(row=row_idx, column=6, value='SI' if prod.activo else 'NO').border = thin_border
+            ws.cell(row=row_idx, column=7, value=prod.notas or '').border = thin_border
+        
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename=productos_donacion_{timezone.now().strftime("%Y%m%d")}.xlsx'
+        wb.save(response)
+        
+        return response
+
+    @action(detail=False, methods=['post'], url_path='importar-excel')
+    def importar_excel(self, request):
+        """Importa productos de donación desde Excel."""
+        import openpyxl
+        from core.models import ProductoDonacion
+        
+        archivo = request.FILES.get('archivo')
+        if not archivo:
+            return Response({'error': 'No se proporcionó archivo'}, status=400)
+        
+        try:
+            wb = openpyxl.load_workbook(archivo)
+            ws = wb.active
+        except Exception as e:
+            return Response({'error': f'Error al leer archivo: {str(e)}'}, status=400)
+        
+        # Buscar fila de headers
+        headers = []
+        header_row = 1
+        for row in ws.iter_rows(min_row=1, max_row=5, values_only=True):
+            if row and any('clave' in str(cell).lower() for cell in row if cell):
+                headers = [str(cell).lower().replace(' *', '').replace('*', '').strip() if cell else '' for cell in row]
+                break
+            header_row += 1
+        
+        if not headers or 'clave' not in headers:
+            return Response({'error': 'No se encontró encabezado con columna "clave"'}, status=400)
+        
+        col_map = {h: idx for idx, h in enumerate(headers) if h}
+        
+        creados = 0
+        actualizados = 0
+        errores = []
+        
+        for row_idx, row in enumerate(ws.iter_rows(min_row=header_row + 1, values_only=True), header_row + 1):
+            if not row or not any(row):
+                continue
+            
+            # Ignorar filas de ejemplo
+            if any('[EJEMPLO]' in str(cell).upper() for cell in row if cell):
+                continue
+            
+            try:
+                clave = str(row[col_map.get('clave', 0)] or '').strip()
+                if not clave:
+                    continue
+                
+                nombre = str(row[col_map.get('nombre', 1)] or '').strip()
+                if not nombre:
+                    errores.append(f'Fila {row_idx}: nombre es requerido')
+                    continue
+                
+                descripcion = str(row[col_map.get('descripcion', 2)] or '').strip() if col_map.get('descripcion') is not None else ''
+                unidad = str(row[col_map.get('unidad_medida', 3)] or 'PIEZA').strip().upper() if col_map.get('unidad_medida') is not None else 'PIEZA'
+                presentacion = str(row[col_map.get('presentacion', 4)] or '').strip() if col_map.get('presentacion') is not None else ''
+                
+                activo_val = str(row[col_map.get('activo', 5)] or 'SI').strip().upper() if col_map.get('activo') is not None else 'SI'
+                activo = activo_val in ['SI', 'S', 'YES', 'Y', '1', 'TRUE', 'ACTIVO']
+                
+                notas = str(row[col_map.get('notas', 6)] or '').strip() if col_map.get('notas') is not None else ''
+                
+                # Buscar o crear
+                producto, created = ProductoDonacion.objects.update_or_create(
+                    clave=clave,
+                    defaults={
+                        'nombre': nombre,
+                        'descripcion': descripcion or None,
+                        'unidad_medida': unidad,
+                        'presentacion': presentacion or None,
+                        'activo': activo,
+                        'notas': notas or None
+                    }
+                )
+                
+                if created:
+                    creados += 1
+                else:
+                    actualizados += 1
+                    
+            except Exception as e:
+                errores.append(f'Fila {row_idx}: {str(e)}')
+        
+        return Response({
+            'success': True,
+            'creados': creados,
+            'actualizados': actualizados,
+            'total': creados + actualizados,
+            'errores': errores[:20] if errores else []
+        })
 
 
 class DetalleDonacionViewSet(viewsets.ModelViewSet):

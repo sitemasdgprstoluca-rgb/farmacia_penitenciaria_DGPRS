@@ -29,6 +29,7 @@ import {
   FaFileExport,
   FaFileImport,
   FaDownload,
+  FaUpload,
   FaShoppingCart,
   FaTable,
   FaFilePdf,
@@ -1554,6 +1555,65 @@ const Donaciones = () => {
               {/* Botón Agregar Producto */}
               {puede.crear && (
                 <div className="flex items-center gap-2">
+                  {/* Plantilla Excel */}
+                  <button
+                    onClick={() => {
+                      window.open(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/productos-donacion/plantilla-excel/`, '_blank');
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                    title="Descargar plantilla Excel"
+                  >
+                    <FaDownload /> Plantilla
+                  </button>
+                  {/* Exportar Excel */}
+                  <button
+                    onClick={() => {
+                      window.open(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/productos-donacion/exportar-excel/`, '_blank');
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 border border-green-300 text-green-600 rounded-lg hover:bg-green-50 transition-colors"
+                    title="Exportar catálogo a Excel"
+                  >
+                    <FaFileExport /> Exportar
+                  </button>
+                  {/* Importar Excel */}
+                  <label className="flex items-center gap-2 px-3 py-2 border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer">
+                    <FaUpload /> Importar
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files[0];
+                        if (!file) return;
+                        
+                        const formData = new FormData();
+                        formData.append('archivo', file);
+                        
+                        try {
+                          const response = await fetch(
+                            `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/productos-donacion/importar-excel/`,
+                            {
+                              method: 'POST',
+                              headers: {
+                                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                              },
+                              body: formData
+                            }
+                          );
+                          const data = await response.json();
+                          if (data.success) {
+                            toast.success(`Importación exitosa: ${data.creados} creados, ${data.actualizados} actualizados`);
+                            fetchCatalogo();
+                          } else {
+                            toast.error(data.error || 'Error en la importación');
+                          }
+                        } catch (error) {
+                          toast.error('Error al importar archivo');
+                        }
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
                   <button
                     onClick={() => setShowQuickProductModal(true)}
                     className="flex items-center gap-2 px-3 py-2 border border-primary text-primary rounded-lg hover:bg-primary/5 transition-colors"
