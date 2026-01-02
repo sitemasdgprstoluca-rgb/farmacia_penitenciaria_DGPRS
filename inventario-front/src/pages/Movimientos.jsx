@@ -1269,31 +1269,34 @@ const Movimientos = () => {
                                   {/* Botones de acción para movimientos de salida */}
                                   {mov.tipo === 'salida' && (
                                     <div className="col-span-2 md:col-span-4 flex flex-wrap gap-3 mt-4 pt-4 border-t border-gray-200">
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov); }}
-                                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"
-                                        title="Descargar hoja de entrega con campos para firmas"
-                                      >
-                                        <FaFilePdf className="text-lg" />
-                                        Hoja de Entrega
-                                      </button>
                                       {!mov.confirmado ? (
-                                        /* Botón confirmar entrega si no está confirmado */
-                                        <button
-                                          onClick={(e) => { e.stopPropagation(); confirmarEntregaIndividual(mov.id); }}
-                                          disabled={confirmandoMovimiento === mov.id}
-                                          className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition text-sm font-medium disabled:opacity-50"
-                                          title="Confirmar que la entrega fue recibida"
-                                        >
-                                          {confirmandoMovimiento === mov.id ? (
-                                            <FaSpinner className="animate-spin text-lg" />
-                                          ) : (
-                                            <FaClipboardCheck className="text-lg" />
-                                          )}
-                                          {confirmandoMovimiento === mov.id ? 'Confirmando...' : 'Confirmar Entrega'}
-                                        </button>
+                                        <>
+                                          {/* Hoja de Entrega (solo si NO está confirmado) */}
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov); }}
+                                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"
+                                            title="Descargar hoja de entrega con campos para firmas"
+                                          >
+                                            <FaFilePdf className="text-lg" />
+                                            Hoja de Entrega
+                                          </button>
+                                          {/* Botón confirmar entrega */}
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); confirmarEntregaIndividual(mov.id); }}
+                                            disabled={confirmandoMovimiento === mov.id}
+                                            className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition text-sm font-medium disabled:opacity-50"
+                                            title="Confirmar que la entrega fue recibida"
+                                          >
+                                            {confirmandoMovimiento === mov.id ? (
+                                              <FaSpinner className="animate-spin text-lg" />
+                                            ) : (
+                                              <FaClipboardCheck className="text-lg" />
+                                            )}
+                                            {confirmandoMovimiento === mov.id ? 'Confirmando...' : 'Confirmar Entrega'}
+                                          </button>
+                                        </>
                                       ) : (
-                                        /* Botón comprobante solo si ya está confirmado */
+                                        /* Comprobante solo si ya está confirmado */
                                         <button
                                           onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
                                           className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
