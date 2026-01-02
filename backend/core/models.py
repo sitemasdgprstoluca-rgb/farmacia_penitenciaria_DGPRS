@@ -2927,17 +2927,44 @@ class SalidaDonacion(models.Model):
         return 'entregado' if self.finalizado else 'pendiente'
     
     def save(self, *args, **kwargs):
-        # Validar que hay stock disponible
+        # NOTA: El stock se descuenta solo al finalizar, no al crear
+        # Validar que hay stock disponible (solo en creación)
         if self.pk is None:  # Solo en creacion
             if self.cantidad > self.detalle_donacion.cantidad_disponible:
                 raise ValueError(
                     f"Stock insuficiente. Disponible: {self.detalle_donacion.cantidad_disponible}, "
                     f"Solicitado: {self.cantidad}"
                 )
-            # Descontar del stock disponible
-            self.detalle_donacion.cantidad_disponible -= self.cantidad
-            self.detalle_donacion.save()
+            # NO descontar aquí - se descuenta en finalizar()
         super().save(*args, **kwargs)
+    
+    def finalizar(self, usuario=None):
+        """
+        Finaliza la entrega y descuenta del inventario de donaciones.
+        Solo se puede finalizar una vez.
+        """
+        from django.utils import timezone
+        
+        if self.finalizado:
+            raise ValueError("Esta entrega ya fue finalizada")
+        
+        # Verificar que aún hay stock disponible
+        if self.cantidad > self.detalle_donacion.cantidad_disponible:
+            raise ValueError(
+                f"Stock insuficiente. Disponible: {self.detalle_donacion.cantidad_disponible}, "
+                f"Solicitado: {self.cantidad}"
+            )
+        
+        # Descontar del stock disponible
+        self.detalle_donacion.cantidad_disponible -= self.cantidad
+        self.detalle_donacion.save()
+        
+        # Marcar como finalizado
+        self.finalizado = True
+        self.fecha_finalizado = timezone.now()
+        if usuario:
+            self.finalizado_por = usuario
+        self.save()
 
 
 # =============================================================================

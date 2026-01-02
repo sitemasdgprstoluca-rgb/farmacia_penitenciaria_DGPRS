@@ -566,7 +566,7 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
             
             {/* Toggle Vista + Carrito Badge */}
             <div className="flex items-center gap-4">
-              <div className="flex rounded-lg border overflow-hidden">
+              <div className="flex rounded-lg border overflow-visible">
                 <button
                   onClick={() => setVista('catalogo')}
                   className={`px-4 py-2 text-sm font-medium transition-colors ${
@@ -589,7 +589,7 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
                   <FaShoppingCart className="inline mr-2" />
                   Selección
                   {totalProductos > 0 && (
-                    <span className="absolute -top-2 -right-2 bg-green-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    <span className="absolute -top-3 -right-3 bg-green-500 text-white text-xs rounded-full min-w-[22px] h-[22px] flex items-center justify-center font-bold shadow-sm border-2 border-white">
                       {totalProductos}
                     </span>
                   )}

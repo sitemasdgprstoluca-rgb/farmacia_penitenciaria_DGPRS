@@ -1554,86 +1554,17 @@ const Donaciones = () => {
 
               {/* Botón Agregar Producto */}
               {puede.crear && (
-                <div className="flex items-center gap-2">
-                  {/* Plantilla Excel */}
-                  <button
-                    onClick={() => {
-                      window.open(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/productos-donacion/plantilla-excel/`, '_blank');
-                    }}
-                    className="flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
-                    title="Descargar plantilla Excel"
-                  >
-                    <FaDownload /> Plantilla
-                  </button>
-                  {/* Exportar Excel */}
-                  <button
-                    onClick={() => {
-                      window.open(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/productos-donacion/exportar-excel/`, '_blank');
-                    }}
-                    className="flex items-center gap-2 px-3 py-2 border border-green-300 text-green-600 rounded-lg hover:bg-green-50 transition-colors"
-                    title="Exportar catálogo a Excel"
-                  >
-                    <FaFileExport /> Exportar
-                  </button>
-                  {/* Importar Excel */}
-                  <label className="flex items-center gap-2 px-3 py-2 border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer">
-                    <FaUpload /> Importar
-                    <input
-                      type="file"
-                      accept=".xlsx,.xls"
-                      className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files[0];
-                        if (!file) return;
-                        
-                        const formData = new FormData();
-                        formData.append('archivo', file);
-                        
-                        try {
-                          const response = await fetch(
-                            `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/productos-donacion/importar-excel/`,
-                            {
-                              method: 'POST',
-                              headers: {
-                                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-                              },
-                              body: formData
-                            }
-                          );
-                          const data = await response.json();
-                          if (data.success) {
-                            toast.success(`Importación exitosa: ${data.creados} creados, ${data.actualizados} actualizados`);
-                            fetchCatalogo();
-                          } else {
-                            toast.error(data.error || 'Error en la importación');
-                          }
-                        } catch (error) {
-                          toast.error('Error al importar archivo');
-                        }
-                        e.target.value = '';
-                      }}
-                    />
-                  </label>
-                  <button
-                    onClick={() => setShowQuickProductModal(true)}
-                    className="flex items-center gap-2 px-3 py-2 border rounded-lg transition-colors"
-                    style={{ borderColor: COLORS.primary, color: COLORS.primary }}
-                    title="Crear producto rápido"
-                  >
-                    <FaPlus /> Rápido
-                  </button>
-                  <button
-                    onClick={() => {
-                      setCatalogoForm({ clave: '', nombre: '', descripcion: '', unidad_medida: 'PIEZA', presentacion: '', activo: true, notas: '' });
-                      setEditingProductoDonacion(null);
-                      setShowCatalogoModal(true);
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 text-white rounded-lg transition-colors"
-                    style={{ backgroundColor: COLORS.primary }}
-                  >
-                    <FaPlus /> Agregar Producto
-                  </button>
-                </div>
+                <button
+                  onClick={() => {
+                    setCatalogoForm({ clave: '', nombre: '', descripcion: '', unidad_medida: 'PIEZA', presentacion: '', activo: true, notas: '' });
+                    setEditingProductoDonacion(null);
+                    setShowCatalogoModal(true);
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 text-white rounded-lg transition-colors"
+                  style={{ backgroundColor: COLORS.primary }}
+                >
+                  <FaPlus /> Agregar Producto
+                </button>
               )}
             </div>
           </div>
@@ -2035,13 +1966,23 @@ const Donaciones = () => {
                         <td className="px-4 py-3 text-sm text-gray-600">{entrega.entregado_por_nombre || '-'}</td>
                         <td className="px-4 py-3 text-center">
                           <div className="flex items-center justify-center gap-2">
-                            {/* Botón Finalizar - solo si no está entregado */}
+                            {/* Botón Hoja de Entrega - solo si NO está entregado (para firma) */}
+                            {!(entrega.estado_entrega === 'entregado' || entrega.finalizado) && (
+                              <button
+                                onClick={() => handleDescargarReciboSalida(entrega, false)}
+                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                title="Hoja de Entrega (para firma)"
+                              >
+                                <FaFilePdf />
+                              </button>
+                            )}
+                            {/* Botón Confirmar Entrega - solo si no está entregado */}
                             {!(entrega.estado_entrega === 'entregado' || entrega.finalizado) && puede.procesar && (
                               <button
                                 onClick={() => setConfirmFinalizarEntrega(entrega)}
                                 disabled={actionLoading === entrega.id}
                                 className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                                title="Marcar como entregado"
+                                title="Confirmar entrega"
                               >
                                 {actionLoading === entrega.id ? (
                                   <FaSpinner className="animate-spin" />
@@ -2050,14 +1991,16 @@ const Donaciones = () => {
                                 )}
                               </button>
                             )}
-                            {/* Botón PDF */}
-                            <button
-                              onClick={() => handleDescargarReciboSalida(entrega, entrega.estado_entrega === 'entregado' || entrega.finalizado)}
-                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Descargar recibo PDF"
-                            >
-                              <FaFilePdf />
-                            </button>
+                            {/* Botón Comprobante - solo si YA está entregado */}
+                            {(entrega.estado_entrega === 'entregado' || entrega.finalizado) && (
+                              <button
+                                onClick={() => handleDescargarReciboSalida(entrega, true)}
+                                className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                title="Comprobante Entregado"
+                              >
+                                <FaCheckCircle />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -3227,9 +3170,9 @@ const Donaciones = () => {
       {/* Modal de confirmación finalizar entrega */}
       <ConfirmModal
         open={!!confirmFinalizarEntrega}
-        title="Finalizar Entrega"
-        message={confirmFinalizarEntrega ? `¿Confirmas que la entrega de ${confirmFinalizarEntrega.cantidad} unidades a "${confirmFinalizarEntrega.destinatario}" ha sido completada?` : ''}
-        confirmText="Sí, Finalizar"
+        title="Confirmar Entrega"
+        message={confirmFinalizarEntrega ? `¿Confirmas que la entrega de ${confirmFinalizarEntrega.cantidad} unidades a "${confirmFinalizarEntrega.destinatario}" ha sido completada?\n\nAl confirmar, el stock se descontará del inventario de donaciones y se generará el comprobante de entrega.` : ''}
+        confirmText="Sí, Confirmar Entrega"
         cancelText="Cancelar"
         tone="primary"
         onConfirm={() => confirmFinalizarEntrega && handleFinalizarEntrega(confirmFinalizarEntrega)}

@@ -4164,29 +4164,42 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
         - finalizado: Boolean que indica si fue entregada
         - fecha_finalizado: Timestamp de la finalización
         - finalizado_por: Usuario que confirmó la entrega
+        
+        IMPORTANTE: El stock solo se descuenta al finalizar, no al crear la salida.
+        Esto permite generar la hoja de entrega antes de confirmar.
         """
         from django.utils import timezone
         
         try:
             salida = self.get_object()
             
-            # ISS-DB-ALIGN: Usar campos reales del modelo
-            salida.finalizado = True
-            salida.fecha_finalizado = timezone.now()
-            salida.finalizado_por = request.user
+            # Verificar si ya está finalizada
+            if salida.finalizado:
+                return Response(
+                    {'error': 'Esta entrega ya fue finalizada'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
-            # Mantener nota para compatibilidad/trazabilidad adicional
+            # Usar el método del modelo que descuenta del inventario
+            salida.finalizar(usuario=request.user)
+            
+            # Agregar nota de trazabilidad
             nota_finalizacion = f"\n[ENTREGADO] Confirmado por {request.user.username} el {timezone.now().strftime('%d/%m/%Y %H:%M')}"
             salida.notas = (salida.notas or '') + nota_finalizacion
             salida.save()
             
-            logger.info(f"Salida de donación {salida.id} finalizada por {request.user.username}")
+            logger.info(f"Salida de donación {salida.id} finalizada por {request.user.username} - Stock descontado")
             
             from core.serializers import SalidaDonacionSerializer
             return Response({
-                'mensaje': 'Entrega finalizada correctamente',
+                'mensaje': 'Entrega finalizada y stock descontado correctamente',
                 'salida': SalidaDonacionSerializer(salida).data
             })
+        except ValueError as ve:
+            return Response(
+                {'error': str(ve)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
             logger.error(f"Error finalizando salida de donación: {str(e)}")
             return Response(
