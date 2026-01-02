@@ -36,7 +36,7 @@ from inventario.views import (
     trazabilidad_global, trazabilidad_producto_exportar, trazabilidad_lote_exportar,
     exportar_control_inventarios
 )
-from inventario.views.salida_masiva import salida_masiva, hoja_entrega_pdf, lotes_disponibles_farmacia, confirmar_entrega, estado_entrega
+from inventario.views.salida_masiva import salida_masiva, hoja_entrega_pdf, lotes_disponibles_farmacia, confirmar_entrega, estado_entrega, cancelar_salida
 
 # SimpleRouter no expone la vista raíz de la API (mayor seguridad)
 router = SimpleRouter()
@@ -139,6 +139,7 @@ urlpatterns = [
     path('salida-masiva/hoja-entrega/<str:grupo_salida>/', hoja_entrega_pdf, name='hoja-entrega-pdf'),
     path('salida-masiva/confirmar-entrega/<str:grupo_salida>/', confirmar_entrega, name='confirmar-entrega'),
     path('salida-masiva/estado-entrega/<str:grupo_salida>/', estado_entrega, name='estado-entrega'),
+    path('salida-masiva/cancelar/<str:grupo_salida>/', cancelar_salida, name='cancelar-salida'),
     
     # ADMIN: Limpieza de datos (solo superusuarios)
     path('admin/limpiar-datos/', AdminLimpiarDatosView.as_view(), name='admin-limpiar-datos'),

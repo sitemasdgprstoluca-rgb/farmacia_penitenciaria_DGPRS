@@ -7,7 +7,7 @@ ISS-014: Bloqueo optimista en descuentos de lote
 """
 import logging
 from django.db import transaction
-from django.db.models import Sum, Q, F
+from django.db.models import Sum, F
 from django.utils import timezone
 from rest_framework import serializers
 

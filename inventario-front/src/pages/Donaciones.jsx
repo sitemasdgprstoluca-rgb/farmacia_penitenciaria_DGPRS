@@ -181,6 +181,9 @@ const Donaciones = () => {
   // Confirmación de finalización de entrega
   const [confirmFinalizarEntrega, setConfirmFinalizarEntrega] = useState(null);
   
+  // Confirmación de eliminación de entrega pendiente
+  const [confirmEliminarEntrega, setConfirmEliminarEntrega] = useState(null);
+  
   // Estadísticas del almacén de donaciones
   const [estadisticas, setEstadisticas] = useState({
     totalProductos: 0,
@@ -695,6 +698,27 @@ const Donaciones = () => {
     }
   };
 
+  // Eliminar una entrega pendiente (devuelve stock al inventario)
+  const handleEliminarEntrega = async (entrega) => {
+    setActionLoading(entrega.id);
+    try {
+      await salidasDonacionesAPI.delete(entrega.id);
+      toast.success('Entrega eliminada - Stock devuelto al inventario');
+      cargarTodasEntregas();
+      cargarInventarioDonaciones();  // Actualizar inventario para reflejar stock devuelto
+      if (historialSalidas.length > 0) {
+        // Remover del historial si está abierto
+        setHistorialSalidas(prev => prev.filter(s => s.id !== entrega.id));
+      }
+    } catch (err) {
+      console.error('Error eliminando entrega:', err);
+      toast.error(err.response?.data?.error || 'Error al eliminar entrega');
+    } finally {
+      setActionLoading(null);
+      setConfirmEliminarEntrega(null);
+    }
+  };
+
   // Descargar recibo de salida como PDF
   const handleDescargarReciboSalida = async (salida, finalizado = false) => {
     try {
@@ -973,6 +997,11 @@ const Donaciones = () => {
 
   // Registrar salida de donación
   const handleRegistrarSalida = async () => {
+    // Prevenir doble envío
+    if (actionLoading === 'salida') {
+      return;
+    }
+    
     if (!salidaForm.cantidad || !salidaForm.destinatario) {
       toast.error('Completa cantidad y destinatario');
       return;
@@ -994,8 +1023,11 @@ const Donaciones = () => {
         notas: salidaForm.notas || null,
       });
       toast.success('Entrega registrada correctamente');
+      
+      // IMPORTANTE: Cerrar modal INMEDIATAMENTE para evitar duplicados
       setShowSalidaModal(false);
       setSalidaDetalle(null);
+      
       // Refrescar donación si está abierta
       if (viewingDonacion) {
         const updated = await donacionesAPI.getById(viewingDonacion.id);
@@ -1011,7 +1043,26 @@ const Donaciones = () => {
       }
     } catch (err) {
       console.error('Error registrando salida:', err);
-      toast.error(err.response?.data?.error || err.response?.data?.cantidad?.[0] || 'Error al registrar entrega');
+      const errorMsg = err.response?.data?.error || err.response?.data?.cantidad?.[0] || 'Error al registrar entrega';
+      toast.error(errorMsg);
+      
+      // Si el error es de stock insuficiente, actualizar la cantidad disponible en el modal
+      if (err.response?.data?.cantidad || errorMsg.includes('Stock insuficiente') || errorMsg.includes('Disponible')) {
+        // Recargar datos del inventario para obtener cantidad actualizada
+        try {
+          cargarInventarioDonaciones();
+          // Buscar el detalle actualizado
+          const response = await detallesDonacionAPI.getById(salidaDetalle.id);
+          if (response.data) {
+            setSalidaDetalle(prev => ({
+              ...prev,
+              cantidad_disponible: response.data.cantidad_disponible
+            }));
+          }
+        } catch (refreshErr) {
+          console.error('Error actualizando cantidad disponible:', refreshErr);
+        }
+      }
     } finally {
       setActionLoading(null);
     }
@@ -1988,6 +2039,21 @@ const Donaciones = () => {
                                   <FaSpinner className="animate-spin" />
                                 ) : (
                                   <FaCheck />
+                                )}
+                              </button>
+                            )}
+                            {/* Botón Eliminar - solo si NO está entregado (devuelve stock) */}
+                            {!(entrega.estado_entrega === 'entregado' || entrega.finalizado) && puede.eliminar && (
+                              <button
+                                onClick={() => setConfirmEliminarEntrega(entrega)}
+                                disabled={actionLoading === entrega.id}
+                                className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Eliminar entrega (devuelve stock)"
+                              >
+                                {actionLoading === entrega.id ? (
+                                  <FaSpinner className="animate-spin" />
+                                ) : (
+                                  <FaTrash />
                                 )}
                               </button>
                             )}
@@ -3177,6 +3243,18 @@ const Donaciones = () => {
         tone="primary"
         onConfirm={() => confirmFinalizarEntrega && handleFinalizarEntrega(confirmFinalizarEntrega)}
         onCancel={() => setConfirmFinalizarEntrega(null)}
+      />
+
+      {/* Modal de confirmación eliminar entrega pendiente */}
+      <ConfirmModal
+        open={!!confirmEliminarEntrega}
+        title="Eliminar Entrega"
+        message={confirmEliminarEntrega ? `¿Estás seguro de eliminar esta entrega pendiente?\n\n• Producto: ${confirmEliminarEntrega.producto_nombre || 'N/A'}\n• Cantidad: ${confirmEliminarEntrega.cantidad}\n• Destinatario: ${confirmEliminarEntrega.destinatario}\n\nEl stock será devuelto al inventario de donaciones.` : ''}
+        confirmText="Sí, Eliminar"
+        cancelText="Cancelar"
+        tone="danger"
+        onConfirm={() => confirmEliminarEntrega && handleEliminarEntrega(confirmEliminarEntrega)}
+        onCancel={() => setConfirmEliminarEntrega(null)}
       />
     </div>
   );

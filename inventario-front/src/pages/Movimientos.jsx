@@ -5,7 +5,7 @@ import Pagination from "../components/Pagination";
 import SalidaMasiva from "../components/SalidaMasiva";
 import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, salidaMasivaAPI, descargarArchivo } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
-import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList, FaFileDownload, FaCheckCircle, FaClipboardCheck } from "react-icons/fa";
+import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList, FaFileDownload, FaCheckCircle, FaClipboardCheck, FaTrash } from "react-icons/fa";
 import { COLORS } from "../constants/theme";
 
 const PAGE_SIZE = 25;
@@ -518,6 +518,8 @@ const Movimientos = () => {
   
   // Estado para confirmar entregas individuales
   const [confirmandoMovimiento, setConfirmandoMovimiento] = useState(null);
+  const [cancelandoGrupo, setCancelandoGrupo] = useState(null);
+  const [confirmCancelarGrupo, setConfirmCancelarGrupo] = useState(null);
   
   const confirmarEntregaGrupo = async (grupoId) => {
     setConfirmandoGrupo(grupoId);
@@ -533,6 +535,26 @@ const Movimientos = () => {
       console.error("Error confirmando entrega:", err);
     } finally {
       setConfirmandoGrupo(null);
+    }
+  };
+  
+  // Cancelar salida masiva NO confirmada (devuelve stock al inventario)
+  const cancelarSalidaGrupo = async (grupoId) => {
+    setCancelandoGrupo(grupoId);
+    try {
+      toast.loading("Cancelando salida y devolviendo stock...", { id: "cancelar-grupo" });
+      const response = await salidaMasivaAPI.cancelar(grupoId);
+      const itemsDevueltos = response.data?.items_devueltos?.length || 0;
+      toast.success(`Salida cancelada. ${itemsDevueltos} productos devueltos al inventario.`, { id: "cancelar-grupo" });
+      // Recargar movimientos para actualizar el estado
+      cargarMovimientos();
+    } catch (err) {
+      const msg = err.response?.data?.message || "No se pudo cancelar la salida";
+      toast.error(msg, { id: "cancelar-grupo" });
+      console.error("Error cancelando salida:", err);
+    } finally {
+      setCancelandoGrupo(null);
+      setConfirmCancelarGrupo(null);
     }
   };
   
@@ -1161,6 +1183,19 @@ const Movimientos = () => {
                                         <FaCheckCircle className="text-xs" />
                                       )}
                                     </button>
+                                    {/* Cancelar Salida (devuelve stock) */}
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setConfirmCancelarGrupo(grupo.id); }}
+                                      disabled={cancelandoGrupo === grupo.id}
+                                      className="inline-flex items-center gap-1 px-2 py-1 bg-red-600 text-white rounded text-xs font-medium hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                      title="Cancelar salida (devuelve stock)"
+                                    >
+                                      {cancelandoGrupo === grupo.id ? (
+                                        <FaSpinner className="text-xs animate-spin" />
+                                      ) : (
+                                        <FaTrash className="text-xs" />
+                                      )}
+                                    </button>
                                   </>
                                 ) : (
                                   /* Solo comprobante si ya está confirmado */
@@ -1519,6 +1554,51 @@ const Movimientos = () => {
                 cargarCatalogos();
               }}
             />
+          </div>
+        </div>
+      )}
+      
+      {/* Modal Confirmación Cancelar Salida */}
+      {confirmCancelarGrupo && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="px-6 py-4 border-b bg-red-600 rounded-t-xl">
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <FaTrash /> Cancelar Salida
+              </h2>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700 mb-4">
+                ¿Estás seguro de cancelar esta salida masiva?
+              </p>
+              <p className="text-sm text-gray-600 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <FaExclamationTriangle className="inline text-yellow-600 mr-2" />
+                <strong>Importante:</strong> El stock de todos los productos será devuelto al inventario de Farmacia Central.
+              </p>
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3 rounded-b-xl">
+              <button
+                onClick={() => setConfirmCancelarGrupo(null)}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                No, mantener
+              </button>
+              <button
+                onClick={() => cancelarSalidaGrupo(confirmCancelarGrupo)}
+                disabled={cancelandoGrupo === confirmCancelarGrupo}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {cancelandoGrupo === confirmCancelarGrupo ? (
+                  <>
+                    <FaSpinner className="animate-spin" /> Cancelando...
+                  </>
+                ) : (
+                  <>
+                    <FaTrash /> Sí, cancelar y devolver stock
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -397,6 +397,84 @@ def estado_entrega(request, grupo_salida):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated, IsFarmaciaRole])
+def cancelar_salida(request, grupo_salida):
+    """
+    Cancela una salida masiva NO confirmada, devolviendo el stock a los lotes.
+    Solo se pueden cancelar salidas que NO han sido confirmadas.
+    
+    Args:
+        grupo_salida: ID del grupo de salida (ej: SAL-0102-1530-1)
+    
+    Returns:
+        - 200: Salida cancelada exitosamente, stock devuelto
+        - 400: Ya está confirmada, no se puede cancelar
+        - 404: Grupo de salida no encontrado
+    """
+    try:
+        # Buscar movimientos de este grupo
+        movimientos = Movimiento.objects.filter(
+            motivo__contains=f'[{grupo_salida}]'
+        ).select_related('lote')
+        
+        if not movimientos.exists():
+            return Response({
+                'error': True,
+                'message': 'No se encontraron movimientos para este grupo de salida'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Verificar si ya está confirmado
+        primer_mov = movimientos.first()
+        if '[CONFIRMADO]' in (primer_mov.motivo or ''):
+            return Response({
+                'error': True,
+                'message': 'No se puede cancelar una entrega que ya fue confirmada'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        items_devueltos = []
+        
+        with transaction.atomic():
+            for mov in movimientos:
+                if mov.lote:
+                    # Bloquear lote para actualización atómica
+                    lote_locked = Lote.objects.select_for_update().get(pk=mov.lote.pk)
+                    stock_anterior = lote_locked.cantidad_actual
+                    
+                    # Devolver el stock
+                    lote_locked.cantidad_actual += mov.cantidad
+                    
+                    # Reactivar lote si estaba inactivo
+                    if not lote_locked.activo:
+                        lote_locked.activo = True
+                        lote_locked.save(update_fields=['cantidad_actual', 'activo', 'updated_at'])
+                    else:
+                        lote_locked.save(update_fields=['cantidad_actual', 'updated_at'])
+                    
+                    items_devueltos.append({
+                        'lote_id': lote_locked.id,
+                        'numero_lote': lote_locked.numero_lote,
+                        'cantidad_devuelta': mov.cantidad,
+                        'stock_anterior': stock_anterior,
+                        'stock_actual': lote_locked.cantidad_actual
+                    })
+                
+                # Eliminar el movimiento
+                mov.delete()
+        
+        logger.info(
+            f'Salida masiva {grupo_salida} CANCELADA por {request.user.username}: '
+            f'{len(items_devueltos)} items devueltos al inventario'
+        )
+        
+        return Response({
+            'success': True,
+            'message': f'Salida cancelada. {len(items_devueltos)} productos devueltos al inventario.',
+            'grupo_salida': grupo_salida,
+            'items_devueltos': items_devueltos
+        })
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, IsFarmaciaRole])
 def lotes_disponibles_farmacia(request):

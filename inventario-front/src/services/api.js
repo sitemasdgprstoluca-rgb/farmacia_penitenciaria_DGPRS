@@ -1138,6 +1138,8 @@ export const salidaMasivaAPI = {
   ),
   // Confirmar entrega física
   confirmarEntrega: (grupoSalida) => apiClient.post(`/salida-masiva/confirmar-entrega/${grupoSalida}/`),
+  // Cancelar salida NO confirmada (devuelve stock al inventario)
+  cancelar: (grupoSalida) => apiClient.delete(`/salida-masiva/cancelar/${grupoSalida}/`),
   // Consultar estado de entrega
   estadoEntrega: (grupoSalida) => apiClient.get(`/salida-masiva/estado-entrega/${grupoSalida}/`),
 };
@@ -1401,6 +1403,8 @@ export const salidasDonacionesAPI = {
   getAll: (params) => apiClient.get('/salidas-donaciones/', { params }),
   getById: (id) => apiClient.get(`/salidas-donaciones/${id}/`),
   create: (data) => apiClient.post('/salidas-donaciones/', data),
+  // Eliminar entrega NO finalizada (devuelve stock al inventario)
+  delete: (id) => apiClient.delete(`/salidas-donaciones/${id}/`),
   // Finalizar entrega (marcar como entregado)
   finalizar: (id) => apiClient.post(`/salidas-donaciones/${id}/finalizar/`),
   // Descargar recibo PDF

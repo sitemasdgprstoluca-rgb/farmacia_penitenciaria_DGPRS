@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status, serializers, permissions, mixins
+from rest_framework import viewsets, status, serializers, mixins
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -9,10 +9,8 @@ from django.http import HttpResponse
 from django.db import transaction
 from django.db.models import Q, Sum, Count, F, IntegerField, Subquery, OuterRef
 from django.db.models.functions import Coalesce
-from django.db import models
 from django.utils import timezone
 from django.conf import settings
-from django.contrib.auth.models import Group
 from datetime import datetime, timedelta, date
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -510,22 +508,18 @@ def validar_filas_excel(ws):
 from core.models import Producto, Lote, Movimiento, Centro, Requisicion, DetalleRequisicion, HojaRecoleccion, LoteDocumento
 from core.serializers import (
     ProductoSerializer, LoteSerializer, MovimientoSerializer, 
-    CentroSerializer, RequisicionSerializer, DetalleRequisicionSerializer,
-    HojaRecoleccionSerializer, LoteDocumentoSerializer
+    CentroSerializer, RequisicionSerializer, HojaRecoleccionSerializer, LoteDocumentoSerializer
 )
 
 from django.contrib.auth import get_user_model
 from core.permissions import (
-    IsAdminRole, IsFarmaciaRole, IsCentroRole, IsVistaRole,
-    IsFarmaciaAdminOrReadOnly, CanAuthorizeRequisicion,
-    IsCentroCanManageInventory, RoleHelper,  # ISS-MEDICO FIX
+    IsCentroRole, IsCentroCanManageInventory, RoleHelper,  # ISS-MEDICO FIX
     IsFarmaciaAdminOrVistaReadOnly, IsCentroOwnResourcesOnly  # ISS-MEDICO FIX: permisos restrictivos
 )
 from core.constants import (
     ESTADOS_REQUISICION,
     PAGINATION_DEFAULT_PAGE_SIZE,
     PAGINATION_MAX_PAGE_SIZE,
-    UNIDADES_MEDIDA,
     REQUISICION_GRUPOS_ESTADO,
     TRANSICIONES_REQUISICION,
     PERMISOS_FLUJO_REQUISICION,

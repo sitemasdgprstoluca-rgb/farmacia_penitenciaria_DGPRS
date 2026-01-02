@@ -3699,18 +3699,44 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
     - GET /salidas-donaciones/exportar-excel/ - Exportar entregas a Excel
     - POST /salidas-donaciones/importar-excel/ - Importar entregas desde Excel
     - GET /salidas-donaciones/plantilla-excel/ - Descargar plantilla de importación
+    - DELETE /salidas-donaciones/{id}/ - Eliminar entrega NO finalizada (devuelve stock)
     """
     pagination_class = StandardResultsSetPagination
-    http_method_names = ['get', 'post', 'head', 'options']  # No permite editar ni eliminar
+    http_method_names = ['get', 'post', 'delete', 'head', 'options']  # Permite eliminar entregas pendientes
     
     def get_permissions(self):
         """Permisos según la acción:
         - list, retrieve, exportar_excel, plantilla_excel: IsAuthenticated
-        - create, importar_excel: IsFarmaciaRole
+        - create, delete, importar_excel: IsFarmaciaRole
         """
         if self.action in ['list', 'retrieve', 'exportar_excel', 'plantilla_excel']:
             return [IsAuthenticated()]
         return [IsAuthenticated(), IsFarmaciaRole()]
+    
+    def destroy(self, request, *args, **kwargs):
+        """
+        Eliminar una salida de donación NO finalizada.
+        Al eliminar, se devuelve el stock al detalle de donación.
+        Solo se pueden eliminar entregas que NO han sido confirmadas.
+        """
+        instance = self.get_object()
+        
+        # Verificar que no esté finalizada
+        if instance.finalizado:
+            return Response(
+                {'error': 'No se puede eliminar una entrega que ya fue confirmada/finalizada'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Devolver el stock al detalle de donación
+        detalle = instance.detalle_donacion
+        if detalle:
+            detalle.cantidad_disponible += instance.cantidad
+            detalle.save(update_fields=['cantidad_disponible'])
+        
+        # Eliminar la salida
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
     
     def get_queryset(self):
         from core.models import SalidaDonacion

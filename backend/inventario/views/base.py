@@ -8,23 +8,15 @@ por todos los ViewSets del módulo inventario.
 Refactorización audit34: Separación del monolítico views.py (7654 líneas)
 en módulos especializados por recurso.
 """
-from rest_framework import viewsets, status, serializers, permissions, mixins
-from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
+from rest_framework import serializers
 from rest_framework.pagination import PageNumberPagination
 from django.core.paginator import InvalidPage
 from django.core.cache import cache
-from django.http import HttpResponse
 from django.db import transaction
-from django.db.models import Q, Sum, Count, F, IntegerField
-from django.db.models.functions import Coalesce
+from django.db.models import F
 from django.utils import timezone
 from django.conf import settings
-from django.contrib.auth.models import Group
-from datetime import datetime, timedelta, date
 import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment
 import os
 import logging
 from io import BytesIO
@@ -38,7 +30,6 @@ except ImportError:
     Image = None
 
 # ISS-011, ISS-021, ISS-030: Import de servicios transaccionales
-from inventario.services import CentroPermissionMixin
 
 logger = logging.getLogger(__name__)
 
@@ -93,26 +84,12 @@ ESTADO_INICIAL_FARMACIA = 'borrador'
 
 
 # Imports de modelos y serializers
-from core.models import Producto, Lote, Movimiento, Centro, Requisicion, DetalleRequisicion, HojaRecoleccion, LoteDocumento
-from core.serializers import (
-    ProductoSerializer, LoteSerializer, MovimientoSerializer, 
-    CentroSerializer, RequisicionSerializer, DetalleRequisicionSerializer,
-    HojaRecoleccionSerializer, LoteDocumentoSerializer
-)
+from core.models import Lote, Movimiento
 
 from django.contrib.auth import get_user_model
-from core.permissions import (
-    IsAdminRole, IsFarmaciaRole, IsCentroRole, IsVistaRole,
-    IsFarmaciaAdminOrReadOnly, CanAuthorizeRequisicion
-)
 from core.constants import (
-    ESTADOS_REQUISICION,
     PAGINATION_DEFAULT_PAGE_SIZE,
     PAGINATION_MAX_PAGE_SIZE,
-    UNIDADES_MEDIDA,
-    REQUISICION_GRUPOS_ESTADO,
-    TRANSICIONES_REQUISICION,
-    PERMISOS_FLUJO_REQUISICION,
 )
 
 User = get_user_model()
