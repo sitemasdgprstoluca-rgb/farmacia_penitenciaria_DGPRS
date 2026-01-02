@@ -8,7 +8,7 @@ Gestión completa de centros incluyendo:
 - Inventario por centro
 - Requisiciones por centro
 """
-from rest_framework import status
+from rest_framework import status, viewsets, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q, Sum
@@ -19,20 +19,15 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import logging
 
+from core.models import Centro, Lote, Movimiento, Producto
+from core.serializers import CentroSerializer
+from core.permissions import IsFarmaciaAdminOrReadOnly
 from .base import (
-    viewsets,
-    serializers,
-    Centro,
-    Lote,
-    Movimiento,
-    Producto,
-    CentroSerializer,
     CustomPagination,
     is_farmacia_or_admin,
     validar_archivo_excel,
     cargar_workbook_seguro,
     validar_filas_excel,
-    IsFarmaciaAdminOrReadOnly,
 )
 
 logger = logging.getLogger(__name__)

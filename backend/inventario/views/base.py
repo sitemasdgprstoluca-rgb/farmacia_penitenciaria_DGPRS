@@ -8,7 +8,7 @@ por todos los ViewSets del módulo inventario.
 Refactorización audit34: Separación del monolítico views.py (7654 líneas)
 en módulos especializados por recurso.
 """
-from rest_framework import serializers
+from rest_framework import serializers, viewsets
 from rest_framework.pagination import PageNumberPagination
 from django.core.paginator import InvalidPage
 from django.core.cache import cache

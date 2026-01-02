@@ -31,8 +31,9 @@ from .base import (
     is_farmacia_or_admin,
     get_user_centro,
     registrar_movimiento_stock,
-    CentroPermissionMixin,
 )
+
+from inventario.services.requisicion_service import CentroPermissionMixin
 
 logger = logging.getLogger(__name__)
 

@@ -8,7 +8,7 @@ Gestión completa de productos farmacéuticos incluyendo:
 - Auditoría de cambios
 - Toggle de estado activo/inactivo
 """
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -21,17 +21,16 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 import logging
 
+from core.models import Producto
+from core.serializers import ProductoSerializer
+from core.constants import UNIDADES_MEDIDA
 from .base import (
-    viewsets,
-    Producto,
-    ProductoSerializer,
     CustomPagination,
     is_farmacia_or_admin,
     get_user_centro,
     validar_archivo_excel,
     cargar_workbook_seguro,
     validar_filas_excel,
-    UNIDADES_MEDIDA,
 )
 
 logger = logging.getLogger(__name__)

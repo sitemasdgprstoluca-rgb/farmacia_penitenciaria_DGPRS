@@ -473,6 +473,13 @@ def cancelar_salida(request, grupo_salida):
             'grupo_salida': grupo_salida,
             'items_devueltos': items_devueltos
         })
+    
+    except Exception as e:
+        logger.error(f'Error cancelando salida masiva {grupo_salida}: {str(e)}')
+        return Response({
+            'error': True,
+            'message': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
