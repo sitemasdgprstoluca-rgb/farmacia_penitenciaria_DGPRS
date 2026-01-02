@@ -9,6 +9,7 @@ export default {
       colors: {
         // Colores oficiales Subsecretara de Seguridad - Estado de Mxico
         primary: {
+          DEFAULT: '#9F2241', // Permite usar bg-primary directamente
           50: '#fef2f3',   // Vino muy claro
           100: '#fde6e8',
           200: '#fbd0d5',
@@ -21,6 +22,7 @@ export default {
           900: '#7f1d3a',  // Vino oscuro
         },
         accent: {
+          DEFAULT: '#eab308', // Permite usar bg-accent directamente
           50: '#fefce8',   // Dorado muy claro
           100: '#fef9c3',
           200: '#fef08a',

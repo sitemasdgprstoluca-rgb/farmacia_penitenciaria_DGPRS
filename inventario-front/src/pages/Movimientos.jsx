@@ -53,6 +53,7 @@ const Movimientos = () => {
     centro: centroInicial,
     lote: "",
     search: "",
+    estado_confirmacion: "",
   });
   
   // Filtros en edición (estado local de los inputs)
@@ -65,6 +66,7 @@ const Movimientos = () => {
     centro: centroInicial,
     lote: "",
     search: "",
+    estado_confirmacion: "",
   });
 
   const [productos, setProductos] = useState([]);
@@ -223,11 +225,13 @@ const Movimientos = () => {
   const cargarMovimientos = useCallback(async () => {
     setLoading(true);
     try {
+      // Crear copia de filtros sin estado_confirmacion (se filtra en frontend)
+      const { estado_confirmacion, ...filtrosBackend } = filtrosAplicados;
       const params = {
         page,
         page_size: PAGE_SIZE,
         ordering: "-fecha",
-        ...filtrosAplicados,
+        ...filtrosBackend,
       };
       // Limpiar parámetros vacíos
       Object.keys(params).forEach(key => {
@@ -236,12 +240,20 @@ const Movimientos = () => {
         }
       });
       const response = await movimientosAPI.getAll(params);
-      const data = response.data?.results || response.data || [];
+      let data = response.data?.results || response.data || [];
       // Agregar campo 'confirmado' a cada movimiento
-      const dataConConfirmado = (Array.isArray(data) ? data : []).map(mov => ({
+      let dataConConfirmado = (Array.isArray(data) ? data : []).map(mov => ({
         ...mov,
         confirmado: estaConfirmado(mov)
       }));
+      
+      // Filtrar por estado de confirmación en frontend
+      if (estado_confirmacion === 'confirmado') {
+        dataConConfirmado = dataConConfirmado.filter(mov => mov.confirmado);
+      } else if (estado_confirmacion === 'pendiente') {
+        dataConConfirmado = dataConConfirmado.filter(mov => !mov.confirmado && mov.tipo === 'salida');
+      }
+      
       setMovimientos(dataConConfirmado);
       setTotal(response.data?.count || data.length || 0);
       calcularStats(dataConConfirmado);
@@ -592,6 +604,7 @@ const Movimientos = () => {
       centro: centroFijo,
       lote: "",
       search: "",
+      estado_confirmacion: "",
     };
     setFiltros(filtrosVacios);
     setFiltrosAplicados(filtrosVacios);
@@ -944,6 +957,21 @@ const Movimientos = () => {
                       <option value="caducidad">⏰ Caducidad</option>
                       <option value="transferencia">🔄 Transferencia</option>
                       <option value="otro">Otro</option>
+                    </select>
+                  </div>
+                )}
+                {/* Filtro por estado de confirmación - solo para salidas */}
+                {(filtros.tipo === "" || filtros.tipo === "salida") && (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-gray-700">Estado Entrega</label>
+                    <select
+                      value={filtros.estado_confirmacion}
+                      onChange={(e) => handleFiltro("estado_confirmacion", e.target.value)}
+                      className="border rounded-lg px-3 py-2"
+                    >
+                      <option value="">Todos</option>
+                      <option value="confirmado">✅ Confirmados</option>
+                      <option value="pendiente">⏳ Pendientes</option>
                     </select>
                   </div>
                 )}

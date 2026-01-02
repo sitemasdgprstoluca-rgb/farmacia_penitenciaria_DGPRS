@@ -1616,17 +1616,11 @@ const Donaciones = () => {
                   </label>
                   <button
                     onClick={() => setShowQuickProductModal(true)}
-                    className="flex items-center gap-2 px-3 py-2 border border-primary text-primary rounded-lg hover:bg-primary/5 transition-colors"
+                    className="flex items-center gap-2 px-3 py-2 border rounded-lg transition-colors"
+                    style={{ borderColor: COLORS.primary, color: COLORS.primary }}
                     title="Crear producto rápido"
                   >
                     <FaPlus /> Rápido
-                  </button>
-                  <button
-                    onClick={() => setShowBulkAddModal(true)}
-                    className="flex items-center gap-2 px-3 py-2 border border-green-600 text-green-600 rounded-lg hover:bg-green-50 transition-colors"
-                    title="Carga masiva de productos"
-                  >
-                    <FaTable /> Masivo
                   </button>
                   <button
                     onClick={() => {
@@ -1634,7 +1628,8 @@ const Donaciones = () => {
                       setEditingProductoDonacion(null);
                       setShowCatalogoModal(true);
                     }}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 text-white rounded-lg transition-colors"
+                    style={{ backgroundColor: COLORS.primary }}
                   >
                     <FaPlus /> Agregar Producto
                   </button>
@@ -2716,13 +2711,20 @@ const Donaciones = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Destinatario *
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={salidaForm.destinatario}
                     onChange={(e) => setSalidaForm({ ...salidaForm, destinatario: e.target.value })}
-                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
-                    placeholder="Nombre del paciente/interno o área"
-                  />
+                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:outline-none"
+                    style={{ '--tw-ring-color': COLORS.primary }}
+                  >
+                    <option value="">-- Seleccionar centro destino --</option>
+                    {centros.map((centro) => (
+                      <option key={centro.id} value={centro.nombre}>
+                        {centro.nombre}
+                      </option>
+                    ))}
+                    <option value="Otro">Otro (especificar en notas)</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -3011,7 +3013,8 @@ const Donaciones = () => {
               <button
                 onClick={handleGuardarProductoDonacion}
                 disabled={actionLoading === 'guardarProducto'}
-                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+                style={{ backgroundColor: COLORS.primary }}
               >
                 {actionLoading === 'guardarProducto' && <FaSpinner className="animate-spin" />}
                 {editingProductoDonacion ? 'Actualizar' : 'Crear Producto'}
@@ -3099,7 +3102,8 @@ const Donaciones = () => {
               <button
                 onClick={handleGuardarQuickProduct}
                 disabled={actionLoading === 'quickProduct'}
-                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+                style={{ backgroundColor: COLORS.primary }}
               >
                 {actionLoading === 'quickProduct' && <FaSpinner className="animate-spin" />}
                 Crear Producto
@@ -3197,7 +3201,8 @@ const Donaciones = () => {
               <button
                 onClick={handleBulkImport}
                 disabled={actionLoading === 'bulkImport' || bulkProducts.filter(p => p.valid).length === 0}
-                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+                style={{ backgroundColor: COLORS.primary }}
               >
                 {actionLoading === 'bulkImport' && <FaSpinner className="animate-spin" />}
                 Importar {bulkProducts.filter(p => p.valid).length} Productos
