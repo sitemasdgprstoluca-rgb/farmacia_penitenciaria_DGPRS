@@ -3716,9 +3716,11 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         """
         Eliminar una salida de donación NO finalizada.
-        Al eliminar, se devuelve el stock al detalle de donación.
+        Al eliminar, se devuelve el stock al detalle de donación si corresponde.
         Solo se pueden eliminar entregas que NO han sido confirmadas.
         """
+        from django.db import transaction
+        
         instance = self.get_object()
         
         # Verificar que no esté finalizada
@@ -3728,15 +3730,36 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Devolver el stock al detalle de donación
-        detalle = instance.detalle_donacion
-        if detalle:
-            detalle.cantidad_disponible += instance.cantidad
-            detalle.save(update_fields=['cantidad_disponible'])
-        
-        # Eliminar la salida
-        self.perform_destroy(instance)
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        try:
+            with transaction.atomic():
+                # Guardar datos antes de eliminar
+                cantidad_salida = instance.cantidad
+                detalle = instance.detalle_donacion
+                
+                # Eliminar la salida primero
+                instance.delete()
+                
+                # Devolver el stock al detalle de donación SOLO si no excede el máximo
+                # El constraint chk_cantidad_disponible impide que cantidad_disponible > cantidad
+                if detalle:
+                    cantidad_maxima = detalle.cantidad
+                    nuevo_disponible = detalle.cantidad_disponible + cantidad_salida
+                    
+                    # Solo actualizar si no viola el constraint
+                    if nuevo_disponible <= cantidad_maxima:
+                        detalle.cantidad_disponible = nuevo_disponible
+                        detalle.save(update_fields=['cantidad_disponible'])
+                    # Si ya está al máximo, no hacemos nada (datos legacy inconsistentes)
+            
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error eliminando salida donación: {e}")
+            return Response(
+                {'error': f'Error al eliminar: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
     
     def get_queryset(self):
         from core.models import SalidaDonacion
