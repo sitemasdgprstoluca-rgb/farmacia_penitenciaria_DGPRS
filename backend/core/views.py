@@ -3378,7 +3378,7 @@ class ProductoDonacionViewSet(viewsets.ModelViewSet):
             return Response([])
         
         productos = ProductoDonacion.objects.filter(
-            models.Q(clave__icontains=q) | models.Q(nombre__icontains=q),
+            Q(clave__icontains=q) | Q(nombre__icontains=q),
             activo=True
         )[:20]
         

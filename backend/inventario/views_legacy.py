@@ -802,21 +802,20 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         if nuevo_stock < 0:
             raise serializers.ValidationError({'cantidad': 'La operacion dejaria el lote con stock negativo'})
 
-        # Actualizar stock y estado de disponibilidad
-        lote_ref.cantidad_actual = nuevo_stock
+        # ISS-014 FIX: Usar F() para actualización atómica del stock
+        # Aunque tenemos select_for_update, F() proporciona doble seguridad contra race conditions
+        update_dict = {
+            'cantidad_actual': F('cantidad_actual') + delta,
+            'activo': nuevo_stock > 0,
+            'updated_at': timezone.now()
+        }
         
         # Para entradas, tambien actualizar cantidad_inicial si es necesario
-        # Esto permite recibir stock adicional en lotes existentes
-        update_fields = ['cantidad_actual', 'activo', 'updated_at']
         if tipo_normalizado == 'entrada' and nuevo_stock > lote_ref.cantidad_inicial:
-            lote_ref.cantidad_inicial = nuevo_stock
-            update_fields.append('cantidad_inicial')
+            update_dict['cantidad_inicial'] = nuevo_stock
         
-        if nuevo_stock == 0:
-            lote_ref.activo = False
-        elif not lote_ref.activo:
-            lote_ref.activo = True
-        lote_ref.save(update_fields=update_fields)
+        Lote.objects.filter(pk=lote_ref.pk).update(**update_dict)
+        lote_ref.refresh_from_db()
 
         # Crear movimiento con campos correctos de la BD
         # ISS-MEDICO FIX v2: La cantidad siempre se guarda como positiva en BD
@@ -8590,14 +8589,19 @@ def reporte_caducidades(request):
         # Admin/farmacia puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
         if centro_param and is_farmacia_or_admin(user):
-            if centro_param == 'central':
+            if centro_param == 'todos':
+                # ISS-FIX: 'todos' significa NO filtrar por centro (ver todos)
+                filtrar_por_centro = False
+                user_centro = None
+            elif centro_param == 'central':
                 filtrar_por_centro = True
                 user_centro = None
             else:
                 try:
                     user_centro = Centro.objects.get(pk=centro_param)
                     filtrar_por_centro = True
-                except Centro.DoesNotExist:
+                except (Centro.DoesNotExist, ValueError):
+                    # ISS-FIX: ValueError para manejar IDs no numéricos
                     pass
         
         dias = int(request.query_params.get('dias', 30))

@@ -5,7 +5,7 @@ from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
 from django.contrib.auth import get_user_model
 
-from core.models import Centro, Requisicion, Notificacion
+from core.models import Notificacion
 
 User = get_user_model()
 
@@ -15,13 +15,8 @@ class NotificacionModelTest(TestCase):
 
     def setUp(self):
         self.usuario = User.objects.create_user(username='testuser', password='test123')
-        self.centro = Centro.objects.create(clave='CTR001', nombre='Centro Test')
-        # Usar campos reales de la BD: solicitante, centro_destino
-        self.requisicion = Requisicion.objects.create(
-            numero='TEST-001',
-            solicitante=self.usuario, 
-            centro_destino=self.centro
-        )
+        # NO crear Centro ni Requisicion porque sus modelos usan managed=False
+        # y las migraciones de test no están sincronizadas con Supabase
 
     def test_crear_notificacion(self):
         notif = Notificacion.objects.create(
@@ -39,10 +34,10 @@ class NotificacionModelTest(TestCase):
             usuario=self.usuario,
             titulo='Requisicion aprobada',
             mensaje='Tu requisicion fue aprobada',
-            datos={'requisicion_id': self.requisicion.id},
+            datos={'requisicion_id': 123},  # Usar ID ficticio
             tipo='success'
         )
-        self.assertEqual(notif.datos.get('requisicion_id'), self.requisicion.id)
+        self.assertEqual(notif.datos.get('requisicion_id'), 123)
 
     def test_marcar_leida(self):
         notif = Notificacion.objects.create(
