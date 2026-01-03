@@ -302,3 +302,65 @@ class TestMovimientosMetricsUnit:
         assert total_salidas == 20     # 5 + 15 unidades
         assert count_entradas == 3     # 3 registros de entrada
         assert count_salidas == 2      # 2 registros de salida
+
+    def test_tipos_movimiento_clasificacion(self):
+        """
+        Verificar que los tipos de movimiento se clasifican correctamente.
+        
+        TIPOS_SUMA_STOCK (entradas): entrada, ajuste_positivo, devolucion
+        TIPOS_RESTA_STOCK (salidas): salida, ajuste, ajuste_negativo, merma, caducidad, transferencia
+        """
+        tipos_suma = ['entrada', 'ajuste_positivo', 'devolucion']
+        tipos_resta = ['salida', 'ajuste', 'ajuste_negativo', 'merma', 'caducidad', 'transferencia']
+        
+        # Simular datos de movimientos con diferentes tipos
+        movimientos = [
+            {'tipo': 'entrada', 'cantidad': 100},
+            {'tipo': 'devolucion', 'cantidad': 20},
+            {'tipo': 'ajuste_positivo', 'cantidad': 10},
+            {'tipo': 'salida', 'cantidad': 50},
+            {'tipo': 'merma', 'cantidad': 5},
+            {'tipo': 'caducidad', 'cantidad': 3},
+            {'tipo': 'ajuste_negativo', 'cantidad': 2},
+        ]
+        
+        # Calcular usando la misma lógica del backend
+        total_entradas = 0
+        total_salidas = 0
+        count_entradas = 0
+        count_salidas = 0
+        
+        for mov in movimientos:
+            tipo_mov = mov['tipo'].lower()
+            cantidad = mov['cantidad']
+            
+            if tipo_mov in tipos_suma:
+                total_entradas += cantidad
+                count_entradas += 1
+            else:
+                total_salidas += cantidad
+                count_salidas += 1
+        
+        # Verificaciones
+        assert total_entradas == 130  # 100 + 20 + 10
+        assert total_salidas == 60    # 50 + 5 + 3 + 2
+        assert count_entradas == 3    # entrada, devolucion, ajuste_positivo
+        assert count_salidas == 4     # salida, merma, caducidad, ajuste_negativo
+        
+        # Diferencia correcta
+        diferencia = total_entradas - total_salidas
+        assert diferencia == 70  # 130 - 60
+
+    def test_tipos_ajuste_generico_clasifica_como_salida(self):
+        """
+        Verificar que 'ajuste' genérico se clasifica como salida.
+        
+        ISS-FIX: El tipo 'ajuste' se usa en salidas manuales (registrar_movimiento_stock)
+        y debe clasificarse como RESTA_STOCK.
+        """
+        tipos_suma = ['entrada', 'ajuste_positivo', 'devolucion']
+        
+        tipo_ajuste = 'ajuste'
+        es_entrada = tipo_ajuste.lower() in tipos_suma
+        
+        assert es_entrada is False, "El tipo 'ajuste' genérico debe clasificarse como salida"

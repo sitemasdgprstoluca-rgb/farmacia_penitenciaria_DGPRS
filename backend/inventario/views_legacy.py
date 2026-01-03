@@ -8325,6 +8325,8 @@ def reporte_movimientos(request):
         transacciones = {}
         total_entradas = 0
         total_salidas = 0
+        count_entradas = 0
+        count_salidas = 0
         
         for mov in movimientos:
             amount = abs(mov.cantidad) if mov.tipo == 'salida' else mov.cantidad
@@ -8345,10 +8347,12 @@ def reporte_movimientos(request):
                     'detalles': []
                 }
             
-            # Agregar detalle a la transacción
+            # Agregar detalle a la transacción con nombre del producto
             producto_info = 'N/A'
             if mov.lote and mov.lote.producto:
-                producto_info = f"{mov.lote.producto.clave} - {(mov.lote.producto.descripcion or '')[:50]}"
+                # Usar nombre del producto, o clave + descripción como fallback
+                nombre = mov.lote.producto.nombre or mov.lote.producto.descripcion or mov.lote.producto.clave
+                producto_info = f"{mov.lote.producto.clave} - {nombre[:50]}"
             
             transacciones[ref]['detalles'].append({
                 'producto': producto_info,
@@ -8358,10 +8362,18 @@ def reporte_movimientos(request):
             transacciones[ref]['total_productos'] += 1
             transacciones[ref]['total_cantidad'] += amount
             
-            if mov.tipo == 'entrada':
+            # ISS-FIX: Clasificar por tipo de movimiento según constantes del modelo
+            # TIPOS_SUMA_STOCK = ['entrada', 'ajuste_positivo', 'devolucion']
+            # TIPOS_RESTA_STOCK = ['salida', 'ajuste', 'ajuste_negativo', 'merma', 'caducidad', 'transferencia']
+            tipo_mov = mov.tipo.lower()
+            tipos_suma = ['entrada', 'ajuste_positivo', 'devolucion']
+            if tipo_mov in tipos_suma:
                 total_entradas += amount
+                count_entradas += 1
             else:
+                # Todos los demás tipos (salida, ajuste, ajuste_negativo, merma, caducidad, transferencia)
                 total_salidas += amount
+                count_salidas += 1
         
         # Convertir a lista ordenada por fecha
         datos = list(transacciones.values())
@@ -8371,14 +8383,12 @@ def reporte_movimientos(request):
         for item in datos:
             del item['fecha_raw']
         
-        # ISS-CONSISTENCY: Calcular métricas claramente diferenciadas
-        # - total_movimientos: conteo de registros individuales (productos dentro de transacciones)
+        # ISS-CONSISTENCY: Métricas calculadas en el loop principal
+        # - total_movimientos: conteo de registros individuales
         # - total_entradas: SUMA de cantidades de entradas (unidades)
         # - total_salidas: SUMA de cantidades de salidas (unidades)
-        # - count_entradas: CONTEO de registros tipo entrada
-        # - count_salidas: CONTEO de registros tipo salida
-        count_entradas = sum(1 for t in datos for _ in t.get('detalles', []) if t.get('tipo') == 'ENTRADA')
-        count_salidas = sum(1 for t in datos for _ in t.get('detalles', []) if t.get('tipo') == 'SALIDA')
+        # - count_entradas: CONTEO de registros tipo entrada (calculado arriba)
+        # - count_salidas: CONTEO de registros tipo salida (calculado arriba)
         
         resumen = {
             'total_transacciones': len(datos),
@@ -8387,7 +8397,7 @@ def reporte_movimientos(request):
             'total_entradas': total_entradas,  # Unidades de entrada
             'total_salidas': total_salidas,    # Unidades de salida
             'diferencia': total_entradas - total_salidas,
-            # Conteos de registros
+            # Conteos de registros (calculados en el loop)
             'count_entradas': count_entradas,  # Número de registros de entrada
             'count_salidas': count_salidas,    # Número de registros de salida
         }
