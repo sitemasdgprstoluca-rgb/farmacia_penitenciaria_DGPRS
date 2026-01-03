@@ -87,14 +87,14 @@ const COLUMNAS_CONFIG = {
     { key: 'solicitante', label: 'Solicitante', width: '150px' },
   ],
   movimientos: [
-    { key: 'expand', label: '', width: '40px', align: 'center' },
-    { key: 'fecha', label: 'Fecha', width: '130px' },
-    { key: 'tipo', label: 'Tipo', width: '100px', align: 'center' },
-    { key: 'referencia', label: 'Referencia', width: '180px' },
-    { key: 'centro_origen', label: 'Origen', width: '160px' },
-    { key: 'centro_destino', label: 'Destino', width: '160px' },
-    { key: 'total_productos', label: 'Productos', width: '90px', align: 'center' },
-    { key: 'total_cantidad', label: 'Cantidad', width: '90px', align: 'right' },
+    { key: 'expand', label: '', width: '50px', align: 'center' },
+    { key: 'fecha', label: 'Fecha', width: '140px' },
+    { key: 'tipo', label: 'Tipo', width: '120px', align: 'center' },
+    { key: 'referencia', label: 'Referencia', width: '200px' },
+    { key: 'centro_origen', label: 'Origen', width: '180px' },
+    { key: 'centro_destino', label: 'Destino', width: '180px' },
+    { key: 'total_productos', label: 'Productos', width: '100px', align: 'center' },
+    { key: 'total_cantidad', label: 'Cantidad', width: '100px', align: 'right' },
   ],
 };
 
@@ -278,19 +278,7 @@ const Reportes = () => {
     cargarCatalogos();
   }, []);
 
-  // Estado para rastrear si ya se cargó el reporte inicial
-  const [reporteInicialCargado, setReporteInicialCargado] = useState(false);
-
-  // Cargar reporte inicial al montar el componente
-  useEffect(() => {
-    if (!reporteInicialCargado) {
-      setReporteInicialCargado(true);
-      cargarReporte();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reporteInicialCargado]);
-
-  // Cuando cambia el tipo de reporte, resetear fechas según el tipo y cargar
+  // Cuando cambia el tipo de reporte, resetear fechas según el tipo (sin cargar automáticamente)
   const handleTipoChange = (nuevoTipo) => {
     let nuevosFiltros = { ...filtros, tipo: nuevoTipo };
     
@@ -389,9 +377,11 @@ const Reportes = () => {
 
   const limpiarFiltros = () => {
     setFiltros(baseFilters);
-    // Limpiar datos para evitar exportar información desactualizada
-    // El usuario debe volver a aplicar filtros antes de exportar
+    // Limpiar todos los datos del reporte
     setDatos([]);
+    setPreview([]);
+    setResumen(null);
+    setError("");
   };
 
   const getTipoIcon = () => {
@@ -1070,15 +1060,16 @@ const Reportes = () => {
               <p className="text-gray-500 mt-2">Intenta ajustar los filtros o selecciona otro tipo de reporte</p>
             </div>
           ) : (
-            <table className="w-full text-sm">
+            <table className="w-full text-sm table-fixed">
               <thead className="thead-theme">
                 <tr>
                   {columnas.map((col) => (
                     <th 
                       key={col.key} 
-                      className="px-4 py-3 text-xs font-bold text-white uppercase tracking-wider"
+                      className="px-4 py-3 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap"
                       style={{ 
                         width: col.width,
+                        minWidth: col.width,
                         textAlign: col.align || 'left'
                       }}
                     >
@@ -1102,8 +1093,13 @@ const Reportes = () => {
                         {columnas.map((col) => (
                           <td 
                             key={col.key} 
-                            className="px-4 py-3 text-gray-800"
-                            style={{ textAlign: col.align || 'left' }}
+                            className="px-4 py-3 text-gray-800 truncate"
+                            style={{ 
+                              textAlign: col.align || 'left',
+                              width: col.width,
+                              minWidth: col.width
+                            }}
+                            title={typeof fila[col.key] === 'string' ? fila[col.key] : undefined}
                           >
                             {renderCellValue(fila, col, idx)}
                           </td>

@@ -2543,7 +2543,7 @@ const Productos = () => {
             <div className="overflow-y-auto max-h-[60vh]">
               {lotesModalLoading ? (
                 <div className="flex items-center justify-center py-12">
-                  <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+                  <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent spinner-institucional"></div>
                   <span className="ml-3 text-gray-600">Cargando lotes...</span>
                 </div>
               ) : lotesModalData?.lotes?.length ? (
