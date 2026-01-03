@@ -8328,8 +8328,15 @@ def reporte_movimientos(request):
         count_entradas = 0
         count_salidas = 0
         
+        # Tipos que restan stock (necesitan abs() porque cantidad puede ser negativa)
+        tipos_resta = ['salida', 'ajuste', 'ajuste_negativo', 'merma', 'caducidad', 'transferencia']
+        # Tipos que suman stock
+        tipos_suma = ['entrada', 'ajuste_positivo', 'devolucion']
+        
         for mov in movimientos:
-            amount = abs(mov.cantidad) if mov.tipo == 'salida' else mov.cantidad
+            tipo_mov = mov.tipo.lower()
+            # ISS-FIX: Usar abs() para TODOS los tipos que restan stock
+            amount = abs(mov.cantidad) if tipo_mov in tipos_resta else mov.cantidad
             ref = mov.referencia or f"MOV-{mov.id}"
             
             if ref not in transacciones:
@@ -8362,16 +8369,11 @@ def reporte_movimientos(request):
             transacciones[ref]['total_productos'] += 1
             transacciones[ref]['total_cantidad'] += amount
             
-            # ISS-FIX: Clasificar por tipo de movimiento según constantes del modelo
-            # TIPOS_SUMA_STOCK = ['entrada', 'ajuste_positivo', 'devolucion']
-            # TIPOS_RESTA_STOCK = ['salida', 'ajuste', 'ajuste_negativo', 'merma', 'caducidad', 'transferencia']
-            tipo_mov = mov.tipo.lower()
-            tipos_suma = ['entrada', 'ajuste_positivo', 'devolucion']
+            # ISS-FIX: Clasificar por tipo de movimiento (tipos_suma/tipos_resta definidos arriba)
             if tipo_mov in tipos_suma:
                 total_entradas += amount
                 count_entradas += 1
             else:
-                # Todos los demás tipos (salida, ajuste, ajuste_negativo, merma, caducidad, transferencia)
                 total_salidas += amount
                 count_salidas += 1
         
