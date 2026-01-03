@@ -1463,8 +1463,9 @@ class ProductoViewSet(viewsets.ModelViewSet):
         Exporta todos los productos a un archivo Excel.
         
         Columnas alineadas con schema real de productos:
-        - #, Codigo Barras, Nombre, Categoria, Unidad, Stock Minimo, Stock Actual, 
-          Sustancia Activa, Presentacion, Requiere Receta, Controlado, Lotes, Estado
+        - #, Clave, Nombre, Nombre Comercial, Categoria, Unidad Medida, Stock Minimo, Stock Actual,
+          Sustancia Activa, Presentacion, Concentracion, Via Admin, Requiere Receta, Controlado, 
+          Lotes Activos, Estado
         """
         try:
             productos = self.get_queryset()
@@ -1474,8 +1475,8 @@ class ProductoViewSet(viewsets.ModelViewSet):
             ws = wb.active
             ws.title = 'Productos'
             
-            # Encabezados alineados con schema de Supabase
-            headers = ['#', 'Clave', 'Nombre', 'Categoria', 'Unidad Medida', 
+            # Encabezados alineados con schema de Supabase (incluye nombre_comercial)
+            headers = ['#', 'Clave', 'Nombre', 'Nombre Comercial', 'Categoria', 'Unidad Medida', 
                        'Stock Minimo', 'Stock Actual', 'Sustancia Activa', 'Presentacion',
                        'Concentracion', 'Via Admin', 'Requiere Receta', 'Controlado', 
                        'Lotes Activos', 'Estado']
@@ -1499,6 +1500,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     idx,
                     producto.clave or '',
                     producto.nombre,
+                    producto.nombre_comercial or '',
                     producto.categoria or '',
                     producto.unidad_medida,
                     producto.stock_minimo,
@@ -1515,7 +1517,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 
                 # Colorear fila si el stock esta por debajo del minimo
                 if stock_actual < producto.stock_minimo:
-                    for col in range(1, 16):
+                    for col in range(1, 17):
                         ws.cell(row=idx+1, column=col).fill = PatternFill(
                             start_color='FFF4E6', 
                             end_color='FFF4E6', 
@@ -1523,21 +1525,22 @@ class ProductoViewSet(viewsets.ModelViewSet):
                         )
             
             # Ajustar anchos de columna
-            ws.column_dimensions['A'].width = 6
-            ws.column_dimensions['B'].width = 18
-            ws.column_dimensions['C'].width = 40
-            ws.column_dimensions['D'].width = 18
-            ws.column_dimensions['E'].width = 14
-            ws.column_dimensions['F'].width = 12
-            ws.column_dimensions['G'].width = 12
-            ws.column_dimensions['H'].width = 20
-            ws.column_dimensions['I'].width = 14
-            ws.column_dimensions['J'].width = 14
-            ws.column_dimensions['K'].width = 14
-            ws.column_dimensions['L'].width = 14
-            ws.column_dimensions['M'].width = 12
-            ws.column_dimensions['N'].width = 12
-            ws.column_dimensions['O'].width = 10
+            ws.column_dimensions['A'].width = 6    # #
+            ws.column_dimensions['B'].width = 18   # Clave
+            ws.column_dimensions['C'].width = 40   # Nombre
+            ws.column_dimensions['D'].width = 25   # Nombre Comercial
+            ws.column_dimensions['E'].width = 18   # Categoria
+            ws.column_dimensions['F'].width = 18   # Unidad Medida
+            ws.column_dimensions['G'].width = 12   # Stock Minimo
+            ws.column_dimensions['H'].width = 12   # Stock Actual
+            ws.column_dimensions['I'].width = 20   # Sustancia Activa
+            ws.column_dimensions['J'].width = 18   # Presentacion
+            ws.column_dimensions['K'].width = 14   # Concentracion
+            ws.column_dimensions['L'].width = 14   # Via Admin
+            ws.column_dimensions['M'].width = 14   # Requiere Receta
+            ws.column_dimensions['N'].width = 12   # Controlado
+            ws.column_dimensions['O'].width = 12   # Lotes Activos
+            ws.column_dimensions['P'].width = 10   # Estado
             
             # Generar respuesta
             response = HttpResponse(
@@ -1610,11 +1613,12 @@ class ProductoViewSet(viewsets.ModelViewSet):
             COLUMN_ALIASES = {
                 'clave': ['clave', 'codigo', 'código', 'clave producto', 'cod', 'id producto'],
                 'nombre': ['nombre', 'nombre producto', 'descripcion', 'descripción', 'producto'],
+                'nombre_comercial': ['nombre comercial', 'comercial', 'marca', 'brand'],
                 'unidad_medida': ['unidad', 'unidad medida', 'um', 'unidad de medida', 'medida'],
                 'stock_minimo': ['stock minimo', 'stock mínimo', 'stock min', 'minimo', 'mínimo'],
                 'categoria': ['categoria', 'categoría', 'tipo', 'clasificacion'],
                 'sustancia_activa': ['sustancia activa', 'sustancia', 'principio activo', 'activo'],
-                'presentacion': ['presentacion', 'presentación', 'forma'],
+                'presentacion': ['presentacion', 'presentación', 'forma', 'forma farmaceutica'],
                 'concentracion': ['concentracion', 'concentración', 'dosis'],
                 'via_administracion': ['via admin', 'via administracion', 'vía admin', 'administracion', 'via'],
                 'requiere_receta': ['requiere receta', 'receta', 'req receta'],
@@ -1654,13 +1658,13 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     col_map = temp_map
                     break
             
-            # Si no hay mapa, usar orden por defecto
+            # Si no hay mapa, usar orden por defecto (con nombre_comercial)
             if not col_map:
                 col_map = {
-                    'clave': 0, 'nombre': 1, 'unidad_medida': 2, 'stock_minimo': 3,
-                    'categoria': 4, 'sustancia_activa': 5, 'presentacion': 6,
-                    'concentracion': 7, 'via_administracion': 8, 'requiere_receta': 9,
-                    'es_controlado': 10, 'estado': 11
+                    'clave': 0, 'nombre': 1, 'nombre_comercial': 2, 'unidad_medida': 3, 
+                    'stock_minimo': 4, 'categoria': 5, 'sustancia_activa': 6, 'presentacion': 7,
+                    'concentracion': 8, 'via_administracion': 9, 'requiere_receta': 10,
+                    'es_controlado': 11, 'estado': 12
                 }
             
             def get_val(row, field, default=None):
@@ -1688,6 +1692,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                         # Extraer valores usando el mapa de columnas
                         clave = get_val(row, 'clave')
                         nombre = get_val(row, 'nombre')
+                        nombre_comercial = get_val(row, 'nombre_comercial')
                         unidad_medida = get_val(row, 'unidad_medida')
                         stock_minimo = get_val(row, 'stock_minimo')
                         categoria = get_val(row, 'categoria')
@@ -1733,6 +1738,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                         # Preparar datos
                         datos = {
                             'nombre': str(nombre).strip()[:500],
+                            'nombre_comercial': str(nombre_comercial).strip()[:200] if nombre_comercial else '',
                             'unidad_medida': unidad_limpia,
                             'stock_minimo': stock_min,
                             'categoria': categoria_limpia,
@@ -1792,7 +1798,8 @@ class ProductoViewSet(viewsets.ModelViewSet):
         Columnas:
         - Clave (REQUERIDO, único) - Código identificador del producto
         - Nombre (REQUERIDO) - Nombre del medicamento o insumo
-        - Unidad (opcional) - Unidad de medida (PIEZA, CAJA, FRASCO, SOBRE, AMPOLLETA, TABLETA, CAPSULA, ML, GR)
+        - Nombre Comercial (opcional) - Nombre comercial o marca
+        - Unidad Medida (opcional) - Unidad de medida (PIEZA, CAJA, FRASCO, SOBRE, etc.)
         - Stock Minimo (opcional, default: 10) - Cantidad mínima de alerta
         - Categoria (opcional) - medicamento, material_curacion, insumo, equipo, otro
         - Sustancia Activa (opcional) - Principio activo
@@ -1807,9 +1814,9 @@ class ProductoViewSet(viewsets.ModelViewSet):
         ws = wb.active
         ws.title = 'Productos'
         
-        # Headers que coinciden con importar_excel
+        # Headers que coinciden con importar_excel (con nombre_comercial)
         headers = [
-            'Clave', 'Nombre', 'Unidad', 'Stock Minimo', 'Categoria',
+            'Clave', 'Nombre', 'Nombre Comercial', 'Unidad Medida', 'Stock Minimo', 'Categoria',
             'Sustancia Activa', 'Presentacion', 'Concentracion', 
             'Via Admin', 'Requiere Receta', 'Controlado', 'Estado'
         ]
@@ -1820,17 +1827,17 @@ class ProductoViewSet(viewsets.ModelViewSet):
         # Estas filas son solo para mostrar el formato correcto.
         # ============================================================
         ws.append([
-            'PRUEBA001', '[EJEMPLO] Paracetamol 500mg - ELIMINAR', 'CAJA', 50, 'medicamento',
+            'PRUEBA001', '[EJEMPLO] Paracetamol 500mg - ELIMINAR', 'Tempra', 'CAJA', 50, 'medicamento',
             'Paracetamol', 'Tableta', '500 mg',
             'oral', 'No', 'No', 'Activo'
         ])
         ws.append([
-            'PRUEBA002', '[EJEMPLO] Ibuprofeno 400mg - ELIMINAR', 'FRASCO', 30, 'medicamento',
+            'PRUEBA002', '[EJEMPLO] Ibuprofeno 400mg - ELIMINAR', 'Advil', 'FRASCO', 30, 'medicamento',
             'Ibuprofeno', 'Cápsula', '400 mg',
             'oral', 'No', 'No', 'Activo'
         ])
         ws.append([
-            'PRUEBA003', '[EJEMPLO] Jeringa 10ml - ELIMINAR', 'PIEZA', 100, 'material_curacion',
+            'PRUEBA003', '[EJEMPLO] Jeringa 10ml - ELIMINAR', '', 'PIEZA', 100, 'material_curacion',
             '', '', '',
             '', 'No', 'No', 'Activo'
         ])
@@ -1855,16 +1862,17 @@ class ProductoViewSet(viewsets.ModelViewSet):
         column_widths = {
             'A': 15,  # Clave
             'B': 45,  # Nombre (más ancho para ver el texto de ejemplo)
-            'C': 12,  # Unidad
-            'D': 14,  # Stock Minimo
-            'E': 18,  # Categoria
-            'F': 20,  # Sustancia Activa
-            'G': 15,  # Presentacion
-            'H': 15,  # Concentracion
-            'I': 12,  # Via Admin
-            'J': 15,  # Requiere Receta
-            'K': 12,  # Controlado
-            'L': 10,  # Estado
+            'C': 20,  # Nombre Comercial
+            'D': 14,  # Unidad Medida
+            'E': 14,  # Stock Minimo
+            'F': 18,  # Categoria
+            'G': 20,  # Sustancia Activa
+            'H': 15,  # Presentacion
+            'I': 15,  # Concentracion
+            'J': 12,  # Via Admin
+            'K': 15,  # Requiere Receta
+            'L': 12,  # Controlado
+            'M': 10,  # Estado
         }
         for col_letter, width in column_widths.items():
             ws.column_dimensions[col_letter].width = width
@@ -1891,16 +1899,17 @@ class ProductoViewSet(viewsets.ModelViewSet):
             ['────────────────────────────────────────────────────────────────────────'],
             ['COLUMNAS OPCIONALES:'],
             ['────────────────────────────────────────────────────────────────────────'],
-            ['• Unidad         - CAJA, PIEZA, FRASCO, SOBRE, TABLETA, etc. (default: PIEZA)'],
-            ['• Stock Minimo   - Cantidad mínima para alertas (default: 10)'],
-            ['• Categoria      - medicamento, material_curacion, insumo (default: medicamento)'],
+            ['• Nombre Comercial - Nombre comercial o marca (ej: Tempra, Advil)'],
+            ['• Unidad Medida    - CAJA, PIEZA, FRASCO, SOBRE, TABLETA, etc. (default: PIEZA)'],
+            ['• Stock Minimo     - Cantidad mínima para alertas (default: 10)'],
+            ['• Categoria        - medicamento, material_curacion, insumo (default: medicamento)'],
             ['• Sustancia Activa - Principio activo del medicamento'],
-            ['• Presentacion   - Forma farmacéutica (tableta, cápsula, jarabe, etc.)'],
-            ['• Concentracion  - Dosis (ej: 500 mg, 10 ml)'],
-            ['• Via Admin      - oral, intravenosa, tópica, etc.'],
-            ['• Requiere Receta - Sí / No (default: No)'],
-            ['• Controlado     - Sí / No (default: No)'],
-            ['• Estado         - Activo / Inactivo (default: Activo)'],
+            ['• Presentacion     - Forma farmacéutica (tableta, cápsula, jarabe, etc.)'],
+            ['• Concentracion    - Dosis (ej: 500 mg, 10 ml)'],
+            ['• Via Admin        - oral, intravenosa, tópica, etc.'],
+            ['• Requiere Receta  - Sí / No (default: No)'],
+            ['• Controlado       - Sí / No (default: No)'],
+            ['• Estado           - Activo / Inactivo (default: Activo)'],
             [''],
             ['────────────────────────────────────────────────────────────────────────'],
             ['NOTAS:'],
