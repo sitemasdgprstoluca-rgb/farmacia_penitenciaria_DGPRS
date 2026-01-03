@@ -451,3 +451,100 @@ class TestConsistenciaPlantilaExport(TestCase):
         self.assertIn('Nombre Comercial', headers,
                      "Plantilla de productos debe tener 'Nombre Comercial'")
 
+
+class TestAlineacionEsquemaBD(TestCase):
+    """
+    Pruebas de alineación con el esquema real de la base de datos Supabase.
+    
+    Esquema BD productos: clave, nombre, nombre_comercial, descripcion, unidad_medida,
+                          categoria, stock_minimo, stock_actual, sustancia_activa, 
+                          presentacion, concentracion, via_administracion, requiere_receta,
+                          es_controlado, activo, imagen, created_at, updated_at
+    
+    Esquema BD lotes: numero_lote, producto_id, cantidad_inicial, cantidad_actual,
+                      fecha_fabricacion, fecha_caducidad, precio_unitario, numero_contrato,
+                      marca, ubicacion, centro_id, activo, created_at, updated_at
+    """
+    
+    def test_producto_importador_mapea_campos_bd(self):
+        """Verifica que el importador de productos mapee todos los campos relevantes de BD."""
+        from core.utils.excel_importer import importar_productos_desde_excel
+        
+        # Campos de la BD que el importador debe reconocer
+        campos_bd_productos = [
+            'clave', 'nombre', 'nombre_comercial', 'unidad_medida', 'categoria',
+            'sustancia_activa', 'presentacion', 'concentracion', 'via_administracion',
+            'stock_minimo', 'requiere_receta', 'es_controlado', 'activo'
+        ]
+        
+        # El importador usa estos sinónimos internamente
+        # Verificar que el código del importador contiene estos campos
+        import inspect
+        source = inspect.getsource(importar_productos_desde_excel)
+        
+        for campo in campos_bd_productos:
+            # Verificar en SINONIMOS o en el código
+            self.assertTrue(
+                campo in source or campo.replace('_', ' ') in source.lower(),
+                f"Campo BD '{campo}' debe estar mapeado en importador de productos"
+            )
+    
+    def test_lote_importador_mapea_campos_bd(self):
+        """Verifica que el importador de lotes mapee todos los campos relevantes de BD."""
+        from core.utils.excel_importer import importar_lotes_desde_excel
+        
+        # Campos de la BD que el importador debe reconocer
+        campos_bd_lotes = [
+            'numero_lote', 'cantidad_inicial', 'fecha_fabricacion', 'fecha_caducidad',
+            'precio_unitario', 'numero_contrato', 'marca', 'activo'
+        ]
+        
+        import inspect
+        source = inspect.getsource(importar_lotes_desde_excel)
+        
+        for campo in campos_bd_lotes:
+            # Verificar en SINONIMOS o en el código
+            self.assertTrue(
+                campo in source or campo.replace('_', ' ') in source.lower(),
+                f"Campo BD '{campo}' debe estar mapeado en importador de lotes"
+            )
+    
+    def test_ubicacion_se_asigna_automaticamente_en_importacion(self):
+        """
+        Verifica que ubicacion se asigna automáticamente como 'Almacén Central'.
+        
+        La BD tiene campo 'ubicacion' pero NO se pide al usuario, 
+        se asigna automáticamente.
+        """
+        from core.utils.excel_importer import importar_lotes_desde_excel
+        import inspect
+        source = inspect.getsource(importar_lotes_desde_excel)
+        
+        # Debe asignar ubicacion automáticamente
+        self.assertIn("ubicacion='Almacén Central'", source,
+                     "Importador de lotes debe asignar ubicacion='Almacén Central' automáticamente")
+    
+    def test_exportar_productos_incluye_nombre_comercial(self):
+        """Verifica que el exportador de productos incluya nombre_comercial."""
+        from inventario.views.productos import ProductoViewSet
+        import inspect
+        source = inspect.getsource(ProductoViewSet.exportar_excel)
+        
+        self.assertIn('Nombre Comercial', source,
+                     "Exportador de productos debe incluir columna 'Nombre Comercial'")
+        self.assertIn('nombre_comercial', source,
+                     "Exportador de productos debe acceder al campo nombre_comercial")
+    
+    def test_exportar_lotes_incluye_nombre_comercial_sin_ubicacion(self):
+        """Verifica que el exportador de lotes incluya nombre_comercial y NO ubicacion."""
+        from inventario.views.lotes import LoteViewSet
+        import inspect
+        source = inspect.getsource(LoteViewSet.exportar_excel)
+        
+        self.assertIn('Nombre Comercial', source,
+                     "Exportador de lotes debe incluir columna 'Nombre Comercial'")
+        self.assertNotIn("'Ubicación'", source,
+                        "Exportador de lotes NO debe incluir columna 'Ubicación'")
+        self.assertNotIn("'Ubicacion'", source,
+                        "Exportador de lotes NO debe incluir columna 'Ubicacion'")
+
