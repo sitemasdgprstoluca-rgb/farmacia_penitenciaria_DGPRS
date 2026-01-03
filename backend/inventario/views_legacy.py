@@ -8324,22 +8324,12 @@ def reporte_movimientos(request):
         # Agrupar movimientos por referencia/transacción
         transacciones = {}
         
-        # ISS-FIX: Contadores claros para el resumen
-        # - Por TRANSACCIÓN (referencia única): cuántas son entrada vs salida
-        # - Por CANTIDAD: suma de unidades entrada vs salida
-        trans_entradas = 0  # Transacciones tipo entrada
-        trans_salidas = 0   # Transacciones tipo salida
-        cant_entradas = 0   # Unidades de entrada
-        cant_salidas = 0    # Unidades de salida
-        
         for mov in movimientos:
             tipo_mov = mov.tipo.lower()
             amount = abs(mov.cantidad)  # Siempre positivo para mostrar
             ref = mov.referencia or f"MOV-{mov.id}"
             
-            # Clasificar tipo predominante de la transacción
-            # entrada, ajuste_positivo, devolucion = ENTRADA
-            # salida, ajuste, ajuste_negativo, merma, caducidad, transferencia = SALIDA
+            # Clasificar tipo: entrada, ajuste_positivo, devolucion = ENTRADA, resto = SALIDA
             es_entrada = tipo_mov in ['entrada', 'ajuste_positivo', 'devolucion']
             
             if ref not in transacciones:
@@ -8356,15 +8346,10 @@ def reporte_movimientos(request):
                     'total_cantidad': 0,
                     'observaciones': mov.motivo or '',
                     'detalles': [],
-                    '_es_entrada': es_entrada  # Flag interno para contar
+                    '_tipo_transaccion': 'ENTRADA' if es_entrada else 'SALIDA'
                 }
-                # Contar transacción
-                if es_entrada:
-                    trans_entradas += 1
-                else:
-                    trans_salidas += 1
             
-            # Agregar detalle a la transacción con nombre del producto
+            # Agregar detalle a la transacción
             producto_info = 'N/A'
             if mov.lote and mov.lote.producto:
                 nombre = mov.lote.producto.nombre or mov.lote.producto.descripcion or mov.lote.producto.clave
@@ -8377,35 +8362,36 @@ def reporte_movimientos(request):
             })
             transacciones[ref]['total_productos'] += 1
             transacciones[ref]['total_cantidad'] += amount
-            
-            # Sumar cantidades según el tipo del movimiento individual
-            if es_entrada:
-                cant_entradas += amount
-            else:
-                cant_salidas += amount
         
         # Convertir a lista ordenada por fecha
         datos = list(transacciones.values())
         datos.sort(key=lambda x: x['fecha_raw'], reverse=True)
         
+        # Calcular resumen basado en transacciones (lo que ve el usuario en la tabla)
+        trans_entradas = 0
+        trans_salidas = 0
+        cant_entradas = 0
+        cant_salidas = 0
+        
+        for t in datos:
+            tipo_t = t['_tipo_transaccion']
+            if tipo_t == 'ENTRADA':
+                trans_entradas += 1
+                cant_entradas += t['total_cantidad']
+            else:
+                trans_salidas += 1
+                cant_salidas += t['total_cantidad']
+        
         # Limpiar campos internos antes de enviar
         for item in datos:
             del item['fecha_raw']
-            del item['_es_entrada']
-        
-        # ISS-FIX: Resumen con métricas claras y consistentes
-        # - Transacciones: grupos únicos por referencia
-        # - Movimientos: suma de productos en todas las transacciones
-        # - Entradas/Salidas por transacción: cuántas transacciones son de cada tipo
-        # - Entradas/Salidas por cantidad: suma de unidades
+            del item['_tipo_transaccion']
         
         resumen = {
             'total_transacciones': len(datos),
             'total_movimientos': sum(t['total_productos'] for t in datos),
-            # Por transacciones (cuántas son entrada vs salida)
             'trans_entradas': trans_entradas,
             'trans_salidas': trans_salidas,
-            # Por unidades (suma de cantidades)
             'total_entradas': cant_entradas,
             'total_salidas': cant_salidas,
             'diferencia': cant_entradas - cant_salidas,
