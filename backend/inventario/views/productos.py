@@ -372,9 +372,10 @@ class ProductoViewSet(viewsets.ModelViewSet):
         """
         Exporta todos los productos a un archivo Excel.
         
-        Columnas alineadas con schema real de productos:
-        - #, Código Barras, Nombre, Categoría, Unidad, Stock Mínimo, Stock Actual, 
-          Sustancia Activa, Presentación, Requiere Receta, Controlado, Lotes, Estado
+        Columnas alineadas con schema real de productos (incluye nombre_comercial):
+        - #, Clave, Nombre, Nombre Comercial, Categoria, Unidad Medida, Stock Minimo, Stock Actual,
+          Sustancia Activa, Presentacion, Concentracion, Via Admin, Requiere Receta, Controlado, 
+          Lotes Activos, Estado
         """
         try:
             productos = self.get_queryset()
@@ -384,10 +385,10 @@ class ProductoViewSet(viewsets.ModelViewSet):
             ws = wb.active
             ws.title = 'Productos'
             
-            # Encabezados alineados con schema de Supabase
-            headers = ['#', 'Código Barras', 'Nombre', 'Categoría', 'Unidad Medida', 
-                       'Stock Mínimo', 'Stock Actual', 'Sustancia Activa', 'Presentación',
-                       'Concentración', 'Vía Admin', 'Requiere Receta', 'Controlado', 
+            # Encabezados alineados con schema de Supabase (incluye nombre_comercial)
+            headers = ['#', 'Clave', 'Nombre', 'Nombre Comercial', 'Categoria', 'Unidad Medida', 
+                       'Stock Minimo', 'Stock Actual', 'Sustancia Activa', 'Presentacion',
+                       'Concentracion', 'Via Admin', 'Requiere Receta', 'Controlado', 
                        'Lotes Activos', 'Estado']
             ws.append(headers)
             
@@ -409,6 +410,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     idx,
                     producto.clave or '',
                     producto.nombre,
+                    producto.nombre_comercial or '',
                     producto.categoria or '',
                     producto.unidad_medida,
                     producto.stock_minimo,
@@ -425,7 +427,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 
                 # Colorear fila si el stock está por debajo del mínimo
                 if stock_actual < producto.stock_minimo:
-                    for col in range(1, 16):
+                    for col in range(1, 17):
                         ws.cell(row=idx+1, column=col).fill = PatternFill(
                             start_color='FFF4E6', 
                             end_color='FFF4E6', 
@@ -433,21 +435,22 @@ class ProductoViewSet(viewsets.ModelViewSet):
                         )
             
             # Ajustar anchos de columna
-            ws.column_dimensions['A'].width = 6
-            ws.column_dimensions['B'].width = 18
-            ws.column_dimensions['C'].width = 40
-            ws.column_dimensions['D'].width = 18
-            ws.column_dimensions['E'].width = 14
-            ws.column_dimensions['F'].width = 12
-            ws.column_dimensions['G'].width = 12
-            ws.column_dimensions['H'].width = 20
-            ws.column_dimensions['I'].width = 14
-            ws.column_dimensions['J'].width = 14
-            ws.column_dimensions['K'].width = 14
-            ws.column_dimensions['L'].width = 14
-            ws.column_dimensions['M'].width = 12
-            ws.column_dimensions['N'].width = 12
-            ws.column_dimensions['O'].width = 10
+            ws.column_dimensions['A'].width = 6    # #
+            ws.column_dimensions['B'].width = 18   # Clave
+            ws.column_dimensions['C'].width = 40   # Nombre
+            ws.column_dimensions['D'].width = 25   # Nombre Comercial
+            ws.column_dimensions['E'].width = 18   # Categoria
+            ws.column_dimensions['F'].width = 18   # Unidad Medida
+            ws.column_dimensions['G'].width = 12   # Stock Minimo
+            ws.column_dimensions['H'].width = 12   # Stock Actual
+            ws.column_dimensions['I'].width = 20   # Sustancia Activa
+            ws.column_dimensions['J'].width = 18   # Presentacion
+            ws.column_dimensions['K'].width = 14   # Concentracion
+            ws.column_dimensions['L'].width = 14   # Via Admin
+            ws.column_dimensions['M'].width = 14   # Requiere Receta
+            ws.column_dimensions['N'].width = 12   # Controlado
+            ws.column_dimensions['O'].width = 12   # Lotes Activos
+            ws.column_dimensions['P'].width = 10   # Estado
             
             # Generar respuesta
             response = HttpResponse(
