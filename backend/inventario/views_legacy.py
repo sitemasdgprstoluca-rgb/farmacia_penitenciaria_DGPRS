@@ -2978,11 +2978,11 @@ class LoteViewSet(viewsets.ModelViewSet):
         """
         Exporta lotes aplicando los mismos filtros de listado.
         
-        ISS-DB: Incluye todos los campos de la tabla lotes de Supabase:
-        - clave (de producto)
+        ISS-DB: Incluye campos principales de la tabla lotes:
+        - clave (de producto), nombre_comercial (de producto)
         - numero_lote, fecha_fabricacion, fecha_caducidad
         - cantidad_inicial, cantidad_actual
-        - precio_unitario, numero_contrato, marca, ubicacion
+        - precio_unitario, numero_contrato, marca
         - centro (nombre), activo
         """
         try:
@@ -2991,18 +2991,18 @@ class LoteViewSet(viewsets.ModelViewSet):
             ws = wb.active
             ws.title = 'Lotes'
 
-            ws.merge_cells('A1:L1')
+            ws.merge_cells('A1:N1')
             ws['A1'] = 'REPORTE DE LOTES - SISTEMA DE INVENTARIO FARMACEUTICO PENITENCIARIO'
             ws['A1'].font = Font(bold=True, size=14, color='632842')
             ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
 
             ws.append([])
-            # ISS-DB: Headers alineados con esquema real de Supabase
+            # Headers sin ubicación
             headers = [
-                '#', 'Clave', 'Nombre Producto', 'Número Lote',
+                '#', 'Clave', 'Nombre Producto', 'Nombre Comercial', 'Número Lote',
                 'Fecha Fabricación', 'Fecha Caducidad',
                 'Cantidad Inicial', 'Cantidad Actual',
-                'Precio Unitario', 'Número Contrato', 'Marca', 'Ubicación',
+                'Precio Unitario', 'Número Contrato', 'Marca',
                 'Centro', 'Activo'
             ]
             ws.append(headers)
@@ -3018,6 +3018,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                     idx,
                     getattr(lote.producto, 'clave', '') or '',
                     getattr(lote.producto, 'nombre', '') or '',
+                    getattr(lote.producto, 'nombre_comercial', '') or '',
                     lote.numero_lote or '',
                     lote.fecha_fabricacion.strftime('%Y-%m-%d') if lote.fecha_fabricacion else '',
                     lote.fecha_caducidad.strftime('%Y-%m-%d') if lote.fecha_caducidad else '',
@@ -3026,13 +3027,12 @@ class LoteViewSet(viewsets.ModelViewSet):
                     float(lote.precio_unitario) if lote.precio_unitario else 0.00,
                     lote.numero_contrato or '',
                     lote.marca or '',
-                    lote.ubicacion or '',
                     getattr(lote.centro, 'nombre', 'Almacén Central') if lote.centro else 'Almacén Central',
                     'Sí' if lote.activo else 'No'
                 ])
 
-            # Ajustar anchos de columna
-            column_widths = [6, 15, 25, 15, 14, 14, 12, 12, 12, 18, 15, 15, 18, 8]
+            # Ajustar anchos de columna (sin ubicación)
+            column_widths = [6, 15, 30, 20, 15, 14, 14, 12, 12, 12, 18, 15, 18, 8]
             for col_idx, width in enumerate(column_widths, 1):
                 ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = width
 
@@ -3062,7 +3062,6 @@ class LoteViewSet(viewsets.ModelViewSet):
         - Precio Unitario: default = 0
         - Numero Contrato
         - Marca
-        - Ubicacion
         - Centro/Centro ID: ID o nombre del centro
         - Activo: estado del lote
         
@@ -3114,6 +3113,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             # IMPORTANTE: El orden importa - los más específicos primero
             COLUMN_ALIASES = {
                 'nombre_producto': ['nombre producto', 'nombre del producto', 'producto nombre', 'descripcion', 'descripción'],
+                'nombre_comercial': ['nombre comercial', 'comercial', 'marca comercial'],  # Solo referencia, no se usa
                 'producto': ['clave producto', 'clave', 'codigo producto', 'codigo', 'código', 'sku'],
                 'numero_lote': ['numero lote', 'número lote', 'lote', 'no. lote', 'no lote', 'num lote'],
                 'fecha_caducidad': ['fecha caducidad', 'caducidad', 'vencimiento', 'fecha vencimiento', 'expira', 'fecha expiracion'],
@@ -3123,7 +3123,6 @@ class LoteViewSet(viewsets.ModelViewSet):
                 'precio_unitario': ['precio unitario', 'precio', 'costo', 'valor', 'precio unit'],
                 'numero_contrato': ['numero contrato', 'número contrato', 'contrato', 'no. contrato', 'no contrato'],
                 'marca': ['marca', 'laboratorio', 'fabricante'],
-                'ubicacion': ['ubicacion', 'ubicación', 'almacen', 'almacén', 'bodega'],
                 'centro': ['centro', 'centro id', 'centro_id', 'destino'],
                 'activo': ['activo', 'estado', 'status'],
             }
@@ -3157,13 +3156,13 @@ class LoteViewSet(viewsets.ModelViewSet):
                     col_map = temp_map
                     break
             
-            # Si no hay mapa, usar orden por defecto
+            # Si no hay mapa, usar orden por defecto (sin ubicacion)
             if not col_map:
                 col_map = {
                     'producto': 0, 'numero_lote': 1, 'fecha_caducidad': 2,
                     'cantidad_inicial': 3, 'cantidad_actual': 4, 'fecha_fabricacion': 5,
                     'precio_unitario': 6, 'numero_contrato': 7, 'marca': 8,
-                    'ubicacion': 9, 'centro': 10
+                    'centro': 9
                 }
             
             def get_val(row, field, default=None):
@@ -3196,7 +3195,6 @@ class LoteViewSet(viewsets.ModelViewSet):
                     precio_unitario = get_val(row, 'precio_unitario')
                     numero_contrato = get_val(row, 'numero_contrato')
                     marca = get_val(row, 'marca')
-                    ubicacion = get_val(row, 'ubicacion')
                     centro_ref = get_val(row, 'centro')
 
                     # FIX: Validar que AMBOS campos estén presentes: Clave Y Nombre
@@ -3310,9 +3308,6 @@ class LoteViewSet(viewsets.ModelViewSet):
                             pass  # Usar 0 si no es valido
 
                     # Preparar defaults para update_or_create
-                    # Si no viene ubicacion, usar "Almacén Central" (todo llega a Farmacia)
-                    ubicacion_final = str(ubicacion).strip()[:100] if ubicacion else 'Almacén Central'
-                    
                     defaults = {
                         'fecha_caducidad': fecha_cad_val or date.today(),
                         'cantidad_inicial': cant_ini,
@@ -3320,7 +3315,6 @@ class LoteViewSet(viewsets.ModelViewSet):
                         'precio_unitario': precio_val,
                         'numero_contrato': str(numero_contrato).strip()[:100] if numero_contrato else '',
                         'marca': str(marca).strip()[:100] if marca else '',
-                        'ubicacion': ubicacion_final,
                     }
                     
                     if fecha_fab_val:
@@ -3373,16 +3367,17 @@ class LoteViewSet(viewsets.ModelViewSet):
         COLUMNAS OBLIGATORIAS (en orden):
         1. Clave Producto* (REQUERIDO) - Clave única del producto
         2. Nombre Producto* (REQUERIDO) - Debe coincidir con la clave
-        3. Numero Lote* (REQUERIDO) - Identificador único del lote
-        4. Fecha Caducidad* (REQUERIDO, YYYY-MM-DD)
-        5. Cantidad Inicial* (REQUERIDO) - Cantidad recibida
+        3. Nombre Comercial (referencia) - Solo informativo
+        4. Numero Lote* (REQUERIDO) - Identificador único del lote
+        5. Fecha Caducidad* (REQUERIDO, YYYY-MM-DD)
+        6. Cantidad Inicial* (REQUERIDO) - Cantidad recibida
         
         COLUMNAS OPCIONALES:
-        6. Fecha Fabricacion (YYYY-MM-DD)
-        7. Precio Unitario (default = 0)
-        8. Numero Contrato
-        9. Marca
-        10. Activo (default = Activo)
+        7. Fecha Fabricacion (YYYY-MM-DD)
+        8. Precio Unitario (default = 0)
+        9. Numero Contrato
+        10. Marca
+        11. Activo (default = Activo)
         
         IMPORTANTE: El sistema verifica que CLAVE y NOMBRE coincidan con el producto
         en la base de datos. Si hay discrepancia (clave correcta pero nombre incorrecto),
@@ -3395,10 +3390,10 @@ class LoteViewSet(viewsets.ModelViewSet):
         ws = wb.active
         ws.title = 'Lotes'
         
-        # Headers SIMPLIFICADOS - Clave Producto es OBLIGATORIA
-        # Nombre Producto es solo referencia visual
+        # Headers con Nombre Comercial como referencia visual
         headers = [
-            'Clave Producto', 'Nombre Producto', 'Numero Lote', 'Fecha Caducidad', 'Cantidad Inicial',
+            'Clave Producto', 'Nombre Producto', 'Nombre Comercial', 'Numero Lote', 
+            'Fecha Caducidad', 'Cantidad Inicial',
             'Fecha Fabricacion', 'Precio Unitario',
             'Numero Contrato', 'Marca', 'Activo'
         ]
@@ -3413,17 +3408,20 @@ class LoteViewSet(viewsets.ModelViewSet):
         fecha_fab_ejemplo = date.today().strftime('%Y-%m-%d')
         
         ws.append([
-            'PRUEBA001', '[EJEMPLO] Paracetamol - ELIMINAR', 'LOTE-PRUEBA-001', fecha_cad_ejemplo, 100,
+            'PRUEBA001', '[EJEMPLO] Paracetamol - ELIMINAR', 'Tempra', 'LOTE-PRUEBA-001', 
+            fecha_cad_ejemplo, 100,
             fecha_fab_ejemplo, 25.50,
             'CONT-PRUEBA-001', '[EJEMPLO] Laboratorio - ELIMINAR', 'Activo'
         ])
         ws.append([
-            'PRUEBA002', '[EJEMPLO] Ibuprofeno - ELIMINAR', 'LOTE-PRUEBA-002', fecha_cad_ejemplo, 50,
+            'PRUEBA002', '[EJEMPLO] Ibuprofeno - ELIMINAR', 'Advil', 'LOTE-PRUEBA-002', 
+            fecha_cad_ejemplo, 50,
             fecha_fab_ejemplo, 18.75,
             'CONT-PRUEBA-002', '[EJEMPLO] Farmacéutica - ELIMINAR', 'Activo'
         ])
         ws.append([
-            'PRUEBA003', '[EJEMPLO] Jeringa - ELIMINAR', 'LOTE-PRUEBA-003', fecha_cad_ejemplo, 200,
+            'PRUEBA003', '[EJEMPLO] Jeringa - ELIMINAR', '', 'LOTE-PRUEBA-003', 
+            fecha_cad_ejemplo, 200,
             '', 5.00,
             '', '[EJEMPLO] Material - ELIMINAR', 'Activo'
         ])
@@ -3448,14 +3446,15 @@ class LoteViewSet(viewsets.ModelViewSet):
         column_widths = {
             'A': 15,  # Clave Producto
             'B': 40,  # Nombre Producto (referencia)
-            'C': 20,  # Numero Lote
-            'D': 16,  # Fecha Caducidad
-            'E': 16,  # Cantidad Inicial
-            'F': 18,  # Fecha Fabricacion
-            'G': 15,  # Precio Unitario
-            'H': 18,  # Numero Contrato
-            'I': 35,  # Marca (más ancho para ver el texto de ejemplo)
-            'J': 12,  # Activo
+            'C': 18,  # Nombre Comercial
+            'D': 20,  # Numero Lote
+            'E': 16,  # Fecha Caducidad
+            'F': 16,  # Cantidad Inicial
+            'G': 18,  # Fecha Fabricacion
+            'H': 15,  # Precio Unitario
+            'I': 18,  # Numero Contrato
+            'J': 35,  # Marca (más ancho para ver el texto de ejemplo)
+            'K': 12,  # Activo
         }
         for col_letter, width in column_widths.items():
             ws.column_dimensions[col_letter].width = width
@@ -3485,6 +3484,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             ['────────────────────────────────────────────────────────────────────────'],
             ['• Clave Producto* - OBLIGATORIA: Clave única del producto en el sistema'],
             ['• Nombre Producto* - OBLIGATORIO: Debe coincidir con la clave'],
+            ['• Nombre Comercial - Solo referencia visual (ej: Tempra, Advil)'],
             ['• Numero Lote*    - Identificador único del lote'],
             ['• Fecha Caducidad* - Formato: YYYY-MM-DD (ej: 2026-12-31)'],
             ['• Cantidad Inicial* - Cantidad de unidades recibidas'],
@@ -3504,7 +3504,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             ['• Los lotes se asignan automáticamente al Almacén Central (FARMACIA).'],
             ['• El PRODUCTO debe existir antes de importar lotes.'],
             ['• Verifique la CLAVE y NOMBRE del producto en el catálogo.'],
-            ['• Si el lote ya existe (mismo producto + número de lote), se reporta error.'],
+            ['• Si el lote ya existe (mismo producto + número de lote), se ACTUALIZARÁ.'],
             ['• La cantidad_actual se inicializa igual a cantidad_inicial.'],
             ['• El stock del producto se actualiza automáticamente.'],
             ['• Fechas aceptadas: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY'],
