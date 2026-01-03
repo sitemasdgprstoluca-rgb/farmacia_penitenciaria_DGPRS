@@ -247,7 +247,7 @@ class PruebasDonacionesMasivas:
             }
             
             response = requests.post(
-                f'{self.base_url}/api/detalles-donacion/',
+                f'{self.base_url}/api/detalle-donaciones/',
                 json=data,
                 headers=self.get_headers(),
                 timeout=10
