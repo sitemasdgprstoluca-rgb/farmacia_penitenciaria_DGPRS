@@ -691,7 +691,7 @@ class ProductoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Producto
         fields = [
-            'id', 'clave', 'nombre', 'descripcion', 'unidad_medida',
+            'id', 'clave', 'nombre', 'nombre_comercial', 'descripcion', 'unidad_medida',
             'categoria', 'sustancia_activa', 'presentacion', 'concentracion',
             'via_administracion', 'requiere_receta', 'es_controlado',
             'stock_minimo', 'stock_actual', 'activo', 'imagen',
@@ -701,7 +701,9 @@ class ProductoSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'clave': {'required': True},
             'nombre': {'required': True},
+            'presentacion': {'required': True},
             'descripcion': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'nombre_comercial': {'required': False, 'allow_null': True, 'allow_blank': True},
         }
     
     def get_stock_actual(self, obj):
@@ -790,6 +792,17 @@ class ProductoSerializer(serializers.ModelSerializer):
                 f'Categoría no válida: {value}. Opciones: {", ".join(CATEGORIAS_VALIDAS)}'
             )
         return valor_normalizado
+    
+    def validate_presentacion(self, value):
+        """Presentación es requerida y debe tener contenido válido."""
+        if not value or value.strip() == '':
+            raise serializers.ValidationError('La presentación es requerida')
+        presentacion_limpia = value.strip().upper()
+        if len(presentacion_limpia) < 2:
+            raise serializers.ValidationError('La presentación debe tener al menos 2 caracteres')
+        if len(presentacion_limpia) > 200:
+            raise serializers.ValidationError('La presentación no puede exceder 200 caracteres')
+        return presentacion_limpia
     
     def validate_stock_minimo(self, value):
         """Stock mínimo debe ser un número no negativo."""
@@ -1512,7 +1525,7 @@ class MovimientoSerializer(serializers.ModelSerializer):
             return obj.centro_origen.nombre
         if obj.lote and obj.lote.centro:
             return obj.lote.centro.nombre
-        return 'Farmacia Central'
+        return 'Almacén Central'
     
     def validate_subtipo_salida(self, value):
         """Validar que el subtipo de salida sea válido."""

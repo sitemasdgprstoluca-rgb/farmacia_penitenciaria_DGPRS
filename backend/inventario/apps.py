@@ -1,3 +1,4 @@
+import os
 from django.apps import AppConfig
 
 
@@ -6,3 +7,4 @@ class InventarioConfig(AppConfig):
     name = 'inventario'
     label = 'inventario'
     verbose_name = 'Sistema de Inventario'
+    path = os.path.dirname(os.path.abspath(__file__))

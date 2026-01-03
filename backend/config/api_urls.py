@@ -32,9 +32,11 @@ from inventario.views import (
     MovimientoViewSet, HojaRecoleccionViewSet, dashboard_resumen, dashboard_graficas, trazabilidad_producto,
     trazabilidad_lote, trazabilidad_buscar, trazabilidad_autocomplete, reporte_inventario, reporte_movimientos,
     reporte_caducidades, reporte_requisiciones, reportes_precarga,
-    reporte_medicamentos_por_caducar, reporte_bajo_stock, reporte_consumo
+    reporte_medicamentos_por_caducar, reporte_bajo_stock, reporte_consumo,
+    trazabilidad_global, trazabilidad_producto_exportar, trazabilidad_lote_exportar,
+    exportar_control_inventarios
 )
-from inventario.views.salida_masiva import salida_masiva, hoja_entrega_pdf, lotes_disponibles_farmacia
+from inventario.views.salida_masiva import salida_masiva, hoja_entrega_pdf, lotes_disponibles_farmacia, confirmar_entrega, estado_entrega, cancelar_salida
 
 # SimpleRouter no expone la vista raíz de la API (mayor seguridad)
 router = SimpleRouter()
@@ -118,6 +120,10 @@ urlpatterns = [
     path('trazabilidad/autocomplete/', trazabilidad_autocomplete, name='trazabilidad-autocomplete'),
     path('trazabilidad/producto/<str:clave>/', trazabilidad_producto, name='trazabilidad-producto'),
     path('trazabilidad/lote/<str:codigo>/', trazabilidad_lote, name='trazabilidad-lote'),
+    path('trazabilidad/global/', trazabilidad_global, name='trazabilidad-global'),
+    path('trazabilidad/producto/<str:clave>/exportar/', trazabilidad_producto_exportar, name='trazabilidad-producto-exportar'),
+    path('trazabilidad/lote/<str:codigo>/exportar/', trazabilidad_lote_exportar, name='trazabilidad-lote-exportar'),
+    path('trazabilidad/exportar-control-inventarios/', exportar_control_inventarios, name='exportar-control-inventarios'),
     path('reportes/inventario/', reporte_inventario, name='reporte-inventario'),
     path('reportes/movimientos/', reporte_movimientos, name='reporte-movimientos'),
     path('reportes/caducidades/', reporte_caducidades, name='reporte-caducidades'),
@@ -131,6 +137,9 @@ urlpatterns = [
     path('salida-masiva/', salida_masiva, name='salida-masiva'),
     path('salida-masiva/lotes-disponibles/', lotes_disponibles_farmacia, name='lotes-disponibles-farmacia'),
     path('salida-masiva/hoja-entrega/<str:grupo_salida>/', hoja_entrega_pdf, name='hoja-entrega-pdf'),
+    path('salida-masiva/confirmar-entrega/<str:grupo_salida>/', confirmar_entrega, name='confirmar-entrega'),
+    path('salida-masiva/estado-entrega/<str:grupo_salida>/', estado_entrega, name='estado-entrega'),
+    path('salida-masiva/cancelar/<str:grupo_salida>/', cancelar_salida, name='cancelar-salida'),
     
     # ADMIN: Limpieza de datos (solo superusuarios)
     path('admin/limpiar-datos/', AdminLimpiarDatosView.as_view(), name='admin-limpiar-datos'),

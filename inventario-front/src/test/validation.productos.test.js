@@ -27,23 +27,23 @@ import {
 describe('validarProducto', () => {
   describe('campos obligatorios', () => {
     it('debe rechazar producto sin clave', () => {
-      const producto = { descripcion: 'Test', unidad_medida: 'PIEZA', presentacion: 'Caja x 10' };
+      const producto = { nombre: 'Test', unidad_medida: 'PIEZA', presentacion: 'Caja x 10' };
       const { valido, errores } = validarProducto(producto);
       
       expect(valido).toBe(false);
       expect(errores.clave).toBeDefined();
     });
 
-    it('debe rechazar producto sin descripción/nombre', () => {
+    it('debe rechazar producto sin nombre', () => {
       const producto = { clave: 'TEST-001', unidad_medida: 'PIEZA', presentacion: 'Caja x 10' };
       const { valido, errores } = validarProducto(producto);
       
       expect(valido).toBe(false);
-      expect(errores.descripcion).toBeDefined();
+      expect(errores.nombre).toBeDefined();
     });
 
     it('debe rechazar producto sin unidad_medida', () => {
-      const producto = { clave: 'TEST-001', descripcion: 'Producto Test', presentacion: 'Caja x 10' };
+      const producto = { clave: 'TEST-001', nombre: 'Producto Test', presentacion: 'Caja x 10' };
       const { valido, errores } = validarProducto(producto);
       
       expect(valido).toBe(false);
@@ -51,25 +51,25 @@ describe('validarProducto', () => {
     });
 
     it('debe rechazar producto sin presentación en creación', () => {
-      const producto = { clave: 'TEST-001', descripcion: 'Producto Test', unidad_medida: 'PIEZA' };
+      const producto = { clave: 'TEST-001', nombre: 'Producto Test', unidad_medida: 'PIEZA' };
       const { valido, errores } = validarProducto(producto, false);
       
       expect(valido).toBe(false);
       expect(errores.presentacion).toBeDefined();
     });
 
-    it('debe permitir producto sin presentación en edición', () => {
-      const producto = { clave: 'TEST-001', descripcion: 'Producto Test', unidad_medida: 'PIEZA' };
+    it('debe rechazar producto sin presentación en edición (ahora es obligatoria)', () => {
+      const producto = { clave: 'TEST-001', nombre: 'Producto Test', unidad_medida: 'PIEZA' };
       const { valido, errores } = validarProducto(producto, true);
       
-      expect(valido).toBe(true);
-      expect(errores.presentacion).toBeUndefined();
+      expect(valido).toBe(false);
+      expect(errores.presentacion).toBeDefined();
     });
   });
 
   describe('validación de clave', () => {
     it('debe rechazar clave muy corta', () => {
-      const producto = { clave: 'AB', descripcion: 'Test', unidad_medida: 'PIEZA', presentacion: 'Caja' };
+      const producto = { clave: 'AB', nombre: 'Test', unidad_medida: 'PIEZA', presentacion: 'Caja' };
       const { valido, errores } = validarProducto(producto);
       
       expect(valido).toBe(false);
@@ -77,7 +77,7 @@ describe('validarProducto', () => {
     });
 
     it('debe rechazar clave con caracteres inválidos', () => {
-      const producto = { clave: 'TEST@#$', descripcion: 'Test', unidad_medida: 'PIEZA', presentacion: 'Caja' };
+      const producto = { clave: 'TEST@#$', nombre: 'Test', unidad_medida: 'PIEZA', presentacion: 'Caja' };
       const { valido, errores } = validarProducto(producto);
       
       expect(valido).toBe(false);
@@ -85,7 +85,7 @@ describe('validarProducto', () => {
     });
 
     it('debe aceptar clave válida con guiones', () => {
-      const producto = { clave: 'MED-001_A', descripcion: 'Test', unidad_medida: 'PIEZA', presentacion: 'Caja' };
+      const producto = { clave: 'MED-001_A', nombre: 'Test', unidad_medida: 'PIEZA', presentacion: 'Caja' };
       const { valido, errores } = validarProducto(producto);
       
       expect(valido).toBe(true);
@@ -96,7 +96,7 @@ describe('validarProducto', () => {
   describe('validación de stock_minimo', () => {
     it('debe rechazar stock_minimo negativo', () => {
       const producto = { 
-        clave: 'TEST-001', descripcion: 'Test', unidad_medida: 'PIEZA', 
+        clave: 'TEST-001', nombre: 'Test', unidad_medida: 'PIEZA', 
         presentacion: 'Caja', stock_minimo: -5 
       };
       const { valido, errores } = validarProducto(producto);
@@ -107,7 +107,7 @@ describe('validarProducto', () => {
 
     it('debe rechazar stock_minimo no entero', () => {
       const producto = { 
-        clave: 'TEST-001', descripcion: 'Test', unidad_medida: 'PIEZA', 
+        clave: 'TEST-001', nombre: 'Test', unidad_medida: 'PIEZA', 
         presentacion: 'Caja', stock_minimo: 5.5 
       };
       const { valido, errores } = validarProducto(producto);
@@ -118,7 +118,7 @@ describe('validarProducto', () => {
 
     it('debe aceptar stock_minimo cero', () => {
       const producto = { 
-        clave: 'TEST-001', descripcion: 'Test', unidad_medida: 'PIEZA', 
+        clave: 'TEST-001', nombre: 'Test', unidad_medida: 'PIEZA', 
         presentacion: 'Caja', stock_minimo: 0 
       };
       const { valido } = validarProducto(producto);
@@ -130,7 +130,7 @@ describe('validarProducto', () => {
   describe('validación de categoría', () => {
     it('debe rechazar categoría inválida', () => {
       const producto = { 
-        clave: 'TEST-001', descripcion: 'Test', unidad_medida: 'PIEZA', 
+        clave: 'TEST-001', nombre: 'Test', unidad_medida: 'PIEZA', 
         presentacion: 'Caja', categoria: 'invalid_category' 
       };
       const { valido, errores } = validarProducto(producto);
@@ -144,7 +144,7 @@ describe('validarProducto', () => {
       
       for (const cat of categorias) {
         const producto = { 
-          clave: 'TEST-001', descripcion: 'Test', unidad_medida: 'PIEZA', 
+          clave: 'TEST-001', nombre: 'Test', unidad_medida: 'PIEZA', 
           presentacion: 'Caja', categoria: cat 
         };
         const { valido } = validarProducto(producto);
@@ -157,7 +157,7 @@ describe('validarProducto', () => {
     it('debe validar producto completo', () => {
       const producto = {
         clave: 'MED-001',
-        descripcion: 'Paracetamol 500mg',
+        nombre: 'Paracetamol 500mg',
         unidad_medida: 'TABLETA',
         presentacion: 'Caja x 20',
         categoria: 'medicamento',
@@ -168,6 +168,20 @@ describe('validarProducto', () => {
       expect(valido).toBe(true);
       expect(Object.keys(errores)).toHaveLength(0);
       expect(primerError).toBeNull();
+    });
+
+    it('debe aceptar descripcion como campo opcional', () => {
+      const producto = {
+        clave: 'MED-001',
+        nombre: 'Paracetamol 500mg',
+        descripcion: 'Analgésico y antipirético',
+        unidad_medida: 'TABLETA',
+        presentacion: 'Caja x 20',
+        categoria: 'medicamento',
+      };
+      const { valido } = validarProducto(producto);
+      
+      expect(valido).toBe(true);
     });
   });
 });

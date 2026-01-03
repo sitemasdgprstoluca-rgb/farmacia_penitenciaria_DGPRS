@@ -461,17 +461,18 @@ export const validarProducto = (producto, esEdicion = false) => {
     errores.clave = 'La clave solo puede contener letras, números, guiones y guiones bajos';
   }
   
-  if (!producto.descripcion?.trim() && !producto.nombre?.trim()) {
-    errores.descripcion = 'La descripción/nombre del producto es obligatoria';
-  } else if ((producto.descripcion || producto.nombre || '').length < 3) {
-    errores.descripcion = 'La descripción debe tener al menos 3 caracteres';
+  // Nombre es obligatorio (descripcion es opcional)
+  if (!producto.nombre?.trim()) {
+    errores.nombre = 'El nombre del producto es obligatorio';
+  } else if (producto.nombre.length < 3) {
+    errores.nombre = 'El nombre debe tener al menos 3 caracteres';
   }
   
   if (!producto.unidad_medida?.trim()) {
     errores.unidad_medida = 'La unidad de medida es obligatoria';
   }
   
-  // ISS-FIX: Presentación es obligatoria tanto en creación como en edición
+  // Presentación es obligatoria siempre (creación y edición)
   if (!producto.presentacion?.trim()) {
     errores.presentacion = 'La presentación es obligatoria';
   }

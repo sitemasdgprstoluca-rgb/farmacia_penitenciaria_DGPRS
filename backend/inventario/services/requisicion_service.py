@@ -7,7 +7,7 @@ ISS-014: Bloqueo optimista en descuentos de lote
 """
 import logging
 from django.db import transaction
-from django.db.models import Sum, Q, F
+from django.db.models import Sum, F
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -469,11 +469,14 @@ class RequisicionService:
                 lote = Lote.objects.select_for_update().get(pk=mov.lote.pk)
                 nueva_cantidad = lote.cantidad_actual - mov.cantidad
                 
-                # Actualizar con valor calculado (no F() para evitar race condition)
-                lote.cantidad_actual = nueva_cantidad
-                lote.activo = nueva_cantidad > 0  # Desactivar si queda en 0
-                lote.updated_at = timezone.now()
-                lote.save(update_fields=['cantidad_actual', 'activo', 'updated_at'])
+                # ISS-014 FIX: Usar F() para actualización atómica
+                # Aunque tenemos select_for_update, F() es más seguro contra race conditions
+                Lote.objects.filter(pk=lote.pk).update(
+                    cantidad_actual=F('cantidad_actual') - mov.cantidad,
+                    activo=(nueva_cantidad > 0),
+                    updated_at=timezone.now()
+                )
+                lote.refresh_from_db()
                 
                 Movimiento.objects.create(
                     tipo='salida',

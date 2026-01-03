@@ -8,23 +8,15 @@ por todos los ViewSets del módulo inventario.
 Refactorización audit34: Separación del monolítico views.py (7654 líneas)
 en módulos especializados por recurso.
 """
-from rest_framework import viewsets, status, serializers, permissions, mixins
-from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
+from rest_framework import serializers, viewsets
 from rest_framework.pagination import PageNumberPagination
 from django.core.paginator import InvalidPage
 from django.core.cache import cache
-from django.http import HttpResponse
 from django.db import transaction
-from django.db.models import Q, Sum, Count, F, IntegerField
-from django.db.models.functions import Coalesce
+from django.db.models import F
 from django.utils import timezone
 from django.conf import settings
-from django.contrib.auth.models import Group
-from datetime import datetime, timedelta, date
 import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment
 import os
 import logging
 from io import BytesIO
@@ -38,7 +30,6 @@ except ImportError:
     Image = None
 
 # ISS-011, ISS-021, ISS-030: Import de servicios transaccionales
-from inventario.services import CentroPermissionMixin
 
 logger = logging.getLogger(__name__)
 
@@ -93,26 +84,12 @@ ESTADO_INICIAL_FARMACIA = 'borrador'
 
 
 # Imports de modelos y serializers
-from core.models import Producto, Lote, Movimiento, Centro, Requisicion, DetalleRequisicion, HojaRecoleccion, LoteDocumento
-from core.serializers import (
-    ProductoSerializer, LoteSerializer, MovimientoSerializer, 
-    CentroSerializer, RequisicionSerializer, DetalleRequisicionSerializer,
-    HojaRecoleccionSerializer, LoteDocumentoSerializer
-)
+from core.models import Lote, Movimiento
 
 from django.contrib.auth import get_user_model
-from core.permissions import (
-    IsAdminRole, IsFarmaciaRole, IsCentroRole, IsVistaRole,
-    IsFarmaciaAdminOrReadOnly, CanAuthorizeRequisicion
-)
 from core.constants import (
-    ESTADOS_REQUISICION,
     PAGINATION_DEFAULT_PAGE_SIZE,
     PAGINATION_MAX_PAGE_SIZE,
-    UNIDADES_MEDIDA,
-    REQUISICION_GRUPOS_ESTADO,
-    TRANSICIONES_REQUISICION,
-    PERMISOS_FLUJO_REQUISICION,
 )
 
 User = get_user_model()
@@ -756,21 +733,20 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         if nuevo_stock < 0:
             raise serializers.ValidationError({'cantidad': 'La operacion dejaria el lote con stock negativo'})
 
-        # Actualizar stock y estado de disponibilidad
-        lote_ref.cantidad_actual = nuevo_stock
+        # ISS-014 FIX: Usar F() para actualización atómica del stock
+        # Aunque tenemos select_for_update, F() proporciona doble seguridad contra race conditions
+        update_dict = {
+            'cantidad_actual': F('cantidad_actual') + delta,
+            'activo': nuevo_stock > 0,
+            'updated_at': timezone.now()
+        }
         
         # Para entradas, tambien actualizar cantidad_inicial si es necesario
-        # Esto permite recibir stock adicional en lotes existentes
-        update_fields = ['cantidad_actual', 'activo', 'updated_at']
         if tipo_normalizado == 'entrada' and nuevo_stock > lote_ref.cantidad_inicial:
-            lote_ref.cantidad_inicial = nuevo_stock
-            update_fields.append('cantidad_inicial')
+            update_dict['cantidad_inicial'] = nuevo_stock
         
-        if nuevo_stock == 0:
-            lote_ref.activo = False
-        elif not lote_ref.activo:
-            lote_ref.activo = True
-        lote_ref.save(update_fields=update_fields)
+        Lote.objects.filter(pk=lote_ref.pk).update(**update_dict)
+        lote_ref.refresh_from_db()
 
         # Crear movimiento con campos correctos de la BD
         # ISS-FIX: Para salidas (transferencias), centro_destino es el destino, centro_origen es el origen del lote
@@ -796,7 +772,9 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
             centro_origen=mov_centro_origen,
             requisicion=requisicion,
             usuario=usuario if usuario and getattr(usuario, 'is_authenticated', False) else None,
-            cantidad=delta,
+            # ISS-FIX-CONSTRAINT: La BD tiene constraint que exige cantidad POSITIVA
+            # El tipo (salida/entrada) indica si suma o resta, la cantidad es siempre positiva
+            cantidad=abs(delta),
             motivo=observaciones or '',
             # MEJORA FLUJO 5: Campos de trazabilidad para pacientes
             subtipo_salida=subtipo_salida if tipo_normalizado == 'salida' else None,

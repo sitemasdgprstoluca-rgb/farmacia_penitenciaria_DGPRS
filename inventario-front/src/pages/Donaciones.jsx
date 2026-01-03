@@ -29,6 +29,7 @@ import {
   FaFileExport,
   FaFileImport,
   FaDownload,
+  FaUpload,
   FaShoppingCart,
   FaTable,
   FaFilePdf,
@@ -179,6 +180,9 @@ const Donaciones = () => {
   
   // Confirmación de finalización de entrega
   const [confirmFinalizarEntrega, setConfirmFinalizarEntrega] = useState(null);
+  
+  // Confirmación de eliminación de entrega pendiente
+  const [confirmEliminarEntrega, setConfirmEliminarEntrega] = useState(null);
   
   // Estadísticas del almacén de donaciones
   const [estadisticas, setEstadisticas] = useState({
@@ -694,6 +698,27 @@ const Donaciones = () => {
     }
   };
 
+  // Eliminar una entrega pendiente (devuelve stock al inventario)
+  const handleEliminarEntrega = async (entrega) => {
+    setActionLoading(entrega.id);
+    try {
+      await salidasDonacionesAPI.delete(entrega.id);
+      toast.success('Entrega eliminada - Stock devuelto al inventario');
+      cargarTodasEntregas();
+      cargarInventarioDonaciones();  // Actualizar inventario para reflejar stock devuelto
+      if (historialSalidas.length > 0) {
+        // Remover del historial si está abierto
+        setHistorialSalidas(prev => prev.filter(s => s.id !== entrega.id));
+      }
+    } catch (err) {
+      console.error('Error eliminando entrega:', err);
+      toast.error(err.response?.data?.error || 'Error al eliminar entrega');
+    } finally {
+      setActionLoading(null);
+      setConfirmEliminarEntrega(null);
+    }
+  };
+
   // Descargar recibo de salida como PDF
   const handleDescargarReciboSalida = async (salida, finalizado = false) => {
     try {
@@ -972,6 +997,11 @@ const Donaciones = () => {
 
   // Registrar salida de donación
   const handleRegistrarSalida = async () => {
+    // Prevenir doble envío
+    if (actionLoading === 'salida') {
+      return;
+    }
+    
     if (!salidaForm.cantidad || !salidaForm.destinatario) {
       toast.error('Completa cantidad y destinatario');
       return;
@@ -993,8 +1023,11 @@ const Donaciones = () => {
         notas: salidaForm.notas || null,
       });
       toast.success('Entrega registrada correctamente');
+      
+      // IMPORTANTE: Cerrar modal INMEDIATAMENTE para evitar duplicados
       setShowSalidaModal(false);
       setSalidaDetalle(null);
+      
       // Refrescar donación si está abierta
       if (viewingDonacion) {
         const updated = await donacionesAPI.getById(viewingDonacion.id);
@@ -1010,7 +1043,26 @@ const Donaciones = () => {
       }
     } catch (err) {
       console.error('Error registrando salida:', err);
-      toast.error(err.response?.data?.error || err.response?.data?.cantidad?.[0] || 'Error al registrar entrega');
+      const errorMsg = err.response?.data?.error || err.response?.data?.cantidad?.[0] || 'Error al registrar entrega';
+      toast.error(errorMsg);
+      
+      // Si el error es de stock insuficiente, actualizar la cantidad disponible en el modal
+      if (err.response?.data?.cantidad || errorMsg.includes('Stock insuficiente') || errorMsg.includes('Disponible')) {
+        // Recargar datos del inventario para obtener cantidad actualizada
+        try {
+          cargarInventarioDonaciones();
+          // Buscar el detalle actualizado
+          const response = await detallesDonacionAPI.getById(salidaDetalle.id);
+          if (response.data) {
+            setSalidaDetalle(prev => ({
+              ...prev,
+              cantidad_disponible: response.data.cantidad_disponible
+            }));
+          }
+        } catch (refreshErr) {
+          console.error('Error actualizando cantidad disponible:', refreshErr);
+        }
+      }
     } finally {
       setActionLoading(null);
     }
@@ -1553,32 +1605,17 @@ const Donaciones = () => {
 
               {/* Botón Agregar Producto */}
               {puede.crear && (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setShowQuickProductModal(true)}
-                    className="flex items-center gap-2 px-3 py-2 border border-primary text-primary rounded-lg hover:bg-primary/5 transition-colors"
-                    title="Crear producto rápido"
-                  >
-                    <FaPlus /> Rápido
-                  </button>
-                  <button
-                    onClick={() => setShowBulkAddModal(true)}
-                    className="flex items-center gap-2 px-3 py-2 border border-green-600 text-green-600 rounded-lg hover:bg-green-50 transition-colors"
-                    title="Carga masiva de productos"
-                  >
-                    <FaTable /> Masivo
-                  </button>
-                  <button
-                    onClick={() => {
-                      setCatalogoForm({ clave: '', nombre: '', descripcion: '', unidad_medida: 'PIEZA', presentacion: '', activo: true, notas: '' });
-                      setEditingProductoDonacion(null);
-                      setShowCatalogoModal(true);
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
-                  >
-                    <FaPlus /> Agregar Producto
-                  </button>
-                </div>
+                <button
+                  onClick={() => {
+                    setCatalogoForm({ clave: '', nombre: '', descripcion: '', unidad_medida: 'PIEZA', presentacion: '', activo: true, notas: '' });
+                    setEditingProductoDonacion(null);
+                    setShowCatalogoModal(true);
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 text-white rounded-lg transition-colors"
+                  style={{ backgroundColor: COLORS.primary }}
+                >
+                  <FaPlus /> Agregar Producto
+                </button>
               )}
             </div>
           </div>
@@ -1980,13 +2017,23 @@ const Donaciones = () => {
                         <td className="px-4 py-3 text-sm text-gray-600">{entrega.entregado_por_nombre || '-'}</td>
                         <td className="px-4 py-3 text-center">
                           <div className="flex items-center justify-center gap-2">
-                            {/* Botón Finalizar - solo si no está entregado */}
+                            {/* Botón Hoja de Entrega - solo si NO está entregado (para firma) */}
+                            {!(entrega.estado_entrega === 'entregado' || entrega.finalizado) && (
+                              <button
+                                onClick={() => handleDescargarReciboSalida(entrega, false)}
+                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                title="Hoja de Entrega (para firma)"
+                              >
+                                <FaFilePdf />
+                              </button>
+                            )}
+                            {/* Botón Confirmar Entrega - solo si no está entregado */}
                             {!(entrega.estado_entrega === 'entregado' || entrega.finalizado) && puede.procesar && (
                               <button
                                 onClick={() => setConfirmFinalizarEntrega(entrega)}
                                 disabled={actionLoading === entrega.id}
                                 className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                                title="Marcar como entregado"
+                                title="Confirmar entrega"
                               >
                                 {actionLoading === entrega.id ? (
                                   <FaSpinner className="animate-spin" />
@@ -1995,14 +2042,31 @@ const Donaciones = () => {
                                 )}
                               </button>
                             )}
-                            {/* Botón PDF */}
-                            <button
-                              onClick={() => handleDescargarReciboSalida(entrega, entrega.estado_entrega === 'entregado' || entrega.finalizado)}
-                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Descargar recibo PDF"
-                            >
-                              <FaFilePdf />
-                            </button>
+                            {/* Botón Eliminar - solo si NO está entregado (devuelve stock) */}
+                            {!(entrega.estado_entrega === 'entregado' || entrega.finalizado) && puede.eliminar && (
+                              <button
+                                onClick={() => setConfirmEliminarEntrega(entrega)}
+                                disabled={actionLoading === entrega.id}
+                                className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Eliminar entrega (devuelve stock)"
+                              >
+                                {actionLoading === entrega.id ? (
+                                  <FaSpinner className="animate-spin" />
+                                ) : (
+                                  <FaTrash />
+                                )}
+                              </button>
+                            )}
+                            {/* Botón Comprobante - solo si YA está entregado */}
+                            {(entrega.estado_entrega === 'entregado' || entrega.finalizado) && (
+                              <button
+                                onClick={() => handleDescargarReciboSalida(entrega, true)}
+                                className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                title="Comprobante Entregado"
+                              >
+                                <FaCheckCircle />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -2656,13 +2720,20 @@ const Donaciones = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Destinatario *
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={salidaForm.destinatario}
                     onChange={(e) => setSalidaForm({ ...salidaForm, destinatario: e.target.value })}
-                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
-                    placeholder="Nombre del paciente/interno o área"
-                  />
+                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:outline-none"
+                    style={{ '--tw-ring-color': COLORS.primary }}
+                  >
+                    <option value="">-- Seleccionar centro destino --</option>
+                    {centros.map((centro) => (
+                      <option key={centro.id} value={centro.nombre}>
+                        {centro.nombre}
+                      </option>
+                    ))}
+                    <option value="Otro">Otro (especificar en notas)</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -2951,7 +3022,8 @@ const Donaciones = () => {
               <button
                 onClick={handleGuardarProductoDonacion}
                 disabled={actionLoading === 'guardarProducto'}
-                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+                style={{ backgroundColor: COLORS.primary }}
               >
                 {actionLoading === 'guardarProducto' && <FaSpinner className="animate-spin" />}
                 {editingProductoDonacion ? 'Actualizar' : 'Crear Producto'}
@@ -3039,7 +3111,8 @@ const Donaciones = () => {
               <button
                 onClick={handleGuardarQuickProduct}
                 disabled={actionLoading === 'quickProduct'}
-                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+                style={{ backgroundColor: COLORS.primary }}
               >
                 {actionLoading === 'quickProduct' && <FaSpinner className="animate-spin" />}
                 Crear Producto
@@ -3137,7 +3210,8 @@ const Donaciones = () => {
               <button
                 onClick={handleBulkImport}
                 disabled={actionLoading === 'bulkImport' || bulkProducts.filter(p => p.valid).length === 0}
-                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+                style={{ backgroundColor: COLORS.primary }}
               >
                 {actionLoading === 'bulkImport' && <FaSpinner className="animate-spin" />}
                 Importar {bulkProducts.filter(p => p.valid).length} Productos
@@ -3162,13 +3236,25 @@ const Donaciones = () => {
       {/* Modal de confirmación finalizar entrega */}
       <ConfirmModal
         open={!!confirmFinalizarEntrega}
-        title="Finalizar Entrega"
-        message={confirmFinalizarEntrega ? `¿Confirmas que la entrega de ${confirmFinalizarEntrega.cantidad} unidades a "${confirmFinalizarEntrega.destinatario}" ha sido completada?` : ''}
-        confirmText="Sí, Finalizar"
+        title="Confirmar Entrega"
+        message={confirmFinalizarEntrega ? `¿Confirmas que la entrega de ${confirmFinalizarEntrega.cantidad} unidades a "${confirmFinalizarEntrega.destinatario}" ha sido completada?\n\nAl confirmar, el stock se descontará del inventario de donaciones y se generará el comprobante de entrega.` : ''}
+        confirmText="Sí, Confirmar Entrega"
         cancelText="Cancelar"
         tone="primary"
         onConfirm={() => confirmFinalizarEntrega && handleFinalizarEntrega(confirmFinalizarEntrega)}
         onCancel={() => setConfirmFinalizarEntrega(null)}
+      />
+
+      {/* Modal de confirmación eliminar entrega pendiente */}
+      <ConfirmModal
+        open={!!confirmEliminarEntrega}
+        title="Eliminar Entrega"
+        message={confirmEliminarEntrega ? `¿Estás seguro de eliminar esta entrega pendiente?\n\n• Producto: ${confirmEliminarEntrega.producto_nombre || 'N/A'}\n• Cantidad: ${confirmEliminarEntrega.cantidad}\n• Destinatario: ${confirmEliminarEntrega.destinatario}\n\nEl stock será devuelto al inventario de donaciones.` : ''}
+        confirmText="Sí, Eliminar"
+        cancelText="Cancelar"
+        tone="danger"
+        onConfirm={() => confirmEliminarEntrega && handleEliminarEntrega(confirmEliminarEntrega)}
+        onCancel={() => setConfirmEliminarEntrega(null)}
       />
     </div>
   );

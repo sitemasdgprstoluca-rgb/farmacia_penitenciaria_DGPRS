@@ -6,7 +6,7 @@
  * Las salidas se registran SOLO en la tabla salidas_donaciones.
  * 
  * Permite seleccionar múltiples productos del almacén de donaciones
- * y registrar salidas masivas a centros del sistema.
+ * y registrar entregas masivas a destinatarios.
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { toast } from 'react-hot-toast';
@@ -25,19 +25,22 @@ import {
   FaArrowLeft,
   FaExclamationTriangle,
   FaGift,
+  FaUser,
   FaBuilding,
   FaFilePdf,
 } from 'react-icons/fa';
 import { detallesDonacionAPI, salidasDonacionesAPI, centrosAPI } from '../services/api';
 
 const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
-  // Estado del formulario - Centro destino obligatorio
+  // Estado del formulario
+  const [tipoDestinatario, setTipoDestinatario] = useState('centro'); // 'centro' | 'persona'
   const [centroDestino, setCentroDestino] = useState('');
+  const [destinatario, setDestinatario] = useState('');
   const [motivo, setMotivo] = useState('');
   const [notas, setNotas] = useState('');
   const [items, setItems] = useState([]); // Carrito de items seleccionados
   
-  // Lista de centros disponibles
+  // Centros disponibles
   const [centros, setCentros] = useState([]);
   const [loadingCentros, setLoadingCentros] = useState(false);
   
@@ -57,7 +60,7 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
   // Ref para debounce de búsqueda
   const searchTimeoutRef = useRef(null);
   
-  // Cargar centros del sistema
+  // Cargar centros
   const cargarCentros = useCallback(async () => {
     setLoadingCentros(true);
     try {
@@ -65,7 +68,7 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
       setCentros(resp.data.results || resp.data || []);
     } catch (err) {
       console.error('Error cargando centros:', err);
-      toast.error('Error al cargar centros');
+      setCentros([]);
     } finally {
       setLoadingCentros(false);
     }
@@ -97,11 +100,11 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
     }
   }, []);
   
-  // Cargar datos iniciales
+  // Cargar catálogo y centros inicial
   useEffect(() => {
-    cargarCentros();
     cargarCatalogo();
-  }, [cargarCentros, cargarCatalogo]);
+    cargarCentros();
+  }, [cargarCatalogo, cargarCentros]);
   
   // Handler de búsqueda con debounce
   const handleBusquedaChange = useCallback((valor) => {
@@ -250,8 +253,13 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
   
   // Procesar salida masiva de donaciones
   const procesarSalida = async () => {
-    if (!centroDestino) {
-      toast.error('Seleccione el centro destino');
+    // Validar destinatario según tipo
+    const destinatarioFinal = tipoDestinatario === 'centro' 
+      ? centros.find(c => c.id == centroDestino)?.nombre || ''
+      : destinatario.trim();
+    
+    if (!destinatarioFinal) {
+      toast.error(tipoDestinatario === 'centro' ? 'Seleccione un centro destino' : 'Ingrese el destinatario');
       return;
     }
     
@@ -265,9 +273,6 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
       toast.error('Todas las cantidades deben ser mayores a 0');
       return;
     }
-    
-    // Obtener nombre del centro para mostrar en resultado
-    const centroSeleccionado = centros.find(c => c.id === parseInt(centroDestino));
     
     setProcesando(true);
     
@@ -283,14 +288,20 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
       
       for (const item of items) {
         try {
-          const resp = await salidasDonacionesAPI.create({
+          const salidaData = {
             detalle_donacion: item.detalle_id,
             cantidad: item.cantidad,
-            centro_destino: parseInt(centroDestino),
-            destinatario: centroSeleccionado?.nombre || 'Centro',
+            destinatario: destinatarioFinal,
             motivo: motivo.trim() || null,
             notas: notas.trim() || null,
-          });
+          };
+          
+          // Agregar centro_destino solo si es tipo centro
+          if (tipoDestinatario === 'centro' && centroDestino) {
+            salidaData.centro_destino = parseInt(centroDestino);
+          }
+          
+          const resp = await salidasDonacionesAPI.create(salidaData);
           resultados.exitosos++;
           resultados.salidas.push({
             ...item,
@@ -308,15 +319,16 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
       if (resultados.exitosos > 0) {
         setResultado({
           success: true,
-          message: `${resultados.exitosos} salidas registradas correctamente`,
-          centro_destino: centroSeleccionado?.nombre || 'Centro',
+          message: `${resultados.exitosos} entregas registradas - Pendiente de confirmar`,
+          destinatario: destinatarioFinal,
+          centro_destino_id: tipoDestinatario === 'centro' ? centroDestino : null,
           total_productos: resultados.exitosos,
           total_unidades: resultados.salidas.reduce((sum, s) => sum + s.cantidad, 0),
           salidas: resultados.salidas,
           errores: resultados.errores
         });
         
-        toast.success(`${resultados.exitosos} salidas procesadas`);
+        toast.success(`${resultados.exitosos} entregas registradas - Pendiente de confirmar`);
         
         if (onSuccess) {
           onSuccess(resultados);
@@ -324,103 +336,22 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
       }
       
       if (resultados.fallidos > 0) {
-        toast.error(`${resultados.fallidos} salidas fallaron`);
+        toast.error(`${resultados.fallidos} entregas fallaron`);
       }
       
     } catch (err) {
       console.error('Error procesando salidas:', err);
-      toast.error('Error al procesar salidas');
+      toast.error('Error al procesar entregas');
     } finally {
       setProcesando(false);
-    }
-  };
-
-  // Generar PDF de recibo masivo
-  const generarPdfMasivo = async () => {
-    if (!resultado || !resultado.salidas || resultado.salidas.length === 0) {
-      toast.error('No hay salidas para generar el PDF');
-      return;
-    }
-
-    try {
-      toast.loading('Generando recibo PDF...', { id: 'pdf-masivo' });
-      
-      // Obtener los IDs de las salidas exitosas
-      const salidasIds = resultado.salidas.map(s => s.salida_id).filter(id => id);
-      
-      if (salidasIds.length === 0) {
-        toast.dismiss('pdf-masivo');
-        toast.error('No se encontraron IDs de salidas válidos');
-        return;
-      }
-      
-      const response = await salidasDonacionesAPI.generarPdfMasivo({
-        salidas_ids: salidasIds,
-        centro_destino: resultado.centro_destino || centroDestino,
-        motivo: motivo
-      });
-      
-      // Crear blob y descargar
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `recibo_salida_masiva_donacion_${new Date().toISOString().split('T')[0]}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      
-      toast.dismiss('pdf-masivo');
-      toast.success('Recibo PDF generado correctamente');
-    } catch (err) {
-      console.error('Error generando PDF masivo:', err);
-      toast.dismiss('pdf-masivo');
-      toast.error('Error al generar el recibo PDF');
-    }
-  };
-
-  // Finalizar todas las salidas masivas (marcarlas como entregadas)
-  const finalizarSalidasMasivas = async () => {
-    if (!resultado || !resultado.salidas || resultado.salidas.length === 0) {
-      toast.error('No hay salidas para finalizar');
-      return;
-    }
-
-    try {
-      toast.loading('Finalizando entregas...', { id: 'finalizar-masivo' });
-      
-      const salidasIds = resultado.salidas.map(s => s.salida_id).filter(id => id);
-      
-      if (salidasIds.length === 0) {
-        toast.dismiss('finalizar-masivo');
-        toast.error('No se encontraron IDs de salidas válidos');
-        return;
-      }
-      
-      const response = await salidasDonacionesAPI.finalizarMasivo({
-        salidas_ids: salidasIds
-      });
-      
-      toast.dismiss('finalizar-masivo');
-      toast.success(response.data.mensaje || 'Entregas finalizadas correctamente');
-      
-      // Actualizar el estado del resultado para mostrar que está finalizado
-      setResultado(prev => ({
-        ...prev,
-        finalizado: true
-      }));
-      
-    } catch (err) {
-      console.error('Error finalizando salidas:', err);
-      toast.dismiss('finalizar-masivo');
-      toast.error(err.response?.data?.error || 'Error al finalizar las entregas');
     }
   };
   
   // Reiniciar
   const reiniciar = () => {
+    setTipoDestinatario('centro');
     setCentroDestino('');
+    setDestinatario('');
     setMotivo('');
     setNotas('');
     setItems([]);
@@ -436,9 +367,12 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
         <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
           <div className="p-6">
             <div className="text-center mb-6">
-              <FaCheckCircle className="text-6xl text-green-500 mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-gray-800">Salidas Registradas</h2>
+              <FaCheckCircle className="text-6xl text-amber-500 mx-auto mb-4" />
+              <h2 className="text-2xl font-bold text-gray-800">Entregas Registradas</h2>
               <p className="text-gray-600 mt-2">{resultado.message}</p>
+              <p className="text-amber-600 text-sm mt-1 font-medium">
+                ⚠️ Las entregas deben ser confirmadas para descontar del inventario
+              </p>
             </div>
             
             <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg p-4 mb-6">
@@ -447,7 +381,7 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
                 <span className="font-semibold text-purple-800">Almacén de Donaciones</span>
               </div>
               <p className="text-sm text-purple-700">
-                Estas salidas se registraron únicamente en el inventario de donaciones.
+                Estas entregas se registraron únicamente en el inventario de donaciones.
                 No afectan el inventario principal de farmacia.
               </p>
             </div>
@@ -455,8 +389,8 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
             <div className="bg-gray-50 rounded-lg p-4 mb-6">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="font-semibold text-gray-700">Centro Destino:</span>
-                  <span className="ml-2 text-gray-900">{resultado.centro_destino}</span>
+                  <span className="font-semibold text-gray-700">Destinatario:</span>
+                  <span className="ml-2 text-gray-900">{resultado.destinatario}</span>
                 </div>
                 <div>
                   <span className="font-semibold text-gray-700">Total Productos:</span>
@@ -469,7 +403,7 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
               </div>
             </div>
             
-            {/* Tabla de salidas */}
+            {/* Tabla de entregas */}
             <div className="overflow-x-auto mb-6">
               <table className="min-w-full divide-y divide-gray-200 text-sm">
                 <thead className="bg-gray-100">
@@ -509,44 +443,8 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
               </div>
             )}
             
-            {/* Estado de finalización */}
-            {resultado.finalizado && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 text-center">
-                <FaCheckCircle className="text-3xl text-green-500 mx-auto mb-2" />
-                <p className="text-green-700 font-semibold">✓ Entrega Finalizada</p>
-                <p className="text-sm text-green-600">Las firmas han sido completadas</p>
-              </div>
-            )}
-            
             {/* Botones */}
-            <div className="flex flex-wrap justify-center gap-4">
-              {!resultado.finalizado && (
-                <>
-                  <button
-                    onClick={generarPdfMasivo}
-                    className="flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                  >
-                    <FaFilePdf />
-                    Hoja de Firmas PDF
-                  </button>
-                  <button
-                    onClick={finalizarSalidasMasivas}
-                    className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                  >
-                    <FaCheckCircle />
-                    Finalizar Entrega
-                  </button>
-                </>
-              )}
-              {resultado.finalizado && (
-                <button
-                  onClick={generarPdfMasivo}
-                  className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                >
-                  <FaFilePdf />
-                  Descargar Comprobante
-                </button>
-              )}
+            <div className="flex justify-center gap-4">
               <button
                 onClick={reiniciar}
                 className="flex items-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
@@ -602,39 +500,82 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
             <span className="font-semibold">Almacén de Donaciones Independiente</span>
           </div>
           <p className="text-sm text-purple-700 mt-1">
-            Las salidas aquí registradas NO afectan el inventario principal, lotes, ni movimientos de farmacia.
+            Las entregas aquí registradas NO afectan el inventario principal, lotes, ni movimientos de farmacia.
           </p>
         </div>
         
-        {/* Centro Destino y Toggle Vista */}
+        {/* Destinatario y Toggle Vista */}
         <div className="p-4 border-b bg-gray-50">
           <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-            <div className="flex-1 max-w-md">
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                <FaBuilding className="inline mr-2" />
-                Centro Destino *
-              </label>
-              <select
-                value={centroDestino}
-                onChange={(e) => setCentroDestino(e.target.value)}
-                className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-purple-500 transition-colors"
-                disabled={loadingCentros}
-              >
-                <option value="">Seleccionar centro destino...</option>
-                {centros.map((centro) => (
-                  <option key={centro.id} value={centro.id}>
-                    {centro.nombre}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-gray-500 mt-1">
-                Solo se puede entregar a centros registrados en el sistema
-              </p>
+            <div className="flex-1 max-w-lg">
+              {/* Selector de tipo de destinatario */}
+              <div className="flex items-center gap-4 mb-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tipoDestinatario"
+                    value="centro"
+                    checked={tipoDestinatario === 'centro'}
+                    onChange={() => setTipoDestinatario('centro')}
+                    className="text-purple-600 focus:ring-purple-500"
+                  />
+                  <FaBuilding className="text-gray-600" />
+                  <span className="text-sm font-medium">Centro</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tipoDestinatario"
+                    value="persona"
+                    checked={tipoDestinatario === 'persona'}
+                    onChange={() => setTipoDestinatario('persona')}
+                    className="text-purple-600 focus:ring-purple-500"
+                  />
+                  <FaUser className="text-gray-600" />
+                  <span className="text-sm font-medium">Otra Persona</span>
+                </label>
+              </div>
+              
+              {tipoDestinatario === 'centro' ? (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    <FaBuilding className="inline mr-2" />
+                    Centro Destino *
+                  </label>
+                  <select
+                    value={centroDestino}
+                    onChange={(e) => setCentroDestino(e.target.value)}
+                    disabled={loadingCentros}
+                    className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-purple-500 transition-colors"
+                  >
+                    <option value="">Seleccione un centro...</option>
+                    {centros.map((centro) => (
+                      <option key={centro.id} value={centro.id}>
+                        {centro.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    <FaUser className="inline mr-2" />
+                    Destinatario *
+                  </label>
+                  <input
+                    type="text"
+                    value={destinatario}
+                    onChange={(e) => setDestinatario(e.target.value)}
+                    placeholder="Nombre del interno, paciente o área..."
+                    className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-purple-500 transition-colors"
+                  />
+                </div>
+              )}
             </div>
             
             {/* Toggle Vista */}
             <div className="flex items-center gap-4">
-              <div className="flex rounded-lg border overflow-hidden">
+              <div className="flex rounded-lg border overflow-visible">
                 <button
                   onClick={() => setVista('catalogo')}
                   className={`px-4 py-2 text-sm font-medium transition-colors ${
@@ -657,7 +598,7 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
                   <FaShoppingCart className="inline mr-2" />
                   Selección
                   {totalProductos > 0 && (
-                    <span className="absolute -top-2 -right-2 bg-green-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    <span className="absolute -top-3 -right-3 bg-green-500 text-white text-xs rounded-full min-w-[22px] h-[22px] flex items-center justify-center font-bold shadow-sm border-2 border-white">
                       {totalProductos}
                     </span>
                   )}
@@ -956,12 +897,10 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
                 <span className="text-sm text-gray-500">Total unidades:</span>
                 <span className="ml-2 text-lg font-bold text-purple-700">{totalUnidades}</span>
               </div>
-              {centroDestino && (
+              {destinatario && (
                 <div>
-                  <span className="text-sm text-gray-500">Centro destino:</span>
-                  <span className="ml-2 text-sm font-medium text-gray-800">
-                    {centros.find(c => c.id === parseInt(centroDestino))?.nombre || 'Centro'}
-                  </span>
+                  <span className="text-sm text-gray-500">Destinatario:</span>
+                  <span className="ml-2 text-sm font-medium text-gray-800">{destinatario}</span>
                 </div>
               )}
             </div>
@@ -978,7 +917,7 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
               )}
               <button
                 onClick={procesarSalida}
-                disabled={procesando || items.length === 0 || !centroDestino}
+                disabled={procesando || items.length === 0 || (tipoDestinatario === 'centro' ? !centroDestino : !destinatario.trim())}
                 className="flex items-center gap-2 px-6 py-2 bg-purple-700 text-white rounded-lg hover:bg-purple-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {procesando ? (
@@ -989,7 +928,7 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
                 ) : (
                   <>
                     <FaHandHoldingMedical />
-                    Registrar Salidas ({totalProductos})
+                    Registrar Entregas ({totalProductos})
                   </>
                 )}
               </button>

@@ -109,7 +109,7 @@ export const CONFIRM = {
   // FLUJO V2: Confirmaciones del flujo jerárquico
   SEND_TO_ADMIN: (folio) => `¿Enviar la requisición ${folio} al Administrador del Centro?`,
   AUTHORIZE_AS_ADMIN: (folio) => `¿Autorizar la requisición ${folio} como Administrador?`,
-  AUTHORIZE_AS_DIRECTOR: (folio) => `¿Autorizar la requisición ${folio} como Director? Esto la enviará a Farmacia Central.`,
+  AUTHORIZE_AS_DIRECTOR: (folio) => `¿Autorizar la requisición ${folio} como Director? Esto la enviará al Almacén Central.`,
   RECEIVE_IN_FARMACIA: (folio) => `¿Recibir la requisición ${folio} para revisión?`,
   AUTHORIZE_IN_FARMACIA: (folio) => `¿Autorizar la requisición ${folio}? Deberá asignar una fecha límite de recolección.`,
   DEVOLVER_REQUISICION: (folio) => `¿Devolver la requisición ${folio} al centro? Deberá proporcionar un motivo.`,

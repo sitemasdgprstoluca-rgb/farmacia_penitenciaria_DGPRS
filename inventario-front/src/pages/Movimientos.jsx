@@ -3,9 +3,9 @@ import { useLocation } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import Pagination from "../components/Pagination";
 import SalidaMasiva from "../components/SalidaMasiva";
-import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, descargarArchivo } from "../services/api";
+import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, salidaMasivaAPI, descargarArchivo } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
-import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList } from "react-icons/fa";
+import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList, FaFileDownload, FaCheckCircle, FaClipboardCheck, FaTrash } from "react-icons/fa";
 import { COLORS } from "../constants/theme";
 
 const PAGE_SIZE = 25;
@@ -53,6 +53,7 @@ const Movimientos = () => {
     centro: centroInicial,
     lote: "",
     search: "",
+    estado_confirmacion: "",
   });
   
   // Filtros en edición (estado local de los inputs)
@@ -65,6 +66,7 @@ const Movimientos = () => {
     centro: centroInicial,
     lote: "",
     search: "",
+    estado_confirmacion: "",
   });
 
   const [productos, setProductos] = useState([]);
@@ -163,6 +165,12 @@ const Movimientos = () => {
     const match = motivo.match(/\[(SAL-[^\]]+)\]/);
     return match ? match[1] : null;
   };
+  
+  // Función para verificar si un movimiento está confirmado
+  const estaConfirmado = (mov) => {
+    const motivo = mov.observaciones || mov.motivo || '';
+    return motivo.includes('[CONFIRMADO]');
+  };
 
   // Agrupar movimientos por grupo de salida
   const movimientosAgrupados = useMemo(() => {
@@ -182,6 +190,7 @@ const Movimientos = () => {
             fecha: mov.fecha || mov.fecha_movimiento,
             usuario_nombre: mov.usuario_nombre || 'Sistema',
             totalCantidad: 0,
+            confirmado: estaConfirmado(mov), // Detectar si está confirmado
           });
         }
         const grupo = grupos.get(grupoId);
@@ -216,11 +225,13 @@ const Movimientos = () => {
   const cargarMovimientos = useCallback(async () => {
     setLoading(true);
     try {
+      // Crear copia de filtros sin estado_confirmacion (se filtra en frontend)
+      const { estado_confirmacion, ...filtrosBackend } = filtrosAplicados;
       const params = {
         page,
         page_size: PAGE_SIZE,
         ordering: "-fecha",
-        ...filtrosAplicados,
+        ...filtrosBackend,
       };
       // Limpiar parámetros vacíos
       Object.keys(params).forEach(key => {
@@ -229,10 +240,23 @@ const Movimientos = () => {
         }
       });
       const response = await movimientosAPI.getAll(params);
-      const data = response.data?.results || response.data || [];
-      setMovimientos(Array.isArray(data) ? data : []);
+      let data = response.data?.results || response.data || [];
+      // Agregar campo 'confirmado' a cada movimiento
+      let dataConConfirmado = (Array.isArray(data) ? data : []).map(mov => ({
+        ...mov,
+        confirmado: estaConfirmado(mov)
+      }));
+      
+      // Filtrar por estado de confirmación en frontend
+      if (estado_confirmacion === 'confirmado') {
+        dataConConfirmado = dataConConfirmado.filter(mov => mov.confirmado);
+      } else if (estado_confirmacion === 'pendiente') {
+        dataConConfirmado = dataConConfirmado.filter(mov => !mov.confirmado && mov.tipo === 'salida');
+      }
+      
+      setMovimientos(dataConConfirmado);
       setTotal(response.data?.count || data.length || 0);
-      calcularStats(Array.isArray(data) ? data : []);
+      calcularStats(dataConConfirmado);
     } catch (err) {
       toast.error(err.response?.data?.detail || "No se pudieron cargar los movimientos");
     } finally {
@@ -437,10 +461,12 @@ const Movimientos = () => {
       toast.loading("Generando recibo...", { id: "recibo" });
       const response = await movimientosAPI.getReciboSalida(movimiento.id);
       const fecha = new Date(movimiento.fecha || movimiento.fecha_movimiento).toISOString().split("T")[0];
-      descargarArchivo(response, `recibo_salida_${movimiento.id}_${fecha}.pdf`);
+      // ISS-FIX: Usar response.data ya que axios devuelve los datos en .data
+      descargarArchivo(response.data || response, `recibo_salida_${movimiento.id}_${fecha}.pdf`);
       toast.success("Recibo generado", { id: "recibo" });
     } catch (err) {
-      toast.error("No se pudo generar el recibo", { id: "recibo" });
+      const errorMsg = err.response?.data?.error || err.response?.data?.detail || err.message || "No se pudo generar el recibo";
+      toast.error(errorMsg, { id: "recibo" });
       console.error("Error generando recibo:", err);
     }
   };
@@ -451,11 +477,102 @@ const Movimientos = () => {
       toast.loading("Generando comprobante de entrega...", { id: "recibo-final" });
       const response = await movimientosAPI.getReciboSalida(movimiento.id, true);
       const fecha = new Date(movimiento.fecha || movimiento.fecha_movimiento).toISOString().split("T")[0];
-      descargarArchivo(response, `comprobante_entrega_${movimiento.id}_${fecha}.pdf`);
+      // ISS-FIX: Usar response.data ya que axios devuelve los datos en .data
+      descargarArchivo(response.data || response, `comprobante_entrega_${movimiento.id}_${fecha}.pdf`);
       toast.success("Comprobante generado", { id: "recibo-final" });
     } catch (err) {
-      toast.error("No se pudo generar el comprobante", { id: "recibo-final" });
+      const errorMsg = err.response?.data?.error || err.response?.data?.detail || err.message || "No se pudo generar el comprobante";
+      toast.error(errorMsg, { id: "recibo-final" });
       console.error("Error generando comprobante:", err);
+    }
+  };
+
+  // Descargar hoja de entrega para grupo de salida masiva
+  const descargarHojaEntregaGrupo = async (grupoId) => {
+    try {
+      toast.loading("Generando hoja de entrega...", { id: "hoja-grupo" });
+      const response = await salidaMasivaAPI.hojaEntregaPdf(grupoId, false);
+      descargarArchivo(response.data, `Hoja_Entrega_${grupoId}.pdf`);
+      toast.success("Hoja de entrega descargada", { id: "hoja-grupo" });
+    } catch (err) {
+      toast.error("No se pudo generar la hoja de entrega", { id: "hoja-grupo" });
+      console.error("Error generando hoja:", err);
+    }
+  };
+
+  // Descargar comprobante de entrega para grupo de salida masiva
+  const descargarComprobanteGrupo = async (grupoId) => {
+    try {
+      toast.loading("Generando comprobante de entrega...", { id: "comp-grupo" });
+      const response = await salidaMasivaAPI.hojaEntregaPdf(grupoId, true);
+      descargarArchivo(response.data, `Comprobante_Entrega_${grupoId}.pdf`);
+      toast.success("Comprobante de entrega descargado", { id: "comp-grupo" });
+    } catch (err) {
+      toast.error("No se pudo generar el comprobante", { id: "comp-grupo" });
+      console.error("Error generando comprobante:", err);
+    }
+  };
+  
+  // Confirmar entrega de grupo de salida masiva
+  const [confirmandoGrupo, setConfirmandoGrupo] = useState(null);
+  
+  // Estado para confirmar entregas individuales
+  const [confirmandoMovimiento, setConfirmandoMovimiento] = useState(null);
+  const [cancelandoGrupo, setCancelandoGrupo] = useState(null);
+  const [confirmCancelarGrupo, setConfirmCancelarGrupo] = useState(null);
+  
+  const confirmarEntregaGrupo = async (grupoId) => {
+    setConfirmandoGrupo(grupoId);
+    try {
+      toast.loading("Confirmando entrega...", { id: "confirmar-grupo" });
+      await salidaMasivaAPI.confirmarEntrega(grupoId);
+      toast.success("Entrega confirmada exitosamente", { id: "confirmar-grupo" });
+      // Recargar movimientos para actualizar el estado
+      cargarMovimientos();
+    } catch (err) {
+      const msg = err.response?.data?.message || "No se pudo confirmar la entrega";
+      toast.error(msg, { id: "confirmar-grupo" });
+      console.error("Error confirmando entrega:", err);
+    } finally {
+      setConfirmandoGrupo(null);
+    }
+  };
+  
+  // Cancelar salida masiva NO confirmada (devuelve stock al inventario)
+  const cancelarSalidaGrupo = async (grupoId) => {
+    setCancelandoGrupo(grupoId);
+    try {
+      toast.loading("Cancelando salida y devolviendo stock...", { id: "cancelar-grupo" });
+      const response = await salidaMasivaAPI.cancelar(grupoId);
+      const itemsDevueltos = response.data?.items_devueltos?.length || 0;
+      toast.success(`Salida cancelada. ${itemsDevueltos} productos devueltos al inventario.`, { id: "cancelar-grupo" });
+      // Recargar movimientos para actualizar el estado
+      cargarMovimientos();
+    } catch (err) {
+      const msg = err.response?.data?.message || "No se pudo cancelar la salida";
+      toast.error(msg, { id: "cancelar-grupo" });
+      console.error("Error cancelando salida:", err);
+    } finally {
+      setCancelandoGrupo(null);
+      setConfirmCancelarGrupo(null);
+    }
+  };
+  
+  // Confirmar entrega individual de un movimiento
+  const confirmarEntregaIndividual = async (movimientoId) => {
+    setConfirmandoMovimiento(movimientoId);
+    try {
+      toast.loading("Confirmando entrega...", { id: "confirmar-individual" });
+      await movimientosAPI.confirmarEntrega(movimientoId);
+      toast.success("Entrega confirmada exitosamente", { id: "confirmar-individual" });
+      // Recargar movimientos para actualizar el estado
+      cargarMovimientos();
+    } catch (err) {
+      const msg = err.response?.data?.message || "No se pudo confirmar la entrega";
+      toast.error(msg, { id: "confirmar-individual" });
+      console.error("Error confirmando entrega individual:", err);
+    } finally {
+      setConfirmandoMovimiento(null);
     }
   };
 
@@ -509,6 +626,7 @@ const Movimientos = () => {
       centro: centroFijo,
       lote: "",
       search: "",
+      estado_confirmacion: "",
     };
     setFiltros(filtrosVacios);
     setFiltrosAplicados(filtrosVacios);
@@ -706,7 +824,7 @@ const Movimientos = () => {
                   Salida / Transferencia a Centro
                 </div>
                 <p className="text-xs text-gray-500">
-                  Las salidas desde Farmacia Central se registran como transferencias a centros penitenciarios.
+                  Las salidas desde Almacén Central se registran como transferencias a centros penitenciarios.
                 </p>
               </div>
 
@@ -864,6 +982,21 @@ const Movimientos = () => {
                     </select>
                   </div>
                 )}
+                {/* Filtro por estado de confirmación - solo para salidas */}
+                {(filtros.tipo === "" || filtros.tipo === "salida") && (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-gray-700">Estado Entrega</label>
+                    <select
+                      value={filtros.estado_confirmacion}
+                      onChange={(e) => handleFiltro("estado_confirmacion", e.target.value)}
+                      className="border rounded-lg px-3 py-2"
+                    >
+                      <option value="">Todos</option>
+                      <option value="confirmado">✅ Confirmados</option>
+                      <option value="pendiente">⏳ Pendientes</option>
+                    </select>
+                  </div>
+                )}
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold text-gray-700">Producto</label>
                   <select
@@ -960,24 +1093,22 @@ const Movimientos = () => {
                 </div>
               )}
             </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
+            <div className="overflow-hidden">
+              <table className="w-full text-sm table-fixed">
                 <thead className="thead-theme">
                   <tr>
-                    {columnas.map((col) => (
-                      <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
-                        {col.toUpperCase()}
-                      </th>
-                    ))}
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
-                      Acciones
-                    </th>
+                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white w-[30%]">Producto</th>
+                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white w-[10%]">Tipo</th>
+                    <th className="px-2 py-3 text-right text-xs font-semibold uppercase tracking-wider text-white w-[8%]">Cant.</th>
+                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white w-[18%]">Centro</th>
+                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white w-[14%]">Fecha</th>
+                    <th className="px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white w-[20%]">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-100">
                   {loading ? (
                     <tr>
-                      <td colSpan={columnas.length + 1} className="text-center py-8">
+                      <td colSpan={6} className="text-center py-8">
                         <div className="flex justify-center items-center">
                           <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent spinner-institucional"></div>
                           <span className="ml-2 text-gray-600">Cargando movimientos...</span>
@@ -986,7 +1117,7 @@ const Movimientos = () => {
                     </tr>
                   ) : !movimientos.length ? (
                     <tr>
-                      <td colSpan={columnas.length + 1} className="px-4 py-8 text-center text-gray-500">
+                      <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                         Sin movimientos
                       </td>
                     </tr>
@@ -997,37 +1128,86 @@ const Movimientos = () => {
                         <React.Fragment key={grupo.id}>
                           {/* Fila del grupo colapsado */}
                           <tr 
-                            className={`transition cursor-pointer ${gIndex % 2 === 0 ? 'bg-rose-50' : 'bg-rose-100/50'} hover:bg-rose-100 border-l-4 border-rose-500`}
+                            className={`transition cursor-pointer ${gIndex % 2 === 0 ? 'bg-rose-50' : 'bg-rose-100/50'} hover:bg-rose-100 border-l-4 ${grupo.confirmado ? 'border-green-500' : 'border-rose-500'}`}
                             onClick={() => toggleGrupo(grupo.id)}
                           >
                             <td className="px-4 py-3 text-sm">
                               <div className="flex items-center gap-2">
-                                {gruposExpandidos.has(grupo.id) ? <FaChevronDown className="text-rose-600" /> : <FaChevronRight className="text-rose-600" />}
-                                <div>
-                                  <div className="font-bold text-rose-800 flex items-center gap-2">
-                                    <FaTruck className="text-rose-600" />
-                                    Salida Masiva: {grupo.id}
+                                {gruposExpandidos.has(grupo.id) ? <FaChevronDown className="text-rose-600 flex-shrink-0" /> : <FaChevronRight className="text-rose-600 flex-shrink-0" />}
+                                <div className="min-w-0">
+                                  <div className="font-bold text-rose-800 flex items-center gap-1 flex-wrap">
+                                    <FaTruck className="text-rose-600 flex-shrink-0" />
+                                    <span className="truncate">SM: {grupo.id.slice(-8)}</span>
+                                    {grupo.confirmado && (
+                                      <span className="px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">✓</span>
+                                    )}
                                   </div>
-                                  <div className="text-xs text-rose-600">{grupo.items.length} productos</div>
+                                  <div className="text-xs text-rose-600">{grupo.items.length} prod.</div>
                                 </div>
                               </div>
                             </td>
-                            <td className="px-4 py-3">
-                              <span className="px-2 py-1 rounded text-xs font-semibold bg-rose-200 text-rose-800">
-                                SALIDA MASIVA
+                            <td className="px-2 py-3">
+                              <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-rose-200 text-rose-800">
+                                MASIVA
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-right font-bold text-rose-800">
+                            <td className="px-2 py-3 text-right font-bold text-rose-800">
                               -{grupo.totalCantidad}
                             </td>
-                            <td className="px-4 py-3 text-rose-800 font-semibold">{grupo.centro_nombre}</td>
-                            <td className="px-4 py-3 text-rose-700">
-                              {grupo.fecha ? new Date(grupo.fecha).toLocaleString('es-MX') : ''}
+                            <td className="px-2 py-3 text-rose-800 font-semibold text-xs truncate" title={grupo.centro_nombre}>{grupo.centro_nombre}</td>
+                            <td className="px-2 py-3 text-rose-700 text-xs">
+                              {grupo.fecha ? new Date(grupo.fecha).toLocaleDateString('es-MX') : ''}
                             </td>
-                            <td className="px-4 py-3">
-                              <span className="text-rose-600 text-sm font-semibold">
-                                {gruposExpandidos.has(grupo.id) ? '▲ Colapsar' : '▼ Ver items'}
-                              </span>
+                            <td className="px-2 py-3">
+                              <div className="flex items-center justify-center gap-1">
+                                {!grupo.confirmado ? (
+                                  <>
+                                    {/* Hoja de Entrega (para firmas) */}
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); descargarHojaEntregaGrupo(grupo.id); }}
+                                      className="inline-flex items-center gap-1 px-2 py-1 bg-rose-600 text-white rounded text-xs font-medium hover:bg-rose-700 transition"
+                                      title="Hoja de entrega"
+                                    >
+                                      <FaClipboardCheck className="text-xs" />
+                                    </button>
+                                    {/* Confirmar Entrega */}
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); confirmarEntregaGrupo(grupo.id); }}
+                                      disabled={confirmandoGrupo === grupo.id}
+                                      className="inline-flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                      title="Confirmar entrega física"
+                                    >
+                                      {confirmandoGrupo === grupo.id ? (
+                                        <FaSpinner className="text-xs animate-spin" />
+                                      ) : (
+                                        <FaCheckCircle className="text-xs" />
+                                      )}
+                                    </button>
+                                    {/* Cancelar Salida (devuelve stock) */}
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setConfirmCancelarGrupo(grupo.id); }}
+                                      disabled={cancelandoGrupo === grupo.id}
+                                      className="inline-flex items-center gap-1 px-2 py-1 bg-red-600 text-white rounded text-xs font-medium hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                      title="Cancelar salida (devuelve stock)"
+                                    >
+                                      {cancelandoGrupo === grupo.id ? (
+                                        <FaSpinner className="text-xs animate-spin" />
+                                      ) : (
+                                        <FaTrash className="text-xs" />
+                                      )}
+                                    </button>
+                                  </>
+                                ) : (
+                                  /* Solo comprobante si ya está confirmado */
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); descargarComprobanteGrupo(grupo.id); }}
+                                    className="inline-flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition"
+                                    title="Descargar comprobante de entrega"
+                                  >
+                                    <FaFileDownload className="text-xs" />
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                           {/* Items del grupo expandidos */}
@@ -1036,24 +1216,24 @@ const Movimientos = () => {
                               key={mov.id}
                               className={`transition ${iIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100 border-l-4 border-rose-200`}
                             >
-                              <td className="px-4 py-2 text-sm pl-10">
-                                <div className="font-medium text-gray-800">{mov.producto_nombre || mov.producto || ""}</div>
+                              <td className="px-2 py-2 text-sm pl-8">
+                                <div className="font-medium text-gray-800 truncate text-xs">{mov.producto_nombre || mov.producto || ""}</div>
                                 <div className="text-xs text-gray-500">Lote: {mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
                               </td>
-                              <td className="px-4 py-2">
-                                <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                              <td className="px-2 py-2">
+                                <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
                                   item
                                 </span>
                               </td>
-                              <td className="px-4 py-2 text-right font-semibold text-gray-700">
+                              <td className="px-2 py-2 text-right font-semibold text-gray-700">
                                 -{Math.abs(mov.cantidad)}
                               </td>
-                              <td className="px-4 py-2 text-gray-600 text-sm">{mov.centro_nombre || "Farmacia Central"}</td>
-                              <td className="px-4 py-2 text-gray-500 text-xs">
-                                Cad: {mov.lote?.fecha_caducidad ? new Date(mov.lote.fecha_caducidad).toLocaleDateString('es-MX') : 'N/A'}
+                              <td className="px-2 py-2 text-gray-600 text-xs truncate">{mov.centro_nombre || "Almacén Central"}</td>
+                              <td className="px-2 py-2 text-gray-500 text-xs">
+                                {mov.lote?.fecha_caducidad ? new Date(mov.lote.fecha_caducidad).toLocaleDateString('es-MX') : ''}
                               </td>
-                              <td className="px-4 py-2 text-xs text-gray-400">
-                                ID: {mov.id}
+                              <td className="px-2 py-2 text-center text-xs text-gray-400">
+                                #{mov.id}
                               </td>
                             </tr>
                           ))}
@@ -1069,13 +1249,13 @@ const Movimientos = () => {
                             } ${expandedId === mov.id ? 'bg-blue-50' : ''}`}
                             onClick={() => setExpandedId(expandedId === mov.id ? null : mov.id)}
                           >
-                            <td className="px-4 py-3 text-sm">
-                              <div className="font-semibold text-gray-800">{mov.producto_nombre || mov.producto || ""}</div>
+                            <td className="px-2 py-3">
+                              <div className="font-semibold text-gray-800 truncate text-sm">{mov.producto_nombre || mov.producto || ""}</div>
                               <div className="text-xs text-gray-500">Lote: {mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
                             </td>
-                            <td className="px-4 py-3">
-                              <div className="flex flex-col gap-1">
-                                <span className={`px-2 py-1 rounded text-xs font-semibold inline-block w-fit ${
+                            <td className="px-2 py-3">
+                              <div className="flex flex-col gap-0.5">
+                                <span className={`px-1.5 py-0.5 rounded text-xs font-semibold inline-block w-fit ${
                                   mov.tipo === "entrada" ? "bg-green-100 text-green-800" :
                                   mov.tipo === "salida" ? "bg-red-100 text-red-800" : "bg-yellow-100 text-yellow-800"
                                 }`}>
@@ -1083,36 +1263,36 @@ const Movimientos = () => {
                                 </span>
                                 {mov.tipo === 'salida' && mov.subtipo_salida && (
                                   <span className="text-xs text-gray-500">
-                                    {mov.subtipo_salida === 'receta' ? '💊 Receta' :
-                                     mov.subtipo_salida === 'consumo_interno' ? '🏥 Consumo' :
-                                     mov.subtipo_salida === 'merma' ? '📉 Merma' :
-                                     mov.subtipo_salida === 'caducidad' ? '⏰ Caducidad' :
-                                     mov.subtipo_salida === 'transferencia' ? '🔄 Transfer.' : mov.subtipo_salida}
+                                    {mov.subtipo_salida === 'receta' ? '💊' :
+                                     mov.subtipo_salida === 'consumo_interno' ? '🏥' :
+                                     mov.subtipo_salida === 'merma' ? '📉' :
+                                     mov.subtipo_salida === 'caducidad' ? '⏰' :
+                                     mov.subtipo_salida === 'transferencia' ? '🔄' : ''}
                                   </span>
                                 )}
                               </div>
                             </td>
-                            <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                            <td className="px-2 py-3 text-right font-semibold text-gray-900">
                               {mov.tipo === 'salida' ? '-' : '+'}{Math.abs(mov.cantidad)}
                             </td>
-                            <td className="px-4 py-3 text-gray-700">{mov.centro_nombre || mov.centro || "Farmacia Central"}</td>
-                            <td className="px-4 py-3 text-gray-600">
-                              {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleString('es-MX') :
-                               mov.fecha ? new Date(mov.fecha).toLocaleString('es-MX') : ""}
+                            <td className="px-2 py-3 text-gray-700 text-xs truncate">{mov.centro_nombre || mov.centro || "Almacén Central"}</td>
+                            <td className="px-2 py-3 text-gray-600 text-xs">
+                              {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX') :
+                               mov.fecha ? new Date(mov.fecha).toLocaleDateString('es-MX') : ""}
                             </td>
-                            <td className="px-4 py-3">
+                            <td className="px-2 py-3 text-center">
                               <button 
-                                className="text-blue-600 hover:text-blue-800 text-sm"
+                                className="text-blue-600 hover:text-blue-800 text-xs"
                                 onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === mov.id ? null : mov.id); }}
                               >
-                                {expandedId === mov.id ? '▲ Ocultar' : '▼ Detalles'}
+                                {expandedId === mov.id ? '▲' : '▼'}
                               </button>
                             </td>
                           </tr>
                           {expandedId === mov.id && (
                             <tr className="bg-gray-50">
-                              <td colSpan={columnas.length + 1} className="px-6 py-4">
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                              <td colSpan={6} className="px-4 py-3">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                                   <div><span className="font-semibold text-gray-600">ID:</span><p className="text-gray-800">{mov.id}</p></div>
                                   <div><span className="font-semibold text-gray-600">Usuario:</span><p className="text-gray-800">{mov.usuario_nombre || 'Sistema'}</p></div>
                                   {mov.observaciones && (
@@ -1124,22 +1304,43 @@ const Movimientos = () => {
                                   {/* Botones de acción para movimientos de salida */}
                                   {mov.tipo === 'salida' && (
                                     <div className="col-span-2 md:col-span-4 flex flex-wrap gap-3 mt-4 pt-4 border-t border-gray-200">
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov); }}
-                                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"
-                                        title="Descargar hoja de entrega con campos para firmas"
-                                      >
-                                        <FaFilePdf className="text-lg" />
-                                        Hoja de Entrega
-                                      </button>
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
-                                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
-                                        title="Descargar comprobante con sello de ENTREGADO"
-                                      >
-                                        <FaFilePdf className="text-lg" />
-                                        Comprobante Entregado
-                                      </button>
+                                      {!mov.confirmado ? (
+                                        <>
+                                          {/* Hoja de Entrega (solo si NO está confirmado) */}
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov); }}
+                                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"
+                                            title="Descargar hoja de entrega con campos para firmas"
+                                          >
+                                            <FaFilePdf className="text-lg" />
+                                            Hoja de Entrega
+                                          </button>
+                                          {/* Botón confirmar entrega */}
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); confirmarEntregaIndividual(mov.id); }}
+                                            disabled={confirmandoMovimiento === mov.id}
+                                            className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition text-sm font-medium disabled:opacity-50"
+                                            title="Confirmar que la entrega fue recibida"
+                                          >
+                                            {confirmandoMovimiento === mov.id ? (
+                                              <FaSpinner className="animate-spin text-lg" />
+                                            ) : (
+                                              <FaClipboardCheck className="text-lg" />
+                                            )}
+                                            {confirmandoMovimiento === mov.id ? 'Confirmando...' : 'Confirmar Entrega'}
+                                          </button>
+                                        </>
+                                      ) : (
+                                        /* Comprobante solo si ya está confirmado */
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
+                                          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
+                                          title="Descargar comprobante con sello de ENTREGADO"
+                                        >
+                                          <FaCheckCircle className="text-lg" />
+                                          Comprobante Entregado
+                                        </button>
+                                      )}
                                     </div>
                                   )}
                                 </div>
@@ -1160,14 +1361,14 @@ const Movimientos = () => {
                           } ${expandedId === mov.id ? 'bg-blue-50' : ''}`}
                           onClick={() => setExpandedId(expandedId === mov.id ? null : mov.id)}
                         >
-                          <td className="px-4 py-3 text-sm">
-                            <div className="font-semibold text-gray-800">{mov.producto_nombre || mov.producto || ""}</div>
+                          <td className="px-2 py-3">
+                            <div className="font-semibold text-gray-800 truncate text-sm">{mov.producto_nombre || mov.producto || ""}</div>
                             <div className="text-xs text-gray-500">Lote: {mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="flex flex-col gap-1">
+                          <td className="px-2 py-3">
+                            <div className="flex flex-col gap-0.5">
                               <span
-                                className={`px-2 py-1 rounded text-xs font-semibold inline-block w-fit ${
+                                className={`px-1.5 py-0.5 rounded text-xs font-semibold inline-block w-fit ${
                                   mov.tipo === "entrada"
                                     ? "bg-green-100 text-green-800"
                                     : mov.tipo === "salida"
@@ -1179,41 +1380,40 @@ const Movimientos = () => {
                               </span>
                               {mov.tipo === 'salida' && mov.subtipo_salida && (
                                 <span className="text-xs text-gray-500">
-                                  {mov.subtipo_salida === 'receta' ? '💊 Receta' :
-                                   mov.subtipo_salida === 'consumo_interno' ? '🏥 Consumo' :
-                                   mov.subtipo_salida === 'merma' ? '📉 Merma' :
-                                   mov.subtipo_salida === 'caducidad' ? '⏰ Caducidad' :
-                                   mov.subtipo_salida === 'transferencia' ? '🔄 Transfer.' :
-                                   mov.subtipo_salida}
+                                  {mov.subtipo_salida === 'receta' ? '💊' :
+                                   mov.subtipo_salida === 'consumo_interno' ? '🏥' :
+                                   mov.subtipo_salida === 'merma' ? '📉' :
+                                   mov.subtipo_salida === 'caducidad' ? '⏰' :
+                                   mov.subtipo_salida === 'transferencia' ? '🔄' : ''}
                                 </span>
                               )}
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                          <td className="px-2 py-3 text-right font-semibold text-gray-900">
                             {mov.tipo === 'salida' ? '-' : '+'}{Math.abs(mov.cantidad)}
                           </td>
-                          <td className="px-4 py-3 text-gray-700">{mov.centro_nombre || mov.centro || "Farmacia Central"}</td>
-                          <td className="px-4 py-3 text-gray-600">
+                          <td className="px-2 py-3 text-gray-700 text-xs truncate">{mov.centro_nombre || mov.centro || "Almacén Central"}</td>
+                          <td className="px-2 py-3 text-gray-600 text-xs">
                             {mov.fecha_movimiento
-                              ? new Date(mov.fecha_movimiento).toLocaleString('es-MX')
+                              ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX')
                               : mov.fecha
-                              ? new Date(mov.fecha).toLocaleString('es-MX')
+                              ? new Date(mov.fecha).toLocaleDateString('es-MX')
                               : ""}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-3 text-center">
                             <button 
-                              className="text-blue-600 hover:text-blue-800 text-sm"
+                              className="text-blue-600 hover:text-blue-800 text-xs"
                               onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === mov.id ? null : mov.id); }}
                             >
-                              {expandedId === mov.id ? '▲ Ocultar' : '▼ Detalles'}
+                              {expandedId === mov.id ? '▲' : '▼'}
                             </button>
                           </td>
                         </tr>
                         {/* Fila expandida con detalles */}
                         {expandedId === mov.id && (
                           <tr className="bg-gray-50">
-                            <td colSpan={columnas.length + 1} className="px-6 py-4">
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <td colSpan={6} className="px-4 py-3">
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                                 <div>
                                   <span className="font-semibold text-gray-600">ID Movimiento:</span>
                                   <p className="text-gray-800">{mov.id}</p>
@@ -1228,7 +1428,7 @@ const Movimientos = () => {
                                 </div>
                                 <div>
                                   <span className="font-semibold text-gray-600">Centro:</span>
-                                  <p className="text-gray-800">{mov.centro_nombre || 'Farmacia Central'}</p>
+                                  <p className="text-gray-800">{mov.centro_nombre || 'Almacén Central'}</p>
                                 </div>
                                 <div>
                                   <span className="font-semibold text-gray-600">Usuario:</span>
@@ -1278,14 +1478,32 @@ const Movimientos = () => {
                                       <FaFilePdf className="text-lg" />
                                       Hoja de Entrega
                                     </button>
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
-                                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
-                                      title="Descargar comprobante con sello de ENTREGADO"
-                                    >
-                                      <FaFilePdf className="text-lg" />
-                                      Comprobante Entregado
-                                    </button>
+                                    {!mov.confirmado ? (
+                                      /* Botón confirmar entrega si no está confirmado */
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); confirmarEntregaIndividual(mov.id); }}
+                                        disabled={confirmandoMovimiento === mov.id}
+                                        className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition text-sm font-medium disabled:opacity-50"
+                                        title="Confirmar que la entrega fue recibida"
+                                      >
+                                        {confirmandoMovimiento === mov.id ? (
+                                          <FaSpinner className="animate-spin text-lg" />
+                                        ) : (
+                                          <FaClipboardCheck className="text-lg" />
+                                        )}
+                                        {confirmandoMovimiento === mov.id ? 'Confirmando...' : 'Confirmar Entrega'}
+                                      </button>
+                                    ) : (
+                                      /* Botón comprobante solo si ya está confirmado */
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
+                                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
+                                        title="Descargar comprobante con sello de ENTREGADO"
+                                      >
+                                        <FaCheckCircle className="text-lg" />
+                                        Comprobante Entregado
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -1336,6 +1554,51 @@ const Movimientos = () => {
                 cargarCatalogos();
               }}
             />
+          </div>
+        </div>
+      )}
+      
+      {/* Modal Confirmación Cancelar Salida */}
+      {confirmCancelarGrupo && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="px-6 py-4 border-b bg-red-600 rounded-t-xl">
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <FaTrash /> Cancelar Salida
+              </h2>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700 mb-4">
+                ¿Estás seguro de cancelar esta salida masiva?
+              </p>
+              <p className="text-sm text-gray-600 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <FaExclamationTriangle className="inline text-yellow-600 mr-2" />
+                <strong>Importante:</strong> El stock de todos los productos será devuelto al inventario de Farmacia Central.
+              </p>
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3 rounded-b-xl">
+              <button
+                onClick={() => setConfirmCancelarGrupo(null)}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                No, mantener
+              </button>
+              <button
+                onClick={() => cancelarSalidaGrupo(confirmCancelarGrupo)}
+                disabled={cancelandoGrupo === confirmCancelarGrupo}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {cancelandoGrupo === confirmCancelarGrupo ? (
+                  <>
+                    <FaSpinner className="animate-spin" /> Cancelando...
+                  </>
+                ) : (
+                  <>
+                    <FaTrash /> Sí, cancelar y devolver stock
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -180,25 +180,22 @@ def importar_productos_desde_excel(archivo, usuario):
     # Mapeo de columnas con sinónimos
     SINONIMOS = {
         'clave': ['clave', 'codigo', 'code', 'id', 'cve', 'sku', 'key', 'producto id', 
-                  'codigo barras', 'codigo de barras', 'barcode', 'clave producto', 'clave_producto'],
+                  'codigo barras', 'codigo de barras', 'barcode'],
         'nombre': ['nombre', 'descripcion', 'nombre generico', 'medicamento', 'producto', 
-                   'nombre del medicamento', 'nombre generico del medicamento', 'articulo',
-                   'nombre producto', 'nombre_producto', 'nombre medicamento'],
-        'unidad_medida': ['unidad', 'unidad medida', 'um', 'unidad de medida', 'unidades'],
-        'categoria': ['categoria', 'tipo', 'clasificacion', 'clase', 'grupo', 'categoria producto'],
-        'presentacion': ['presentacion', 'presentación', 'forma farmaceutica', 'forma', 'envase',
-                        'forma farmacéutica', 'pres', 'present', 'presentación producto'],
-        'sustancia_activa': ['sustancia activa', 'sustancia_activa', 'principio activo', 'formula', 
-                             'activo', 'composicion', 'ingrediente', 'sustancia'],
-        'concentracion': ['concentracion', 'concentración', 'dosis', 'potencia', 'gramaje', 'mg', 'ml'],
-        'via_administracion': ['via admin', 'via administracion', 'vía administración', 'via', 
-                               'ruta', 'administracion', 'vía admin', 'via_admin'],
-        'stock_minimo': ['stock minimo', 'stock mínimo', 'minimo', 'mínimo', 'stock min', 
-                         'inv minimo', 'inventario minimo', 'stock_minimo'],
-        'requiere_receta': ['requiere receta', 'receta', 'prescripcion', 'prescripción', 'con receta'],
-        'es_controlado': ['controlado', 'es controlado', 'control', 'es_controlado', 'medicamento controlado'],
-        'activo': ['estado', 'activo', 'estatus', 'status', 'activo/inactivo'],
-        'marca': ['marca', 'laboratorio', 'fabricante', 'lab', 'proveedor'],
+                   'nombre del medicamento', 'nombre generico del medicamento', 'articulo'],
+        'nombre_comercial': ['nombre comercial', 'marca comercial', 'nombre de marca', 'brand'],
+        'unidad_medida': ['unidad', 'unidad medida', 'um', 'unidad de medida'],
+        'categoria': ['categoria', 'tipo', 'clasificacion', 'clase', 'grupo'],
+        'presentacion': ['presentacion', 'forma farmaceutica', 'forma', 'envase'],
+        'sustancia_activa': ['sustancia activa', 'principio activo', 'formula', 'activo', 
+                             'composicion', 'ingrediente'],
+        'concentracion': ['concentracion', 'dosis', 'potencia', 'gramaje'],
+        'via_administracion': ['via admin', 'via administracion', 'via', 'ruta', 'administracion'],
+        'stock_minimo': ['stock minimo', 'minimo', 'stock min', 'inv minimo', 'inventario minimo'],
+        'requiere_receta': ['requiere receta', 'receta', 'prescripcion'],
+        'es_controlado': ['controlado', 'es controlado', 'control'],
+        'activo': ['estado', 'activo', 'estatus', 'status'],
+        'marca': ['marca', 'laboratorio', 'fabricante'],
     }
     
     def buscar_columna(sinonimos_lista):
@@ -262,6 +259,9 @@ def importar_productos_desde_excel(archivo, usuario):
                     continue
                 nombre = nombre_raw[:500]
                 
+                # ========== NOMBRE COMERCIAL ==========
+                nombre_comercial = get_val('nombre_comercial', '')
+                
                 # ========== UNIDAD DE MEDIDA ==========
                 # Guardar texto libre completo (ej: "CAJA CON 7 OVULOS")
                 unidad_raw = get_val('unidad_medida', 'PIEZA')
@@ -318,6 +318,7 @@ def importar_productos_desde_excel(archivo, usuario):
                     clave=clave,
                     defaults={
                         'nombre': nombre,
+                        'nombre_comercial': nombre_comercial[:200] if nombre_comercial else None,
                         'descripcion': descripcion,
                         'unidad_medida': unidad_medida,
                         'categoria': categoria,

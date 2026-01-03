@@ -1,4 +1,4 @@
-﻿from rest_framework import viewsets, status, serializers, permissions, mixins
+from rest_framework import viewsets, status, serializers, mixins
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -9,10 +9,8 @@ from django.http import HttpResponse
 from django.db import transaction
 from django.db.models import Q, Sum, Count, F, IntegerField, Subquery, OuterRef
 from django.db.models.functions import Coalesce
-from django.db import models
 from django.utils import timezone
 from django.conf import settings
-from django.contrib.auth.models import Group
 from datetime import datetime, timedelta, date
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -510,22 +508,18 @@ def validar_filas_excel(ws):
 from core.models import Producto, Lote, Movimiento, Centro, Requisicion, DetalleRequisicion, HojaRecoleccion, LoteDocumento
 from core.serializers import (
     ProductoSerializer, LoteSerializer, MovimientoSerializer, 
-    CentroSerializer, RequisicionSerializer, DetalleRequisicionSerializer,
-    HojaRecoleccionSerializer, LoteDocumentoSerializer
+    CentroSerializer, RequisicionSerializer, HojaRecoleccionSerializer, LoteDocumentoSerializer
 )
 
 from django.contrib.auth import get_user_model
 from core.permissions import (
-    IsAdminRole, IsFarmaciaRole, IsCentroRole, IsVistaRole,
-    IsFarmaciaAdminOrReadOnly, CanAuthorizeRequisicion,
-    IsCentroCanManageInventory, RoleHelper,  # ISS-MEDICO FIX
+    IsCentroRole, IsCentroCanManageInventory, RoleHelper,  # ISS-MEDICO FIX
     IsFarmaciaAdminOrVistaReadOnly, IsCentroOwnResourcesOnly  # ISS-MEDICO FIX: permisos restrictivos
 )
 from core.constants import (
     ESTADOS_REQUISICION,
     PAGINATION_DEFAULT_PAGE_SIZE,
     PAGINATION_MAX_PAGE_SIZE,
-    UNIDADES_MEDIDA,
     REQUISICION_GRUPOS_ESTADO,
     TRANSICIONES_REQUISICION,
     PERMISOS_FLUJO_REQUISICION,
@@ -802,21 +796,20 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         if nuevo_stock < 0:
             raise serializers.ValidationError({'cantidad': 'La operacion dejaria el lote con stock negativo'})
 
-        # Actualizar stock y estado de disponibilidad
-        lote_ref.cantidad_actual = nuevo_stock
+        # ISS-014 FIX: Usar F() para actualización atómica del stock
+        # Aunque tenemos select_for_update, F() proporciona doble seguridad contra race conditions
+        update_dict = {
+            'cantidad_actual': F('cantidad_actual') + delta,
+            'activo': nuevo_stock > 0,
+            'updated_at': timezone.now()
+        }
         
         # Para entradas, tambien actualizar cantidad_inicial si es necesario
-        # Esto permite recibir stock adicional en lotes existentes
-        update_fields = ['cantidad_actual', 'activo', 'updated_at']
         if tipo_normalizado == 'entrada' and nuevo_stock > lote_ref.cantidad_inicial:
-            lote_ref.cantidad_inicial = nuevo_stock
-            update_fields.append('cantidad_inicial')
+            update_dict['cantidad_inicial'] = nuevo_stock
         
-        if nuevo_stock == 0:
-            lote_ref.activo = False
-        elif not lote_ref.activo:
-            lote_ref.activo = True
-        lote_ref.save(update_fields=update_fields)
+        Lote.objects.filter(pk=lote_ref.pk).update(**update_dict)
+        lote_ref.refresh_from_db()
 
         # Crear movimiento con campos correctos de la BD
         # ISS-MEDICO FIX v2: La cantidad siempre se guarda como positiva en BD
@@ -1355,7 +1348,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     'dias_para_caducar': dias_para_caducar,
                     'alerta_caducidad': alerta_caducidad,
                     'centro_id': lote.centro_id,
-                    'centro_nombre': lote.centro.nombre if lote.centro else 'Farmacia Central',
+                    'centro_nombre': lote.centro.nombre if lote.centro else 'Almacén Central',
                 })
                 
                 # ISS-FIX: Log detallado de cada lote
@@ -1422,7 +1415,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     'fecha_caducidad': lote.fecha_caducidad.isoformat() if lote.fecha_caducidad else None,
                     'activo': lote.activo,
                     'centro_id': lote.centro_id,
-                    'centro_nombre': lote.centro.nombre if lote.centro else 'Farmacia Central (NULL)',
+                    'centro_nombre': lote.centro.nombre if lote.centro else 'Almacén Central (NULL)',
                     'created_at': lote.created_at.isoformat() if lote.created_at else None,
                     'updated_at': lote.updated_at.isoformat() if lote.updated_at else None,
                 })
@@ -2923,7 +2916,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                     'fecha_caducidad_raw': lote.fecha_caducidad,
                     'cantidad_inicial': lote.cantidad_inicial,
                     'cantidad_actual': lote.cantidad_actual,
-                    'centro_nombre': getattr(lote.centro, 'nombre', 'Farmacia Central') if lote.centro else 'Farmacia Central',
+                    'centro_nombre': getattr(lote.centro, 'nombre', 'Almacén Central') if lote.centro else 'Almacén Central',
                     'activo': lote.activo,
                 })
             
@@ -2938,7 +2931,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             if request.query_params.get('centro'):
                 centro_param = request.query_params.get('centro')
                 if centro_param == 'central':
-                    filtros['centro'] = 'Farmacia Central'
+                    filtros['centro'] = 'Almacén Central'
                 else:
                     try:
                         centro = Centro.objects.get(pk=centro_param)
@@ -3025,7 +3018,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                     lote.numero_contrato or '',
                     lote.marca or '',
                     lote.ubicacion or '',
-                    getattr(lote.centro, 'nombre', 'Farmacia Central') if lote.centro else 'Farmacia Central',
+                    getattr(lote.centro, 'nombre', 'Almacén Central') if lote.centro else 'Almacén Central',
                     'Sí' if lote.activo else 'No'
                 ])
 
@@ -3774,7 +3767,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                     'cantidad_actual': lote.cantidad_actual,
                     'fecha_caducidad': lote.fecha_caducidad,
                     'es_lote_farmacia': lote.centro is None,
-                    'ubicacion': lote.centro.nombre if lote.centro else 'Farmacia Central'
+                    'ubicacion': lote.centro.nombre if lote.centro else 'Almacén Central'
                 },
                 'origen': None,
                 'derivados': []
@@ -4210,17 +4203,38 @@ class MovimientoViewSet(
         subtipo_salida = serializer.validated_data.get('subtipo_salida')
         numero_expediente = serializer.validated_data.get('numero_expediente')
         
+        # ISS-FIX-500: Convertir centro_id a objeto Centro si se pasa un ID
+        centro_destino_raw = serializer.validated_data.get('centro')
+        centro_destino = None
+        if centro_destino_raw:
+            if isinstance(centro_destino_raw, Centro):
+                centro_destino = centro_destino_raw
+            else:
+                try:
+                    centro_destino = Centro.objects.get(pk=int(centro_destino_raw))
+                except (Centro.DoesNotExist, ValueError, TypeError):
+                    raise serializers.ValidationError({
+                        'centro': f'Centro con ID {centro_destino_raw} no encontrado'
+                    })
+        
+        # ISS-FIX: Para transferencias desde Almacén Central a Centro,
+        # el lote es del Almacén Central (centro=None) pero el destino es un Centro específico.
+        # Debemos permitir esto para admin/farmacia usando skip_centro_check=True
+        es_transferencia_almacen = is_farmacia_or_admin(user) and centro_destino and lote and lote.centro is None
+        
         movimiento, _ = registrar_movimiento_stock(
             lote=lote,
             tipo=serializer.validated_data.get('tipo'),
             cantidad=serializer.validated_data.get('cantidad'),
             usuario=user,
-            centro=serializer.validated_data.get('centro') or (lote.centro if lote else None),
+            centro=centro_destino or (lote.centro if lote else None),
             requisicion=serializer.validated_data.get('requisicion'),
             # FIX: El serializer mapea 'observaciones' del frontend a 'motivo' via to_internal_value
             observaciones=serializer.validated_data.get('motivo', ''),
             subtipo_salida=subtipo_salida,
-            numero_expediente=numero_expediente
+            numero_expediente=numero_expediente,
+            # ISS-FIX: Saltear validación de centro para transferencias del Almacén Central
+            skip_centro_check=es_transferencia_almacen
         )
         # Dejar instancia lista para serializer.data
         serializer.instance = movimiento
@@ -4244,17 +4258,9 @@ class MovimientoViewSet(
         if not clave:
             return Response({'error': 'Se requiere producto_clave'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Buscar producto por clave, nombre o descripción (case-insensitive)
         producto = Producto.objects.filter(
-            Q(clave__iexact=clave) | Q(nombre__iexact=clave) | Q(descripcion__iexact=clave)
+            Q(clave__iexact=clave) | Q(descripcion__iexact=clave)
         ).first()
-        
-        # Si no se encuentra exacto, intentar búsqueda parcial por nombre
-        if not producto:
-            producto = Producto.objects.filter(
-                Q(nombre__icontains=clave) | Q(descripcion__icontains=clave)
-            ).first()
-        
         if not producto:
             return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
         
@@ -4279,30 +4285,19 @@ class MovimientoViewSet(
                     'tipo': mov.tipo.upper(),
                     'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                     'cantidad': mov.cantidad,
-                    'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
+                    'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Almacén Central'),
                     'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
                     'observaciones': mov.motivo or ''
                 })
             
-            # ISS-FIX: Agregar todos los campos del producto incluyendo stock_minimo y presentacion
             producto_info = {
                 'clave': producto.clave,
                 'descripcion': producto.nombre,  # Usar nombre como descripción principal
-                'presentacion': producto.presentacion or '',
-                'unidad_medida': producto.unidad_medida or 'PIEZA',
-                'stock_actual': producto.get_stock_actual() if hasattr(producto, 'get_stock_actual') else producto.stock_actual,
-                'stock_minimo': producto.stock_minimo or 0,
+                'unidad_medida': producto.unidad_medida,
+                'stock_actual': producto.get_stock_actual() if hasattr(producto, 'get_stock_actual') else 0,
+                'stock_minimo': producto.stock_minimo,
                 'precio_unitario': 0,  # precio_unitario está en Lote, no en Producto
             }
-            
-            # Obtener lote principal para info adicional
-            lote_principal = Lote.objects.filter(producto=producto, activo=True).order_by('-cantidad_actual').first()
-            if lote_principal:
-                producto_info['precio_unitario'] = float(lote_principal.precio_unitario) if lote_principal.precio_unitario else 0
-                producto_info['numero_contrato'] = lote_principal.numero_contrato or 'N/A'
-                producto_info['numero_lote'] = lote_principal.numero_lote or 'N/A'
-                producto_info['fecha_caducidad'] = lote_principal.fecha_caducidad.strftime('%d/%m/%Y') if lote_principal.fecha_caducidad else 'N/A'
-                producto_info['marca'] = lote_principal.marca or ''
             
             pdf_buffer = generar_reporte_trazabilidad(trazabilidad_data, producto_info=producto_info)
             
@@ -4356,35 +4351,25 @@ class MovimientoViewSet(
                     'tipo': mov.tipo.upper(),
                     'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                     'cantidad': mov.cantidad,
-                    'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
+                    'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Almacén Central'),
                     'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
                     'observaciones': mov.motivo or ''
                 })
             
             # ISS-FIX: Usar nombre como fallback para descripcion, incluir numero_contrato
-            # ISS-FIX: Agregar stock_minimo y mejorar campos para PDF
             descripcion_producto = 'N/A'
-            presentacion_producto = ''
-            unidad_medida_producto = 'PIEZA'  # Default
-            stock_minimo_producto = 0
-            
             if lote.producto:
                 descripcion_producto = lote.producto.nombre or lote.producto.descripcion or 'N/A'
-                presentacion_producto = lote.producto.presentacion or ''
-                unidad_medida_producto = lote.producto.unidad_medida or 'PIEZA'
-                stock_minimo_producto = lote.producto.stock_minimo or 0
             
             producto_info = {
                 'clave': lote.producto.clave if lote.producto else 'N/A',
                 'descripcion': descripcion_producto,
-                'presentacion': presentacion_producto,
-                'unidad_medida': unidad_medida_producto,
+                'unidad_medida': lote.producto.unidad_medida if lote.producto else 'N/A',
                 'stock_actual': lote.cantidad_actual,
-                'stock_minimo': stock_minimo_producto,
+                'stock_minimo': lote.producto.stock_minimo if lote.producto else 0,
                 'numero_lote': lote.numero_lote,
                 'fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else 'N/A',
                 'proveedor': lote.marca or 'No especificado',
-                'marca': lote.marca or '',
                 'numero_contrato': lote.numero_contrato if lote.numero_contrato else 'N/A',
                 'precio_unitario': float(lote.precio_unitario) if lote.precio_unitario else 0,
             }
@@ -4476,8 +4461,8 @@ class MovimientoViewSet(
                         'referencia': ref,
                         'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
                         'tipo': mov.tipo.upper(),
-                        'centro_origen': mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central',
-                        'centro_destino': mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central',
+                        'centro_origen': mov.centro_origen.nombre if mov.centro_origen else 'Almacén Central',
+                        'centro_destino': mov.centro_destino.nombre if mov.centro_destino else 'Almacén Central',
                         'total_productos': 0,
                         'total_cantidad': 0,
                         'detalles': []
@@ -4614,7 +4599,7 @@ class MovimientoViewSet(
                     mov.lote.producto.descripcion[:50] if mov.lote and mov.lote.producto else 'N/A',
                     mov.lote.numero_lote if mov.lote else 'N/A',
                     mov.cantidad,
-                    mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
+                    mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Almacén Central'),
                     mov.usuario.get_full_name() or mov.usuario.username if mov.usuario else 'Sistema',
                     mov.numero_expediente or '',
                     (mov.motivo or '')[:100],
@@ -4638,6 +4623,160 @@ class MovimientoViewSet(
             return Response({
                 'error': 'Error al generar Excel de movimientos',
                 'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['get'], url_path='recibo-salida')
+    def recibo_salida(self, request, pk=None):
+        """
+        Genera PDF de recibo de salida para un movimiento específico.
+        
+        Parámetros opcionales:
+        - finalizado: si es 'true', muestra sello ENTREGADO en lugar de firmas
+        
+        SEGURIDAD: Usuarios pueden generar recibos de movimientos que les correspondan.
+        """
+        from core.utils.pdf_reports import generar_recibo_salida_movimiento
+        
+        try:
+            movimiento = self.get_object()
+            
+            # Verificar que es un movimiento de salida
+            if movimiento.tipo != 'salida':
+                return Response(
+                    {'error': 'Solo se pueden generar recibos para movimientos de salida'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Verificar permisos - admin/farmacia pueden ver todos, otros solo sus centros
+            user = request.user
+            if not is_farmacia_or_admin(user):
+                user_centro = get_user_centro(user)
+                if user_centro:
+                    # Usuario de centro puede ver si es origen o destino
+                    if movimiento.centro_origen != user_centro and movimiento.centro_destino != user_centro:
+                        if movimiento.lote and movimiento.lote.centro != user_centro:
+                            return Response(
+                                {'error': 'No tienes permiso para ver este movimiento'},
+                                status=status.HTTP_403_FORBIDDEN
+                            )
+            
+            finalizado = request.query_params.get('finalizado', 'false').lower() == 'true'
+            
+            # Construir datos del movimiento
+            movimiento_data = {
+                'folio': movimiento.id,
+                'fecha': movimiento.fecha.strftime('%Y-%m-%d %H:%M') if movimiento.fecha else 'N/A',
+                'tipo': movimiento.tipo,
+                'subtipo_salida': movimiento.subtipo_salida or 'transferencia',
+                'centro_origen': {
+                    'id': movimiento.centro_origen.id if movimiento.centro_origen else None,
+                    'nombre': movimiento.centro_origen.nombre if movimiento.centro_origen else 'Almacén Central'
+                },
+                'centro_destino': {
+                    'id': movimiento.centro_destino.id if movimiento.centro_destino else None,
+                    'nombre': movimiento.centro_destino.nombre if movimiento.centro_destino else ''
+                },
+                'cantidad': abs(movimiento.cantidad),  # ISS-FIX: Usar valor absoluto
+                'observaciones': movimiento.motivo or '',
+                'producto': movimiento.lote.producto.nombre if movimiento.lote and movimiento.lote.producto else 'N/A',
+                'producto_clave': movimiento.lote.producto.clave if movimiento.lote and movimiento.lote.producto else 'N/A',
+                'lote': movimiento.lote.numero_lote if movimiento.lote else 'N/A',
+                'presentacion': movimiento.lote.producto.presentacion if movimiento.lote and movimiento.lote.producto else 'N/A',
+                'usuario': movimiento.usuario.get_full_name() if movimiento.usuario else 'Sistema',
+            }
+            
+            # Generar PDF usando la función específica para movimientos
+            pdf_buffer = generar_recibo_salida_movimiento(
+                movimiento_data,
+                finalizado=finalizado
+            )
+            
+            response = HttpResponse(
+                pdf_buffer.getvalue(),
+                content_type='application/pdf'
+            )
+            tipo_doc = 'Comprobante_Entrega' if finalizado else 'Recibo_Salida'
+            response['Content-Disposition'] = f'attachment; filename="{tipo_doc}_{movimiento.id}_{timezone.now().strftime("%Y%m%d")}.pdf"'
+            
+            logger.info(f"Recibo de salida generado para movimiento {movimiento.id} por usuario {user.username}")
+            return response
+            
+        except Movimiento.DoesNotExist:
+            return Response(
+                {'error': 'Movimiento no encontrado'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            logger.error(f"Error generando recibo de salida: {str(e)}")
+            return Response({
+                'error': 'Error al generar recibo de salida',
+                'mensaje': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'], url_path='confirmar-entrega')
+    def confirmar_entrega(self, request, pk=None):
+        """
+        Confirma la entrega física de un movimiento de salida individual.
+        Marca el movimiento como confirmado agregando [CONFIRMADO] al motivo.
+        
+        Returns:
+            - 200: Entrega confirmada exitosamente
+            - 404: Movimiento no encontrado
+            - 400: No es movimiento de salida o ya está confirmado
+        """
+        try:
+            movimiento = self.get_object()
+            
+            # Verificar que es un movimiento de salida
+            if movimiento.tipo != 'salida':
+                return Response({
+                    'error': True,
+                    'message': 'Solo se pueden confirmar entregas de movimientos de salida'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Verificar permisos - admin/farmacia o usuario del centro destino
+            user = request.user
+            if not is_farmacia_or_admin(user):
+                user_centro = get_user_centro(user)
+                if user_centro and movimiento.centro_destino:
+                    if movimiento.centro_destino.id != user_centro.id:
+                        return Response({
+                            'error': True,
+                            'message': 'No tienes permiso para confirmar esta entrega'
+                        }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Verificar si ya está confirmado
+            motivo_actual = movimiento.motivo or ''
+            if '[CONFIRMADO]' in motivo_actual:
+                return Response({
+                    'error': True,
+                    'message': 'Esta entrega ya fue confirmada anteriormente'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Marcar como confirmado
+            movimiento.motivo = f'[CONFIRMADO] {motivo_actual}'.strip()
+            movimiento.save(update_fields=['motivo'])
+            
+            logger.info(
+                f'Entrega de movimiento {movimiento.id} confirmada por {request.user.username}'
+            )
+            
+            return Response({
+                'success': True,
+                'message': 'Entrega confirmada exitosamente',
+                'movimiento_id': movimiento.id
+            })
+            
+        except Movimiento.DoesNotExist:
+            return Response({
+                'error': True,
+                'message': 'Movimiento no encontrado'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f'Error confirmando entrega individual: {str(e)}')
+            return Response({
+                'error': True,
+                'message': f'Error al confirmar entrega: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -7586,8 +7725,16 @@ def trazabilidad_producto(request, clave):
     Trazabilidad de un producto identificado por clave (case-insensitive).
     Retorna lotes, movimientos y alertas de stock/caducidad.
     
+    Filtros soportados:
+    - centro: ID del centro (solo admin/farmacia)
+    - fecha_inicio: Fecha inicio (YYYY-MM-DD) para filtrar movimientos
+    - fecha_fin: Fecha fin (YYYY-MM-DD) para filtrar movimientos
+    - tipo: Tipo de movimiento (entrada, salida, ajuste)
+    
     SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
     """
+    from datetime import datetime, date, timedelta
+    
     try:
         # SEGURIDAD: Determinar filtro de centro
         user = request.user
@@ -7599,7 +7746,12 @@ def trazabilidad_producto(request, clave):
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
+        # Obtener parámetros de filtro
         centro_param = request.query_params.get('centro')
+        fecha_inicio = request.query_params.get('fecha_inicio')
+        fecha_fin = request.query_params.get('fecha_fin')
+        tipo_movimiento = request.query_params.get('tipo')
+        
         if centro_param and is_farmacia_or_admin(user):
             try:
                 user_centro = Centro.objects.get(pk=centro_param)
@@ -7607,18 +7759,9 @@ def trazabilidad_producto(request, clave):
             except Centro.DoesNotExist:
                 pass
         
-        # Buscar producto por clave, nombre o descripción (case-insensitive)
-        # También permite búsqueda parcial por nombre usando icontains
         producto = Producto.objects.filter(
-            Q(clave__iexact=clave) | Q(nombre__iexact=clave) | Q(descripcion__iexact=clave)
+            Q(clave__iexact=clave) | Q(descripcion__iexact=clave)
         ).first()
-        
-        # Si no se encuentra exacto, intentar búsqueda parcial por nombre
-        if not producto:
-            producto = Producto.objects.filter(
-                Q(nombre__icontains=clave) | Q(descripcion__icontains=clave)
-            ).first()
-        
         if not producto:
             return Response({'error': 'Producto no encontrado', 'clave_buscada': clave}, status=status.HTTP_404_NOT_FOUND)
 
@@ -7630,7 +7773,6 @@ def trazabilidad_producto(request, clave):
         
         lotes = lotes.order_by('-created_at')
         lotes_data = []
-        from datetime import date, timedelta
 
         for lote in lotes:
             dias_caducidad = (lote.fecha_caducidad - date.today()).days if lote.fecha_caducidad else None
@@ -7675,6 +7817,26 @@ def trazabilidad_producto(request, clave):
                 Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
             )
         
+        # Aplicar filtros de fecha a movimientos
+        if fecha_inicio:
+            try:
+                fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+                movimientos = movimientos.filter(fecha__gte=fecha_inicio_dt)
+            except ValueError:
+                pass
+        
+        if fecha_fin:
+            try:
+                fecha_fin_dt = datetime.strptime(fecha_fin, '%Y-%m-%d')
+                fecha_fin_dt = fecha_fin_dt.replace(hour=23, minute=59, second=59)
+                movimientos = movimientos.filter(fecha__lte=fecha_fin_dt)
+            except ValueError:
+                pass
+        
+        # Aplicar filtro de tipo de movimiento
+        if tipo_movimiento:
+            movimientos = movimientos.filter(tipo=tipo_movimiento.lower())
+        
         movimientos = movimientos.order_by('-fecha')[:100]
         movimientos_data = []
         for mov in movimientos:
@@ -7718,7 +7880,6 @@ def trazabilidad_producto(request, clave):
                 'clave': producto.clave,
                 'nombre': producto.nombre,  # Campo nombre explícito
                 'descripcion': producto.descripcion or producto.nombre,  # Descripción o nombre como fallback
-                'presentacion': producto.presentacion or '',  # Campo presentación
                 'unidad_medida': producto.unidad_medida,
                 'stock_minimo': producto.stock_minimo,
                 'precio_unitario': None,  # precio_unitario está en Lote, no en Producto
@@ -7749,32 +7910,28 @@ def trazabilidad_lote(request, codigo):
     """
     Trazabilidad completa de un lote por su numero.
     
+    Filtros soportados:
+    - fecha_inicio: Fecha inicio (YYYY-MM-DD) para filtrar movimientos
+    - fecha_fin: Fecha fin (YYYY-MM-DD) para filtrar movimientos
+    - tipo: Tipo de movimiento (entrada, salida, ajuste)
+    
     SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
-    Permite acceso a usuarios autenticados (excepto rol 'vista').
     """
+    from datetime import datetime
+    
     try:
-        # SEGURIDAD: Verificar autenticación
-        user = request.user
-        if not user or not user.is_authenticated:
-            return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_403_FORBIDDEN)
-        
-        # Usuarios con rol 'vista' no pueden acceder a trazabilidad
-        rol_usuario = (getattr(user, 'rol', '') or '').lower()
-        if rol_usuario == 'vista':
-            return Response({'error': 'No tienes permiso para trazabilidad'}, status=status.HTTP_403_FORBIDDEN)
+        if not request.user or not request.user.is_authenticated or not is_farmacia_or_admin(request.user):
+            return Response({'error': 'Solo usuarios de farmacia o administradores pueden acceder a reportes'}, status=status.HTTP_403_FORBIDDEN)
 
         # SEGURIDAD: Determinar filtro de centro
+        user = request.user
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
-        # Permitir filtro de centro vía parámetro (solo admin/farmacia)
-        centro_param = request.query_params.get('centro')
-        if centro_param and is_farmacia_or_admin(user):
-            try:
-                user_centro = Centro.objects.get(pk=centro_param)
-                filtrar_por_centro = True
-            except Centro.DoesNotExist:
-                pass
+        # Obtener parámetros de filtro
+        fecha_inicio = request.query_params.get('fecha_inicio')
+        fecha_fin = request.query_params.get('fecha_fin')
+        tipo_movimiento = request.query_params.get('tipo')
         
         lote_query = Lote.objects.select_related('producto').filter(numero_lote__iexact=codigo)
         
@@ -7786,7 +7943,29 @@ def trazabilidad_lote(request, codigo):
         if not lote:
             return Response({'error': 'Lote no encontrado', 'codigo_buscado': codigo}, status=status.HTTP_404_NOT_FOUND)
 
-        movimientos = Movimiento.objects.select_related('centro_origen', 'centro_destino', 'usuario').filter(lote=lote).order_by('fecha')
+        movimientos = Movimiento.objects.select_related('centro_origen', 'centro_destino', 'usuario').filter(lote=lote)
+        
+        # Aplicar filtros de fecha
+        if fecha_inicio:
+            try:
+                fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+                movimientos = movimientos.filter(fecha__gte=fecha_inicio_dt)
+            except ValueError:
+                pass
+        
+        if fecha_fin:
+            try:
+                fecha_fin_dt = datetime.strptime(fecha_fin, '%Y-%m-%d')
+                fecha_fin_dt = fecha_fin_dt.replace(hour=23, minute=59, second=59)
+                movimientos = movimientos.filter(fecha__lte=fecha_fin_dt)
+            except ValueError:
+                pass
+        
+        # Aplicar filtro de tipo
+        if tipo_movimiento:
+            movimientos = movimientos.filter(tipo=tipo_movimiento.lower())
+        
+        movimientos = movimientos.order_by('fecha')
         historial = []
         saldo = 0
         for mov in movimientos:
@@ -7958,25 +8137,20 @@ def reporte_inventario(request):
             if nivel_stock_filtro and nivel != nivel_stock_filtro:
                 continue
 
-            # Obtener marca del lote principal
-            lote_principal = lotes_query.filter(cantidad_actual__gt=0).order_by('-cantidad_actual').first()
-            marca = lote_principal.marca if lote_principal and lote_principal.marca else ''
-
             # Se incluye 'nivel_stock' para compatibilidad con el frontend
             # Usar 'nombre' del producto como descripción principal
             datos.append({
                 '#': idx,
                 'clave': producto.clave,
                 'descripcion': producto.nombre,  # nombre es el campo principal del producto
-                'presentacion': producto.presentacion or '',
                 'unidad': producto.unidad_medida,
                 'unidad_medida': producto.unidad_medida,  # alias esperado por frontend
+                'stock_minimo': producto.stock_minimo,
                 'stock_actual': stock_total,
                 'lotes_activos': lotes_activos,
                 'nivel': nivel,
                 'nivel_stock': nivel,
                 'precio_unitario': float(precio_promedio),
-                'marca': marca,
             })
             total_productos += 1
             total_stock += stock_total
@@ -7985,8 +8159,8 @@ def reporte_inventario(request):
             'total_productos': total_productos,
             'total_stock': total_stock,
             'stock_total': total_stock,  # alias para compatibilidad frontend
+            'productos_bajo_minimo': productos_bajo_minimo,
             'productos_sin_stock': productos_sin_stock,
-            'productos_stock_critico': sum(1 for d in datos if d['nivel'] == 'sin_stock' or d['nivel'] == 'bajo'),
         }
         
         # Si formato es JSON, devolver datos
@@ -8000,19 +8174,18 @@ def reporte_inventario(request):
         if formato == 'pdf':
             from core.utils.pdf_reports import generar_reporte_inventario
             
-            # Preparar datos para el generador PDF (ya están correctamente formateados)
+            # Preparar datos para el generador PDF
             productos_data = []
             for item in datos:
                 productos_data.append({
                     'clave': item['clave'],
                     'descripcion': item['descripcion'],
-                    'presentacion': item.get('presentacion', ''),
                     'unidad_medida': item['unidad'],
+                    'stock_minimo': item['stock_minimo'],
                     'stock_actual': item['stock_actual'],
                     'lotes_activos': item['lotes_activos'],
                     'nivel': item['nivel'],
-                    'precio_unitario': item['precio_unitario'],
-                    'marca': item.get('marca', ''),
+                    'precio_unitario': item['precio_unitario']
                 })
             
             filtros = {
@@ -8032,20 +8205,20 @@ def reporte_inventario(request):
         ws = wb.active
         ws.title = 'Inventario'
 
-        ws.merge_cells('A1:J1')
+        ws.merge_cells('A1:I1')
         titulo = ws['A1']
         titulo.value = 'REPORTE DE INVENTARIO ACTUAL'
         titulo.font = Font(bold=True, size=14, color='632842')
         titulo.alignment = Alignment(horizontal='center', vertical='center')
 
-        ws.merge_cells('A2:J2')
+        ws.merge_cells('A2:I2')
         subtitulo = ws['A2']
         subtitulo.value = f"Generado el {timezone.now().strftime('%d/%m/%Y %H:%M:%S')}"
         subtitulo.alignment = Alignment(horizontal='center')
         subtitulo.font = Font(size=10, italic=True)
 
         ws.append([])
-        headers = ['#', 'Clave', 'Descripción', 'Presentación', 'Unidad', 'Inventario', 'Lotes', 'Nivel', 'Precio', 'Marca']
+        headers = ['#', 'Clave', 'Descripcin', 'Unidad', 'Stock Mn.', 'Stock Actual', 'Lotes', 'Nivel', 'Precio']
         ws.append(headers)
 
         header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
@@ -8060,25 +8233,24 @@ def reporte_inventario(request):
                 item['#'],
                 item['clave'],
                 item['descripcion'][:70],
-                item.get('presentacion', '')[:50] if item.get('presentacion') else '',
                 item['unidad'],
+                item['stock_minimo'],
                 item['stock_actual'],
                 item['lotes_activos'],
                 item['nivel'].upper(),
-                item['precio_unitario'],
-                item.get('marca', '')[:30] if item.get('marca') else ''
+                item['precio_unitario']
             ])
 
         ws.append([])
         resumen_row = ws.max_row + 1
         ws[f'B{resumen_row}'] = 'Total de Productos'
         ws[f'C{resumen_row}'] = resumen['total_productos']
-        ws[f'B{resumen_row + 1}'] = 'Inventario Total'
+        ws[f'B{resumen_row + 1}'] = 'Stock Total'
         ws[f'C{resumen_row + 1}'] = resumen['total_stock']
-        ws[f'B{resumen_row + 2}'] = 'Productos sin stock'
-        ws[f'C{resumen_row + 2}'] = resumen['productos_sin_stock']
+        ws[f'B{resumen_row + 2}'] = 'Productos bajo mnimo'
+        ws[f'C{resumen_row + 2}'] = resumen['productos_bajo_minimo']
 
-        for col, width in zip(['A','B','C','D','E','F','G','H','I','J'], [8,14,40,20,10,12,8,10,10,20]):
+        for col, width in zip(['A','B','C','D','E','F','G','H','I'], [8,14,45,10,14,14,10,12,12]):
             ws.column_dimensions[col].width = width
 
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -8139,10 +8311,11 @@ def reporte_movimientos(request):
                 Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
             )
         
+        # FIX: Usar fecha__date para comparar solo la fecha (ignorar hora)
         if fecha_inicio:
-            movimientos = movimientos.filter(fecha__gte=fecha_inicio)
+            movimientos = movimientos.filter(fecha__date__gte=fecha_inicio)
         if fecha_fin:
-            movimientos = movimientos.filter(fecha__lte=fecha_fin)
+            movimientos = movimientos.filter(fecha__date__lte=fecha_fin)
         if tipo:
             movimientos = movimientos.filter(tipo=tipo.lower())
         
@@ -8152,9 +8325,18 @@ def reporte_movimientos(request):
         transacciones = {}
         total_entradas = 0
         total_salidas = 0
+        count_entradas = 0
+        count_salidas = 0
+        
+        # Tipos que restan stock (necesitan abs() porque cantidad puede ser negativa)
+        tipos_resta = ['salida', 'ajuste', 'ajuste_negativo', 'merma', 'caducidad', 'transferencia']
+        # Tipos que suman stock
+        tipos_suma = ['entrada', 'ajuste_positivo', 'devolucion']
         
         for mov in movimientos:
-            amount = abs(mov.cantidad) if mov.tipo == 'salida' else mov.cantidad
+            tipo_mov = mov.tipo.lower()
+            # ISS-FIX: Usar abs() para TODOS los tipos que restan stock
+            amount = abs(mov.cantidad) if tipo_mov in tipos_resta else mov.cantidad
             ref = mov.referencia or f"MOV-{mov.id}"
             
             if ref not in transacciones:
@@ -8172,10 +8354,12 @@ def reporte_movimientos(request):
                     'detalles': []
                 }
             
-            # Agregar detalle a la transacción
+            # Agregar detalle a la transacción con nombre del producto
             producto_info = 'N/A'
             if mov.lote and mov.lote.producto:
-                producto_info = f"{mov.lote.producto.clave} - {(mov.lote.producto.descripcion or '')[:50]}"
+                # Usar nombre del producto, o clave + descripción como fallback
+                nombre = mov.lote.producto.nombre or mov.lote.producto.descripcion or mov.lote.producto.clave
+                producto_info = f"{mov.lote.producto.clave} - {nombre[:50]}"
             
             transacciones[ref]['detalles'].append({
                 'producto': producto_info,
@@ -8185,10 +8369,13 @@ def reporte_movimientos(request):
             transacciones[ref]['total_productos'] += 1
             transacciones[ref]['total_cantidad'] += amount
             
-            if mov.tipo == 'entrada':
+            # ISS-FIX: Clasificar por tipo de movimiento (tipos_suma/tipos_resta definidos arriba)
+            if tipo_mov in tipos_suma:
                 total_entradas += amount
+                count_entradas += 1
             else:
                 total_salidas += amount
+                count_salidas += 1
         
         # Convertir a lista ordenada por fecha
         datos = list(transacciones.values())
@@ -8198,12 +8385,23 @@ def reporte_movimientos(request):
         for item in datos:
             del item['fecha_raw']
         
+        # ISS-CONSISTENCY: Métricas calculadas en el loop principal
+        # - total_movimientos: conteo de registros individuales
+        # - total_entradas: SUMA de cantidades de entradas (unidades)
+        # - total_salidas: SUMA de cantidades de salidas (unidades)
+        # - count_entradas: CONTEO de registros tipo entrada (calculado arriba)
+        # - count_salidas: CONTEO de registros tipo salida (calculado arriba)
+        
         resumen = {
             'total_transacciones': len(datos),
             'total_movimientos': sum(t['total_productos'] for t in datos),
-            'total_entradas': total_entradas,
-            'total_salidas': total_salidas,
-            'diferencia': total_entradas - total_salidas
+            # Unidades (suma de cantidades)
+            'total_entradas': total_entradas,  # Unidades de entrada
+            'total_salidas': total_salidas,    # Unidades de salida
+            'diferencia': total_entradas - total_salidas,
+            # Conteos de registros (calculados en el loop)
+            'count_entradas': count_entradas,  # Número de registros de entrada
+            'count_salidas': count_salidas,    # Número de registros de salida
         }
         
         # Formato JSON
@@ -8410,14 +8608,19 @@ def reporte_caducidades(request):
         # Admin/farmacia puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
         if centro_param and is_farmacia_or_admin(user):
-            if centro_param == 'central':
+            if centro_param == 'todos':
+                # ISS-FIX: 'todos' significa NO filtrar por centro (ver todos)
+                filtrar_por_centro = False
+                user_centro = None
+            elif centro_param == 'central':
                 filtrar_por_centro = True
                 user_centro = None
             else:
                 try:
                     user_centro = Centro.objects.get(pk=centro_param)
                     filtrar_por_centro = True
-                except Centro.DoesNotExist:
+                except (Centro.DoesNotExist, ValueError):
+                    # ISS-FIX: ValueError para manejar IDs no numéricos
                     pass
         
         dias = int(request.query_params.get('dias', 30))
@@ -9315,7 +9518,980 @@ def trazabilidad_autocomplete(request):
         return Response({'results': [], 'error': str(exc)})
 
 
+# ============================================
+# TRAZABILIDAD GLOBAL Y CON FILTROS DE FECHA
+# ============================================
 
+@api_view(['GET'])
+def trazabilidad_global(request):
+    """
+    Reporte global de trazabilidad de todos los lotes.
+    
+    Filtros soportados:
+    - fecha_inicio: Fecha inicio (YYYY-MM-DD)
+    - fecha_fin: Fecha fin (YYYY-MM-DD)
+    - centro: ID del centro o 'central'
+    - tipo: tipo de movimiento (entrada, salida, ajuste)
+    - producto: ID del producto
+    - formato: json (default), excel, pdf
+    
+    SEGURIDAD: Solo admin/farmacia pueden acceder.
+    """
+    from datetime import datetime, timedelta
+    from django.utils import timezone
+    
+    try:
+        user = request.user
+        if not user or not user.is_authenticated:
+            return Response({'error': 'Autenticación requerida'}, status=status.HTTP_403_FORBIDDEN)
+        
+        if not is_farmacia_or_admin(user):
+            return Response({'error': 'Solo administradores y farmacia pueden acceder a trazabilidad global'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Obtener parámetros de filtro
+        fecha_inicio = request.query_params.get('fecha_inicio')
+        fecha_fin = request.query_params.get('fecha_fin')
+        centro_param = request.query_params.get('centro')
+        tipo_movimiento = request.query_params.get('tipo')
+        producto_param = request.query_params.get('producto')
+        formato = request.query_params.get('formato', 'json')
+        
+        # Construir query base de lotes
+        lotes_query = Lote.objects.select_related('producto', 'centro').filter(activo=True)
+        
+        # Filtrar por centro
+        if centro_param:
+            if centro_param == 'central':
+                lotes_query = lotes_query.filter(centro__isnull=True)
+            else:
+                try:
+                    lotes_query = lotes_query.filter(centro_id=int(centro_param))
+                except ValueError:
+                    pass
+        
+        # Filtrar por producto
+        if producto_param:
+            try:
+                lotes_query = lotes_query.filter(producto_id=int(producto_param))
+            except ValueError:
+                lotes_query = lotes_query.filter(
+                    Q(producto__clave__icontains=producto_param) |
+                    Q(producto__nombre__icontains=producto_param)
+                )
+        
+        # Construir query de movimientos
+        movimientos_query = Movimiento.objects.select_related(
+            'lote', 'lote__producto', 'lote__centro',
+            'centro_origen', 'centro_destino', 'usuario'
+        ).filter(lote__activo=True)
+        
+        # FIX: Filtrar movimientos por fecha usando fecha__date para ignorar hora
+        if fecha_inicio:
+            try:
+                fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d').date()
+                movimientos_query = movimientos_query.filter(fecha__date__gte=fecha_inicio_dt)
+            except ValueError:
+                pass
+        
+        if fecha_fin:
+            try:
+                fecha_fin_dt = datetime.strptime(fecha_fin, '%Y-%m-%d').date()
+                # Usar fecha__date__lte para incluir todo el día automáticamente
+                movimientos_query = movimientos_query.filter(fecha__date__lte=fecha_fin_dt)
+            except ValueError:
+                pass
+        
+        # Filtrar por centro en movimientos
+        if centro_param:
+            if centro_param == 'central':
+                movimientos_query = movimientos_query.filter(
+                    Q(lote__centro__isnull=True) |
+                    Q(centro_origen__isnull=True, centro_destino__isnull=True)
+                )
+            else:
+                try:
+                    centro_id = int(centro_param)
+                    movimientos_query = movimientos_query.filter(
+                        Q(lote__centro_id=centro_id) |
+                        Q(centro_origen_id=centro_id) |
+                        Q(centro_destino_id=centro_id)
+                    )
+                except ValueError:
+                    pass
+        
+        # Filtrar por tipo de movimiento
+        if tipo_movimiento:
+            movimientos_query = movimientos_query.filter(tipo=tipo_movimiento.lower())
+        
+        # Filtrar por producto en movimientos
+        if producto_param:
+            try:
+                movimientos_query = movimientos_query.filter(lote__producto_id=int(producto_param))
+            except ValueError:
+                movimientos_query = movimientos_query.filter(
+                    Q(lote__producto__clave__icontains=producto_param) |
+                    Q(lote__producto__nombre__icontains=producto_param)
+                )
+        
+        movimientos_query = movimientos_query.order_by('-fecha')
+        
+        # Limitar resultados según formato
+        if formato == 'json':
+            movimientos_query = movimientos_query[:500]
+        else:
+            movimientos_query = movimientos_query[:2000]
+        
+        # Preparar datos de movimientos
+        movimientos_data = []
+        for mov in movimientos_query:
+            movimientos_data.append({
+                'id': mov.id,
+                'fecha': mov.fecha.isoformat() if mov.fecha else None,
+                'fecha_str': mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
+                'tipo': mov.tipo.upper(),
+                'cantidad': mov.cantidad,
+                'lote': mov.lote.numero_lote if mov.lote else 'N/A',
+                'producto_clave': mov.lote.producto.clave if mov.lote and mov.lote.producto else 'N/A',
+                'producto_nombre': mov.lote.producto.nombre if mov.lote and mov.lote.producto else 'N/A',
+                'centro': mov.centro_destino.nombre if mov.centro_destino else (
+                    mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'
+                ),
+                'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
+                'observaciones': mov.motivo or '',
+                'numero_contrato': mov.lote.numero_contrato if mov.lote else None,
+            })
+        
+        # Estadísticas
+        total_entradas = sum(m['cantidad'] for m in movimientos_data if m['tipo'] == 'ENTRADA')
+        total_salidas = sum(m['cantidad'] for m in movimientos_data if m['tipo'] == 'SALIDA')
+        total_ajustes = sum(m['cantidad'] for m in movimientos_data if m['tipo'] == 'AJUSTE')
+        
+        # Contar lotes únicos
+        lotes_unicos = set(m['lote'] for m in movimientos_data if m['lote'] != 'N/A')
+        productos_unicos = set(m['producto_clave'] for m in movimientos_data if m['producto_clave'] != 'N/A')
+        
+        response_data = {
+            'movimientos': movimientos_data,
+            'total_movimientos': len(movimientos_data),
+            'estadisticas': {
+                'total_entradas': total_entradas,
+                'total_salidas': total_salidas,
+                'total_ajustes': total_ajustes,
+                'lotes_unicos': len(lotes_unicos),
+                'productos_unicos': len(productos_unicos),
+            },
+            'filtros_aplicados': {
+                'fecha_inicio': fecha_inicio,
+                'fecha_fin': fecha_fin,
+                'centro': centro_param,
+                'tipo': tipo_movimiento,
+                'producto': producto_param,
+            }
+        }
+        
+        # Exportar según formato
+        if formato == 'excel':
+            return _exportar_trazabilidad_global_excel(movimientos_data, response_data['filtros_aplicados'])
+        elif formato == 'pdf':
+            return _exportar_trazabilidad_global_pdf(movimientos_data, response_data)
+        
+        return Response(response_data)
+        
+    except Exception as exc:
+        logger.exception('Error en trazabilidad_global')
+        return Response({
+            'error': 'Error al obtener trazabilidad global',
+            'mensaje': str(exc)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _exportar_trazabilidad_global_excel(movimientos, filtros):
+    """Genera Excel de trazabilidad global."""
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from io import BytesIO
+    
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Trazabilidad Global"
+    
+    # Estilos
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="9F2241", end_color="9F2241", fill_type="solid")
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    # Título
+    ws.merge_cells('A1:I1')
+    ws['A1'] = "REPORTE DE TRAZABILIDAD GLOBAL"
+    ws['A1'].font = Font(bold=True, size=14)
+    ws['A1'].alignment = Alignment(horizontal='center')
+    
+    # Filtros aplicados
+    row = 3
+    if any(filtros.values()):
+        ws[f'A{row}'] = "Filtros aplicados:"
+        ws[f'A{row}'].font = Font(bold=True)
+        row += 1
+        if filtros.get('fecha_inicio'):
+            ws[f'A{row}'] = f"Fecha inicio: {filtros['fecha_inicio']}"
+            row += 1
+        if filtros.get('fecha_fin'):
+            ws[f'A{row}'] = f"Fecha fin: {filtros['fecha_fin']}"
+            row += 1
+        if filtros.get('centro'):
+            ws[f'A{row}'] = f"Centro: {filtros['centro']}"
+            row += 1
+        if filtros.get('tipo'):
+            ws[f'A{row}'] = f"Tipo: {filtros['tipo']}"
+            row += 1
+        row += 1
+    
+    # Encabezados
+    headers = ['Fecha', 'Tipo', 'Producto', 'Nombre Producto', 'Lote', 'Cantidad', 'Centro', 'Usuario', 'Observaciones']
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=row, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.border = thin_border
+        cell.alignment = Alignment(horizontal='center')
+    
+    # Datos
+    for mov in movimientos:
+        row += 1
+        data = [
+            mov['fecha_str'],
+            mov['tipo'],
+            mov['producto_clave'],
+            mov['producto_nombre'][:40] if mov['producto_nombre'] else '',
+            mov['lote'],
+            mov['cantidad'],
+            mov['centro'],
+            mov['usuario'],
+            mov['observaciones'][:50] if mov['observaciones'] else ''
+        ]
+        for col, value in enumerate(data, 1):
+            cell = ws.cell(row=row, column=col, value=value)
+            cell.border = thin_border
+    
+    # Ajustar anchos
+    ws.column_dimensions['A'].width = 18
+    ws.column_dimensions['B'].width = 10
+    ws.column_dimensions['C'].width = 15
+    ws.column_dimensions['D'].width = 40
+    ws.column_dimensions['E'].width = 18
+    ws.column_dimensions['F'].width = 12
+    ws.column_dimensions['G'].width = 20
+    ws.column_dimensions['H'].width = 20
+    ws.column_dimensions['I'].width = 30
+    
+    # Guardar
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    
+    from django.utils import timezone
+    response = HttpResponse(
+        buffer.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename="Trazabilidad_Global_{timezone.now().strftime("%Y%m%d_%H%M")}.xlsx"'
+    return response
+
+
+def _exportar_trazabilidad_global_pdf(movimientos, data):
+    """Genera PDF de trazabilidad global."""
+    from core.utils.pdf_reports import generar_reporte_trazabilidad
+    from io import BytesIO
+    from django.utils import timezone
+    
+    # Adaptar datos al formato esperado por generar_reporte_trazabilidad
+    trazabilidad_data = []
+    for mov in movimientos[:200]:  # Limitar para PDF
+        trazabilidad_data.append({
+            'fecha': mov['fecha_str'],
+            'tipo': mov['tipo'],
+            'lote': mov['lote'],
+            'cantidad': mov['cantidad'],
+            'centro': mov['centro'],
+            'usuario': mov['usuario'],
+            'observaciones': mov['observaciones'],
+            'producto': f"{mov['producto_clave']} - {mov['producto_nombre'][:30]}"
+        })
+    
+    # Info del reporte
+    producto_info = {
+        'clave': 'GLOBAL',
+        'descripcion': 'Reporte de Trazabilidad Global',
+        'unidad_medida': '-',
+        # ISS-FIX: Nunca mostrar stock negativo - usar max(0, ...)
+        'stock_actual': max(0, data['estadisticas']['total_entradas'] - data['estadisticas']['total_salidas']),
+        'stock_minimo': 0,
+        'es_global': True,
+        'filtros': data['filtros_aplicados'],
+        'estadisticas': data['estadisticas']
+    }
+    
+    pdf_buffer = generar_reporte_trazabilidad(trazabilidad_data, producto_info=producto_info)
+    
+    response = HttpResponse(
+        pdf_buffer.getvalue(),
+        content_type='application/pdf'
+    )
+    response['Content-Disposition'] = f'attachment; filename="Trazabilidad_Global_{timezone.now().strftime("%Y%m%d_%H%M")}.pdf"'
+    return response
+
+
+@api_view(['GET'])
+def trazabilidad_producto_exportar(request, clave):
+    """
+    Exportar trazabilidad de un producto con filtros de fecha.
+    
+    Parámetros:
+    - fecha_inicio: Fecha inicio (YYYY-MM-DD)
+    - fecha_fin: Fecha fin (YYYY-MM-DD)
+    - formato: excel o pdf
+    """
+    from datetime import datetime
+    from django.utils import timezone
+    
+    try:
+        user = request.user
+        if not user or not user.is_authenticated:
+            return Response({'error': 'Autenticación requerida'}, status=status.HTTP_403_FORBIDDEN)
+        
+        rol_usuario = (getattr(user, 'rol', '') or '').lower()
+        if rol_usuario == 'vista':
+            return Response({'error': 'No tienes permiso para exportar'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Obtener producto
+        producto = Producto.objects.filter(
+            Q(clave__iexact=clave) | Q(descripcion__iexact=clave)
+        ).first()
+        if not producto:
+            return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Filtros
+        fecha_inicio = request.query_params.get('fecha_inicio')
+        fecha_fin = request.query_params.get('fecha_fin')
+        formato = request.query_params.get('formato', 'pdf')
+        centro_param = request.query_params.get('centro')
+        
+        # Determinar filtro de centro
+        filtrar_por_centro = not is_farmacia_or_admin(user)
+        user_centro = get_user_centro(user) if filtrar_por_centro else None
+        
+        if centro_param and is_farmacia_or_admin(user):
+            if centro_param != 'todos':
+                try:
+                    user_centro = Centro.objects.get(pk=centro_param)
+                    filtrar_por_centro = True
+                except Centro.DoesNotExist:
+                    pass
+        
+        # Obtener movimientos
+        movimientos = Movimiento.objects.filter(
+            lote__producto=producto
+        ).select_related('lote', 'centro_origen', 'centro_destino', 'usuario')
+        
+        # Aplicar filtro de centro
+        if filtrar_por_centro and user_centro:
+            movimientos = movimientos.filter(
+                Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
+            )
+        
+        # Aplicar filtros de fecha
+        if fecha_inicio:
+            try:
+                fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+                movimientos = movimientos.filter(fecha__gte=fecha_inicio_dt)
+            except ValueError:
+                pass
+        
+        if fecha_fin:
+            try:
+                fecha_fin_dt = datetime.strptime(fecha_fin, '%Y-%m-%d')
+                fecha_fin_dt = fecha_fin_dt.replace(hour=23, minute=59, second=59)
+                movimientos = movimientos.filter(fecha__lte=fecha_fin_dt)
+            except ValueError:
+                pass
+        
+        movimientos = movimientos.order_by('-fecha')[:500]
+        
+        # Preparar datos
+        trazabilidad_data = []
+        for mov in movimientos:
+            trazabilidad_data.append({
+                'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
+                'tipo': mov.tipo.upper(),
+                'lote': mov.lote.numero_lote if mov.lote else 'N/A',
+                'cantidad': mov.cantidad,
+                'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
+                'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
+                'observaciones': mov.motivo or ''
+            })
+        
+        producto_info = {
+            'clave': producto.clave,
+            'descripcion': producto.nombre,
+            'unidad_medida': producto.unidad_medida,
+            'stock_actual': producto.get_stock_actual() if hasattr(producto, 'get_stock_actual') else 0,
+            'stock_minimo': producto.stock_minimo,
+            'filtros': {
+                'fecha_inicio': fecha_inicio,
+                'fecha_fin': fecha_fin,
+                'centro': centro_param
+            }
+        }
+        
+        if formato == 'excel':
+            return _exportar_producto_excel(trazabilidad_data, producto_info)
+        else:
+            from core.utils.pdf_reports import generar_reporte_trazabilidad
+            pdf_buffer = generar_reporte_trazabilidad(trazabilidad_data, producto_info=producto_info)
+            
+            response = HttpResponse(
+                pdf_buffer.getvalue(),
+                content_type='application/pdf'
+            )
+            response['Content-Disposition'] = f'attachment; filename="Trazabilidad_{clave}_{timezone.now().strftime("%Y%m%d")}.pdf"'
+            return response
+            
+    except Exception as exc:
+        logger.exception('Error en trazabilidad_producto_exportar')
+        return Response({
+            'error': 'Error al exportar trazabilidad',
+            'mensaje': str(exc)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _exportar_producto_excel(movimientos, producto_info):
+    """Genera Excel de trazabilidad de producto."""
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from io import BytesIO
+    from django.utils import timezone
+    
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Trazabilidad"
+    
+    # Estilos
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="9F2241", end_color="9F2241", fill_type="solid")
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    # Título
+    ws.merge_cells('A1:G1')
+    ws['A1'] = f"TRAZABILIDAD DE PRODUCTO: {producto_info['clave']}"
+    ws['A1'].font = Font(bold=True, size=14)
+    ws['A1'].alignment = Alignment(horizontal='center')
+    
+    # Info del producto
+    ws['A3'] = "Producto:"
+    ws['B3'] = producto_info['descripcion']
+    ws['A4'] = "Unidad:"
+    ws['B4'] = producto_info['unidad_medida']
+    
+    # Filtros
+    filtros = producto_info.get('filtros', {})
+    row = 6
+    if any(filtros.values()):
+        if filtros.get('fecha_inicio'):
+            ws[f'A{row}'] = f"Desde: {filtros['fecha_inicio']}"
+            row += 1
+        if filtros.get('fecha_fin'):
+            ws[f'A{row}'] = f"Hasta: {filtros['fecha_fin']}"
+            row += 1
+        row += 1
+    
+    # Encabezados
+    headers = ['Fecha', 'Tipo', 'Lote', 'Cantidad', 'Centro', 'Usuario', 'Observaciones']
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=row, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.border = thin_border
+    
+    # Datos
+    for mov in movimientos:
+        row += 1
+        data = [
+            mov['fecha'],
+            mov['tipo'],
+            mov['lote'],
+            mov['cantidad'],
+            mov['centro'],
+            mov['usuario'],
+            mov['observaciones'][:50] if mov['observaciones'] else ''
+        ]
+        for col, value in enumerate(data, 1):
+            cell = ws.cell(row=row, column=col, value=value)
+            cell.border = thin_border
+    
+    # Ajustar anchos
+    ws.column_dimensions['A'].width = 18
+    ws.column_dimensions['B'].width = 10
+    ws.column_dimensions['C'].width = 18
+    ws.column_dimensions['D'].width = 12
+    ws.column_dimensions['E'].width = 20
+    ws.column_dimensions['F'].width = 20
+    ws.column_dimensions['G'].width = 30
+    
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    
+    response = HttpResponse(
+        buffer.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename="Trazabilidad_{producto_info["clave"]}_{timezone.now().strftime("%Y%m%d")}.xlsx"'
+    return response
+
+
+@api_view(['GET'])
+def trazabilidad_lote_exportar(request, codigo):
+    """
+    Exportar trazabilidad de un lote con filtros de fecha.
+    
+    Parámetros:
+    - fecha_inicio: Fecha inicio (YYYY-MM-DD)
+    - fecha_fin: Fecha fin (YYYY-MM-DD)
+    - formato: excel o pdf
+    """
+    from datetime import datetime
+    from django.utils import timezone
+    
+    try:
+        user = request.user
+        if not user or not user.is_authenticated:
+            return Response({'error': 'Autenticación requerida'}, status=status.HTTP_403_FORBIDDEN)
+        
+        if not is_farmacia_or_admin(user):
+            return Response({'error': 'Solo administradores y farmacia pueden exportar trazabilidad de lotes'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Obtener lote
+        lote = Lote.objects.select_related('producto', 'centro').filter(numero_lote__iexact=codigo).first()
+        if not lote:
+            return Response({'error': 'Lote no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Filtros
+        fecha_inicio = request.query_params.get('fecha_inicio')
+        fecha_fin = request.query_params.get('fecha_fin')
+        formato = request.query_params.get('formato', 'pdf')
+        
+        # Obtener movimientos
+        movimientos = Movimiento.objects.filter(
+            lote=lote
+        ).select_related('centro_origen', 'centro_destino', 'usuario')
+        
+        # Aplicar filtros de fecha
+        if fecha_inicio:
+            try:
+                fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+                movimientos = movimientos.filter(fecha__gte=fecha_inicio_dt)
+            except ValueError:
+                pass
+        
+        if fecha_fin:
+            try:
+                fecha_fin_dt = datetime.strptime(fecha_fin, '%Y-%m-%d')
+                fecha_fin_dt = fecha_fin_dt.replace(hour=23, minute=59, second=59)
+                movimientos = movimientos.filter(fecha__lte=fecha_fin_dt)
+            except ValueError:
+                pass
+        
+        movimientos = movimientos.order_by('fecha')
+        
+        # Preparar datos con saldo
+        trazabilidad_data = []
+        saldo = 0
+        for mov in movimientos:
+            saldo += mov.cantidad
+            trazabilidad_data.append({
+                'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
+                'tipo': mov.tipo.upper(),
+                'lote': lote.numero_lote,
+                'cantidad': mov.cantidad,
+                'saldo': saldo,
+                'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
+                'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
+                'observaciones': mov.motivo or ''
+            })
+        
+        producto_info = {
+            'clave': lote.producto.clave if lote.producto else 'N/A',
+            'descripcion': lote.producto.nombre if lote.producto else 'N/A',
+            'unidad_medida': lote.producto.unidad_medida if lote.producto else 'N/A',
+            'stock_actual': lote.cantidad_actual,
+            'stock_minimo': lote.producto.stock_minimo if lote.producto else 0,
+            'numero_lote': lote.numero_lote,
+            'fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else 'N/A',
+            'proveedor': lote.marca or 'No especificado',
+            'numero_contrato': lote.numero_contrato or 'N/A',
+            'precio_unitario': float(lote.precio_unitario) if lote.precio_unitario else 0,
+            'filtros': {
+                'fecha_inicio': fecha_inicio,
+                'fecha_fin': fecha_fin
+            }
+        }
+        
+        if formato == 'excel':
+            return _exportar_lote_excel(trazabilidad_data, producto_info)
+        else:
+            from core.utils.pdf_reports import generar_reporte_trazabilidad
+            pdf_buffer = generar_reporte_trazabilidad(trazabilidad_data, producto_info=producto_info)
+            
+            response = HttpResponse(
+                pdf_buffer.getvalue(),
+                content_type='application/pdf'
+            )
+            response['Content-Disposition'] = f'attachment; filename="Trazabilidad_Lote_{codigo}_{timezone.now().strftime("%Y%m%d")}.pdf"'
+            return response
+            
+    except Exception as exc:
+        logger.exception('Error en trazabilidad_lote_exportar')
+        return Response({
+            'error': 'Error al exportar trazabilidad del lote',
+            'mensaje': str(exc)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def exportar_control_inventarios(request):
+    """
+    Exporta el inventario en formato "Control de Inventarios del Almacén Central de Medicamentos"
+    IDÉNTICO al archivo de referencia de licitación.
+    
+    Características:
+    - Fila separadora vacía entre cada producto diferente
+    - Columna A con borde medium (grueso)
+    - Columnas B-M con borde thin
+    - Fondo amarillo SOLO en columna M (evidencia)
+    - IconSet (semáforo con circulitos) en columnas H e I
+    - Sin colores de fondo excepto evidencia y headers
+    """
+    from datetime import datetime
+    from dateutil.relativedelta import relativedelta
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.formatting.rule import IconSetRule
+    from openpyxl.utils import get_column_letter
+    from io import BytesIO
+    
+    user = request.user
+    if not user or not user.is_authenticated:
+        return Response({'error': 'Autenticación requerida'}, status=status.HTTP_403_FORBIDDEN)
+    
+    if not is_farmacia_or_admin(user):
+        return Response({'error': 'Solo administradores y farmacia pueden exportar este formato'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        # Obtener todos los lotes activos con stock, agrupados por producto
+        lotes = Lote.objects.select_related('producto').filter(
+            activo=True,
+            cantidad_actual__gt=0,
+            centro__isnull=True  # Solo farmacia central (Almacén Central)
+        ).order_by('producto__clave', 'numero_lote')
+        
+        # Crear workbook
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Hoja1"
+        
+        # Estilos EXACTOS del formato de referencia
+        # ISS-FIX: Cambio de verde (#C4D79B) a gris (#D9D9D9) según especificación
+        header_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+        
+        # Bordes - Columna A tiene medium, las demás thin
+        medium_border_left = Border(
+            left=Side(style='medium'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        header_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        center_align = Alignment(horizontal='center', vertical='center')
+        left_align = Alignment(horizontal='left', vertical='center', wrap_text=True)
+        
+        # Folio en esquina superior derecha (I2:L2)
+        ws.merge_cells('I2:L2')
+        ws['I2'] = "Folio:_____________________"
+        ws['I2'].alignment = Alignment(horizontal='right')
+        
+        # Título principal (B4:L4)
+        ws.merge_cells('B4:L4')
+        ws['B4'] = "CONTROL DE INVENTARIOS DEL ALMACÉN CENTRAL DE MEDICAMENTOS"
+        ws['B4'].font = Font(bold=True, size=12)
+        ws['B4'].alignment = Alignment(horizontal='center', vertical='center')
+        ws.row_dimensions[4].height = 42.75
+        
+        # Encabezados en fila 6 (12 columnas, sin evidencia por ahora)
+        headers = [
+            'NO. PARTIDA',
+            'CLAVE',
+            'ARTÍCULO',
+            'LOTE',
+            'NOMBRE COMERCIAL O GENÉRICO',
+            'CONCENTRACIÓN',
+            'PRESENTACIÓN',
+            'MESES',
+            'VENCIMIENTO (SEMAFORIZACIÓN) / FECHA DE CADUCIDAD',
+            'CANTIDAD',
+            'FECHA DE INGRESO',
+            'FECHA DE SALIDA (ULTIMA)'
+        ]
+        
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=6, column=col, value=header)
+            cell.font = Font(bold=True, size=8)
+            cell.fill = header_fill
+            cell.border = medium_border_left if col == 1 else thin_border
+            cell.alignment = header_align
+        
+        ws.row_dimensions[6].height = 36
+        
+        # Datos con filas separadoras
+        row = 7
+        partida_actual = 0
+        producto_anterior_id = None
+        filas_con_iconset = []  # Para aplicar IconSet después
+        
+        for lote in lotes:
+            producto = lote.producto
+            
+            # Si cambia el producto, agregar fila vacía separadora (excepto el primero)
+            if producto_anterior_id is not None and producto.id != producto_anterior_id:
+                row += 1  # Fila vacía sin bordes ni nada
+            
+            # Nueva partida si cambia el producto
+            if producto.id != producto_anterior_id:
+                partida_actual += 1
+                producto_anterior_id = producto.id
+            
+            # Obtener fecha de ingreso
+            fecha_ingreso = Movimiento.objects.filter(
+                lote=lote,
+                tipo='entrada'
+            ).order_by('fecha').values_list('fecha', flat=True).first()
+            
+            if not fecha_ingreso and hasattr(lote, 'created_at') and lote.created_at:
+                fecha_ingreso = lote.created_at
+            
+            # Obtener última fecha de salida
+            ultima_salida = Movimiento.objects.filter(
+                lote=lote,
+                tipo='salida'
+            ).order_by('-fecha').values_list('fecha', flat=True).first()
+            
+            # Preparar fechas como objetos date
+            fecha_ingreso_date = None
+            if fecha_ingreso:
+                fecha_ingreso_date = fecha_ingreso.date() if hasattr(fecha_ingreso, 'date') else fecha_ingreso
+            
+            fecha_salida_date = None
+            if ultima_salida:
+                fecha_salida_date = ultima_salida.date() if hasattr(ultima_salida, 'date') else ultima_salida
+            
+            # Datos de la fila (12 columnas, sin evidencia por ahora)
+            data = [
+                partida_actual,  # A
+                producto.clave,  # B
+                producto.nombre or producto.descripcion or '',  # C
+                lote.numero_lote,  # D
+                producto.nombre_comercial or '',  # E - Nombre comercial del producto (vacío si no tiene)
+                producto.concentracion or '',  # F
+                producto.presentacion or '',  # G
+                f'=ROUND((I{row}-K{row})/30,0)',  # H - Fórmula MESES (redondeado a entero)
+                lote.fecha_caducidad,  # I - Fecha caducidad
+                max(0, lote.cantidad_actual),  # J - ISS-FIX: Nunca mostrar stock negativo
+                fecha_ingreso_date,  # K
+                fecha_salida_date,  # L
+            ]
+            
+            for col, value in enumerate(data, 1):
+                cell = ws.cell(row=row, column=col, value=value)
+                cell.font = Font(size=9)
+                
+                # Borde: columna A con medium, resto thin
+                cell.border = medium_border_left if col == 1 else thin_border
+                
+                # Alineación
+                if col in [1, 8, 10]:  # Partida, Meses, Cantidad
+                    cell.alignment = center_align
+                else:
+                    cell.alignment = left_align
+                
+                # Formato fecha para columnas I, K, L
+                if col in [9, 11, 12] and value:
+                    cell.number_format = 'DD/MM/YYYY'
+            
+            # Guardar fila para IconSet
+            filas_con_iconset.append(row)
+            
+            row += 1
+        
+        # Aplicar IconSet (semáforo con circulitos) SOLO a columna H (MESES)
+        # Columna I solo muestra la fecha de caducidad, SIN semáforo
+        for fila in filas_con_iconset:
+            # Columna H - semáforo basado en valor numérico (meses)
+            rule_h = IconSetRule(
+                '3TrafficLights1',
+                'num',
+                [0, 6, 12],
+                showValue=True,
+                reverse=False
+            )
+            ws.conditional_formatting.add(f'H{fila}', rule_h)
+        
+        # Anchos de columna EXACTOS (12 columnas, A-L)
+        column_widths = {
+            'A': 3.71,
+            'B': 6.71,
+            'C': 26.71,
+            'D': 9.43,
+            'E': 10.14,
+            'F': 15.14,
+            'G': 19.0,
+            'H': 5.43,
+            'I': 10.0,
+            'J': 6.14,
+            'K': 9.71,
+            'L': 8.29,
+        }
+        for col_letter, width in column_widths.items():
+            ws.column_dimensions[col_letter].width = width
+        
+        # Guardar
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        
+        filename = f"Control_Inventarios_Almacen_Central_{timezone.now().strftime('%Y%m%d')}.xlsx"
+        
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+        
+    except Exception as exc:
+        logger.exception('Error al exportar control de inventarios')
+        return Response({
+            'error': 'Error al exportar control de inventarios',
+            'mensaje': str(exc)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _exportar_lote_excel(movimientos, producto_info):
+    """Genera Excel de trazabilidad de lote."""
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from io import BytesIO
+    from django.utils import timezone
+    
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Trazabilidad Lote"
+    
+    # Estilos
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="9F2241", end_color="9F2241", fill_type="solid")
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    # Título
+    ws.merge_cells('A1:H1')
+    ws['A1'] = f"TRAZABILIDAD DE LOTE: {producto_info['numero_lote']}"
+    ws['A1'].font = Font(bold=True, size=14)
+    ws['A1'].alignment = Alignment(horizontal='center')
+    
+    # Info del lote
+    ws['A3'] = "Producto:"
+    ws['B3'] = f"{producto_info['clave']} - {producto_info['descripcion']}"
+    ws['A4'] = "Caducidad:"
+    ws['B4'] = producto_info['fecha_caducidad']
+    ws['A5'] = "Contrato:"
+    ws['B5'] = producto_info['numero_contrato']
+    
+    # Filtros
+    filtros = producto_info.get('filtros', {})
+    row = 7
+    if any(filtros.values()):
+        if filtros.get('fecha_inicio'):
+            ws[f'A{row}'] = f"Desde: {filtros['fecha_inicio']}"
+            row += 1
+        if filtros.get('fecha_fin'):
+            ws[f'A{row}'] = f"Hasta: {filtros['fecha_fin']}"
+            row += 1
+        row += 1
+    
+    # Encabezados
+    headers = ['Fecha', 'Tipo', 'Cantidad', 'Saldo', 'Centro', 'Usuario', 'Observaciones']
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=row, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.border = thin_border
+    
+    # Datos
+    for mov in movimientos:
+        row += 1
+        data = [
+            mov['fecha'],
+            mov['tipo'],
+            mov['cantidad'],
+            mov.get('saldo', ''),
+            mov['centro'],
+            mov['usuario'],
+            mov['observaciones'][:50] if mov['observaciones'] else ''
+        ]
+        for col, value in enumerate(data, 1):
+            cell = ws.cell(row=row, column=col, value=value)
+            cell.border = thin_border
+    
+    # Ajustar anchos
+    ws.column_dimensions['A'].width = 18
+    ws.column_dimensions['B'].width = 10
+    ws.column_dimensions['C'].width = 12
+    ws.column_dimensions['D'].width = 12
+    ws.column_dimensions['E'].width = 20
+    ws.column_dimensions['F'].width = 20
+    ws.column_dimensions['G'].width = 30
+    
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    
+    response = HttpResponse(
+        buffer.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename="Trazabilidad_Lote_{producto_info["numero_lote"]}_{timezone.now().strftime("%Y%m%d")}.xlsx"'
+    return response
 
 
 

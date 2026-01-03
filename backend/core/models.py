@@ -609,6 +609,7 @@ class Producto(models.Model):
     # Campo principal: clave (mapea a columna 'clave' después del rename de codigo_barras)
     clave = models.CharField(max_length=50, unique=True, db_column='clave')
     nombre = models.CharField(max_length=500, db_column='nombre')
+    nombre_comercial = models.CharField(max_length=200, blank=True, null=True)  # Nombre comercial del producto (ej: Tylenol, Aspirina)
     descripcion = models.TextField(blank=True, null=True)
     # ISS-FIX: max_length ampliado para soportar textos como "CAJA CON 7 OVULOS"
     unidad_medida = models.CharField(max_length=100, default='PIEZA')
@@ -1111,13 +1112,15 @@ class Movimiento(models.Model):
     """
     
     # Tipos que RESTAN stock (cantidad debe ser positiva, se resta del inventario)
-    TIPOS_RESTA_STOCK = ['salida', 'ajuste_negativo', 'merma', 'caducidad', 'transferencia']
+    # ISS-FIX: Agregar 'ajuste' genérico que se usa en salidas manuales
+    TIPOS_RESTA_STOCK = ['salida', 'ajuste', 'ajuste_negativo', 'merma', 'caducidad', 'transferencia']
     # Tipos que SUMAN stock (cantidad debe ser positiva, se suma al inventario)
     TIPOS_SUMA_STOCK = ['entrada', 'ajuste_positivo', 'devolucion']
     # Tipos que REQUIEREN lote obligatorio
-    TIPOS_REQUIERE_LOTE = ['salida', 'merma', 'caducidad', 'transferencia']
+    TIPOS_REQUIERE_LOTE = ['salida', 'ajuste', 'merma', 'caducidad', 'transferencia']
     # Tipos válidos
-    TIPOS_VALIDOS = ['entrada', 'salida', 'transferencia', 'ajuste_positivo', 'ajuste_negativo', 'devolucion', 'merma', 'caducidad']
+    # ISS-FIX: Agregar 'ajuste' genérico para compatibilidad con registrar_movimiento_stock
+    TIPOS_VALIDOS = ['entrada', 'salida', 'ajuste', 'transferencia', 'ajuste_positivo', 'ajuste_negativo', 'devolucion', 'merma', 'caducidad']
     
     tipo = models.CharField(max_length=30)
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='movimientos', db_column='producto_id')
@@ -2924,17 +2927,38 @@ class SalidaDonacion(models.Model):
         return 'entregado' if self.finalizado else 'pendiente'
     
     def save(self, *args, **kwargs):
-        # Validar que hay stock disponible
-        if self.pk is None:  # Solo en creacion
+        # El stock se descuenta AL CREAR para reservarlo inmediatamente
+        # Esto evita que múltiples usuarios soliciten el mismo stock
+        is_new = self.pk is None
+        
+        if is_new:  # Solo en creación
             if self.cantidad > self.detalle_donacion.cantidad_disponible:
                 raise ValueError(
                     f"Stock insuficiente. Disponible: {self.detalle_donacion.cantidad_disponible}, "
                     f"Solicitado: {self.cantidad}"
                 )
-            # Descontar del stock disponible
+            # Descontar inmediatamente al crear (reservar stock)
             self.detalle_donacion.cantidad_disponible -= self.cantidad
-            self.detalle_donacion.save()
+            self.detalle_donacion.save(update_fields=['cantidad_disponible'])
+        
         super().save(*args, **kwargs)
+    
+    def finalizar(self, usuario=None):
+        """
+        Finaliza la entrega (confirma que fue entregada físicamente).
+        El stock ya fue descontado al crear, aquí solo se marca como completado.
+        """
+        from django.utils import timezone
+        
+        if self.finalizado:
+            raise ValueError("Esta entrega ya fue finalizada")
+        
+        # Marcar como finalizado (el stock ya fue descontado al crear)
+        self.finalizado = True
+        self.fecha_finalizado = timezone.now()
+        if usuario:
+            self.finalizado_por = usuario
+        self.save()
 
 
 # =============================================================================

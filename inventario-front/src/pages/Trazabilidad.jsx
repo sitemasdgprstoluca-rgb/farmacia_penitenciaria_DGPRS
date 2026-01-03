@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { trazabilidadAPI, centrosAPI, descargarArchivo } from '../services/api';
+import { trazabilidadAPI, centrosAPI, productosAPI, descargarArchivo } from '../services/api';
 import { toast } from 'react-hot-toast';
-import { FaSearch, FaBox, FaWarehouse, FaHistory, FaExclamationTriangle, FaFilePdf, FaBuilding, FaSpinner, FaInfoCircle, FaTimes } from 'react-icons/fa';
+import { FaSearch, FaBox, FaWarehouse, FaHistory, FaExclamationTriangle, FaFilePdf, FaFileExcel, FaBuilding, FaSpinner, FaInfoCircle, FaTimes, FaGlobe, FaCalendarAlt, FaFilter, FaClipboardList } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { usePermissions } from '../hooks/usePermissions';
 
@@ -165,7 +165,19 @@ const Trazabilidad = () => {
   const [identificadorResultados, setIdentificadorResultados] = useState('');
   const [loading, setLoading] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const [exportingControl, setExportingControl] = useState(false);
   const [resultados, setResultados] = useState(null);
+  
+  // Modo global (reporte de todos los lotes)
+  const [modoGlobal, setModoGlobal] = useState(false);
+  const [resultadosGlobal, setResultadosGlobal] = useState(null);
+  
+  // Filtros de fecha
+  const [fechaInicio, setFechaInicio] = useState('');
+  const [fechaFin, setFechaFin] = useState('');
+  const [tipoMovimiento, setTipoMovimiento] = useState('');
+  const [mostrarFiltros, setMostrarFiltros] = useState(false);
   
   // Autocompletado
   const [sugerencias, setSugerencias] = useState([]);
@@ -181,7 +193,7 @@ const Trazabilidad = () => {
   const debounceRef = useRef(null);
   const inputRef = useRef(null);
   const sugerenciasRef = useRef(null);
-  const lastSearchRef = useRef({ termino: '', centro: '' });
+  const lastSearchRef = useRef({ termino: '', centro: '', fechaInicio: '', fechaFin: '' });
 
   // Cargar centros al montar (solo para admin/farmacia)
   useEffect(() => {
@@ -336,8 +348,13 @@ const Trazabilidad = () => {
         return;
       }
 
-      // Ahora obtenemos los datos completos
-      const params = centroFiltro ? { centro: centroFiltro } : {};
+      // Ahora obtenemos los datos completos - incluyendo filtros de fecha
+      const params = {};
+      if (centroFiltro) params.centro = centroFiltro;
+      if (fechaInicio) params.fecha_inicio = fechaInicio;
+      if (fechaFin) params.fecha_fin = fechaFin;
+      if (tipoMovimiento) params.tipo = tipoMovimiento;
+      
       const normalizer = tipo === 'producto' ? normalizeProductoResponse : normalizeLoteResponse;
       
       const response = tipo === 'producto'
@@ -348,7 +365,7 @@ const Trazabilidad = () => {
       setResultados(datosNormalizados);
       setTipoBusqueda(tipo);
       setIdentificadorResultados(identificador);
-      lastSearchRef.current = { termino: terminoTrimmed, centro: centroFiltro };
+      lastSearchRef.current = { termino: terminoTrimmed, centro: centroFiltro, fechaInicio, fechaFin };
       
       toast.success(`Trazabilidad de ${tipo === 'producto' ? 'producto' : 'lote'} cargada`);
     } catch (error) {
@@ -375,6 +392,29 @@ const Trazabilidad = () => {
 
   // Exportar PDF
   const handleExportarPdf = async () => {
+    if (modoGlobal) {
+      // Exportar trazabilidad global
+      setExportingPdf(true);
+      try {
+        const params = {};
+        if (fechaInicio) params.fecha_inicio = fechaInicio;
+        if (fechaFin) params.fecha_fin = fechaFin;
+        if (centroFiltro) params.centro = centroFiltro;
+        if (tipoMovimiento) params.tipo = tipoMovimiento;
+        
+        const response = await trazabilidadAPI.exportarGlobalPdf(params);
+        const filename = `trazabilidad_global_${new Date().toISOString().split('T')[0]}.pdf`;
+        descargarArchivo(response, filename);
+        toast.success('PDF global generado exitosamente');
+      } catch (error) {
+        console.error('Error al exportar PDF global:', error);
+        toast.error(error.response?.data?.error || 'Error al generar PDF');
+      } finally {
+        setExportingPdf(false);
+      }
+      return;
+    }
+    
     if (!resultados || !identificadorResultados) {
       toast.error('Primero busque un producto o lote para exportar');
       return;
@@ -390,12 +430,18 @@ const Trazabilidad = () => {
       let response;
       let filename;
       
+      // Preparar parámetros con filtros de fecha
+      const params = {};
+      if (fechaInicio) params.fecha_inicio = fechaInicio;
+      if (fechaFin) params.fecha_fin = fechaFin;
+      if (centroFiltro) params.centro = centroFiltro;
+      
       if (tipoBusqueda === 'producto') {
-        response = await trazabilidadAPI.exportarPdf(identificadorResultados);
+        response = await trazabilidadAPI.exportarPdf(identificadorResultados, params);
         filename = `trazabilidad_producto_${identificadorResultados}_${new Date().toISOString().split('T')[0]}.pdf`;
       } else {
         const loteId = resultados?.id;
-        response = await trazabilidadAPI.exportarLotePdf(identificadorResultados, loteId);
+        response = await trazabilidadAPI.exportarLotePdf(identificadorResultados, loteId, params);
         filename = `trazabilidad_lote_${identificadorResultados}_${new Date().toISOString().split('T')[0]}.pdf`;
       }
       
@@ -415,9 +461,132 @@ const Trazabilidad = () => {
     }
   };
 
+  // Exportar Excel
+  const handleExportarExcel = async () => {
+    if (modoGlobal) {
+      // Exportar trazabilidad global
+      setExportingExcel(true);
+      try {
+        const params = {};
+        if (fechaInicio) params.fecha_inicio = fechaInicio;
+        if (fechaFin) params.fecha_fin = fechaFin;
+        if (centroFiltro) params.centro = centroFiltro;
+        if (tipoMovimiento) params.tipo = tipoMovimiento;
+        
+        const response = await trazabilidadAPI.exportarGlobalExcel(params);
+        const filename = `trazabilidad_global_${new Date().toISOString().split('T')[0]}.xlsx`;
+        descargarArchivo(response, filename);
+        toast.success('Excel global generado exitosamente');
+      } catch (error) {
+        console.error('Error al exportar Excel global:', error);
+        toast.error(error.response?.data?.error || 'Error al generar Excel');
+      } finally {
+        setExportingExcel(false);
+      }
+      return;
+    }
+    
+    if (!resultados || !identificadorResultados) {
+      toast.error('Primero busque un producto o lote para exportar');
+      return;
+    }
+
+    if (tipoBusqueda === 'lote' && !esAdminOFarmacia) {
+      toast.error('No tienes permiso para exportar trazabilidad de lotes');
+      return;
+    }
+
+    setExportingExcel(true);
+    try {
+      let response;
+      let filename;
+      
+      // Preparar parámetros con filtros de fecha
+      const params = {};
+      if (fechaInicio) params.fecha_inicio = fechaInicio;
+      if (fechaFin) params.fecha_fin = fechaFin;
+      if (centroFiltro) params.centro = centroFiltro;
+      
+      if (tipoBusqueda === 'producto') {
+        response = await trazabilidadAPI.exportarExcel(identificadorResultados, params);
+        filename = `trazabilidad_producto_${identificadorResultados}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      } else {
+        const loteId = resultados?.id;
+        response = await trazabilidadAPI.exportarLoteExcel(identificadorResultados, loteId, params);
+        filename = `trazabilidad_lote_${identificadorResultados}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      }
+      
+      descargarArchivo(response, filename);
+      toast.success('Excel generado exitosamente');
+    } catch (error) {
+      console.error('Error al exportar Excel:', error);
+      if (error.response?.status === 403) {
+        toast.error('No tienes permiso para exportar');
+      } else if (error.response?.status === 404) {
+        toast.error('Registro no encontrado');
+      } else {
+        toast.error(error.response?.data?.error || 'Error al generar Excel');
+      }
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
+  // Exportar Control de Inventarios (formato licitación)
+  const handleExportarControlInventarios = async () => {
+    if (!esAdminOFarmacia) {
+      toast.error('Solo administradores y farmacia pueden exportar este formato');
+      return;
+    }
+    
+    setExportingControl(true);
+    try {
+      const response = await trazabilidadAPI.exportarControlInventarios();
+      const filename = `Control_Inventarios_Almacen_Central_${new Date().toISOString().split('T')[0]}.xlsx`;
+      descargarArchivo(response, filename);
+      toast.success('Control de inventarios exportado exitosamente');
+    } catch (error) {
+      console.error('Error al exportar control de inventarios:', error);
+      toast.error(error.response?.data?.error || 'Error al generar el archivo');
+    } finally {
+      setExportingControl(false);
+    }
+  };
+
+  // Buscar trazabilidad global
+  const buscarGlobal = async () => {
+    if (!esAdminOFarmacia) {
+      toast.error('Solo administradores y farmacia pueden ver trazabilidad global');
+      return;
+    }
+    
+    setLoading(true);
+    setModoGlobal(true);
+    setResultados(null);
+    setTipoBusqueda(null);
+    
+    try {
+      const params = {};
+      if (fechaInicio) params.fecha_inicio = fechaInicio;
+      if (fechaFin) params.fecha_fin = fechaFin;
+      if (centroFiltro) params.centro = centroFiltro;
+      if (tipoMovimiento) params.tipo = tipoMovimiento;
+      
+      const response = await trazabilidadAPI.global(params);
+      setResultadosGlobal(response.data);
+      toast.success(`Trazabilidad global cargada: ${response.data?.total_movimientos || 0} movimientos`);
+    } catch (error) {
+      console.error('Error al cargar trazabilidad global:', error);
+      toast.error(error.response?.data?.error || 'Error al cargar trazabilidad global');
+      setResultadosGlobal(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Limpiar búsqueda
   const limpiarBusqueda = () => {
-    if (loading || exportingPdf) {
+    if (loading || exportingPdf || exportingExcel) {
       toast('Espera a que termine la operación', { icon: '⏳' });
       return;
     }
@@ -425,11 +594,16 @@ const Trazabilidad = () => {
     setTerminoBusqueda('');
     setIdentificadorResultados('');
     setResultados(null);
+    setResultadosGlobal(null);
     setTipoBusqueda(null);
     setCentroFiltro('');
+    setFechaInicio('');
+    setFechaFin('');
+    setTipoMovimiento('');
+    setModoGlobal(false);
     setSugerencias([]);
     setMostrarSugerencias(false);
-    lastSearchRef.current = { termino: '', centro: '' };
+    lastSearchRef.current = { termino: '', centro: '', fechaInicio: '', fechaFin: '' };
     
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
@@ -733,8 +907,16 @@ const Trazabilidad = () => {
               </button>
               <button
                 type="button"
+                onClick={() => setMostrarFiltros(!mostrarFiltros)}
+                className={`px-4 py-2 border rounded-lg hover:bg-gray-100 transition-all flex items-center gap-2 ${mostrarFiltros ? 'bg-blue-50 border-blue-300' : ''}`}
+                title="Mostrar filtros avanzados"
+              >
+                <FaFilter className={mostrarFiltros ? 'text-blue-600' : ''} />
+              </button>
+              <button
+                type="button"
                 onClick={limpiarBusqueda}
-                disabled={loading || exportingPdf}
+                disabled={loading || exportingPdf || exportingExcel}
                 className="px-4 py-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
                 Limpiar
@@ -742,15 +924,135 @@ const Trazabilidad = () => {
             </div>
           </div>
 
+          {/* Filtros avanzados */}
+          {mostrarFiltros && (
+            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <FaCalendarAlt className="text-gray-500" />
+                Filtros de fecha y tipo
+              </div>
+              <div className="grid gap-4 md:grid-cols-4">
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-gray-600">Fecha inicio</label>
+                  <input
+                    type="date"
+                    value={fechaInicio}
+                    onChange={(e) => setFechaInicio(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                    disabled={loading}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-gray-600">Fecha fin</label>
+                  <input
+                    type="date"
+                    value={fechaFin}
+                    onChange={(e) => setFechaFin(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                    disabled={loading}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-gray-600">Tipo movimiento</label>
+                  <select
+                    value={tipoMovimiento}
+                    onChange={(e) => setTipoMovimiento(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                    disabled={loading}
+                  >
+                    <option value="">Todos</option>
+                    <option value="entrada">Entrada</option>
+                    <option value="salida">Salida</option>
+                  </select>
+                </div>
+                {/* Botón de trazabilidad global (solo admin/farmacia) */}
+                {esAdminOFarmacia && (
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={buscarGlobal}
+                      disabled={loading}
+                      className="w-full bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all"
+                      title="Ver trazabilidad de todos los lotes"
+                    >
+                      <FaGlobe />
+                      Reporte Global
+                    </button>
+                  </div>
+                )}
+              </div>
+              
+              {/* Botón especial de Control de Inventarios (formato licitación) */}
+              {esAdminOFarmacia && (
+                <div className="pt-3 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={handleExportarControlInventarios}
+                    disabled={exportingControl || loading}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                    style={{ background: 'linear-gradient(135deg, #047857 0%, #065f46 100%)' }}
+                    title="Exportar Control de Inventarios del Almacén Central (Formato Licitación)"
+                  >
+                    {exportingControl ? (
+                      <>
+                        <FaSpinner className="animate-spin" />
+                        Generando...
+                      </>
+                    ) : (
+                      <>
+                        <FaClipboardList />
+                        📊 Exportar Control de Inventarios (Formato Licitación)
+                      </>
+                    )}
+                  </button>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Genera el Excel con el formato oficial de &quot;Control de Inventarios del Almacén Central de Medicamentos&quot;
+                  </p>
+                </div>
+              )}
+              
+              {(fechaInicio || fechaFin || tipoMovimiento) && (
+                <p className="text-xs text-blue-600 font-medium">
+                  ℹ️ Los filtros de fecha se aplicarán a la búsqueda y las exportaciones
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Indicador de tipo detectado */}
-          {resultados && tipoBusqueda && (
-            <div className="text-xs text-gray-500 flex items-center gap-2">
+          {resultados && tipoBusqueda && !modoGlobal && (
+            <div className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
               <span className={`px-2 py-0.5 rounded-full ${
                 tipoBusqueda === 'producto' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
               }`}>
                 {tipoBusqueda === 'producto' ? '📦 Producto' : '🏷️ Lote'}
               </span>
               <span>Resultados para: <strong>{identificadorResultados}</strong></span>
+              {(fechaInicio || fechaFin) && (
+                <span className="text-blue-600">
+                  | Período: {fechaInicio || '---'} a {fechaFin || 'hoy'}
+                </span>
+              )}
+              {tipoMovimiento && (
+                <span className="text-blue-600">
+                  | Tipo: {tipoMovimiento}
+                </span>
+              )}
+            </div>
+          )}
+          
+          {/* Indicador de modo global */}
+          {modoGlobal && resultadosGlobal && (
+            <div className="text-xs text-gray-500 flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                🌐 Reporte Global
+              </span>
+              <span>{resultadosGlobal.total_movimientos} movimientos encontrados</span>
+              {(fechaInicio || fechaFin) && (
+                <span className="text-gray-400">
+                  | Período: {fechaInicio || '---'} a {fechaFin || '---'}
+                </span>
+              )}
             </div>
           )}
         </form>
@@ -765,7 +1067,7 @@ const Trazabilidad = () => {
       )}
 
       {/* Estado vacío */}
-      {!loading && !resultados && (
+      {!loading && !resultados && !modoGlobal && (
         <div className="text-center py-8 bg-white rounded-lg shadow">
           <FaSearch className="text-4xl text-gray-300 mx-auto mb-3" />
           <p className="text-gray-500">
@@ -774,11 +1076,165 @@ const Trazabilidad = () => {
           <p className="text-xs text-gray-400 mt-2">
             El sistema detectará automáticamente si buscas un producto o un lote
           </p>
+          {esAdminOFarmacia && (
+            <p className="text-xs text-purple-500 mt-2">
+              También puedes usar &quot;Reporte Global&quot; en los filtros avanzados para ver todos los movimientos
+            </p>
+          )}
         </div>
       )}
 
-      {/* Resultados */}
-      {!loading && resultados && (
+      {/* Resultados Globales */}
+      {!loading && modoGlobal && resultadosGlobal && (
+        <div className="space-y-6">
+          {/* Header con estadísticas y exportación */}
+          <div className="bg-white p-6 rounded-lg shadow">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="bg-purple-100 p-3 rounded-lg">
+                  <FaGlobe className="text-purple-600 text-2xl" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold">Trazabilidad Global</h2>
+                  <p className="text-sm text-gray-600">
+                    Reporte de todos los movimientos del sistema
+                  </p>
+                </div>
+              </div>
+              
+              {/* Botones de exportar */}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleExportarExcel}
+                  disabled={exportingExcel}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                  style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)' }}
+                  title="Exportar a Excel"
+                >
+                  {exportingExcel ? (
+                    <>
+                      <FaSpinner className="animate-spin" />
+                      Generando...
+                    </>
+                  ) : (
+                    <>
+                      <FaFileExcel />
+                      Excel
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={handleExportarPdf}
+                  disabled={exportingPdf}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                  style={{ background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' }}
+                  title="Exportar a PDF"
+                >
+                  {exportingPdf ? (
+                    <>
+                      <FaSpinner className="animate-spin" />
+                      Generando...
+                    </>
+                  ) : (
+                    <>
+                      <FaFilePdf />
+                      PDF
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+            
+            {/* Estadísticas */}
+            <div className="grid gap-4 md:grid-cols-5">
+              <div className="bg-blue-50 p-3 rounded-lg text-center">
+                <p className="text-xs text-blue-600">Total Movimientos</p>
+                <p className="text-2xl font-bold text-blue-700">{resultadosGlobal.total_movimientos}</p>
+              </div>
+              <div className="bg-green-50 p-3 rounded-lg text-center">
+                <p className="text-xs text-green-600">Entradas</p>
+                <p className="text-2xl font-bold text-green-700">{resultadosGlobal.estadisticas?.total_entradas || 0}</p>
+              </div>
+              <div className="bg-orange-50 p-3 rounded-lg text-center">
+                <p className="text-xs text-orange-600">Salidas</p>
+                <p className="text-2xl font-bold text-orange-700">{resultadosGlobal.estadisticas?.total_salidas || 0}</p>
+              </div>
+              <div className="bg-gray-50 p-3 rounded-lg text-center">
+                <p className="text-xs text-gray-600">Lotes únicos</p>
+                <p className="text-2xl font-bold text-gray-700">{resultadosGlobal.estadisticas?.lotes_unicos || 0}</p>
+              </div>
+              <div className="bg-purple-50 p-3 rounded-lg text-center">
+                <p className="text-xs text-purple-600">Productos únicos</p>
+                <p className="text-2xl font-bold text-purple-700">{resultadosGlobal.estadisticas?.productos_unicos || 0}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Tabla de movimientos globales */}
+          {resultadosGlobal.movimientos?.length > 0 && (
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <FaHistory /> Movimientos
+                <span className="text-sm font-normal text-gray-500">
+                  (mostrando {Math.min(resultadosGlobal.movimientos.length, 500)} de {resultadosGlobal.total_movimientos})
+                </span>
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left font-semibold">Fecha</th>
+                      <th className="px-4 py-2 text-left font-semibold">Tipo</th>
+                      <th className="px-4 py-2 text-left font-semibold">Producto</th>
+                      <th className="px-4 py-2 text-left font-semibold">Lote</th>
+                      <th className="px-4 py-2 text-left font-semibold">Cantidad</th>
+                      <th className="px-4 py-2 text-left font-semibold">Centro</th>
+                      <th className="px-4 py-2 text-left font-semibold">Usuario</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {resultadosGlobal.movimientos.slice(0, 100).map((mov, idx) => (
+                      <tr key={mov.id || idx} className="hover:bg-gray-50">
+                        <td className="px-4 py-2">{mov.fecha_str || '-'}</td>
+                        <td className="px-4 py-2">
+                          <span
+                            className={`px-2 py-1 text-xs rounded-full ${
+                              mov.tipo === 'ENTRADA'
+                                ? 'bg-blue-100 text-blue-700'
+                                : mov.tipo === 'AJUSTE'
+                                  ? 'bg-gray-100 text-gray-700'
+                                  : 'bg-orange-100 text-orange-700'
+                            }`}
+                          >
+                            {mov.tipo}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2">
+                          <span className="font-medium">{mov.producto_clave}</span>
+                          <br />
+                          <span className="text-xs text-gray-500">{mov.producto_nombre?.slice(0, 30)}</span>
+                        </td>
+                        <td className="px-4 py-2 font-mono text-xs">{mov.lote}</td>
+                        <td className="px-4 py-2 font-semibold">{mov.cantidad}</td>
+                        <td className="px-4 py-2">{mov.centro}</td>
+                        <td className="px-4 py-2">{mov.usuario}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {resultadosGlobal.movimientos.length > 100 && (
+                <p className="text-xs text-gray-500 mt-3 text-center">
+                  Para ver todos los movimientos, exporta a Excel o PDF
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Resultados individuales */}
+      {!loading && resultados && !modoGlobal && (
         <div className="space-y-6">
           {/* Información principal */}
           <div className="bg-white p-6 rounded-lg shadow">
@@ -804,26 +1260,47 @@ const Trazabilidad = () => {
                 </div>
               </div>
               
-              {/* Botón de exportar PDF */}
-              <button
-                onClick={handleExportarPdf}
-                disabled={exportingPdf || !resultados || (tipoBusqueda === 'lote' && !esAdminOFarmacia)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                style={{ background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' }}
-                title={!esAdminOFarmacia && tipoBusqueda === 'lote' ? 'Requiere permisos de Admin/Farmacia' : 'Exportar trazabilidad a PDF'}
-              >
-                {exportingPdf ? (
-                  <>
-                    <FaSpinner className="animate-spin" />
-                    Generando...
-                  </>
-                ) : (
-                  <>
-                    <FaFilePdf />
-                    Exportar PDF
-                  </>
-                )}
-              </button>
+              {/* Botones de exportar */}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleExportarExcel}
+                  disabled={exportingExcel || !resultados || (tipoBusqueda === 'lote' && !esAdminOFarmacia)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                  style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)' }}
+                  title={!esAdminOFarmacia && tipoBusqueda === 'lote' ? 'Requiere permisos de Admin/Farmacia' : 'Exportar a Excel'}
+                >
+                  {exportingExcel ? (
+                    <>
+                      <FaSpinner className="animate-spin" />
+                      Generando...
+                    </>
+                  ) : (
+                    <>
+                      <FaFileExcel />
+                      Excel
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={handleExportarPdf}
+                  disabled={exportingPdf || !resultados || (tipoBusqueda === 'lote' && !esAdminOFarmacia)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                  style={{ background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' }}
+                  title={!esAdminOFarmacia && tipoBusqueda === 'lote' ? 'Requiere permisos de Admin/Farmacia' : 'Exportar a PDF'}
+                >
+                  {exportingPdf ? (
+                    <>
+                      <FaSpinner className="animate-spin" />
+                      Generando...
+                    </>
+                  ) : (
+                    <>
+                      <FaFilePdf />
+                      PDF
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
             
             {tipoBusqueda === 'producto' ? renderInfoProducto() : renderInfoLote()}

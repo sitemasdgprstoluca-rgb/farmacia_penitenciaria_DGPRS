@@ -114,8 +114,9 @@ def salida_masiva(request):
                 'errores': errores
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Generar ID de grupo para esta salida masiva
-        timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
+        # Generar ID de grupo para esta salida masiva (formato corto: SAL-MMDD-HHMM-CentroID)
+        now = timezone.now()
+        timestamp = now.strftime('%m%d-%H%M')
         grupo_salida = f'SAL-{timestamp}-{centro_destino.id}'
         
         movimientos_creados = []
@@ -138,8 +139,15 @@ def salida_masiva(request):
                 stock_anterior = lote_locked.cantidad_actual
                 nuevo_stock = stock_anterior - cantidad
                 
+                # ISS-FIX: Nunca permitir stock negativo
+                if nuevo_stock < 0:
+                    raise Exception(
+                        f'La operación dejaría stock negativo en lote {lote_locked.numero_lote}. '
+                        f'Disponible: {stock_anterior}, Solicitado: {cantidad}'
+                    )
+                
                 # Actualizar stock del lote origen (Farmacia Central)
-                lote_locked.cantidad_actual = nuevo_stock
+                lote_locked.cantidad_actual = max(0, nuevo_stock)  # Garantía extra: nunca negativo
                 
                 # Marcar como inactivo si se agotó el stock
                 if nuevo_stock == 0:
@@ -176,7 +184,7 @@ def salida_masiva(request):
                     'producto_nombre': lote_locked.producto.nombre,
                     'cantidad': cantidad,
                     'stock_anterior': stock_anterior,
-                    'stock_actual': nuevo_stock
+                    'stock_actual': max(0, nuevo_stock)  # ISS-FIX: Nunca mostrar stock negativo
                 })
         
         logger.info(
@@ -285,6 +293,192 @@ def hoja_entrega_pdf(request, grupo_salida):
         return Response({
             'error': True,
             'message': f'Error al generar PDF: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def confirmar_entrega(request, grupo_salida):
+    """
+    Confirma la entrega física de una salida masiva.
+    Esto marca los movimientos como finalizados agregando [CONFIRMADO] al motivo.
+    
+    Args:
+        grupo_salida: ID del grupo de salida (ej: SAL-1229-0917-1)
+    
+    Returns:
+        - 200: Entrega confirmada exitosamente
+        - 404: Grupo de salida no encontrado
+        - 400: Ya estaba confirmado
+    """
+    try:
+        # Buscar movimientos de este grupo
+        movimientos = Movimiento.objects.filter(
+            motivo__contains=f'[{grupo_salida}]'
+        )
+        
+        if not movimientos.exists():
+            return Response({
+                'error': True,
+                'message': 'No se encontraron movimientos para este grupo de salida'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Verificar si ya está confirmado
+        primer_mov = movimientos.first()
+        if '[CONFIRMADO]' in (primer_mov.motivo or ''):
+            return Response({
+                'error': True,
+                'message': 'Esta entrega ya fue confirmada anteriormente'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Marcar todos los movimientos como confirmados
+        with transaction.atomic():
+            for mov in movimientos:
+                if '[CONFIRMADO]' not in (mov.motivo or ''):
+                    mov.motivo = f'[CONFIRMADO] {mov.motivo or ""}'.strip()
+                    mov.save(update_fields=['motivo'])
+        
+        logger.info(
+            f'Entrega {grupo_salida} confirmada por {request.user.username}'
+        )
+        
+        return Response({
+            'success': True,
+            'message': 'Entrega confirmada exitosamente',
+            'grupo_salida': grupo_salida
+        })
+        
+    except Exception as e:
+        logger.error(f'Error confirmando entrega: {str(e)}')
+        return Response({
+            'error': True,
+            'message': f'Error al confirmar entrega: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def estado_entrega(request, grupo_salida):
+    """
+    Consulta el estado de una entrega (si está confirmada o no).
+    
+    Args:
+        grupo_salida: ID del grupo de salida
+    
+    Returns:
+        - confirmada: boolean
+        - fecha_confirmacion: datetime si está confirmada
+    """
+    try:
+        movimientos = Movimiento.objects.filter(
+            motivo__contains=f'[{grupo_salida}]'
+        )
+        
+        if not movimientos.exists():
+            return Response({
+                'error': True,
+                'message': 'Grupo de salida no encontrado'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        primer_mov = movimientos.first()
+        confirmada = '[CONFIRMADO]' in (primer_mov.motivo or '')
+        
+        return Response({
+            'grupo_salida': grupo_salida,
+            'confirmada': confirmada,
+            'total_items': movimientos.count()
+        })
+        
+    except Exception as e:
+        logger.error(f'Error consultando estado de entrega: {str(e)}')
+        return Response({
+            'error': True,
+            'message': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated, IsFarmaciaRole])
+def cancelar_salida(request, grupo_salida):
+    """
+    Cancela una salida masiva NO confirmada, devolviendo el stock a los lotes.
+    Solo se pueden cancelar salidas que NO han sido confirmadas.
+    
+    Args:
+        grupo_salida: ID del grupo de salida (ej: SAL-0102-1530-1)
+    
+    Returns:
+        - 200: Salida cancelada exitosamente, stock devuelto
+        - 400: Ya está confirmada, no se puede cancelar
+        - 404: Grupo de salida no encontrado
+    """
+    try:
+        # Buscar movimientos de este grupo
+        movimientos = Movimiento.objects.filter(
+            motivo__contains=f'[{grupo_salida}]'
+        ).select_related('lote')
+        
+        if not movimientos.exists():
+            return Response({
+                'error': True,
+                'message': 'No se encontraron movimientos para este grupo de salida'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Verificar si ya está confirmado
+        primer_mov = movimientos.first()
+        if '[CONFIRMADO]' in (primer_mov.motivo or ''):
+            return Response({
+                'error': True,
+                'message': 'No se puede cancelar una entrega que ya fue confirmada'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        items_devueltos = []
+        
+        with transaction.atomic():
+            for mov in movimientos:
+                if mov.lote:
+                    # Bloquear lote para actualización atómica
+                    lote_locked = Lote.objects.select_for_update().get(pk=mov.lote.pk)
+                    stock_anterior = lote_locked.cantidad_actual
+                    
+                    # Devolver el stock
+                    lote_locked.cantidad_actual += mov.cantidad
+                    
+                    # Reactivar lote si estaba inactivo
+                    if not lote_locked.activo:
+                        lote_locked.activo = True
+                        lote_locked.save(update_fields=['cantidad_actual', 'activo', 'updated_at'])
+                    else:
+                        lote_locked.save(update_fields=['cantidad_actual', 'updated_at'])
+                    
+                    items_devueltos.append({
+                        'lote_id': lote_locked.id,
+                        'numero_lote': lote_locked.numero_lote,
+                        'cantidad_devuelta': mov.cantidad,
+                        'stock_anterior': stock_anterior,
+                        'stock_actual': lote_locked.cantidad_actual
+                    })
+                
+                # Eliminar el movimiento
+                mov.delete()
+        
+        logger.info(
+            f'Salida masiva {grupo_salida} CANCELADA por {request.user.username}: '
+            f'{len(items_devueltos)} items devueltos al inventario'
+        )
+        
+        return Response({
+            'success': True,
+            'message': f'Salida cancelada. {len(items_devueltos)} productos devueltos al inventario.',
+            'grupo_salida': grupo_salida,
+            'items_devueltos': items_devueltos
+        })
+    
+    except Exception as e:
+        logger.error(f'Error cancelando salida masiva {grupo_salida}: {str(e)}')
+        return Response({
+            'error': True,
+            'message': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
