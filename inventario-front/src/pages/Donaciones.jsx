@@ -1393,7 +1393,7 @@ const Donaciones = () => {
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <FaSpinner className="animate-spin text-4xl text-gray-400" />
+            <FaSpinner className="animate-spin text-4xl text-theme-primary" />
           </div>
         ) : donaciones.length === 0 ? (
           <div className="text-center py-20 text-gray-500">
@@ -1624,7 +1624,7 @@ const Donaciones = () => {
           <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
             {loadingCatalogo ? (
               <div className="flex items-center justify-center py-20">
-                <FaSpinner className="animate-spin text-4xl text-gray-400" />
+                <FaSpinner className="animate-spin text-4xl text-theme-primary" />
               </div>
             ) : productosDonacion.length === 0 ? (
               <div className="text-center py-20 text-gray-500">
@@ -1820,7 +1820,7 @@ const Donaciones = () => {
           <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
             {loadingInventario ? (
               <div className="flex items-center justify-center py-20">
-                <FaSpinner className="animate-spin text-4xl text-gray-400" />
+                <FaSpinner className="animate-spin text-4xl text-theme-primary" />
               </div>
             ) : inventarioDonaciones.length === 0 ? (
               <div className="text-center py-20 text-gray-500">
@@ -1962,7 +1962,7 @@ const Donaciones = () => {
           <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
             {loadingEntregas ? (
               <div className="flex items-center justify-center py-20">
-                <FaSpinner className="animate-spin text-4xl text-gray-400" />
+                <FaSpinner className="animate-spin text-4xl text-theme-primary" />
               </div>
             ) : todasEntregas.length === 0 ? (
               <div className="text-center py-20 text-gray-500">
@@ -2821,7 +2821,7 @@ const Donaciones = () => {
             <div className="flex-1 overflow-y-auto p-6">
               {loadingSalidas ? (
                 <div className="flex items-center justify-center py-12">
-                  <FaSpinner className="animate-spin text-3xl text-gray-400" />
+                  <FaSpinner className="animate-spin text-3xl text-theme-primary" />
                 </div>
               ) : historialSalidas.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
