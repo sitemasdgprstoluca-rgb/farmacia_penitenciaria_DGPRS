@@ -445,9 +445,10 @@ code {
    ======================================== */
 
 /* Spinner institucional - usa color primario del tema */
-.spinner-theme {
+.spinner-theme,
+.spinner-institucional {
   border-color: color-mix(in srgb, var(--color-primary, #9F2241) 20%, transparent);
-  border-top-color: var(--color-primary, #9F2241);
+  border-top-color: var(--color-primary, #9F2241) !important;
 }
 
 /* Colores de texto del tema */
