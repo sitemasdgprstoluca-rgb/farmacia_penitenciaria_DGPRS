@@ -8371,12 +8371,25 @@ def reporte_movimientos(request):
         for item in datos:
             del item['fecha_raw']
         
+        # ISS-CONSISTENCY: Calcular métricas claramente diferenciadas
+        # - total_movimientos: conteo de registros individuales (productos dentro de transacciones)
+        # - total_entradas: SUMA de cantidades de entradas (unidades)
+        # - total_salidas: SUMA de cantidades de salidas (unidades)
+        # - count_entradas: CONTEO de registros tipo entrada
+        # - count_salidas: CONTEO de registros tipo salida
+        count_entradas = sum(1 for t in datos for _ in t.get('detalles', []) if t.get('tipo') == 'ENTRADA')
+        count_salidas = sum(1 for t in datos for _ in t.get('detalles', []) if t.get('tipo') == 'SALIDA')
+        
         resumen = {
             'total_transacciones': len(datos),
             'total_movimientos': sum(t['total_productos'] for t in datos),
-            'total_entradas': total_entradas,
-            'total_salidas': total_salidas,
-            'diferencia': total_entradas - total_salidas
+            # Unidades (suma de cantidades)
+            'total_entradas': total_entradas,  # Unidades de entrada
+            'total_salidas': total_salidas,    # Unidades de salida
+            'diferencia': total_entradas - total_salidas,
+            # Conteos de registros
+            'count_entradas': count_entradas,  # Número de registros de entrada
+            'count_salidas': count_salidas,    # Número de registros de salida
         }
         
         # Formato JSON

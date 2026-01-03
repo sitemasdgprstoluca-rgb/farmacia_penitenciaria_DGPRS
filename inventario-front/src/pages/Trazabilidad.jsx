@@ -963,7 +963,6 @@ const Trazabilidad = () => {
                     <option value="">Todos</option>
                     <option value="entrada">Entrada</option>
                     <option value="salida">Salida</option>
-                    <option value="ajuste">Ajuste</option>
                   </select>
                 </div>
                 {/* Botón de trazabilidad global (solo admin/farmacia) */}

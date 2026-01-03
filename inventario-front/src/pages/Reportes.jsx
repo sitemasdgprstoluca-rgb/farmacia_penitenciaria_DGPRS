@@ -32,6 +32,18 @@ const COLORS = {
   get vinoOscuro() { return getThemeColor('--color-primary-hover', '#6B1839'); },
 };
 
+// Helper para obtener el primer día del mes actual en formato YYYY-MM-DD
+const getFirstDayOfMonth = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+};
+
+// Helper para obtener la fecha actual en formato YYYY-MM-DD
+const getTodayDate = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
+
 const baseFilters = {
   tipo: "inventario",
   estado: "",
@@ -266,10 +278,50 @@ const Reportes = () => {
     cargarCatalogos();
   }, []);
 
+  // Estado para rastrear si es la primera carga de movimientos
+  const [movimientosInitialized, setMovimientosInitialized] = useState(false);
+
+  // Cuando cambia el tipo de reporte
   useEffect(() => {
+    // Resetear el estado de inicialización cuando cambia el tipo
+    if (filtros.tipo !== "movimientos") {
+      setMovimientosInitialized(false);
+      cargarReporte();
+      return;
+    }
+    
+    // Para movimientos, establecer por defecto el mes actual solo la primera vez
+    if (filtros.tipo === "movimientos" && !movimientosInitialized) {
+      setMovimientosInitialized(true);
+      // Siempre establecer fechas del mes actual para movimientos
+      const fechaInicioMes = getFirstDayOfMonth();
+      const fechaHoy = getTodayDate();
+      
+      setFiltros(prev => ({
+        ...prev,
+        fechaInicio: fechaInicioMes,
+        fechaFin: fechaHoy
+      }));
+      // No cargar aquí, el siguiente useEffect lo hará
+      return;
+    }
+    
     cargarReporte();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtros.tipo]);
+
+  // Recargar cuando cambian las fechas (para movimientos y requisiciones)
+  useEffect(() => {
+    if (filtros.tipo === "movimientos") {
+      // Para movimientos, siempre requerir fechas para evitar carga sin filtros
+      if (filtros.fechaInicio || filtros.fechaFin) {
+        cargarReporte();
+      }
+    } else if (filtros.tipo === "requisiciones") {
+      cargarReporte();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtros.fechaInicio, filtros.fechaFin]);
 
   const exportarExcel = async () => {
     setExporting(true);
@@ -524,15 +576,47 @@ const Reportes = () => {
     }
 
     if (filtros.tipo === 'movimientos') {
+      // Formatear las fechas para mostrar el período
+      const formatearFecha = (fecha) => {
+        if (!fecha) return null;
+        try {
+          return new Date(fecha + 'T00:00:00').toLocaleDateString('es-MX', { 
+            day: '2-digit', 
+            month: 'short', 
+            year: 'numeric' 
+          });
+        } catch {
+          return fecha;
+        }
+      };
+      
+      const fechaInicioStr = formatearFecha(filtros.fechaInicio);
+      const fechaFinStr = formatearFecha(filtros.fechaFin);
+      const periodoTexto = fechaInicioStr && fechaFinStr 
+        ? `${fechaInicioStr} - ${fechaFinStr}`
+        : fechaInicioStr 
+          ? `Desde ${fechaInicioStr}`
+          : fechaFinStr
+            ? `Hasta ${fechaFinStr}`
+            : 'Todo el historial';
+      
       return (
         <div className="p-4 bg-gradient-to-r from-gray-50 to-white border-t">
+          {/* Indicador de período */}
+          <div className="flex items-center justify-center mb-3">
+            <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full flex items-center gap-2">
+              <FaClock className="text-blue-600" />
+              Período: {periodoTexto}
+            </span>
+          </div>
           {/* Resumen general de transacciones */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-lg">
               <FaClipboardList className="text-2xl text-indigo-600" />
               <div>
                 <p className="text-xs text-indigo-600 font-semibold">Transacciones</p>
                 <p className="text-xl font-bold text-indigo-800">{resumen.total_transacciones || datos.length}</p>
+                <p className="text-[10px] text-indigo-500">grupos únicos</p>
               </div>
             </div>
             <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
@@ -540,27 +624,33 @@ const Reportes = () => {
               <div>
                 <p className="text-xs text-blue-600 font-semibold">Movimientos</p>
                 <p className="text-xl font-bold text-blue-800">{resumen.total_movimientos || 0}</p>
+                <p className="text-[10px] text-blue-500">registros</p>
               </div>
             </div>
             <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
               <span className="text-2xl">📥</span>
               <div>
-                <p className="text-xs text-green-600 font-semibold">Total Entradas</p>
+                <p className="text-xs text-green-600 font-semibold">Entradas</p>
                 <p className="text-xl font-bold text-green-800">{(resumen.total_entradas || 0).toLocaleString()}</p>
+                <p className="text-[10px] text-green-500">{resumen.count_entradas || 0} reg.</p>
               </div>
             </div>
             <div className="flex items-center gap-3 p-3 bg-red-50 rounded-lg">
               <span className="text-2xl">📤</span>
               <div>
-                <p className="text-xs text-red-600 font-semibold">Total Salidas</p>
+                <p className="text-xs text-red-600 font-semibold">Salidas</p>
                 <p className="text-xl font-bold text-red-800">{(resumen.total_salidas || 0).toLocaleString()}</p>
+                <p className="text-[10px] text-red-500">{resumen.count_salidas || 0} reg.</p>
               </div>
             </div>
             <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-lg">
               <FaDatabase className="text-2xl text-purple-600" />
               <div>
-                <p className="text-xs text-purple-600 font-semibold">Diferencia</p>
-                <p className="text-xl font-bold text-purple-800">{(resumen.diferencia || 0).toLocaleString()}</p>
+                <p className="text-xs text-purple-600 font-semibold">Balance</p>
+                <p className={`text-xl font-bold ${(resumen.diferencia || 0) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                  {(resumen.diferencia || 0) >= 0 ? '+' : ''}{(resumen.diferencia || 0).toLocaleString()}
+                </p>
+                <p className="text-[10px] text-purple-500">unidades</p>
               </div>
             </div>
           </div>
@@ -841,6 +931,46 @@ const Reportes = () => {
                   onChange={(e) => handleFiltro("fechaFin", e.target.value)}
                   className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
                 />
+              </div>
+              {/* Botones rápidos de período */}
+              <div className="space-y-1 col-span-full">
+                <label className="text-sm font-semibold text-gray-700">Período rápido</label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFiltros(prev => ({
+                        ...prev,
+                        fechaInicio: getFirstDayOfMonth(),
+                        fechaFin: getTodayDate()
+                      }));
+                    }}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                      filtros.fechaInicio === getFirstDayOfMonth() 
+                        ? 'bg-rose-600 text-white' 
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    📅 Este mes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFiltros(prev => ({
+                        ...prev,
+                        fechaInicio: "",
+                        fechaFin: ""
+                      }));
+                    }}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                      !filtros.fechaInicio && !filtros.fechaFin 
+                        ? 'bg-rose-600 text-white' 
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    🗓️ Todo el historial
+                  </button>
+                </div>
               </div>
             </>
           )}
