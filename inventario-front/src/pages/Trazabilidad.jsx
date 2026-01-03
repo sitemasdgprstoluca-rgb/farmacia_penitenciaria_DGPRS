@@ -177,7 +177,6 @@ const Trazabilidad = () => {
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
   const [tipoMovimiento, setTipoMovimiento] = useState('');
-  const [mostrarFiltros, setMostrarFiltros] = useState(false);
   
   // Autocompletado
   const [sugerencias, setSugerencias] = useState([]);
@@ -907,14 +906,6 @@ const Trazabilidad = () => {
               </button>
               <button
                 type="button"
-                onClick={() => setMostrarFiltros(!mostrarFiltros)}
-                className={`px-4 py-2 border rounded-lg hover:bg-gray-100 transition-all flex items-center gap-2 ${mostrarFiltros ? 'bg-blue-50 border-blue-300' : ''}`}
-                title="Mostrar filtros avanzados"
-              >
-                <FaFilter className={mostrarFiltros ? 'text-blue-600' : ''} />
-              </button>
-              <button
-                type="button"
                 onClick={limpiarBusqueda}
                 disabled={loading || exportingPdf || exportingExcel}
                 className="px-4 py-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
@@ -924,98 +915,122 @@ const Trazabilidad = () => {
             </div>
           </div>
 
-          {/* Filtros avanzados */}
-          {mostrarFiltros && (
-            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <FaCalendarAlt className="text-gray-500" />
-                Filtros de fecha y tipo
-              </div>
-              <div className="grid gap-4 md:grid-cols-4">
-                <div>
-                  <label className="block text-xs font-medium mb-1 text-gray-600">Fecha inicio</label>
-                  <input
-                    type="date"
-                    value={fechaInicio}
-                    onChange={(e) => setFechaInicio(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
-                    disabled={loading}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1 text-gray-600">Fecha fin</label>
-                  <input
-                    type="date"
-                    value={fechaFin}
-                    onChange={(e) => setFechaFin(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
-                    disabled={loading}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1 text-gray-600">Tipo movimiento</label>
-                  <select
-                    value={tipoMovimiento}
-                    onChange={(e) => setTipoMovimiento(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
-                    disabled={loading}
-                  >
-                    <option value="">Todos</option>
-                    <option value="entrada">Entrada</option>
-                    <option value="salida">Salida</option>
-                  </select>
-                </div>
-                {/* Botón de trazabilidad global (solo admin/farmacia) */}
-                {esAdminOFarmacia && (
-                  <div className="flex items-end">
-                    <button
-                      type="button"
-                      onClick={buscarGlobal}
-                      disabled={loading}
-                      className="w-full bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all"
-                      title="Ver trazabilidad de todos los lotes"
-                    >
-                      <FaGlobe />
-                      Reporte Global
-                    </button>
-                  </div>
-                )}
+          {/* Filtros de fecha y tipo - SIEMPRE VISIBLES */}
+          <div className="bg-gradient-to-r from-gray-50 to-blue-50 p-4 rounded-xl border border-gray-200">
+            <div className="flex flex-wrap items-end gap-4">
+              {/* Fecha inicio */}
+              <div className="flex-1 min-w-[140px]">
+                <label className="block text-xs font-semibold mb-1.5 text-gray-600">
+                  <FaCalendarAlt className="inline mr-1 text-blue-500" />
+                  Fecha inicio
+                </label>
+                <input
+                  type="date"
+                  value={fechaInicio}
+                  onChange={(e) => setFechaInicio(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                  disabled={loading}
+                />
               </div>
               
-              {/* Botón especial de Control de Inventarios (formato licitación) */}
+              {/* Fecha fin */}
+              <div className="flex-1 min-w-[140px]">
+                <label className="block text-xs font-semibold mb-1.5 text-gray-600">
+                  <FaCalendarAlt className="inline mr-1 text-blue-500" />
+                  Fecha fin
+                </label>
+                <input
+                  type="date"
+                  value={fechaFin}
+                  onChange={(e) => setFechaFin(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                  disabled={loading}
+                />
+              </div>
+              
+              {/* Tipo movimiento */}
+              <div className="flex-1 min-w-[140px]">
+                <label className="block text-xs font-semibold mb-1.5 text-gray-600">
+                  <FaFilter className="inline mr-1 text-purple-500" />
+                  Tipo movimiento
+                </label>
+                <select
+                  value={tipoMovimiento}
+                  onChange={(e) => setTipoMovimiento(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                  disabled={loading}
+                >
+                  <option value="">Todos</option>
+                  <option value="entrada">📥 Entrada</option>
+                  <option value="salida">📤 Salida</option>
+                </select>
+              </div>
+              
+              {/* Botón Reporte Global */}
               {esAdminOFarmacia && (
-                <div className="pt-3 border-t border-gray-200">
+                <div className="flex-shrink-0">
                   <button
                     type="button"
-                    onClick={handleExportarControlInventarios}
-                    disabled={exportingControl || loading}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                    style={{ background: 'linear-gradient(135deg, #047857 0%, #065f46 100%)' }}
-                    title="Exportar Control de Inventarios del Almacén Central (Formato Licitación)"
+                    onClick={buscarGlobal}
+                    disabled={loading}
+                    className="bg-gradient-to-r from-purple-600 to-purple-700 text-white px-5 py-2 rounded-lg hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg"
+                    title="Ver trazabilidad de todos los lotes"
                   >
-                    {exportingControl ? (
-                      <>
-                        <FaSpinner className="animate-spin" />
-                        Generando...
-                      </>
-                    ) : (
-                      <>
-                        <FaClipboardList />
-                        📊 Exportar Control de Inventarios (Formato Licitación)
-                      </>
-                    )}
+                    <FaGlobe />
+                    Reporte Global
                   </button>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Genera el Excel con el formato oficial de &quot;Control de Inventarios del Almacén Central de Medicamentos&quot;
-                  </p>
                 </div>
               )}
-              
-              {(fechaInicio || fechaFin || tipoMovimiento) && (
-                <p className="text-xs text-blue-600 font-medium">
-                  ℹ️ Los filtros de fecha se aplicarán a la búsqueda y las exportaciones
+            </div>
+            
+            {/* Indicador de filtros activos */}
+            {(fechaInicio || fechaFin || tipoMovimiento) && (
+              <div className="mt-3 pt-3 border-t border-gray-200 flex items-center justify-between">
+                <p className="text-xs text-blue-600 font-medium flex items-center gap-1">
+                  <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                  Filtros activos - se aplicarán a búsquedas y exportaciones
                 </p>
-              )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFechaInicio('');
+                    setFechaFin('');
+                    setTipoMovimiento('');
+                  }}
+                  className="text-xs text-gray-500 hover:text-red-600 flex items-center gap-1"
+                >
+                  <FaTimes className="text-[10px]" /> Limpiar filtros
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Botón Control de Inventarios */}
+          {esAdminOFarmacia && (
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleExportarControlInventarios}
+                disabled={exportingControl || loading}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 shadow-md"
+                style={{ background: 'linear-gradient(135deg, #047857 0%, #065f46 100%)' }}
+                title="Exportar Control de Inventarios del Almacén Central (Formato Licitación)"
+              >
+                {exportingControl ? (
+                  <>
+                    <FaSpinner className="animate-spin" />
+                    Generando...
+                  </>
+                ) : (
+                  <>
+                    <FaClipboardList />
+                    📊 Exportar Control de Inventarios (Formato Licitación)
+                  </>
+                )}
+              </button>
+              <span className="text-xs text-gray-500">
+                Genera el Excel con el formato oficial de &quot;Control de Inventarios del Almacén Central de Medicamentos&quot;
+              </span>
             </div>
           )}
 

@@ -196,10 +196,11 @@ const Reportes = () => {
     // Aplicar filtro de centro: usuarios no admin/farmacia forzados a su centro
     if (!esAdminOFarmacia && userCentroId) {
       params.centro = userCentroId;
-    } else if (filtros.centro) {
+    } else if (filtros.centro && filtros.centro !== '') {
+      // Centro específico seleccionado (ID numérico o 'central')
       params.centro = filtros.centro;
     } else {
-      // Cuando no hay filtro de centro seleccionado, enviar 'todos' para ver todo el inventario
+      // Sin selección = ver todos los centros
       params.centro = 'todos';
     }
     
@@ -213,8 +214,6 @@ const Reportes = () => {
       if (filtros.estado) params.estado = filtros.estado;
       if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
       if (filtros.fechaFin) params.fecha_fin = filtros.fechaFin;
-      // FIX: También aplicar filtro de centro para requisiciones
-      // (ya se aplica arriba en el bloque general)
     } else if (filtros.tipo === "movimientos") {
       if (filtros.tipoMovimiento) params.tipo = filtros.tipoMovimiento;
       if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
@@ -278,50 +277,40 @@ const Reportes = () => {
     cargarCatalogos();
   }, []);
 
-  // Estado para rastrear si es la primera carga de movimientos
-  const [movimientosInitialized, setMovimientosInitialized] = useState(false);
+  // Estado para rastrear si ya se cargó el reporte inicial
+  const [reporteInicialCargado, setReporteInicialCargado] = useState(false);
 
-  // Cuando cambia el tipo de reporte
+  // Cargar reporte inicial al montar el componente
   useEffect(() => {
-    // Resetear el estado de inicialización cuando cambia el tipo
-    if (filtros.tipo !== "movimientos") {
-      setMovimientosInitialized(false);
+    if (!reporteInicialCargado) {
+      setReporteInicialCargado(true);
       cargarReporte();
-      return;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reporteInicialCargado]);
+
+  // Cuando cambia el tipo de reporte, resetear fechas según el tipo y cargar
+  const handleTipoChange = (nuevoTipo) => {
+    let nuevosFiltros = { ...filtros, tipo: nuevoTipo };
+    
+    // Para movimientos, establecer fechas del mes actual por defecto
+    if (nuevoTipo === "movimientos") {
+      nuevosFiltros.fechaInicio = getFirstDayOfMonth();
+      nuevosFiltros.fechaFin = getTodayDate();
+    } else {
+      // Para otros tipos, limpiar fechas
+      nuevosFiltros.fechaInicio = "";
+      nuevosFiltros.fechaFin = "";
     }
     
-    // Para movimientos, establecer por defecto el mes actual solo la primera vez
-    if (filtros.tipo === "movimientos" && !movimientosInitialized) {
-      setMovimientosInitialized(true);
-      // Siempre establecer fechas del mes actual para movimientos
-      const fechaInicioMes = getFirstDayOfMonth();
-      const fechaHoy = getTodayDate();
-      
-      setFiltros(prev => ({
-        ...prev,
-        fechaInicio: fechaInicioMes,
-        fechaFin: fechaHoy
-      }));
-      // No cargar aquí, el siguiente useEffect lo hará
-      return;
-    }
-    
+    setFiltros(nuevosFiltros);
+    // No cargar automáticamente - el usuario debe dar clic en "Aplicar Filtros"
+  };
+
+  // Función para aplicar filtros manualmente (botón)
+  const aplicarFiltros = () => {
     cargarReporte();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtros.tipo]);
-
-  // Recargar cuando cambian las fechas (para movimientos y requisiciones)
-  useEffect(() => {
-    if (filtros.tipo === "movimientos") {
-      // Para movimientos, siempre requerir fechas para evitar carga sin filtros
-      if (filtros.fechaInicio || filtros.fechaFin) {
-        cargarReporte();
-      }
-    } else if (filtros.tipo === "requisiciones") {
-      cargarReporte();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtros.fechaInicio, filtros.fechaFin]);
+  };
 
   const exportarExcel = async () => {
     setExporting(true);
@@ -699,7 +688,7 @@ const Reportes = () => {
             <label className="text-sm font-semibold text-gray-700">Tipo de reporte</label>
             <select
               value={filtros.tipo}
-              onChange={(e) => handleFiltro("tipo", e.target.value)}
+              onChange={(e) => handleTipoChange(e.target.value)}
               className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
             >
               <option value="inventario">📦 Inventario</option>
