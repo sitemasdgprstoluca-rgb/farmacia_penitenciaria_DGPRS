@@ -2646,6 +2646,47 @@ class DonacionViewSet(viewsets.ModelViewSet):
         donacion = serializer.save(recibido_por=self.request.user)
         logger.info(f"Donacion {donacion.numero} creada por {self.request.user.username}")
     
+    def destroy(self, request, *args, **kwargs):
+        """
+        Eliminar una donación completa.
+        Solo se pueden eliminar donaciones que:
+        - NO estén procesadas (ya tienen stock activo)
+        - NO tengan entregas/salidas registradas
+        
+        Se eliminan en cascada los detalles asociados.
+        """
+        from core.models import SalidaDonacion
+        
+        donacion = self.get_object()
+        
+        # Verificar que no esté procesada
+        if donacion.estado == 'procesada':
+            return Response(
+                {'error': 'No se puede eliminar una donación procesada. El stock ya está activo en el almacén.'},
+                status=status.HTTP_409_CONFLICT
+            )
+        
+        # Verificar que no tenga salidas registradas
+        salidas_count = SalidaDonacion.objects.filter(detalle_donacion__donacion=donacion).count()
+        if salidas_count > 0:
+            return Response(
+                {'error': f'No se puede eliminar: la donación tiene {salidas_count} entrega(s) registrada(s).'},
+                status=status.HTTP_409_CONFLICT
+            )
+        
+        try:
+            numero = donacion.numero
+            # Los detalles se eliminan en cascada por la FK on_delete=CASCADE
+            donacion.delete()
+            logger.info(f"Donacion {numero} eliminada por {request.user.username}")
+            return Response({'mensaje': f'Donación {numero} eliminada correctamente'}, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error eliminando donación {donacion.numero}: {e}")
+            return Response(
+                {'error': f'Error al eliminar: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
     @action(detail=True, methods=['post'], url_path='recibir')
     def recibir(self, request, pk=None):
         """Marcar una donacion como recibida."""
