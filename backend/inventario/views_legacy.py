@@ -8323,21 +8323,24 @@ def reporte_movimientos(request):
         
         # Agrupar movimientos por referencia/transacción
         transacciones = {}
-        total_entradas = 0
-        total_salidas = 0
-        count_entradas = 0
-        count_salidas = 0
         
-        # Tipos que restan stock (necesitan abs() porque cantidad puede ser negativa)
-        tipos_resta = ['salida', 'ajuste', 'ajuste_negativo', 'merma', 'caducidad', 'transferencia']
-        # Tipos que suman stock
-        tipos_suma = ['entrada', 'ajuste_positivo', 'devolucion']
+        # ISS-FIX: Contadores claros para el resumen
+        # - Por TRANSACCIÓN (referencia única): cuántas son entrada vs salida
+        # - Por CANTIDAD: suma de unidades entrada vs salida
+        trans_entradas = 0  # Transacciones tipo entrada
+        trans_salidas = 0   # Transacciones tipo salida
+        cant_entradas = 0   # Unidades de entrada
+        cant_salidas = 0    # Unidades de salida
         
         for mov in movimientos:
             tipo_mov = mov.tipo.lower()
-            # ISS-FIX: Usar abs() para TODOS los tipos que restan stock
-            amount = abs(mov.cantidad) if tipo_mov in tipos_resta else mov.cantidad
+            amount = abs(mov.cantidad)  # Siempre positivo para mostrar
             ref = mov.referencia or f"MOV-{mov.id}"
+            
+            # Clasificar tipo predominante de la transacción
+            # entrada, ajuste_positivo, devolucion = ENTRADA
+            # salida, ajuste, ajuste_negativo, merma, caducidad, transferencia = SALIDA
+            es_entrada = tipo_mov in ['entrada', 'ajuste_positivo', 'devolucion']
             
             if ref not in transacciones:
                 # Crear nueva transacción agrupada
@@ -8345,19 +8348,25 @@ def reporte_movimientos(request):
                     'referencia': ref,
                     'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M'),
                     'fecha_raw': mov.fecha,
-                    'tipo': mov.tipo.upper(),
+                    'tipo': 'ENTRADA' if es_entrada else 'SALIDA',
+                    'tipo_original': tipo_mov.upper(),
                     'centro_origen': mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central',
                     'centro_destino': mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central',
                     'total_productos': 0,
                     'total_cantidad': 0,
                     'observaciones': mov.motivo or '',
-                    'detalles': []
+                    'detalles': [],
+                    '_es_entrada': es_entrada  # Flag interno para contar
                 }
+                # Contar transacción
+                if es_entrada:
+                    trans_entradas += 1
+                else:
+                    trans_salidas += 1
             
             # Agregar detalle a la transacción con nombre del producto
             producto_info = 'N/A'
             if mov.lote and mov.lote.producto:
-                # Usar nombre del producto, o clave + descripción como fallback
                 nombre = mov.lote.producto.nombre or mov.lote.producto.descripcion or mov.lote.producto.clave
                 producto_info = f"{mov.lote.producto.clave} - {nombre[:50]}"
             
@@ -8369,39 +8378,37 @@ def reporte_movimientos(request):
             transacciones[ref]['total_productos'] += 1
             transacciones[ref]['total_cantidad'] += amount
             
-            # ISS-FIX: Clasificar por tipo de movimiento (tipos_suma/tipos_resta definidos arriba)
-            if tipo_mov in tipos_suma:
-                total_entradas += amount
-                count_entradas += 1
+            # Sumar cantidades según el tipo del movimiento individual
+            if es_entrada:
+                cant_entradas += amount
             else:
-                total_salidas += amount
-                count_salidas += 1
+                cant_salidas += amount
         
         # Convertir a lista ordenada por fecha
         datos = list(transacciones.values())
         datos.sort(key=lambda x: x['fecha_raw'], reverse=True)
         
-        # Limpiar fecha_raw antes de enviar
+        # Limpiar campos internos antes de enviar
         for item in datos:
             del item['fecha_raw']
+            del item['_es_entrada']
         
-        # ISS-CONSISTENCY: Métricas calculadas en el loop principal
-        # - total_movimientos: conteo de registros individuales
-        # - total_entradas: SUMA de cantidades de entradas (unidades)
-        # - total_salidas: SUMA de cantidades de salidas (unidades)
-        # - count_entradas: CONTEO de registros tipo entrada (calculado arriba)
-        # - count_salidas: CONTEO de registros tipo salida (calculado arriba)
+        # ISS-FIX: Resumen con métricas claras y consistentes
+        # - Transacciones: grupos únicos por referencia
+        # - Movimientos: suma de productos en todas las transacciones
+        # - Entradas/Salidas por transacción: cuántas transacciones son de cada tipo
+        # - Entradas/Salidas por cantidad: suma de unidades
         
         resumen = {
             'total_transacciones': len(datos),
             'total_movimientos': sum(t['total_productos'] for t in datos),
-            # Unidades (suma de cantidades)
-            'total_entradas': total_entradas,  # Unidades de entrada
-            'total_salidas': total_salidas,    # Unidades de salida
-            'diferencia': total_entradas - total_salidas,
-            # Conteos de registros (calculados en el loop)
-            'count_entradas': count_entradas,  # Número de registros de entrada
-            'count_salidas': count_salidas,    # Número de registros de salida
+            # Por transacciones (cuántas son entrada vs salida)
+            'trans_entradas': trans_entradas,
+            'trans_salidas': trans_salidas,
+            # Por unidades (suma de cantidades)
+            'total_entradas': cant_entradas,
+            'total_salidas': cant_salidas,
+            'diferencia': cant_entradas - cant_salidas,
         }
         
         # Formato JSON

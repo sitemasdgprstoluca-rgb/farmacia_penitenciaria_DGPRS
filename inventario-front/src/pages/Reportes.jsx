@@ -622,25 +622,25 @@ const Reportes = () => {
             <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
               <FaExchangeAlt className="text-2xl text-blue-600" />
               <div>
-                <p className="text-xs text-blue-600 font-semibold">Movimientos</p>
+                <p className="text-xs text-blue-600 font-semibold">Productos</p>
                 <p className="text-xl font-bold text-blue-800">{resumen.total_movimientos || 0}</p>
-                <p className="text-[10px] text-blue-500">registros</p>
+                <p className="text-[10px] text-blue-500">items movidos</p>
               </div>
             </div>
             <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
               <span className="text-2xl">📥</span>
               <div>
                 <p className="text-xs text-green-600 font-semibold">Entradas</p>
-                <p className="text-xl font-bold text-green-800">{(resumen.total_entradas || 0).toLocaleString()}</p>
-                <p className="text-[10px] text-green-500">{resumen.count_entradas || 0} reg.</p>
+                <p className="text-xl font-bold text-green-800">{(resumen.total_entradas || 0).toLocaleString()} uds</p>
+                <p className="text-[10px] text-green-500">{resumen.trans_entradas || 0} trans.</p>
               </div>
             </div>
             <div className="flex items-center gap-3 p-3 bg-red-50 rounded-lg">
               <span className="text-2xl">📤</span>
               <div>
                 <p className="text-xs text-red-600 font-semibold">Salidas</p>
-                <p className="text-xl font-bold text-red-800">{(resumen.total_salidas || 0).toLocaleString()}</p>
-                <p className="text-[10px] text-red-500">{resumen.count_salidas || 0} reg.</p>
+                <p className="text-xl font-bold text-red-800">{(resumen.total_salidas || 0).toLocaleString()} uds</p>
+                <p className="text-[10px] text-red-500">{resumen.trans_salidas || 0} trans.</p>
               </div>
             </div>
             <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-lg">
@@ -648,9 +648,9 @@ const Reportes = () => {
               <div>
                 <p className="text-xs text-purple-600 font-semibold">Balance</p>
                 <p className={`text-xl font-bold ${(resumen.diferencia || 0) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                  {(resumen.diferencia || 0) >= 0 ? '+' : ''}{(resumen.diferencia || 0).toLocaleString()}
+                  {(resumen.diferencia || 0) >= 0 ? '+' : ''}{(resumen.diferencia || 0).toLocaleString()} uds
                 </p>
-                <p className="text-[10px] text-purple-500">unidades</p>
+                <p className="text-[10px] text-purple-500">neto</p>
               </div>
             </div>
           </div>
