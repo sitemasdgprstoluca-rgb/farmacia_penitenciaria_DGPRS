@@ -75,15 +75,16 @@ const Movimientos = () => {
   const [lotesDisponibles, setLotesDisponibles] = useState([]);
 
   // Formulario de registro
-  // ISS-FIX: Movimientos simplificados - tipo FIJO a "salida", subtipo FIJO a "transferencia"
+  // ISS-FIX: Movimientos simplificados - tipo FIJO a "salida"
+  // Subtipo: "transferencia" para Farmacia/Admin, "consumo_interno" para Centro/Médico
   const [formData, setFormData] = useState({
     lote: "",
     tipo: "salida",  // FIJO: Solo salidas
     cantidad: "",
     centro: "",
     observaciones: "",
-    // Subtipo fijo a transferencia para salidas a centros
-    subtipo_salida: "transferencia",
+    // Subtipo depende del rol: transferencia para farmacia, consumo_interno para centro
+    subtipo_salida: puedeVerTodosCentros ? "transferencia" : "consumo_interno",
     numero_expediente: "",
   });
   const [productoFiltro, setProductoFiltro] = useState("");
@@ -119,19 +120,19 @@ const Movimientos = () => {
       }
       
       // ISS-FIX (lotes-central): Para Farmacia/Admin, cargar lotes de Farmacia Central
-      // Para usuarios de centro, cargar lotes de su centro
+      // Para usuarios de centro/médico, cargar lotes de su centro (los que farmacia les ha enviado)
       const lotesParams = { 
         page_size: 500, 
         ordering: "-fecha_caducidad", 
         activo: true,  // ISS-FIX: Solo lotes activos
-        con_stock: "con_stock",  // ISS-FIX: Solo lotes con stock > 0
+        con_stock: true,  // ISS-FIX: Solo lotes con stock > 0
       };
       
       // ISS-FIX: Farmacia/Admin ven lotes de farmacia central para transferencias
       if (puedeVerTodosCentros) {
         lotesParams.centro = "central";  // Farmacia central
-      } else if (!puedeVerTodosCentros && centroUsuario) {
-        // Usuario de centro ve sus propios lotes
+      } else if (centroUsuario) {
+        // Usuario de centro/médico ve lotes de su centro (los surtidos por farmacia)
         lotesParams.centro = centroUsuario;
       }
       
@@ -367,31 +368,49 @@ const Movimientos = () => {
       return;
     }
 
-    // Determinar centro final
+    // Determinar centro final - para usuarios de centro, se pone su propio centro como referencia
     const centroFinal = !puedeVerTodosCentros && centroUsuario 
       ? parseInt(centroUsuario) 
       : (formData.centro ? parseInt(formData.centro) : null);
+
+    // Validar centro para transferencias de farmacia
+    if (puedeVerTodosCentros && !centroFinal) {
+      toast.error("Debe seleccionar un centro destino");
+      return;
+    }
+
+    // Validar expediente para recetas
+    if (!puedeVerTodosCentros && formData.subtipo_salida === 'receta' && !formData.numero_expediente?.trim()) {
+      toast.error("Debe ingresar el número de expediente para recetas");
+      return;
+    }
 
     setSubmitting(true);
     try {
       const payload = {
         lote: parseInt(formData.lote),
-        tipo: "salida",  // FIJO: Solo salidas
+        tipo: "salida",
         cantidad: Number(formData.cantidad),
         centro: centroFinal,
         observaciones: formData.observaciones,
-        subtipo_salida: "transferencia",  // FIJO: transferencia a centro
+        // Subtipo según rol: transferencia para farmacia, lo que elija el centro para centro
+        subtipo_salida: puedeVerTodosCentros ? "transferencia" : formData.subtipo_salida,
       };
+      
+      // Agregar expediente si es receta
+      if (formData.subtipo_salida === 'receta' && formData.numero_expediente) {
+        payload.numero_expediente = formData.numero_expediente.trim();
+      }
       
       await movimientosAPI.create(payload);
       toast.success("Salida registrada exitosamente");
       setFormData({
         lote: "",
-        tipo: "salida",  // FIJO: Solo salidas
+        tipo: "salida",
         cantidad: "",
         centro: "",
         observaciones: "",
-        subtipo_salida: "transferencia",  // FIJO: transferencia
+        subtipo_salida: puedeVerTodosCentros ? "transferencia" : "consumo_interno",
         numero_expediente: "",
       });
       setProductoFiltro("");
@@ -647,28 +666,8 @@ const Movimientos = () => {
             <div>
               <h1 className="text-2xl font-bold">Movimientos de Inventario</h1>
               <p className="text-white/80 text-sm">
-                {hayFiltrosActivos ? 'Filtrados:' : 'Total:'} {total} movimientos 
-                {filtrosAplicados.fecha_inicio || filtrosAplicados.fecha_fin ? (
-                  <span className="ml-2">
-                    ({filtrosAplicados.fecha_inicio || '∞'} - {filtrosAplicados.fecha_fin || 'hoy'})
-                  </span>
-                ) : null}
+                {hayFiltrosActivos ? 'Filtrados:' : 'Total:'} {total} movimientos
               </p>
-            </div>
-          </div>
-          {/* Stats resumen compacto */}
-          <div className="hidden sm:flex items-center gap-4 text-sm">
-            <div className="text-center px-3 py-1 bg-white/10 rounded-lg">
-              <span className="text-green-300 font-bold">+{stats.entradas}</span>
-              <span className="text-white/70 ml-1">entradas</span>
-            </div>
-            <div className="text-center px-3 py-1 bg-white/10 rounded-lg">
-              <span className="text-red-300 font-bold">-{stats.salidas}</span>
-              <span className="text-white/70 ml-1">salidas</span>
-            </div>
-            <div className={`text-center px-3 py-1 rounded-lg ${stats.balance >= 0 ? 'bg-green-500/30' : 'bg-red-500/30'}`}>
-              <span className="font-bold">{stats.balance >= 0 ? '+' : ''}{stats.balance}</span>
-              <span className="text-white/70 ml-1">balance</span>
             </div>
           </div>
           {hayFiltrosActivos && (
@@ -812,7 +811,14 @@ const Movimientos = () => {
                   ))}
                 </select>
                 {lotesDisponibles.length === 0 && (
-                  <p className="text-xs text-orange-600">No hay lotes disponibles</p>
+                  <div className="text-xs p-2 bg-orange-50 border border-orange-200 rounded">
+                    <p className="text-orange-700 font-medium">No hay lotes disponibles</p>
+                    {!puedeVerTodosCentros && (
+                      <p className="text-orange-600 mt-1">
+                        El inventario de tu centro está vacío. Contacta a Farmacia Central para solicitar surtimiento.
+                      </p>
+                    )}
+                  </div>
                 )}
                 {/* ISS-MEDICO FIX v2: Mostrar stock disponible del lote seleccionado */}
                 {formData.lote && (() => {
@@ -841,36 +847,73 @@ const Movimientos = () => {
               {/* Tipo FIJO: Salida - Solo informativo */}
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-700">Tipo de Movimiento</label>
-                <div className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 font-medium">
-                  <FaTruck className="inline mr-2 text-blue-600" />
-                  Salida / Transferencia a Centro
-                </div>
-                <p className="text-xs text-gray-500">
-                  Las salidas desde Almacén Central se registran como transferencias a centros penitenciarios.
-                </p>
+                {puedeVerTodosCentros ? (
+                  <>
+                    <div className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 font-medium">
+                      <FaTruck className="inline mr-2 text-blue-600" />
+                      Salida / Transferencia a Centro
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Las salidas desde Almacén Central se registran como transferencias a centros penitenciarios.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <select
+                      value={formData.subtipo_salida}
+                      onChange={(e) => handleFormChange("subtipo_salida", e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required
+                    >
+                      <option value="consumo_interno">🏥 Consumo interno</option>
+                      <option value="receta">💊 Dispensación por receta</option>
+                      <option value="merma">📉 Merma / Pérdida</option>
+                      <option value="caducidad">⏰ Caducidad</option>
+                    </select>
+                    <p className="text-xs text-gray-500">
+                      Selecciona el motivo de la salida de inventario.
+                    </p>
+                  </>
+                )}
               </div>
 
-              {/* Centro destino OBLIGATORIO */}
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">Centro Destino <span className="text-red-500">*</span></label>
-                <select
-                  value={!puedeVerTodosCentros && centroUsuario ? centroUsuario.toString() : formData.centro}
-                  onChange={(e) => handleFormChange("centro", e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                  disabled={!puedeVerTodosCentros}
-                  required
-                >
-                  <option value="">-- Seleccione centro destino --</option>
-                  {centros.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nombre}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-500">
-                  Seleccione el centro penitenciario al que se transferirá el medicamento.
-                </p>
-              </div>
+              {/* Centro destino - Solo para Farmacia/Admin */}
+              {puedeVerTodosCentros && (
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700">Centro Destino <span className="text-red-500">*</span></label>
+                  <select
+                    value={formData.centro}
+                    onChange={(e) => handleFormChange("centro", e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    <option value="">-- Seleccione centro destino --</option>
+                    {centros.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500">
+                    Seleccione el centro penitenciario al que se transferirá el medicamento.
+                  </p>
+                </div>
+              )}
+
+              {/* Número de expediente - Solo para recetas */}
+              {!puedeVerTodosCentros && formData.subtipo_salida === 'receta' && (
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700">No. Expediente <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={formData.numero_expediente}
+                    onChange={(e) => handleFormChange("numero_expediente", e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Número de expediente del paciente"
+                    required
+                  />
+                </div>
+              )}
 
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-700">Cantidad *</label>
@@ -1116,15 +1159,15 @@ const Movimientos = () => {
               )}
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-sm">
+              <table className="w-full text-sm table-fixed">
                 <thead className="bg-theme-gradient sticky top-0 z-10">
                   <tr>
-                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Producto</th>
-                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Tipo</th>
-                    <th className="px-2 py-3 text-right text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Cant.</th>
-                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Centro</th>
-                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Fecha</th>
-                    <th className="px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Acciones</th>
+                    <th className="w-[30%] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">Producto</th>
+                    <th className="w-[15%] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">Tipo</th>
+                    <th className="w-[10%] px-2 py-3 text-right text-xs font-semibold uppercase tracking-wider text-white">Cant.</th>
+                    <th className="w-[20%] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">Centro</th>
+                    <th className="w-[15%] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">Fecha</th>
+                    <th className="w-[10%] px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white">Acc.</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-100">
@@ -1537,14 +1580,6 @@ const Movimientos = () => {
                   )}
                 </tbody>
               </table>
-            </div>
-            {/* Stats en mobile (visible solo en pantallas pequeñas) */}
-            <div className="sm:hidden px-6 py-3 border-t border-gray-200 flex justify-center gap-4 text-sm">
-              <span className="text-green-600 font-semibold">+{stats.entradas}</span>
-              <span className="text-red-600 font-semibold">-{stats.salidas}</span>
-              <span className={`font-bold ${stats.balance >= 0 ? "text-green-700" : "text-red-700"}`}>
-                = {stats.balance >= 0 ? "+" : ""}{stats.balance}
-              </span>
             </div>
           </div>
         </div>

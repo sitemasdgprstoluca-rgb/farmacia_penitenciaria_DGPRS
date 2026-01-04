@@ -183,9 +183,9 @@ class LoteViewSet(viewsets.ModelViewSet):
         
         # Filtrar por existencia de stock (con_stock/sin_stock)
         con_stock = self.request.query_params.get('con_stock')
-        if con_stock == 'con_stock':
+        if con_stock in ['con_stock', 'true', '1', True]:
             queryset = queryset.filter(cantidad_actual__gt=0)
-        elif con_stock == 'sin_stock':
+        elif con_stock in ['sin_stock', 'false', '0', False]:
             queryset = queryset.filter(cantidad_actual=0)
         
         # Filtrar solo lotes disponibles (no vencidos) para el catalogo
