@@ -8341,6 +8341,18 @@ def reporte_movimientos(request):
             # Clasificar tipo: entrada, ajuste_positivo, devolucion = ENTRADA, resto = SALIDA
             es_entrada = tipo_mov in ['entrada', 'ajuste_positivo', 'devolucion']
             
+            # Formatear subtipo de salida
+            subtipo_display = ''
+            if mov.subtipo_salida:
+                subtipos_label = {
+                    'receta': 'Receta Médica',
+                    'consumo_interno': 'Consumo Interno',
+                    'merma': 'Merma',
+                    'caducidad': 'Caducidad',
+                    'transferencia': 'Transferencia',
+                }
+                subtipo_display = subtipos_label.get(mov.subtipo_salida.lower(), mov.subtipo_salida.title())
+            
             if ref not in transacciones:
                 # Crear nueva transacción agrupada
                 transacciones[ref] = {
@@ -8349,6 +8361,9 @@ def reporte_movimientos(request):
                     'fecha_raw': mov.fecha,
                     'tipo': 'ENTRADA' if es_entrada else 'SALIDA',
                     'tipo_original': tipo_mov.upper(),
+                    'subtipo_salida': mov.subtipo_salida or '',
+                    'subtipo_display': subtipo_display,
+                    'numero_expediente': mov.numero_expediente or '',
                     'centro_origen': mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central',
                     'centro_destino': mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central',
                     'total_productos': 0,
@@ -8367,7 +8382,9 @@ def reporte_movimientos(request):
             transacciones[ref]['detalles'].append({
                 'producto': producto_info,
                 'lote': mov.lote.numero_lote if mov.lote else 'N/A',
-                'cantidad': amount
+                'cantidad': amount,
+                'subtipo_salida': mov.subtipo_salida or '',
+                'numero_expediente': mov.numero_expediente or '',
             })
             transacciones[ref]['total_productos'] += 1
             transacciones[ref]['total_cantidad'] += amount
@@ -8445,8 +8462,8 @@ def reporte_movimientos(request):
             ws = wb.active
             ws.title = 'Transacciones'
             
-            # Titulo
-            ws.merge_cells('A1:H1')
+            # Titulo - actualizado para 10 columnas
+            ws.merge_cells('A1:J1')
             titulo_cell = ws['A1']
             titulo_cell.value = 'REPORTE DE MOVIMIENTOS - TRANSACCIONES'
             titulo_cell.font = Font(bold=True, size=14, color='632842')
@@ -8461,7 +8478,7 @@ def reporte_movimientos(request):
             if tipo:
                 filtros_text.append(f'Tipo: {tipo}')
             
-            ws.merge_cells('A2:H2')
+            ws.merge_cells('A2:J2')
             filtros_cell = ws['A2']
             filtros_cell.value = ' | '.join(filtros_text) if filtros_text else 'Sin filtros'
             filtros_cell.font = Font(size=10, italic=True)
@@ -8477,8 +8494,8 @@ def reporte_movimientos(request):
             
             ws.append([])  # Linea en blanco
             
-            # Encabezados de transacciones
-            headers = ['#', 'Referencia', 'Fecha', 'Tipo', 'Centro Origen', 'Centro Destino', 'Productos', 'Cantidad Total']
+            # Encabezados de transacciones - Agregado Subtipo y No. Expediente
+            headers = ['#', 'Referencia', 'Fecha', 'Tipo', 'Subtipo', 'Centro Origen', 'Centro Destino', 'No. Expediente', 'Productos', 'Cantidad Total']
             ws.append(headers)
             
             # Estilo encabezados
@@ -8490,15 +8507,17 @@ def reporte_movimientos(request):
                 cell.font = header_font
                 cell.alignment = Alignment(horizontal='center', vertical='center')
             
-            # Datos de transacciones
+            # Datos de transacciones - Agregado subtipo_display y numero_expediente
             for idx, trans in enumerate(datos, 1):
                 ws.append([
                     idx,
                     trans['referencia'],
                     trans['fecha'],
                     trans['tipo'],
+                    trans.get('subtipo_display', ''),
                     trans['centro_origen'],
                     trans['centro_destino'],
+                    trans.get('numero_expediente', ''),
                     trans['total_productos'],
                     trans['total_cantidad']
                 ])
@@ -8513,28 +8532,30 @@ def reporte_movimientos(request):
                     tipo_cell.fill = PatternFill(start_color='F8D7DA', end_color='F8D7DA', fill_type='solid')
                     tipo_cell.font = Font(color='721C24', bold=True)
             
-            # Ajustar anchos
+            # Ajustar anchos - actualizado para 10 columnas (agregado Subtipo y Expediente)
             ws.column_dimensions['A'].width = 6
-            ws.column_dimensions['B'].width = 25
-            ws.column_dimensions['C'].width = 18
-            ws.column_dimensions['D'].width = 12
-            ws.column_dimensions['E'].width = 22
-            ws.column_dimensions['F'].width = 22
-            ws.column_dimensions['G'].width = 12
-            ws.column_dimensions['H'].width = 15
+            ws.column_dimensions['B'].width = 22
+            ws.column_dimensions['C'].width = 16
+            ws.column_dimensions['D'].width = 10
+            ws.column_dimensions['E'].width = 14
+            ws.column_dimensions['F'].width = 20
+            ws.column_dimensions['G'].width = 20
+            ws.column_dimensions['H'].width = 14
+            ws.column_dimensions['I'].width = 10
+            ws.column_dimensions['J'].width = 14
             
             # === HOJA 2: DETALLE DE PRODUCTOS ===
             ws2 = wb.create_sheet('Detalle Productos')
             
-            ws2.merge_cells('A1:F1')
+            ws2.merge_cells('A1:H1')
             ws2['A1'].value = 'DETALLE DE PRODUCTOS POR TRANSACCIÓN'
             ws2['A1'].font = Font(bold=True, size=14, color='632842')
             ws2['A1'].alignment = Alignment(horizontal='center')
             
             ws2.append([])
             
-            # Encabezados detalle
-            detail_headers = ['Referencia', 'Tipo', '#', 'Producto', 'Lote', 'Cantidad']
+            # Encabezados detalle - Agregado Subtipo y No. Expediente
+            detail_headers = ['Referencia', 'Tipo', '#', 'Producto', 'Lote', 'Cantidad', 'Subtipo', 'No. Expediente']
             ws2.append(detail_headers)
             
             for cell in ws2[3]:
@@ -8551,16 +8572,20 @@ def reporte_movimientos(request):
                         det_idx,
                         det['producto'],
                         det['lote'],
-                        det['cantidad']
+                        det['cantidad'],
+                        det.get('subtipo_salida', ''),
+                        det.get('numero_expediente', ''),
                     ])
             
-            # Ajustar anchos
-            ws2.column_dimensions['A'].width = 25
-            ws2.column_dimensions['B'].width = 12
+            # Ajustar anchos - actualizado para 8 columnas
+            ws2.column_dimensions['A'].width = 22
+            ws2.column_dimensions['B'].width = 10
             ws2.column_dimensions['C'].width = 6
-            ws2.column_dimensions['D'].width = 50
-            ws2.column_dimensions['E'].width = 18
-            ws2.column_dimensions['F'].width = 12
+            ws2.column_dimensions['D'].width = 45
+            ws2.column_dimensions['E'].width = 16
+            ws2.column_dimensions['F'].width = 10
+            ws2.column_dimensions['G'].width = 14
+            ws2.column_dimensions['H'].width = 14
             
             response = HttpResponse(
                 content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

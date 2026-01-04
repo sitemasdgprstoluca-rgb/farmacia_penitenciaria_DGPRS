@@ -585,18 +585,18 @@ class MovimientoViewSet(
             ws.title = 'Movimientos'
             
             # TÃ­tulo - Con columnas de centro origen y destino
-            ws.merge_cells('A1:J1')
+            ws.merge_cells('A1:L1')
             ws['A1'] = 'REPORTE DE MOVIMIENTOS'
             ws['A1'].font = Font(bold=True, size=14, color='632842')
             ws['A1'].alignment = Alignment(horizontal='center')
             
             # Fecha
-            ws.merge_cells('A2:J2')
+            ws.merge_cells('A2:L2')
             ws['A2'] = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")}'
             ws['A2'].alignment = Alignment(horizontal='center')
             
-            # Encabezados - Con Centro Origen y Centro Destino
-            headers = ['#', 'Fecha', 'Tipo', 'Producto', 'Lote', 'Cantidad', 'Centro Origen', 'Centro Destino', 'Usuario', 'Observaciones']
+            # Encabezados - Con Centro Origen, Centro Destino, Subtipo y Expediente
+            headers = ['#', 'Fecha', 'Tipo', 'Subtipo', 'Producto', 'Lote', 'Cantidad', 'Centro Origen', 'Centro Destino', 'No. Expediente', 'Usuario', 'Observaciones']
             ws.append([])
             ws.append(headers)
             
@@ -607,27 +607,42 @@ class MovimientoViewSet(
                 cell.font = header_font
                 cell.alignment = Alignment(horizontal='center')
             
-            # Datos - Con centro origen y destino separados
+            # Datos - Con centro origen, destino, subtipo_salida y numero_expediente
             for idx, mov in enumerate(movimientos, 1):
                 # ISS-FIX: Usar nombre o descripcion, manejar None correctamente
                 producto_nombre = ''
                 if mov.lote and mov.lote.producto:
                     producto_nombre = (mov.lote.producto.nombre or mov.lote.producto.descripcion or '')[:50]
+                
+                # Formatear subtipo de salida para mostrar
+                subtipo_display = ''
+                if mov.subtipo_salida:
+                    subtipos_label = {
+                        'receta': 'Receta Médica',
+                        'consumo_interno': 'Consumo Interno',
+                        'merma': 'Merma',
+                        'caducidad': 'Caducidad',
+                        'transferencia': 'Transferencia',
+                    }
+                    subtipo_display = subtipos_label.get(mov.subtipo_salida.lower(), mov.subtipo_salida.title())
+                
                 ws.append([
                     idx,
                     mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
                     mov.tipo.upper(),
+                    subtipo_display,
                     producto_nombre or 'N/A',
                     mov.lote.numero_lote if mov.lote else 'N/A',
                     mov.cantidad,
                     mov.centro_origen.nombre if mov.centro_origen else 'Almacén Central',
                     mov.centro_destino.nombre if mov.centro_destino else 'Almacén Central',
+                    mov.numero_expediente or '',
                     mov.usuario.get_full_name() or mov.usuario.username if mov.usuario else 'Sistema',
                     (mov.motivo or '')[:100],
                 ])
             
-            # Ajustar anchos - actualizado para 10 columnas
-            column_widths = [8, 18, 12, 45, 15, 10, 22, 22, 20, 30]
+            # Ajustar anchos - actualizado para 12 columnas (agregado Subtipo y Expediente)
+            column_widths = [6, 16, 10, 16, 40, 14, 10, 20, 20, 14, 18, 28]
             for i, width in enumerate(column_widths, 1):
                 ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
             
