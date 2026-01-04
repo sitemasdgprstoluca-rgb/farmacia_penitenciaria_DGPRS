@@ -225,7 +225,8 @@ export const checkApiHealth = async (options = {}) => {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       if (attempt > 0) {
-        console.info(`[API] Health check reintento ${attempt}/${maxRetries}...`);
+        // Silenciado para no confundir usuarios - solo en desarrollo
+        if (isDev) console.debug(`[API] Health check reintento ${attempt}/${maxRetries}...`);
         await sleep(HEALTH_RETRY_DELAY * attempt); // Backoff exponencial simple
       }
       
@@ -270,7 +271,8 @@ export const checkApiHealth = async (options = {}) => {
       const isNetworkError = error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK';
       
       if ((isTimeout || isNetworkError) && attempt < maxRetries) {
-        console.warn(`[API] Health check timeout/error en intento ${attempt + 1}, reintentando...`);
+        // Silenciado para no confundir usuarios - solo en desarrollo
+        if (isDev) console.debug(`[API] Health check timeout/error en intento ${attempt + 1}, reintentando...`);
         continue;
       }
       
@@ -292,7 +294,8 @@ export const checkApiHealth = async (options = {}) => {
         ? 'No se puede conectar al servidor'
         : lastError?.message || 'Error de conexión';
   
-  console.warn('[API] Health check falló después de reintentos:', errorMsg, status ? `(${status})` : '');
+  // Silenciado para no confundir usuarios - solo en desarrollo
+  if (isDev) console.debug('[API] Health check falló después de reintentos:', errorMsg, status ? `(${status})` : '');
   
   return {
     healthy: false,
@@ -512,9 +515,9 @@ apiClient.interceptors.response.use(
         ? RETRY_CONFIG.retryDelay * Math.pow(2, retryCount)
         : RETRY_CONFIG.retryDelay;
       
-      // Mostrar mensaje al usuario cuando hay reintentos por cold start
-      if (retryCount === 0 && isNetworkError) {
-        console.info('[API] El servidor está iniciando, esperando respuesta...');
+      // Silenciado para no confundir usuarios - solo en desarrollo
+      if (retryCount === 0 && isNetworkError && isDev) {
+        console.debug('[API] El servidor está iniciando, esperando respuesta...');
       }
       
       // HALLAZGO #5: Solo loguear en desarrollo para evitar fuga de información

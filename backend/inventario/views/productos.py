@@ -381,6 +381,10 @@ class ProductoViewSet(viewsets.ModelViewSet):
             # Ordenar por fecha de caducidad
             lotes = lotes.order_by('fecha_caducidad')
             
+            # Calcular totales
+            total_lotes = lotes.count()
+            total_stock = sum(l.cantidad_actual for l in lotes)
+            
             # Serializar
             serializer = LoteSerializer(lotes, many=True)
             
@@ -388,8 +392,16 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 'producto_id': producto.id,
                 'producto_nombre': producto.nombre,
                 'producto_clave': producto.clave,
+                'producto': {
+                    'id': producto.id,
+                    'clave': producto.clave,
+                    'nombre': producto.nombre,
+                    'unidad_medida': producto.unidad_medida,
+                },
                 'lotes': serializer.data,
-                'total': lotes.count()
+                'total': total_lotes,
+                'total_lotes': total_lotes,
+                'total_stock': total_stock,
             })
             
         except Producto.DoesNotExist:

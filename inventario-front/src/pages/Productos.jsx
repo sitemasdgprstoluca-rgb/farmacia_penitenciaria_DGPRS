@@ -2536,8 +2536,8 @@ const Productos = () => {
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-sm font-semibold">{lotesModalData?.total_lotes || 0} lotes</p>
-                <p className="text-xs text-white/80">Stock total: {lotesModalData?.total_stock || 0} {lotesModalData?.producto?.unidad_medida}</p>
+                <p className="text-sm font-semibold">{lotesModalData?.total_lotes || lotesModalData?.lotes?.length || 0} lotes</p>
+                <p className="text-xs text-white/80">Inventario total: {lotesModalData?.total_stock || 0}</p>
               </div>
             </div>
             <div className="overflow-y-auto max-h-[60vh]">
