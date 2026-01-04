@@ -164,15 +164,67 @@ export function RequisicionHistorial({
                       </div>
                     )}
                     
-                    {/* Datos adicionales */}
+                    {/* Datos adicionales - Formato amigable */}
                     {evento.datos_adicionales && Object.keys(evento.datos_adicionales).length > 0 && (
                       <details className="mt-2">
                         <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600">
-                          Ver detalles técnicos
+                          Ver detalles adicionales
                         </summary>
-                        <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-auto">
-                          {JSON.stringify(evento.datos_adicionales, null, 2)}
-                        </pre>
+                        <div className="mt-2 p-3 bg-gray-50 rounded text-xs space-y-2">
+                          {/* Renderizar datos de forma amigable */}
+                          {Object.entries(evento.datos_adicionales).map(([key, value]) => {
+                            // Excluir campos técnicos internos que no aportan al usuario
+                            const camposExcluidos = ['hash_verificacion', 'ip_address', 'user_agent', 'updated_at'];
+                            if (camposExcluidos.includes(key)) return null;
+                            
+                            // Mapeo de nombres de campos a etiquetas amigables
+                            const etiquetasAmigables = {
+                              'estado_nuevo': 'Estado asignado',
+                              'estado_anterior': 'Estado previo',
+                              'cantidad_autorizada': 'Cantidad autorizada',
+                              'cantidad_solicitada': 'Cantidad solicitada',
+                              'cantidad_surtida': 'Cantidad surtida',
+                              'motivo': 'Motivo',
+                              'observaciones': 'Observaciones',
+                              'fecha_recoleccion_limite': 'Fecha límite recolección',
+                              'productos_ajustados': 'Productos con ajuste',
+                              'total_autorizado': 'Total autorizado',
+                              'total_surtido': 'Total surtido',
+                            };
+                            
+                            const etiqueta = etiquetasAmigables[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                            
+                            // Formatear el valor según su tipo
+                            let valorFormateado = value;
+                            if (value === null || value === undefined) {
+                              valorFormateado = '-';
+                            } else if (typeof value === 'boolean') {
+                              valorFormateado = value ? 'Sí' : 'No';
+                            } else if (typeof value === 'object') {
+                              valorFormateado = JSON.stringify(value, null, 2);
+                            } else if (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}T/)) {
+                              // Formatear fechas ISO
+                              try {
+                                valorFormateado = new Date(value).toLocaleString('es-MX', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                });
+                              } catch {
+                                valorFormateado = value;
+                              }
+                            }
+                            
+                            return (
+                              <div key={key} className="flex justify-between gap-4 py-1 border-b border-gray-100 last:border-0">
+                                <span className="text-gray-500 font-medium">{etiqueta}:</span>
+                                <span className="text-gray-700 text-right">{valorFormateado}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </details>
                     )}
                   </div>

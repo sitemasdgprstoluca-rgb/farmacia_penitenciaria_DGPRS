@@ -1098,7 +1098,7 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
     producto_descripcion = serializers.CharField(source='producto.nombre', read_only=True)  # Alias de producto_nombre
     lote_caducidad = serializers.DateField(source='lote.fecha_caducidad', read_only=True, allow_null=True)
     lote_stock = serializers.IntegerField(source='lote.cantidad_actual', read_only=True, allow_null=True)
-    stock_disponible = serializers.IntegerField(source='lote.cantidad_actual', read_only=True, allow_null=True)
+    stock_disponible = serializers.SerializerMethodField()  # ISS-FIX: Usar método para calcular stock real
     # cantidad_surtida tiene default 0 en BD
     cantidad_surtida = serializers.IntegerField(required=False, default=0, allow_null=True)
     # MEJORA FLUJO 3: Campo para explicar ajustes de cantidad
@@ -1126,6 +1126,29 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
         if value <= 0:
             raise serializers.ValidationError('La cantidad debe ser mayor a 0')
         return value
+    
+    def get_stock_disponible(self, obj):
+        """
+        ISS-FIX: Calcula el stock disponible priorizando:
+        1. Stock del lote asignado si existe
+        2. Stock total del producto en farmacia central si no hay lote
+        """
+        # Si hay lote asignado, usar su cantidad_actual
+        if obj.lote and obj.lote.cantidad_actual is not None:
+            return obj.lote.cantidad_actual
+        
+        # Si no hay lote, calcular stock total del producto en farmacia central
+        if obj.producto:
+            # Stock total de lotes activos del producto (en farmacia = sin centro)
+            from django.db.models import Sum
+            stock_total = obj.producto.lotes.filter(
+                activo=True,
+                cantidad_actual__gt=0,
+                centro__isnull=True  # Lotes de farmacia central
+            ).aggregate(total=Sum('cantidad_actual'))['total']
+            return stock_total or 0
+        
+        return 0
     
     def validate(self, data):
         """
