@@ -1111,7 +1111,7 @@ const handleImportar = async (e) => {
           <table className="w-full min-w-[1200px] divide-y divide-gray-200">
             <thead className="bg-theme-gradient sticky top-0 z-10">
             <tr>
-              {['#', 'Producto', 'Presentación', 'Número Lote', 'Marca / Laboratorio', 'Caducidad', 'Días', 'Alerta', 'Stock', 'Acciones'].map((col) => (
+              {['#', 'Producto', 'Presentación', 'Número Lote', 'Marca / Laboratorio', 'Caducidad', 'Días', 'Alerta', 'Inventario', 'Acciones'].map((col) => (
                 <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   {col}
                 </th>

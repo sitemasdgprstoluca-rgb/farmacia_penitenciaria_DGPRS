@@ -50,14 +50,15 @@ class MovimientosConsistencyTests(TestCase):
             resumen = data.get('resumen', {})
             
             # Verificar campos obligatorios del resumen
+            # ISS-FIX: Actualizados los nombres de campos para coincidir con el backend
             campos_obligatorios = [
                 'total_transacciones',  # Número de transacciones agrupadas
-                'total_movimientos',    # Total de registros (productos dentro de transacciones)
+                'total_movimientos',    # Total de registros (productos/movimientos)
                 'total_entradas',       # SUMA de cantidades de entrada (unidades)
                 'total_salidas',        # SUMA de cantidades de salida (unidades)
                 'diferencia',           # Balance (entradas - salidas)
-                'count_entradas',       # CONTEO de registros tipo entrada
-                'count_salidas',        # CONTEO de registros tipo salida
+                'trans_entradas',       # CONTEO de transacciones tipo entrada
+                'trans_salidas',        # CONTEO de transacciones tipo salida
             ]
             
             for campo in campos_obligatorios:
@@ -69,8 +70,8 @@ class MovimientosConsistencyTests(TestCase):
     
     def test_diferencia_count_vs_total(self):
         """
-        Verificar que count_* y total_* son métricas diferentes.
-        - count_entradas: número de registros
+        Verificar que trans_* (transacciones) y total_* (unidades) son métricas diferentes.
+        - trans_entradas: número de transacciones tipo entrada
         - total_entradas: suma de cantidades (unidades)
         """
         response = self.client.get('/api/reportes/movimientos/')
@@ -79,15 +80,15 @@ class MovimientosConsistencyTests(TestCase):
             data = response.json()
             resumen = data.get('resumen', {})
             
-            # Pueden ser iguales en casos específicos, pero deben existir ambos
-            count_entradas = resumen.get('count_entradas', None)
+            # ISS-FIX: Actualizados nombres de campos
+            trans_entradas = resumen.get('trans_entradas', None)
             total_entradas = resumen.get('total_entradas', None)
-            count_salidas = resumen.get('count_salidas', None)
+            trans_salidas = resumen.get('trans_salidas', None)
             total_salidas = resumen.get('total_salidas', None)
             
-            self.assertIsNotNone(count_entradas, "count_entradas debe estar presente")
+            self.assertIsNotNone(trans_entradas, "trans_entradas debe estar presente")
             self.assertIsNotNone(total_entradas, "total_entradas debe estar presente")
-            self.assertIsNotNone(count_salidas, "count_salidas debe estar presente")
+            self.assertIsNotNone(trans_salidas, "trans_salidas debe estar presente")
             self.assertIsNotNone(total_salidas, "total_salidas debe estar presente")
     
     def test_filtro_por_fechas_funciona(self):

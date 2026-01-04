@@ -8333,6 +8333,12 @@ def reporte_movimientos(request):
         # Agrupar movimientos por referencia/transacción
         transacciones = {}
         
+        # ISS-FIX: Contadores globales para el resumen (por movimiento individual, no por transacción)
+        total_unidades_entrada = 0
+        total_unidades_salida = 0
+        total_movs_entrada = 0
+        total_movs_salida = 0
+        
         for mov in movimientos:
             tipo_mov = mov.tipo.lower()
             amount = abs(mov.cantidad)  # Siempre positivo para mostrar
@@ -8340,6 +8346,14 @@ def reporte_movimientos(request):
             
             # Clasificar tipo: entrada, ajuste_positivo, devolucion = ENTRADA, resto = SALIDA
             es_entrada = tipo_mov in ['entrada', 'ajuste_positivo', 'devolucion']
+            
+            # ISS-FIX: Acumular métricas por cada movimiento individual
+            if es_entrada:
+                total_unidades_entrada += amount
+                total_movs_entrada += 1
+            else:
+                total_unidades_salida += amount
+                total_movs_salida += 1
             
             # Formatear subtipo de salida
             subtipo_display = ''
@@ -8385,6 +8399,7 @@ def reporte_movimientos(request):
                 'cantidad': amount,
                 'subtipo_salida': mov.subtipo_salida or '',
                 'numero_expediente': mov.numero_expediente or '',
+                'tipo_mov': 'ENTRADA' if es_entrada else 'SALIDA',  # ISS-FIX: tipo del movimiento individual
             })
             transacciones[ref]['total_productos'] += 1
             transacciones[ref]['total_cantidad'] += amount
@@ -8393,34 +8408,25 @@ def reporte_movimientos(request):
         datos = list(transacciones.values())
         datos.sort(key=lambda x: x['fecha_raw'], reverse=True)
         
-        # Calcular resumen basado en transacciones (lo que ve el usuario en la tabla)
-        trans_entradas = 0
-        trans_salidas = 0
-        cant_entradas = 0
-        cant_salidas = 0
-        
-        for t in datos:
-            tipo_t = t['_tipo_transaccion']
-            if tipo_t == 'ENTRADA':
-                trans_entradas += 1
-                cant_entradas += t['total_cantidad']
-            else:
-                trans_salidas += 1
-                cant_salidas += t['total_cantidad']
+        # ISS-FIX: Contar transacciones por tipo (basado en el primer movimiento de cada grupo)
+        trans_entradas = sum(1 for t in datos if t['_tipo_transaccion'] == 'ENTRADA')
+        trans_salidas = sum(1 for t in datos if t['_tipo_transaccion'] == 'SALIDA')
         
         # Limpiar campos internos antes de enviar
         for item in datos:
             del item['fecha_raw']
             del item['_tipo_transaccion']
         
+        # ISS-FIX: El resumen usa los contadores calculados por MOVIMIENTO INDIVIDUAL
+        # NO por tipo de transacción, para que los totales cuadren con la suma de la tabla
         resumen = {
             'total_transacciones': len(datos),
-            'total_movimientos': sum(t['total_productos'] for t in datos),
-            'trans_entradas': trans_entradas,
-            'trans_salidas': trans_salidas,
-            'total_entradas': cant_entradas,
-            'total_salidas': cant_salidas,
-            'diferencia': cant_entradas - cant_salidas,
+            'total_movimientos': total_movs_entrada + total_movs_salida,
+            'trans_entradas': trans_entradas,  # Transacciones tipo entrada
+            'trans_salidas': trans_salidas,    # Transacciones tipo salida
+            'total_entradas': total_unidades_entrada,  # Unidades de entrada (suma de cantidades)
+            'total_salidas': total_unidades_salida,    # Unidades de salida (suma de cantidades)
+            'diferencia': total_unidades_entrada - total_unidades_salida,
         }
         
         # Formato JSON

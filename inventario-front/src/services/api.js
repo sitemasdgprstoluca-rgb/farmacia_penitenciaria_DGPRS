@@ -656,7 +656,8 @@ apiClient.interceptors.response.use(
     } else if (!error.response) {
       toastDebounce.error('Error al conectar con el servidor.');
     } else if (status >= 500) {
-      toastDebounce.error('Error interno del servidor.');
+      // ISS-FIX: No mostrar errores 500 al usuario, solo loguear en consola
+      console.error('[API] Error interno del servidor:', status, serverMessage || error.message);
     }
     return Promise.reject(error);
   }

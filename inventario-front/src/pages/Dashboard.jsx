@@ -791,7 +791,7 @@ const Dashboard = () => {
       onClick: () => permisos?.verProductos && navigate('/productos'),
     },
     {
-      title: 'Stock Total',
+      title: 'Inventario Total',
       value: kpis.stock_total || 0,
       subtext: selectedCentro ? `En ${centroNombre || 'centro'}` : 'Unidades en inventario',
       icon: FaCubes,
@@ -1234,7 +1234,7 @@ const Dashboard = () => {
                               className="w-3 h-3 rounded-full" 
                               style={{ backgroundColor: 'var(--color-primary, #9F2241)' }}
                             />
-                            <span className="text-gray-600 text-sm">Stock:</span>
+                            <span className="text-gray-600 text-sm">Inventario:</span>
                             <span className="font-bold text-gray-900">
                               {data.stock?.toLocaleString('es-MX')} uds
                             </span>
@@ -1245,7 +1245,7 @@ const Dashboard = () => {
                   />
                   <Bar 
                     dataKey="stock" 
-                    name="Stock"
+                    name="Inventario"
                     radius={[0, 8, 8, 0]}
                     fill="var(--color-primary, #9F2241)"
                   />
@@ -1254,7 +1254,7 @@ const Dashboard = () => {
             ) : (
               <div className="flex flex-col items-center justify-center h-64 text-gray-400">
                 <FaWarehouse className="text-4xl mb-3 opacity-50" />
-                <p>No hay datos de stock por centro</p>
+                <p>No hay datos de inventario por centro</p>
               </div>
             )}
           </ChartCard>
