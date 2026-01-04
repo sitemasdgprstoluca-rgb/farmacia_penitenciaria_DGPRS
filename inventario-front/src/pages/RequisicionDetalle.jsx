@@ -467,8 +467,14 @@ const RequisicionDetalle = () => {
         const rolActual = (user?.rol_efectivo || user?.rol || '').toLowerCase();
         const esRolMedicoCentro = ['medico', 'centro', 'usuario_centro'].includes(rolActual);
         
-        // Médico/Centro en estado surtida/entregada: descargar hoja de CONSULTA con sello
-        if (esRolMedicoCentro && !esFarmacia && ['surtida', 'entregada'].includes(estadoActual)) {
+        // FLUJO V2: En estado ENTREGADA todos descargan comprobante de entrega
+        if (estadoActual === 'entregada') {
+          response = await requisicionesAPI.downloadHojaConsulta(id);
+          nombreArchivo = `Comprobante_Entrega_${requisicion.folio}.pdf`;
+          toast.success('Comprobante de entrega descargado');
+        }
+        // Médico/Centro en estado surtida: descargar hoja de CONSULTA con sello SURTIDA
+        else if (esRolMedicoCentro && !esFarmacia && estadoActual === 'surtida') {
           response = await requisicionesAPI.downloadHojaConsulta(id);
           nombreArchivo = `Consulta_Requisicion_${requisicion.folio}.pdf`;
           toast.success('Hoja de consulta descargada');
@@ -1018,15 +1024,16 @@ const RequisicionDetalle = () => {
           )}
 
           {/* Botón de descarga - Solo si tiene permiso y acceso por centro */}
+          {/* FLUJO V2: Texto diferente según estado */}
           {puedeDescargarHoja && (
             <div className="mt-4 flex justify-end">
               <button
                 onClick={() => handleDescargarPDF('aceptacion')}
                 disabled={procesando}
-                className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity bg-theme-primary"
+                className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity ${requisicion?.estado === 'entregada' ? 'bg-green-600' : 'bg-theme-primary'}`}
               >
                 <FaFileDownload />
-                Descargar PDF de Recolección
+                {requisicion?.estado === 'entregada' ? 'Comprobante de Entrega' : 'Descargar PDF de Recolección'}
               </button>
             </div>
           )}
@@ -1096,13 +1103,14 @@ const RequisicionDetalle = () => {
               />
 
               {/* Acciones adicionales que no están en el flujo V2 */}
+              {/* FLUJO V2: Botón con texto según estado */}
               {puedeDescargarHoja && (
                 <button
                   onClick={() => handleDescargarPDF('aceptacion')}
                   disabled={procesando}
-                  className="flex items-center gap-2 px-4 py-2 border text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors border-theme-primary text-theme-primary"
+                  className={`flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors ${requisicion?.estado === 'entregada' ? 'border-green-500 text-green-600' : 'border-theme-primary text-theme-primary'}`}
                 >
-                  <FaDownload /> Hoja de recolección
+                  <FaDownload /> {requisicion?.estado === 'entregada' ? 'Comprobante de entrega' : 'Hoja de recolección'}
                 </button>
               )}
 
