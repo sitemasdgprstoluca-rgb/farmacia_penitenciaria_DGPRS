@@ -99,24 +99,26 @@ class PruebasDonacionesMasivas:
         return headers
     
     def cargar_catalogos(self):
-        """Cargar productos y centros disponibles."""
+        """Cargar productos de donaciones y centros disponibles."""
         titulo("CARGA DE CATÁLOGOS")
         
-        # Cargar productos
+        # Cargar productos del CATÁLOGO DE DONACIONES (separado del inventario ordinario)
         try:
             response = requests.get(
-                f'{self.base_url}/api/productos/?page_size=50&activo=true',
+                f'{self.base_url}/api/productos-donacion/?page_size=50&activo=true',
                 headers=self.get_headers(),
                 timeout=10
             )
             if response.status_code == 200:
                 data = response.json()
                 self.productos_disponibles = data.get('results', data) if isinstance(data, dict) else data
-                ok(f"Productos cargados: {len(self.productos_disponibles)}")
+                ok(f"Productos de donaciones cargados: {len(self.productos_disponibles)}")
+                if len(self.productos_disponibles) == 0:
+                    warn("⚠ El catálogo de donaciones está vacío. Las pruebas de detalles serán limitadas.")
             else:
-                warn(f"No se pudieron cargar productos: {response.status_code}")
+                warn(f"No se pudieron cargar productos de donaciones: {response.status_code}")
         except Exception as e:
-            warn(f"Error cargando productos: {e}")
+            warn(f"Error cargando productos de donaciones: {e}")
         
         # Cargar centros
         try:
@@ -226,28 +228,30 @@ class PruebasDonacionesMasivas:
             return None
     
     def test_agregar_detalle(self, donacion_id):
-        """Test: Agregar detalle a una donación."""
+        """Test: Agregar detalle a una donación usando el catálogo de donaciones."""
         self.resultados['total'] += 1
         try:
             if not self.productos_disponibles:
-                warn("No hay productos disponibles, saltando test de detalles")
+                warn("No hay productos en el catálogo de donaciones, saltando test de detalles")
                 self.resultados['exitosos'] += 1
                 return None
             
             producto = random.choice(self.productos_disponibles)
             
+            # IMPORTANTE: Usar 'producto_donacion' (catálogo de donaciones)
+            # NO 'producto' (que es del inventario ordinario)
             data = {
                 'donacion': donacion_id,
-                'producto': producto.get('id'),
+                'producto_donacion': producto.get('id'),  # Catálogo de donaciones
                 'cantidad': random.randint(10, 100),
-                'lote': f'LOTE-TEST-{random.randint(1000, 9999)}',
+                'numero_lote': f'LOTE-DON-{random.randint(1000, 9999)}',
                 'fecha_caducidad': (datetime.now() + timedelta(days=random.randint(180, 720))).strftime('%Y-%m-%d'),
                 'estado_producto': random.choice(['bueno', 'regular']),
                 'notas': 'Detalle de prueba automatizada'
             }
             
             response = requests.post(
-                f'{self.base_url}/api/detalles-donacion/',
+                f'{self.base_url}/api/detalle-donaciones/',
                 json=data,
                 headers=self.get_headers(),
                 timeout=10

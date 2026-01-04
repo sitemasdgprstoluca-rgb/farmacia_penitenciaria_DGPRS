@@ -1,7 +1,16 @@
-.dashboard {
-  padding: 2rem;
-  animation: fadeIn 0.5s ease-in;
-}
+/**
+ * Dashboard Styles - Diseño Moderno y Sofisticado
+ * 
+ * Este archivo complementa los estilos de Tailwind del Dashboard.jsx
+ * con animaciones, efectos y estilos adicionales.
+ * 
+ * Todas las variables de color provienen del tema global:
+ * --color-primary, --color-success, --color-info, etc.
+ */
+
+/* ============================================================================
+   ANIMACIONES GLOBALES
+   ============================================================================ */
 
 @keyframes fadeIn {
   from {
@@ -14,278 +23,217 @@
   }
 }
 
-.dashboard-header {
-  margin-bottom: 2rem;
-}
-
-.dashboard-header h1 {
-  font-size: 2rem;
-  background: linear-gradient(135deg, var(--pantone-504c) 0%, var(--pantone-7420c) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  font-weight: 800;
-  margin: 0 0 0.5rem 0;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.dashboard-header p {
-  color: var(--text-secondary);
-  font-size: 1rem;
-  margin: 0;
-}
-
-.kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.kpi-card {
-  background: white;
-  border-radius: var(--radius-lg);
-  padding: 2rem;
-  box-shadow: var(--shadow-md);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  overflow: hidden;
-  border: 2px solid transparent;
-}
-
-.kpi-card:hover {
-  transform: translateY(-8px);
-  box-shadow: var(--shadow-lg);
-}
-
-.kpi-card.kpi-primary:hover {
-  border-color: var(--pantone-504c);
-}
-
-.kpi-card.kpi-success:hover {
-  border-color: #22c55e;
-}
-
-.kpi-card.kpi-info:hover {
-  border-color: #3b82f6;
-}
-
-.kpi-card.kpi-warning:hover {
-  border-color: #f59e0b;
-}
-
-.kpi-background {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 150px;
-  height: 150px;
-  border-radius: 50%;
-  opacity: 0.05;
-  transition: all 0.3s;
-}
-
-.kpi-card.kpi-primary .kpi-background {
-  background: linear-gradient(135deg, var(--pantone-504c) 0%, var(--pantone-7420c) 100%);
-}
-
-.kpi-card.kpi-success .kpi-background {
-  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
-}
-
-.kpi-card.kpi-info .kpi-background {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-}
-
-.kpi-card.kpi-warning .kpi-background {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-}
-
-.kpi-card:hover .kpi-background {
-  opacity: 0.1;
-  transform: scale(1.2);
-}
-
-.kpi-icon {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.75rem;
-  margin-bottom: 1rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  transition: all 0.3s;
-}
-
-.kpi-card:hover .kpi-icon {
-  transform: scale(1.1) rotate(5deg);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
-}
-
-.kpi-card.kpi-primary .kpi-icon {
-  background: linear-gradient(135deg, var(--pantone-504c) 0%, var(--pantone-7420c) 100%);
-  color: white;
-}
-
-.kpi-card.kpi-success .kpi-icon {
-  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
-  color: white;
-}
-
-.kpi-card.kpi-info .kpi-icon {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: white;
-}
-
-.kpi-card.kpi-warning .kpi-icon {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  color: white;
-}
-
-.kpi-content {
-  position: relative;
-  z-index: 1;
-}
-
-.kpi-value {
-  font-size: 2.5rem;
-  font-weight: 800;
-  background: linear-gradient(135deg, var(--pantone-504c) 0%, var(--pantone-7420c) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  margin-bottom: 0.5rem;
-  transition: all 0.3s;
-}
-
-.kpi-card:hover .kpi-value {
-  transform: scale(1.05);
-}
-
-.kpi-label {
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.totales-section {
-  background: white;
-  border-radius: var(--radius-lg);
-  padding: 2rem;
-  box-shadow: var(--shadow-md);
-  border-left: 4px solid var(--pantone-504c);
-  animation: slideInUp 0.6s ease-out;
-}
-
-@keyframes slideInUp {
+@keyframes slideInLeft {
   from {
     opacity: 0;
-    transform: translateY(30px);
+    transform: translateX(-30px);
   }
   to {
     opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
     transform: translateY(0);
   }
-}
-
-.totales-section h2 {
-  color: var(--pantone-504c);
-  font-size: 1.5rem;
-  margin: 0 0 1.5rem 0;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.table-container {
-  overflow-x: auto;
-  border-radius: var(--radius-md);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-}
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.table thead {
-  background: linear-gradient(135deg, var(--pantone-504c) 0%, var(--pantone-7420c) 100%);
-}
-
-.table thead th {
-  padding: 1rem;
-  text-align: left;
-  color: white;
-  font-weight: 700;
-  text-transform: uppercase;
-  font-size: 0.875rem;
-  letter-spacing: 0.5px;
-}
-
-.table tbody tr {
-  border-bottom: 1px solid var(--border-color);
-  transition: all 0.2s;
-}
-
-.table tbody tr:hover {
-  background: rgba(99, 40, 66, 0.03);
-  transform: scale(1.01);
-  box-shadow: 0 2px 8px rgba(99, 40, 66, 0.1);
-}
-
-.table tbody td {
-  padding: 1rem;
-  font-size: 0.875rem;
-}
-
-.numero-registro {
-  font-weight: 700;
-  color: var(--pantone-504c);
-  text-align: center;
-  background: linear-gradient(135deg, rgba(99, 40, 66, 0.05) 0%, rgba(147, 32, 67, 0.05) 100%);
-}
-
-.text-center {
-  text-align: center;
-  padding: 3rem !important;
-  color: var(--text-secondary);
-  font-style: italic;
-}
-
-.error-message {
-  text-align: center;
-  padding: 3rem;
-  background: white;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
-  color: var(--color-danger);
-  font-size: 1.25rem;
-}
-
-@media (max-width: 768px) {
-  .dashboard {
-    padding: 1rem;
+  50% {
+    transform: translateY(-5px);
   }
+}
 
-  .kpi-grid {
-    grid-template-columns: 1fr;
-    gap: 1rem;
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(var(--color-primary-rgb, 159, 34, 65), 0.3);
   }
-
-  .kpi-value {
-    font-size: 2rem;
+  50% {
+    box-shadow: 0 0 20px rgba(var(--color-primary-rgb, 159, 34, 65), 0.5);
   }
+}
 
-  .dashboard-header h1 {
-    font-size: 1.5rem;
+/* ============================================================================
+   CUSTOM SCROLLBAR - Scrollbar Elegante
+   ============================================================================ */
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    135deg,
+    var(--color-primary, #9F2241) 0%,
+    var(--color-primary-hover, #6B1839) 100%
+  );
+  border-radius: 10px;
+  transition: background 0.3s;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary-hover, #6B1839);
+}
+
+/* Firefox */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-primary, #9F2241) #f1f5f9;
+}
+
+/* ============================================================================
+   RECHARTS CUSTOMIZATION - Mejoras para gráficas
+   ============================================================================ */
+
+.recharts-wrapper {
+  font-family: inherit !important;
+}
+
+.recharts-cartesian-axis-tick-value {
+  font-size: 12px !important;
+  fill: #6B7280 !important;
+}
+
+.recharts-legend-item-text {
+  color: #374151 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+
+.recharts-tooltip-wrapper {
+  filter: drop-shadow(0 4px 20px rgba(0, 0, 0, 0.15));
+}
+
+.recharts-active-dot {
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.2));
+}
+
+.recharts-pie-sector {
+  transition: all 0.3s ease-out;
+}
+
+.recharts-pie-sector:hover {
+  filter: brightness(1.1);
+  transform-origin: center;
+}
+
+/* ============================================================================
+   RESPONSIVE UTILITIES - Ajustes responsivos adicionales
+   ============================================================================ */
+
+@media (max-width: 640px) {
+  .recharts-wrapper {
+    font-size: 10px;
   }
+  
+  .recharts-legend-wrapper {
+    display: none !important;
+  }
+}
 
-  .totales-section {
-    padding: 1rem;
+@media (max-width: 1024px) {
+  .recharts-cartesian-axis-tick-value {
+    font-size: 10px !important;
+  }
+}
+
+/* ============================================================================
+   SELECTION & FOCUS STATES - Estados de selección
+   ============================================================================ */
+
+::selection {
+  background-color: var(--color-primary-light, rgba(159, 34, 65, 0.2));
+  color: var(--color-primary, #9F2241);
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-primary, #9F2241);
+  outline-offset: 2px;
+}
+
+/* ============================================================================
+   GLASS MORPHISM EFFECT - Efecto de cristal
+   ============================================================================ */
+
+.glass-effect {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* ============================================================================
+   LOADING STATES - Estados de carga
+   ============================================================================ */
+
+.skeleton-loader {
+  background: linear-gradient(
+    90deg,
+    #f0f0f0 25%,
+    #e0e0e0 50%,
+    #f0f0f0 75%
+  );
+  background-size: 2000px 100%;
+  animation: shimmer 2s infinite linear;
+}
+
+/* ============================================================================
+   PRINT STYLES - Estilos de impresión
+   ============================================================================ */
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 }

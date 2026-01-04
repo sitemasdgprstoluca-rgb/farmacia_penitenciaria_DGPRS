@@ -70,6 +70,28 @@ const ESTADOS_PRODUCTO = [
   { value: 'malo', label: 'Malo' },
 ];
 
+// Semáforo de caducidad para productos en inventario de donaciones
+const getSemaforoCaducidad = (fechaCaducidad) => {
+  if (!fechaCaducidad) return { estado: 'sin_fecha', clase: 'bg-gray-100 text-gray-600', label: 'Sin fecha', icono: '❓' };
+  
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const fecha = new Date(fechaCaducidad);
+  fecha.setHours(0, 0, 0, 0);
+  
+  const diasRestantes = Math.ceil((fecha - hoy) / (1000 * 60 * 60 * 24));
+  
+  if (diasRestantes < 0) {
+    return { estado: 'vencido', clase: 'bg-red-100 text-red-800', label: 'VENCIDO', icono: '🔴', dias: diasRestantes };
+  } else if (diasRestantes <= 30) {
+    return { estado: 'critico', clase: 'bg-orange-100 text-orange-800', label: 'CRÍTICO', icono: '🟠', dias: diasRestantes };
+  } else if (diasRestantes <= 90) {
+    return { estado: 'proximo', clase: 'bg-yellow-100 text-yellow-800', label: 'PRÓXIMO', icono: '🟡', dias: diasRestantes };
+  } else {
+    return { estado: 'normal', clase: 'bg-green-100 text-green-800', label: 'VIGENTE', icono: '🟢', dias: diasRestantes };
+  }
+};
+
 const Donaciones = () => {
   const { getRolPrincipal, permisos, user, verificarPermiso } = usePermissions();
   const rolPrincipal = getRolPrincipal();
@@ -141,6 +163,12 @@ const Donaciones = () => {
   const [inventarioPage, setInventarioPage] = useState(1);
   const [inventarioTotalPages, setInventarioTotalPages] = useState(1);
   const [searchInventario, setSearchInventario] = useState('');
+  
+  // Filtros de inventario de donaciones
+  const [filtroEstadoProducto, setFiltroEstadoProducto] = useState('');
+  const [filtroCaducidadInv, setFiltroCaducidadInv] = useState(''); // '', 'vencido', 'critico', 'proximo', 'normal'
+  const [filtroDisponibilidad, setFiltroDisponibilidad] = useState('constock'); // 'todos', 'constock', 'agotado'
+  const [showFiltrosInventario, setShowFiltrosInventario] = useState(false);
   
   // Historial de Entregas (todas las salidas)
   const [todasEntregas, setTodasEntregas] = useState([]);
@@ -314,20 +342,46 @@ const Donaciones = () => {
       const params = {
         page: inventarioPage,
         page_size: PAGE_SIZE,
-        disponible: 'true', // Solo productos con stock > 0
       };
+      
+      // Filtro de disponibilidad
+      if (filtroDisponibilidad === 'constock') {
+        params.disponible = 'true';
+      } else if (filtroDisponibilidad === 'agotado') {
+        params.disponible = 'false';
+      }
+      // 'todos' no agrega filtro
+      
       if (searchInventario) params.search = searchInventario;
+      if (filtroEstadoProducto) params.estado_producto = filtroEstadoProducto;
 
       const response = await detallesDonacionAPI.getAll(params);
       const data = response.data;
 
-      if (data.results) {
-        setInventarioDonaciones(data.results);
-        setInventarioTotalPages(Math.ceil((data.count || 0) / PAGE_SIZE));
-      } else {
-        setInventarioDonaciones(data || []);
-        setInventarioTotalPages(1);
+      // Aplicar filtro de caducidad en frontend (más flexible)
+      let items = data.results || data || [];
+      
+      if (filtroCaducidadInv) {
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+        
+        items = items.filter(item => {
+          if (!item.fecha_caducidad) return filtroCaducidadInv === 'sin_fecha';
+          const fecha = new Date(item.fecha_caducidad);
+          const dias = Math.ceil((fecha - hoy) / (1000 * 60 * 60 * 24));
+          
+          switch (filtroCaducidadInv) {
+            case 'vencido': return dias < 0;
+            case 'critico': return dias >= 0 && dias <= 30;
+            case 'proximo': return dias > 30 && dias <= 90;
+            case 'normal': return dias > 90;
+            default: return true;
+          }
+        });
       }
+
+      setInventarioDonaciones(items);
+      setInventarioTotalPages(Math.ceil((data.count || items.length) / PAGE_SIZE));
 
       // Calcular estadísticas
       const allItems = data.results || data || [];
@@ -360,7 +414,7 @@ const Donaciones = () => {
     } finally {
       setLoadingInventario(false);
     }
-  }, [inventarioPage, searchInventario]);
+  }, [inventarioPage, searchInventario, filtroEstadoProducto, filtroCaducidadInv, filtroDisponibilidad]);
 
   // Cargar historial de todas las entregas
   const cargarTodasEntregas = useCallback(async () => {
@@ -1782,18 +1836,37 @@ const Donaciones = () => {
           {/* Barra de búsqueda inventario */}
           <div className="bg-white rounded-xl shadow-sm border p-4 mb-6">
             <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-              <div className="relative flex-1 max-w-md">
-                <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar producto en inventario de donaciones..."
-                  value={searchInventario}
-                  onChange={(e) => {
-                    setSearchInventario(e.target.value);
-                    setInventarioPage(1);
-                  }}
-                  className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
-                />
+              <div className="flex flex-1 items-center gap-3">
+                <div className="relative flex-1 max-w-md">
+                  <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar producto en inventario de donaciones..."
+                    value={searchInventario}
+                    onChange={(e) => {
+                      setSearchInventario(e.target.value);
+                      setInventarioPage(1);
+                    }}
+                    className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                  />
+                </div>
+                {/* Botón de filtros */}
+                <button
+                  onClick={() => setShowFiltrosInventario(!showFiltrosInventario)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                    showFiltrosInventario || filtroCaducidadInv || filtroEstadoProducto || filtroDisponibilidad !== 'constock'
+                      ? 'bg-theme-primary text-white border-theme-primary'
+                      : 'hover:bg-gray-50'
+                  }`}
+                >
+                  <FaFilter />
+                  Filtros
+                  {(filtroCaducidadInv || filtroEstadoProducto || filtroDisponibilidad !== 'constock') && (
+                    <span className="bg-white text-theme-primary text-xs font-bold px-1.5 rounded-full">
+                      {[filtroCaducidadInv, filtroEstadoProducto, filtroDisponibilidad !== 'constock' ? '1' : ''].filter(Boolean).length}
+                    </span>
+                  )}
+                </button>
               </div>
               <div className="flex items-center gap-2">
                 {/* Botón Entrega Masiva - Solo para admin/farmacia */}
@@ -1814,6 +1887,80 @@ const Donaciones = () => {
                 </button>
               </div>
             </div>
+
+            {/* Panel de filtros expandible */}
+            {showFiltrosInventario && (
+              <div className="mt-4 pt-4 border-t grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Filtro de caducidad */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Caducidad</label>
+                  <select
+                    value={filtroCaducidadInv}
+                    onChange={(e) => {
+                      setFiltroCaducidadInv(e.target.value);
+                      setInventarioPage(1);
+                    }}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                  >
+                    <option value="">Todos</option>
+                    <option value="vencido">🔴 Vencidos</option>
+                    <option value="critico">🟠 Crítico (≤30 días)</option>
+                    <option value="proximo">🟡 Próximo (31-90 días)</option>
+                    <option value="normal">🟢 Vigente (+90 días)</option>
+                  </select>
+                </div>
+
+                {/* Filtro de estado del producto */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Estado Producto</label>
+                  <select
+                    value={filtroEstadoProducto}
+                    onChange={(e) => {
+                      setFiltroEstadoProducto(e.target.value);
+                      setInventarioPage(1);
+                    }}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                  >
+                    <option value="">Todos</option>
+                    <option value="bueno">Bueno</option>
+                    <option value="regular">Regular</option>
+                    <option value="malo">Malo</option>
+                  </select>
+                </div>
+
+                {/* Filtro de disponibilidad */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Disponibilidad</label>
+                  <select
+                    value={filtroDisponibilidad}
+                    onChange={(e) => {
+                      setFiltroDisponibilidad(e.target.value);
+                      setInventarioPage(1);
+                    }}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                  >
+                    <option value="todos">Todos</option>
+                    <option value="constock">Con stock disponible</option>
+                    <option value="agotado">Agotados</option>
+                  </select>
+                </div>
+
+                {/* Botón limpiar filtros */}
+                <div className="md:col-span-3 flex justify-end">
+                  <button
+                    onClick={() => {
+                      setFiltroCaducidadInv('');
+                      setFiltroEstadoProducto('');
+                      setFiltroDisponibilidad('constock');
+                      setInventarioPage(1);
+                    }}
+                    className="text-sm text-gray-600 hover:text-gray-800 flex items-center gap-1"
+                  >
+                    <FaTimes className="text-xs" /> Limpiar filtros
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Tabla de inventario */}
@@ -1847,10 +1994,19 @@ const Donaciones = () => {
                   </thead>
                   <tbody className="divide-y">
                     {inventarioDonaciones.map((item) => {
+                      const semaforo = getSemaforoCaducidad(item.fecha_caducidad);
                       const esCritico = item.cantidad_disponible === 0;
-                      const porCaducar = item.fecha_caducidad && new Date(item.fecha_caducidad) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                      const rowBg = esCritico 
+                        ? 'bg-red-50' 
+                        : semaforo.estado === 'vencido' 
+                          ? 'bg-red-50' 
+                          : semaforo.estado === 'critico'
+                            ? 'bg-orange-50'
+                            : semaforo.estado === 'proximo'
+                              ? 'bg-yellow-50'
+                              : '';
                       return (
-                        <tr key={item.id} className={`hover:bg-gray-50 ${esCritico ? 'bg-red-50' : porCaducar ? 'bg-yellow-50' : ''}`}>
+                        <tr key={item.id} className={`hover:bg-gray-50 ${rowBg}`}>
                           <td className="px-4 py-3">
                             <span className="font-medium">{item.producto_codigo}</span>
                             <span className="block text-xs text-gray-500">{item.producto_nombre}</span>
@@ -1866,10 +2022,20 @@ const Donaciones = () => {
                             </span>
                           </td>
                           <td className="px-4 py-3">
-                            <span className={`text-sm ${porCaducar ? 'text-yellow-600 font-medium' : 'text-gray-600'}`}>
-                              {formatFecha(item.fecha_caducidad)}
-                              {porCaducar && <FaExclamationTriangle className="inline ml-1 text-yellow-500" />}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${semaforo.clase}`}>
+                                <span>{semaforo.icono}</span>
+                                <span>{semaforo.label}</span>
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {formatFecha(item.fecha_caducidad)}
+                              </span>
+                            </div>
+                            {semaforo.dias !== undefined && semaforo.dias >= 0 && semaforo.dias <= 90 && (
+                              <span className="text-xs text-gray-400 block">
+                                {semaforo.dias} días restantes
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3 capitalize text-sm text-gray-600">{item.estado_producto}</td>
                           {puede.procesar && (

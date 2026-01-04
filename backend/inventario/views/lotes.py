@@ -586,18 +586,18 @@ class LoteViewSet(viewsets.ModelViewSet):
             ws = wb.active
             ws.title = 'Lotes'
 
-            ws.merge_cells('A1:L1')
+            ws.merge_cells('A1:N1')
             ws['A1'] = 'REPORTE DE LOTES - SISTEMA DE INVENTARIO FARMACEUTICO PENITENCIARIO'
             ws['A1'].font = Font(bold=True, size=14, color='632842')
             ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
 
             ws.append([])
-            # ISS-DB: Headers alineados con esquema real de Supabase
+            # Headers alineados con esquema real - incluye nombre_comercial, sin ubicacion
             headers = [
-                '#', 'Clave', 'Nombre Producto', 'Número Lote',
+                '#', 'Clave', 'Nombre Producto', 'Nombre Comercial', 'Número Lote',
                 'Fecha Fabricación', 'Fecha Caducidad',
                 'Cantidad Inicial', 'Cantidad Actual',
-                'Precio Unitario', 'Número Contrato', 'Marca', 'Ubicación',
+                'Precio Unitario', 'Número Contrato', 'Marca',
                 'Centro', 'Activo'
             ]
             ws.append(headers)
@@ -613,6 +613,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                     idx,
                     getattr(lote.producto, 'clave', '') or '',
                     getattr(lote.producto, 'nombre', '') or '',
+                    getattr(lote.producto, 'nombre_comercial', '') or '',
                     lote.numero_lote or '',
                     lote.fecha_fabricacion.strftime('%Y-%m-%d') if lote.fecha_fabricacion else '',
                     lote.fecha_caducidad.strftime('%Y-%m-%d') if lote.fecha_caducidad else '',
@@ -621,13 +622,12 @@ class LoteViewSet(viewsets.ModelViewSet):
                     float(lote.precio_unitario) if lote.precio_unitario else 0.00,
                     lote.numero_contrato or '',
                     lote.marca or '',
-                    lote.ubicacion or '',
                     getattr(lote.centro, 'nombre', 'Farmacia Central') if lote.centro else 'Farmacia Central',
                     'Sí' if lote.activo else 'No'
                 ])
 
-            # Ajustar anchos de columna
-            column_widths = [6, 15, 25, 15, 14, 14, 12, 12, 12, 18, 15, 15, 18, 8]
+            # Ajustar anchos de columna (14 columnas sin ubicacion, con nombre_comercial)
+            column_widths = [6, 15, 25, 25, 15, 14, 14, 12, 12, 12, 18, 15, 18, 8]
             for col_idx, width in enumerate(column_widths, 1):
                 ws.column_dimensions[get_column_letter(col_idx)].width = width
 

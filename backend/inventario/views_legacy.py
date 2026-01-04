@@ -1463,8 +1463,9 @@ class ProductoViewSet(viewsets.ModelViewSet):
         Exporta todos los productos a un archivo Excel.
         
         Columnas alineadas con schema real de productos:
-        - #, Codigo Barras, Nombre, Categoria, Unidad, Stock Minimo, Stock Actual, 
-          Sustancia Activa, Presentacion, Requiere Receta, Controlado, Lotes, Estado
+        - #, Clave, Nombre, Nombre Comercial, Categoria, Unidad Medida, Stock Minimo, Stock Actual,
+          Sustancia Activa, Presentacion, Concentracion, Via Admin, Requiere Receta, Controlado, 
+          Lotes Activos, Estado
         """
         try:
             productos = self.get_queryset()
@@ -1474,8 +1475,8 @@ class ProductoViewSet(viewsets.ModelViewSet):
             ws = wb.active
             ws.title = 'Productos'
             
-            # Encabezados alineados con schema de Supabase
-            headers = ['#', 'Clave', 'Nombre', 'Categoria', 'Unidad Medida', 
+            # Encabezados alineados con schema de Supabase (incluye nombre_comercial)
+            headers = ['#', 'Clave', 'Nombre', 'Nombre Comercial', 'Categoria', 'Unidad Medida', 
                        'Stock Minimo', 'Stock Actual', 'Sustancia Activa', 'Presentacion',
                        'Concentracion', 'Via Admin', 'Requiere Receta', 'Controlado', 
                        'Lotes Activos', 'Estado']
@@ -1499,6 +1500,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     idx,
                     producto.clave or '',
                     producto.nombre,
+                    producto.nombre_comercial or '',
                     producto.categoria or '',
                     producto.unidad_medida,
                     producto.stock_minimo,
@@ -1515,7 +1517,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 
                 # Colorear fila si el stock esta por debajo del minimo
                 if stock_actual < producto.stock_minimo:
-                    for col in range(1, 16):
+                    for col in range(1, 17):
                         ws.cell(row=idx+1, column=col).fill = PatternFill(
                             start_color='FFF4E6', 
                             end_color='FFF4E6', 
@@ -1523,21 +1525,22 @@ class ProductoViewSet(viewsets.ModelViewSet):
                         )
             
             # Ajustar anchos de columna
-            ws.column_dimensions['A'].width = 6
-            ws.column_dimensions['B'].width = 18
-            ws.column_dimensions['C'].width = 40
-            ws.column_dimensions['D'].width = 18
-            ws.column_dimensions['E'].width = 14
-            ws.column_dimensions['F'].width = 12
-            ws.column_dimensions['G'].width = 12
-            ws.column_dimensions['H'].width = 20
-            ws.column_dimensions['I'].width = 14
-            ws.column_dimensions['J'].width = 14
-            ws.column_dimensions['K'].width = 14
-            ws.column_dimensions['L'].width = 14
-            ws.column_dimensions['M'].width = 12
-            ws.column_dimensions['N'].width = 12
-            ws.column_dimensions['O'].width = 10
+            ws.column_dimensions['A'].width = 6    # #
+            ws.column_dimensions['B'].width = 18   # Clave
+            ws.column_dimensions['C'].width = 40   # Nombre
+            ws.column_dimensions['D'].width = 25   # Nombre Comercial
+            ws.column_dimensions['E'].width = 18   # Categoria
+            ws.column_dimensions['F'].width = 18   # Unidad Medida
+            ws.column_dimensions['G'].width = 12   # Stock Minimo
+            ws.column_dimensions['H'].width = 12   # Stock Actual
+            ws.column_dimensions['I'].width = 20   # Sustancia Activa
+            ws.column_dimensions['J'].width = 18   # Presentacion
+            ws.column_dimensions['K'].width = 14   # Concentracion
+            ws.column_dimensions['L'].width = 14   # Via Admin
+            ws.column_dimensions['M'].width = 14   # Requiere Receta
+            ws.column_dimensions['N'].width = 12   # Controlado
+            ws.column_dimensions['O'].width = 12   # Lotes Activos
+            ws.column_dimensions['P'].width = 10   # Estado
             
             # Generar respuesta
             response = HttpResponse(
@@ -1610,11 +1613,12 @@ class ProductoViewSet(viewsets.ModelViewSet):
             COLUMN_ALIASES = {
                 'clave': ['clave', 'codigo', 'código', 'clave producto', 'cod', 'id producto'],
                 'nombre': ['nombre', 'nombre producto', 'descripcion', 'descripción', 'producto'],
+                'nombre_comercial': ['nombre comercial', 'comercial', 'marca', 'brand'],
                 'unidad_medida': ['unidad', 'unidad medida', 'um', 'unidad de medida', 'medida'],
                 'stock_minimo': ['stock minimo', 'stock mínimo', 'stock min', 'minimo', 'mínimo'],
                 'categoria': ['categoria', 'categoría', 'tipo', 'clasificacion'],
                 'sustancia_activa': ['sustancia activa', 'sustancia', 'principio activo', 'activo'],
-                'presentacion': ['presentacion', 'presentación', 'forma'],
+                'presentacion': ['presentacion', 'presentación', 'forma', 'forma farmaceutica'],
                 'concentracion': ['concentracion', 'concentración', 'dosis'],
                 'via_administracion': ['via admin', 'via administracion', 'vía admin', 'administracion', 'via'],
                 'requiere_receta': ['requiere receta', 'receta', 'req receta'],
@@ -1654,13 +1658,13 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     col_map = temp_map
                     break
             
-            # Si no hay mapa, usar orden por defecto
+            # Si no hay mapa, usar orden por defecto (con nombre_comercial)
             if not col_map:
                 col_map = {
-                    'clave': 0, 'nombre': 1, 'unidad_medida': 2, 'stock_minimo': 3,
-                    'categoria': 4, 'sustancia_activa': 5, 'presentacion': 6,
-                    'concentracion': 7, 'via_administracion': 8, 'requiere_receta': 9,
-                    'es_controlado': 10, 'estado': 11
+                    'clave': 0, 'nombre': 1, 'nombre_comercial': 2, 'unidad_medida': 3, 
+                    'stock_minimo': 4, 'categoria': 5, 'sustancia_activa': 6, 'presentacion': 7,
+                    'concentracion': 8, 'via_administracion': 9, 'requiere_receta': 10,
+                    'es_controlado': 11, 'estado': 12
                 }
             
             def get_val(row, field, default=None):
@@ -1688,6 +1692,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                         # Extraer valores usando el mapa de columnas
                         clave = get_val(row, 'clave')
                         nombre = get_val(row, 'nombre')
+                        nombre_comercial = get_val(row, 'nombre_comercial')
                         unidad_medida = get_val(row, 'unidad_medida')
                         stock_minimo = get_val(row, 'stock_minimo')
                         categoria = get_val(row, 'categoria')
@@ -1733,6 +1738,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                         # Preparar datos
                         datos = {
                             'nombre': str(nombre).strip()[:500],
+                            'nombre_comercial': str(nombre_comercial).strip()[:200] if nombre_comercial else '',
                             'unidad_medida': unidad_limpia,
                             'stock_minimo': stock_min,
                             'categoria': categoria_limpia,
@@ -1792,7 +1798,8 @@ class ProductoViewSet(viewsets.ModelViewSet):
         Columnas:
         - Clave (REQUERIDO, único) - Código identificador del producto
         - Nombre (REQUERIDO) - Nombre del medicamento o insumo
-        - Unidad (opcional) - Unidad de medida (PIEZA, CAJA, FRASCO, SOBRE, AMPOLLETA, TABLETA, CAPSULA, ML, GR)
+        - Nombre Comercial (opcional) - Nombre comercial o marca
+        - Unidad Medida (opcional) - Unidad de medida (PIEZA, CAJA, FRASCO, SOBRE, etc.)
         - Stock Minimo (opcional, default: 10) - Cantidad mínima de alerta
         - Categoria (opcional) - medicamento, material_curacion, insumo, equipo, otro
         - Sustancia Activa (opcional) - Principio activo
@@ -1807,9 +1814,9 @@ class ProductoViewSet(viewsets.ModelViewSet):
         ws = wb.active
         ws.title = 'Productos'
         
-        # Headers que coinciden con importar_excel
+        # Headers que coinciden con importar_excel (con nombre_comercial)
         headers = [
-            'Clave', 'Nombre', 'Unidad', 'Stock Minimo', 'Categoria',
+            'Clave', 'Nombre', 'Nombre Comercial', 'Unidad Medida', 'Stock Minimo', 'Categoria',
             'Sustancia Activa', 'Presentacion', 'Concentracion', 
             'Via Admin', 'Requiere Receta', 'Controlado', 'Estado'
         ]
@@ -1820,17 +1827,17 @@ class ProductoViewSet(viewsets.ModelViewSet):
         # Estas filas son solo para mostrar el formato correcto.
         # ============================================================
         ws.append([
-            'PRUEBA001', '[EJEMPLO] Paracetamol 500mg - ELIMINAR', 'CAJA', 50, 'medicamento',
+            'PRUEBA001', '[EJEMPLO] Paracetamol 500mg - ELIMINAR', 'Tempra', 'CAJA', 50, 'medicamento',
             'Paracetamol', 'Tableta', '500 mg',
             'oral', 'No', 'No', 'Activo'
         ])
         ws.append([
-            'PRUEBA002', '[EJEMPLO] Ibuprofeno 400mg - ELIMINAR', 'FRASCO', 30, 'medicamento',
+            'PRUEBA002', '[EJEMPLO] Ibuprofeno 400mg - ELIMINAR', 'Advil', 'FRASCO', 30, 'medicamento',
             'Ibuprofeno', 'Cápsula', '400 mg',
             'oral', 'No', 'No', 'Activo'
         ])
         ws.append([
-            'PRUEBA003', '[EJEMPLO] Jeringa 10ml - ELIMINAR', 'PIEZA', 100, 'material_curacion',
+            'PRUEBA003', '[EJEMPLO] Jeringa 10ml - ELIMINAR', '', 'PIEZA', 100, 'material_curacion',
             '', '', '',
             '', 'No', 'No', 'Activo'
         ])
@@ -1855,16 +1862,17 @@ class ProductoViewSet(viewsets.ModelViewSet):
         column_widths = {
             'A': 15,  # Clave
             'B': 45,  # Nombre (más ancho para ver el texto de ejemplo)
-            'C': 12,  # Unidad
-            'D': 14,  # Stock Minimo
-            'E': 18,  # Categoria
-            'F': 20,  # Sustancia Activa
-            'G': 15,  # Presentacion
-            'H': 15,  # Concentracion
-            'I': 12,  # Via Admin
-            'J': 15,  # Requiere Receta
-            'K': 12,  # Controlado
-            'L': 10,  # Estado
+            'C': 20,  # Nombre Comercial
+            'D': 14,  # Unidad Medida
+            'E': 14,  # Stock Minimo
+            'F': 18,  # Categoria
+            'G': 20,  # Sustancia Activa
+            'H': 15,  # Presentacion
+            'I': 15,  # Concentracion
+            'J': 12,  # Via Admin
+            'K': 15,  # Requiere Receta
+            'L': 12,  # Controlado
+            'M': 10,  # Estado
         }
         for col_letter, width in column_widths.items():
             ws.column_dimensions[col_letter].width = width
@@ -1891,16 +1899,17 @@ class ProductoViewSet(viewsets.ModelViewSet):
             ['────────────────────────────────────────────────────────────────────────'],
             ['COLUMNAS OPCIONALES:'],
             ['────────────────────────────────────────────────────────────────────────'],
-            ['• Unidad         - CAJA, PIEZA, FRASCO, SOBRE, TABLETA, etc. (default: PIEZA)'],
-            ['• Stock Minimo   - Cantidad mínima para alertas (default: 10)'],
-            ['• Categoria      - medicamento, material_curacion, insumo (default: medicamento)'],
+            ['• Nombre Comercial - Nombre comercial o marca (ej: Tempra, Advil)'],
+            ['• Unidad Medida    - CAJA, PIEZA, FRASCO, SOBRE, TABLETA, etc. (default: PIEZA)'],
+            ['• Stock Minimo     - Cantidad mínima para alertas (default: 10)'],
+            ['• Categoria        - medicamento, material_curacion, insumo (default: medicamento)'],
             ['• Sustancia Activa - Principio activo del medicamento'],
-            ['• Presentacion   - Forma farmacéutica (tableta, cápsula, jarabe, etc.)'],
-            ['• Concentracion  - Dosis (ej: 500 mg, 10 ml)'],
-            ['• Via Admin      - oral, intravenosa, tópica, etc.'],
-            ['• Requiere Receta - Sí / No (default: No)'],
-            ['• Controlado     - Sí / No (default: No)'],
-            ['• Estado         - Activo / Inactivo (default: Activo)'],
+            ['• Presentacion     - Forma farmacéutica (tableta, cápsula, jarabe, etc.)'],
+            ['• Concentracion    - Dosis (ej: 500 mg, 10 ml)'],
+            ['• Via Admin        - oral, intravenosa, tópica, etc.'],
+            ['• Requiere Receta  - Sí / No (default: No)'],
+            ['• Controlado       - Sí / No (default: No)'],
+            ['• Estado           - Activo / Inactivo (default: Activo)'],
             [''],
             ['────────────────────────────────────────────────────────────────────────'],
             ['NOTAS:'],
@@ -2969,11 +2978,11 @@ class LoteViewSet(viewsets.ModelViewSet):
         """
         Exporta lotes aplicando los mismos filtros de listado.
         
-        ISS-DB: Incluye todos los campos de la tabla lotes de Supabase:
-        - clave (de producto)
+        ISS-DB: Incluye campos principales de la tabla lotes:
+        - clave (de producto), nombre_comercial (de producto)
         - numero_lote, fecha_fabricacion, fecha_caducidad
         - cantidad_inicial, cantidad_actual
-        - precio_unitario, numero_contrato, marca, ubicacion
+        - precio_unitario, numero_contrato, marca
         - centro (nombre), activo
         """
         try:
@@ -2982,18 +2991,18 @@ class LoteViewSet(viewsets.ModelViewSet):
             ws = wb.active
             ws.title = 'Lotes'
 
-            ws.merge_cells('A1:L1')
+            ws.merge_cells('A1:N1')
             ws['A1'] = 'REPORTE DE LOTES - SISTEMA DE INVENTARIO FARMACEUTICO PENITENCIARIO'
             ws['A1'].font = Font(bold=True, size=14, color='632842')
             ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
 
             ws.append([])
-            # ISS-DB: Headers alineados con esquema real de Supabase
+            # Headers sin ubicación
             headers = [
-                '#', 'Clave', 'Nombre Producto', 'Número Lote',
+                '#', 'Clave', 'Nombre Producto', 'Nombre Comercial', 'Número Lote',
                 'Fecha Fabricación', 'Fecha Caducidad',
                 'Cantidad Inicial', 'Cantidad Actual',
-                'Precio Unitario', 'Número Contrato', 'Marca', 'Ubicación',
+                'Precio Unitario', 'Número Contrato', 'Marca',
                 'Centro', 'Activo'
             ]
             ws.append(headers)
@@ -3009,6 +3018,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                     idx,
                     getattr(lote.producto, 'clave', '') or '',
                     getattr(lote.producto, 'nombre', '') or '',
+                    getattr(lote.producto, 'nombre_comercial', '') or '',
                     lote.numero_lote or '',
                     lote.fecha_fabricacion.strftime('%Y-%m-%d') if lote.fecha_fabricacion else '',
                     lote.fecha_caducidad.strftime('%Y-%m-%d') if lote.fecha_caducidad else '',
@@ -3017,13 +3027,12 @@ class LoteViewSet(viewsets.ModelViewSet):
                     float(lote.precio_unitario) if lote.precio_unitario else 0.00,
                     lote.numero_contrato or '',
                     lote.marca or '',
-                    lote.ubicacion or '',
                     getattr(lote.centro, 'nombre', 'Almacén Central') if lote.centro else 'Almacén Central',
                     'Sí' if lote.activo else 'No'
                 ])
 
-            # Ajustar anchos de columna
-            column_widths = [6, 15, 25, 15, 14, 14, 12, 12, 12, 18, 15, 15, 18, 8]
+            # Ajustar anchos de columna (sin ubicación)
+            column_widths = [6, 15, 30, 20, 15, 14, 14, 12, 12, 12, 18, 15, 18, 8]
             for col_idx, width in enumerate(column_widths, 1):
                 ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = width
 
@@ -3053,7 +3062,6 @@ class LoteViewSet(viewsets.ModelViewSet):
         - Precio Unitario: default = 0
         - Numero Contrato
         - Marca
-        - Ubicacion
         - Centro/Centro ID: ID o nombre del centro
         - Activo: estado del lote
         
@@ -3105,6 +3113,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             # IMPORTANTE: El orden importa - los más específicos primero
             COLUMN_ALIASES = {
                 'nombre_producto': ['nombre producto', 'nombre del producto', 'producto nombre', 'descripcion', 'descripción'],
+                'nombre_comercial': ['nombre comercial', 'comercial', 'marca comercial'],  # Solo referencia, no se usa
                 'producto': ['clave producto', 'clave', 'codigo producto', 'codigo', 'código', 'sku'],
                 'numero_lote': ['numero lote', 'número lote', 'lote', 'no. lote', 'no lote', 'num lote'],
                 'fecha_caducidad': ['fecha caducidad', 'caducidad', 'vencimiento', 'fecha vencimiento', 'expira', 'fecha expiracion'],
@@ -3114,7 +3123,6 @@ class LoteViewSet(viewsets.ModelViewSet):
                 'precio_unitario': ['precio unitario', 'precio', 'costo', 'valor', 'precio unit'],
                 'numero_contrato': ['numero contrato', 'número contrato', 'contrato', 'no. contrato', 'no contrato'],
                 'marca': ['marca', 'laboratorio', 'fabricante'],
-                'ubicacion': ['ubicacion', 'ubicación', 'almacen', 'almacén', 'bodega'],
                 'centro': ['centro', 'centro id', 'centro_id', 'destino'],
                 'activo': ['activo', 'estado', 'status'],
             }
@@ -3148,13 +3156,13 @@ class LoteViewSet(viewsets.ModelViewSet):
                     col_map = temp_map
                     break
             
-            # Si no hay mapa, usar orden por defecto
+            # Si no hay mapa, usar orden por defecto (sin ubicacion)
             if not col_map:
                 col_map = {
                     'producto': 0, 'numero_lote': 1, 'fecha_caducidad': 2,
                     'cantidad_inicial': 3, 'cantidad_actual': 4, 'fecha_fabricacion': 5,
                     'precio_unitario': 6, 'numero_contrato': 7, 'marca': 8,
-                    'ubicacion': 9, 'centro': 10
+                    'centro': 9
                 }
             
             def get_val(row, field, default=None):
@@ -3187,7 +3195,6 @@ class LoteViewSet(viewsets.ModelViewSet):
                     precio_unitario = get_val(row, 'precio_unitario')
                     numero_contrato = get_val(row, 'numero_contrato')
                     marca = get_val(row, 'marca')
-                    ubicacion = get_val(row, 'ubicacion')
                     centro_ref = get_val(row, 'centro')
 
                     # FIX: Validar que AMBOS campos estén presentes: Clave Y Nombre
@@ -3301,9 +3308,6 @@ class LoteViewSet(viewsets.ModelViewSet):
                             pass  # Usar 0 si no es valido
 
                     # Preparar defaults para update_or_create
-                    # Si no viene ubicacion, usar "Almacén Central" (todo llega a Farmacia)
-                    ubicacion_final = str(ubicacion).strip()[:100] if ubicacion else 'Almacén Central'
-                    
                     defaults = {
                         'fecha_caducidad': fecha_cad_val or date.today(),
                         'cantidad_inicial': cant_ini,
@@ -3311,7 +3315,6 @@ class LoteViewSet(viewsets.ModelViewSet):
                         'precio_unitario': precio_val,
                         'numero_contrato': str(numero_contrato).strip()[:100] if numero_contrato else '',
                         'marca': str(marca).strip()[:100] if marca else '',
-                        'ubicacion': ubicacion_final,
                     }
                     
                     if fecha_fab_val:
@@ -3364,16 +3367,17 @@ class LoteViewSet(viewsets.ModelViewSet):
         COLUMNAS OBLIGATORIAS (en orden):
         1. Clave Producto* (REQUERIDO) - Clave única del producto
         2. Nombre Producto* (REQUERIDO) - Debe coincidir con la clave
-        3. Numero Lote* (REQUERIDO) - Identificador único del lote
-        4. Fecha Caducidad* (REQUERIDO, YYYY-MM-DD)
-        5. Cantidad Inicial* (REQUERIDO) - Cantidad recibida
+        3. Nombre Comercial (referencia) - Solo informativo
+        4. Numero Lote* (REQUERIDO) - Identificador único del lote
+        5. Fecha Caducidad* (REQUERIDO, YYYY-MM-DD)
+        6. Cantidad Inicial* (REQUERIDO) - Cantidad recibida
         
         COLUMNAS OPCIONALES:
-        6. Fecha Fabricacion (YYYY-MM-DD)
-        7. Precio Unitario (default = 0)
-        8. Numero Contrato
-        9. Marca
-        10. Activo (default = Activo)
+        7. Fecha Fabricacion (YYYY-MM-DD)
+        8. Precio Unitario (default = 0)
+        9. Numero Contrato
+        10. Marca
+        11. Activo (default = Activo)
         
         IMPORTANTE: El sistema verifica que CLAVE y NOMBRE coincidan con el producto
         en la base de datos. Si hay discrepancia (clave correcta pero nombre incorrecto),
@@ -3386,10 +3390,10 @@ class LoteViewSet(viewsets.ModelViewSet):
         ws = wb.active
         ws.title = 'Lotes'
         
-        # Headers SIMPLIFICADOS - Clave Producto es OBLIGATORIA
-        # Nombre Producto es solo referencia visual
+        # Headers con Nombre Comercial como referencia visual
         headers = [
-            'Clave Producto', 'Nombre Producto', 'Numero Lote', 'Fecha Caducidad', 'Cantidad Inicial',
+            'Clave Producto', 'Nombre Producto', 'Nombre Comercial', 'Numero Lote', 
+            'Fecha Caducidad', 'Cantidad Inicial',
             'Fecha Fabricacion', 'Precio Unitario',
             'Numero Contrato', 'Marca', 'Activo'
         ]
@@ -3404,17 +3408,20 @@ class LoteViewSet(viewsets.ModelViewSet):
         fecha_fab_ejemplo = date.today().strftime('%Y-%m-%d')
         
         ws.append([
-            'PRUEBA001', '[EJEMPLO] Paracetamol - ELIMINAR', 'LOTE-PRUEBA-001', fecha_cad_ejemplo, 100,
+            'PRUEBA001', '[EJEMPLO] Paracetamol - ELIMINAR', 'Tempra', 'LOTE-PRUEBA-001', 
+            fecha_cad_ejemplo, 100,
             fecha_fab_ejemplo, 25.50,
             'CONT-PRUEBA-001', '[EJEMPLO] Laboratorio - ELIMINAR', 'Activo'
         ])
         ws.append([
-            'PRUEBA002', '[EJEMPLO] Ibuprofeno - ELIMINAR', 'LOTE-PRUEBA-002', fecha_cad_ejemplo, 50,
+            'PRUEBA002', '[EJEMPLO] Ibuprofeno - ELIMINAR', 'Advil', 'LOTE-PRUEBA-002', 
+            fecha_cad_ejemplo, 50,
             fecha_fab_ejemplo, 18.75,
             'CONT-PRUEBA-002', '[EJEMPLO] Farmacéutica - ELIMINAR', 'Activo'
         ])
         ws.append([
-            'PRUEBA003', '[EJEMPLO] Jeringa - ELIMINAR', 'LOTE-PRUEBA-003', fecha_cad_ejemplo, 200,
+            'PRUEBA003', '[EJEMPLO] Jeringa - ELIMINAR', '', 'LOTE-PRUEBA-003', 
+            fecha_cad_ejemplo, 200,
             '', 5.00,
             '', '[EJEMPLO] Material - ELIMINAR', 'Activo'
         ])
@@ -3439,14 +3446,15 @@ class LoteViewSet(viewsets.ModelViewSet):
         column_widths = {
             'A': 15,  # Clave Producto
             'B': 40,  # Nombre Producto (referencia)
-            'C': 20,  # Numero Lote
-            'D': 16,  # Fecha Caducidad
-            'E': 16,  # Cantidad Inicial
-            'F': 18,  # Fecha Fabricacion
-            'G': 15,  # Precio Unitario
-            'H': 18,  # Numero Contrato
-            'I': 35,  # Marca (más ancho para ver el texto de ejemplo)
-            'J': 12,  # Activo
+            'C': 18,  # Nombre Comercial
+            'D': 20,  # Numero Lote
+            'E': 16,  # Fecha Caducidad
+            'F': 16,  # Cantidad Inicial
+            'G': 18,  # Fecha Fabricacion
+            'H': 15,  # Precio Unitario
+            'I': 18,  # Numero Contrato
+            'J': 35,  # Marca (más ancho para ver el texto de ejemplo)
+            'K': 12,  # Activo
         }
         for col_letter, width in column_widths.items():
             ws.column_dimensions[col_letter].width = width
@@ -3476,6 +3484,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             ['────────────────────────────────────────────────────────────────────────'],
             ['• Clave Producto* - OBLIGATORIA: Clave única del producto en el sistema'],
             ['• Nombre Producto* - OBLIGATORIO: Debe coincidir con la clave'],
+            ['• Nombre Comercial - Solo referencia visual (ej: Tempra, Advil)'],
             ['• Numero Lote*    - Identificador único del lote'],
             ['• Fecha Caducidad* - Formato: YYYY-MM-DD (ej: 2026-12-31)'],
             ['• Cantidad Inicial* - Cantidad de unidades recibidas'],
@@ -3495,7 +3504,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             ['• Los lotes se asignan automáticamente al Almacén Central (FARMACIA).'],
             ['• El PRODUCTO debe existir antes de importar lotes.'],
             ['• Verifique la CLAVE y NOMBRE del producto en el catálogo.'],
-            ['• Si el lote ya existe (mismo producto + número de lote), se reporta error.'],
+            ['• Si el lote ya existe (mismo producto + número de lote), se ACTUALIZARÁ.'],
             ['• La cantidad_actual se inicializa igual a cantidad_inicial.'],
             ['• El stock del producto se actualiza automáticamente.'],
             ['• Fechas aceptadas: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY'],
@@ -8332,6 +8341,18 @@ def reporte_movimientos(request):
             # Clasificar tipo: entrada, ajuste_positivo, devolucion = ENTRADA, resto = SALIDA
             es_entrada = tipo_mov in ['entrada', 'ajuste_positivo', 'devolucion']
             
+            # Formatear subtipo de salida
+            subtipo_display = ''
+            if mov.subtipo_salida:
+                subtipos_label = {
+                    'receta': 'Receta Médica',
+                    'consumo_interno': 'Consumo Interno',
+                    'merma': 'Merma',
+                    'caducidad': 'Caducidad',
+                    'transferencia': 'Transferencia',
+                }
+                subtipo_display = subtipos_label.get(mov.subtipo_salida.lower(), mov.subtipo_salida.title())
+            
             if ref not in transacciones:
                 # Crear nueva transacción agrupada
                 transacciones[ref] = {
@@ -8340,6 +8361,9 @@ def reporte_movimientos(request):
                     'fecha_raw': mov.fecha,
                     'tipo': 'ENTRADA' if es_entrada else 'SALIDA',
                     'tipo_original': tipo_mov.upper(),
+                    'subtipo_salida': mov.subtipo_salida or '',
+                    'subtipo_display': subtipo_display,
+                    'numero_expediente': mov.numero_expediente or '',
                     'centro_origen': mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central',
                     'centro_destino': mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central',
                     'total_productos': 0,
@@ -8358,7 +8382,9 @@ def reporte_movimientos(request):
             transacciones[ref]['detalles'].append({
                 'producto': producto_info,
                 'lote': mov.lote.numero_lote if mov.lote else 'N/A',
-                'cantidad': amount
+                'cantidad': amount,
+                'subtipo_salida': mov.subtipo_salida or '',
+                'numero_expediente': mov.numero_expediente or '',
             })
             transacciones[ref]['total_productos'] += 1
             transacciones[ref]['total_cantidad'] += amount
@@ -8436,8 +8462,8 @@ def reporte_movimientos(request):
             ws = wb.active
             ws.title = 'Transacciones'
             
-            # Titulo
-            ws.merge_cells('A1:H1')
+            # Titulo - actualizado para 10 columnas
+            ws.merge_cells('A1:J1')
             titulo_cell = ws['A1']
             titulo_cell.value = 'REPORTE DE MOVIMIENTOS - TRANSACCIONES'
             titulo_cell.font = Font(bold=True, size=14, color='632842')
@@ -8452,7 +8478,7 @@ def reporte_movimientos(request):
             if tipo:
                 filtros_text.append(f'Tipo: {tipo}')
             
-            ws.merge_cells('A2:H2')
+            ws.merge_cells('A2:J2')
             filtros_cell = ws['A2']
             filtros_cell.value = ' | '.join(filtros_text) if filtros_text else 'Sin filtros'
             filtros_cell.font = Font(size=10, italic=True)
@@ -8468,8 +8494,8 @@ def reporte_movimientos(request):
             
             ws.append([])  # Linea en blanco
             
-            # Encabezados de transacciones
-            headers = ['#', 'Referencia', 'Fecha', 'Tipo', 'Centro Origen', 'Centro Destino', 'Productos', 'Cantidad Total']
+            # Encabezados de transacciones - Agregado Subtipo y No. Expediente
+            headers = ['#', 'Referencia', 'Fecha', 'Tipo', 'Subtipo', 'Centro Origen', 'Centro Destino', 'No. Expediente', 'Productos', 'Cantidad Total']
             ws.append(headers)
             
             # Estilo encabezados
@@ -8481,15 +8507,17 @@ def reporte_movimientos(request):
                 cell.font = header_font
                 cell.alignment = Alignment(horizontal='center', vertical='center')
             
-            # Datos de transacciones
+            # Datos de transacciones - Agregado subtipo_display y numero_expediente
             for idx, trans in enumerate(datos, 1):
                 ws.append([
                     idx,
                     trans['referencia'],
                     trans['fecha'],
                     trans['tipo'],
+                    trans.get('subtipo_display', ''),
                     trans['centro_origen'],
                     trans['centro_destino'],
+                    trans.get('numero_expediente', ''),
                     trans['total_productos'],
                     trans['total_cantidad']
                 ])
@@ -8504,28 +8532,30 @@ def reporte_movimientos(request):
                     tipo_cell.fill = PatternFill(start_color='F8D7DA', end_color='F8D7DA', fill_type='solid')
                     tipo_cell.font = Font(color='721C24', bold=True)
             
-            # Ajustar anchos
+            # Ajustar anchos - actualizado para 10 columnas (agregado Subtipo y Expediente)
             ws.column_dimensions['A'].width = 6
-            ws.column_dimensions['B'].width = 25
-            ws.column_dimensions['C'].width = 18
-            ws.column_dimensions['D'].width = 12
-            ws.column_dimensions['E'].width = 22
-            ws.column_dimensions['F'].width = 22
-            ws.column_dimensions['G'].width = 12
-            ws.column_dimensions['H'].width = 15
+            ws.column_dimensions['B'].width = 22
+            ws.column_dimensions['C'].width = 16
+            ws.column_dimensions['D'].width = 10
+            ws.column_dimensions['E'].width = 14
+            ws.column_dimensions['F'].width = 20
+            ws.column_dimensions['G'].width = 20
+            ws.column_dimensions['H'].width = 14
+            ws.column_dimensions['I'].width = 10
+            ws.column_dimensions['J'].width = 14
             
             # === HOJA 2: DETALLE DE PRODUCTOS ===
             ws2 = wb.create_sheet('Detalle Productos')
             
-            ws2.merge_cells('A1:F1')
+            ws2.merge_cells('A1:H1')
             ws2['A1'].value = 'DETALLE DE PRODUCTOS POR TRANSACCIÓN'
             ws2['A1'].font = Font(bold=True, size=14, color='632842')
             ws2['A1'].alignment = Alignment(horizontal='center')
             
             ws2.append([])
             
-            # Encabezados detalle
-            detail_headers = ['Referencia', 'Tipo', '#', 'Producto', 'Lote', 'Cantidad']
+            # Encabezados detalle - Agregado Subtipo y No. Expediente
+            detail_headers = ['Referencia', 'Tipo', '#', 'Producto', 'Lote', 'Cantidad', 'Subtipo', 'No. Expediente']
             ws2.append(detail_headers)
             
             for cell in ws2[3]:
@@ -8542,16 +8572,20 @@ def reporte_movimientos(request):
                         det_idx,
                         det['producto'],
                         det['lote'],
-                        det['cantidad']
+                        det['cantidad'],
+                        det.get('subtipo_salida', ''),
+                        det.get('numero_expediente', ''),
                     ])
             
-            # Ajustar anchos
-            ws2.column_dimensions['A'].width = 25
-            ws2.column_dimensions['B'].width = 12
+            # Ajustar anchos - actualizado para 8 columnas
+            ws2.column_dimensions['A'].width = 22
+            ws2.column_dimensions['B'].width = 10
             ws2.column_dimensions['C'].width = 6
-            ws2.column_dimensions['D'].width = 50
-            ws2.column_dimensions['E'].width = 18
-            ws2.column_dimensions['F'].width = 12
+            ws2.column_dimensions['D'].width = 45
+            ws2.column_dimensions['E'].width = 16
+            ws2.column_dimensions['F'].width = 10
+            ws2.column_dimensions['G'].width = 14
+            ws2.column_dimensions['H'].width = 14
             
             response = HttpResponse(
                 content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
