@@ -378,8 +378,8 @@ class ProductoViewSet(viewsets.ModelViewSet):
             if con_stock == 'true':
                 lotes = lotes.filter(cantidad_actual__gt=0)
             
-            # Ordenar por fecha de vencimiento
-            lotes = lotes.order_by('fecha_vencimiento')
+            # Ordenar por fecha de caducidad
+            lotes = lotes.order_by('fecha_caducidad')
             
             # Serializar
             serializer = LoteSerializer(lotes, many=True)
