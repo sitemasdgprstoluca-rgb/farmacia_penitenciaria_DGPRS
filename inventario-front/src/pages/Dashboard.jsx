@@ -142,7 +142,7 @@ const CustomTooltip = ({ active, payload, label, formatter }) => {
 };
 
 /**
- * Card de KPI animada con gradiente dinámico - Usa CSS variables del tema
+ * Card de KPI Premium - Diseño pulido y profesional
  */
 const KPICard = ({ 
   title, 
@@ -158,120 +158,188 @@ const KPICard = ({
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [displayValue, setDisplayValue] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
   
-  // Mapeo de tipos de color a CSS variables
-  const getGradient = () => {
-    switch(colorType) {
-      case 'primary':
-        return 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%)';
-      case 'success':
-        return 'linear-gradient(135deg, var(--color-success, #10B981) 0%, var(--color-success-hover, #059669) 100%)';
-      case 'info':
-        return 'linear-gradient(135deg, var(--color-info, #06B6D4) 0%, var(--color-info-hover, #0891B2) 100%)';
-      case 'warning':
-        return 'linear-gradient(135deg, var(--color-warning, #F59E0B) 0%, var(--color-warning-hover, #D97706) 100%)';
-      default:
-        return 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%)';
-    }
+  // Colores por tipo
+  const colorConfig = {
+    primary: {
+      gradient: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)',
+      bg: 'rgba(159, 34, 65, 0.08)',
+      bgHover: 'rgba(159, 34, 65, 0.12)',
+      text: '#9F2241',
+      light: 'rgba(159, 34, 65, 0.1)',
+    },
+    success: {
+      gradient: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+      bg: 'rgba(16, 185, 129, 0.08)',
+      bgHover: 'rgba(16, 185, 129, 0.12)',
+      text: '#059669',
+      light: 'rgba(16, 185, 129, 0.1)',
+    },
+    info: {
+      gradient: 'linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%)',
+      bg: 'rgba(14, 165, 233, 0.08)',
+      bgHover: 'rgba(14, 165, 233, 0.12)',
+      text: '#0284C7',
+      light: 'rgba(14, 165, 233, 0.1)',
+    },
+    warning: {
+      gradient: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+      bg: 'rgba(245, 158, 11, 0.08)',
+      bgHover: 'rgba(245, 158, 11, 0.12)',
+      text: '#D97706',
+      light: 'rgba(245, 158, 11, 0.1)',
+    },
   };
+  
+  const colors = colorConfig[colorType] || colorConfig.primary;
   
   useEffect(() => {
     const timer = setTimeout(() => setIsVisible(true), delay);
     return () => clearTimeout(timer);
   }, [delay]);
   
-  // Animación de contador
+  // Animación de contador suave
   useEffect(() => {
     if (!isVisible || loading) return;
     
-    const duration = 1500;
-    const steps = 60;
-    const increment = value / steps;
-    let current = 0;
+    const duration = 1200;
+    const frameDuration = 1000 / 60;
+    const totalFrames = Math.round(duration / frameDuration);
+    let frame = 0;
     
-    const timer = setInterval(() => {
-      current += increment;
-      if (current >= value) {
+    const counter = setInterval(() => {
+      frame++;
+      const progress = frame / totalFrames;
+      // Easing: ease-out-cubic
+      const easeProgress = 1 - Math.pow(1 - progress, 3);
+      const currentValue = Math.round(easeProgress * value);
+      
+      setDisplayValue(currentValue);
+      
+      if (frame === totalFrames) {
+        clearInterval(counter);
         setDisplayValue(value);
-        clearInterval(timer);
-      } else {
-        setDisplayValue(Math.floor(current));
       }
-    }, duration / steps);
+    }, frameDuration);
     
-    return () => clearInterval(timer);
+    return () => clearInterval(counter);
   }, [value, isVisible, loading]);
-
-  const gradient = getGradient();
 
   return (
     <div 
       onClick={onClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       className={`
-        relative overflow-hidden rounded-2xl p-6
-        bg-white shadow-lg border border-gray-100
-        transform transition-all duration-500 ease-out
-        ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'}
-        ${onClick ? 'cursor-pointer hover:shadow-2xl hover:-translate-y-1 hover:scale-[1.02]' : ''}
+        relative overflow-hidden rounded-2xl
+        bg-white border border-gray-100
+        transform transition-all duration-300 ease-out
+        ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}
+        ${onClick ? 'cursor-pointer' : ''}
         group
       `}
-      style={{ transitionDelay: `${delay}ms` }}
+      style={{ 
+        transitionDelay: `${delay}ms`,
+        boxShadow: isHovered 
+          ? '0 20px 40px -12px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.02)'
+          : '0 4px 16px -4px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.02)',
+        transform: isHovered && onClick ? 'translateY(-4px) scale(1.01)' : 'translateY(0) scale(1)',
+      }}
     >
-      {/* Gradiente de fondo sutil */}
+      {/* Barra de color superior */}
       <div 
-        className="absolute inset-0 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity duration-500"
-        style={{ background: gradient }}
+        className="h-1 w-full"
+        style={{ background: colors.gradient }}
       />
       
-      {/* Línea superior de color */}
-      <div 
-        className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl"
-        style={{ background: gradient }}
-      />
-      
-      {/* Contenido */}
-      <div className="relative z-10">
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex-1">
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">
+      {/* Contenido principal */}
+      <div className="p-5">
+        {/* Header: Título + Icono */}
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div className="flex-1 min-w-0">
+            <p 
+              className="text-[11px] font-bold uppercase tracking-widest mb-0.5"
+              style={{ color: colors.text }}
+            >
               {title}
             </p>
-            {loading ? (
-              <div className="h-10 w-24 bg-gray-200 rounded animate-pulse" />
-            ) : (
-              <p className="text-4xl font-black text-gray-900 tabular-nums">
-                {displayValue.toLocaleString('es-MX')}
-              </p>
-            )}
+            <p className="text-xs text-gray-400 truncate">{subtext}</p>
           </div>
+          
+          {/* Icono con fondo */}
           <div 
-            className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transform group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300"
-            style={{ background: gradient }}
+            className="flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-300"
+            style={{ 
+              background: colors.gradient,
+              boxShadow: isHovered 
+                ? `0 8px 20px -4px ${colors.light}`
+                : `0 4px 12px -2px ${colors.light}`,
+              transform: isHovered ? 'scale(1.08) rotate(3deg)' : 'scale(1) rotate(0)',
+            }}
           >
-            <Icon className="text-white text-2xl" />
+            <Icon className="text-white text-xl" />
           </div>
         </div>
         
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-500">{subtext}</span>
-          {trend && (
-            <span className={`
-              flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full
-              ${trend === 'up' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}
-            `}>
-              {trend === 'up' ? <FaArrowUp size={10} /> : <FaArrowDown size={10} />}
+        {/* Valor principal */}
+        <div className="mb-3">
+          {loading ? (
+            <div className="h-12 w-28 bg-gray-100 rounded-lg animate-pulse" />
+          ) : (
+            <div className="flex items-baseline gap-1">
+              <span 
+                className="text-4xl font-black tracking-tight tabular-nums"
+                style={{ 
+                  color: '#1F2937',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                }}
+              >
+                {displayValue.toLocaleString('es-MX')}
+              </span>
+            </div>
+          )}
+        </div>
+        
+        {/* Footer: Trend o indicador de acción */}
+        <div className="flex items-center justify-between pt-3 border-t border-gray-50">
+          {trend ? (
+            <div 
+              className={`
+                inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold
+                ${trend === 'up' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}
+              `}
+            >
+              {trend === 'up' ? <FaArrowUp size={9} /> : <FaArrowDown size={9} />}
               {trendValue}%
-            </span>
+            </div>
+          ) : (
+            <div className="text-xs text-gray-300">•</div>
+          )}
+          
+          {onClick && (
+            <div 
+              className="flex items-center gap-1 text-xs font-medium transition-all duration-300"
+              style={{ 
+                color: isHovered ? colors.text : '#9CA3AF',
+                transform: isHovered ? 'translateX(2px)' : 'translateX(0)',
+              }}
+            >
+              <span>Ver más</span>
+              <FaArrowRight size={10} />
+            </div>
           )}
         </div>
       </div>
       
-      {/* Efecto de hover */}
-      {onClick && (
-        <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-          <FaArrowRight className="text-gray-300" />
-        </div>
-      )}
+      {/* Decoración de fondo */}
+      <div 
+        className="absolute -right-8 -bottom-8 w-32 h-32 rounded-full opacity-[0.03] transition-opacity duration-300"
+        style={{ 
+          background: colors.gradient,
+          opacity: isHovered ? 0.08 : 0.03,
+        }}
+      />
     </div>
   );
 };
@@ -504,18 +572,25 @@ const QuickAccessCard = ({ icon: Icon, title, subtitle, onClick, colorVar }) => 
 );
 
 /**
- * Skeleton loader para cards
+ * Skeleton loader para KPI cards - Coincide con nuevo diseño
  */
 const SkeletonCard = () => (
-  <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 animate-pulse">
-    <div className="flex justify-between mb-4">
-      <div className="space-y-2">
-        <div className="h-3 w-20 bg-gray-200 rounded" />
-        <div className="h-8 w-32 bg-gray-200 rounded" />
+  <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden animate-pulse">
+    <div className="h-1 w-full bg-gray-200" />
+    <div className="p-5">
+      <div className="flex justify-between mb-4">
+        <div className="space-y-2">
+          <div className="h-3 w-16 bg-gray-200 rounded" />
+          <div className="h-3 w-28 bg-gray-100 rounded" />
+        </div>
+        <div className="w-12 h-12 bg-gray-200 rounded-xl" />
       </div>
-      <div className="w-14 h-14 bg-gray-200 rounded-2xl" />
+      <div className="h-10 w-24 bg-gray-200 rounded-lg mb-3" />
+      <div className="pt-3 border-t border-gray-50 flex justify-between">
+        <div className="h-4 w-16 bg-gray-100 rounded" />
+        <div className="h-4 w-14 bg-gray-100 rounded" />
+      </div>
     </div>
-    <div className="h-4 w-24 bg-gray-200 rounded" />
   </div>
 );
 
@@ -544,8 +619,6 @@ const Dashboard = () => {
   const puedeVerGraficasBasicas = puedeVerGraficasCompletas || esVista || esCentro;
   
   // Permisos granulares adicionales
-  const puedeGestionarProductos = esAdmin || esFarmacia;
-  const puedeGestionarLotes = esAdmin || esFarmacia;
   const puedeCrearRequisiciones = esAdmin || esFarmacia || esCentro;
   const puedeVerCentros = esAdmin || esFarmacia;
   const puedeVerUsuarios = esAdmin;
@@ -706,12 +779,12 @@ const Dashboard = () => {
     }
   };
 
-  // KPI Cards - Usando colorType para CSS variables
+  // KPI Cards - Configuración optimizada
   const kpiCards = useMemo(() => [
     {
       title: 'Productos',
       value: kpis.total_productos || 0,
-      subtext: puedeGestionarProductos ? 'Gestionar catálogo' : 'Activos en catálogo',
+      subtext: 'Registrados en catálogo',
       icon: FaBox,
       colorType: 'primary',
       show: permisos?.verDashboard && permisos?.verProductos,
@@ -720,7 +793,7 @@ const Dashboard = () => {
     {
       title: 'Stock Total',
       value: kpis.stock_total || 0,
-      subtext: selectedCentro ? 'En este centro' : 'Unidades disponibles',
+      subtext: selectedCentro ? `En ${centroNombre || 'centro'}` : 'Unidades en inventario',
       icon: FaCubes,
       colorType: 'success',
       show: permisos?.verDashboard,
@@ -729,7 +802,7 @@ const Dashboard = () => {
     {
       title: 'Lotes Activos',
       value: kpis.lotes_activos || 0,
-      subtext: puedeGestionarLotes ? 'Gestionar lotes' : 'Con inventario',
+      subtext: 'Con existencias disponibles',
       icon: FaWarehouse,
       colorType: 'info',
       show: permisos?.verDashboard && permisos?.verLotes,
@@ -738,13 +811,13 @@ const Dashboard = () => {
     {
       title: 'Movimientos',
       value: kpis.movimientos_mes || 0,
-      subtext: 'Este mes',
+      subtext: 'Registrados este mes',
       icon: FaExchangeAlt,
       colorType: 'warning',
       show: permisos?.verDashboard && permisos?.verMovimientos,
       onClick: () => permisos?.verMovimientos && navigate('/movimientos'),
     },
-  ], [kpis, permisos, navigate, puedeGestionarProductos, puedeGestionarLotes, selectedCentro]);
+  ], [kpis, permisos, navigate, selectedCentro, centroNombre]);
 
   // Quick access items - Usando CSS variables y permisos granulares
   const quickAccessItems = useMemo(() => [
@@ -900,20 +973,21 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="p-6 max-w-[1600px] mx-auto space-y-8 pb-12">
+    <div className="p-6 max-w-[1600px] mx-auto space-y-6 pb-12">
       {/* ========== HEADER ========== */}
-      <header className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-        <div className="space-y-1">
-          <div className="flex items-center gap-3">
+      <header className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        {/* Fila superior: Título y controles */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          {/* Título y badge */}
+          <div className="flex items-center gap-3 min-w-0">
             <h1 
-              className="text-4xl font-black tracking-tight"
+              className="text-2xl md:text-3xl font-black tracking-tight whitespace-nowrap"
               style={{ color: 'var(--color-primary, #9F2241)' }}
             >
               Panel de Control
             </h1>
-            {/* Badge de rol */}
             <span 
-              className="px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm"
+              className="px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm flex-shrink-0"
               style={{ 
                 background: rolPrincipal === 'ADMIN' 
                   ? 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)'
@@ -927,54 +1001,58 @@ const Dashboard = () => {
               {getRolLabel()}
             </span>
           </div>
-          <p className="text-gray-500 flex items-center gap-2 flex-wrap">
+          
+          {/* Controles */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {/* Selector de centro */}
+            {puedeFiltrarPorCentro && (
+              <div className="min-w-[200px] max-w-[300px]">
+                <CentroSelector onCentroChange={handleCentroChange} selectedValue={selectedCentro} />
+              </div>
+            )}
+            
+            {/* Botón de refresh */}
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className={`
+                p-2.5 rounded-xl bg-gray-50 border border-gray-200
+                hover:bg-gray-100 hover:border-gray-300 transition-all flex-shrink-0
+                ${refreshing ? 'opacity-50 cursor-not-allowed' : ''}
+              `}
+              title="Actualizar datos"
+            >
+              <FaSync className={`text-gray-500 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+        </div>
+        
+        {/* Fila inferior: Subtítulo y fecha */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-3 pt-3 border-t border-gray-100">
+          <p className="text-sm text-gray-500 flex items-center gap-2">
             {selectedCentro ? (
               <>
-                <FaBuilding className="text-sm" />
-                Mostrando datos de: <span className="font-semibold">{centroNombre || 'Centro seleccionado'}</span>
+                <FaBuilding className="text-xs flex-shrink-0" />
+                <span className="truncate">Datos de: <strong className="text-gray-700">{centroNombre || 'Centro seleccionado'}</strong></span>
               </>
             ) : esCentroRestringido && nombreCentroUsuario ? (
               <>
-                <FaBuilding className="text-sm" />
-                Centro: <span className="font-semibold">{nombreCentroUsuario}</span>
+                <FaBuilding className="text-xs flex-shrink-0" />
+                <span className="truncate">Centro: <strong className="text-gray-700">{nombreCentroUsuario}</strong></span>
               </>
             ) : (
-              'Resumen general del sistema de inventario'
+              <span>Resumen general del sistema de inventario</span>
             )}
           </p>
-        </div>
-        
-        <div className="flex flex-wrap items-center gap-4">
-          {/* Selector de centro */}
-          {puedeFiltrarPorCentro && (
-            <CentroSelector onCentroChange={handleCentroChange} selectedValue={selectedCentro} />
-          )}
           
-          {/* Botón de refresh */}
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className={`
-              p-3 rounded-xl bg-white border border-gray-200 shadow-sm
-              hover:shadow-md hover:border-gray-300 transition-all
-              ${refreshing ? 'opacity-50 cursor-not-allowed' : ''}
-            `}
-            title="Actualizar datos"
-          >
-            <FaSync className={`text-gray-600 ${refreshing ? 'animate-spin' : ''}`} />
-          </button>
-          
-          {/* Fecha actual */}
-          <div
-            className="hidden md:flex items-center gap-2 px-5 py-3 rounded-2xl font-semibold text-sm text-white shadow-lg"
-            style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%)' }}
-          >
-            <FaCalendarAlt />
-            <span>
+          {/* Fecha compacta */}
+          <div className="flex items-center gap-2 text-sm text-gray-500 flex-shrink-0">
+            <FaCalendarAlt className="text-xs" style={{ color: 'var(--color-primary, #9F2241)' }} />
+            <span className="capitalize">
               {new Date().toLocaleDateString('es-MX', {
-                weekday: 'long',
+                weekday: 'short',
                 day: 'numeric',
-                month: 'long',
+                month: 'short',
                 year: 'numeric',
               })}
             </span>
@@ -982,41 +1060,25 @@ const Dashboard = () => {
         </div>
       </header>
 
-      {/* Indicador de filtro para usuarios restringidos */}
-      {esCentroRestringido && centroUsuario && (
-        <div 
-          className="flex items-center gap-3 px-4 py-3 rounded-xl border"
-          style={{ 
-            backgroundColor: 'var(--color-primary-light, rgba(159, 34, 65, 0.05))',
-            borderColor: 'var(--color-primary-light, rgba(159, 34, 65, 0.2))'
-          }}
-        >
-          <FaInfoCircle style={{ color: 'var(--color-primary, #9F2241)' }} />
-          <span className="text-sm" style={{ color: 'var(--color-primary, #9F2241)' }}>
-            Mostrando datos exclusivos de: <strong>{nombreCentroUsuario || 'Tu centro asignado'}</strong>
-          </span>
-        </div>
-      )}
-
       {/* Indicador de filtro activo para admins */}
       {selectedCentro && puedeFiltrarPorCentro && (
         <div 
-          className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border"
+          className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border text-sm"
           style={{ 
             backgroundColor: 'var(--color-warning-light, rgba(245, 158, 11, 0.05))',
             borderColor: 'var(--color-warning-light, rgba(245, 158, 11, 0.2))'
           }}
         >
-          <span className="text-sm flex items-center gap-2" style={{ color: 'var(--color-warning-hover, #D97706)' }}>
-            <FaBuilding />
-            🔍 Mostrando datos filtrados por: <strong>{centroNombre}</strong>
+          <span className="flex items-center gap-2" style={{ color: 'var(--color-warning-hover, #D97706)' }}>
+            <FaBuilding className="flex-shrink-0" />
+            <span className="truncate">Filtrado por: <strong>{centroNombre}</strong></span>
           </span>
           <button 
             onClick={() => handleCentroChange(null, '')}
-            className="text-sm font-medium underline hover:no-underline"
+            className="font-medium underline hover:no-underline whitespace-nowrap"
             style={{ color: 'var(--color-warning-hover, #D97706)' }}
           >
-            Ver todos los centros
+            Ver todos
           </button>
         </div>
       )}
@@ -1129,18 +1191,58 @@ const Dashboard = () => {
           {/* Stock por Centro - Bar Chart Horizontal */}
           <ChartCard title="Inventario por Centro" icon={FaWarehouse} expandable>
             {graficas.stock_por_centro.length > 0 ? (
-              <ResponsiveContainer width="100%" height={320}>
-                <BarChart data={graficas.stock_por_centro} layout="vertical">
+              <ResponsiveContainer width="100%" height={Math.max(320, graficas.stock_por_centro.length * 60)}>
+                <BarChart 
+                  data={graficas.stock_por_centro} 
+                  layout="vertical"
+                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" horizontal={false} />
                   <XAxis type="number" tick={{ fill: '#6B7280', fontSize: 12 }} />
                   <YAxis 
                     dataKey="centro" 
                     type="category" 
-                    width={120}
-                    tick={{ fill: '#6B7280', fontSize: 11 }}
-                    tickFormatter={(value) => value.length > 15 ? `${value.slice(0, 15)}...` : value}
+                    width={180}
+                    tick={({ x, y, payload }) => (
+                      <g transform={`translate(${x},${y})`}>
+                        <title>{payload.value}</title>
+                        <text 
+                          x={-5} 
+                          y={0} 
+                          dy={4} 
+                          textAnchor="end" 
+                          fill="#374151" 
+                          fontSize={11}
+                          fontWeight={500}
+                        >
+                          {payload.value.length > 22 ? `${payload.value.slice(0, 22)}…` : payload.value}
+                        </text>
+                      </g>
+                    )}
                   />
-                  <Tooltip content={<CustomTooltip formatter={(v) => `${v.toLocaleString('es-MX')} uds`} />} />
+                  <Tooltip 
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const data = payload[0].payload;
+                      return (
+                        <div className="bg-white rounded-xl shadow-xl border border-gray-200 p-4 min-w-[200px]">
+                          <p className="font-bold text-gray-800 mb-2 text-sm leading-tight">
+                            {data.centro}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <span 
+                              className="w-3 h-3 rounded-full" 
+                              style={{ backgroundColor: 'var(--color-primary, #9F2241)' }}
+                            />
+                            <span className="text-gray-600 text-sm">Stock:</span>
+                            <span className="font-bold text-gray-900">
+                              {data.stock?.toLocaleString('es-MX')} uds
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    }}
+                  />
                   <Bar 
                     dataKey="stock" 
                     name="Stock"
@@ -1199,12 +1301,26 @@ const Dashboard = () => {
                       ))}
                     </Pie>
                     <Tooltip 
-                      formatter={(value, name, props) => [value, formatearEstado(props.payload.estado)]}
-                      contentStyle={{
-                        backgroundColor: 'rgba(255,255,255,0.98)',
-                        borderRadius: '12px',
-                        border: '1px solid #E5E7EB',
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const data = payload[0].payload;
+                        const color = COLORES_ESTADO_REQUISICION[data.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
+                        return (
+                          <div className="bg-white rounded-xl shadow-xl border border-gray-200 p-4 min-w-[180px]">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span 
+                                className="w-3 h-3 rounded-full flex-shrink-0" 
+                                style={{ backgroundColor: color }}
+                              />
+                              <span className="font-bold text-gray-800 text-sm">
+                                {formatearEstado(data.estado)}
+                              </span>
+                            </div>
+                            <p className="text-2xl font-black text-gray-900">
+                              {data.cantidad} <span className="text-sm font-normal text-gray-500">requisiciones</span>
+                            </p>
+                          </div>
+                        );
                       }}
                     />
                   </PieChart>
