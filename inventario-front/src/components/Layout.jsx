@@ -190,9 +190,9 @@ function Layout() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: "var(--color-background, #F5F5F5)" }}>
       <aside
-        className={`fixed top-0 left-0 z-40 h-screen shadow-lg transition-transform ${
+        className={`fixed top-0 left-0 z-40 h-screen shadow-lg transition-transform duration-300 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } w-64 lg:translate-x-0 flex flex-col`}
+        } w-64 flex flex-col`}
         style={{ background: "var(--color-sidebar-bg, linear-gradient(180deg, #9F2241 0%, #6B1839 100%))" }}
       >
         {/* Header del Sidebar - Logo y Título integrados */}
@@ -299,7 +299,7 @@ function Layout() {
         </div>
       </aside>
 
-      <div className="transition-all min-h-screen flex flex-col lg:ml-64">
+      <div className={`transition-all duration-300 min-h-screen flex flex-col ${sidebarOpen ? 'lg:ml-64' : 'ml-0'}`}>
         <header 
           className="shadow-sm sticky top-0 z-30 h-[72px] flex items-center" 
           style={{ 
@@ -311,12 +311,11 @@ function Layout() {
             <div className="flex items-center gap-3 sm:gap-4">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="transition-colors"
+                className="transition-colors p-2 rounded-lg hover:bg-white/10"
                 style={{ color: "var(--color-header-text, #FFFFFF)" }}
-                onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.8")}
-                onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+                title={sidebarOpen ? "Ocultar menú" : "Mostrar menú"}
               >
-                <FaBars size={24} />
+                {sidebarOpen ? <FaTimes size={24} /> : <FaBars size={24} />}
               </button>
               <h1
                 className="text-sm sm:text-base md:text-lg font-bold leading-snug max-w-3xl"
