@@ -3804,11 +3804,15 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         from core.models import SalidaDonacion
-        # ISS-DB-ALIGN: Incluir centro_destino y finalizado_por en select_related
+        # ISS-DB-ALIGN: Incluir centro_destino, finalizado_por y ambos productos en select_related
         queryset = SalidaDonacion.objects.select_related(
-            'detalle_donacion', 'detalle_donacion__producto', 
-            'detalle_donacion__donacion', 'entregado_por',
-            'centro_destino', 'finalizado_por'
+            'detalle_donacion', 
+            'detalle_donacion__producto',  # FK legacy
+            'detalle_donacion__producto_donacion',  # FK nuevo catálogo donaciones
+            'detalle_donacion__donacion', 
+            'entregado_por',
+            'centro_destino', 
+            'finalizado_por'
         ).all()
         
         # Filtrar por detalle de donacion

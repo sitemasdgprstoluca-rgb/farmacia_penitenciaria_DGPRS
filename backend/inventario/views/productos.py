@@ -325,6 +325,79 @@ class ProductoViewSet(viewsets.ModelViewSet):
             logger.error(f"Error en toggle_activo: {str(e)}", exc_info=True)
             return Response({'error': f'Error interno: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
+    @action(detail=True, methods=['get'], url_path='lotes')
+    def lotes(self, request, pk=None):
+        """
+        Obtiene los lotes de un producto.
+        GET /api/productos/{id}/lotes/
+        
+        Parámetros opcionales:
+        - centro: ID del centro o 'central' para farmacia central
+        - activo: 'true' para solo lotes activos
+        - con_stock: 'true' para solo lotes con cantidad > 0
+        """
+        try:
+            from core.models import Lote
+            from core.serializers import LoteSerializer
+            
+            producto = self.get_object()
+            user = request.user
+            
+            # Filtro base: lotes del producto
+            lotes = Lote.objects.filter(producto=producto)
+            
+            # Filtro por centro
+            centro_param = request.query_params.get('centro')
+            if centro_param:
+                if centro_param == 'central':
+                    lotes = lotes.filter(centro__isnull=True)
+                else:
+                    lotes = lotes.filter(centro_id=centro_param)
+            else:
+                # Por defecto, usuarios de centro solo ven lotes de su centro
+                if not is_farmacia_or_admin(user) and not user.is_superuser:
+                    user_centro = get_user_centro(user)
+                    if user_centro:
+                        lotes = lotes.filter(centro=user_centro)
+                    else:
+                        # Usuario sin centro no ve ningún lote
+                        lotes = Lote.objects.none()
+                else:
+                    # Farmacia/Admin ven lotes de farmacia central por defecto
+                    lotes = lotes.filter(centro__isnull=True)
+            
+            # Filtro por activo
+            activo_param = request.query_params.get('activo')
+            if activo_param == 'true':
+                lotes = lotes.filter(activo=True)
+            elif activo_param == 'false':
+                lotes = lotes.filter(activo=False)
+            
+            # Filtro por stock
+            con_stock = request.query_params.get('con_stock')
+            if con_stock == 'true':
+                lotes = lotes.filter(cantidad_actual__gt=0)
+            
+            # Ordenar por fecha de vencimiento
+            lotes = lotes.order_by('fecha_vencimiento')
+            
+            # Serializar
+            serializer = LoteSerializer(lotes, many=True)
+            
+            return Response({
+                'producto_id': producto.id,
+                'producto_nombre': producto.nombre,
+                'producto_clave': producto.clave,
+                'lotes': serializer.data,
+                'total': lotes.count()
+            })
+            
+        except Producto.DoesNotExist:
+            return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"Error al obtener lotes del producto: {str(e)}", exc_info=True)
+            return Response({'error': 'Error al obtener lotes'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
     @action(detail=True, methods=['get'], url_path='auditoria')
     def auditoria(self, request, pk=None):
         """

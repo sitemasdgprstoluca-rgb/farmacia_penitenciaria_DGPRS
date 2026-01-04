@@ -332,7 +332,7 @@ function Layout() {
   }, []);
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "var(--color-background, #F8FAFC)" }}>
+    <div className="min-h-screen flex" style={{ backgroundColor: "var(--color-background, #F8FAFC)" }}>
       {/* ========== SIDEBAR ========== */}
       <aside
         onMouseEnter={() => setSidebarHovered(true)}
@@ -502,10 +502,10 @@ function Layout() {
       </aside>
 
       {/* ========== CONTENIDO PRINCIPAL ========== */}
-      <div className={`transition-all duration-500 min-h-screen flex flex-col ${sidebarOpen ? 'lg:ml-72' : 'ml-0'}`}>
-        {/* Header */}
+      <div className={`flex-1 transition-all duration-500 min-h-screen flex flex-col ${sidebarOpen ? 'lg:ml-72' : 'ml-0'}`}>
+        {/* Header - Fixed para que siempre esté visible */}
         <header 
-          className="sticky top-0 z-30 h-16 flex items-center px-4 sm:px-6"
+          className={`fixed top-0 right-0 z-30 h-16 flex items-center px-4 sm:px-6 transition-all duration-500 ${sidebarOpen ? 'lg:left-72' : 'left-0'}`}
           style={{ 
             background: "linear-gradient(135deg, var(--color-header-bg, var(--color-primary, #9F2241)) 0%, var(--color-primary-hover, #6B1839) 100%)",
             boxShadow: '0 2px 20px rgba(0, 0, 0, 0.1)',
@@ -588,6 +588,9 @@ function Layout() {
             </div>
           </div>
         </header>
+
+        {/* Spacer para el header fijo */}
+        <div className="h-16 flex-shrink-0" />
 
         {/* Main Content */}
         <main 

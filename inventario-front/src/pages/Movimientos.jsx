@@ -646,7 +646,29 @@ const Movimientos = () => {
             </div>
             <div>
               <h1 className="text-2xl font-bold">Movimientos de Inventario</h1>
-              <p className="text-white/80 text-sm">Total: {total} movimientos | Balance: {stats.balance >= 0 ? '+' : ''}{stats.balance}</p>
+              <p className="text-white/80 text-sm">
+                {hayFiltrosActivos ? 'Filtrados:' : 'Total:'} {total} movimientos 
+                {filtrosAplicados.fecha_inicio || filtrosAplicados.fecha_fin ? (
+                  <span className="ml-2">
+                    ({filtrosAplicados.fecha_inicio || '∞'} - {filtrosAplicados.fecha_fin || 'hoy'})
+                  </span>
+                ) : null}
+              </p>
+            </div>
+          </div>
+          {/* Stats resumen compacto */}
+          <div className="hidden sm:flex items-center gap-4 text-sm">
+            <div className="text-center px-3 py-1 bg-white/10 rounded-lg">
+              <span className="text-green-300 font-bold">+{stats.entradas}</span>
+              <span className="text-white/70 ml-1">entradas</span>
+            </div>
+            <div className="text-center px-3 py-1 bg-white/10 rounded-lg">
+              <span className="text-red-300 font-bold">-{stats.salidas}</span>
+              <span className="text-white/70 ml-1">salidas</span>
+            </div>
+            <div className={`text-center px-3 py-1 rounded-lg ${stats.balance >= 0 ? 'bg-green-500/30' : 'bg-red-500/30'}`}>
+              <span className="font-bold">{stats.balance >= 0 ? '+' : ''}{stats.balance}</span>
+              <span className="text-white/70 ml-1">balance</span>
             </div>
           </div>
           {hayFiltrosActivos && (
@@ -1093,7 +1115,7 @@ const Movimientos = () => {
                 </div>
               )}
             </div>
-            <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+            <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] text-sm">
                 <thead className="bg-theme-gradient sticky top-0 z-10">
                   <tr>
@@ -1516,15 +1538,12 @@ const Movimientos = () => {
                 </tbody>
               </table>
             </div>
-            <div className="px-6 py-4 border-t border-gray-200 text-sm text-gray-700 flex flex-wrap gap-4">
-              <span>
-                <strong>Entradas:</strong> +{stats.entradas}
-              </span>
-              <span>
-                <strong>Salidas:</strong> -{stats.salidas}
-              </span>
-              <span className={stats.balance >= 0 ? "text-green-600" : "text-red-600"}>
-                <strong>Balance:</strong> {stats.balance >= 0 ? "+" : ""}{stats.balance}
+            {/* Stats en mobile (visible solo en pantallas pequeñas) */}
+            <div className="sm:hidden px-6 py-3 border-t border-gray-200 flex justify-center gap-4 text-sm">
+              <span className="text-green-600 font-semibold">+{stats.entradas}</span>
+              <span className="text-red-600 font-semibold">-{stats.salidas}</span>
+              <span className={`font-bold ${stats.balance >= 0 ? "text-green-700" : "text-red-700"}`}>
+                = {stats.balance >= 0 ? "+" : ""}{stats.balance}
               </span>
             </div>
           </div>

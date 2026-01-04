@@ -811,7 +811,7 @@ const Dashboard = () => {
     {
       title: 'Movimientos',
       value: kpis.movimientos_mes || 0,
-      subtext: 'Registrados este mes',
+      subtext: `En ${new Date().toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}`,
       icon: FaExchangeAlt,
       colorType: 'warning',
       show: permisos?.verDashboard && permisos?.verMovimientos,

@@ -2263,8 +2263,12 @@ class SalidaDonacionSerializer(serializers.ModelSerializer):
         return None
     
     def get_producto_nombre(self, obj):
-        if obj.detalle_donacion and obj.detalle_donacion.producto:
-            return obj.detalle_donacion.producto.nombre
+        """Obtener nombre del producto desde detalle_donacion.
+        DetalleDonacion tiene dos campos: producto_donacion (nuevo) y producto (legacy).
+        """
+        if obj.detalle_donacion:
+            # Usar la property nombre_producto que maneja ambos casos
+            return obj.detalle_donacion.nombre_producto
         return None
     
     def validate_cantidad(self, value):

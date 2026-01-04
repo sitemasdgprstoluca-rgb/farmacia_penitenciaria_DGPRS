@@ -212,6 +212,9 @@ const Donaciones = () => {
   // Confirmación de eliminación de entrega pendiente
   const [confirmEliminarEntrega, setConfirmEliminarEntrega] = useState(null);
   
+  // Modal para ver detalles de una entrega
+  const [detalleEntregaModal, setDetalleEntregaModal] = useState(null);
+  
   // Estadísticas del almacén de donaciones
   const [estadisticas, setEstadisticas] = useState({
     totalProductos: 0,
@@ -2183,6 +2186,14 @@ const Donaciones = () => {
                         <td className="px-4 py-3 text-sm text-gray-600">{entrega.entregado_por_nombre || '-'}</td>
                         <td className="px-4 py-3 text-center">
                           <div className="flex items-center justify-center gap-2">
+                            {/* Botón Ver Detalles */}
+                            <button
+                              onClick={() => setDetalleEntregaModal(entrega)}
+                              className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                              title="Ver detalles de la entrega"
+                            >
+                              <FaEye />
+                            </button>
                             {/* Botón Hoja de Entrega - solo si NO está entregado (para firma) */}
                             {!(entrega.estado_entrega === 'entregado' || entrega.finalizado) && (
                               <button
@@ -3422,6 +3433,162 @@ const Donaciones = () => {
         onConfirm={() => confirmEliminarEntrega && handleEliminarEntrega(confirmEliminarEntrega)}
         onCancel={() => setConfirmEliminarEntrega(null)}
       />
+
+      {/* Modal de detalles de entrega */}
+      {detalleEntregaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="px-6 py-4 border-b bg-indigo-600 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <FaEye /> Detalle de Entrega
+              </h2>
+              <button
+                onClick={() => setDetalleEntregaModal(null)}
+                className="text-white/80 hover:text-white transition-colors"
+              >
+                <FaTimes size={20} />
+              </button>
+            </div>
+
+            {/* Contenido */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {/* Información del Producto */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-gray-600 mb-3 flex items-center gap-2">
+                  <FaBox className="text-indigo-600" /> Producto Entregado
+                </h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Producto:</span>
+                    <span className="font-semibold text-gray-800">
+                      {detalleEntregaModal.producto_nombre || 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Cantidad:</span>
+                    <span className="font-bold text-lg text-indigo-600">{detalleEntregaModal.cantidad}</span>
+                  </div>
+                  {detalleEntregaModal.detalle_donacion_info && (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Donación:</span>
+                        <span className="text-gray-800">{detalleEntregaModal.detalle_donacion_info.donacion_numero}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Stock restante:</span>
+                        <span className="text-gray-800">{detalleEntregaModal.detalle_donacion_info.cantidad_disponible}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Información del Destinatario */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-gray-600 mb-3 flex items-center gap-2">
+                  <FaUser className="text-indigo-600" /> Destinatario
+                </h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Nombre:</span>
+                    <span className="font-semibold text-gray-800">{detalleEntregaModal.destinatario}</span>
+                  </div>
+                  {detalleEntregaModal.centro_destino_nombre && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Centro:</span>
+                      <span className="text-gray-800">{detalleEntregaModal.centro_destino_nombre}</span>
+                    </div>
+                  )}
+                  {detalleEntregaModal.motivo && (
+                    <div>
+                      <span className="text-gray-500 block mb-1">Motivo:</span>
+                      <p className="bg-white p-2 rounded border text-gray-700 text-sm">{detalleEntregaModal.motivo}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Información de Entrega */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-gray-600 mb-3 flex items-center gap-2">
+                  <FaCalendar className="text-indigo-600" /> Información de Entrega
+                </h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Fecha registro:</span>
+                    <span className="text-gray-800">
+                      {new Date(detalleEntregaModal.fecha_entrega).toLocaleString('es-MX', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Registrado por:</span>
+                    <span className="text-gray-800">{detalleEntregaModal.entregado_por_nombre || 'Sistema'}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-500">Estado:</span>
+                    {detalleEntregaModal.estado_entrega === 'entregado' || detalleEntregaModal.finalizado ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        <FaCheckCircle className="text-green-600" />
+                        Entregado
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                        <FaClock className="text-yellow-600" />
+                        Pendiente
+                      </span>
+                    )}
+                  </div>
+                  {detalleEntregaModal.finalizado && detalleEntregaModal.fecha_finalizado && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Fecha finalización:</span>
+                      <span className="text-gray-800">
+                        {new Date(detalleEntregaModal.fecha_finalizado).toLocaleString('es-MX', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+                  )}
+                  {detalleEntregaModal.finalizado_por_nombre && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Finalizado por:</span>
+                      <span className="text-gray-800">{detalleEntregaModal.finalizado_por_nombre}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Notas */}
+              {detalleEntregaModal.notas && (
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h3 className="text-sm font-semibold text-gray-600 mb-2">Notas adicionales</h3>
+                  <p className="bg-white p-3 rounded border text-gray-700 text-sm">{detalleEntregaModal.notas}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end">
+              <button
+                onClick={() => setDetalleEntregaModal(null)}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
