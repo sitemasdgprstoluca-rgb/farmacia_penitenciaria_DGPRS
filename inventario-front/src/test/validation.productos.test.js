@@ -18,7 +18,7 @@ import {
   getAccionesPermitidas,
   TRANSICIONES_REQUISICION,
   ESTADOS_REQUISICION,
-} from '../validation';
+} from '../utils/validation';
 
 // ============================================
 // TESTS DE VALIDACIÓN DE PRODUCTOS (ISS-003)
