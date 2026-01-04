@@ -1104,10 +1104,12 @@ const handleImportar = async (e) => {
         </div>
       )}
 
-      {/* Tabla */}
-      <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
-        <table className="w-full min-w-[1200px] divide-y divide-gray-200">
-          <thead className="bg-theme-gradient sticky top-0 z-10">
+      {/* Contenedor Tabla + Paginación */}
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+        {/* Tabla */}
+        <div className="w-full overflow-x-auto">
+          <table className="w-full min-w-[1200px] divide-y divide-gray-200">
+            <thead className="bg-theme-gradient sticky top-0 z-10">
             <tr>
               {['#', 'Producto', 'Presentación', 'Número Lote', 'Marca / Laboratorio', 'Caducidad', 'Días', 'Alerta', 'Stock', 'Acciones'].map((col) => (
                 <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
