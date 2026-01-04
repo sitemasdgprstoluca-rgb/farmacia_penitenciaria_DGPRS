@@ -505,18 +505,17 @@ const Centros = () => {
       )}
 
       {/* Tabla */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto rounded-lg border border-gray-200">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="thead-theme">
-              <tr>
-                {['#', 'Nombre', 'Dirección', 'Teléfono', 'Email', 'Requisiciones', 'Usuarios', 'Estado', 'Acciones'].map((col) => (
-                  <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
+      <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+        <table className="w-full min-w-[1200px] divide-y divide-gray-200">
+          <thead className="bg-theme-gradient sticky top-0 z-10">
+            <tr>
+              {['#', 'Nombre', 'Dirección', 'Teléfono', 'Email', 'Requisiciones', 'Usuarios', 'Estado', 'Acciones'].map((col) => (
+                <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
+                  {col}
+                </th>
+              ))}
+            </tr>
+          </thead>
             <tbody className="bg-white divide-y divide-gray-100">
               {loading ? (
                 <tr>

@@ -342,8 +342,10 @@ function Layout() {
           </div>
         </header>
 
-        <main className="p-4 sm:p-6 lg:p-8 flex-1 w-full overflow-x-hidden">
-          <Outlet />
+        <main className="p-4 sm:p-6 lg:p-8 flex-1 w-full max-w-full overflow-x-hidden">
+          <div className="w-full max-w-full">
+            <Outlet />
+          </div>
         </main>
       </div>
 

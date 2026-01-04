@@ -87,6 +87,8 @@ body {
   background: var(--bg-secondary);
   color: var(--text-primary);
   line-height: 1.6;
+  overflow-x: hidden; /* Prevenir scroll horizontal en el body */
+  max-width: 100vw; /* Limitar el ancho al viewport */
 }
 
 /* Títulos usan fuente de títulos del tema */
@@ -200,23 +202,27 @@ code {
   cursor: not-allowed;
 }
 
-/* Tablas */
+/* Tablas - Responsive con scroll horizontal */
 .table-container {
   background: white;
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: visible;
   border: 1px solid var(--border-color);
+  width: 100%;
+  -webkit-overflow-scrolling: touch; /* Smooth scrolling en iOS */
 }
 
 .table {
   width: 100%;
+  min-width: 800px; /* Ancho mínimo para evitar compresión excesiva */
   border-collapse: collapse;
 }
 
 .table th {
   background: linear-gradient(135deg, var(--pantone-504c) 0%, var(--pantone-7420c) 100%);
-  padding: 1rem;
+  padding: 0.75rem 1rem;
   text-align: left;
   font-weight: 600;
   color: white;
@@ -224,16 +230,48 @@ code {
   text-transform: uppercase;
   font-size: 0.875rem;
   letter-spacing: 0.5px;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .table td {
-  padding: 1rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border-color);
   color: var(--text-primary);
+  white-space: nowrap;
 }
 
 .table tbody tr:hover {
   background: rgba(99, 40, 66, 0.02);
+}
+
+/* Scroll horizontal visible en pantallas pequeñas */
+@media (max-width: 1024px) {
+  .table-container {
+    box-shadow: 
+      inset -10px 0 10px -10px rgba(0,0,0,0.15),
+      var(--shadow-md);
+  }
+  
+  .table-container::-webkit-scrollbar {
+    height: 8px;
+  }
+  
+  .table-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+  }
+  
+  .table-container::-webkit-scrollbar-thumb {
+    background: var(--pantone-504c);
+    border-radius: 4px;
+  }
+  
+  .table-container::-webkit-scrollbar-thumb:hover {
+    background: var(--pantone-7420c);
+  }
 }
 
 /* Formularios */
@@ -538,5 +576,123 @@ code {
 /* Gradiente de fondo del tema - para botones y elementos destacados */
 .bg-theme-gradient {
   background: linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%) !important;
+}
+
+/* ===== RESPONSIVE DESIGN IMPROVEMENTS ===== */
+
+/* Contenedor principal responsive */
+#root {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+/* Asegurar que todos los contenedores respeten el ancho del viewport */
+.container, .content-wrapper {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Mejorar scrollbars en navegadores WebKit (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-primary, #9F2241);
+  border-radius: 5px;
+  opacity: 0.8;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary-hover, #6B1839);
+}
+
+/* Mejorar indicador de scroll horizontal en tablas */
+.overflow-x-auto::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  background: linear-gradient(to left, rgba(255,255,255,0.8), transparent);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.overflow-x-auto:hover::after {
+  opacity: 1;
+}
+
+/* Responsive media queries */
+@media (max-width: 1280px) {
+  /* Ajustar espaciado en pantallas medianas */
+  .px-8 {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+@media (max-width: 1024px) {
+  /* Reducir padding en tablets */
+  .px-6 {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  
+  /* Hacer títulos más pequeños */
+  h1 {
+    font-size: 1.75rem;
+  }
+  
+  h2 {
+    font-size: 1.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Ajustes para móviles */
+  .px-4 {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+  
+  /* Texto más pequeño en tablas */
+  .table th, .table td {
+    font-size: 0.813rem;
+    padding: 0.5rem;
+  }
+  
+  /* Botones más compactos */
+  button {
+    padding: 0.5rem 0.75rem;
+  }
+}
+
+@media (max-width: 640px) {
+  /* Máxima compactación para móviles pequeños */
+  h1 {
+    font-size: 1.5rem;
+  }
+  
+  h2 {
+    font-size: 1.25rem;
+  }
+  
+  .text-sm {
+    font-size: 0.813rem;
+  }
+  
+  /* Ocultar elementos no esenciales en móvil si es necesario */
+  .hidden-mobile {
+    display: none;
+  }
 }
 

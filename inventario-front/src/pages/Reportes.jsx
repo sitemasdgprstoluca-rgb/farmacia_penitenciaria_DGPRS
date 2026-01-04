@@ -1045,7 +1045,7 @@ const Reportes = () => {
         {renderResumen()}
 
         {/* Tabla */}
-        <div className="overflow-x-auto">
+        <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="text-center">
@@ -1060,8 +1060,8 @@ const Reportes = () => {
               <p className="text-gray-500 mt-2">Intenta ajustar los filtros o selecciona otro tipo de reporte</p>
             </div>
           ) : (
-            <table className="w-full text-sm table-fixed">
-              <thead className="thead-theme">
+            <table className="w-full min-w-[1000px] text-sm">
+              <thead className="bg-theme-gradient sticky top-0 z-10">
                 <tr>
                   {columnas.map((col) => (
                     <th 

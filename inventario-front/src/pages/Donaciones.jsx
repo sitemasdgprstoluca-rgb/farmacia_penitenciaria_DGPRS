@@ -1401,18 +1401,18 @@ const Donaciones = () => {
             <p>No se encontraron donaciones</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b">
+          <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+            <table className="w-full min-w-[1000px]">
+              <thead className="bg-theme-gradient sticky top-0 z-10">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Número</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Donante</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Tipo</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Centro Destino</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Fecha</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Items</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Estado</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Acciones</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Número</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Donante</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Tipo</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Centro Destino</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Fecha</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Items</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Estado</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y">

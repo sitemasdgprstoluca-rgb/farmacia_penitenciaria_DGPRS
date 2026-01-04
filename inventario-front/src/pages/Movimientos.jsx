@@ -1093,16 +1093,16 @@ const Movimientos = () => {
                 </div>
               )}
             </div>
-            <div className="overflow-hidden">
-              <table className="w-full text-sm table-fixed">
-                <thead className="thead-theme">
+            <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+              <table className="w-full min-w-[900px] text-sm">
+                <thead className="bg-theme-gradient sticky top-0 z-10">
                   <tr>
-                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white w-[30%]">Producto</th>
-                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white w-[10%]">Tipo</th>
-                    <th className="px-2 py-3 text-right text-xs font-semibold uppercase tracking-wider text-white w-[8%]">Cant.</th>
-                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white w-[18%]">Centro</th>
-                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white w-[14%]">Fecha</th>
-                    <th className="px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white w-[20%]">Acciones</th>
+                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Producto</th>
+                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Tipo</th>
+                    <th className="px-2 py-3 text-right text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Cant.</th>
+                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Centro</th>
+                    <th className="px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Fecha</th>
+                    <th className="px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-100">

@@ -814,27 +814,27 @@ const RequisicionDetalle = () => {
         {detalles.length === 0 ? (
           <p className="text-center text-gray-500 py-8">No hay productos en esta requisición</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="border-b-2 border-theme-primary">
-                  <th className="px-3 py-3 text-left text-sm font-semibold text-gray-700">Clave</th>
-                  <th className="px-3 py-3 text-left text-sm font-semibold text-gray-700">Producto</th>
-                  <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Lote</th>
-                  <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Unidad</th>
-                  <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Solicitado</th>
-                  <th className={`px-3 py-3 text-center text-sm font-semibold ${modoAutorizar ? 'bg-gray-100 text-theme-primary' : 'text-gray-700'}`}>
+          <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+            <table className="w-full min-w-[900px] border-collapse">
+              <thead className="bg-theme-gradient sticky top-0 z-10">
+                <tr>
+                  <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Clave</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Producto</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Unidad</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Solicitado</th>
+                  <th className={`px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${modoAutorizar ? 'bg-white/20 text-white' : 'text-white'}`}>
                     Autorizado
                   </th>
                   {/* MEJORA FLUJO 3: Columna para motivo de ajuste */}
                   {modoAutorizar && (
-                    <th className="px-3 py-3 text-left text-sm font-semibold bg-amber-50 text-amber-700 min-w-[200px]">
+                    <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider bg-amber-500 text-white whitespace-nowrap min-w-[200px]">
                       Motivo Ajuste
                     </th>
                   )}
-                  <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Surtido</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Surtido</th>
                   {esFarmacia && (
-                    <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Stock Lote</th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Stock Lote</th>
                   )}
                 </tr>
               </thead>

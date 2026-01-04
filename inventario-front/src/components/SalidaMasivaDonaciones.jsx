@@ -404,14 +404,14 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
             </div>
             
             {/* Tabla de entregas */}
-            <div className="overflow-x-auto mb-6">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-100">
+            <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md mb-6">
+              <table className="w-full min-w-[600px] divide-y divide-gray-200 text-sm">
+                <thead className="bg-theme-gradient sticky top-0 z-10">
                   <tr>
-                    <th className="px-3 py-2 text-left font-semibold">Producto</th>
-                    <th className="px-3 py-2 text-left font-semibold">Donación</th>
-                    <th className="px-3 py-2 text-left font-semibold">Lote</th>
-                    <th className="px-3 py-2 text-center font-semibold">Cantidad</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Producto</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Donación</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
+                    <th className="px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Cantidad</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -780,16 +780,16 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
                     </button>
                   </div>
                   
-                  <div className="overflow-x-auto border rounded-lg mb-6">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-100">
+                  <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md mb-6">
+                    <table className="w-full min-w-[800px] divide-y divide-gray-200">
+                      <thead className="bg-theme-gradient sticky top-0 z-10">
                         <tr>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Producto</th>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Donación</th>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Lote</th>
-                          <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Disponible</th>
-                          <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Cantidad</th>
-                          <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Acción</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Producto</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Donación</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
+                          <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Disponible</th>
+                          <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Cantidad</th>
+                          <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Acción</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 bg-white">

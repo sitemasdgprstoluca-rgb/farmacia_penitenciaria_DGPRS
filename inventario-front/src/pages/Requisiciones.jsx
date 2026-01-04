@@ -2105,17 +2105,18 @@ const Requisiciones = () => {
                         <p className="text-sm">Intenta con otra búsqueda</p>
                       </div>
                     ) : (
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-100 sticky top-0">
-                          <tr>
-                            <th className="text-left px-4 py-3 font-semibold">Clave</th>
-                            <th className="text-left px-4 py-3 font-semibold">Nombre</th>
-                            <th className="text-left px-4 py-3 font-semibold">Lote</th>
-                            <th className="text-center px-4 py-3 font-semibold">Caducidad</th>
-                            <th className="text-center px-4 py-3 font-semibold">Inventario</th>
-                            <th className="text-center px-4 py-3 font-semibold w-40">Cantidad</th>
-                          </tr>
-                        </thead>
+                      <div className="w-full overflow-x-auto rounded-lg border border-gray-200">
+                        <table className="w-full min-w-[800px] text-sm">
+                          <thead className="bg-theme-gradient sticky top-0 z-10">
+                            <tr>
+                              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Clave</th>
+                              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Nombre</th>
+                              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
+                              <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Caducidad</th>
+                              <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Inventario</th>
+                              <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap w-40">Cantidad</th>
+                            </tr>
+                          </thead>
                         <tbody>
                           {catalogoAgrupado.map((grupo) => (
                             grupo.lotes.map((lote, loteIdx) => {
@@ -2203,6 +2204,7 @@ const Requisiciones = () => {
                           ))}
                         </tbody>
                       </table>
+                      </div>
                     )}
                   </div>
                   

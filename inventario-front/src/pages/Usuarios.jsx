@@ -946,19 +946,18 @@ function Usuarios() {
         <UsuariosSkeleton />
       ) : (
         <>
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-theme-gradient">
+        <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+          <table className="w-full min-w-[1000px] divide-y divide-gray-200">
+            <thead className="bg-theme-gradient sticky top-0 z-10">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase">#</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase">Usuario</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase">Nombre</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase">Email</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase">Rol</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase">Centro</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase">Estado</th>
-                <th className="px-6 py-3 text-right text-xs font-semibold text-white uppercase">Acciones</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase whitespace-nowrap">#</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase whitespace-nowrap">Usuario</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase whitespace-nowrap">Nombre</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase whitespace-nowrap">Email</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase whitespace-nowrap">Rol</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase whitespace-nowrap">Centro</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase whitespace-nowrap">Estado</th>
+                <th className="px-6 py-3 text-right text-xs font-semibold text-white uppercase whitespace-nowrap">Acciones</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -1067,7 +1066,6 @@ function Usuarios() {
               ))}
             </tbody>
           </table>
-          </div>
         </div>
         
         {/* Paginación */}

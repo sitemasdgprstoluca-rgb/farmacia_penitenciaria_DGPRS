@@ -334,19 +334,18 @@ function Notificaciones() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Título</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Mensaje</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Tipo</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Fecha</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Estado</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Acciones</th>
-              </tr>
-            </thead>
+      <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+        <table className="w-full min-w-[800px] divide-y divide-gray-200">
+          <thead className="bg-theme-gradient sticky top-0 z-10">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Título</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Mensaje</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Tipo</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Fecha</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Estado</th>
+              <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Acciones</th>
+            </tr>
+          </thead>
             <tbody className="divide-y divide-gray-100">
               {loading && (
                 <tr>

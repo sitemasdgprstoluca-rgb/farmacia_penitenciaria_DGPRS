@@ -1194,17 +1194,17 @@ const Trazabilidad = () => {
                   (mostrando {Math.min(resultadosGlobal.movimientos.length, 500)} de {resultadosGlobal.total_movimientos})
                 </span>
               </h3>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 text-sm">
-                  <thead className="bg-gray-50">
+              <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+                <table className="w-full min-w-[900px] divide-y divide-gray-200 text-sm">
+                  <thead className="bg-theme-gradient sticky top-0 z-10">
                     <tr>
-                      <th className="px-4 py-2 text-left font-semibold">Fecha</th>
-                      <th className="px-4 py-2 text-left font-semibold">Tipo</th>
-                      <th className="px-4 py-2 text-left font-semibold">Producto</th>
-                      <th className="px-4 py-2 text-left font-semibold">Lote</th>
-                      <th className="px-4 py-2 text-left font-semibold">Cantidad</th>
-                      <th className="px-4 py-2 text-left font-semibold">Centro</th>
-                      <th className="px-4 py-2 text-left font-semibold">Usuario</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Fecha</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Tipo</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Producto</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Cantidad</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Centro</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Usuario</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -1330,16 +1330,16 @@ const Trazabilidad = () => {
               <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                 <FaWarehouse /> Lotes asociados ({lotesParaMostrar.length})
               </h3>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 text-sm">
-                  <thead className="bg-gray-50">
+              <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+                <table className="w-full min-w-[800px] divide-y divide-gray-200 text-sm">
+                  <thead className="bg-theme-gradient sticky top-0 z-10">
                     <tr>
-                      <th className="px-4 py-2 text-left font-semibold">Lote</th>
-                      <th className="px-4 py-2 text-left font-semibold">Caducidad</th>
-                      <th className="px-4 py-2 text-left font-semibold">Inventario</th>
-                      {puedeVerContrato && <th className="px-4 py-2 text-left font-semibold">Contrato</th>}
-                      {puedeVerContrato && <th className="px-4 py-2 text-left font-semibold">Marca</th>}
-                      <th className="px-4 py-2 text-left font-semibold">Estado</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Caducidad</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Inventario</th>
+                      {puedeVerContrato && <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Contrato</th>}
+                      {puedeVerContrato && <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Marca</th>}
+                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Estado</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -1376,17 +1376,17 @@ const Trazabilidad = () => {
                   </span>
                 )}
               </h3>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 text-sm">
-                  <thead className="bg-gray-50">
+              <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+                <table className="w-full min-w-[900px] divide-y divide-gray-200 text-sm">
+                  <thead className="bg-theme-gradient sticky top-0 z-10">
                     <tr>
-                      <th className="px-4 py-2 text-left font-semibold">Fecha</th>
-                      <th className="px-4 py-2 text-left font-semibold">Tipo</th>
-                      <th className="px-4 py-2 text-left font-semibold">Cantidad</th>
-                      {mostrarSaldo && <th className="px-4 py-2 text-left font-semibold" title="Cantidad restante del lote después del movimiento">Saldo Lote</th>}
-                      <th className="px-4 py-2 text-left font-semibold">Centro</th>
-                      <th className="px-4 py-2 text-left font-semibold">Usuario</th>
-                      <th className="px-4 py-2 text-left font-semibold">Lote</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Fecha</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Tipo</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Cantidad</th>
+                      {mostrarSaldo && <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap" title="Cantidad restante del lote después del movimiento">Saldo Lote</th>}
+                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Centro</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Usuario</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">

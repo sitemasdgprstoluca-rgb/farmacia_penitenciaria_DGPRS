@@ -1485,11 +1485,11 @@ const Productos = () => {
 
     return (
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
+      <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
 
-        <table className="min-w-full divide-y divide-gray-200">
+        <table className="w-full min-w-[1000px] divide-y divide-gray-200">
 
-          <thead className="bg-theme-gradient">
+          <thead className="bg-theme-gradient sticky top-0 z-10">
 
             <tr>
 
@@ -1517,7 +1517,7 @@ const Productos = () => {
 
               ].map((col) => (
 
-                <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
+                <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
 
                   {col}
 
@@ -2547,17 +2547,18 @@ const Productos = () => {
                   <span className="ml-3 text-gray-600">Cargando lotes...</span>
                 </div>
               ) : lotesModalData?.lotes?.length ? (
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50 sticky top-0">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Lote</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Cantidad</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Caducidad</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Días Rest.</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Estado</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Ubicación</th>
-                    </tr>
-                  </thead>
+                <div className="w-full overflow-x-auto">
+                  <table className="w-full min-w-[700px] divide-y divide-gray-200">
+                    <thead className="bg-theme-gradient sticky top-0 z-10">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Cantidad</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Caducidad</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Días Rest.</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Estado</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Ubicación</th>
+                      </tr>
+                    </thead>
                   <tbody className="bg-white divide-y divide-gray-100">
                     {lotesModalData.lotes.map((lote, idx) => {
                       // Semáforo de caducidad
@@ -2610,6 +2611,7 @@ const Productos = () => {
                     })}
                   </tbody>
                 </table>
+                </div>
               ) : (
                 <div className="py-12 text-center text-gray-500">
                   <FaBoxOpen className="mx-auto text-4xl mb-3 text-gray-300" />
