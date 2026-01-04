@@ -1697,6 +1697,9 @@ class RequisicionService:
         La trazabilidad se mantiene a través del Movimiento que ya
         tiene referencia al lote y la requisición.
         
+        ADEMÁS: Actualiza el detalle con el lote usado para que
+        se muestre en el frontend.
+        
         Args:
             detalle: DetalleRequisicion
             lote: Lote usado
@@ -1706,6 +1709,15 @@ class RequisicionService:
         Returns:
             Movimiento: El movimiento de referencia (ya creado)
         """
+        # ISS-FIX: Guardar el lote en el detalle para visualización
+        # Solo si el detalle no tiene lote asignado aún
+        if detalle.lote_id is None:
+            detalle.lote = lote
+            detalle.save(update_fields=['lote'])
+            logger.info(
+                f"ISS-FIX: Lote {lote.numero_lote} asignado a detalle {detalle.pk} de requisición {self.requisicion.folio}"
+            )
+        
         # La trazabilidad se registra en el movimiento que ya tiene:
         # - lote_id: El lote del que se surtió
         # - requisicion_id: La requisición asociada
