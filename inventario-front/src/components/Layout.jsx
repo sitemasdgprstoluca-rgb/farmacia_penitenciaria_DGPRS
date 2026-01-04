@@ -27,8 +27,6 @@ import {
   FaUsers,
   FaChartBar,
   FaHistory,
-  FaBars,
-  FaTimes,
   FaSignOutAlt,
   FaExchangeAlt,
   FaBell,
@@ -59,7 +57,7 @@ const MenuItem = ({ item, isActive, onClick }) => {
       onClick={onClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className="group relative flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300"
+      className="group relative flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-300"
       style={{
         backgroundColor: isActive 
           ? 'rgba(255,255,255,0.18)' 
@@ -81,14 +79,14 @@ const MenuItem = ({ item, isActive, onClick }) => {
       
       {/* Icono con efecto */}
       <div 
-        className="relative flex items-center justify-center w-9 h-9 rounded-lg transition-all duration-300"
+        className="relative flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-300"
         style={{
           backgroundColor: isActive ? 'rgba(255,255,255,0.2)' : 'transparent',
-          transform: isHovered ? 'scale(1.1)' : 'scale(1)',
+          transform: isHovered ? 'scale(1.05)' : 'scale(1)',
         }}
       >
         <Icon 
-          size={18} 
+          size={16} 
           className="transition-transform duration-300"
           style={{ 
             color: 'white',
@@ -353,7 +351,7 @@ function Layout() {
         }}
       >
         {/* Header del Sidebar */}
-        <div className="relative px-5 py-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+        <div className="relative px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
           {/* Fondo decorativo */}
           <div 
             className="absolute inset-0 opacity-10"
@@ -362,64 +360,53 @@ function Layout() {
             }}
           />
           
-          <div className="relative flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {/* Logo con efecto de brillo */}
-              <div 
-                className="relative w-11 h-11 rounded-xl flex items-center justify-center overflow-hidden"
-                style={{ 
-                  backgroundColor: 'rgba(255,255,255,0.15)',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                }}
-              >
-                <img 
-                  src={logoHeaderUrl || "/logo-sistema.png"} 
-                  alt="Logo" 
-                  className="h-8 w-8 object-contain"
-                  onError={(e) => { e.target.src = "/logo-sistema.png"; }}
-                />
-              </div>
-              
-              {/* Título */}
-              <div>
-                <h1 
-                  className="text-lg font-black tracking-wide"
-                  style={{ color: "white" }}
-                >
-                  FARMACIA
-                </h1>
-                <p 
-                  className="text-[10px] tracking-[0.2em] uppercase"
-                  style={{ color: "rgba(255,255,255,0.6)" }}
-                >
-                  Sistema Penitenciario
-                </p>
-              </div>
+          <div className="relative flex items-center gap-3">
+            {/* Logo con efecto de brillo */}
+            <div 
+              className="relative w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden"
+              style={{ 
+                backgroundColor: 'rgba(255,255,255,0.15)',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+              }}
+            >
+              <img 
+                src={logoHeaderUrl || "/logo-sistema.png"} 
+                alt="Logo" 
+                className="h-7 w-7 object-contain"
+                onError={(e) => { e.target.src = "/logo-sistema.png"; }}
+              />
             </div>
             
-            {/* Botón cerrar móvil */}
-            <button 
-              onClick={() => setSidebarOpen(false)} 
-              className="lg:hidden p-2 rounded-lg transition-all duration-300 hover:bg-white/10"
-              style={{ color: "rgba(255,255,255,0.8)" }}
-            >
-              <FaTimes size={18} />
-            </button>
+            {/* Título */}
+            <div className="flex-1">
+              <h1 
+                className="text-base font-black tracking-wide"
+                style={{ color: "white" }}
+              >
+                FARMACIA
+              </h1>
+              <p 
+                className="text-[9px] tracking-[0.15em] uppercase"
+                style={{ color: "rgba(255,255,255,0.6)" }}
+              >
+                Sistema Penitenciario
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Perfil de Usuario */}
+        {/* Perfil de Usuario - Compacto */}
         <div 
-          className="mx-4 mt-4 mb-2 p-4 rounded-2xl"
+          className="mx-3 mt-3 mb-1 p-3 rounded-xl"
           style={{ 
             backgroundColor: "rgba(0,0,0,0.15)",
             backdropFilter: 'blur(10px)',
           }}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             {/* Avatar con iniciales */}
             <div 
-              className="relative w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg"
+              className="relative w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm flex-shrink-0"
               style={{ 
                 background: 'linear-gradient(135deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)',
                 color: 'white',
@@ -429,7 +416,7 @@ function Layout() {
               {inicialesUsuario}
               {/* Indicador online */}
               <div 
-                className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2"
+                className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2"
                 style={{ 
                   backgroundColor: '#10B981',
                   borderColor: 'var(--color-primary, #9F2241)',
@@ -440,29 +427,27 @@ function Layout() {
             {/* Info usuario */}
             <div className="flex-1 min-w-0">
               <p 
-                className="font-semibold text-sm truncate"
+                className="font-semibold text-[13px] truncate leading-tight"
                 style={{ color: "white" }}
               >
                 {nombreUsuario}
               </p>
               <p 
-                className="text-xs truncate mt-0.5"
+                className="text-[11px] truncate"
                 style={{ color: "rgba(255,255,255,0.6)" }}
               >
                 {user?.email}
               </p>
             </div>
-          </div>
-          
-          {/* Badge de rol */}
-          <div className="mt-3 flex justify-center">
+            
+            {/* Badge de rol - Inline */}
             <RolBadge rol={rolPrincipal} />
           </div>
         </div>
 
-        {/* Navegación */}
-        <nav className="flex-1 px-3 py-2 overflow-y-auto custom-scrollbar">
-          <div className="space-y-1">
+        {/* Navegación - Sin scroll */}
+        <nav className="flex-1 px-2 py-1 overflow-hidden">
+          <div className="space-y-0.5">
             {visibleMenuItems.map((item) => (
               <MenuItem
                 key={item.path}
@@ -474,21 +459,21 @@ function Layout() {
           </div>
         </nav>
 
-        {/* Footer - Logout */}
+        {/* Footer - Logout Compacto */}
         <div 
-          className="p-4"
+          className="p-3"
           style={{ 
             borderTop: "1px solid rgba(255,255,255,0.1)",
-            background: 'rgba(0,0,0,0.1)',
+            background: 'rgba(0,0,0,0.08)',
           }}
         >
           <button
             onClick={handleLogout}
             disabled={loggingOut}
             className="
-              w-full flex items-center justify-center gap-3 
-              px-4 py-3.5 rounded-xl
-              font-semibold text-sm
+              w-full flex items-center justify-center gap-2 
+              px-3 py-2.5 rounded-xl
+              font-semibold text-[13px]
               transition-all duration-300
               disabled:opacity-50 disabled:cursor-not-allowed
             "
@@ -500,15 +485,15 @@ function Layout() {
             onMouseLeave={(e) => !loggingOut && (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.12)')}
           >
             <FaSignOutAlt 
-              size={18} 
+              size={15} 
               className={loggingOut ? 'animate-spin' : ''} 
             />
-            <span>{loggingOut ? 'Cerrando sesión...' : 'Cerrar Sesión'}</span>
+            <span>{loggingOut ? 'Cerrando...' : 'Cerrar Sesión'}</span>
           </button>
           
           {/* Versión */}
           <p 
-            className="text-center text-[10px] mt-3"
+            className="text-center text-[9px] mt-2"
             style={{ color: 'rgba(255,255,255,0.4)' }}
           >
             SIFP v2.0 • {new Date().getFullYear()}
@@ -531,11 +516,32 @@ function Layout() {
             <div className="flex items-center gap-4 min-w-0">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="p-2 rounded-xl transition-all duration-300 hover:bg-white/10"
+                className="relative w-10 h-10 rounded-xl transition-all duration-300 hover:bg-white/15 flex items-center justify-center group"
                 style={{ color: "var(--color-header-text, white)" }}
                 title={sidebarOpen ? "Ocultar menú" : "Mostrar menú"}
               >
-                {sidebarOpen ? <FaTimes size={22} /> : <FaBars size={22} />}
+                {/* Hamburguesa animada */}
+                <div className="relative w-5 h-4 flex flex-col justify-between">
+                  <span 
+                    className="block h-0.5 rounded-full bg-current transition-all duration-300 origin-center"
+                    style={{
+                      transform: sidebarOpen ? 'rotate(45deg) translateY(7px)' : 'rotate(0)',
+                    }}
+                  />
+                  <span 
+                    className="block h-0.5 rounded-full bg-current transition-all duration-300"
+                    style={{
+                      opacity: sidebarOpen ? 0 : 1,
+                      transform: sidebarOpen ? 'translateX(-10px)' : 'translateX(0)',
+                    }}
+                  />
+                  <span 
+                    className="block h-0.5 rounded-full bg-current transition-all duration-300 origin-center"
+                    style={{
+                      transform: sidebarOpen ? 'rotate(-45deg) translateY(-7px)' : 'rotate(0)',
+                    }}
+                  />
+                </div>
               </button>
               
               {/* Título del sistema */}
