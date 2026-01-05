@@ -726,12 +726,19 @@ const RequisicionDetalle = () => {
       
       // Preparar datos para el backend
       // El backend espera 'producto' (ID del producto) y opcionalmente 'lote_id'
-      const detallesParaEnviar = productosEditables.map(p => ({
-        id: p.esNuevo ? null : p.id,
-        producto: p.producto_id,
-        lote_id: p.lote_id,
-        cantidad_solicitada: p.cantidad_solicitada
-      }));
+      const detallesParaEnviar = productosEditables.map(p => {
+        const item = {
+          producto: p.producto_id,
+          cantidad_solicitada: parseInt(p.cantidad_solicitada, 10),
+        };
+        // Solo incluir lote_id si existe
+        if (p.lote_id) {
+          item.lote_id = p.lote_id;
+        }
+        return item;
+      });
+      
+      console.log('Enviando detalles:', detallesParaEnviar);
       
       await requisicionesAPI.update(id, {
         detalles: detallesParaEnviar
@@ -747,7 +754,11 @@ const RequisicionDetalle = () => {
       cargarRequisicion();
     } catch (error) {
       console.error('Error guardando cambios:', error);
-      toast.error(error.response?.data?.error || 'Error al guardar los cambios');
+      const errorMsg = error.response?.data?.error || 
+                       error.response?.data?.detail ||
+                       (typeof error.response?.data === 'string' ? error.response.data : null) ||
+                       'Error al guardar los cambios';
+      toast.error(errorMsg);
     } finally {
       setGuardandoCambios(false);
     }
