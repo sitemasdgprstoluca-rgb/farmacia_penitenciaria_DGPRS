@@ -5219,61 +5219,68 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     
     def update(self, request, *args, **kwargs):
         """Solo permite editar si sigue en borrador o está devuelta."""
-        requisicion = self.get_object()
-        estado_actual = (requisicion.estado or '').lower()
-        # Permitir editar en borrador o devuelta (para que el médico corrija después de devolución)
-        if estado_actual not in ['borrador', 'devuelta']:
-            return Response({'error': 'Solo se pueden editar requisiciones en estado BORRADOR o DEVUELTA', 'estado_actual': requisicion.estado}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            requisicion = self.get_object()
+            estado_actual = (requisicion.estado or '').lower()
+            # Permitir editar en borrador o devuelta (para que el médico corrija después de devolución)
+            if estado_actual not in ['borrador', 'devuelta']:
+                return Response({'error': 'Solo se pueden editar requisiciones en estado BORRADOR o DEVUELTA', 'estado_actual': requisicion.estado}, status=status.HTTP_400_BAD_REQUEST)
 
-        centro_user = self._user_centro(request.user)
-        if not request.user.is_superuser and centro_user and requisicion.centro_id != centro_user.id:
-            return Response({'error': 'No puedes editar requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
+            centro_user = self._user_centro(request.user)
+            if not request.user.is_superuser and centro_user and requisicion.centro_id != centro_user.id:
+                return Response({'error': 'No puedes editar requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
 
-        # ISS-FIX: Extraer items/detalles ANTES de pasar al serializer
-        # para evitar errores de validación del nested serializer
-        items_data = request.data.get('items') or request.data.get('detalles') or []
-        
-        # Preparar datos sin 'detalles' para el serializer de la requisición
-        serializer_data = {k: v for k, v in request.data.items() if k not in ['items', 'detalles']}
-        
-        partial = kwargs.pop('partial', False)
-        serializer = self.get_serializer(requisicion, data=serializer_data, partial=True)  # Siempre partial
-        serializer.is_valid(raise_exception=True)
-        requisicion = serializer.save()
-
-        if items_data:
-            # ISS-001, ISS-004, ISS-005: Validar stock en modo informativo (solo advertir)
-            advertencias_stock = self._validar_stock_items(
-                items_data, 
-                centro=requisicion.centro,
-                validar_farmacia_central=True,
-                modo='informativo'  # ISS-005: Solo advertir en edición
-            )
-            requisicion.detalles.all().delete()
-            for item_data in items_data:
-                producto_id = item_data.get('producto')
-                cant = item_data.get('cantidad_solicitada')
-                if not producto_id or cant in [None, '']:
-                    continue
-                # ISS-FIX-LOTE: Incluir el lote específico si viene en el request
-                lote_id = item_data.get('lote') or item_data.get('lote_id')
-                DetalleRequisicion.objects.create(
-                    requisicion=requisicion,
-                    producto_id=producto_id,
-                    lote_id=lote_id,  # ISS-FIX-LOTE: Guardar lote específico
-                    cantidad_solicitada=int(cant),
-                    cantidad_autorizada=int(item_data.get('cantidad_autorizada') or 0),
-                    # ISS-FIX: Usar 'notas' en lugar de 'observaciones' (que es @property)
-                    notas=item_data.get('observaciones') or item_data.get('notas') or ''
-                )
+            # ISS-FIX: Extraer items/detalles ANTES de pasar al serializer
+            # para evitar errores de validación del nested serializer
+            items_data = request.data.get('items') or request.data.get('detalles') or []
             
-            # ISS-005: Devolver resultado con advertencias si las hay
-            response_data = {'mensaje': 'Requisicion actualizada exitosamente', 'requisicion': RequisicionSerializer(requisicion).data}
-            if advertencias_stock:
-                response_data['advertencias_stock'] = advertencias_stock
-            return Response(response_data)
+            # Preparar datos sin 'detalles' para el serializer de la requisición
+            serializer_data = {k: v for k, v in request.data.items() if k not in ['items', 'detalles']}
+            
+            partial = kwargs.pop('partial', False)
+            serializer = self.get_serializer(requisicion, data=serializer_data, partial=True)  # Siempre partial
+            serializer.is_valid(raise_exception=True)
+            requisicion = serializer.save()
 
-        return Response({'mensaje': 'Requisicion actualizada exitosamente', 'requisicion': RequisicionSerializer(requisicion).data})
+            if items_data:
+                # ISS-001, ISS-004, ISS-005: Validar stock en modo informativo (solo advertir)
+                advertencias_stock = self._validar_stock_items(
+                    items_data, 
+                    centro=requisicion.centro,
+                    validar_farmacia_central=True,
+                    modo='informativo'  # ISS-005: Solo advertir en edición
+                )
+                requisicion.detalles.all().delete()
+                for item_data in items_data:
+                    producto_id = item_data.get('producto')
+                    cant = item_data.get('cantidad_solicitada')
+                    if not producto_id or cant in [None, '']:
+                        continue
+                    # ISS-FIX-LOTE: Incluir el lote específico si viene en el request
+                    lote_id = item_data.get('lote') or item_data.get('lote_id')
+                    DetalleRequisicion.objects.create(
+                        requisicion=requisicion,
+                        producto_id=producto_id,
+                        lote_id=lote_id,  # ISS-FIX-LOTE: Guardar lote específico
+                        cantidad_solicitada=int(cant),
+                        cantidad_autorizada=int(item_data.get('cantidad_autorizada') or 0),
+                        # ISS-FIX: Usar 'notas' en lugar de 'observaciones' (que es @property)
+                        notas=item_data.get('observaciones') or item_data.get('notas') or ''
+                    )
+                
+                # ISS-005: Devolver resultado con advertencias si las hay
+                response_data = {'mensaje': 'Requisicion actualizada exitosamente', 'requisicion': RequisicionSerializer(requisicion).data}
+                if advertencias_stock:
+                    response_data['advertencias_stock'] = advertencias_stock
+                return Response(response_data)
+
+            return Response({'mensaje': 'Requisicion actualizada exitosamente', 'requisicion': RequisicionSerializer(requisicion).data})
+        except ValidationError as e:
+            logger.error(f"ValidationError en update requisición: {e}")
+            return Response({'error': str(e.message_dict if hasattr(e, 'message_dict') else e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.error(f"Error inesperado en update requisición: {type(e).__name__}: {e}", exc_info=True)
+            return Response({'error': f'Error interno: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def destroy(self, request, *args, **kwargs):
         requisicion = self.get_object()

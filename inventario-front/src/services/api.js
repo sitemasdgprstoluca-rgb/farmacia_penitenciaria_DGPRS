@@ -627,12 +627,14 @@ apiClient.interceptors.response.use(
     
     // ISS-011: Usar toastDebounce para evitar toasts duplicados
     // ISS-005 FIX (audit32): Manejo específico por código de estado
+    // ISS-FIX: Definir serverMessage a nivel de scope para evitar ReferenceError
+    const serverMessage = error.response?.data?.detail || error.response?.data?.error;
+    
     if (status === 403) {
       toastDebounce.error('No tienes permisos para esta acción.');
     } else if (ERROR_HANDLERS[status]) {
       // ISS-005 FIX: Manejar códigos específicos con configuración
       const handler = ERROR_HANDLERS[status];
-      const serverMessage = error.response?.data?.detail || error.response?.data?.error;
       
       // Loguear según nivel configurado
       if (handler.logLevel === 'error') {
