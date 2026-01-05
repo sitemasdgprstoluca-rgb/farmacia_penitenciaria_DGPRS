@@ -265,9 +265,28 @@ function ModalDatosAdicionales({ tipo, accion, onConfirm, onCancel }) {
       case 'fecha_recoleccion':
         return 'Asignar Fecha Límite de Recolección';
       case 'motivo':
-        return accion.key === 'devolver' ? 'Motivo de Devolución' : 'Motivo de Rechazo';
+        if (accion.key === 'devolver') return 'Motivo de Devolución';
+        if (accion.key === 'cancelar') return 'Motivo de Cancelación';
+        return 'Motivo de Rechazo';
       default:
         return 'Datos Adicionales';
+    }
+  };
+  
+  // ISS-FIX: Obtener etiqueta y placeholder según la acción
+  const getMotivoLabel = () => {
+    switch (accion.key) {
+      case 'devolver': return 'Motivo de devolución *';
+      case 'cancelar': return 'Motivo de cancelación *';
+      default: return 'Motivo de rechazo *';
+    }
+  };
+  
+  const getMotivoPlaceholder = () => {
+    switch (accion.key) {
+      case 'devolver': return 'Explique por qué se devuelve la requisición...';
+      case 'cancelar': return 'Explique por qué cancela esta requisición...';
+      default: return 'Explique el motivo del rechazo...';
     }
   };
   
@@ -306,17 +325,18 @@ function ModalDatosAdicionales({ tipo, accion, onConfirm, onCancel }) {
           {tipo === 'motivo' && (
             <>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                {accion.key === 'devolver' ? 'Motivo de devolución *' : 'Motivo de rechazo *'}
+                {getMotivoLabel()}
               </label>
               <textarea
                 value={valor}
                 onChange={(e) => setValor(e.target.value)}
                 rows={4}
                 className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500"
-                placeholder="Explique el motivo (mínimo 10 caracteres)..."
+                placeholder={getMotivoPlaceholder()}
                 required
                 minLength={10}
               />
+              <p className="text-xs text-gray-500 mt-1">Mínimo 10 caracteres</p>
             </>
           )}
           

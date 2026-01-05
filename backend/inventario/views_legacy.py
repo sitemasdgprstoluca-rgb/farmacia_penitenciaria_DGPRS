@@ -5564,7 +5564,16 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                         }, status=status.HTTP_403_FORBIDDEN)
                 
                 # ISS-RES-002: Usar cambiar_estado para validaciones
-                motivo = request.data.get('observaciones') or request.data.get('comentario') or 'Cancelada por usuario'
+                # ISS-FIX: Motivo obligatorio para cancelación (mínimo 10 caracteres)
+                motivo = request.data.get('motivo') or request.data.get('observaciones') or request.data.get('comentario') or ''
+                motivo = motivo.strip() if motivo else ''
+                
+                if not motivo or len(motivo) < 10:
+                    return Response({
+                        'error': 'Debe proporcionar un motivo de cancelación (mínimo 10 caracteres)'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                estado_anterior = requisicion.estado
                 
                 try:
                     requisicion.cambiar_estado(
@@ -5573,7 +5582,27 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                         motivo=motivo,
                         validar=True
                     )
+                    # Guardar motivo en notas
+                    requisicion.notas = f"[CANCELADA] {motivo}"
                     requisicion.save(update_fields=['estado', 'notas', 'updated_at'])
+                    
+                    # ISS-FIX: Registrar en historial con usuario y motivo
+                    from core.models import RequisicionHistorialEstados
+                    RequisicionHistorialEstados.objects.create(
+                        requisicion=requisicion,
+                        estado_anterior=estado_anterior,
+                        estado_nuevo='cancelada',
+                        usuario=request.user,
+                        accion='cancelar',
+                        motivo=motivo,
+                        observaciones=f'Cancelada por {request.user.get_full_name() or request.user.username}',
+                        ip_address=request.META.get('REMOTE_ADDR', ''),
+                        datos_adicionales={
+                            'cancelado_por_id': request.user.id,
+                            'cancelado_por_nombre': request.user.get_full_name() or request.user.username,
+                            'cancelado_por_rol': getattr(request.user, 'rol', 'N/A'),
+                        }
+                    )
                 except ValidationError as e:
                     return Response({
                         'error': str(e.message_dict if hasattr(e, 'message_dict') else e)

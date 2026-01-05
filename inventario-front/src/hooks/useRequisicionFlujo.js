@@ -135,7 +135,7 @@ const ACCIONES_FLUJO = {
     estadoResultante: 'cancelada',
     // Médico cancela borrador/devuelta, farmacia cancela autorizada/en_surtido
     rolesPermitidos: ['medico', 'usuario_centro', 'usuario_normal', 'farmacia', 'admin_farmacia'],
-    requiereMotivo: false,
+    requiereMotivo: true,  // ISS-FIX: Motivo obligatorio para cancelación
     confirmacion: true,
     color: 'gray',
   },

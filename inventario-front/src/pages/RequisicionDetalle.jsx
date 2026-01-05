@@ -633,17 +633,25 @@ const RequisicionDetalle = () => {
     
     // Copiar detalles a productosEditables
     const detalles = requisicion.detalles || [];
-    setProductosEditables(detalles.map(d => ({
-      id: d.id,
-      lote_id: d.lote?.id || d.lote_id,
-      producto_id: d.producto?.id || d.producto_id,
-      producto_clave: d.producto?.clave || d.producto_clave || d.lote?.producto?.clave,
-      producto_nombre: d.producto?.nombre || d.producto_nombre || d.lote?.producto?.nombre,
-      numero_lote: d.lote?.numero_lote || d.numero_lote || d.lote_numero,
-      cantidad_solicitada: d.cantidad_solicitada,
-      stock_disponible: d.stock_disponible || d.lote?.stock_actual || d.lote_stock || 0,
-      esNuevo: false
-    })));
+    console.log('Detalles de requisición:', detalles);
+    
+    setProductosEditables(detalles.map(d => {
+      // El serializer devuelve 'producto' como ID directo, o como objeto {id, nombre, clave}
+      const productoId = typeof d.producto === 'object' ? d.producto?.id : d.producto;
+      const loteId = typeof d.lote === 'object' ? d.lote?.id : d.lote;
+      
+      return {
+        id: d.id,
+        lote_id: loteId || d.lote_id,
+        producto_id: productoId || d.producto_id,
+        producto_clave: d.producto?.clave || d.producto_clave,
+        producto_nombre: d.producto?.nombre || d.producto_nombre || d.producto_descripcion,
+        numero_lote: d.lote?.numero_lote || d.lote_numero,
+        cantidad_solicitada: d.cantidad_solicitada,
+        stock_disponible: d.stock_disponible || d.lote?.cantidad_actual || d.lote_stock || 0,
+        esNuevo: false
+      };
+    }));
     
     setModoEdicionProductos(true);
     cargarCatalogoLotes();
@@ -1032,6 +1040,22 @@ const RequisicionDetalle = () => {
               <span className="text-sm font-semibold">Motivo de Rechazo</span>
             </div>
             <p className="text-red-700">{requisicion.motivo_rechazo}</p>
+          </div>
+        )}
+
+        {/* ISS-FIX: Mostrar motivo de cancelación */}
+        {requisicion.estado === 'cancelada' && (
+          <div className="mt-4 p-4 bg-gray-100 rounded-lg border-2 border-gray-400 shadow-md">
+            <div className="flex items-center gap-2 text-gray-700 mb-2">
+              <FaTimes className="text-gray-500 text-xl" />
+              <span className="font-bold text-lg">🚫 Requisición Cancelada</span>
+            </div>
+            {requisicion.notas?.startsWith('[CANCELADA]') ? (
+              <p className="text-gray-800 font-medium text-base">{requisicion.notas.replace('[CANCELADA] ', '')}</p>
+            ) : (
+              <p className="text-gray-600 italic">Motivo no registrado. Consulte el historial para más detalles.</p>
+            )}
+            <p className="text-gray-500 text-sm mt-2 italic">Puede revisar el historial de cambios para ver quién canceló esta requisición.</p>
           </div>
         )}
 
