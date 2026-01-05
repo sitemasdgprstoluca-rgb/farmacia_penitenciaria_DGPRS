@@ -55,16 +55,19 @@ const normalizeProductoResponse = (data) => {
   const lotes = Array.isArray(data.lotes) ? data.lotes.map(mapLote) : [];
   const movimientos = Array.isArray(data.movimientos) ? data.movimientos.map(mapMovimiento) : [];
 
-  if (data.codigo) {
+  // ISS-FIX: El backend devuelve data.codigo + data.producto con los detalles
+  // Priorizar data.producto para obtener nombre/descripción
+  if (data.producto) {
+    const producto = data.producto;
     return {
-      codigo: data.codigo,
-      nombre: data.nombre,
-      descripcion: data.descripcion || data.nombre || '',
-      presentacion: data.presentacion || '',
-      unidad_medida: data.unidad_medida || 'PIEZA',
-      precio_unitario: data.precio_unitario || data.precio || 0,
-      stock_actual: data.stock_actual ?? data.estadisticas?.stock_total ?? 0,
-      stock_minimo: data.stock_minimo ?? data.estadisticas?.stock_minimo ?? null,
+      codigo: data.codigo || producto.clave || producto.codigo,
+      nombre: producto.nombre || producto.descripcion || '',
+      descripcion: producto.descripcion || producto.nombre || '',
+      presentacion: producto.presentacion || '',
+      unidad_medida: producto.unidad_medida || 'PIEZA',
+      precio_unitario: producto.precio_unitario || producto.precio || 0,
+      stock_actual: data.estadisticas?.stock_total ?? producto.stock_actual ?? 0,
+      stock_minimo: producto.stock_minimo ?? data.estadisticas?.stock_minimo ?? null,
       lotes,
       movimientos,
       alertas: data.alertas || [],
@@ -72,17 +75,17 @@ const normalizeProductoResponse = (data) => {
     };
   }
 
-  if (data.producto) {
-    const producto = data.producto;
+  // Fallback: estructura donde los datos vienen directamente en data
+  if (data.codigo) {
     return {
-      codigo: producto.clave || producto.codigo,
-      nombre: producto.nombre || producto.descripcion || '',
-      descripcion: producto.descripcion || producto.nombre || '',
-      presentacion: producto.presentacion || '',
-      unidad_medida: producto.unidad_medida || 'PIEZA',
-      precio_unitario: producto.precio_unitario || producto.precio || 0,
-      stock_actual: data.estadisticas?.stock_total ?? producto.stock_actual ?? 0,
-      stock_minimo: producto.stock_minimo ?? null,
+      codigo: data.codigo,
+      nombre: data.nombre || data.descripcion || '',
+      descripcion: data.descripcion || data.nombre || '',
+      presentacion: data.presentacion || '',
+      unidad_medida: data.unidad_medida || 'PIEZA',
+      precio_unitario: data.precio_unitario || data.precio || 0,
+      stock_actual: data.stock_actual ?? data.estadisticas?.stock_total ?? 0,
+      stock_minimo: data.stock_minimo ?? data.estadisticas?.stock_minimo ?? null,
       lotes,
       movimientos,
       alertas: data.alertas || [],

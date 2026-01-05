@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { requisicionesAPI, hojasRecoleccionAPI, descargarArchivo } from '../services/api';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { requisicionesAPI, hojasRecoleccionAPI, descargarArchivo, lotesAPI } from '../services/api';
 import { usePermissions } from '../hooks/usePermissions';
 import { getEstadoBadgeClasses, getEstadoLabel } from '../components/EstadoBadge';
 import RequisicionHistorial from '../components/RequisicionHistorial';
@@ -28,12 +28,19 @@ import {
   FaCheckCircle,
   FaEdit,
   FaHistory,
+  FaExclamationTriangle,
+  FaPlus,
+  FaTrash,
+  FaSearch,
+  FaSave,
+  FaMinus,
 } from 'react-icons/fa';
 import { COLORS } from '../constants/theme';
 
 const RequisicionDetalle = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { permisos, user } = usePermissions();
   
   const [requisicion, setRequisicion] = useState(null);
@@ -61,6 +68,18 @@ const RequisicionDetalle = () => {
   // Para autorización con cantidades editables
   const [modoAutorizar, setModoAutorizar] = useState(false);
   const [detallesEditables, setDetallesEditables] = useState([]);
+
+  // MODO EDICIÓN DE PRODUCTOS (para médico cuando devuelta/borrador)
+  const [modoEdicionProductos, setModoEdicionProductos] = useState(false);
+  const [productosEditables, setProductosEditables] = useState([]);
+  const [catalogoLotes, setCatalogoLotes] = useState([]);
+  const [loadingCatalogo, setLoadingCatalogo] = useState(false);
+  const [catalogoBusqueda, setCatalogoBusqueda] = useState('');
+  const [showAgregarProducto, setShowAgregarProducto] = useState(false);
+  const [guardandoCambios, setGuardandoCambios] = useState(false);
+
+  // Detectar si viene en modo editar desde URL
+  const modoEditarURL = searchParams.get('modo') === 'editar';
 
   const cargarRequisicion = useCallback(async () => {
     try {
@@ -123,6 +142,14 @@ const RequisicionDetalle = () => {
   useEffect(() => {
     if (id) cargarRequisicion();
   }, [id, cargarRequisicion]);
+
+  // Detectar modo edición desde URL y activar cuando requisición carga
+  useEffect(() => {
+    if (modoEditarURL && requisicion && ['borrador', 'devuelta'].includes(requisicion.estado)) {
+      iniciarEdicionProductos();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modoEditarURL, requisicion?.id, requisicion?.estado]);
 
   // FLUJO V2: Usa helpers compartidos para colores de badge y labels
   const getEstadoBadge = (estado) => getEstadoBadgeClasses(estado);
@@ -513,6 +540,165 @@ const RequisicionDetalle = () => {
     }
   };
 
+  // ============ FUNCIONES PARA MODO EDICIÓN DE PRODUCTOS ============
+  
+  // Cargar catálogo de lotes disponibles
+  const cargarCatalogoLotes = async () => {
+    try {
+      setLoadingCatalogo(true);
+      // para_requisicion=true muestra lotes de farmacia central para requisiciones
+      const response = await lotesAPI.getAll({ disponible: true, para_requisicion: true });
+      setCatalogoLotes(response.data?.results || response.data || []);
+    } catch (error) {
+      console.error('Error cargando catálogo:', error);
+      toast.error('No se pudo cargar el catálogo de productos');
+    } finally {
+      setLoadingCatalogo(false);
+    }
+  };
+
+  // Iniciar modo edición
+  const iniciarEdicionProductos = () => {
+    if (!requisicion || !['borrador', 'devuelta'].includes(requisicion.estado)) {
+      toast.error('Solo se puede editar en estado borrador o devuelta');
+      return;
+    }
+    
+    // Copiar detalles a productosEditables
+    const detalles = requisicion.detalles || [];
+    setProductosEditables(detalles.map(d => ({
+      id: d.id,
+      lote_id: d.lote?.id || d.lote_id,
+      producto_id: d.producto?.id || d.producto_id,
+      producto_clave: d.producto?.clave || d.producto_clave || d.lote?.producto?.clave,
+      producto_nombre: d.producto?.nombre || d.producto_nombre || d.lote?.producto?.nombre,
+      numero_lote: d.lote?.numero_lote || d.numero_lote || d.lote_numero,
+      cantidad_solicitada: d.cantidad_solicitada,
+      stock_disponible: d.stock_disponible || d.lote?.stock_actual || d.lote_stock || 0,
+      esNuevo: false
+    })));
+    
+    setModoEdicionProductos(true);
+    cargarCatalogoLotes();
+  };
+
+  // Cancelar edición de productos
+  const cancelarEdicionProductos = () => {
+    setModoEdicionProductos(false);
+    setProductosEditables([]);
+    setShowAgregarProducto(false);
+    setCatalogoBusqueda('');
+    // Limpiar parámetro de URL
+    searchParams.delete('modo');
+    setSearchParams(searchParams);
+  };
+
+  // Actualizar cantidad de un producto
+  const actualizarCantidadProducto = (idx, valor) => {
+    const cantidad = Math.max(1, Number(valor) || 1);
+    setProductosEditables(prev => {
+      const nuevo = [...prev];
+      nuevo[idx] = { ...nuevo[idx], cantidad_solicitada: cantidad };
+      return nuevo;
+    });
+  };
+
+  // Eliminar producto de la lista
+  const eliminarProducto = (idx) => {
+    if (productosEditables.length <= 1) {
+      toast.error('La requisición debe tener al menos un producto');
+      return;
+    }
+    setProductosEditables(prev => prev.filter((_, i) => i !== idx));
+    toast.success('Producto eliminado de la lista');
+  };
+
+  // Agregar producto del catálogo
+  const agregarProductoDeCatalogo = (lote) => {
+    // Verificar si ya está en la lista
+    const yaExiste = productosEditables.some(p => p.lote_id === lote.id);
+    if (yaExiste) {
+      toast.error('Este lote ya está en la requisición');
+      return;
+    }
+    
+    const nuevoProducto = {
+      id: null, // Nuevo, sin ID
+      lote_id: lote.id,
+      producto_id: lote.producto?.id || lote.producto_id,
+      producto_clave: lote.producto?.clave || lote.producto_clave,
+      producto_nombre: lote.producto?.nombre || lote.producto_nombre,
+      numero_lote: lote.numero_lote,
+      cantidad_solicitada: 1,
+      stock_disponible: lote.stock_actual || lote.stock_disponible || 0,
+      esNuevo: true
+    };
+    
+    setProductosEditables(prev => [...prev, nuevoProducto]);
+    setShowAgregarProducto(false);
+    setCatalogoBusqueda('');
+    toast.success(`Producto ${nuevoProducto.producto_clave} agregado`);
+  };
+
+  // Guardar cambios de edición
+  const guardarCambiosProductos = async () => {
+    if (productosEditables.length === 0) {
+      toast.error('La requisición debe tener al menos un producto');
+      return;
+    }
+    
+    // Validar que todas las cantidades sean válidas
+    const invalidos = productosEditables.filter(p => !p.cantidad_solicitada || p.cantidad_solicitada < 1);
+    if (invalidos.length > 0) {
+      toast.error('Todas las cantidades deben ser mayores a 0');
+      return;
+    }
+    
+    try {
+      setGuardandoCambios(true);
+      
+      // Preparar datos para el backend
+      // El backend espera 'producto' (ID del producto) y opcionalmente 'lote_id'
+      const detallesParaEnviar = productosEditables.map(p => ({
+        id: p.esNuevo ? null : p.id,
+        producto: p.producto_id,
+        lote_id: p.lote_id,
+        cantidad_solicitada: p.cantidad_solicitada
+      }));
+      
+      await requisicionesAPI.update(id, {
+        detalles: detallesParaEnviar
+      });
+      
+      toast.success('Cambios guardados correctamente');
+      setModoEdicionProductos(false);
+      setShowAgregarProducto(false);
+      // Limpiar parámetro de URL
+      searchParams.delete('modo');
+      setSearchParams(searchParams);
+      // Recargar requisición
+      cargarRequisicion();
+    } catch (error) {
+      console.error('Error guardando cambios:', error);
+      toast.error(error.response?.data?.error || 'Error al guardar los cambios');
+    } finally {
+      setGuardandoCambios(false);
+    }
+  };
+
+  // Filtrar catálogo por búsqueda
+  const catalogoFiltrado = catalogoBusqueda.trim() 
+    ? catalogoLotes.filter(lote => {
+        const busqueda = catalogoBusqueda.toLowerCase();
+        const clave = (lote.producto?.clave || lote.producto_clave || '').toLowerCase();
+        const nombre = (lote.producto?.nombre || lote.producto_nombre || '').toLowerCase();
+        const numeroLote = (lote.numero_lote || '').toLowerCase();
+        return clave.includes(busqueda) || nombre.includes(busqueda) || numeroLote.includes(busqueda);
+      })
+    : catalogoLotes;
+
+  // ============ FIN FUNCIONES MODO EDICIÓN ============
+
   // Verificar integridad de la hoja (farmacia)
   const handleVerificarIntegridad = async () => {
     if (!hojaRecoleccion) return;
@@ -573,6 +759,11 @@ const RequisicionDetalle = () => {
   const puedeEnviar = requisicion?.estado === 'borrador' && 
     permisos?.enviarRequisicion && 
     tieneAccesoPorCentro;
+  
+  // Editar: médicos pueden editar en borrador o devuelta
+  const puedeEditar = ['borrador', 'devuelta'].includes(requisicion?.estado) && 
+    tieneAccesoPorCentro &&
+    (requisicion?.solicitante_id === user?.id || esFarmacia || user?.is_superuser);
     
   // Validar AMBOS: rol de farmacia Y permiso fino correspondiente
   // ISS-DB-002: Estados alineados con BD Supabase
@@ -752,6 +943,18 @@ const RequisicionDetalle = () => {
           </div>
         )}
 
+        {/* BANNER PROMINENTE: Motivo de devolución */}
+        {requisicion.estado === 'devuelta' && requisicion.motivo_devolucion && (
+          <div className="mt-4 p-4 bg-amber-50 rounded-lg border-2 border-amber-400 shadow-md">
+            <div className="flex items-center gap-2 text-amber-700 mb-2">
+              <FaExclamationTriangle className="text-amber-500 text-xl" />
+              <span className="font-bold text-lg">⚠️ Requisición Devuelta para Corrección</span>
+            </div>
+            <p className="text-amber-800 font-medium text-base">{requisicion.motivo_devolucion}</p>
+            <p className="text-amber-600 text-sm mt-2 italic">Realice las correcciones indicadas y vuelva a enviar la requisición.</p>
+          </div>
+        )}
+
         {requisicion.motivo_rechazo && (
           <div className="mt-4 p-3 bg-red-50 rounded-lg border border-red-200">
             <div className="flex items-center gap-2 text-red-600 mb-1">
@@ -808,16 +1011,204 @@ const RequisicionDetalle = () => {
       <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-theme-primary">
-            Productos Solicitados ({detalles.length})
+            Productos Solicitados ({modoEdicionProductos ? productosEditables.length : detalles.length})
           </h2>
-          {modoAutorizar && (
-            <span className="px-3 py-1 border rounded-full text-sm font-semibold border-theme-primary text-theme-primary">
-              Modo Edición
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {modoAutorizar && (
+              <span className="px-3 py-1 border rounded-full text-sm font-semibold border-theme-primary text-theme-primary">
+                Modo Autorización
+              </span>
+            )}
+            {modoEdicionProductos && (
+              <span className="px-3 py-1 border rounded-full text-sm font-semibold border-amber-500 text-amber-600 bg-amber-50">
+                ✏️ Modo Edición
+              </span>
+            )}
+            {/* Botón para iniciar edición si puede editar y no está editando */}
+            {puedeEditar && !modoEdicionProductos && !modoAutorizar && (
+              <button
+                onClick={iniciarEdicionProductos}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium"
+              >
+                <FaEdit /> Editar Productos
+              </button>
+            )}
+          </div>
         </div>
 
-        {detalles.length === 0 ? (
+        {/* MODO EDICIÓN DE PRODUCTOS */}
+        {modoEdicionProductos ? (
+          <>
+            {/* Tabla editable */}
+            <div className="w-full overflow-x-auto rounded-lg border border-amber-200 shadow-md">
+              <table className="w-full min-w-[800px] border-collapse">
+                <thead className="bg-amber-500">
+                  <tr>
+                    <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">Clave</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">Producto</th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white">Lote</th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white">Stock Disp.</th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white">Cantidad</th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productosEditables.map((prod, idx) => (
+                    <tr key={prod.id || `nuevo-${idx}`} className={`border-b border-gray-200 ${prod.esNuevo ? 'bg-green-50' : 'hover:bg-gray-50'}`}>
+                      <td className="px-3 py-3 text-sm font-mono text-gray-800">
+                        {prod.producto_clave || '-'}
+                        {prod.esNuevo && <span className="ml-2 text-xs text-green-600 font-normal">(Nuevo)</span>}
+                      </td>
+                      <td className="px-3 py-3 text-sm text-gray-800">
+                        {prod.producto_nombre || '-'}
+                      </td>
+                      <td className="px-3 py-3 text-center text-sm font-mono">
+                        {prod.numero_lote || '-'}
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <span className={`font-semibold ${prod.stock_disponible < prod.cantidad_solicitada ? 'text-red-600' : 'text-green-600'}`}>
+                          {prod.stock_disponible || 0}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => actualizarCantidadProducto(idx, prod.cantidad_solicitada - 1)}
+                            className="p-1 text-gray-500 hover:text-red-500 transition-colors"
+                            disabled={prod.cantidad_solicitada <= 1}
+                          >
+                            <FaMinus size={12} />
+                          </button>
+                          <input
+                            type="number"
+                            min="1"
+                            value={prod.cantidad_solicitada}
+                            onChange={(e) => actualizarCantidadProducto(idx, e.target.value)}
+                            className="w-16 px-2 py-1 border border-gray-300 rounded text-center font-semibold focus:ring-2 focus:outline-none focus:ring-amber-400"
+                          />
+                          <button
+                            onClick={() => actualizarCantidadProducto(idx, prod.cantidad_solicitada + 1)}
+                            className="p-1 text-gray-500 hover:text-green-500 transition-colors"
+                          >
+                            <FaPlus size={12} />
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <button
+                          onClick={() => eliminarProducto(idx)}
+                          className="p-2 text-red-500 hover:bg-red-100 rounded-lg transition-colors"
+                          title="Eliminar producto"
+                        >
+                          <FaTrash />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Botón agregar producto */}
+            <div className="mt-4">
+              {!showAgregarProducto ? (
+                <button
+                  onClick={() => setShowAgregarProducto(true)}
+                  className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-green-400 text-green-600 rounded-lg hover:bg-green-50 transition-colors font-medium"
+                >
+                  <FaPlus /> Agregar Producto
+                </button>
+              ) : (
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-gray-700 flex items-center gap-2">
+                      <FaSearch className="text-gray-400" />
+                      Buscar en Catálogo de Lotes
+                    </h3>
+                    <button
+                      onClick={() => { setShowAgregarProducto(false); setCatalogoBusqueda(''); }}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <FaTimes />
+                    </button>
+                  </div>
+                  
+                  <input
+                    type="text"
+                    placeholder="Buscar por clave, nombre o número de lote..."
+                    value={catalogoBusqueda}
+                    onChange={(e) => setCatalogoBusqueda(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:outline-none focus:ring-green-400 mb-3"
+                    autoFocus
+                  />
+
+                  {loadingCatalogo ? (
+                    <div className="flex items-center justify-center py-4">
+                      <div className="animate-spin rounded-full h-6 w-6 border-2 border-t-transparent border-green-500"></div>
+                      <span className="ml-2 text-gray-500">Cargando catálogo...</span>
+                    </div>
+                  ) : catalogoBusqueda.trim() ? (
+                    <div className="max-h-60 overflow-y-auto border rounded-lg">
+                      {catalogoFiltrado.length === 0 ? (
+                        <p className="text-center text-gray-500 py-4">No se encontraron productos</p>
+                      ) : (
+                        catalogoFiltrado.slice(0, 20).map(lote => (
+                          <div
+                            key={lote.id}
+                            className="flex items-center justify-between p-3 border-b last:border-b-0 hover:bg-green-50 cursor-pointer"
+                            onClick={() => agregarProductoDeCatalogo(lote)}
+                          >
+                            <div>
+                              <span className="font-mono font-semibold text-gray-800">{lote.producto?.clave || lote.producto_clave}</span>
+                              <span className="mx-2 text-gray-400">-</span>
+                              <span className="text-gray-700">{lote.producto?.nombre || lote.producto_nombre}</span>
+                              <span className="ml-2 text-xs text-gray-500">Lote: {lote.numero_lote}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className={`text-sm font-semibold ${lote.stock_actual > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                Stock: {lote.stock_actual || 0}
+                              </span>
+                              <FaPlus className="text-green-500" />
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-center text-gray-400 py-4 text-sm">Escriba para buscar productos disponibles</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Botones de acción */}
+            <div className="mt-6 flex items-center justify-end gap-3 pt-4 border-t">
+              <button
+                onClick={cancelarEdicionProductos}
+                disabled={guardandoCambios}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50"
+              >
+                <FaTimes /> Cancelar
+              </button>
+              <button
+                onClick={guardarCambiosProductos}
+                disabled={guardandoCambios || productosEditables.length === 0}
+                className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold disabled:opacity-50"
+              >
+                {guardandoCambios ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-t-transparent border-white"></div>
+                    Guardando...
+                  </>
+                ) : (
+                  <>
+                    <FaSave /> Guardar Cambios
+                  </>
+                )}
+              </button>
+            </div>
+          </>
+        ) : detalles.length === 0 ? (
           <p className="text-center text-gray-500 py-8">No hay productos en esta requisición</p>
         ) : (
           <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
@@ -1094,6 +1485,18 @@ const RequisicionDetalle = () => {
             </>
           ) : (
             <>
+              {/* Botón EDITAR prominente para requisiciones devueltas */}
+              {puedeEditar && (
+                <button
+                  onClick={() => navigate(`/requisiciones?editar=${requisicion.id}`)}
+                  disabled={procesando}
+                  className="flex items-center gap-2 px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-lg disabled:opacity-50 transition-colors font-semibold shadow-md"
+                >
+                  <FaEdit className="text-lg" /> 
+                  {requisicion?.estado === 'devuelta' ? 'Editar y Corregir' : 'Editar Requisición'}
+                </button>
+              )}
+
               {/* FLUJO V2: Acciones del flujo según rol y estado */}
               <RequisicionAcciones
                 requisicion={requisicion}

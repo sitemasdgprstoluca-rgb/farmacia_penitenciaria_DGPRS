@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   requisicionesAPI,
   productosAPI,
@@ -87,6 +87,7 @@ const FotoFirmaSurtidoPreview = ({ archivo, onRemove }) => {
 
 const Requisiciones = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { permisos, user, getRolPrincipal, recargarUsuario } = usePermissions();
   
   // Calcular rol y si puede ver todos los centros
@@ -632,6 +633,54 @@ const Requisiciones = () => {
     // ISS-004 FIX (audit33): Cargar estados del backend al montar
     cargarEstadosBackend();
   }, [cargarCatalogos, resetForm, cargarEstadosBackend]);
+
+  // Manejar parámetro URL ?editar=ID para abrir modal de edición directamente
+  useEffect(() => {
+    const editarId = searchParams.get('editar');
+    if (editarId && centroResuelto && !showModal) {
+      // Cargar la requisición y abrir modal de edición
+      const cargarYAbrirEdicion = async () => {
+        try {
+          const response = await requisicionesAPI.getById(editarId);
+          const req = response.data?.requisicion || response.data;
+          
+          // Validar que se puede editar
+          const estadoNormalizado = req.estado?.toLowerCase();
+          if (estadoNormalizado !== 'borrador' && estadoNormalizado !== 'devuelta') {
+            toast.error('Esta requisición no se puede editar en su estado actual');
+            setSearchParams({}); // Limpiar parámetro
+            return;
+          }
+          
+          // Abrir modal con la requisición
+          setEditRequisicion(req);
+          // Establecer el formulario con los datos
+          setForm({
+            centro: req.centro?.id || req.centro_origen_id || '',
+            items: (req.detalles || []).map(d => ({
+              producto_id: d.producto_id || d.producto?.id,
+              lote_id: d.lote_id || d.lote?.id,
+              cantidad: d.cantidad_solicitada,
+              producto_nombre: d.producto_nombre || d.producto?.descripcion,
+              lote_numero: d.lote_numero || d.lote?.numero_lote,
+              lote_caducidad: d.lote_caducidad || d.lote?.fecha_caducidad,
+              producto_clave: d.producto_clave || d.producto?.clave,
+            })),
+            comentario: req.observaciones || '',
+            es_urgente: req.es_urgente || false,
+            motivo_urgencia: req.motivo_urgencia || '',
+          });
+          setShowModal(true);
+          setSearchParams({}); // Limpiar parámetro después de abrir
+        } catch (error) {
+          console.error('Error cargando requisición para editar:', error);
+          toast.error('No se pudo cargar la requisición');
+          setSearchParams({});
+        }
+      };
+      cargarYAbrirEdicion();
+    }
+  }, [searchParams, centroResuelto, showModal, setSearchParams]);
 
   const puedeEditar = (requisicion) => {
     // Primero validar permiso fino
@@ -1895,11 +1944,11 @@ const Requisiciones = () => {
 
                   {puedeEditar(req) && (
                     <button
-                      onClick={() => abrirModalEditar(req)}
+                      onClick={() => navigate(`/requisiciones/${req.id}?modo=editar`)}
                       disabled={isSubmitting || actionLoading === req.id}
-                      className="bg-gray-100 text-gray-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-gray-200 border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="bg-amber-500 text-white px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                     >
-                      <FaEdit /> Editar
+                      <FaEdit /> {req.estado === 'devuelta' ? 'Corregir' : 'Editar'}
                     </button>
                   )}
 

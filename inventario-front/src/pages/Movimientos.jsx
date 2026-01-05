@@ -76,15 +76,21 @@ const Movimientos = () => {
 
   // Formulario de registro
   // ISS-FIX: Movimientos simplificados - tipo FIJO a "salida"
-  // Subtipo: "transferencia" para Farmacia/Admin, "consumo_interno" para Centro/Médico
+  // Subtipo: "transferencia" para Farmacia/Admin, "receta" para Médico (único permitido)
+  const getSubtipoInicial = () => {
+    if (puedeVerTodosCentros) return "transferencia";
+    if (esMedico) return "receta";  // Médicos SOLO pueden hacer dispensación por receta
+    return "consumo_interno";
+  };
+  
   const [formData, setFormData] = useState({
     lote: "",
     tipo: "salida",  // FIJO: Solo salidas
     cantidad: "",
     centro: "",
     observaciones: "",
-    // Subtipo depende del rol: transferencia para farmacia, consumo_interno para centro
-    subtipo_salida: puedeVerTodosCentros ? "transferencia" : "consumo_interno",
+    // Subtipo depende del rol: transferencia para farmacia, receta para médico
+    subtipo_salida: puedeVerTodosCentros ? "transferencia" : (esMedico ? "receta" : "consumo_interno"),
     numero_expediente: "",
   });
   const [productoFiltro, setProductoFiltro] = useState("");
@@ -410,7 +416,8 @@ const Movimientos = () => {
         cantidad: "",
         centro: "",
         observaciones: "",
-        subtipo_salida: puedeVerTodosCentros ? "transferencia" : "consumo_interno",
+        // Reset subtipo según rol: transferencia para farmacia, receta para médico, consumo para otros
+        subtipo_salida: puedeVerTodosCentros ? "transferencia" : (esMedico ? "receta" : "consumo_interno"),
         numero_expediente: "",
       });
       setProductoFiltro("");
@@ -857,7 +864,18 @@ const Movimientos = () => {
                       Las salidas desde Almacén Central se registran como transferencias a centros penitenciarios.
                     </p>
                   </>
+                ) : esMedico ? (
+                  // MÉDICOS: Solo pueden hacer dispensación por receta
+                  <>
+                    <div className="w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-blue-700 font-medium">
+                      💊 Dispensación por receta
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Como médico, solo puedes registrar dispensaciones por receta médica.
+                    </p>
+                  </>
                 ) : (
+                  // OTROS USUARIOS DE CENTRO: Todas las opciones de salida
                   <>
                     <select
                       value={formData.subtipo_salida}
