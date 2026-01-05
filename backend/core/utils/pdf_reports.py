@@ -1494,19 +1494,26 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
         descripcion = str(producto_info.get('descripcion', 'N/A'))
         desc_paragraph = Paragraph(descripcion, estilo_desc)
         
+        # Información básica del producto (sin No. Contrato y No. Lote específicos)
         prod_data = [
             ['Clave:', str(producto_info.get('clave', 'N/A')), 'Descripción:', desc_paragraph],
             ['Unidad:', str(producto_info.get('unidad_medida', 'N/A')), 'Precio:', f"${producto_info.get('precio_unitario', 0):.2f}" if producto_info.get('precio_unitario') else 'N/A'],
             ['Stock Actual:', str(producto_info.get('stock_actual', 0)), 'Stock Mínimo:', str(producto_info.get('stock_minimo', 0))],
-            ['No. Contrato:', str(producto_info.get('numero_contrato', 'N/A')), 'No. Lote:', str(producto_info.get('numero_lote', 'N/A'))],
         ]
         
-        # Agregar fila de caducidad y proveedor si están disponibles
-        if producto_info.get('fecha_caducidad') or producto_info.get('proveedor'):
-            prod_data.append([
-                'Caducidad:', str(producto_info.get('fecha_caducidad', 'N/A')), 
-                'Proveedor/Marca:', str(producto_info.get('proveedor', 'N/A'))
-            ])
+        # Solo agregar No. Contrato y No. Lote si es búsqueda de lote específico (no de producto)
+        if producto_info.get('numero_lote') and producto_info.get('numero_lote') != 'N/A':
+            prod_data.append(['No. Contrato:', str(producto_info.get('numero_contrato', 'N/A')), 'No. Lote:', str(producto_info.get('numero_lote', 'N/A'))])
+            # Agregar fila de caducidad y proveedor si están disponibles
+            if producto_info.get('fecha_caducidad') or producto_info.get('proveedor'):
+                prod_data.append([
+                    'Caducidad:', str(producto_info.get('fecha_caducidad', 'N/A')), 
+                    'Proveedor/Marca:', str(producto_info.get('proveedor', 'N/A'))
+                ])
+        else:
+            # Si hay total de lotes, mostrarlo
+            if producto_info.get('total_lotes'):
+                prod_data.append(['Total Lotes:', str(producto_info.get('total_lotes', 0)), '', ''])
         
         prod_table = Table(prod_data, colWidths=[1.1*inch, 2.4*inch, 1.1*inch, 2.4*inch])
         prod_table.setStyle(TableStyle([
@@ -1522,6 +1529,41 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
         ]))
         elements.append(prod_table)
         elements.append(Spacer(1, 0.2*inch))
+        
+        # ========== SECCIÓN DE LOTES (cuando se busca por producto) ==========
+        lotes = producto_info.get('lotes', [])
+        if lotes:
+            lotes_titulo = Paragraph("LOTES DEL PRODUCTO", styles['SeccionTitulo'])
+            elements.append(lotes_titulo)
+            
+            # Tabla de lotes
+            lotes_header = [['No. Lote', 'No. Contrato', 'Caducidad', 'Stock', 'Marca', 'Centro']]
+            for lote in lotes:
+                lotes_header.append([
+                    str(lote.get('numero_lote', 'N/A'))[:15],
+                    str(lote.get('numero_contrato', 'N/A'))[:15],
+                    str(lote.get('fecha_caducidad', 'N/A')),
+                    str(lote.get('cantidad_actual', 0)),
+                    str(lote.get('marca', 'N/A'))[:15],
+                    str(lote.get('centro', 'N/A'))[:15],
+                ])
+            
+            lotes_col_widths = [1.1*inch, 1.1*inch, 0.9*inch, 0.6*inch, 1.1*inch, 1.3*inch]
+            lotes_table = Table(lotes_header, colWidths=lotes_col_widths)
+            lotes_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 7),
+                ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
+                ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+                ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                ('ALIGN', (3, 0), (3, -1), 'RIGHT'),  # Stock alineado a la derecha
+            ]))
+            elements.append(lotes_table)
+            elements.append(Spacer(1, 0.2*inch))
     
     # Información del reporte
     info_text = f"<b>Fecha de generación:</b> {timezone.now().strftime('%d/%m/%Y %H:%M')}<br/>"

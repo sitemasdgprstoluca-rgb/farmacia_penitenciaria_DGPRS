@@ -167,10 +167,19 @@ export function RequisicionAcciones({
       );
     }
     
+    // Mensaje específico para estado devuelta
+    if (estadoActual === 'devuelta') {
+      return (
+        <div className="text-sm text-amber-600 italic">
+          Pendiente de corrección por el médico solicitante
+        </div>
+      );
+    }
+    
     // Info para estados intermedios sin acciones para este rol
     return (
       <div className="text-sm text-gray-500 italic">
-        Estado: {estadoActual} — Esperando acción de otro rol
+        Estado: {estadoActual} — En proceso por otro rol
       </div>
     );
   }

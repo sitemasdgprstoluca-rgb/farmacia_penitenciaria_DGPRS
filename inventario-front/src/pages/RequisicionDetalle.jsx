@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { requisicionesAPI, hojasRecoleccionAPI, descargarArchivo, lotesAPI } from '../services/api';
 import { usePermissions } from '../hooks/usePermissions';
@@ -77,6 +77,10 @@ const RequisicionDetalle = () => {
   const [catalogoBusqueda, setCatalogoBusqueda] = useState('');
   const [showAgregarProducto, setShowAgregarProducto] = useState(false);
   const [guardandoCambios, setGuardandoCambios] = useState(false);
+  
+  // Refs para búsqueda con debounce y cancelación
+  const searchTimeoutRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
   // Detectar si viene en modo editar desde URL
   const modoEditarURL = searchParams.get('modo') === 'editar';
@@ -542,20 +546,79 @@ const RequisicionDetalle = () => {
 
   // ============ FUNCIONES PARA MODO EDICIÓN DE PRODUCTOS ============
   
-  // Cargar catálogo de lotes disponibles
-  const cargarCatalogoLotes = async () => {
+  // Buscar lotes en servidor con término de búsqueda
+  const buscarLotesServidor = useCallback(async (termino = '') => {
+    // Cancelar petición anterior si existe
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    
+    setLoadingCatalogo(true);
     try {
-      setLoadingCatalogo(true);
-      // para_requisicion=true muestra lotes de farmacia central para requisiciones
-      const response = await lotesAPI.getAll({ disponible: true, para_requisicion: true });
-      setCatalogoLotes(response.data?.results || response.data || []);
+      const params = {
+        stock_min: 1,
+        solo_disponibles: 'true',
+        ordering: 'producto__nombre,fecha_caducidad',
+        page_size: 500,
+        para_requisicion: true,
+        activo: true,
+      };
+      
+      // Agregar término de búsqueda si existe
+      if (termino.trim()) {
+        params.search = termino.trim();
+      }
+      
+      const response = await lotesAPI.getAll(params, { 
+        signal: abortControllerRef.current.signal 
+      });
+      const lotes = response.data?.results || response.data || [];
+      console.log('Lotes cargados:', lotes.length, 'Búsqueda:', termino);
+      setCatalogoLotes(lotes);
     } catch (error) {
+      // Ignorar errores de cancelación
+      if (error.name === 'CanceledError' || error.name === 'AbortError' || error.code === 'ERR_CANCELED') {
+        return;
+      }
       console.error('Error cargando catálogo:', error);
       toast.error('No se pudo cargar el catálogo de productos');
     } finally {
       setLoadingCatalogo(false);
     }
-  };
+  }, []);
+  
+  // Cargar catálogo inicial
+  const cargarCatalogoLotes = useCallback(async () => {
+    await buscarLotesServidor('');
+  }, [buscarLotesServidor]);
+  
+  // Handler de búsqueda con debounce
+  const handleCatalogoBusquedaChange = useCallback((valor) => {
+    setCatalogoBusqueda(valor);
+    
+    // Cancelar timeout anterior
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    // Debounce de 300ms
+    searchTimeoutRef.current = setTimeout(() => {
+      buscarLotesServidor(valor);
+    }, 300);
+  }, [buscarLotesServidor]);
+  
+  // Cleanup al desmontar
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   // Iniciar modo edición
   const iniciarEdicionProductos = () => {
@@ -625,12 +688,12 @@ const RequisicionDetalle = () => {
     const nuevoProducto = {
       id: null, // Nuevo, sin ID
       lote_id: lote.id,
-      producto_id: lote.producto?.id || lote.producto_id,
+      producto_id: lote.producto?.id || lote.producto_id || lote.producto,
       producto_clave: lote.producto?.clave || lote.producto_clave,
       producto_nombre: lote.producto?.nombre || lote.producto_nombre,
       numero_lote: lote.numero_lote,
       cantidad_solicitada: 1,
-      stock_disponible: lote.stock_actual || lote.stock_disponible || 0,
+      stock_disponible: lote.cantidad_actual || lote.stock_actual || lote.stock_disponible || 0,
       esNuevo: true
     };
     
@@ -686,16 +749,8 @@ const RequisicionDetalle = () => {
     }
   };
 
-  // Filtrar catálogo por búsqueda
-  const catalogoFiltrado = catalogoBusqueda.trim() 
-    ? catalogoLotes.filter(lote => {
-        const busqueda = catalogoBusqueda.toLowerCase();
-        const clave = (lote.producto?.clave || lote.producto_clave || '').toLowerCase();
-        const nombre = (lote.producto?.nombre || lote.producto_nombre || '').toLowerCase();
-        const numeroLote = (lote.numero_lote || '').toLowerCase();
-        return clave.includes(busqueda) || nombre.includes(busqueda) || numeroLote.includes(busqueda);
-      })
-    : catalogoLotes;
+  // El catálogo ya viene filtrado del servidor, usarlo directamente
+  const catalogoFiltrado = catalogoLotes;
 
   // ============ FIN FUNCIONES MODO EDICIÓN ============
 
@@ -1137,7 +1192,7 @@ const RequisicionDetalle = () => {
                     type="text"
                     placeholder="Buscar por clave, nombre o número de lote..."
                     value={catalogoBusqueda}
-                    onChange={(e) => setCatalogoBusqueda(e.target.value)}
+                    onChange={(e) => handleCatalogoBusquedaChange(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:outline-none focus:ring-green-400 mb-3"
                     autoFocus
                   />
@@ -1145,12 +1200,12 @@ const RequisicionDetalle = () => {
                   {loadingCatalogo ? (
                     <div className="flex items-center justify-center py-4">
                       <div className="animate-spin rounded-full h-6 w-6 border-2 border-t-transparent border-green-500"></div>
-                      <span className="ml-2 text-gray-500">Cargando catálogo...</span>
+                      <span className="ml-2 text-gray-500">Buscando...</span>
                     </div>
                   ) : catalogoBusqueda.trim() ? (
                     <div className="max-h-60 overflow-y-auto border rounded-lg">
                       {catalogoFiltrado.length === 0 ? (
-                        <p className="text-center text-gray-500 py-4">No se encontraron productos</p>
+                        <p className="text-center text-gray-500 py-4">No se encontraron productos con "{catalogoBusqueda}"</p>
                       ) : (
                         catalogoFiltrado.slice(0, 20).map(lote => (
                           <div
@@ -1165,8 +1220,8 @@ const RequisicionDetalle = () => {
                               <span className="ml-2 text-xs text-gray-500">Lote: {lote.numero_lote}</span>
                             </div>
                             <div className="flex items-center gap-3">
-                              <span className={`text-sm font-semibold ${lote.stock_actual > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                Stock: {lote.stock_actual || 0}
+                              <span className={`text-sm font-semibold ${(lote.cantidad_actual || lote.stock_actual || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                Stock: {lote.cantidad_actual || lote.stock_actual || 0}
                               </span>
                               <FaPlus className="text-green-500" />
                             </div>

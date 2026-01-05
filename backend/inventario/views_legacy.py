@@ -9968,7 +9968,7 @@ def trazabilidad_producto_exportar(request, clave):
         
         movimientos = movimientos.order_by('-fecha')[:500]
         
-        # Preparar datos
+        # Preparar datos de movimientos
         trazabilidad_data = []
         for mov in movimientos:
             trazabilidad_data.append({
@@ -9981,12 +9981,36 @@ def trazabilidad_producto_exportar(request, clave):
                 'observaciones': mov.motivo or ''
             })
         
+        # Obtener TODOS los lotes del producto para incluir en el reporte
+        lotes_query = Lote.objects.filter(producto=producto, activo=True)
+        if filtrar_por_centro and user_centro:
+            lotes_query = lotes_query.filter(centro=user_centro)
+        lotes_query = lotes_query.select_related('centro').order_by('-fecha_caducidad')
+        
+        lotes_data = []
+        for lote in lotes_query:
+            lotes_data.append({
+                'numero_lote': lote.numero_lote,
+                'numero_contrato': lote.numero_contrato or 'N/A',
+                'fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else 'N/A',
+                'cantidad_actual': lote.cantidad_actual,
+                'cantidad_inicial': lote.cantidad_inicial,
+                'marca': lote.marca or 'N/A',
+                'centro': lote.centro.nombre if lote.centro else 'Farmacia Central',
+                'precio_unitario': float(lote.precio_unitario) if lote.precio_unitario else 0,
+            })
+        
+        # Calcular stock total
+        stock_total = sum(l['cantidad_actual'] for l in lotes_data)
+        
         producto_info = {
             'clave': producto.clave,
             'descripcion': producto.nombre,
             'unidad_medida': producto.unidad_medida,
-            'stock_actual': producto.get_stock_actual() if hasattr(producto, 'get_stock_actual') else 0,
+            'stock_actual': stock_total,
             'stock_minimo': producto.stock_minimo,
+            'lotes': lotes_data,  # Incluir lotes en el reporte
+            'total_lotes': len(lotes_data),
             'filtros': {
                 'fecha_inicio': fecha_inicio,
                 'fecha_fin': fecha_fin,
@@ -10029,12 +10053,14 @@ def _exportar_producto_excel(movimientos, producto_info):
     # Estilos
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="9F2241", end_color="9F2241", fill_type="solid")
+    subheader_fill = PatternFill(start_color="BC955C", end_color="BC955C", fill_type="solid")
     thin_border = Border(
         left=Side(style='thin'),
         right=Side(style='thin'),
         top=Side(style='thin'),
         bottom=Side(style='thin')
     )
+    bold_font = Font(bold=True)
     
     # Título
     ws.merge_cells('A1:G1')
@@ -10044,13 +10070,57 @@ def _exportar_producto_excel(movimientos, producto_info):
     
     # Info del producto
     ws['A3'] = "Producto:"
+    ws['A3'].font = bold_font
     ws['B3'] = producto_info['descripcion']
     ws['A4'] = "Unidad:"
+    ws['A4'].font = bold_font
     ws['B4'] = producto_info['unidad_medida']
+    ws['A5'] = "Stock Total:"
+    ws['A5'].font = bold_font
+    ws['B5'] = producto_info.get('stock_actual', 0)
+    ws['C5'] = "Stock Mínimo:"
+    ws['C5'].font = bold_font
+    ws['D5'] = producto_info.get('stock_minimo', 0)
+    
+    row = 7
+    
+    # ========== SECCIÓN DE LOTES ==========
+    lotes = producto_info.get('lotes', [])
+    if lotes:
+        ws.merge_cells(f'A{row}:G{row}')
+        ws[f'A{row}'] = "LOTES DEL PRODUCTO"
+        ws[f'A{row}'].font = Font(bold=True, size=12)
+        ws[f'A{row}'].fill = subheader_fill
+        row += 1
+        
+        # Encabezados de lotes
+        lotes_headers = ['No. Lote', 'No. Contrato', 'Caducidad', 'Stock', 'Marca', 'Centro', 'Precio Unit.']
+        for col, header in enumerate(lotes_headers, 1):
+            cell = ws.cell(row=row, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.border = thin_border
+        
+        # Datos de lotes
+        for lote in lotes:
+            row += 1
+            lote_data = [
+                lote.get('numero_lote', 'N/A'),
+                lote.get('numero_contrato', 'N/A'),
+                lote.get('fecha_caducidad', 'N/A'),
+                lote.get('cantidad_actual', 0),
+                lote.get('marca', 'N/A'),
+                lote.get('centro', 'N/A'),
+                f"${lote.get('precio_unitario', 0):.2f}" if lote.get('precio_unitario') else 'N/A',
+            ]
+            for col, value in enumerate(lote_data, 1):
+                cell = ws.cell(row=row, column=col, value=value)
+                cell.border = thin_border
+        
+        row += 2  # Espacio entre secciones
     
     # Filtros
     filtros = producto_info.get('filtros', {})
-    row = 6
     if any(filtros.values()):
         if filtros.get('fecha_inicio'):
             ws[f'A{row}'] = f"Desde: {filtros['fecha_inicio']}"
@@ -10060,7 +10130,14 @@ def _exportar_producto_excel(movimientos, producto_info):
             row += 1
         row += 1
     
-    # Encabezados
+    # ========== SECCIÓN DE MOVIMIENTOS ==========
+    ws.merge_cells(f'A{row}:G{row}')
+    ws[f'A{row}'] = "HISTORIAL DE MOVIMIENTOS"
+    ws[f'A{row}'].font = Font(bold=True, size=12)
+    ws[f'A{row}'].fill = subheader_fill
+    row += 1
+    
+    # Encabezados de movimientos
     headers = ['Fecha', 'Tipo', 'Lote', 'Cantidad', 'Centro', 'Usuario', 'Observaciones']
     for col, header in enumerate(headers, 1):
         cell = ws.cell(row=row, column=col, value=header)
@@ -10068,26 +10145,32 @@ def _exportar_producto_excel(movimientos, producto_info):
         cell.fill = header_fill
         cell.border = thin_border
     
-    # Datos
-    for mov in movimientos:
+    # Datos de movimientos
+    if movimientos:
+        for mov in movimientos:
+            row += 1
+            data = [
+                mov['fecha'],
+                mov['tipo'],
+                mov['lote'],
+                mov['cantidad'],
+                mov['centro'],
+                mov['usuario'],
+                mov['observaciones'][:50] if mov['observaciones'] else ''
+            ]
+            for col, value in enumerate(data, 1):
+                cell = ws.cell(row=row, column=col, value=value)
+                cell.border = thin_border
+    else:
         row += 1
-        data = [
-            mov['fecha'],
-            mov['tipo'],
-            mov['lote'],
-            mov['cantidad'],
-            mov['centro'],
-            mov['usuario'],
-            mov['observaciones'][:50] if mov['observaciones'] else ''
-        ]
-        for col, value in enumerate(data, 1):
-            cell = ws.cell(row=row, column=col, value=value)
-            cell.border = thin_border
+        ws.merge_cells(f'A{row}:G{row}')
+        ws[f'A{row}'] = "No hay movimientos registrados"
+        ws[f'A{row}'].alignment = Alignment(horizontal='center')
     
     # Ajustar anchos
     ws.column_dimensions['A'].width = 18
-    ws.column_dimensions['B'].width = 10
-    ws.column_dimensions['C'].width = 18
+    ws.column_dimensions['B'].width = 15
+    ws.column_dimensions['C'].width = 15
     ws.column_dimensions['D'].width = 12
     ws.column_dimensions['E'].width = 20
     ws.column_dimensions['F'].width = 20
