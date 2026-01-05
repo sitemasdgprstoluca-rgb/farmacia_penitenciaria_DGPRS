@@ -5263,7 +5263,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                     lote_id=lote_id,  # ISS-FIX-LOTE: Guardar lote específico
                     cantidad_solicitada=int(cant),
                     cantidad_autorizada=int(item_data.get('cantidad_autorizada') or 0),
-                    observaciones=item_data.get('observaciones', '')
+                    # ISS-FIX: Usar 'notas' en lugar de 'observaciones' (que es @property)
+                    notas=item_data.get('observaciones') or item_data.get('notas') or ''
                 )
             
             # ISS-005: Devolver resultado con advertencias si las hay
