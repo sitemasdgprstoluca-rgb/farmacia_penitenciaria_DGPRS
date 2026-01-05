@@ -1377,7 +1377,8 @@ const Movimientos = () => {
                             </tr>
                           ))}
                         </React.Fragment>
-                      ))}
+                        );
+                      })}
                       {/* Mostrar movimientos sin grupo (individuales) */}
                       {movimientosAgrupados.sinGrupo.map((mov, index) => (
                         <React.Fragment key={mov.id}>
