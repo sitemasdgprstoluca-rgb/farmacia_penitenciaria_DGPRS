@@ -5535,7 +5535,6 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             'total_solicitado': total_solicitado,
             'total_autorizado': total_autorizado
         }
-        }
         
         # ISS-003: Incluir advertencias si hay stock parcial
         if advertencias_stock:
