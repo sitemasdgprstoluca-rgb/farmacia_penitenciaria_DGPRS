@@ -250,9 +250,14 @@ TRANSICIONES_REQUISICION = {
     'pendiente_director': ['enviada', 'rechazada', 'devuelta'],  # Sin cancelada (spec)
     
     # Farmacia Central
-    'enviada': ['en_revision', 'autorizada', 'rechazada'],  # ISS-FIX: Agregar autorizada (spec), quitar cancelada
-    'en_revision': ['autorizada', 'rechazada', 'devuelta'],  # Sin cancelada (spec)
+    # ISS-PARCIAL FIX: Agregar 'parcial' - autorización parcial (menos de lo solicitado)
+    'enviada': ['en_revision', 'autorizada', 'parcial', 'rechazada'],  # parcial: autorización parcial
+    'en_revision': ['autorizada', 'parcial', 'rechazada', 'devuelta'],  # parcial: autorización parcial
     'autorizada': ['en_surtido', 'surtida', 'entregada', 'cancelada'],  # entregada: surtir directo V2
+    
+    # ISS-PARCIAL FIX: 'parcial' es autorización parcial, puede continuar a surtido
+    'parcial': ['en_surtido', 'surtida', 'entregada', 'cancelada'],  # Igual que autorizada
+    
     'en_surtido': ['surtida', 'entregada', 'cancelada'],  # entregada: surtido completo V2
     
     # ISS-002 FIX: surtida NO puede cancelarse (ya hay movimientos de inventario)
@@ -312,7 +317,8 @@ ESTADOS_SIN_CANCELACION = [
 
 # ISS-001/002/003 FIX (audit8): Estados surtibles - FUENTE ÚNICA
 # Solo estos estados permiten iniciar/continuar proceso de surtido
-ESTADOS_SURTIBLES = ['autorizada', 'en_surtido']
+# ISS-PARCIAL FIX: Agregar 'parcial' - autorización parcial también puede surtirse
+ESTADOS_SURTIBLES = ['autorizada', 'parcial', 'en_surtido']
 
 # ISS-002 FIX (audit13): Estados que comprometen stock - FUENTE ÚNICA
 # Requisiciones en estos estados tienen stock "reservado" pendiente de surtir

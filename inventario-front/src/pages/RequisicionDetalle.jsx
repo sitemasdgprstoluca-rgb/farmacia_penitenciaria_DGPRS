@@ -1305,58 +1305,75 @@ const RequisicionDetalle = () => {
         ) : detalles.length === 0 ? (
           <p className="text-center text-gray-500 py-8">No hay productos en esta requisición</p>
         ) : (
-          <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
-            <table className="w-full min-w-[900px] border-collapse">
-              <thead className="bg-theme-gradient sticky top-0 z-10">
+          <div className="w-full rounded-lg border border-gray-200 shadow-md">
+            <table className="w-full border-collapse text-sm">
+              <thead className="bg-theme-gradient">
                 <tr>
-                  <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Clave</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Producto</th>
-                  <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
-                  <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Unidad</th>
-                  <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Solicitado</th>
-                  <th className={`px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${modoAutorizar ? 'bg-white/20 text-white' : 'text-white'}`}>
-                    Autorizado
+                  <th className="px-2 py-2 text-left text-xs font-semibold uppercase text-white w-16">Clave</th>
+                  <th className="px-2 py-2 text-left text-xs font-semibold uppercase text-white">Producto</th>
+                  <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white w-24">Lote</th>
+                  <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white w-20">Unidad</th>
+                  <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white w-14">Solic.</th>
+                  {/* ISS-UI-FIX: Mostrar Stock en modo autorización para tomar decisiones */}
+                  {(modoAutorizar || esFarmacia) && (
+                    <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white bg-blue-600 w-14">
+                      Stock
+                    </th>
+                  )}
+                  <th className={`px-2 py-2 text-center text-xs font-semibold uppercase w-16 ${modoAutorizar ? 'bg-green-600 text-white' : 'text-white'}`}>
+                    Autoriz.
                   </th>
                   {/* MEJORA FLUJO 3: Columna para motivo de ajuste */}
                   {modoAutorizar && (
-                    <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider bg-amber-500 text-white whitespace-nowrap min-w-[200px]">
+                    <th className="px-2 py-2 text-left text-xs font-semibold uppercase bg-amber-500 text-white w-36">
                       Motivo Ajuste
                     </th>
                   )}
-                  <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Surtido</th>
-                  {esFarmacia && (
-                    <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Stock Lote</th>
-                  )}
+                  <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white w-14">Surtido</th>
                 </tr>
               </thead>
               <tbody>
                 {detalles.map((detalle, idx) => (
                   <tr key={detalle.id || idx} className="border-b border-gray-200 hover:bg-gray-50">
-                    <td className="px-3 py-3 text-sm font-mono text-gray-800">
+                    <td className="px-2 py-2 text-xs font-mono font-semibold text-gray-800">
                       {detalle.producto_clave || detalle.producto?.clave || '-'}
                     </td>
-                    <td className="px-3 py-3 text-sm text-gray-800">
+                    <td className="px-2 py-2 text-xs text-gray-800">
                       {detalle.producto_nombre || detalle.producto?.nombre || detalle.nombre || '-'}
                     </td>
-                    <td className="px-3 py-3 text-center">
+                    <td className="px-2 py-2 text-center text-xs">
                       {detalle.lote_numero ? (
-                        <div className="text-sm">
-                          <span className="font-mono font-semibold text-gray-800">{detalle.lote_numero}</span>
+                        <div>
+                          <span className="font-mono font-semibold text-gray-700">{detalle.lote_numero}</span>
                           {detalle.lote_caducidad && (
-                            <div className="text-xs text-gray-500">Cad: {detalle.lote_caducidad}</div>
+                            <div className="text-gray-500 text-[10px]">Cad: {detalle.lote_caducidad}</div>
                           )}
                         </div>
                       ) : (
-                        <span className="text-gray-400 text-sm">-</span>
+                        <span className="text-gray-400">-</span>
                       )}
                     </td>
-                    <td className="px-3 py-3 text-sm text-center text-gray-600">
+                    <td className="px-2 py-2 text-xs text-center text-gray-600">
                       {detalle.producto_unidad || detalle.producto?.unidad_medida || '-'}
                     </td>
-                    <td className="px-3 py-3 text-center font-semibold text-gray-800">
+                    <td className="px-2 py-2 text-center font-bold text-gray-800">
                       {detalle.cantidad_solicitada}
                     </td>
-                    <td className={`px-3 py-3 text-center ${modoAutorizar ? 'bg-gray-50' : ''}`}>
+                    {/* ISS-UI-FIX: Stock visible en modo autorización para tomar decisiones */}
+                    {(modoAutorizar || esFarmacia) && (
+                      <td className="px-2 py-2 text-center bg-blue-50">
+                        <span className={`font-bold ${
+                          (detalle.lote_stock || detalle.stock_disponible || 0) < detalle.cantidad_solicitada 
+                            ? 'text-red-600' 
+                            : (detalle.lote_stock || detalle.stock_disponible || 0) === 0
+                              ? 'text-red-600'
+                              : 'text-green-600'
+                        }`}>
+                          {detalle.lote_stock ?? detalle.stock_disponible ?? 0}
+                        </span>
+                      </td>
+                    )}
+                    <td className={`px-2 py-2 text-center ${modoAutorizar ? 'bg-green-50' : ''}`}>
                       {modoAutorizar ? (
                         <input
                           type="number"
@@ -1364,7 +1381,7 @@ const RequisicionDetalle = () => {
                           max={detalle.lote_stock || detalle.stock_disponible || detalle.cantidad_solicitada}
                           value={detalle.cantidad_autorizada || 0}
                           onChange={(e) => actualizarCantidadAutorizada(idx, e.target.value)}
-                          className="w-20 px-2 py-1 border border-gray-300 rounded text-center font-semibold focus:ring-2 focus:outline-none ring-theme-primary focus:ring-theme-primary"
+                          className="w-14 px-1 py-1 border border-gray-300 rounded text-center font-bold text-xs focus:ring-2 focus:outline-none focus:ring-green-400"
                         />
                       ) : (
                         <span className={detalle.cantidad_autorizada > 0 ? 'font-semibold text-gray-800' : 'text-gray-400'}>
@@ -1374,40 +1391,29 @@ const RequisicionDetalle = () => {
                     </td>
                     {/* MEJORA FLUJO 3: Input de motivo de ajuste cuando se reduce cantidad */}
                     {modoAutorizar && (
-                      <td className="px-3 py-3 bg-amber-50">
+                      <td className="px-1 py-2 bg-amber-50">
                         {detalle.cantidad_autorizada < detalle.cantidad_solicitada ? (
                           <input
                             type="text"
-                            placeholder="Motivo del ajuste (mín. 10 chars)..."
+                            placeholder="Motivo..."
                             value={detalle.motivo_ajuste || ''}
                             onChange={(e) => actualizarMotivoAjuste(idx, e.target.value)}
-                            className={`w-full px-2 py-1 text-sm border rounded focus:ring-2 focus:outline-none ${
+                            className={`w-full px-1 py-1 text-xs border rounded focus:outline-none ${
                               detalle.motivo_ajuste && detalle.motivo_ajuste.length >= 10
-                                ? 'border-green-300 ring-green-200'
-                                : 'border-amber-300 ring-amber-200'
+                                ? 'border-green-400 bg-green-50'
+                                : 'border-amber-400'
                             }`}
                           />
                         ) : (
-                          <span className="text-gray-400 text-sm italic">-</span>
+                          <span className="text-gray-400 text-xs">-</span>
                         )}
                       </td>
                     )}
-                    <td className="px-3 py-3 text-center">
+                    <td className="px-2 py-2 text-center">
                       <span className={detalle.cantidad_surtida > 0 ? 'font-semibold text-gray-800' : 'text-gray-400'}>
-                        {detalle.cantidad_surtida ?? '-'}
+                        {detalle.cantidad_surtida ?? 0}
                       </span>
                     </td>
-                    {esFarmacia && (
-                      <td className="px-3 py-3 text-center">
-                        <span className={`font-semibold ${
-                          (detalle.lote_stock || detalle.stock_disponible || 0) < detalle.cantidad_solicitada 
-                            ? 'text-red-600' 
-                            : 'text-gray-800'
-                        }`}>
-                          {detalle.lote_stock ?? detalle.stock_disponible ?? '-'}
-                        </span>
-                      </td>
-                    )}
                   </tr>
                 ))}
               </tbody>
