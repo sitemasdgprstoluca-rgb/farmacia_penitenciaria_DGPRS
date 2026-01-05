@@ -561,8 +561,9 @@ const RequisicionDetalle = () => {
         solo_disponibles: 'true',
         ordering: 'producto__nombre,fecha_caducidad',
         page_size: 500,
-        para_requisicion: true,
-        activo: true,
+        para_requisicion: 'true',  // Asegurar que es string 'true' para el backend
+        activo: 'true',
+        centro: 'central',  // Forzar búsqueda en almacén central
       };
       
       // Agregar término de búsqueda si existe
@@ -574,8 +575,11 @@ const RequisicionDetalle = () => {
         signal: abortControllerRef.current.signal 
       });
       const lotes = response.data?.results || response.data || [];
-      console.log('Lotes cargados:', lotes.length, 'Búsqueda:', termino);
-      setCatalogoLotes(lotes);
+      
+      // Filtrar solo lotes con stock > 0 (por si el backend no filtra correctamente)
+      const lotesConStock = lotes.filter(l => (l.cantidad_actual || 0) > 0);
+      console.log('Lotes cargados:', lotesConStock.length, 'de', lotes.length, 'Búsqueda:', termino);
+      setCatalogoLotes(lotesConStock);
     } catch (error) {
       // Ignorar errores de cancelación
       if (error.name === 'CanceledError' || error.name === 'AbortError' || error.code === 'ERR_CANCELED') {
