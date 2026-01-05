@@ -250,8 +250,9 @@ TRANSICIONES_REQUISICION = {
     'pendiente_director': ['enviada', 'rechazada', 'devuelta'],  # Sin cancelada (spec)
     
     # Farmacia Central
-    # ISS-PARCIAL FIX: Agregar 'parcial' - autorización parcial (menos de lo solicitado)
-    'enviada': ['en_revision', 'autorizada', 'parcial', 'rechazada'],  # parcial: autorización parcial
+    # ISS-FLUJO-FIX: De 'enviada' solo se puede ir a 'en_revision' (recibir) o 'rechazada'
+    # No se puede autorizar directamente - el flujo es: enviada → en_revision → autorizada
+    'enviada': ['en_revision', 'rechazada'],
     # ISS-FIX-AUTORIZACION: Farmacia NO puede devolver desde en_revision - solo rechazar o ajustar cantidades
     'en_revision': ['autorizada', 'parcial', 'rechazada'],  # Sin devuelta - farmacia no devuelve
     'autorizada': ['en_surtido', 'surtida', 'entregada', 'cancelada'],  # entregada: surtir directo V2
@@ -374,8 +375,10 @@ ROLES_POR_TRANSICION = {
     # Revisión y autorización - roles de farmacia
     ('enviada', 'en_revision'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
     ('en_revision', 'autorizada'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
+    ('en_revision', 'parcial'): ['farmacia', 'farmaceutico', 'admin_farmacia'],  # ISS-FLUJO-FIX: autorización parcial
     ('en_revision', 'rechazada'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
-    ('en_revision', 'devuelta'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
+    # ISS-FLUJO-FIX: Farmacia NO devuelve - solo rechaza o ajusta cantidades autorizadas
+    # ('en_revision', 'devuelta') - ELIMINADA
     
     # Surtido - solo farmacia
     ('autorizada', 'en_surtido'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
@@ -385,8 +388,8 @@ ROLES_POR_TRANSICION = {
     # Recepción - solo centro destino
     ('surtida', 'entregada'): ['centro', 'usuario_centro', 'administrador_centro', 'director_centro', 'medico'],
     
-    # Devolución - regresa a borrador
-    ('devuelta', 'borrador'): ['medico', 'centro', 'usuario_centro'],
+    # Devolución: médico corrige y reenvía a pendiente_admin
+    ('devuelta', 'pendiente_admin'): ['medico', 'centro', 'usuario_centro'],
     
     # Cancelaciones - depende del estado
     ('borrador', 'cancelada'): ['medico', 'centro', 'usuario_centro', 'administrador_centro'],

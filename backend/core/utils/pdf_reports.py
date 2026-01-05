@@ -860,7 +860,8 @@ def generar_reporte_lotes(lotes_data, filtros=None):
         producto_desc = str(lote.get('producto_nombre', lote.get('producto', '')))[:30]
         producto_paragraph = Paragraph(producto_desc, estilo_celda)
         
-        centro = str(lote.get('centro_nombre', lote.get('centro', 'Farmacia Central')))[:15]
+        # ISS-FIX: No truncar el nombre del centro - usar Paragraph para wrap automático
+        centro = str(lote.get('centro_nombre', lote.get('centro', 'Farmacia Central')))
         centro_paragraph = Paragraph(centro, estilo_celda)
         
         # Determinar estado visual de caducidad
@@ -900,8 +901,8 @@ def generar_reporte_lotes(lotes_data, filtros=None):
             f"{activo}\n{estado_cad}"
         ])
     
-    # Anchos ajustados para orientación horizontal
-    col_widths = [0.35*inch, 0.7*inch, 1.8*inch, 0.8*inch, 0.75*inch, 0.75*inch, 0.6*inch, 0.6*inch, 1.1*inch, 0.85*inch]
+    # ISS-FIX: Anchos ajustados - columna Centro más ancha para nombres largos
+    col_widths = [0.3*inch, 0.65*inch, 1.6*inch, 0.75*inch, 0.7*inch, 0.7*inch, 0.55*inch, 0.55*inch, 1.5*inch, 0.75*inch]
     table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
     
@@ -1536,19 +1537,31 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
             lotes_titulo = Paragraph("LOTES DEL PRODUCTO", styles['SeccionTitulo'])
             elements.append(lotes_titulo)
             
+            # ISS-FIX: Estilo para celdas con wrap de texto
+            estilo_celda_lote = ParagraphStyle(
+                'CeldaLoteTraz',
+                parent=styles['Normal'],
+                fontSize=7,
+                leading=8,
+                wordWrap='CJK',
+            )
+            
             # Tabla de lotes
             lotes_header = [['No. Lote', 'No. Contrato', 'Caducidad', 'Stock', 'Marca', 'Centro']]
             for lote in lotes:
+                # ISS-FIX: Usar Paragraph para centro para permitir wrap
+                centro_paragraph = Paragraph(str(lote.get('centro', 'N/A')), estilo_celda_lote)
                 lotes_header.append([
                     str(lote.get('numero_lote', 'N/A'))[:15],
                     str(lote.get('numero_contrato', 'N/A'))[:15],
                     str(lote.get('fecha_caducidad', 'N/A')),
                     str(lote.get('cantidad_actual', 0)),
                     str(lote.get('marca', 'N/A'))[:15],
-                    str(lote.get('centro', 'N/A'))[:15],
+                    centro_paragraph,
                 ])
             
-            lotes_col_widths = [1.1*inch, 1.1*inch, 0.9*inch, 0.6*inch, 1.1*inch, 1.3*inch]
+            # ISS-FIX: Aumentar ancho de columna Centro
+            lotes_col_widths = [1.0*inch, 1.0*inch, 0.85*inch, 0.5*inch, 0.9*inch, 1.85*inch]
             lotes_table = Table(lotes_header, colWidths=lotes_col_widths)
             lotes_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),

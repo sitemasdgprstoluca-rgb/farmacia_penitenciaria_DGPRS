@@ -6744,18 +6744,23 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         """
         FLUJO V2: Farmacia Central autoriza la requisición y asigna fecha límite de recolección.
         
-        Transición: en_revision → autorizada (o enviada → autorizada)
+        Transición: en_revision → autorizada
         Permiso requerido: puede_autorizar_farmacia (rol: farmacia)
+        
+        FLUJO CORRECTO: enviada → recibir → en_revision → autorizar
         
         IMPORTANTE: Debe incluir 'fecha_recoleccion_limite' en el request.
         """
         requisicion = self.get_object()
         estado_actual = (requisicion.estado or '').lower()
         
-        if estado_actual not in ['en_revision', 'enviada']:
+        # ISS-FLUJO-FIX: Solo permitir autorizar desde 'en_revision'
+        # El flujo correcto es: enviada → recibir → en_revision → autorizar
+        if estado_actual != 'en_revision':
             return Response({
-                'error': 'Solo se pueden autorizar requisiciones en EN_REVISION o ENVIADA',
-                'estado_actual': requisicion.estado
+                'error': 'Solo se pueden autorizar requisiciones en EN_REVISION. Debe recibir la requisición primero.',
+                'estado_actual': requisicion.estado,
+                'flujo_correcto': 'enviada → recibir → en_revision → autorizar'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         if not self._validar_transicion(estado_actual, 'autorizada'):
@@ -9398,7 +9403,17 @@ class HojaRecoleccionViewSet(viewsets.ReadOnlyModelViewSet):
         """
         Obtiene la hoja de recolección asociada a una requisición específica.
         ISS-FIX: Buscar a través de detalles__requisicion_id
+        ISS-FIX-500: Siempre devolver 200 con existe=false si hay error
         """
+        try:
+            requisicion_id = int(requisicion_id)
+        except (ValueError, TypeError):
+            return Response({
+                'existe': False,
+                'requisicion_id': requisicion_id,
+                'mensaje': 'ID de requisición inválido'
+            }, status=status.HTTP_200_OK)
+            
         try:
             hoja = self.get_queryset().filter(detalles__requisicion_id=requisicion_id).distinct().first()
             if hoja:
@@ -9408,14 +9423,16 @@ class HojaRecoleccionViewSet(viewsets.ReadOnlyModelViewSet):
                 })
             return Response({
                 'existe': False,
-                'hoja': None
-            })
+                'requisicion_id': requisicion_id,
+                'mensaje': 'No existe hoja de recolección para esta requisición'
+            }, status=status.HTTP_200_OK)
         except Exception as e:
             logger.error(f"Error obteniendo hoja por requisición {requisicion_id}: {e}")
             return Response({
                 'existe': False,
-                'error': str(e)
-            }, status=status.HTTP_200_OK)  # No es error crítico
+                'requisicion_id': requisicion_id,
+                'mensaje': 'Error al buscar hoja de recolección'
+            }, status=status.HTTP_200_OK)  # ISS-FIX-500: Siempre 200
 
 
 # ============================================

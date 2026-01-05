@@ -78,7 +78,8 @@ const ACCIONES_FLUJO = {
   autorizar_farmacia: {
     endpoint: 'autorizarFarmacia',
     label: 'Autorizar y Asignar Fecha',
-    estadosPermitidos: ['en_revision', 'enviada'],
+    // ISS-FLUJO-FIX: Solo en_revision - no permitir autorizar directo desde enviada
+    estadosPermitidos: ['en_revision'],
     estadoResultante: 'autorizada',
     // EXCLUSIVO farmacia
     rolesPermitidos: ['farmacia', 'admin_farmacia'],
@@ -221,9 +222,11 @@ export function useRequisicionFlujo() {
         return ['farmacia', 'admin_farmacia'].includes(rolLower) && estadoActual === 'enviada';
       
       case 'autorizar_farmacia':
-        // Farmacia autoriza en en_revision o enviada (si omite recibir)
+        // Farmacia autoriza SOLO en en_revision (después de recibir)
+        // ISS-FLUJO-FIX: No permitir autorizar directamente desde 'enviada'
+        // El flujo correcto es: enviada → recibir → en_revision → autorizar
         return ['farmacia', 'admin_farmacia'].includes(rolLower) && 
-               ['en_revision', 'enviada'].includes(estadoActual);
+               estadoActual === 'en_revision';
       
       case 'surtir':
         // Farmacia surte cuando está autorizada, en_surtido o parcial

@@ -309,9 +309,19 @@ const Trazabilidad = () => {
   // Ejecutar búsqueda
   const ejecutarBusqueda = async (termino, tipoForzado = null) => {
     const terminoTrimmed = termino.trim();
+    
+    // ISS-FIX: Si no hay término pero hay filtros (centro, fechas, tipo), usar búsqueda global
+    // Para usuarios de centro, siempre tienen filtro implícito por su centro
     if (!terminoTrimmed) {
-      toast.error('Ingrese un término para buscar');
-      return;
+      const hayFiltros = centroFiltro || fechaInicio || fechaFin || tipoMovimiento || (esCentroUser && centroUsuarioId);
+      if (hayFiltros) {
+        // Usar búsqueda global con filtros
+        buscarGlobal();
+        return;
+      } else {
+        toast.error('Ingrese un término de búsqueda o seleccione al menos un filtro (centro, fechas o tipo de movimiento)');
+        return;
+      }
     }
 
     // Evitar búsquedas duplicadas
@@ -557,8 +567,10 @@ const Trazabilidad = () => {
 
   // Buscar trazabilidad global
   const buscarGlobal = async () => {
-    if (!esAdminOFarmacia) {
-      toast.error('Solo administradores y farmacia pueden ver trazabilidad global');
+    // ISS-FIX: Permitir a usuarios de centro ver su trazabilidad global (filtrada por su centro)
+    // Solo bloquear si NO es admin/farmacia Y tampoco es usuario de centro con centro asignado
+    if (!esAdminOFarmacia && !esCentroUser) {
+      toast.error('No tienes permiso para ver trazabilidad global');
       return;
     }
     
@@ -571,8 +583,14 @@ const Trazabilidad = () => {
       const params = {};
       if (fechaInicio) params.fecha_inicio = fechaInicio;
       if (fechaFin) params.fecha_fin = fechaFin;
-      if (centroFiltro) params.centro = centroFiltro;
       if (tipoMovimiento) params.tipo = tipoMovimiento;
+      
+      // ISS-FIX: Para usuarios de centro, siempre filtrar por su centro
+      if (esCentroUser && centroUsuarioId) {
+        params.centro = centroUsuarioId;
+      } else if (centroFiltro) {
+        params.centro = centroFiltro;
+      }
       
       const response = await trazabilidadAPI.global(params);
       setResultadosGlobal(response.data);

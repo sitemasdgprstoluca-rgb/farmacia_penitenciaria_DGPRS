@@ -167,10 +167,24 @@ const Movimientos = () => {
   };
 
   // Función para extraer el grupo de salida del motivo/observaciones
+  // ISS-FIX: Ahora detecta tanto salidas masivas [SAL-...] como movimientos por requisición
   const extraerGrupoSalida = (mov) => {
     const motivo = mov.observaciones || mov.motivo || '';
-    const match = motivo.match(/\[(SAL-[^\]]+)\]/);
-    return match ? match[1] : null;
+    
+    // Patrón 1: Salidas masivas [SAL-xxx]
+    const matchSalida = motivo.match(/\[(SAL-[^\]]+)\]/);
+    if (matchSalida) return matchSalida[1];
+    
+    // Patrón 2: Movimientos por requisición (SALIDA_POR_REQUISICION REQ-xxx o ENTRADA_POR_REQUISICION REQ-xxx)
+    const matchRequisicion = motivo.match(/(SALIDA|ENTRADA)_POR_REQUISICION\s+(REQ-[\w-]+)/i);
+    if (matchRequisicion) return matchRequisicion[2]; // Solo el folio REQ-xxx
+    
+    // Patrón 3: Si tiene requisicion_id o requisicion (campo directo)
+    if (mov.requisicion_id || mov.requisicion) {
+      return `REQ-${mov.requisicion_id || mov.requisicion}`;
+    }
+    
+    return null;
   };
   
   // Función para verificar si un movimiento está confirmado
@@ -179,7 +193,7 @@ const Movimientos = () => {
     return motivo.includes('[CONFIRMADO]');
   };
 
-  // Agrupar movimientos por grupo de salida
+  // Agrupar movimientos por grupo de salida o requisición
   const movimientosAgrupados = useMemo(() => {
     if (!vistaAgrupada) return null;
     
@@ -188,21 +202,42 @@ const Movimientos = () => {
     
     movimientos.forEach(mov => {
       const grupoId = extraerGrupoSalida(mov);
-      if (grupoId && mov.tipo === 'salida' && mov.subtipo_salida === 'transferencia') {
+      const motivo = mov.observaciones || mov.motivo || '';
+      
+      // ISS-FIX: Agrupar si:
+      // 1. Tiene grupo SAL-xxx y es salida/transferencia (salidas masivas)
+      // 2. Tiene grupo REQ-xxx (movimientos por requisición - entrada o salida)
+      const esSalidaMasiva = grupoId?.startsWith('SAL-') && mov.tipo === 'salida' && mov.subtipo_salida === 'transferencia';
+      const esMovimientoRequisicion = grupoId?.startsWith('REQ-') || motivo.includes('_POR_REQUISICION');
+      
+      if (grupoId && (esSalidaMasiva || esMovimientoRequisicion)) {
         if (!grupos.has(grupoId)) {
+          // Determinar tipo de grupo
+          const tipoGrupo = grupoId.startsWith('SAL-') ? 'salida_masiva' : 'requisicion';
+          
           grupos.set(grupoId, {
             id: grupoId,
+            tipoGrupo,
             items: [],
             centro_nombre: mov.centro_nombre || 'N/A',
             fecha: mov.fecha || mov.fecha_movimiento,
             usuario_nombre: mov.usuario_nombre || 'Sistema',
             totalCantidad: 0,
-            confirmado: estaConfirmado(mov), // Detectar si está confirmado
+            confirmado: estaConfirmado(mov),
+            // Para requisiciones, extraer info adicional
+            requisicion_folio: tipoGrupo === 'requisicion' ? grupoId : null,
           });
         }
         const grupo = grupos.get(grupoId);
         grupo.items.push(mov);
         grupo.totalCantidad += Math.abs(mov.cantidad || 0);
+        
+        // Actualizar fecha con la más reciente del grupo
+        const fechaMov = new Date(mov.fecha || mov.fecha_movimiento);
+        const fechaGrupo = new Date(grupo.fecha);
+        if (fechaMov > fechaGrupo) {
+          grupo.fecha = mov.fecha || mov.fecha_movimiento;
+        }
       } else {
         sinGrupo.push(mov);
       }
@@ -1206,44 +1241,60 @@ const Movimientos = () => {
                     </tr>
                   ) : vistaAgrupada && movimientosAgrupados ? (
                     <>
-                      {/* Mostrar grupos de salidas masivas */}
-                      {movimientosAgrupados.grupos.map((grupo, gIndex) => (
+                      {/* Mostrar grupos de salidas masivas y requisiciones */}
+                      {movimientosAgrupados.grupos.map((grupo, gIndex) => {
+                        // ISS-FIX: Determinar colores y etiquetas según tipo de grupo
+                        const esRequisicion = grupo.tipoGrupo === 'requisicion';
+                        const colorBase = esRequisicion ? 'blue' : 'rose';
+                        const etiqueta = esRequisicion ? 'REQUISICIÓN' : 'MASIVA';
+                        const idCorto = esRequisicion ? grupo.id : `SM: ${grupo.id.slice(-8)}`;
+                        
+                        return (
                         <React.Fragment key={grupo.id}>
                           {/* Fila del grupo colapsado */}
                           <tr 
-                            className={`transition cursor-pointer ${gIndex % 2 === 0 ? 'bg-rose-50' : 'bg-rose-100/50'} hover:bg-rose-100 border-l-4 ${grupo.confirmado ? 'border-green-500' : 'border-rose-500'}`}
+                            className={`transition cursor-pointer ${gIndex % 2 === 0 ? `bg-${colorBase}-50` : `bg-${colorBase}-100/50`} hover:bg-${colorBase}-100 border-l-4 ${grupo.confirmado ? 'border-green-500' : `border-${colorBase}-500`}`}
+                            style={{ 
+                              backgroundColor: gIndex % 2 === 0 
+                                ? (esRequisicion ? '#EFF6FF' : '#FFF1F2') 
+                                : (esRequisicion ? '#DBEAFE' : '#FFE4E6'),
+                              borderLeftColor: grupo.confirmado ? '#22C55E' : (esRequisicion ? '#3B82F6' : '#F43F5E')
+                            }}
                             onClick={() => toggleGrupo(grupo.id)}
                           >
                             <td className="px-4 py-3 text-sm">
                               <div className="flex items-center gap-2">
-                                {gruposExpandidos.has(grupo.id) ? <FaChevronDown className="text-rose-600 flex-shrink-0" /> : <FaChevronRight className="text-rose-600 flex-shrink-0" />}
+                                {gruposExpandidos.has(grupo.id) ? <FaChevronDown className={esRequisicion ? 'text-blue-600' : 'text-rose-600'} style={{ flexShrink: 0 }} /> : <FaChevronRight className={esRequisicion ? 'text-blue-600' : 'text-rose-600'} style={{ flexShrink: 0 }} />}
                                 <div className="min-w-0">
-                                  <div className="font-bold text-rose-800 flex items-center gap-1 flex-wrap">
-                                    <FaTruck className="text-rose-600 flex-shrink-0" />
-                                    <span className="truncate">SM: {grupo.id.slice(-8)}</span>
+                                  <div className={`font-bold ${esRequisicion ? 'text-blue-800' : 'text-rose-800'} flex items-center gap-1 flex-wrap`}>
+                                    {esRequisicion ? <FaClipboardCheck className="text-blue-600" style={{ flexShrink: 0 }} /> : <FaTruck className="text-rose-600" style={{ flexShrink: 0 }} />}
+                                    <span className="truncate">{idCorto}</span>
                                     {grupo.confirmado && (
                                       <span className="px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">✓</span>
                                     )}
                                   </div>
-                                  <div className="text-xs text-rose-600">{grupo.items.length} prod.</div>
+                                  <div className={`text-xs ${esRequisicion ? 'text-blue-600' : 'text-rose-600'}`}>{grupo.items.length} mov.</div>
                                 </div>
                               </div>
                             </td>
                             <td className="px-2 py-3">
-                              <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-rose-200 text-rose-800">
-                                MASIVA
+                              <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${esRequisicion ? 'bg-blue-200 text-blue-800' : 'bg-rose-200 text-rose-800'}`}>
+                                {etiqueta}
                               </span>
                             </td>
-                            <td className="px-2 py-3 text-right font-bold text-rose-800">
-                              -{grupo.totalCantidad}
+                            <td className={`px-2 py-3 text-right font-bold ${esRequisicion ? 'text-blue-800' : 'text-rose-800'}`}>
+                              {grupo.totalCantidad}
                             </td>
-                            <td className="px-2 py-3 text-rose-800 font-semibold text-xs truncate" title={grupo.centro_nombre}>{grupo.centro_nombre}</td>
-                            <td className="px-2 py-3 text-rose-700 text-xs">
+                            <td className={`px-2 py-3 ${esRequisicion ? 'text-blue-800' : 'text-rose-800'} font-semibold text-xs truncate`} title={grupo.centro_nombre}>{grupo.centro_nombre}</td>
+                            <td className={`px-2 py-3 ${esRequisicion ? 'text-blue-700' : 'text-rose-700'} text-xs`}>
                               {grupo.fecha ? new Date(grupo.fecha).toLocaleDateString('es-MX') : ''}
                             </td>
                             <td className="px-2 py-3">
                               <div className="flex items-center justify-center gap-1">
-                                {!grupo.confirmado ? (
+                                {esRequisicion ? (
+                                  /* Para requisiciones: solo mostrar info, acciones están en Requisiciones */
+                                  <span className="text-xs text-gray-500">Ver en Requisiciones</span>
+                                ) : !grupo.confirmado ? (
                                   <>
                                     {/* Hoja de Entrega (para firmas) */}
                                     <button
@@ -1297,19 +1348,24 @@ const Movimientos = () => {
                           {gruposExpandidos.has(grupo.id) && grupo.items.map((mov, iIndex) => (
                             <tr 
                               key={mov.id}
-                              className={`transition ${iIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100 border-l-4 border-rose-200`}
+                              className="transition hover:bg-gray-100"
+                              style={{ 
+                                backgroundColor: iIndex % 2 === 0 ? '#FFFFFF' : '#F9FAFB',
+                                borderLeftWidth: '4px',
+                                borderLeftColor: esRequisicion ? '#BFDBFE' : '#FECDD3'
+                              }}
                             >
                               <td className="px-2 py-2 text-sm pl-8">
                                 <div className="font-medium text-gray-800 truncate text-xs">{mov.producto_nombre || mov.producto || ""}</div>
                                 <div className="text-xs text-gray-500">Lote: {mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
                               </td>
                               <td className="px-2 py-2">
-                                <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                                  item
+                                <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${mov.tipo === 'entrada' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                  {mov.tipo || 'item'}
                                 </span>
                               </td>
-                              <td className="px-2 py-2 text-right font-semibold text-gray-700">
-                                -{Math.abs(mov.cantidad)}
+                              <td className={`px-2 py-2 text-right font-semibold ${mov.tipo === 'entrada' ? 'text-green-700' : 'text-gray-700'}`}>
+                                {mov.tipo === 'entrada' ? '+' : '-'}{Math.abs(mov.cantidad)}
                               </td>
                               <td className="px-2 py-2 text-gray-600 text-xs truncate">{mov.centro_nombre || "Almacén Central"}</td>
                               <td className="px-2 py-2 text-gray-500 text-xs">

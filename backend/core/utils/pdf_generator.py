@@ -205,18 +205,34 @@ def generar_hoja_recoleccion(requisicion):
     if hasattr(requisicion, 'fecha_recoleccion_limite') and requisicion.fecha_recoleccion_limite:
         fecha_limite_texto = requisicion.fecha_recoleccion_limite.strftime('%d/%m/%Y %H:%M')
     
+    # ISS-FIX-OVERFLOW: Estilo para celdas con texto que puede ser largo
+    celda_info_style = ParagraphStyle(
+        'CeldaInfo',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=11,
+        wordWrap='CJK',
+        alignment=TA_LEFT,
+    )
+    
+    # ISS-FIX-OVERFLOW: Usar Paragraph para textos largos como nombre de centro
+    centro_paragraph = Paragraph(centro_nombre, celda_info_style)
+    solicitante_paragraph = Paragraph(solicitante_nombre, celda_info_style)
+    autorizador_paragraph = Paragraph(autorizador_nombre, celda_info_style) if autorizador_nombre else ''
+    
     info_data = [
         ['Folio:', requisicion.folio or f'REQ-{requisicion.id}', 'Fecha de Solicitud:', requisicion.fecha_solicitud.strftime('%d/%m/%Y') if requisicion.fecha_solicitud else 'N/A'],
-        ['Centro Solicitante:', centro_nombre, 'Estado:', (requisicion.estado or '').upper()],
-        ['Solicitante:', solicitante_nombre, 'Fecha de Autorización:', 
+        ['Centro Solicitante:', centro_paragraph, 'Estado:', (requisicion.estado or '').upper()],
+        ['Solicitante:', solicitante_paragraph, 'Fecha de Autorización:', 
          requisicion.fecha_autorizacion.strftime('%d/%m/%Y %H:%M') if requisicion.fecha_autorizacion else 'N/A'],
         ['Fecha Límite de Recolección:', fecha_limite_texto, '', ''],
     ]
     
     if requisicion.autorizador:
-        info_data.append(['Autorizado por:', autorizador_nombre, '', ''])
+        info_data.append(['Autorizado por:', autorizador_paragraph, '', ''])
     
-    info_table = Table(info_data, colWidths=[1.5*inch, 2.5*inch, 1.5*inch, 2*inch])
+    # ISS-FIX-OVERFLOW: Ajustar anchos de columna para mejor distribución
+    info_table = Table(info_data, colWidths=[1.6*inch, 2.4*inch, 1.5*inch, 2.0*inch])
     info_table.setStyle(TableStyle([
         ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),

@@ -335,11 +335,6 @@ const RequisicionDetalle = () => {
     } finally {
       setProcesando(false);
     }
-  }; {
-      toast.error(error.response?.data?.error || 'Error al autorizar');
-    } finally {
-      setProcesando(false);
-    }
   };
 
   // Iniciar rechazo con validación de permisos
@@ -863,8 +858,9 @@ const RequisicionDetalle = () => {
     
   // Validar AMBOS: rol de farmacia Y permiso fino correspondiente
   // ISS-DB-002: Estados alineados con BD Supabase
-  // ISS-FIX-AUTORIZACION: Farmacia puede autorizar en 'enviada' (recepción directa) O 'en_revision' (después de recibir)
-  const puedeAutorizar = ['enviada', 'en_revision'].includes(requisicion?.estado) && esFarmacia && permisos?.autorizarRequisicion;
+  // ISS-FLUJO-FIX: Farmacia solo puede autorizar en 'en_revision' (después de recibir)
+  // El flujo correcto es: enviada → recibir → en_revision → revisar cantidades → autorizar
+  const puedeAutorizar = requisicion?.estado === 'en_revision' && esFarmacia && permisos?.autorizarRequisicion;
   const puedeRechazar = ['enviada', 'en_revision'].includes(requisicion?.estado) && esFarmacia && permisos?.rechazarRequisicion;
   // ISS-FIX-SURTIR: Solo desde 'autorizada' - surtir SIEMPRE termina en 'entregada'
   const puedeSurtir = requisicion?.estado === 'autorizada' && esFarmacia && permisos?.surtirRequisicion;
