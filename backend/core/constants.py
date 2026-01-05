@@ -252,7 +252,8 @@ TRANSICIONES_REQUISICION = {
     # Farmacia Central
     # ISS-PARCIAL FIX: Agregar 'parcial' - autorización parcial (menos de lo solicitado)
     'enviada': ['en_revision', 'autorizada', 'parcial', 'rechazada'],  # parcial: autorización parcial
-    'en_revision': ['autorizada', 'parcial', 'rechazada', 'devuelta'],  # parcial: autorización parcial
+    # ISS-FIX-AUTORIZACION: Farmacia NO puede devolver desde en_revision - solo rechazar o ajustar cantidades
+    'en_revision': ['autorizada', 'parcial', 'rechazada'],  # Sin devuelta - farmacia no devuelve
     'autorizada': ['en_surtido', 'surtida', 'entregada', 'cancelada'],  # entregada: surtir directo V2
     
     # ISS-PARCIAL FIX: 'parcial' es autorización parcial, puede continuar a surtido

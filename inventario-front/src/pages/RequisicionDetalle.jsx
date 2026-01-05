@@ -845,8 +845,9 @@ const RequisicionDetalle = () => {
     
   // Validar AMBOS: rol de farmacia Y permiso fino correspondiente
   // ISS-DB-002: Estados alineados con BD Supabase
-  const puedeAutorizar = requisicion?.estado === 'enviada' && esFarmacia && permisos?.autorizarRequisicion;
-  const puedeRechazar = requisicion?.estado === 'enviada' && esFarmacia && permisos?.rechazarRequisicion;
+  // ISS-FIX-AUTORIZACION: Farmacia puede autorizar en 'enviada' (recepción directa) O 'en_revision' (después de recibir)
+  const puedeAutorizar = ['enviada', 'en_revision'].includes(requisicion?.estado) && esFarmacia && permisos?.autorizarRequisicion;
+  const puedeRechazar = ['enviada', 'en_revision'].includes(requisicion?.estado) && esFarmacia && permisos?.rechazarRequisicion;
   // ISS-FIX-SURTIR: Solo desde 'autorizada' - surtir SIEMPRE termina en 'entregada'
   const puedeSurtir = requisicion?.estado === 'autorizada' && esFarmacia && permisos?.surtirRequisicion;
   

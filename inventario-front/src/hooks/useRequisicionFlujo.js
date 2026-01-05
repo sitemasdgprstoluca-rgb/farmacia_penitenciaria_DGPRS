@@ -99,10 +99,11 @@ const ACCIONES_FLUJO = {
   devolver: {
     endpoint: 'devolver',
     label: 'Devolver al Médico',
-    estadosPermitidos: ['pendiente_admin', 'pendiente_director', 'en_revision'],
+    // ISS-FIX: Farmacia NO devuelve - quitar 'en_revision' de estados permitidos
+    estadosPermitidos: ['pendiente_admin', 'pendiente_director'],
     estadoResultante: 'devuelta',
-    // Cada rol devuelve EN SU ETAPA (validado en puedeEjecutarAccion)
-    rolesPermitidos: ['administrador_centro', 'admin_centro', 'director_centro', 'director', 'farmacia', 'admin_farmacia'],
+    // Solo Admin/Director del centro pueden devolver (no farmacia)
+    rolesPermitidos: ['administrador_centro', 'admin_centro', 'director_centro', 'director'],
     requiereMotivo: true,
     confirmacion: true,
     color: 'amber',
@@ -231,10 +232,10 @@ export function useRequisicionFlujo() {
       
       // === ACCIONES DE DEVOLUCIÓN/RECHAZO ===
       case 'devolver':
-        // Admin/Director/Farmacia pueden devolver según el estado
+        // Admin/Director pueden devolver al médico para correcciones
+        // ISS-FIX: Farmacia NO devuelve - solo rechaza o ajusta cantidades autorizadas
         if (estadoActual === 'pendiente_admin' && ['administrador_centro', 'admin_centro'].includes(rolLower)) return true;
         if (estadoActual === 'pendiente_director' && ['director_centro', 'director'].includes(rolLower)) return true;
-        if (estadoActual === 'en_revision' && ['farmacia', 'admin_farmacia'].includes(rolLower)) return true;
         return false;
       
       case 'reenviar':
