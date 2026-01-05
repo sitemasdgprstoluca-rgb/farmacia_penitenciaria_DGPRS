@@ -56,6 +56,10 @@ const RequisicionDetalle = () => {
   const [showRechazarModal, setShowRechazarModal] = useState(false);
   const [showCancelarModal, setShowCancelarModal] = useState(false);
   const [showSurtirModal, setShowSurtirModal] = useState(false);
+  // ISS-FIX: Modal para fecha de recolección
+  const [showFechaRecoleccionModal, setShowFechaRecoleccionModal] = useState(false);
+  const [fechaRecoleccion, setFechaRecoleccion] = useState('');
+  const [esParcialPendiente, setEsParcialPendiente] = useState(false);
   
   // Hoja de recolección
   const [hojaRecoleccion, setHojaRecoleccion] = useState(null);
@@ -270,26 +274,13 @@ const RequisicionDetalle = () => {
     }
   };
   
-  // Ejecutar autorización total
+  // Ejecutar autorización total - ahora solo muestra modal de fecha
   const ejecutarAutorizacionTotal = async () => {
-    try {
-      setProcesando(true);
-      setShowAutorizarModal(false);
-      // MEJORA FLUJO 3: Incluir motivo_ajuste por cada item
-      const items = detallesEditables.map(d => ({
-        id: d.id,
-        cantidad_autorizada: d.cantidad_autorizada,
-        motivo_ajuste: d.cantidad_autorizada < d.cantidad_solicitada ? d.motivo_ajuste : null
-      }));
-      await requisicionesAPI.autorizar(id, { items, observaciones: '' });
-      toast.success('Requisición autorizada');
-      setModoAutorizar(false);
-      cargarRequisicion();
-    } catch (error) {
-      toast.error(error.response?.data?.error || 'Error al autorizar');
-    } finally {
-      setProcesando(false);
-    }
+    setShowAutorizarModal(false);
+    setEsParcialPendiente(false);
+    // ISS-FIX: Mostrar modal para pedir fecha de recolección
+    setFechaRecoleccion('');
+    setShowFechaRecoleccionModal(true);
   };
   
   // Ejecutar autorización parcial con observaciones
@@ -304,20 +295,47 @@ const RequisicionDetalle = () => {
       return;
     }
     
+    setShowAutorizarParcialModal(false);
+    setEsParcialPendiente(true);
+    // ISS-FIX: Mostrar modal para pedir fecha de recolección
+    setFechaRecoleccion('');
+    setShowFechaRecoleccionModal(true);
+  };
+  
+  // ISS-FIX: Ejecutar autorización con fecha de recolección
+  const ejecutarAutorizacionConFecha = async () => {
+    if (!fechaRecoleccion) {
+      toast.error('Debe seleccionar una fecha límite de recolección');
+      return;
+    }
+    
     try {
       setProcesando(true);
-      setShowAutorizarParcialModal(false);
-      // MEJORA FLUJO 3: Incluir motivo_ajuste por cada item
+      setShowFechaRecoleccionModal(false);
+      
+      // Preparar items con cantidades autorizadas
       const items = detallesEditables.map(d => ({
         id: d.id,
         cantidad_autorizada: d.cantidad_autorizada,
         motivo_ajuste: d.cantidad_autorizada < d.cantidad_solicitada ? d.motivo_ajuste : null
       }));
-      await requisicionesAPI.autorizar(id, { items });
-      toast.success('Requisición autorizada parcialmente');
+      
+      // Usar endpoint correcto: autorizarFarmacia con fecha
+      await requisicionesAPI.autorizarFarmacia(id, { 
+        items, 
+        fecha_recoleccion_limite: fechaRecoleccion,
+        observaciones: autorizarObservaciones || ''
+      });
+      
+      toast.success(esParcialPendiente ? 'Requisición autorizada parcialmente' : 'Requisición autorizada');
       setModoAutorizar(false);
       cargarRequisicion();
     } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al autorizar');
+    } finally {
+      setProcesando(false);
+    }
+  }; {
       toast.error(error.response?.data?.error || 'Error al autorizar');
     } finally {
       setProcesando(false);
@@ -1715,6 +1733,51 @@ const RequisicionDetalle = () => {
         cancelText="Volver"
         tone="danger"
       />
+
+      {/* ISS-FIX: Modal para fecha límite de recolección */}
+      {showFechaRecoleccionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+            <h3 className="text-lg font-semibold mb-4 text-theme-primary">
+              Asignar Fecha Límite de Recolección
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Seleccione la fecha y hora límite para que el centro recoja los productos autorizados.
+            </p>
+            
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Fecha y hora límite *
+            </label>
+            <input
+              type="datetime-local"
+              value={fechaRecoleccion}
+              onChange={(e) => setFechaRecoleccion(e.target.value)}
+              min={new Date().toISOString().slice(0, 16)}
+              className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-theme-primary mb-4"
+            />
+            
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowFechaRecoleccionModal(false);
+                  setFechaRecoleccion('');
+                }}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={ejecutarAutorizacionConFecha}
+                disabled={!fechaRecoleccion || procesando}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              >
+                {procesando ? 'Autorizando...' : 'Autorizar Requisición'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
 
     </div>

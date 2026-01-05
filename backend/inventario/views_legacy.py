@@ -5358,13 +5358,21 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         
         Usa transaction.atomic() y select_for_update() para evitar que múltiples
         usuarios autoricen la misma requisición simultáneamente.
+        
+        ISS-FIX-AUTORIZACION: Permite autorizar desde 'enviada' o 'en_revision'
         """
         from django.db import transaction
         
         requisicion = self.get_object()
-        # ISS-DB-002: Usar 'enviada' (valor en BD Supabase)
-        if (requisicion.estado or '').lower() != 'enviada':
-            return Response({'error': 'Solo se pueden autorizar requisiciones en estado ENVIADA', 'estado_actual': requisicion.estado}, status=status.HTTP_400_BAD_REQUEST)
+        # ISS-FIX-AUTORIZACION: Aceptar tanto 'enviada' como 'en_revision'
+        estados_autorizables = ['enviada', 'en_revision']
+        estado_actual = (requisicion.estado or '').lower()
+        if estado_actual not in estados_autorizables:
+            return Response({
+                'error': f'Solo se pueden autorizar requisiciones en estado ENVIADA o EN_REVISION',
+                'estado_actual': requisicion.estado,
+                'estados_permitidos': estados_autorizables
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         centro_user = self._user_centro(request.user)
         es_privilegiado = is_farmacia_or_admin(request.user)
@@ -5386,11 +5394,13 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 # Bloquear requisición para evitar modificaciones concurrentes
                 requisicion_bloqueada = Requisicion.objects.select_for_update(nowait=False).get(pk=requisicion.pk)
                 
-                # ISS-004: Re-verificar estado después del bloqueo (pudo cambiar)
-                if (requisicion_bloqueada.estado or '').lower() != 'enviada':
+                # ISS-FIX-AUTORIZACION: Re-verificar estado después del bloqueo (pudo cambiar)
+                estado_bloqueado = (requisicion_bloqueada.estado or '').lower()
+                if estado_bloqueado not in estados_autorizables:
                     return Response({
-                        'error': 'La requisición ya no está en estado ENVIADA (modificada concurrentemente)',
-                        'estado_actual': requisicion_bloqueada.estado
+                        'error': 'La requisición ya no está en estado autorizable (modificada concurrentemente)',
+                        'estado_actual': requisicion_bloqueada.estado,
+                        'estados_permitidos': estados_autorizables
                     }, status=status.HTTP_409_CONFLICT)
                 
                 return self._autorizar_con_bloqueo(request, requisicion_bloqueada, items_data)
