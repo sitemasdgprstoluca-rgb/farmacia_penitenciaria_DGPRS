@@ -1657,7 +1657,7 @@ const Requisiciones = () => {
               }`}
             >
               {tab.label}
-              {resumenEstados.por_grupo?.[tab.key] ? ` (${resumenEstados.por_grupo[tab.key]})` : ''}
+              {tab.grupo && resumenEstados.por_grupo?.[tab.grupo] ? ` (${resumenEstados.por_grupo[tab.grupo]})` : ''}
             </button>
           ))}
         </div>
