@@ -4682,161 +4682,252 @@ class AdminLimpiarDatosView(APIView):
                 eliminados = {}
                 
                 # ============================================================
-                # ELIMINACIÓN SELECTIVA RESPETANDO FOREIGN KEYS
+                # ELIMINACIÓN SELECTIVA - Usar SQL directo para evitar 
+                # problemas con modelos managed=False (Supabase)
                 # ============================================================
                 
                 if categoria == 'movimientos':
                     # Solo movimientos
-                    eliminados['movimientos'] = Movimiento.objects.all().delete()[0]
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM movimientos")
+                        eliminados['movimientos'] = cursor.rowcount
                 
                 elif categoria == 'donaciones':
                     # Eliminar donaciones en orden de dependencias FK
-                    # 1. Salidas de donaciones (depende de detalle_donaciones)
-                    eliminados['salidas_donacion'] = SalidaDonacion.objects.all().delete()[0]
-                    # 2. Detalles de donaciones (depende de donaciones)
-                    eliminados['detalles_donacion'] = DetalleDonacion.objects.all().delete()[0]
+                    # 1. Salidas de donaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM salidas_donaciones")
+                        eliminados['salidas_donacion'] = cursor.rowcount
+                    # 2. Detalles de donaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalle_donaciones")
+                        eliminados['detalles_donacion'] = cursor.rowcount
                     # 3. Donaciones
-                    eliminados['donaciones'] = Donacion.objects.all().delete()[0]
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM donaciones")
+                        eliminados['donaciones'] = cursor.rowcount
                 
                 elif categoria == 'notificaciones':
                     # Solo notificaciones
-                    eliminados['notificaciones'] = Notificacion.objects.all().delete()[0]
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM notificaciones")
+                        eliminados['notificaciones'] = cursor.rowcount
                 
                 elif categoria == 'requisiciones':
-                    # 1. Ajustes de cantidad
+                    # 1. Detalles de hojas de recolección (pueden tener FK a requisiciones)
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalle_hojas_recoleccion")
+                        eliminados['detalles_hojas_recoleccion'] = cursor.rowcount
+                    
+                    # 2. Hojas de recolección
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM hojas_recoleccion")
+                        eliminados['hojas_recoleccion'] = cursor.rowcount
+                    
+                    # 3. Ajustes de cantidad
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM requisicion_ajustes_cantidad")
                         eliminados['requisicion_ajustes_cantidad'] = cursor.rowcount
                     
-                    # 2. Detalles de requisición
-                    eliminados['detalles_requisicion'] = DetalleRequisicion.objects.all().delete()[0]
+                    # 4. Detalles de requisición
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalles_requisicion")
+                        eliminados['detalles_requisicion'] = cursor.rowcount
                     
-                    # 3. Historial de estados
+                    # 5. Historial de estados
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM requisicion_historial_estados")
                         eliminados['requisicion_historial_estados'] = cursor.rowcount
                     
-                    # 4. Movimientos vinculados a requisiciones
-                    eliminados['movimientos'] = Movimiento.objects.filter(requisicion_id__isnull=False).delete()[0]
+                    # 6. Movimientos vinculados a requisiciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM movimientos WHERE requisicion_id IS NOT NULL")
+                        eliminados['movimientos'] = cursor.rowcount
                     
-                    # 5. Requisiciones
-                    eliminados['requisiciones'] = Requisicion.objects.all().delete()[0]
+                    # 7. Requisiciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM requisiciones")
+                        eliminados['requisiciones'] = cursor.rowcount
                 
                 elif categoria == 'lotes':
                     # 1. Movimientos vinculados a lotes
-                    eliminados['movimientos'] = Movimiento.objects.filter(lote_id__isnull=False).delete()[0]
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM movimientos WHERE lote_id IS NOT NULL")
+                        eliminados['movimientos'] = cursor.rowcount
                     
                     # 2. Detalles de hojas de recolección
-                    eliminados['detalles_hojas_recoleccion'] = DetalleHojaRecoleccion.objects.all().delete()[0]
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalle_hojas_recoleccion")
+                        eliminados['detalles_hojas_recoleccion'] = cursor.rowcount
                     
                     # 3. Hojas de recolección
-                    eliminados['hojas_recoleccion'] = HojaRecoleccion.objects.all().delete()[0]
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM hojas_recoleccion")
+                        eliminados['hojas_recoleccion'] = cursor.rowcount
                     
                     # 4. Documentos de lotes
-                    eliminados['lote_documentos'] = LoteDocumento.objects.all().delete()[0]
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM lote_documentos")
+                        eliminados['lote_documentos'] = cursor.rowcount
                     
                     # 5. Actualizar detalles_requisicion para quitar referencia a lotes
-                    DetalleRequisicion.objects.all().update(lote_id=None)
+                    with connection.cursor() as cursor:
+                        cursor.execute("UPDATE detalles_requisicion SET lote_id = NULL")
                     
                     # 6. Lotes
-                    eliminados['lotes'] = Lote.objects.all().delete()[0]
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM lotes")
+                        eliminados['lotes'] = cursor.rowcount
                     
                     # 7. Actualizar stock de productos a 0
-                    Producto.objects.all().update(stock_actual=0)
+                    with connection.cursor() as cursor:
+                        cursor.execute("UPDATE productos SET stock_actual = 0")
                 
                 elif categoria == 'productos':
                     # Elimina productos Y todo lo que depende de ellos
                     
-                    # 1. Ajustes de cantidad
+                    # 1. Detalles de hojas de recolección
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalle_hojas_recoleccion")
+                        eliminados['detalles_hojas_recoleccion'] = cursor.rowcount
+                    
+                    # 2. Hojas de recolección
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM hojas_recoleccion")
+                        eliminados['hojas_recoleccion'] = cursor.rowcount
+                    
+                    # 3. Ajustes de cantidad
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM requisicion_ajustes_cantidad")
                         eliminados['requisicion_ajustes_cantidad'] = cursor.rowcount
                     
-                    # 2. Detalles de requisición
-                    eliminados['detalles_requisicion'] = DetalleRequisicion.objects.all().delete()[0]
+                    # 4. Detalles de requisición
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalles_requisicion")
+                        eliminados['detalles_requisicion'] = cursor.rowcount
                     
-                    # 3. Historial de estados
+                    # 5. Historial de estados
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM requisicion_historial_estados")
                         eliminados['requisicion_historial_estados'] = cursor.rowcount
                     
-                    # 4. Movimientos
-                    eliminados['movimientos'] = Movimiento.objects.all().delete()[0]
+                    # 6. Movimientos
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM movimientos")
+                        eliminados['movimientos'] = cursor.rowcount
                     
-                    # 5. Requisiciones
-                    eliminados['requisiciones'] = Requisicion.objects.all().delete()[0]
-                    
-                    # 6. Detalles de hojas de recolección
-                    eliminados['detalles_hojas_recoleccion'] = DetalleHojaRecoleccion.objects.all().delete()[0]
-                    
-                    # 7. Hojas de recolección
-                    eliminados['hojas_recoleccion'] = HojaRecoleccion.objects.all().delete()[0]
+                    # 7. Requisiciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM requisiciones")
+                        eliminados['requisiciones'] = cursor.rowcount
                     
                     # 8. Documentos de lotes
-                    eliminados['lote_documentos'] = LoteDocumento.objects.all().delete()[0]
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM lote_documentos")
+                        eliminados['lote_documentos'] = cursor.rowcount
                     
                     # 9. Lotes
-                    eliminados['lotes'] = Lote.objects.all().delete()[0]
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM lotes")
+                        eliminados['lotes'] = cursor.rowcount
                     
                     # 10. Imágenes de productos
-                    eliminados['producto_imagenes'] = ProductoImagen.objects.all().delete()[0]
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM producto_imagenes")
+                        eliminados['producto_imagenes'] = cursor.rowcount
                     
                     # 11. Productos
-                    eliminados['productos'] = Producto.objects.all().delete()[0]
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM productos")
+                        eliminados['productos'] = cursor.rowcount
                     
                     # 12. Logs de importación
-                    eliminados['importacion_logs'] = ImportacionLog.objects.all().delete()[0]
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM importacion_logs")
+                        eliminados['importacion_logs'] = cursor.rowcount
                 
                 else:  # categoria == 'todos'
-                    # LIMPIEZA COMPLETA
+                    # LIMPIEZA COMPLETA - Usar SQL directo para evitar problemas con modelos unmanaged
                     
-                    # 1. Ajustes de cantidad
+                    # 1. Detalles de hojas de recolección
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalle_hojas_recoleccion")
+                        eliminados['detalles_hojas_recoleccion'] = cursor.rowcount
+                    
+                    # 2. Hojas de recolección
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM hojas_recoleccion")
+                        eliminados['hojas_recoleccion'] = cursor.rowcount
+                    
+                    # 3. Ajustes de cantidad
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM requisicion_ajustes_cantidad")
                         eliminados['requisicion_ajustes_cantidad'] = cursor.rowcount
                     
-                    # 2. Detalles de requisición
-                    eliminados['detalles_requisicion'] = DetalleRequisicion.objects.all().delete()[0]
+                    # 4. Detalles de requisición
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalles_requisicion")
+                        eliminados['detalles_requisicion'] = cursor.rowcount
                     
-                    # 3. Historial de estados
+                    # 5. Historial de estados
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM requisicion_historial_estados")
                         eliminados['requisicion_historial_estados'] = cursor.rowcount
                     
-                    # 4. Movimientos
-                    eliminados['movimientos'] = Movimiento.objects.all().delete()[0]
+                    # 6. Movimientos
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM movimientos")
+                        eliminados['movimientos'] = cursor.rowcount
                     
-                    # 5. Requisiciones
-                    eliminados['requisiciones'] = Requisicion.objects.all().delete()[0]
-                    
-                    # 6. Detalles de hojas de recolección
-                    eliminados['detalles_hojas_recoleccion'] = DetalleHojaRecoleccion.objects.all().delete()[0]
-                    
-                    # 7. Hojas de recolección
-                    eliminados['hojas_recoleccion'] = HojaRecoleccion.objects.all().delete()[0]
+                    # 7. Requisiciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM requisiciones")
+                        eliminados['requisiciones'] = cursor.rowcount
                     
                     # 8. Documentos de lotes
-                    eliminados['lote_documentos'] = LoteDocumento.objects.all().delete()[0]
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM lote_documentos")
+                        eliminados['lote_documentos'] = cursor.rowcount
                     
                     # 9. Lotes
-                    eliminados['lotes'] = Lote.objects.all().delete()[0]
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM lotes")
+                        eliminados['lotes'] = cursor.rowcount
                     
                     # 10. Imágenes de productos
-                    eliminados['producto_imagenes'] = ProductoImagen.objects.all().delete()[0]
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM producto_imagenes")
+                        eliminados['producto_imagenes'] = cursor.rowcount
                     
                     # 11. Productos
-                    eliminados['productos'] = Producto.objects.all().delete()[0]
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM productos")
+                        eliminados['productos'] = cursor.rowcount
                     
                     # 12. Logs de importación
-                    eliminados['importacion_logs'] = ImportacionLog.objects.all().delete()[0]
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM importacion_logs")
+                        eliminados['importacion_logs'] = cursor.rowcount
                     
-                    # 13-15. Donaciones (incluido en "todos")
-                    eliminados['salidas_donacion'] = SalidaDonacion.objects.all().delete()[0]
-                    eliminados['detalles_donacion'] = DetalleDonacion.objects.all().delete()[0]
-                    eliminados['donaciones'] = Donacion.objects.all().delete()[0]
+                    # 13. Salidas de donación
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM salidas_donaciones")
+                        eliminados['salidas_donacion'] = cursor.rowcount
                     
-                    # 16. Notificaciones (incluido en "todos")
-                    eliminados['notificaciones'] = Notificacion.objects.all().delete()[0]
+                    # 14. Detalles de donación
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalle_donaciones")
+                        eliminados['detalles_donacion'] = cursor.rowcount
+                    
+                    # 15. Donaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM donaciones")
+                        eliminados['donaciones'] = cursor.rowcount
+                    
+                    # 16. Notificaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM notificaciones")
+                        eliminados['notificaciones'] = cursor.rowcount
                 
                 # Calcular totales
                 total_eliminados = sum(eliminados.values())

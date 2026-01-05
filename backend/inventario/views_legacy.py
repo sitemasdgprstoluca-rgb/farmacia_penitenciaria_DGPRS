@@ -5259,15 +5259,19 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                         continue
                     # ISS-FIX-LOTE: Incluir el lote específico si viene en el request
                     lote_id = item_data.get('lote') or item_data.get('lote_id')
-                    DetalleRequisicion.objects.create(
-                        requisicion=requisicion,
-                        producto_id=producto_id,
-                        lote_id=lote_id,  # ISS-FIX-LOTE: Guardar lote específico
-                        cantidad_solicitada=int(cant),
-                        cantidad_autorizada=int(item_data.get('cantidad_autorizada') or 0),
-                        # ISS-FIX: Usar 'notas' en lugar de 'observaciones' (que es @property)
-                        notas=item_data.get('observaciones') or item_data.get('notas') or ''
-                    )
+                    # ISS-FIX: No establecer cantidad_autorizada en borradores
+                    # para evitar validación de motivo_ajuste (solo aplica en autorización)
+                    detalle_data = {
+                        'requisicion': requisicion,
+                        'producto_id': producto_id,
+                        'lote_id': lote_id,
+                        'cantidad_solicitada': int(cant),
+                        'notas': item_data.get('observaciones') or item_data.get('notas') or ''
+                    }
+                    # Solo incluir cantidad_autorizada si viene explícitamente en el request
+                    if item_data.get('cantidad_autorizada') is not None:
+                        detalle_data['cantidad_autorizada'] = int(item_data.get('cantidad_autorizada'))
+                    DetalleRequisicion.objects.create(**detalle_data)
                 
                 # ISS-005: Devolver resultado con advertencias si las hay
                 response_data = {'mensaje': 'Requisicion actualizada exitosamente', 'requisicion': RequisicionSerializer(requisicion).data}
