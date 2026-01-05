@@ -2985,7 +2985,7 @@ class RequisicionHistorialEstados(models.Model):
         ('completar_surtido', 'Completar surtido'),
         ('confirmar_entrega', 'Confirmar entrega'),
         ('rechazar', 'Rechazar'),
-        ('devolver_centro', 'Devolver al Centro'),
+        ('devolver_centro', 'Devolver al Médico'),
         ('vencer', 'Marcar como vencida'),
         ('vencer_automatico', 'Vencimiento automático'),
         ('cancelar', 'Cancelar'),

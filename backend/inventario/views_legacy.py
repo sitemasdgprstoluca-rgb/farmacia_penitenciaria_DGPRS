@@ -4968,10 +4968,14 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             )
             pass  # Sin filtro de centro
         
-        # 2. Personal de Farmacia Central: Ve solo lo que ha sido enviado
+        # 2. Personal de Farmacia Central: Ve solo lo que ha sido enviado por Director
         elif rol == 'farmacia':
-            # Farmacia NO debe ver borradores ni pendientes internos del centro
-            queryset = queryset.exclude(estado__in=['borrador', 'pendiente_admin', 'pendiente_director'])
+            # Farmacia NO debe ver:
+            # - borrador: aún no enviada por médico
+            # - pendiente_admin: pendiente de admin del centro
+            # - pendiente_director: pendiente de director del centro
+            # - devuelta: fue devuelta al centro para correcciones
+            queryset = queryset.exclude(estado__in=['borrador', 'pendiente_admin', 'pendiente_director', 'devuelta'])
             filter_applied = True
         
         # ISS-019 FIX: 2.5 Rol Vista (Auditoría/Control): Lectura global para trazabilidad
@@ -5214,10 +5218,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             return Response({'error': 'Error al crear requisicion', 'mensaje': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def update(self, request, *args, **kwargs):
-        """Solo permite editar si sigue en borrador."""
+        """Solo permite editar si sigue en borrador o está devuelta."""
         requisicion = self.get_object()
-        if (requisicion.estado or '').lower() != 'borrador':
-            return Response({'error': 'Solo se pueden editar requisiciones en estado BORRADOR', 'estado_actual': requisicion.estado}, status=status.HTTP_400_BAD_REQUEST)
+        estado_actual = (requisicion.estado or '').lower()
+        # Permitir editar en borrador o devuelta (para que el médico corrija después de devolución)
+        if estado_actual not in ['borrador', 'devuelta']:
+            return Response({'error': 'Solo se pueden editar requisiciones en estado BORRADOR o DEVUELTA', 'estado_actual': requisicion.estado}, status=status.HTTP_400_BAD_REQUEST)
 
         centro_user = self._user_centro(request.user)
         if not request.user.is_superuser and centro_user and requisicion.centro_id != centro_user.id:
@@ -6896,7 +6902,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         )
         
         return Response({
-            'mensaje': 'Requisición devuelta al centro para correcciones',
+            'mensaje': 'Requisición devuelta al médico para correcciones',
             'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data,
             'motivo_devolucion': motivo.strip()
         })

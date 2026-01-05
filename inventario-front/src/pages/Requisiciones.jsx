@@ -165,17 +165,52 @@ const Requisiciones = () => {
 
   const filtrosActivos = [searchTerm, filtroEstado, filtroCentro, filtroFechaDesde, filtroFechaHasta].filter(Boolean).length;
 
+  // Detectar si es usuario de farmacia específicamente
+  const esFarmacia = rolPrincipal === 'FARMACIA';
+  const esUsuarioCentro = ['MEDICO', 'ADMINISTRADOR_CENTRO', 'DIRECTOR_CENTRO'].includes(rolPrincipal);
+
   // ISS-004 FIX (audit33): Pestañas derivadas del backend cuando esté disponible
   // Fallback a configuración local si el backend no responde
-  const stateTabsFallback = [
-    { key: 'todas', label: 'Todas', grupo: null },
-    { key: 'centro', label: 'En Centro', grupo: 'pendientes', descripcion: 'Pendiente de autorización centro' },
-    { key: 'farmacia', label: 'En Farmacia', grupo: 'pendientes_farmacia', descripcion: 'En proceso en Farmacia' },
-    { key: 'proceso', label: 'En Proceso', grupo: 'en_proceso', descripcion: 'Autorizado, en surtido' },
-    { key: 'surtidas', label: 'Surtidas', grupo: 'surtidas', descripcion: 'Listas para recolección' },
-    { key: 'completadas', label: 'Completadas', grupo: 'completadas', descripcion: 'Entregadas' },
-    { key: 'finalizadas', label: 'Finalizadas', grupo: 'rechazadas_canceladas', descripcion: 'Rechazadas, canceladas, vencidas' },
-  ];
+  // IMPORTANTE: Los tabs varían según el rol del usuario
+  const stateTabsFallback = useMemo(() => {
+    // Tabs para FARMACIA: Solo ve requisiciones enviadas por director
+    // - En Farmacia: pendientes de procesar (enviada, en_revision)
+    // - En Proceso: autorizadas, esperando recolección (autorizada, en_surtido, surtida)
+    // - Completadas: proceso terminado (entregada)
+    if (esFarmacia) {
+      return [
+        { key: 'todas', label: 'Todas', grupo: null },
+        { key: 'farmacia', label: 'Por Procesar', grupo: 'pendientes_farmacia', descripcion: 'Enviadas, pendientes de autorizar' },
+        { key: 'proceso', label: 'En Proceso', grupo: 'en_proceso', descripcion: 'Autorizadas, en surtido' },
+        { key: 'surtidas', label: 'Esperando Recolección', grupo: 'surtidas', descripcion: 'Listas para que el centro recoja' },
+        { key: 'completadas', label: 'Completadas', grupo: 'completadas', descripcion: 'Entregadas' },
+      ];
+    }
+    
+    // Tabs para usuarios de CENTRO: Incluyen estados internos del centro
+    if (esUsuarioCentro) {
+      return [
+        { key: 'todas', label: 'Todas', grupo: null },
+        { key: 'centro', label: 'En Centro', grupo: 'pendientes', descripcion: 'Borrador o devueltas, pendiente de envío' },
+        { key: 'farmacia', label: 'En Farmacia', grupo: 'pendientes_farmacia', descripcion: 'Enviadas a farmacia' },
+        { key: 'proceso', label: 'En Proceso', grupo: 'en_proceso', descripcion: 'Autorizadas, en surtido' },
+        { key: 'surtidas', label: 'Para Recolectar', grupo: 'surtidas', descripcion: 'Listas para recoger en farmacia' },
+        { key: 'completadas', label: 'Completadas', grupo: 'completadas', descripcion: 'Entregadas' },
+        { key: 'finalizadas', label: 'Finalizadas', grupo: 'rechazadas_canceladas', descripcion: 'Rechazadas, canceladas, vencidas' },
+      ];
+    }
+    
+    // Tabs para ADMIN: Ve todo
+    return [
+      { key: 'todas', label: 'Todas', grupo: null },
+      { key: 'centro', label: 'En Centro', grupo: 'pendientes', descripcion: 'Pendiente de autorización centro' },
+      { key: 'farmacia', label: 'En Farmacia', grupo: 'pendientes_farmacia', descripcion: 'En proceso en Farmacia' },
+      { key: 'proceso', label: 'En Proceso', grupo: 'en_proceso', descripcion: 'Autorizado, en surtido' },
+      { key: 'surtidas', label: 'Surtidas', grupo: 'surtidas', descripcion: 'Listas para recolección' },
+      { key: 'completadas', label: 'Completadas', grupo: 'completadas', descripcion: 'Entregadas' },
+      { key: 'finalizadas', label: 'Finalizadas', grupo: 'rechazadas_canceladas', descripcion: 'Rechazadas, canceladas, vencidas' },
+    ];
+  }, [esFarmacia, esUsuarioCentro]);
   
   // ISS-004: Usar tabs del backend si están disponibles
   const stateTabs = useMemo(() => {
@@ -603,7 +638,8 @@ const Requisiciones = () => {
     if (!permisos.editarRequisicion) return false;
     // Normalizar estado a minúsculas para evitar problemas de casing
     const estadoNormalizado = requisicion.estado?.toLowerCase();
-    if (estadoNormalizado !== 'borrador') return false;
+    // Permitir editar en borrador O cuando fue devuelta (para que el médico corrija)
+    if (estadoNormalizado !== 'borrador' && estadoNormalizado !== 'devuelta') return false;
     if (permisos.isFarmaciaAdmin) return true;
     if (permisos.isCentroUser) {
       const userCentro = user?.centro?.id;
@@ -733,9 +769,10 @@ const Requisiciones = () => {
       toast.error('No tienes permisos para editar requisiciones');
       return;
     }
-    // Solo permitir editar borradores propios o cualquier borrador si es admin/farmacia
-    if (req.estado !== 'borrador' && req.estado !== 'BORRADOR') {
-      toast.error('Solo se pueden editar requisiciones en estado borrador');
+    // Permitir editar borradores y devueltas (para que el médico corrija después de devolución)
+    const estadoNormalizado = req.estado?.toLowerCase();
+    if (estadoNormalizado !== 'borrador' && estadoNormalizado !== 'devuelta') {
+      toast.error('Solo se pueden editar requisiciones en estado borrador o devuelta');
       return;
     }
     const items = (req.detalles || req.items || []).map((d) => ({

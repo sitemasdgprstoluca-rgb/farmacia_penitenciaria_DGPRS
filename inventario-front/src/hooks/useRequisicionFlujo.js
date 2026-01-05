@@ -8,6 +8,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
+import * as React from 'react';
 import { requisicionesAPI } from '../services/api';
 import { usePermissions } from './usePermissions';
 import { 
@@ -97,7 +98,7 @@ const ACCIONES_FLUJO = {
   },
   devolver: {
     endpoint: 'devolver',
-    label: 'Devolver al Centro',
+    label: 'Devolver al Médico',
     estadosPermitidos: ['pendiente_admin', 'pendiente_director', 'en_revision'],
     estadoResultante: 'devuelta',
     // Cada rol devuelve EN SU ETAPA (validado en puedeEjecutarAccion)
@@ -158,6 +159,8 @@ export function useRequisicionFlujo() {
   const { user, getRolPrincipal } = usePermissions();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  // Ref para prevenir doble envío (antes de que el estado loading se actualice)
+  const ejecutandoRef = React.useRef(false);
   
   // ISS-DIRECTOR FIX: Usar rol_efectivo del backend si está disponible
   // rol_efectivo ya incluye inferencia de rol cuando el campo está vacío
@@ -287,8 +290,15 @@ export function useRequisicionFlujo() {
   
   /**
    * Ejecuta una acción del flujo
+   * Incluye protección contra doble envío usando ref
    */
   const ejecutarAccion = useCallback(async (accionKey, requisicionId, data = {}) => {
+    // Prevenir doble envío
+    if (ejecutandoRef.current) {
+      console.warn(`[useRequisicionFlujo] Acción ${accionKey} ya en ejecución, ignorando...`);
+      return { mensaje: 'Operación en progreso, por favor espere' };
+    }
+    
     const accion = ACCIONES_FLUJO[accionKey];
     if (!accion) {
       throw new Error(`Acción desconocida: ${accionKey}`);
@@ -299,6 +309,7 @@ export function useRequisicionFlujo() {
       throw new Error(`Endpoint no implementado: ${accion.endpoint}`);
     }
     
+    ejecutandoRef.current = true;
     setLoading(true);
     setError(null);
     
@@ -311,6 +322,7 @@ export function useRequisicionFlujo() {
       throw err;
     } finally {
       setLoading(false);
+      ejecutandoRef.current = false;
     }
   }, []);
   
