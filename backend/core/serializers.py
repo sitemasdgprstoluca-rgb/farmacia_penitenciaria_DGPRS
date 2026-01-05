@@ -712,14 +712,33 @@ class ProductoSerializer(serializers.ModelSerializer):
     
     def get_lotes_activos(self, obj):
         # PERFORMANCE: Usar anotación del ViewSet si existe, evita N+1 queries
+        # ISS-FIX: lotes_centro_count ya viene filtrada por centro del usuario
         lotes_centro = getattr(obj, 'lotes_centro_count', None)
         if lotes_centro is not None:
             return lotes_centro
+        
+        # ISS-FIX: Obtener centro del request para filtrar correctamente
+        request = self.context.get('request')
+        user_centro = None
+        if request and hasattr(request, 'user'):
+            user = request.user
+            if not user.is_superuser:
+                rol = getattr(user, 'rol', '').lower()
+                if rol not in ('admin', 'farmacia', 'administrador', 'usuario_farmacia', 'admin_farmacia'):
+                    user_centro = getattr(user, 'centro', None)
+        
         # Fallback: usar prefetch_related si disponible
         if hasattr(obj, '_prefetched_objects_cache') and 'lotes' in obj._prefetched_objects_cache:
-            return len([l for l in obj.lotes.all() if l.activo and l.cantidad_actual > 0])
-        # Último recurso: query directa (evitar si es posible)
-        return obj.lotes.filter(activo=True, cantidad_actual__gt=0).count()
+            lotes_filtrados = [l for l in obj.lotes.all() if l.activo and l.cantidad_actual > 0]
+            if user_centro:
+                lotes_filtrados = [l for l in lotes_filtrados if l.centro_id == user_centro.id]
+            return len(lotes_filtrados)
+        
+        # Último recurso: query directa con filtro de centro
+        filtro = {'activo': True, 'cantidad_actual__gt': 0}
+        if user_centro:
+            filtro['centro'] = user_centro
+        return obj.lotes.filter(**filtro).count()
     
     def get_marca(self, obj):
         """

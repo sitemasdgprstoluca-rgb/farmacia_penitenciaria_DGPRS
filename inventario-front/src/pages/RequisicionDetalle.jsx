@@ -1148,68 +1148,68 @@ const RequisicionDetalle = () => {
         {/* MODO EDICIÓN DE PRODUCTOS */}
         {modoEdicionProductos ? (
           <>
-            {/* Tabla editable */}
-            <div className="w-full overflow-x-auto rounded-lg border border-amber-200 shadow-md">
-              <table className="w-full min-w-[800px] border-collapse">
+            {/* Tabla editable - ISS-FIX: Mejorar responsive */}
+            <div className="w-full overflow-x-auto rounded-lg border border-amber-200 shadow-md -mx-2 sm:mx-0">
+              <table className="w-full min-w-[700px] border-collapse table-fixed">
                 <thead className="bg-amber-500">
                   <tr>
-                    <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">Clave</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">Producto</th>
-                    <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white">Lote</th>
-                    <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white">Stock Disp.</th>
-                    <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white">Cantidad</th>
-                    <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white">Acciones</th>
+                    <th className="w-20 px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">Clave</th>
+                    <th className="w-auto px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">Producto</th>
+                    <th className="w-24 px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white">Lote</th>
+                    <th className="w-16 px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white">Stock</th>
+                    <th className="w-28 px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white">Cantidad</th>
+                    <th className="w-16 px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white">Acción</th>
                   </tr>
                 </thead>
                 <tbody>
                   {productosEditables.map((prod, idx) => (
                     <tr key={prod.id || `nuevo-${idx}`} className={`border-b border-gray-200 ${prod.esNuevo ? 'bg-green-50' : 'hover:bg-gray-50'}`}>
-                      <td className="px-3 py-3 text-sm font-mono text-gray-800">
+                      <td className="px-2 py-2 text-sm font-mono text-gray-800 truncate">
                         {prod.producto_clave || '-'}
-                        {prod.esNuevo && <span className="ml-2 text-xs text-green-600 font-normal">(Nuevo)</span>}
+                        {prod.esNuevo && <span className="ml-1 text-xs text-green-600">(+)</span>}
                       </td>
-                      <td className="px-3 py-3 text-sm text-gray-800">
+                      <td className="px-2 py-2 text-sm text-gray-800 truncate" title={prod.producto_nombre}>
                         {prod.producto_nombre || '-'}
                       </td>
-                      <td className="px-3 py-3 text-center text-sm font-mono">
+                      <td className="px-2 py-2 text-center text-xs font-mono truncate">
                         {prod.numero_lote || '-'}
                       </td>
-                      <td className="px-3 py-3 text-center">
-                        <span className={`font-semibold ${prod.stock_disponible < prod.cantidad_solicitada ? 'text-red-600' : 'text-green-600'}`}>
+                      <td className="px-2 py-2 text-center">
+                        <span className={`font-semibold text-sm ${prod.stock_disponible < prod.cantidad_solicitada ? 'text-red-600' : 'text-green-600'}`}>
                           {prod.stock_disponible || 0}
                         </span>
                       </td>
-                      <td className="px-3 py-3 text-center">
-                        <div className="flex items-center justify-center gap-1">
+                      <td className="px-2 py-2 text-center">
+                        <div className="flex items-center justify-center gap-0.5">
                           <button
                             onClick={() => actualizarCantidadProducto(idx, prod.cantidad_solicitada - 1)}
                             className="p-1 text-gray-500 hover:text-red-500 transition-colors"
                             disabled={prod.cantidad_solicitada <= 1}
                           >
-                            <FaMinus size={12} />
+                            <FaMinus size={10} />
                           </button>
                           <input
                             type="number"
                             min="1"
                             value={prod.cantidad_solicitada}
                             onChange={(e) => actualizarCantidadProducto(idx, e.target.value)}
-                            className="w-16 px-2 py-1 border border-gray-300 rounded text-center font-semibold focus:ring-2 focus:outline-none focus:ring-amber-400"
+                            className="w-14 px-1 py-1 border border-gray-300 rounded text-center text-sm font-semibold focus:ring-2 focus:outline-none focus:ring-amber-400"
                           />
                           <button
                             onClick={() => actualizarCantidadProducto(idx, prod.cantidad_solicitada + 1)}
                             className="p-1 text-gray-500 hover:text-green-500 transition-colors"
                           >
-                            <FaPlus size={12} />
+                            <FaPlus size={10} />
                           </button>
                         </div>
                       </td>
-                      <td className="px-3 py-3 text-center">
+                      <td className="px-2 py-2 text-center">
                         <button
                           onClick={() => eliminarProducto(idx)}
-                          className="p-2 text-red-500 hover:bg-red-100 rounded-lg transition-colors"
-                          title="Eliminar producto"
+                          className="p-1.5 text-red-500 hover:bg-red-100 rounded transition-colors"
+                          title="Eliminar"
                         >
-                          <FaTrash />
+                          <FaTrash size={14} />
                         </button>
                       </td>
                     </tr>

@@ -5359,19 +5359,21 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         Usa transaction.atomic() y select_for_update() para evitar que múltiples
         usuarios autoricen la misma requisición simultáneamente.
         
-        ISS-FIX-AUTORIZACION: Permite autorizar desde 'enviada' o 'en_revision'
+        ISS-FLUJO-FIX: Solo permite autorizar desde 'en_revision' (después de recibir)
+        El flujo correcto es: enviada → recibir → en_revision → autorizar
         """
         from django.db import transaction
         
         requisicion = self.get_object()
-        # ISS-FIX-AUTORIZACION: Aceptar tanto 'enviada' como 'en_revision'
-        estados_autorizables = ['enviada', 'en_revision']
+        # ISS-FLUJO-FIX: Solo aceptar 'en_revision' - el flujo requiere recibir primero
+        estados_autorizables = ['en_revision']
         estado_actual = (requisicion.estado or '').lower()
         if estado_actual not in estados_autorizables:
             return Response({
-                'error': f'Solo se pueden autorizar requisiciones en estado ENVIADA o EN_REVISION',
+                'error': f'Solo se pueden autorizar requisiciones en estado EN_REVISION. Debe recibir la requisición primero.',
                 'estado_actual': requisicion.estado,
-                'estados_permitidos': estados_autorizables
+                'estados_permitidos': estados_autorizables,
+                'flujo_correcto': 'enviada → recibir → en_revision → autorizar'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         centro_user = self._user_centro(request.user)
@@ -5394,13 +5396,14 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 # Bloquear requisición para evitar modificaciones concurrentes
                 requisicion_bloqueada = Requisicion.objects.select_for_update(nowait=False).get(pk=requisicion.pk)
                 
-                # ISS-FIX-AUTORIZACION: Re-verificar estado después del bloqueo (pudo cambiar)
+                # ISS-FLUJO-FIX: Re-verificar estado después del bloqueo (pudo cambiar)
                 estado_bloqueado = (requisicion_bloqueada.estado or '').lower()
                 if estado_bloqueado not in estados_autorizables:
                     return Response({
-                        'error': 'La requisición ya no está en estado autorizable (modificada concurrentemente)',
+                        'error': 'La requisición ya no está en estado EN_REVISION (modificada concurrentemente)',
                         'estado_actual': requisicion_bloqueada.estado,
-                        'estados_permitidos': estados_autorizables
+                        'estados_permitidos': estados_autorizables,
+                        'flujo_correcto': 'enviada → recibir → en_revision → autorizar'
                     }, status=status.HTTP_409_CONFLICT)
                 
                 return self._autorizar_con_bloqueo(request, requisicion_bloqueada, items_data)
@@ -5513,8 +5516,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'total_autorizado': total_autorizado
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # ISS-DB-002: Usar 'parcial' para autorización parcial (valor en BD Supabase)
-        nuevo_estado = 'autorizada' if total_autorizado >= total_solicitado else 'parcial'
+        # ISS-TRIGGER-FIX: El trigger de Supabase solo permite en_revision -> autorizada
+        # El estado 'parcial' es para SURTIDO parcial, no autorización parcial
+        # La autorización siempre va a 'autorizada', aunque las cantidades sean menores
+        nuevo_estado = 'autorizada'
+        es_autorizacion_parcial = total_autorizado < total_solicitado
         
         requisicion.estado = nuevo_estado
         requisicion.fecha_autorizacion = timezone.now()
@@ -5523,8 +5529,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         requisicion.save(update_fields=['estado', 'fecha_autorizacion', 'autorizador_id'])
 
         response_data = {
-            'mensaje': f'Requisicion {nuevo_estado}',
-            'requisicion': RequisicionSerializer(requisicion).data
+            'mensaje': f'Requisición autorizada' + (' (cantidades ajustadas)' if es_autorizacion_parcial else ''),
+            'requisicion': RequisicionSerializer(requisicion).data,
+            'es_autorizacion_parcial': es_autorizacion_parcial,
+            'total_solicitado': total_solicitado,
+            'total_autorizado': total_autorizado
+        }
         }
         
         # ISS-003: Incluir advertencias si hay stock parcial

@@ -242,30 +242,29 @@ REQUISICION_GRUPOS_ESTADO = {
 # Transiciones de estado válidas (para validación en backend)
 # FLUJO V2: Definición de transiciones permitidas
 # ALINEADO con FLUJO_REQUISICIONES_V2.md especificación
-# ISS-TRANSICIONES FIX: Corregir diferencias entre especificación y código
+# ISS-TRANSICIONES FIX: Transiciones EXACTAS según trigger de Supabase
+# validar_transicion_estado_requisicion() en la BD
 TRANSICIONES_REQUISICION = {
     # Centro Penitenciario
     'borrador': ['pendiente_admin', 'cancelada'],
-    'pendiente_admin': ['pendiente_director', 'rechazada', 'devuelta'],  # Sin cancelada (spec)
-    'pendiente_director': ['enviada', 'rechazada', 'devuelta'],  # Sin cancelada (spec)
+    'pendiente_admin': ['pendiente_director', 'rechazada', 'devuelta', 'cancelada'],
+    'pendiente_director': ['enviada', 'rechazada', 'devuelta', 'cancelada'],
     
-    # Farmacia Central
-    # ISS-FLUJO-FIX: De 'enviada' solo se puede ir a 'en_revision' (recibir) o 'rechazada'
-    # No se puede autorizar directamente - el flujo es: enviada → en_revision → autorizada
-    'enviada': ['en_revision', 'rechazada'],
-    # ISS-FIX-AUTORIZACION: Farmacia NO puede devolver desde en_revision - solo rechazar o ajustar cantidades
-    'en_revision': ['autorizada', 'parcial', 'rechazada'],  # Sin devuelta - farmacia no devuelve
-    'autorizada': ['en_surtido', 'surtida', 'entregada', 'cancelada'],  # entregada: surtir directo V2
-    
-    # ISS-PARCIAL FIX: 'parcial' es autorización parcial, puede continuar a surtido
-    'parcial': ['en_surtido', 'surtida', 'entregada', 'cancelada'],  # Igual que autorizada
-    
-    'en_surtido': ['surtida', 'entregada', 'cancelada'],  # entregada: surtido completo V2
-    
-    # ISS-002 FIX: surtida NO puede cancelarse (ya hay movimientos de inventario)
+    # Farmacia Central - EXACTO según trigger Supabase
+    'enviada': ['en_revision', 'rechazada', 'cancelada'],
+    # ISS-TRIGGER-FIX: en_revision -> autorizada, rechazada, devuelta (NO parcial)
+    # El estado 'parcial' es solo para SURTIDO parcial, no autorización
+    'en_revision': ['autorizada', 'rechazada', 'devuelta'],
+    # autorizada -> en_surtido, cancelada (según trigger)
+    'autorizada': ['en_surtido', 'cancelada'],
+    # en_surtido -> surtida, parcial, cancelada (según trigger)
+    'en_surtido': ['surtida', 'parcial', 'cancelada'],
+    # surtida -> entregada, vencida (según trigger)
     'surtida': ['entregada', 'vencida'],
+    # parcial -> surtida, entregada, vencida (según trigger)
+    'parcial': ['surtida', 'entregada', 'vencida'],
     
-    # Devolución: regresa a pendiente_admin (spec dice pendiente_admin, NO borrador)
+    # Devolución: regresa a pendiente_admin
     'devuelta': ['pendiente_admin', 'cancelada'],
     
     # Estados finales - no pueden cambiar
@@ -275,8 +274,8 @@ TRANSICIONES_REQUISICION = {
     'cancelada': [],
 }
 
-# ISS-TRANSICIONES FIX: parcial es estado interno de surtido, no en transiciones principales
-# Se maneja dentro del proceso de surtido como estado intermedio
+# ISS-TRIGGER-FIX: parcial es estado de SURTIDO parcial, no autorización parcial
+# Se alcanza desde en_surtido, no desde en_revision
 ESTADOS_SURTIDO_INTERNO = ['parcial']
 
 # Transiciones extendidas que incluyen parcial (para validación interna de surtido)
@@ -375,10 +374,11 @@ ROLES_POR_TRANSICION = {
     # Revisión y autorización - roles de farmacia
     ('enviada', 'en_revision'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
     ('en_revision', 'autorizada'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
-    ('en_revision', 'parcial'): ['farmacia', 'farmaceutico', 'admin_farmacia'],  # ISS-FLUJO-FIX: autorización parcial
+    # ISS-TRIGGER-FIX: El trigger de Supabase permite en_revision -> devuelta
+    ('en_revision', 'devuelta'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
     ('en_revision', 'rechazada'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
-    # ISS-FLUJO-FIX: Farmacia NO devuelve - solo rechaza o ajusta cantidades autorizadas
-    # ('en_revision', 'devuelta') - ELIMINADA
+    # NOTA: en_revision -> parcial NO está permitido por trigger Supabase
+    # El estado 'parcial' es solo para SURTIDO parcial (en_surtido -> parcial)
     
     # Surtido - solo farmacia
     ('autorizada', 'en_surtido'): ['farmacia', 'farmaceutico', 'admin_farmacia'],
