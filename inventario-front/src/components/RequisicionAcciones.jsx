@@ -94,6 +94,9 @@ const AccionButton = ({
 
 /**
  * Componente principal que muestra todas las acciones disponibles
+ * 
+ * @param {string} contexto - 'lista' | 'detalle' - En lista, no se muestra autorizar_farmacia
+ *                            porque debe pasar por revisión de cantidades primero
  */
 export function RequisicionAcciones({ 
   requisicion, 
@@ -102,6 +105,7 @@ export function RequisicionAcciones({
   mostrarHistorial = true,
   layout = 'horizontal', // 'horizontal' | 'vertical' | 'dropdown'
   size = 'md',
+  contexto = 'detalle', // 'lista' | 'detalle'
 }) {
   const { 
     getAccionesDisponibles, 
@@ -113,9 +117,21 @@ export function RequisicionAcciones({
   const [loadingAccion, setLoadingAccion] = useState(null);
   const [modalData, setModalData] = useState(null); // Para modales de confirmación
   
+  // ISS-FIX: Filtrar acciones según contexto
+  // En la lista NO mostrar autorizar_farmacia porque requiere revisar cantidades primero
   const acciones = useMemo(() => {
-    return getAccionesDisponibles(requisicion);
-  }, [requisicion, getAccionesDisponibles]);
+    let accionesDisponibles = getAccionesDisponibles(requisicion);
+    
+    // En contexto de lista, quitar acciones que requieren revisión previa de cantidades
+    if (contexto === 'lista') {
+      const accionesExcluidasEnLista = ['autorizar_farmacia'];
+      accionesDisponibles = accionesDisponibles.filter(
+        a => !accionesExcluidasEnLista.includes(a.key)
+      );
+    }
+    
+    return accionesDisponibles;
+  }, [requisicion, getAccionesDisponibles, contexto]);
   
   const handleAccion = async (accion, datosExtra = {}) => {
     // Si requiere confirmación o datos adicionales, mostrar modal

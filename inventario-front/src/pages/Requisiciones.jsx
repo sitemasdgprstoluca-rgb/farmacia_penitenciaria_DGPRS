@@ -1953,6 +1953,7 @@ const Requisiciones = () => {
                   )}
 
                   {/* FLUJO V2: Componente de acciones de transición */}
+                  {/* ISS-FIX: contexto='lista' excluye autorizar_farmacia - debe pasar por revisión de cantidades */}
                   <RequisicionAcciones
                     requisicion={req}
                     onAccionCompletada={() => {
@@ -1961,6 +1962,7 @@ const Requisiciones = () => {
                     }}
                     mostrarHistorial={false}
                     size="sm"
+                    contexto="lista"
                   />
 
                   {/* Botones de descarga PDF */}
