@@ -5229,12 +5229,18 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         if not request.user.is_superuser and centro_user and requisicion.centro_id != centro_user.id:
             return Response({'error': 'No puedes editar requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
 
+        # ISS-FIX: Extraer items/detalles ANTES de pasar al serializer
+        # para evitar errores de validación del nested serializer
+        items_data = request.data.get('items') or request.data.get('detalles') or []
+        
+        # Preparar datos sin 'detalles' para el serializer de la requisición
+        serializer_data = {k: v for k, v in request.data.items() if k not in ['items', 'detalles']}
+        
         partial = kwargs.pop('partial', False)
-        serializer = self.get_serializer(requisicion, data=request.data, partial=partial)
+        serializer = self.get_serializer(requisicion, data=serializer_data, partial=True)  # Siempre partial
         serializer.is_valid(raise_exception=True)
         requisicion = serializer.save()
 
-        items_data = request.data.get('items') or request.data.get('detalles') or []
         if items_data:
             # ISS-001, ISS-004, ISS-005: Validar stock en modo informativo (solo advertir)
             advertencias_stock = self._validar_stock_items(

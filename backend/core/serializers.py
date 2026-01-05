@@ -1175,6 +1175,7 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
 # =============================================================================
 
 class RequisicionSerializer(serializers.ModelSerializer):
+    # NOTA: Para creación se usa 'items' o 'detalles' en request.data, procesado manualmente en ViewSet
     detalles = DetalleRequisicionSerializer(many=True, required=False)
     # Usar campos reales de la BD
     centro_origen_nombre = serializers.CharField(source='centro_origen.nombre', read_only=True, allow_null=True)
