@@ -1009,6 +1009,7 @@ const Donaciones = () => {
       await salidasDonacionesAPI.finalizar(entrega.id);
       toast.success('Entrega marcada como finalizada');
       cargarTodasEntregas();
+      cargarInventarioDonaciones();  // Mantener UI sincronizada
       if (historialSalidas.length > 0) {
         // Actualizar también el historial del modal si está abierto
         setHistorialSalidas(prev => prev.map(s => 
@@ -1416,11 +1417,13 @@ const Donaciones = () => {
         const updated = await donacionesAPI.getById(viewingDonacion.id);
         setViewingDonacion(updated.data);
       }
-      // Refrescar según la tab activa
+      
+      // SIEMPRE actualizar inventario ya que el stock cambió
+      cargarInventarioDonaciones();
+      
+      // Refrescar según la tab activa (además del inventario)
       if (activeTab === 'donaciones') {
         cargarDonaciones();
-      } else if (activeTab === 'inventario') {
-        cargarInventarioDonaciones();
       } else if (activeTab === 'entregas') {
         cargarTodasEntregas();
       }
