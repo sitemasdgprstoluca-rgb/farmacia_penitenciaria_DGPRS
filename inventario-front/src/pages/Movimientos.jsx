@@ -44,6 +44,9 @@ const Movimientos = () => {
   const [expandedId, setExpandedId] = useState(highlightId || null);
   const [vistaAgrupada, setVistaAgrupada] = useState(true); // Por defecto agrupada
   const [gruposExpandidos, setGruposExpandidos] = useState(new Set());
+  
+  // ISS-FIX: Estado para datos de vista agrupada (viene del backend) - DEBE estar antes del useMemo
+  const [datosAgrupados, setDatosAgrupados] = useState(null);
 
   // Filtros aplicados (los que realmente se envían al backend)
   // Si el usuario tiene centro asignado (no es admin/farmacia), pre-filtrar por su centro
@@ -343,9 +346,6 @@ const Movimientos = () => {
       return newSet;
     });
   };
-
-  // ISS-FIX: Estado para datos de vista agrupada (viene del backend)
-  const [datosAgrupados, setDatosAgrupados] = useState(null);
 
   const cargarMovimientos = useCallback(async () => {
     setLoading(true);
