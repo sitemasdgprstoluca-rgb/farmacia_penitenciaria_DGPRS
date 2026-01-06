@@ -4622,9 +4622,9 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
                 donacion_numero = ''
                 
                 if entrega.detalle_donacion:
-                    if entrega.detalle_donacion.producto:
-                        producto_nombre = entrega.detalle_donacion.producto.nombre
-                        producto_clave = entrega.detalle_donacion.producto.clave
+                    # Usar propiedades del modelo que manejan producto_donacion y producto legacy
+                    producto_nombre = entrega.detalle_donacion.nombre_producto or ''
+                    producto_clave = entrega.detalle_donacion.clave_producto or ''
                     if entrega.detalle_donacion.donacion:
                         donacion_numero = entrega.detalle_donacion.donacion.numero
                 
