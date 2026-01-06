@@ -1190,8 +1190,35 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
 
 
 # =============================================================================
-# REQUISICION SERIALIZER
+# REQUISICION SERIALIZERS
 # =============================================================================
+
+class RequisicionListSerializer(serializers.ModelSerializer):
+    """
+    Serializer LIGERO para listado de requisiciones.
+    OPTIMIZACIÓN: Evita SerializerMethodField y nested serializers costosos.
+    Usa campos anotados desde el queryset para evitar N+1 queries.
+    """
+    # Campos básicos con source directo (sin método)
+    folio = serializers.CharField(source='numero', read_only=True)
+    centro_nombre = serializers.CharField(source='centro_origen.nombre', read_only=True, allow_null=True)
+    centro = serializers.IntegerField(source='centro_origen_id', read_only=True, allow_null=True)
+    solicitante_nombre = serializers.CharField(source='solicitante.username', read_only=True, allow_null=True)
+    
+    # Campos anotados desde el queryset (evitan N+1)
+    total_productos = serializers.IntegerField(read_only=True)
+    total_items = serializers.IntegerField(source='total_productos', read_only=True)
+    
+    class Meta:
+        model = Requisicion
+        fields = [
+            'id', 'numero', 'folio', 'centro', 'centro_nombre', 'centro_origen_id',
+            'solicitante_nombre', 'fecha_solicitud', 'estado', 'tipo', 'prioridad',
+            'es_urgente', 'total_productos', 'total_items',
+            'fecha_autorizacion', 'fecha_surtido', 'fecha_entrega',
+        ]
+        read_only_fields = fields
+
 
 class RequisicionSerializer(serializers.ModelSerializer):
     # NOTA: Para creación se usa 'items' o 'detalles' en request.data, procesado manualmente en ViewSet

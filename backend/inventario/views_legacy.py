@@ -509,7 +509,7 @@ def validar_filas_excel(ws):
 from core.models import Producto, Lote, Movimiento, Centro, Requisicion, DetalleRequisicion, HojaRecoleccion, LoteDocumento
 from core.serializers import (
     ProductoSerializer, LoteSerializer, MovimientoSerializer, 
-    CentroSerializer, RequisicionSerializer, HojaRecoleccionSerializer, LoteDocumentoSerializer
+    CentroSerializer, RequisicionSerializer, RequisicionListSerializer, HojaRecoleccionSerializer, LoteDocumentoSerializer
 )
 
 from django.contrib.auth import get_user_model
@@ -4800,11 +4800,19 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     ISS-011, ISS-021: El método surtir() usa RequisicionService para transacciones atómicas.
     ISS-014: Bloqueo optimista de lotes durante el surtido.
     ISS-030: Validación de acceso por centro en todas las operaciones.
+    
+    OPTIMIZACIÓN: Usa RequisicionListSerializer para listados (más ligero).
     """
     queryset = Requisicion.objects.select_related('centro_origen', 'centro_destino', 'solicitante', 'autorizador').prefetch_related('detalles__producto').all()
     serializer_class = RequisicionSerializer
     permission_classes = [IsCentroRole]
     pagination_class = CustomPagination
+    
+    def get_serializer_class(self):
+        """OPTIMIZACIÓN: Usa serializer ligero para listados."""
+        if self.action == 'list':
+            return RequisicionListSerializer
+        return RequisicionSerializer
 
     def _user_centro(self, user):
         return getattr(user, 'centro', None) or getattr(getattr(user, 'profile', None), 'centro', None)
@@ -4939,15 +4947,28 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         
         ISS-006 FIX (audit17): Registro de auditoría para accesos privilegiados.
         ISS-DIRECTOR FIX: Usa _get_rol_efectivo para consistencia.
+        
+        OPTIMIZACIÓN: Para listados (action='list'), usa queryset ligero sin prefetch
+        de detalles y anota el conteo de productos para evitar N+1.
         """
         from core.validators import AuditLogger
         
-        queryset = Requisicion.objects.select_related(
-            'centro_origen', 'centro_destino', 'solicitante', 'autorizador',
-            # FLUJO V2: Actores del flujo
-            'administrador_centro', 'director_centro', 
-            'receptor_farmacia', 'autorizador_farmacia', 'surtidor'
-        ).prefetch_related('detalles__producto')
+        # OPTIMIZACIÓN: Queryset base según la acción
+        if self.action == 'list':
+            # Para listados: select_related mínimo + anotación de conteo
+            queryset = Requisicion.objects.select_related(
+                'centro_origen', 'solicitante'
+            ).annotate(
+                total_productos=Count('detalles')
+            )
+        else:
+            # Para detalle/acciones: queryset completo con prefetch
+            queryset = Requisicion.objects.select_related(
+                'centro_origen', 'centro_destino', 'solicitante', 'autorizador',
+                # FLUJO V2: Actores del flujo
+                'administrador_centro', 'director_centro', 
+                'receptor_farmacia', 'autorizador_farmacia', 'surtidor'
+            ).prefetch_related('detalles__producto')
         
         user = getattr(self.request, 'user', None)
         if not user or not user.is_authenticated:
@@ -7384,8 +7405,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 else:
                     base_queryset = Requisicion.objects.none()
             
-            total = base_queryset.count()
-            por_estado = {estado: base_queryset.filter(estado=estado).count() for estado, _ in ESTADOS_REQUISICION}
+            # OPTIMIZACIÓN: Una sola consulta agregada para conteos por estado
+            conteos_raw = base_queryset.values('estado').annotate(count=Count('id'))
+            conteos_dict = {item['estado']: item['count'] for item in conteos_raw}
+            total = sum(conteos_dict.values())
+            por_estado = {estado: conteos_dict.get(estado, 0) for estado, _ in ESTADOS_REQUISICION}
             
             # Top centros solo para admin/farmacia
             por_centro = []
@@ -7456,11 +7480,18 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             if fecha_hasta:
                 base_queryset = base_queryset.filter(fecha_solicitud__date__lte=fecha_hasta)
             
-            # Calcular conteos por estado y por grupo
-            por_estado = {estado.upper(): base_queryset.filter(estado=estado).count() for estado, _ in ESTADOS_REQUISICION}
+            # OPTIMIZACIÓN: Una sola consulta agregada en lugar de N consultas individuales
+            # Esto reduce de ~20 queries a 1 sola query
+            conteos_raw = base_queryset.values('estado').annotate(count=Count('id'))
+            conteos_dict = {item['estado']: item['count'] for item in conteos_raw}
+            
+            # Mapear a formato esperado por el frontend
+            por_estado = {estado.upper(): conteos_dict.get(estado, 0) for estado, _ in ESTADOS_REQUISICION}
+            
+            # Calcular grupos a partir de los conteos ya obtenidos (sin queries adicionales)
             por_grupo = {}
             for nombre, estados in REQUISICION_GRUPOS_ESTADO.items():
-                por_grupo[nombre] = base_queryset.filter(estado__in=estados).count()
+                por_grupo[nombre] = sum(conteos_dict.get(e, 0) for e in estados)
             
             return Response({'por_estado': por_estado, 'por_grupo': por_grupo})
         except Exception as exc:
