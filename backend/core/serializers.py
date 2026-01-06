@@ -1204,6 +1204,7 @@ class RequisicionListSerializer(serializers.ModelSerializer):
     centro_nombre = serializers.CharField(source='centro_origen.nombre', read_only=True, allow_null=True)
     centro = serializers.IntegerField(source='centro_origen_id', read_only=True, allow_null=True)
     solicitante_nombre = serializers.SerializerMethodField()
+    usuario_solicita_nombre = serializers.SerializerMethodField()  # Alias para frontend
     
     # Campos anotados desde el queryset (evitan N+1)
     total_productos = serializers.IntegerField(read_only=True)
@@ -1213,7 +1214,7 @@ class RequisicionListSerializer(serializers.ModelSerializer):
         model = Requisicion
         fields = [
             'id', 'numero', 'folio', 'centro', 'centro_nombre', 'centro_origen_id',
-            'solicitante_nombre', 'fecha_solicitud', 'estado', 'tipo', 'prioridad',
+            'solicitante_nombre', 'usuario_solicita_nombre', 'fecha_solicitud', 'estado', 'tipo', 'prioridad',
             'es_urgente', 'total_productos', 'total_items',
             'fecha_autorizacion', 'fecha_surtido', 'fecha_entrega',
         ]
@@ -1223,6 +1224,10 @@ class RequisicionListSerializer(serializers.ModelSerializer):
         if obj.solicitante:
             return obj.solicitante.get_full_name() or obj.solicitante.username
         return None
+    
+    def get_usuario_solicita_nombre(self, obj):
+        """Alias de solicitante_nombre para compatibilidad con frontend."""
+        return self.get_solicitante_nombre(obj)
 
 
 class RequisicionSerializer(serializers.ModelSerializer):
