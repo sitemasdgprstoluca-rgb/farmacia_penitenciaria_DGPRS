@@ -8,7 +8,10 @@ import { usePermissions } from "../hooks/usePermissions";
 import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList, FaFileDownload, FaCheckCircle, FaClipboardCheck, FaTrash } from "react-icons/fa";
 import { COLORS } from "../constants/theme";
 
-const PAGE_SIZE = 25;
+// ISS-FIX: Constantes de paginación
+const PAGE_SIZE_INDIVIDUAL = 25;  // Para vista individual: 25 movimientos por página
+const PAGE_SIZE_AGRUPADA = 200;   // Para vista agrupada: cargar más para agrupar correctamente
+const GRUPOS_POR_PAGINA = 15;     // Cuántos grupos mostrar por página en vista agrupada
 
 const Movimientos = () => {
   const location = useLocation();
@@ -34,7 +37,9 @@ const Movimientos = () => {
   const [movimientos, setMovimientos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [pageGrupos, setPageGrupos] = useState(1);  // ISS-FIX: Página separada para vista agrupada
   const [total, setTotal] = useState(0);
+  const [totalGrupos, setTotalGrupos] = useState(0);  // ISS-FIX: Total de grupos
   const [stats, setStats] = useState({ entradas: 0, salidas: 0, balance: 0 });
   const [expandedId, setExpandedId] = useState(highlightId || null);
   const [vistaAgrupada, setVistaAgrupada] = useState(true); // Por defecto agrupada
@@ -192,11 +197,31 @@ const Movimientos = () => {
     const motivo = mov.observaciones || mov.motivo || '';
     return motivo.includes('[CONFIRMADO]');
   };
+  
+  // ISS-FIX FLUJO: Función para verificar si un movimiento está pendiente
+  const estaPendiente = (mov) => {
+    const motivo = mov.observaciones || mov.motivo || '';
+    return motivo.includes('[PENDIENTE]');
+  };
 
   // Agrupar movimientos por grupo de salida o requisición
+  // ISS-FIX: Ahora usa datos del backend cuando están disponibles
   const movimientosAgrupados = useMemo(() => {
     if (!vistaAgrupada) return null;
     
+    // ISS-FIX: Si hay datos del backend, usarlos directamente
+    if (datosAgrupados) {
+      return {
+        grupos: datosAgrupados.grupos || [],
+        sinGrupo: datosAgrupados.sin_grupo || [],
+        totalElementos: datosAgrupados.total_elementos || 0,
+        totalGrupos: datosAgrupados.total_grupos || 0,
+        totalSinGrupo: datosAgrupados.total_sin_grupo || 0,
+        totalPages: datosAgrupados.total_pages || 1,
+      };
+    }
+    
+    // Fallback: agrupar en frontend (solo si no hay datosAgrupados)
     const grupos = new Map();
     const sinGrupo = [];
     
@@ -217,20 +242,46 @@ const Movimientos = () => {
           
           grupos.set(grupoId, {
             id: grupoId,
-            tipoGrupo,
+            tipo_grupo: tipoGrupo,
             items: [],
-            centro_nombre: mov.centro_nombre || 'N/A',
+            // ISS-FIX: Para requisiciones, capturar el centro DESTINO (de las entradas)
+            centro_nombre: tipoGrupo === 'requisicion' && mov.tipo === 'entrada' 
+              ? (mov.centro_nombre || 'N/A') 
+              : (mov.centro_nombre || 'Almacén Central'),
             fecha: mov.fecha || mov.fecha_movimiento,
             usuario_nombre: mov.usuario_nombre || 'Sistema',
-            totalCantidad: 0,
+            total_cantidad: 0,
+            // ISS-FIX: Contadores separados para entradas y salidas
+            cantidad_salidas: 0,
+            cantidad_entradas: 0,
+            num_salidas: 0,
+            num_entradas: 0,
             confirmado: estaConfirmado(mov),
+            // ISS-FIX FLUJO: Agregar estado pendiente
+            pendiente: estaPendiente(mov),
             // Para requisiciones, extraer info adicional
             requisicion_folio: tipoGrupo === 'requisicion' ? grupoId : null,
           });
         }
         const grupo = grupos.get(grupoId);
         grupo.items.push(mov);
-        grupo.totalCantidad += Math.abs(mov.cantidad || 0);
+        
+        // ISS-FIX: Contar separadamente entradas y salidas para requisiciones
+        if (mov.tipo === 'salida') {
+          grupo.cantidad_salidas += Math.abs(mov.cantidad || 0);
+          grupo.num_salidas += 1;
+        } else if (mov.tipo === 'entrada') {
+          grupo.cantidad_entradas += Math.abs(mov.cantidad || 0);
+          grupo.num_entradas += 1;
+          // Actualizar centro_nombre con el del centro destino (de entrada)
+          if (mov.centro_nombre && mov.centro_nombre !== 'Almacén Central') {
+            grupo.centro_nombre = mov.centro_nombre;
+          }
+        }
+        
+        // ISS-FIX: Para requisiciones, mostrar solo la cantidad de UN lado (no duplicar)
+        // Usamos salidas como referencia principal (lo que sale de farmacia)
+        grupo.total_cantidad = grupo.cantidad_salidas || grupo.cantidad_entradas;
         
         // Actualizar fecha con la más reciente del grupo
         const fechaMov = new Date(mov.fecha || mov.fecha_movimiento);
@@ -248,8 +299,37 @@ const Movimientos = () => {
       new Date(b.fecha) - new Date(a.fecha)
     );
     
-    return { grupos: gruposArray, sinGrupo };
-  }, [movimientos, vistaAgrupada]);
+    // ISS-FIX: Calcular total de elementos para paginación en frontend
+    // Total = grupos + movimientos sin grupo
+    const totalElementos = gruposArray.length + sinGrupo.length;
+    
+    // ISS-FIX: Aplicar paginación en frontend para vista agrupada
+    const startIndex = (pageGrupos - 1) * GRUPOS_POR_PAGINA;
+    const endIndex = startIndex + GRUPOS_POR_PAGINA;
+    
+    // Combinar grupos y sinGrupo para paginar juntos
+    const todosElementos = [...gruposArray.map(g => ({ tipo: 'grupo', data: g })), ...sinGrupo.map(m => ({ tipo: 'individual', data: m }))];
+    const elementosPaginados = todosElementos.slice(startIndex, endIndex);
+    
+    // Separar de nuevo para el render
+    const gruposPaginados = elementosPaginados.filter(e => e.tipo === 'grupo').map(e => e.data);
+    const sinGrupoPaginados = elementosPaginados.filter(e => e.tipo === 'individual').map(e => e.data);
+    
+    return { 
+      grupos: gruposPaginados, 
+      sinGrupo: sinGrupoPaginados,
+      totalElementos,
+      totalGrupos: gruposArray.length,
+      totalSinGrupo: sinGrupo.length
+    };
+  }, [movimientos, vistaAgrupada, pageGrupos, datosAgrupados]);
+
+  // ISS-FIX: Actualizar totalGrupos cuando cambie movimientosAgrupados
+  useEffect(() => {
+    if (movimientosAgrupados) {
+      setTotalGrupos(movimientosAgrupados.totalElementos);
+    }
+  }, [movimientosAgrupados]);
 
   // Toggle para expandir/colapsar grupo
   const toggleGrupo = (grupoId) => {
@@ -264,51 +344,87 @@ const Movimientos = () => {
     });
   };
 
+  // ISS-FIX: Estado para datos de vista agrupada (viene del backend)
+  const [datosAgrupados, setDatosAgrupados] = useState(null);
+
   const cargarMovimientos = useCallback(async () => {
     setLoading(true);
     try {
-      // Crear copia de filtros sin estado_confirmacion (se filtra en frontend)
+      // Crear copia de filtros sin estado_confirmacion (se filtra en frontend para vista individual)
       const { estado_confirmacion, ...filtrosBackend } = filtrosAplicados;
-      const params = {
-        page,
-        page_size: PAGE_SIZE,
-        ordering: "-fecha",
-        ...filtrosBackend,
-      };
-      // Limpiar parámetros vacíos
-      Object.keys(params).forEach(key => {
-        if (params[key] === "" || params[key] === null || params[key] === undefined) {
-          delete params[key];
+      
+      if (vistaAgrupada) {
+        // ISS-FIX: Vista agrupada - usar endpoint que agrupa en backend
+        const params = {
+          page: pageGrupos,
+          page_size: GRUPOS_POR_PAGINA,
+          ordering: "-fecha",
+          ...filtrosBackend,
+        };
+        // Limpiar parámetros vacíos
+        Object.keys(params).forEach(key => {
+          if (params[key] === "" || params[key] === null || params[key] === undefined) {
+            delete params[key];
+          }
+        });
+        
+        const response = await movimientosAPI.getAgrupados(params);
+        setDatosAgrupados(response.data);
+        setTotalGrupos(response.data.total_elementos || 0);
+        setMovimientos([]); // Limpiar movimientos individuales
+        setTotal(0);
+      } else {
+        // Vista individual - paginación normal en backend
+        const params = {
+          page: page,
+          page_size: PAGE_SIZE_INDIVIDUAL,
+          ordering: "-fecha",
+          ...filtrosBackend,
+        };
+        // Limpiar parámetros vacíos
+        Object.keys(params).forEach(key => {
+          if (params[key] === "" || params[key] === null || params[key] === undefined) {
+            delete params[key];
+          }
+        });
+        
+        const response = await movimientosAPI.getAll(params);
+        let data = response.data?.results || response.data || [];
+        // Agregar campo 'confirmado' a cada movimiento
+        let dataConConfirmado = (Array.isArray(data) ? data : []).map(mov => ({
+          ...mov,
+          confirmado: estaConfirmado(mov)
+        }));
+        
+        // Filtrar por estado de confirmación en frontend
+        if (estado_confirmacion === 'confirmado') {
+          dataConConfirmado = dataConConfirmado.filter(mov => mov.confirmado);
+        } else if (estado_confirmacion === 'pendiente') {
+          dataConConfirmado = dataConConfirmado.filter(mov => !mov.confirmado && mov.tipo === 'salida');
         }
-      });
-      const response = await movimientosAPI.getAll(params);
-      let data = response.data?.results || response.data || [];
-      // Agregar campo 'confirmado' a cada movimiento
-      let dataConConfirmado = (Array.isArray(data) ? data : []).map(mov => ({
-        ...mov,
-        confirmado: estaConfirmado(mov)
-      }));
-      
-      // Filtrar por estado de confirmación en frontend
-      if (estado_confirmacion === 'confirmado') {
-        dataConConfirmado = dataConConfirmado.filter(mov => mov.confirmado);
-      } else if (estado_confirmacion === 'pendiente') {
-        dataConConfirmado = dataConConfirmado.filter(mov => !mov.confirmado && mov.tipo === 'salida');
+        
+        setMovimientos(dataConConfirmado);
+        setTotal(response.data?.count || data.length || 0);
+        setDatosAgrupados(null); // Limpiar datos agrupados
+        calcularStats(dataConConfirmado);
       }
-      
-      setMovimientos(dataConConfirmado);
-      setTotal(response.data?.count || data.length || 0);
-      calcularStats(dataConConfirmado);
     } catch (err) {
       toast.error(err.response?.data?.detail || "No se pudieron cargar los movimientos");
     } finally {
       setLoading(false);
     }
-  }, [page, filtrosAplicados]);
+  }, [page, pageGrupos, filtrosAplicados, vistaAgrupada]);
 
   useEffect(() => {
     cargarCatalogos();
   }, [cargarCatalogos]);
+
+  // ISS-FIX: Resetear páginas cuando cambia la vista
+  useEffect(() => {
+    setPage(1);
+    setPageGrupos(1);
+    setGruposExpandidos(new Set());
+  }, [vistaAgrupada]);
 
   // Estado para saber si el centro del usuario ya fue resuelto (evita carga prematura)
   const [centroResuelto, setCentroResuelto] = useState(puedeVerTodosCentros || !!centroInicial);
@@ -599,14 +715,14 @@ const Movimientos = () => {
     }
   };
   
-  // Cancelar salida masiva NO confirmada (devuelve stock al inventario)
+  // Cancelar salida masiva PENDIENTE (solo elimina movimientos, el stock nunca fue descontado)
   const cancelarSalidaGrupo = async (grupoId) => {
     setCancelandoGrupo(grupoId);
     try {
-      toast.loading("Cancelando salida y devolviendo stock...", { id: "cancelar-grupo" });
+      toast.loading("Cancelando salida pendiente...", { id: "cancelar-grupo" });
       const response = await salidaMasivaAPI.cancelar(grupoId);
-      const itemsDevueltos = response.data?.items_devueltos?.length || 0;
-      toast.success(`Salida cancelada. ${itemsDevueltos} productos devueltos al inventario.`, { id: "cancelar-grupo" });
+      const itemsCancelados = response.data?.items_cancelados?.length || 0;
+      toast.success(`Salida cancelada. ${itemsCancelados} movimientos eliminados.`, { id: "cancelar-grupo" });
       // Recargar movimientos para actualizar el estado
       cargarMovimientos();
     } catch (err) {
@@ -671,7 +787,9 @@ const Movimientos = () => {
       filtrosFinales.centro = centroUsuario.toString();
     }
     
+    // ISS-FIX: Resetear ambas páginas al aplicar filtros
     setPage(1);
+    setPageGrupos(1);
     setFiltrosAplicados(filtrosFinales);
   };
 
@@ -691,7 +809,9 @@ const Movimientos = () => {
     };
     setFiltros(filtrosVacios);
     setFiltrosAplicados(filtrosVacios);
+    // ISS-FIX: Resetear ambas páginas al limpiar filtros
     setPage(1);
+    setPageGrupos(1);
   };
 
   return (
@@ -707,8 +827,20 @@ const Movimientos = () => {
             </div>
             <div>
               <h1 className="text-2xl font-bold">Movimientos de Inventario</h1>
+              {/* ISS-FIX: Mostrar info correcta según vista */}
               <p className="text-white/80 text-sm">
-                {hayFiltrosActivos ? 'Filtrados:' : 'Total:'} {total} movimientos
+                {vistaAgrupada ? (
+                  <>
+                    {hayFiltrosActivos ? 'Filtrados:' : 'Total:'} {totalGrupos} {totalGrupos === 1 ? 'grupo' : 'grupos'}
+                    {movimientosAgrupados && (
+                      <span className="ml-1 opacity-70">
+                        ({movimientosAgrupados.totalGrupos || 0} requisiciones/salidas, {movimientosAgrupados.totalSinGrupo || 0} individuales)
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>{hayFiltrosActivos ? 'Filtrados:' : 'Total:'} {total} movimientos</>
+                )}
               </p>
             </div>
           </div>
@@ -1244,7 +1376,7 @@ const Movimientos = () => {
                       {/* Mostrar grupos de salidas masivas y requisiciones */}
                       {movimientosAgrupados.grupos.map((grupo, gIndex) => {
                         // ISS-FIX: Determinar colores y etiquetas según tipo de grupo
-                        const esRequisicion = grupo.tipoGrupo === 'requisicion';
+                        const esRequisicion = grupo.tipo_grupo === 'requisicion';
                         const colorBase = esRequisicion ? 'blue' : 'rose';
                         const etiqueta = esRequisicion ? 'REQUISICIÓN' : 'MASIVA';
                         const idCorto = esRequisicion ? grupo.id : `SM: ${grupo.id.slice(-8)}`;
@@ -1273,7 +1405,18 @@ const Movimientos = () => {
                                       <span className="px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">✓</span>
                                     )}
                                   </div>
-                                  <div className={`text-xs ${esRequisicion ? 'text-blue-600' : 'text-rose-600'}`}>{grupo.items.length} mov.</div>
+                                  {/* ISS-FIX: Mostrar desglose de movimientos para requisiciones */}
+                                  <div className={`text-xs ${esRequisicion ? 'text-blue-600' : 'text-rose-600'}`}>
+                                    {esRequisicion ? (
+                                      <>
+                                        {grupo.num_salidas > 0 && <span>{grupo.num_salidas} salida{grupo.num_salidas > 1 ? 's' : ''}</span>}
+                                        {grupo.num_salidas > 0 && grupo.num_entradas > 0 && ' + '}
+                                        {grupo.num_entradas > 0 && <span>{grupo.num_entradas} entrada{grupo.num_entradas > 1 ? 's' : ''}</span>}
+                                      </>
+                                    ) : (
+                                      <>{grupo.items?.length || 0} mov.</>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             </td>
@@ -1283,24 +1426,31 @@ const Movimientos = () => {
                               </span>
                             </td>
                             <td className={`px-2 py-3 text-right font-bold ${esRequisicion ? 'text-blue-800' : 'text-rose-800'}`}>
-                              {grupo.totalCantidad}
+                              {grupo.total_cantidad}
                             </td>
                             <td className={`px-2 py-3 ${esRequisicion ? 'text-blue-800' : 'text-rose-800'} font-semibold text-xs truncate`} title={grupo.centro_nombre}>{grupo.centro_nombre}</td>
                             <td className={`px-2 py-3 ${esRequisicion ? 'text-blue-700' : 'text-rose-700'} text-xs`}>
                               {grupo.fecha ? new Date(grupo.fecha).toLocaleDateString('es-MX') : ''}
                             </td>
                             <td className="px-2 py-3">
-                              <div className="flex items-center justify-center gap-1">
+                              <div className="flex items-center justify-center gap-1 flex-wrap">
                                 {esRequisicion ? (
-                                  /* Para requisiciones: solo mostrar info, acciones están en Requisiciones */
-                                  <span className="text-xs text-gray-500">Ver en Requisiciones</span>
-                                ) : !grupo.confirmado ? (
+                                  /* Para requisiciones: enlace a ver detalles */
+                                  <a 
+                                    href={`/requisiciones?folio=${grupo.id}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                  >
+                                    Ver en Requisiciones
+                                  </a>
+                                ) : grupo.pendiente ? (
+                                  /* ISS-FIX FLUJO: Mostrar botones solo si está PENDIENTE */
                                   <>
                                     {/* Hoja de Entrega (para firmas) */}
                                     <button
                                       onClick={(e) => { e.stopPropagation(); descargarHojaEntregaGrupo(grupo.id); }}
                                       className="inline-flex items-center gap-1 px-2 py-1 bg-rose-600 text-white rounded text-xs font-medium hover:bg-rose-700 transition"
-                                      title="Hoja de entrega"
+                                      title="Hoja de recolección"
                                     >
                                       <FaClipboardCheck className="text-xs" />
                                     </button>
@@ -1309,7 +1459,7 @@ const Movimientos = () => {
                                       onClick={(e) => { e.stopPropagation(); confirmarEntregaGrupo(grupo.id); }}
                                       disabled={confirmandoGrupo === grupo.id}
                                       className="inline-flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                                      title="Confirmar entrega física"
+                                      title="Confirmar entrega física (descuenta stock)"
                                     >
                                       {confirmandoGrupo === grupo.id ? (
                                         <FaSpinner className="text-xs animate-spin" />
@@ -1317,12 +1467,12 @@ const Movimientos = () => {
                                         <FaCheckCircle className="text-xs" />
                                       )}
                                     </button>
-                                    {/* Cancelar Salida (devuelve stock) */}
+                                    {/* Cancelar Salida */}
                                     <button
                                       onClick={(e) => { e.stopPropagation(); setConfirmCancelarGrupo(grupo.id); }}
                                       disabled={cancelandoGrupo === grupo.id}
                                       className="inline-flex items-center gap-1 px-2 py-1 bg-red-600 text-white rounded text-xs font-medium hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                                      title="Cancelar salida (devuelve stock)"
+                                      title="Cancelar salida"
                                     >
                                       {cancelandoGrupo === grupo.id ? (
                                         <FaSpinner className="text-xs animate-spin" />
@@ -1331,8 +1481,8 @@ const Movimientos = () => {
                                       )}
                                     </button>
                                   </>
-                                ) : (
-                                  /* Solo comprobante si ya está confirmado */
+                                ) : grupo.confirmado ? (
+                                  /* Solo comprobante si ya está CONFIRMADO */
                                   <button
                                     onClick={(e) => { e.stopPropagation(); descargarComprobanteGrupo(grupo.id); }}
                                     className="inline-flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition"
@@ -1340,12 +1490,15 @@ const Movimientos = () => {
                                   >
                                     <FaFileDownload className="text-xs" />
                                   </button>
+                                ) : (
+                                  /* Sin acciones si no está pendiente ni confirmado */
+                                  <span className="text-xs text-gray-400">-</span>
                                 )}
                               </div>
                             </td>
                           </tr>
                           {/* Items del grupo expandidos */}
-                          {gruposExpandidos.has(grupo.id) && grupo.items.map((mov, iIndex) => (
+                          {gruposExpandidos.has(grupo.id) && grupo.items?.map((mov, iIndex) => (
                             <tr 
                               key={mov.id}
                               className="transition hover:bg-gray-100"
@@ -1357,7 +1510,7 @@ const Movimientos = () => {
                             >
                               <td className="px-2 py-2 text-sm pl-8">
                                 <div className="font-medium text-gray-800 truncate text-xs">{mov.producto_nombre || mov.producto || ""}</div>
-                                <div className="text-xs text-gray-500">Lote: {mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
+                                <div className="text-xs text-gray-500">Lote: {mov.lote_numero || mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
                               </td>
                               <td className="px-2 py-2">
                                 <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${mov.tipo === 'entrada' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
@@ -1391,7 +1544,7 @@ const Movimientos = () => {
                           >
                             <td className="px-2 py-3">
                               <div className="font-semibold text-gray-800 truncate text-sm">{mov.producto_nombre || mov.producto || ""}</div>
-                              <div className="text-xs text-gray-500">Lote: {mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
+                              <div className="text-xs text-gray-500">Lote: {mov.lote_numero || mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
                             </td>
                             <td className="px-2 py-3">
                               <div className="flex flex-col gap-0.5">
@@ -1659,16 +1812,33 @@ const Movimientos = () => {
           </div>
         </div>
 
-        {total > 0 && (
-          <div className="mt-6">
-            <Pagination
-              page={page}
-              totalPages={Math.max(1, Math.ceil(total / PAGE_SIZE))}
-              totalItems={total}
-              pageSize={PAGE_SIZE}
-              onPageChange={setPage}
-            />
-          </div>
+        {/* ISS-FIX: Paginación diferente para vista agrupada vs individual */}
+        {vistaAgrupada ? (
+          // Vista Agrupada: Paginar por grupos (frontend)
+          totalGrupos > 0 && (
+            <div className="mt-6">
+              <Pagination
+                page={pageGrupos}
+                totalPages={Math.max(1, Math.ceil(totalGrupos / GRUPOS_POR_PAGINA))}
+                totalItems={totalGrupos}
+                pageSize={GRUPOS_POR_PAGINA}
+                onPageChange={setPageGrupos}
+              />
+            </div>
+          )
+        ) : (
+          // Vista Individual: Paginar por movimientos (backend)
+          total > 0 && (
+            <div className="mt-6">
+              <Pagination
+                page={page}
+                totalPages={Math.max(1, Math.ceil(total / PAGE_SIZE_INDIVIDUAL))}
+                totalItems={total}
+                pageSize={PAGE_SIZE_INDIVIDUAL}
+                onPageChange={setPage}
+              />
+            </div>
+          )
         )}
       </div>
       
@@ -1693,16 +1863,16 @@ const Movimientos = () => {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
             <div className="px-6 py-4 border-b bg-red-600 rounded-t-xl">
               <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                <FaTrash /> Cancelar Salida
+                <FaTrash /> Cancelar Salida Pendiente
               </h2>
             </div>
             <div className="p-6">
               <p className="text-gray-700 mb-4">
-                ¿Estás seguro de cancelar esta salida masiva?
+                ¿Estás seguro de cancelar esta salida pendiente?
               </p>
-              <p className="text-sm text-gray-600 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                <FaExclamationTriangle className="inline text-yellow-600 mr-2" />
-                <strong>Importante:</strong> El stock de todos los productos será devuelto al inventario de Farmacia Central.
+              <p className="text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <FaInfoCircle className="inline text-blue-600 mr-2" />
+                <strong>Nota:</strong> Como la salida está pendiente, el stock en Farmacia Central no fue afectado. Solo se eliminarán los movimientos registrados.
               </p>
             </div>
             <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3 rounded-b-xl">
@@ -1723,7 +1893,7 @@ const Movimientos = () => {
                   </>
                 ) : (
                   <>
-                    <FaTrash /> Sí, cancelar y devolver stock
+                    <FaTrash /> Sí, cancelar salida
                   </>
                 )}
               </button>

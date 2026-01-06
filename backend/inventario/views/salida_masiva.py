@@ -3,6 +3,11 @@ Módulo para salida masiva de inventario - Solo Farmacia
 Permite agregar múltiples productos/lotes a una lista y procesarlos de una vez
 con generación de hoja de entrega para firma.
 
+ISS-FIX FLUJO CORRECTO:
+1. Crear salida → NO descuenta stock, marca [PENDIENTE]
+2. Confirmar entrega → Descuenta stock, marca [CONFIRMADO]
+3. Cancelar → Solo elimina movimientos PENDIENTES (no hay stock que devolver)
+
 NOTA: Las salidas masivas desde Farmacia Central (centro_id=NULL en lotes)
 hacia centros penitenciarios se registran como tipo 'salida' con subtipo_salida='transferencia'
 y crean un lote espejo en el centro destino con tipo 'entrada'.
@@ -28,6 +33,9 @@ def salida_masiva(request):
     """
     Procesa una salida masiva de inventario para un centro destino.
     Solo disponible para usuarios con rol Farmacia.
+    
+    ISS-FIX FLUJO CORRECTO: NO descuenta stock al crear, solo registra movimientos
+    con estado [PENDIENTE]. El stock se descuenta al confirmar la entrega.
     
     Body esperado:
     {
@@ -91,11 +99,15 @@ def salida_masiva(request):
             try:
                 lote = Lote.objects.select_related('producto').get(pk=lote_id)
                 
-                # Verificar stock disponible
-                if lote.cantidad_actual < cantidad:
+                # ISS-FIX: Verificar stock disponible (considerando reservas pendientes)
+                stock_reservado = _calcular_stock_reservado(lote)
+                stock_disponible = lote.cantidad_actual - stock_reservado
+                
+                if stock_disponible < cantidad:
                     errores.append(
                         f'Item {idx}: Stock insuficiente en lote {lote.numero_lote}. '
-                        f'Disponible: {lote.cantidad_actual}, Solicitado: {cantidad}'
+                        f'Disponible real: {stock_disponible} (total: {lote.cantidad_actual}, reservado: {stock_reservado}), '
+                        f'Solicitado: {cantidad}'
                     )
                     continue
                 
@@ -126,39 +138,27 @@ def salida_masiva(request):
                 lote = item['lote']
                 cantidad = item['cantidad']
                 
-                # Bloquear lote para actualización atómica
+                # Bloquear lote para verificación atómica
                 lote_locked = Lote.objects.select_for_update().get(pk=lote.pk)
                 
-                # Re-validar stock con el lote bloqueado
-                if lote_locked.cantidad_actual < cantidad:
+                # Re-validar stock con reservas
+                stock_reservado = _calcular_stock_reservado(lote_locked)
+                stock_disponible = lote_locked.cantidad_actual - stock_reservado
+                
+                if stock_disponible < cantidad:
                     raise Exception(
                         f'Stock insuficiente en lote {lote_locked.numero_lote}. '
-                        f'Disponible: {lote_locked.cantidad_actual}, Solicitado: {cantidad}'
+                        f'Disponible real: {stock_disponible}, Solicitado: {cantidad}'
                     )
                 
-                stock_anterior = lote_locked.cantidad_actual
-                nuevo_stock = stock_anterior - cantidad
+                stock_actual = lote_locked.cantidad_actual
                 
-                # ISS-FIX: Nunca permitir stock negativo
-                if nuevo_stock < 0:
-                    raise Exception(
-                        f'La operación dejaría stock negativo en lote {lote_locked.numero_lote}. '
-                        f'Disponible: {stock_anterior}, Solicitado: {cantidad}'
-                    )
+                # ISS-FIX FLUJO CORRECTO: NO actualizar stock aquí
+                # El stock se descuenta al CONFIRMAR la entrega
                 
-                # Actualizar stock del lote origen (Farmacia Central)
-                lote_locked.cantidad_actual = max(0, nuevo_stock)  # Garantía extra: nunca negativo
-                
-                # Marcar como inactivo si se agotó el stock
-                if nuevo_stock == 0:
-                    lote_locked.activo = False
-                    lote_locked.save(update_fields=['cantidad_actual', 'activo', 'updated_at'])
-                else:
-                    lote_locked.save(update_fields=['cantidad_actual', 'updated_at'])
-                
-                # Crear movimiento de SALIDA desde Farmacia Central
+                # Crear movimiento de SALIDA PENDIENTE desde Farmacia Central
                 # Nota: centro_origen=NULL indica Farmacia Central
-                motivo_completo = f'[{grupo_salida}] {observaciones}'.strip()
+                motivo_completo = f'[PENDIENTE][{grupo_salida}] {observaciones}'.strip()
                 
                 movimiento = Movimiento(
                     tipo='salida',
@@ -172,8 +172,8 @@ def salida_masiva(request):
                     subtipo_salida='transferencia',
                     referencia=grupo_salida
                 )
-                # Bypass validación de stock ya que ya actualizamos el lote
-                movimiento._stock_pre_movimiento = stock_anterior
+                # Bypass validación de stock ya que no estamos modificando el lote
+                movimiento._stock_pre_movimiento = stock_actual
                 movimiento.save()
                 
                 movimientos_creados.append({
@@ -183,12 +183,11 @@ def salida_masiva(request):
                     'producto_clave': lote_locked.producto.clave,
                     'producto_nombre': lote_locked.producto.nombre,
                     'cantidad': cantidad,
-                    'stock_anterior': stock_anterior,
-                    'stock_actual': max(0, nuevo_stock)  # ISS-FIX: Nunca mostrar stock negativo
+                    'stock_actual': stock_actual  # Stock NO se modifica aún
                 })
         
         logger.info(
-            f'Salida masiva {grupo_salida} procesada por {request.user.username}: '
+            f'Salida masiva {grupo_salida} CREADA (PENDIENTE) por {request.user.username}: '
             f'{len(movimientos_creados)} items a centro {centro_destino.nombre}'
         )
         
@@ -210,6 +209,40 @@ def salida_masiva(request):
             'error': True,
             'message': f'Error al procesar salida: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _calcular_stock_reservado(lote):
+    """
+    Calcula el stock reservado por movimientos PENDIENTES en un lote.
+    
+    ISS-FIX FLUJO CORRECTO: Stock reservado = suma de cantidades de
+    movimientos de salida que están [PENDIENTE] (aún no confirmados).
+    
+    Args:
+        lote: Instancia del Lote
+    
+    Returns:
+        int: Cantidad total reservada por movimientos pendientes
+    """
+    from django.db.models import Sum
+    
+    reservado = Movimiento.objects.filter(
+        lote=lote,
+        tipo='salida',
+        motivo__contains='[PENDIENTE]'
+    ).aggregate(total=Sum('cantidad'))['total'] or 0
+    
+    return reservado
+
+
+def _es_movimiento_pendiente(movimiento):
+    """Verifica si un movimiento está en estado PENDIENTE."""
+    return '[PENDIENTE]' in (movimiento.motivo or '')
+
+
+def _es_movimiento_confirmado(movimiento):
+    """Verifica si un movimiento está en estado CONFIRMADO."""
+    return '[CONFIRMADO]' in (movimiento.motivo or '')
 
 
 @api_view(['GET'])
@@ -301,7 +334,9 @@ def hoja_entrega_pdf(request, grupo_salida):
 def confirmar_entrega(request, grupo_salida):
     """
     Confirma la entrega física de una salida masiva.
-    Esto marca los movimientos como finalizados agregando [CONFIRMADO] al motivo.
+    
+    ISS-FIX FLUJO CORRECTO: AQUÍ es donde se descuenta el stock de los lotes.
+    Cambia [PENDIENTE] por [CONFIRMADO] en el motivo.
     
     Args:
         grupo_salida: ID del grupo de salida (ej: SAL-1229-0917-1)
@@ -309,13 +344,13 @@ def confirmar_entrega(request, grupo_salida):
     Returns:
         - 200: Entrega confirmada exitosamente
         - 404: Grupo de salida no encontrado
-        - 400: Ya estaba confirmado
+        - 400: Ya estaba confirmado o no hay stock suficiente
     """
     try:
         # Buscar movimientos de este grupo
         movimientos = Movimiento.objects.filter(
             motivo__contains=f'[{grupo_salida}]'
-        )
+        ).select_related('lote')
         
         if not movimientos.exists():
             return Response({
@@ -325,27 +360,72 @@ def confirmar_entrega(request, grupo_salida):
         
         # Verificar si ya está confirmado
         primer_mov = movimientos.first()
-        if '[CONFIRMADO]' in (primer_mov.motivo or ''):
+        if _es_movimiento_confirmado(primer_mov):
             return Response({
                 'error': True,
                 'message': 'Esta entrega ya fue confirmada anteriormente'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Marcar todos los movimientos como confirmados
+        # Verificar que esté pendiente
+        if not _es_movimiento_pendiente(primer_mov):
+            return Response({
+                'error': True,
+                'message': 'Esta salida no está en estado pendiente'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        items_confirmados = []
+        
+        # ISS-FIX FLUJO CORRECTO: Descontar stock y marcar como confirmados
         with transaction.atomic():
             for mov in movimientos:
-                if '[CONFIRMADO]' not in (mov.motivo or ''):
-                    mov.motivo = f'[CONFIRMADO] {mov.motivo or ""}'.strip()
+                if mov.lote and _es_movimiento_pendiente(mov):
+                    # Bloquear lote para actualización atómica
+                    lote_locked = Lote.objects.select_for_update().get(pk=mov.lote.pk)
+                    
+                    stock_anterior = lote_locked.cantidad_actual
+                    cantidad = mov.cantidad
+                    nuevo_stock = stock_anterior - cantidad
+                    
+                    # Validar stock suficiente
+                    if nuevo_stock < 0:
+                        raise Exception(
+                            f'Stock insuficiente en lote {lote_locked.numero_lote}. '
+                            f'Disponible: {stock_anterior}, Requerido: {cantidad}'
+                        )
+                    
+                    # Actualizar stock del lote origen
+                    lote_locked.cantidad_actual = nuevo_stock
+                    
+                    # Marcar como inactivo si se agotó el stock
+                    if nuevo_stock == 0:
+                        lote_locked.activo = False
+                        lote_locked.save(update_fields=['cantidad_actual', 'activo', 'updated_at'])
+                    else:
+                        lote_locked.save(update_fields=['cantidad_actual', 'updated_at'])
+                    
+                    # Cambiar estado de [PENDIENTE] a [CONFIRMADO]
+                    nuevo_motivo = (mov.motivo or '').replace('[PENDIENTE]', '[CONFIRMADO]')
+                    mov.motivo = nuevo_motivo
                     mov.save(update_fields=['motivo'])
+                    
+                    items_confirmados.append({
+                        'lote_id': lote_locked.id,
+                        'numero_lote': lote_locked.numero_lote,
+                        'cantidad': cantidad,
+                        'stock_anterior': stock_anterior,
+                        'stock_actual': nuevo_stock
+                    })
         
         logger.info(
-            f'Entrega {grupo_salida} confirmada por {request.user.username}'
+            f'Entrega {grupo_salida} CONFIRMADA por {request.user.username}: '
+            f'{len(items_confirmados)} items, stock descontado'
         )
         
         return Response({
             'success': True,
-            'message': 'Entrega confirmada exitosamente',
-            'grupo_salida': grupo_salida
+            'message': f'Entrega confirmada exitosamente. {len(items_confirmados)} productos descontados del inventario.',
+            'grupo_salida': grupo_salida,
+            'items_confirmados': items_confirmados
         })
         
     except Exception as e:
@@ -360,7 +440,7 @@ def confirmar_entrega(request, grupo_salida):
 @permission_classes([IsAuthenticated])
 def estado_entrega(request, grupo_salida):
     """
-    Consulta el estado de una entrega (si está confirmada o no).
+    Consulta el estado de una entrega (pendiente, confirmada, etc).
     
     Args:
         grupo_salida: ID del grupo de salida
@@ -381,10 +461,12 @@ def estado_entrega(request, grupo_salida):
             }, status=status.HTTP_404_NOT_FOUND)
         
         primer_mov = movimientos.first()
-        confirmada = '[CONFIRMADO]' in (primer_mov.motivo or '')
+        confirmada = _es_movimiento_confirmado(primer_mov)
+        pendiente = _es_movimiento_pendiente(primer_mov)
         
         return Response({
             'grupo_salida': grupo_salida,
+            'pendiente': pendiente,
             'confirmada': confirmada,
             'total_items': movimientos.count()
         })
@@ -401,15 +483,18 @@ def estado_entrega(request, grupo_salida):
 @permission_classes([IsAuthenticated, IsFarmaciaRole])
 def cancelar_salida(request, grupo_salida):
     """
-    Cancela una salida masiva NO confirmada, devolviendo el stock a los lotes.
-    Solo se pueden cancelar salidas que NO han sido confirmadas.
+    Cancela una salida masiva PENDIENTE.
+    
+    ISS-FIX FLUJO CORRECTO: Como el stock NO se descuenta hasta confirmar,
+    cancelar solo elimina los movimientos (no hay stock que devolver).
+    Solo se pueden cancelar salidas que están en estado [PENDIENTE].
     
     Args:
         grupo_salida: ID del grupo de salida (ej: SAL-0102-1530-1)
     
     Returns:
-        - 200: Salida cancelada exitosamente, stock devuelto
-        - 400: Ya está confirmada, no se puede cancelar
+        - 200: Salida cancelada exitosamente
+        - 400: Ya está confirmada o no está pendiente
         - 404: Grupo de salida no encontrado
     """
     try:
@@ -424,54 +509,44 @@ def cancelar_salida(request, grupo_salida):
                 'message': 'No se encontraron movimientos para este grupo de salida'
             }, status=status.HTTP_404_NOT_FOUND)
         
-        # Verificar si ya está confirmado
+        # Verificar estados
         primer_mov = movimientos.first()
-        if '[CONFIRMADO]' in (primer_mov.motivo or ''):
+        if _es_movimiento_confirmado(primer_mov):
             return Response({
                 'error': True,
                 'message': 'No se puede cancelar una entrega que ya fue confirmada'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        items_devueltos = []
+        if not _es_movimiento_pendiente(primer_mov):
+            return Response({
+                'error': True,
+                'message': 'Esta salida no está en estado pendiente'
+            }, status=status.HTTP_400_BAD_REQUEST)
         
+        items_cancelados = []
+        
+        # ISS-FIX FLUJO CORRECTO: Solo eliminar movimientos
+        # NO hay stock que devolver porque nunca se descontó
         with transaction.atomic():
             for mov in movimientos:
-                if mov.lote:
-                    # Bloquear lote para actualización atómica
-                    lote_locked = Lote.objects.select_for_update().get(pk=mov.lote.pk)
-                    stock_anterior = lote_locked.cantidad_actual
-                    
-                    # Devolver el stock
-                    lote_locked.cantidad_actual += mov.cantidad
-                    
-                    # Reactivar lote si estaba inactivo
-                    if not lote_locked.activo:
-                        lote_locked.activo = True
-                        lote_locked.save(update_fields=['cantidad_actual', 'activo', 'updated_at'])
-                    else:
-                        lote_locked.save(update_fields=['cantidad_actual', 'updated_at'])
-                    
-                    items_devueltos.append({
-                        'lote_id': lote_locked.id,
-                        'numero_lote': lote_locked.numero_lote,
-                        'cantidad_devuelta': mov.cantidad,
-                        'stock_anterior': stock_anterior,
-                        'stock_actual': lote_locked.cantidad_actual
-                    })
-                
+                items_cancelados.append({
+                    'lote_id': mov.lote.id if mov.lote else None,
+                    'numero_lote': mov.lote.numero_lote if mov.lote else 'N/A',
+                    'cantidad_cancelada': mov.cantidad,
+                })
                 # Eliminar el movimiento
                 mov.delete()
         
         logger.info(
             f'Salida masiva {grupo_salida} CANCELADA por {request.user.username}: '
-            f'{len(items_devueltos)} items devueltos al inventario'
+            f'{len(items_cancelados)} movimientos eliminados (stock no afectado)'
         )
         
         return Response({
             'success': True,
-            'message': f'Salida cancelada. {len(items_devueltos)} productos devueltos al inventario.',
+            'message': f'Salida cancelada. {len(items_cancelados)} movimientos eliminados.',
             'grupo_salida': grupo_salida,
-            'items_devueltos': items_devueltos
+            'items_cancelados': items_cancelados
         })
     
     except Exception as e:

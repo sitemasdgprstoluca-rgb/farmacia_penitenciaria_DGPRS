@@ -749,6 +749,205 @@ class MovimientoViewSet(
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=False, methods=['get'], url_path='agrupados')
+    def movimientos_agrupados(self, request):
+        """
+        Devuelve movimientos agrupados por grupo de salida o requisición.
+        
+        ISS-FIX: Esta vista agrupa TODOS los movimientos relacionados antes de paginar,
+        evitando que un mismo grupo se divida entre páginas.
+        
+        Query params:
+            - page: Página actual (default 1)
+            - page_size: Grupos por página (default 15)
+            - tipo, centro, fecha_inicio, fecha_fin, search: Filtros estándar
+            
+        Returns:
+            - grupos: Lista de grupos paginados
+            - sin_grupo: Movimientos individuales sin grupo
+            - total_grupos: Total de grupos
+            - total_elementos: Total de grupos + sin_grupo
+        """
+        import re
+        from collections import defaultdict
+        
+        # Obtener queryset base con filtros aplicados
+        queryset = self.get_queryset()
+        
+        # Obtener TODOS los movimientos (sin paginar) para agrupar correctamente
+        # Limitamos a un máximo razonable para evitar problemas de memoria
+        MAX_MOVIMIENTOS = 5000
+        movimientos = list(queryset.order_by('-fecha')[:MAX_MOVIMIENTOS])
+        
+        # Agrupar movimientos
+        grupos = defaultdict(lambda: {
+            'id': None,
+            'tipo_grupo': None,
+            'items': [],
+            'centro_nombre': 'Almacén Central',
+            'fecha': None,
+            'usuario_nombre': 'Sistema',
+            'total_cantidad': 0,
+            'cantidad_salidas': 0,
+            'cantidad_entradas': 0,
+            'num_salidas': 0,
+            'num_entradas': 0,
+            'confirmado': False,
+            'pendiente': False,
+        })
+        sin_grupo = []
+        
+        def extraer_grupo(mov):
+            """Extrae el ID del grupo de un movimiento."""
+            motivo = mov.motivo or ''
+            
+            # Patrón 1: Salidas masivas [SAL-xxx]
+            match_sal = re.search(r'\[(SAL-[^\]]+)\]', motivo)
+            if match_sal:
+                return match_sal.group(1)
+            
+            # Patrón 2: Movimientos por requisición
+            match_req = re.search(r'(SALIDA|ENTRADA)_POR_REQUISICION\s+(REQ-[\w-]+)', motivo, re.IGNORECASE)
+            if match_req:
+                return match_req.group(2)
+            
+            # Patrón 3: Campo requisicion directo
+            if hasattr(mov, 'requisicion_id') and mov.requisicion_id:
+                return f'REQ-{mov.requisicion_id}'
+            
+            return None
+        
+        def es_confirmado(mov):
+            return '[CONFIRMADO]' in (mov.motivo or '')
+        
+        def es_pendiente(mov):
+            return '[PENDIENTE]' in (mov.motivo or '')
+        
+        for mov in movimientos:
+            grupo_id = extraer_grupo(mov)
+            motivo = mov.motivo or ''
+            
+            # Determinar si debe agruparse
+            es_salida_masiva = (
+                grupo_id and 
+                grupo_id.startswith('SAL-') and 
+                mov.tipo == 'salida' and 
+                mov.subtipo_salida == 'transferencia'
+            )
+            es_mov_requisicion = (
+                grupo_id and 
+                (grupo_id.startswith('REQ-') or '_POR_REQUISICION' in motivo)
+            )
+            
+            if grupo_id and (es_salida_masiva or es_mov_requisicion):
+                grupo = grupos[grupo_id]
+                
+                if grupo['id'] is None:
+                    # Inicializar grupo
+                    grupo['id'] = grupo_id
+                    grupo['tipo_grupo'] = 'salida_masiva' if grupo_id.startswith('SAL-') else 'requisicion'
+                    grupo['fecha'] = mov.fecha.isoformat() if mov.fecha else None
+                    if mov.usuario:
+                        grupo['usuario_nombre'] = mov.usuario.get_full_name() or mov.usuario.username
+                    grupo['confirmado'] = es_confirmado(mov)
+                    grupo['pendiente'] = es_pendiente(mov)
+                
+                # Agregar item al grupo
+                item_data = {
+                    'id': mov.id,
+                    'tipo': mov.tipo,
+                    'cantidad': mov.cantidad,
+                    'fecha': mov.fecha.isoformat() if mov.fecha else None,
+                    'motivo': mov.motivo,
+                    'lote_numero': mov.lote.numero_lote if mov.lote else None,
+                    'producto_clave': mov.lote.producto.clave if mov.lote and mov.lote.producto else None,
+                    'producto_nombre': mov.lote.producto.nombre if mov.lote and mov.lote.producto else None,
+                }
+                grupo['items'].append(item_data)
+                
+                # Contabilizar
+                if mov.tipo == 'salida':
+                    grupo['cantidad_salidas'] += abs(mov.cantidad or 0)
+                    grupo['num_salidas'] += 1
+                elif mov.tipo == 'entrada':
+                    grupo['cantidad_entradas'] += abs(mov.cantidad or 0)
+                    grupo['num_entradas'] += 1
+                    # Centro destino viene de las entradas
+                    if mov.centro_destino:
+                        grupo['centro_nombre'] = mov.centro_destino.nombre
+                    elif mov.lote and mov.lote.centro:
+                        grupo['centro_nombre'] = mov.lote.centro.nombre
+                
+                # Total = salidas (o entradas si no hay salidas)
+                grupo['total_cantidad'] = grupo['cantidad_salidas'] or grupo['cantidad_entradas']
+                
+                # Actualizar fecha con la más reciente
+                mov_fecha = mov.fecha
+                grupo_fecha = grupo['fecha']
+                if mov_fecha and grupo_fecha:
+                    if mov_fecha.isoformat() > grupo_fecha:
+                        grupo['fecha'] = mov_fecha.isoformat()
+            else:
+                # Movimiento individual sin grupo
+                sin_grupo.append({
+                    'id': mov.id,
+                    'tipo': mov.tipo,
+                    'subtipo_salida': mov.subtipo_salida,
+                    'cantidad': mov.cantidad,
+                    'fecha': mov.fecha.isoformat() if mov.fecha else None,
+                    'motivo': mov.motivo,
+                    'confirmado': es_confirmado(mov),
+                    'pendiente': es_pendiente(mov),
+                    'lote_numero': mov.lote.numero_lote if mov.lote else None,
+                    'producto_clave': mov.lote.producto.clave if mov.lote and mov.lote.producto else None,
+                    'producto_nombre': mov.lote.producto.nombre if mov.lote and mov.lote.producto else None,
+                    'centro_nombre': (
+                        mov.centro_destino.nombre if mov.centro_destino 
+                        else (mov.lote.centro.nombre if mov.lote and mov.lote.centro else 'Almacén Central')
+                    ),
+                    'usuario_nombre': (mov.usuario.get_full_name() or mov.usuario.username) if mov.usuario else 'Sistema',
+                })
+        
+        # Convertir grupos a lista y ordenar por fecha
+        grupos_list = sorted(
+            grupos.values(), 
+            key=lambda g: g['fecha'] or '', 
+            reverse=True
+        )
+        
+        # Calcular totales
+        total_grupos = len(grupos_list)
+        total_sin_grupo = len(sin_grupo)
+        total_elementos = total_grupos + total_sin_grupo
+        
+        # Paginar (grupos + sin_grupo juntos)
+        page = int(request.query_params.get('page', 1))
+        page_size = int(request.query_params.get('page_size', 15))
+        
+        todos_elementos = (
+            [{'tipo_elem': 'grupo', 'data': g} for g in grupos_list] +
+            [{'tipo_elem': 'individual', 'data': m} for m in sin_grupo]
+        )
+        
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        elementos_paginados = todos_elementos[start_idx:end_idx]
+        
+        # Separar de nuevo
+        grupos_paginados = [e['data'] for e in elementos_paginados if e['tipo_elem'] == 'grupo']
+        sin_grupo_paginados = [e['data'] for e in elementos_paginados if e['tipo_elem'] == 'individual']
+        
+        return Response({
+            'grupos': grupos_paginados,
+            'sin_grupo': sin_grupo_paginados,
+            'total_grupos': total_grupos,
+            'total_sin_grupo': total_sin_grupo,
+            'total_elementos': total_elementos,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': (total_elementos + page_size - 1) // page_size,
+        })
+
     @action(detail=True, methods=['post'], url_path='confirmar-entrega')
     def confirmar_entrega(self, request, pk=None):
         """

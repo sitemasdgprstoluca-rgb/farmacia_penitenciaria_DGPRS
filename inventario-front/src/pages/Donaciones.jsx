@@ -33,6 +33,7 @@ import {
   FaShoppingCart,
   FaTable,
   FaFilePdf,
+  FaFileExcel,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { COLORS } from '../constants/theme';
@@ -184,6 +185,15 @@ const Donaciones = () => {
   const [exportingDonaciones, setExportingDonaciones] = useState(false);
   const [importingDonaciones, setImportingDonaciones] = useState(false);
   const donacionFileInputRef = useRef(null); // Para donaciones
+  
+  // Importación/Exportación del catálogo de productos de donación
+  const [exportingCatalogo, setExportingCatalogo] = useState(false);
+  const [importingCatalogo, setImportingCatalogo] = useState(false);
+  const catalogoFileInputRef = useRef(null); // Para catálogo de productos
+  const [importResultModal, setImportResultModal] = useState(null); // Modal de resultados de importación
+  
+  // Exportación del inventario de donaciones
+  const [exportingInventario, setExportingInventario] = useState(false);
   
   // Modal de Entrega Masiva de Donaciones
   const [showSalidaMasiva, setShowSalidaMasiva] = useState(false);
@@ -347,41 +357,24 @@ const Donaciones = () => {
         page_size: PAGE_SIZE,
       };
       
-      // Filtro de disponibilidad
+      // Filtro de disponibilidad - ISS-FIX: Backend espera 'agotado' no 'false'
       if (filtroDisponibilidad === 'constock') {
         params.disponible = 'true';
       } else if (filtroDisponibilidad === 'agotado') {
-        params.disponible = 'false';
+        params.disponible = 'agotado';  // ISS-FIX: Correcto valor para backend
       }
       // 'todos' no agrega filtro
       
       if (searchInventario) params.search = searchInventario;
       if (filtroEstadoProducto) params.estado_producto = filtroEstadoProducto;
+      // ISS-FIX: Enviar filtro de caducidad al backend también
+      if (filtroCaducidadInv) params.caducidad = filtroCaducidadInv;
 
       const response = await detallesDonacionAPI.getAll(params);
       const data = response.data;
 
-      // Aplicar filtro de caducidad en frontend (más flexible)
-      let items = data.results || data || [];
-      
-      if (filtroCaducidadInv) {
-        const hoy = new Date();
-        hoy.setHours(0, 0, 0, 0);
-        
-        items = items.filter(item => {
-          if (!item.fecha_caducidad) return filtroCaducidadInv === 'sin_fecha';
-          const fecha = new Date(item.fecha_caducidad);
-          const dias = Math.ceil((fecha - hoy) / (1000 * 60 * 60 * 24));
-          
-          switch (filtroCaducidadInv) {
-            case 'vencido': return dias < 0;
-            case 'critico': return dias >= 0 && dias <= 30;
-            case 'proximo': return dias > 30 && dias <= 90;
-            case 'normal': return dias > 90;
-            default: return true;
-          }
-        });
-      }
+      // ISS-FIX: El filtro de caducidad ahora se aplica en el backend
+      const items = data.results || data || [];
 
       setInventarioDonaciones(items);
       setInventarioTotalPages(Math.ceil((data.count || items.length) / PAGE_SIZE));
@@ -628,6 +621,176 @@ const Donaciones = () => {
     } finally {
       setActionLoading(null);
       setConfirmDeleteProducto(null);
+    }
+  };
+
+  // ========== IMPORTACIÓN/EXPORTACIÓN DEL CATÁLOGO ==========
+  
+  // Descargar plantilla Excel para importar productos
+  const handleDescargarPlantillaCatalogo = async () => {
+    setExportingCatalogo(true);
+    try {
+      const response = await productosDonacionAPI.descargarPlantilla();
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'plantilla_productos_donacion.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Plantilla descargada correctamente');
+    } catch (err) {
+      console.error('Error descargando plantilla:', err);
+      toast.error('Error al descargar plantilla');
+    } finally {
+      setExportingCatalogo(false);
+    }
+  };
+
+  // Exportar catálogo de productos a Excel
+  const handleExportarCatalogo = async () => {
+    setExportingCatalogo(true);
+    try {
+      const response = await productosDonacionAPI.exportarExcel();
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      link.setAttribute('download', `productos_donacion_${fecha}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Catálogo exportado correctamente');
+    } catch (err) {
+      console.error('Error exportando catálogo:', err);
+      toast.error('Error al exportar catálogo');
+    } finally {
+      setExportingCatalogo(false);
+    }
+  };
+
+  // Importar productos desde Excel
+  const handleImportarCatalogo = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validar extensión
+    const validExtensions = ['.xlsx', '.xls'];
+    const fileExt = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+    if (!validExtensions.includes(fileExt)) {
+      toast.error('Solo se permiten archivos Excel (.xlsx, .xls)');
+      if (catalogoFileInputRef.current) catalogoFileInputRef.current.value = '';
+      return;
+    }
+
+    // Validar tamaño (máximo 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('El archivo no debe superar 5MB');
+      if (catalogoFileInputRef.current) catalogoFileInputRef.current.value = '';
+      return;
+    }
+
+    setImportingCatalogo(true);
+    try {
+      const formData = new FormData();
+      formData.append('archivo', file);
+      
+      const response = await productosDonacionAPI.importarExcel(formData);
+      const result = response.data;
+      
+      // Mostrar modal con resultados
+      setImportResultModal({
+        success: result.success,
+        creados: result.creados || 0,
+        actualizados: result.actualizados || 0,
+        total: result.total || 0,
+        errores: result.errores || [],
+      });
+      
+      // Recargar catálogo si hubo cambios
+      if (result.total > 0) {
+        cargarCatalogos();
+      }
+    } catch (err) {
+      console.error('Error importando productos:', err);
+      const errorMsg = err.response?.data?.error || 'Error al importar archivo';
+      setImportResultModal({
+        success: false,
+        creados: 0,
+        actualizados: 0,
+        total: 0,
+        errores: [errorMsg],
+      });
+    } finally {
+      setImportingCatalogo(false);
+      if (catalogoFileInputRef.current) catalogoFileInputRef.current.value = '';
+    }
+  };
+
+  // ========== EXPORTAR INVENTARIO DE DONACIONES ==========
+  
+  // Construir parámetros de filtro actuales del inventario
+  const getInventarioFilterParams = () => {
+    const params = {};
+    if (searchInventario) params.search = searchInventario;
+    if (filtroDisponibilidad === 'constock') params.disponible = 'true';
+    else if (filtroDisponibilidad === 'agotado') params.disponible = 'agotado';
+    if (filtroCaducidadInv) params.caducidad = filtroCaducidadInv;
+    if (filtroEstadoProducto) params.estado_producto = filtroEstadoProducto;
+    return params;
+  };
+
+  // Exportar inventario a Excel con formato trazabilidad
+  const handleExportarInventarioExcel = async () => {
+    setExportingInventario(true);
+    try {
+      const params = getInventarioFilterParams();
+      const response = await detallesDonacionAPI.exportarExcel(params);
+      
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      link.setAttribute('download', `inventario_donaciones_trazabilidad_${fecha}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Inventario exportado a Excel correctamente');
+    } catch (err) {
+      console.error('Error exportando inventario Excel:', err);
+      toast.error('Error al exportar inventario a Excel');
+    } finally {
+      setExportingInventario(false);
+    }
+  };
+
+  // Exportar inventario a PDF
+  const handleExportarInventarioPdf = async () => {
+    setExportingInventario(true);
+    try {
+      const params = getInventarioFilterParams();
+      const response = await detallesDonacionAPI.exportarPdf(params);
+      
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      link.setAttribute('download', `inventario_donaciones_${fecha}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Inventario exportado a PDF correctamente');
+    } catch (err) {
+      console.error('Error exportando inventario PDF:', err);
+      toast.error('Error al exportar inventario a PDF');
+    } finally {
+      setExportingInventario(false);
     }
   };
 
@@ -1660,20 +1823,67 @@ const Donaciones = () => {
                 />
               </div>
 
-              {/* Botón Agregar Producto */}
-              {puede.crear && (
+              {/* Botones de acción */}
+              <div className="flex flex-wrap gap-2 items-center">
+                {/* Descargar Plantilla */}
                 <button
-                  onClick={() => {
-                    setCatalogoForm({ clave: '', nombre: '', descripcion: '', unidad_medida: 'PIEZA', presentacion: '', activo: true, notas: '' });
-                    setEditingProductoDonacion(null);
-                    setShowCatalogoModal(true);
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 text-white rounded-lg transition-colors"
-                  style={{ backgroundColor: COLORS.primary }}
+                  onClick={handleDescargarPlantillaCatalogo}
+                  disabled={exportingCatalogo}
+                  className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  title="Descargar plantilla Excel para importar productos"
                 >
-                  <FaPlus /> Agregar Producto
+                  {exportingCatalogo ? <FaSpinner className="animate-spin" /> : <FaDownload />}
+                  Plantilla
                 </button>
-              )}
+
+                {/* Importar */}
+                {puede.crear && (
+                  <>
+                    <input
+                      type="file"
+                      ref={catalogoFileInputRef}
+                      onChange={handleImportarCatalogo}
+                      accept=".xlsx,.xls"
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => catalogoFileInputRef.current?.click()}
+                      disabled={importingCatalogo}
+                      className="flex items-center gap-2 px-3 py-2 text-sm border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50"
+                      title="Importar productos desde Excel"
+                    >
+                      {importingCatalogo ? <FaSpinner className="animate-spin" /> : <FaFileImport />}
+                      Importar
+                    </button>
+                  </>
+                )}
+
+                {/* Exportar Catálogo */}
+                <button
+                  onClick={handleExportarCatalogo}
+                  disabled={exportingCatalogo || productosDonacion.length === 0}
+                  className="flex items-center gap-2 px-3 py-2 text-sm border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50"
+                  title="Exportar catálogo actual a Excel"
+                >
+                  {exportingCatalogo ? <FaSpinner className="animate-spin" /> : <FaFileExport />}
+                  Exportar
+                </button>
+
+                {/* Agregar Producto */}
+                {puede.crear && (
+                  <button
+                    onClick={() => {
+                      setCatalogoForm({ clave: '', nombre: '', descripcion: '', unidad_medida: 'PIEZA', presentacion: '', activo: true, notas: '' });
+                      setEditingProductoDonacion(null);
+                      setShowCatalogoModal(true);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 text-white rounded-lg transition-colors"
+                    style={{ backgroundColor: COLORS.primary }}
+                  >
+                    <FaPlus /> Agregar Producto
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1871,7 +2081,29 @@ const Donaciones = () => {
                   )}
                 </button>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Botones de Exportar Inventario */}
+                <div className="flex items-center border rounded-lg overflow-hidden">
+                  <button
+                    onClick={handleExportarInventarioExcel}
+                    disabled={exportingInventario || inventarioDonaciones.length === 0}
+                    className="flex items-center gap-2 px-3 py-2 text-sm border-r text-green-700 hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Exportar a Excel con formato de trazabilidad (respeta filtros)"
+                  >
+                    {exportingInventario ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
+                    Excel
+                  </button>
+                  <button
+                    onClick={handleExportarInventarioPdf}
+                    disabled={exportingInventario || inventarioDonaciones.length === 0}
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-red-700 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Exportar a PDF con formato profesional (respeta filtros)"
+                  >
+                    {exportingInventario ? <FaSpinner className="animate-spin" /> : <FaFilePdf />}
+                    PDF
+                  </button>
+                </div>
+                
                 {/* Botón Entrega Masiva - Solo para admin/farmacia */}
                 {puede.procesar && (
                   <button
@@ -3584,6 +3816,100 @@ const Donaciones = () => {
                 className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
               >
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========== MODAL: RESULTADO DE IMPORTACIÓN ========== */}
+      {importResultModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-lg w-full shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className={`px-6 py-4 ${importResultModal.total > 0 ? 'bg-green-600' : 'bg-red-600'} text-white`}>
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  {importResultModal.total > 0 ? (
+                    <>
+                      <FaCheckCircle /> Importación Exitosa
+                    </>
+                  ) : (
+                    <>
+                      <FaExclamationTriangle /> Error en Importación
+                    </>
+                  )}
+                </h2>
+                <button
+                  onClick={() => setImportResultModal(null)}
+                  className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <FaTimes />
+                </button>
+              </div>
+            </div>
+
+            {/* Contenido */}
+            <div className="p-6 space-y-4">
+              {importResultModal.total > 0 ? (
+                <>
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <div className="bg-green-50 rounded-lg p-4">
+                      <p className="text-3xl font-bold text-green-600">{importResultModal.creados}</p>
+                      <p className="text-sm text-green-700">Creados</p>
+                    </div>
+                    <div className="bg-blue-50 rounded-lg p-4">
+                      <p className="text-3xl font-bold text-blue-600">{importResultModal.actualizados}</p>
+                      <p className="text-sm text-blue-700">Actualizados</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <p className="text-3xl font-bold text-gray-600">{importResultModal.total}</p>
+                      <p className="text-sm text-gray-700">Total</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-600 text-center">
+                    Los productos se han importado correctamente al catálogo de donaciones.
+                  </p>
+                </>
+              ) : (
+                <div className="bg-red-50 rounded-lg p-4">
+                  <p className="text-red-700 font-medium mb-2">No se pudo importar el archivo:</p>
+                  <p className="text-red-600 text-sm">{importResultModal.errores?.[0] || 'Error desconocido'}</p>
+                </div>
+              )}
+
+              {/* Errores de filas individuales */}
+              {importResultModal.errores?.length > 0 && importResultModal.total > 0 && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <p className="font-medium text-yellow-800 mb-2 flex items-center gap-2">
+                    <FaExclamationTriangle className="text-yellow-600" />
+                    Advertencias ({importResultModal.errores.length}):
+                  </p>
+                  <ul className="text-sm text-yellow-700 space-y-1 max-h-32 overflow-y-auto">
+                    {importResultModal.errores.slice(0, 10).map((err, idx) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <span className="text-yellow-500">•</span>
+                        {err}
+                      </li>
+                    ))}
+                    {importResultModal.errores.length > 10 && (
+                      <li className="text-yellow-600 italic">
+                        ... y {importResultModal.errores.length - 10} más
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end">
+              <button
+                onClick={() => setImportResultModal(null)}
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:opacity-90 transition-colors"
+                style={{ backgroundColor: COLORS.primary }}
+              >
+                Entendido
               </button>
             </div>
           </div>

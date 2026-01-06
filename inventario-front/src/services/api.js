@@ -1115,6 +1115,8 @@ export const passwordResetAPI = {
 // Movimientos
 export const movimientosAPI = {
   getAll: (params) => apiClient.get('/movimientos/', { params }),
+  // ISS-FIX: Endpoint para vista agrupada - agrupa en backend antes de paginar
+  getAgrupados: (params) => apiClient.get('/movimientos/agrupados/', { params }),
   create: (data) => apiClient.post('/movimientos/', data),
   exportarExcel: (params) => apiClient.get('/movimientos/exportar-excel/', { params, responseType: 'blob' }),
   exportarPdf: (params) => apiClient.get('/movimientos/exportar-pdf/', { params, responseType: 'blob' }),
@@ -1389,9 +1391,15 @@ export const productosDonacionAPI = {
   delete: (id) => apiClient.delete(`/productos-donacion/${id}/`),
   // Búsqueda rápida
   buscar: (q) => apiClient.get('/productos-donacion/buscar/', { params: { q } }),
+  // Importación/Exportación
+  descargarPlantilla: () => apiClient.get('/productos-donacion/plantilla-excel/', { responseType: 'blob' }),
+  exportarExcel: () => apiClient.get('/productos-donacion/exportar-excel/', { responseType: 'blob' }),
+  importarExcel: (formData) => apiClient.post('/productos-donacion/importar-excel/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
 };
 
-// Detalles de Donación
+// Detalles de Donación (Inventario de Donaciones)
 export const detallesDonacionAPI = {
   getAll: (params) => apiClient.get('/detalle-donaciones/', { params }),
   getById: (id) => apiClient.get(`/detalle-donaciones/${id}/`),
@@ -1401,6 +1409,16 @@ export const detallesDonacionAPI = {
   // Obtener solo con stock disponible
   conStock: (params) => apiClient.get('/detalle-donaciones/', { 
     params: { ...params, disponible: 'true' } 
+  }),
+  // Exportar inventario a Excel con formato trazabilidad (respeta filtros)
+  exportarExcel: (params) => apiClient.get('/detalle-donaciones/exportar-excel/', { 
+    params, 
+    responseType: 'blob' 
+  }),
+  // Exportar inventario a PDF con formato profesional (respeta filtros)
+  exportarPdf: (params) => apiClient.get('/detalle-donaciones/exportar-pdf/', { 
+    params, 
+    responseType: 'blob' 
   }),
 };
 

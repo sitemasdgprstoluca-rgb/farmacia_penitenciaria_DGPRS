@@ -386,8 +386,17 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
           <div className="p-6">
             <div className="text-center mb-6">
               <FaCheckCircle className="text-6xl text-green-500 mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-gray-800">Salida Procesada Exitosamente</h2>
+              <h2 className="text-2xl font-bold text-gray-800">Salida Registrada - Pendiente de Confirmación</h2>
               <p className="text-gray-600 mt-2">{resultado.message}</p>
+            </div>
+            
+            {/* Aviso importante */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+              <p className="text-sm text-amber-800">
+                <FaExclamationTriangle className="inline mr-2" />
+                <strong>Importante:</strong> El stock <strong>NO ha sido descontado aún</strong>. 
+                El stock se descontará únicamente cuando confirme la entrega física.
+              </p>
             </div>
             
             <div className="bg-gray-50 rounded-lg p-4 mb-6">
@@ -415,14 +424,14 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
             
             {/* Tabla de movimientos procesados */}
             <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md mb-6">
-              <table className="w-full min-w-[700px] divide-y divide-gray-200 text-sm">
+              <table className="w-full min-w-[600px] divide-y divide-gray-200 text-sm">
                 <thead className="bg-theme-gradient sticky top-0 z-10">
                   <tr>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Clave</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Producto</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
                     <th className="px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Cantidad</th>
-                    <th className="px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Stock Actual</th>
+                    <th className="px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Estado</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -432,7 +441,11 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
                       <td className="px-3 py-2">{mov.producto_nombre}</td>
                       <td className="px-3 py-2">{mov.numero_lote}</td>
                       <td className="px-3 py-2 text-center font-semibold text-rose-600">-{mov.cantidad}</td>
-                      <td className="px-3 py-2 text-center">{mov.stock_actual}</td>
+                      <td className="px-3 py-2 text-center">
+                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800">
+                          Pendiente
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -451,17 +464,17 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
                     title="Descargar hoja de entrega con campos para firmas de Aprobó, Entregó y Recibió"
                   >
                     <FaFileDownload />
-                    Hoja de Entrega
+                    Hoja de Recolección
                   </button>
                   {/* Confirmar Entrega */}
                   <button
                     onClick={confirmarEntrega}
                     disabled={confirmando}
                     className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                    title="Confirmar que la entrega física fue realizada"
+                    title="Confirmar entrega física - DESCUENTA STOCK"
                   >
                     {confirmando ? <FaSpinner className="animate-spin" /> : <FaCheckCircle />}
-                    {confirmando ? 'Confirmando...' : 'Confirmar Entrega'}
+                    {confirmando ? 'Confirmando...' : 'Confirmar Entrega (Descuenta Stock)'}
                   </button>
                 </>
               ) : (
@@ -497,14 +510,16 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
               <p className="text-sm text-blue-800">
                 {!entregaConfirmada ? (
                   <>
-                    <strong>📋 Nota:</strong> Descargue la <strong>Hoja de Entrega</strong> para obtener las firmas de 
-                    <strong> Aprobó</strong>, <strong>Entregó</strong> y <strong>Recibió</strong>. 
-                    Una vez completadas las firmas, presione <strong>Confirmar Entrega</strong> para generar el comprobante final.
+                    <strong>📋 Flujo de entrega:</strong><br/>
+                    1. Descargue la <strong>Hoja de Recolección</strong> para que firmen <strong>Aprobó</strong>, <strong>Entregó</strong> y <strong>Recibió</strong>.<br/>
+                    2. Una vez completada la entrega física, presione <strong>Confirmar Entrega</strong> para descontar el stock y finalizar.<br/>
+                    3. Si la entrega no se realiza, puede <strong>Cancelar</strong> desde la sección de Movimientos.
                   </>
                 ) : (
                   <>
-                    <strong>✅ Entrega Confirmada:</strong> Puede descargar el <strong>Comprobante</strong> con el sello de ENTREGADO.
-                    Este documento está disponible también en la sección de <strong>Movimientos</strong>.
+                    <strong>✅ Entrega Confirmada:</strong> El stock ha sido descontado del inventario.
+                    Puede descargar el <strong>Comprobante</strong> con el sello de ENTREGADO.
+                    Este documento también está disponible en la sección de <strong>Movimientos</strong>.
                   </>
                 )}
               </p>

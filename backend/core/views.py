@@ -2611,9 +2611,14 @@ class DonacionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         from core.models import Donacion
+        # ISS-FIX: Incluir producto_donacion del nuevo catálogo
         queryset = Donacion.objects.select_related(
             'centro_destino', 'recibido_por'
-        ).prefetch_related('detalles', 'detalles__producto').all()
+        ).prefetch_related(
+            'detalles', 
+            'detalles__producto_donacion',  # Nuevo catálogo de donaciones
+            'detalles__producto'  # Legacy (compatibilidad)
+        ).all()
         
         # Filtros
         estado = self.request.query_params.get('estado')
@@ -3533,14 +3538,33 @@ class ProductoDonacionViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='exportar-excel')
     def exportar_excel(self, request):
-        """Exporta todos los productos de donación a Excel."""
+        """
+        Exporta todos los productos de donación a Excel CON información de inventario.
+        Incluye stock disponible sumando cantidad_disponible de detalle_donaciones.
+        """
         import openpyxl
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
         from openpyxl.utils import get_column_letter
         from django.http import HttpResponse
-        from core.models import ProductoDonacion
+        from django.db.models import Sum, Count
+        from core.models import ProductoDonacion, DetalleDonacion
         
+        # Obtener productos con su stock calculado desde detalle_donaciones
         productos = ProductoDonacion.objects.all().order_by('clave')
+        
+        # Calcular stock por producto_donacion_id
+        stock_por_producto = {}
+        detalles_agrupados = DetalleDonacion.objects.filter(
+            producto_donacion__isnull=False
+        ).values('producto_donacion_id').annotate(
+            stock_total=Sum('cantidad_disponible'),
+            num_lotes=Count('id')
+        )
+        for item in detalles_agrupados:
+            stock_por_producto[item['producto_donacion_id']] = {
+                'stock': item['stock_total'] or 0,
+                'lotes': item['num_lotes'] or 0
+            }
         
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -3555,29 +3579,53 @@ class ProductoDonacionViewSet(viewsets.ModelViewSet):
             top=Side(style='thin'),
             bottom=Side(style='thin')
         )
+        stock_fill_ok = PatternFill(start_color='D5F5E3', end_color='D5F5E3', fill_type='solid')
+        stock_fill_zero = PatternFill(start_color='FADBD8', end_color='FADBD8', fill_type='solid')
         
-        headers = ['clave', 'nombre', 'descripcion', 'unidad_medida', 'presentacion', 'activo', 'notas']
+        # Headers CON inventario
+        headers = ['clave', 'nombre', 'descripcion', 'unidad_medida', 'presentacion', 'activo', 'stock_disponible', 'num_lotes', 'notas']
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=header)
             cell.font = header_font
             cell.fill = header_fill
             cell.alignment = Alignment(horizontal='center')
             cell.border = thin_border
-            ws.column_dimensions[get_column_letter(col)].width = 20
+            # Ajustar anchos
+            if header in ['nombre', 'descripcion', 'notas']:
+                ws.column_dimensions[get_column_letter(col)].width = 30
+            elif header in ['stock_disponible', 'num_lotes']:
+                ws.column_dimensions[get_column_letter(col)].width = 15
+            else:
+                ws.column_dimensions[get_column_letter(col)].width = 18
         
         for row_idx, prod in enumerate(productos, 2):
+            info_stock = stock_por_producto.get(prod.id, {'stock': 0, 'lotes': 0})
+            stock = info_stock['stock']
+            lotes = info_stock['lotes']
+            
             ws.cell(row=row_idx, column=1, value=prod.clave).border = thin_border
             ws.cell(row=row_idx, column=2, value=prod.nombre).border = thin_border
             ws.cell(row=row_idx, column=3, value=prod.descripcion or '').border = thin_border
             ws.cell(row=row_idx, column=4, value=prod.unidad_medida or 'PIEZA').border = thin_border
             ws.cell(row=row_idx, column=5, value=prod.presentacion or '').border = thin_border
             ws.cell(row=row_idx, column=6, value='SI' if prod.activo else 'NO').border = thin_border
-            ws.cell(row=row_idx, column=7, value=prod.notas or '').border = thin_border
+            
+            # Stock con color según disponibilidad
+            stock_cell = ws.cell(row=row_idx, column=7, value=stock)
+            stock_cell.border = thin_border
+            stock_cell.alignment = Alignment(horizontal='center')
+            stock_cell.fill = stock_fill_ok if stock > 0 else stock_fill_zero
+            
+            lotes_cell = ws.cell(row=row_idx, column=8, value=lotes)
+            lotes_cell.border = thin_border
+            lotes_cell.alignment = Alignment(horizontal='center')
+            
+            ws.cell(row=row_idx, column=9, value=prod.notas or '').border = thin_border
         
         response = HttpResponse(
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-        response['Content-Disposition'] = f'attachment; filename=productos_donacion_{timezone.now().strftime("%Y%m%d")}.xlsx'
+        response['Content-Disposition'] = f'attachment; filename=catalogo_donaciones_con_inventario_{timezone.now().strftime("%Y%m%d")}.xlsx'
         wb.save(response)
         
         return response
@@ -3694,12 +3742,14 @@ class DetalleDonacionViewSet(viewsets.ModelViewSet):
         - list, retrieve: IsAuthenticated
         - create, update, destroy: IsFarmaciaRole
         """
-        if self.action in ['list', 'retrieve']:
+        if self.action in ['list', 'retrieve', 'exportar_excel', 'exportar_pdf']:
             return [IsAuthenticated()]
         return [IsAuthenticated(), IsFarmaciaRole()]
     
     def get_queryset(self):
         from core.models import DetalleDonacion
+        from datetime import date, timedelta
+        
         queryset = DetalleDonacion.objects.select_related(
             'donacion', 'producto', 'producto_donacion'  # Incluir ambos catálogos
         ).all()
@@ -3713,17 +3763,565 @@ class DetalleDonacionViewSet(viewsets.ModelViewSet):
         solo_disponible = self.request.query_params.get('disponible')
         if solo_disponible == 'true':
             queryset = queryset.filter(cantidad_disponible__gt=0)
+        elif solo_disponible == 'agotado':
+            queryset = queryset.filter(cantidad_disponible=0)
         
         # Filtrar por estado de producto
         estado = self.request.query_params.get('estado_producto')
         if estado:
             queryset = queryset.filter(estado_producto=estado)
         
+        # Filtrar por caducidad
+        caducidad = self.request.query_params.get('caducidad')
+        if caducidad:
+            hoy = date.today()
+            if caducidad == 'vencido':
+                queryset = queryset.filter(fecha_caducidad__lt=hoy)
+            elif caducidad == 'critico':  # <= 30 días
+                queryset = queryset.filter(
+                    fecha_caducidad__gte=hoy,
+                    fecha_caducidad__lte=hoy + timedelta(days=30)
+                )
+            elif caducidad == 'proximo':  # 31-90 días
+                queryset = queryset.filter(
+                    fecha_caducidad__gt=hoy + timedelta(days=30),
+                    fecha_caducidad__lte=hoy + timedelta(days=90)
+                )
+            elif caducidad == 'normal':  # > 90 días
+                queryset = queryset.filter(fecha_caducidad__gt=hoy + timedelta(days=90))
+        
+        # Búsqueda por texto
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(producto_donacion__nombre__icontains=search) |
+                Q(producto_donacion__clave__icontains=search) |
+                Q(producto__nombre__icontains=search) |
+                Q(producto__clave__icontains=search) |
+                Q(numero_lote__icontains=search) |
+                Q(donacion__numero__icontains=search)
+            )
+        
         return queryset.order_by('-created_at')
     
     def get_serializer_class(self):
         from core.serializers import DetalleDonacionSerializer
         return DetalleDonacionSerializer
+    
+    @action(detail=False, methods=['get'], url_path='exportar-excel')
+    def exportar_excel(self, request):
+        """
+        Exporta el inventario de donaciones a Excel con formato de trazabilidad.
+        Respeta todos los filtros aplicados (search, disponible, estado_producto, caducidad).
+        
+        Formato estilo licitación/trazabilidad con columnas:
+        - No., Clave, Descripción, Unidad, Presentación
+        - Lote, Caducidad, Estado, Cantidad Recibida, Cantidad Disponible
+        - Donación, Fecha Donación, Donante
+        """
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+        from django.http import HttpResponse
+        from django.utils import timezone
+        
+        try:
+            # Obtener datos filtrados
+            inventario = self.get_queryset()
+            
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = 'Inventario Donaciones'
+            
+            # ===== ENCABEZADO INSTITUCIONAL =====
+            ws.merge_cells('A1:M1')
+            titulo = ws['A1']
+            titulo.value = 'SISTEMA DE FARMACIA PENITENCIARIA'
+            titulo.font = Font(bold=True, size=14, color='632842')
+            titulo.alignment = Alignment(horizontal='center', vertical='center')
+            
+            ws.merge_cells('A2:M2')
+            subtitulo = ws['A2']
+            subtitulo.value = 'INVENTARIO DE DONACIONES - FORMATO DE TRAZABILIDAD'
+            subtitulo.font = Font(bold=True, size=12, color='9F2241')
+            subtitulo.alignment = Alignment(horizontal='center', vertical='center')
+            
+            ws.merge_cells('A3:M3')
+            fecha_gen = ws['A3']
+            fecha_gen.value = f'Generado el: {timezone.now().strftime("%d/%m/%Y %H:%M:%S")}'
+            fecha_gen.font = Font(italic=True, size=10, color='666666')
+            fecha_gen.alignment = Alignment(horizontal='center')
+            
+            # Mostrar filtros activos
+            filtros_activos = []
+            if request.query_params.get('search'):
+                filtros_activos.append(f"Búsqueda: '{request.query_params.get('search')}'")
+            if request.query_params.get('disponible'):
+                disp = request.query_params.get('disponible')
+                filtros_activos.append(f"Disponibilidad: {disp}")
+            if request.query_params.get('estado_producto'):
+                filtros_activos.append(f"Estado: {request.query_params.get('estado_producto')}")
+            if request.query_params.get('caducidad'):
+                filtros_activos.append(f"Caducidad: {request.query_params.get('caducidad')}")
+            
+            if filtros_activos:
+                ws.merge_cells('A4:M4')
+                filtros_cell = ws['A4']
+                filtros_cell.value = f'Filtros: {" | ".join(filtros_activos)}'
+                filtros_cell.font = Font(italic=True, size=9, color='666666')
+                filtros_cell.alignment = Alignment(horizontal='center')
+                header_row = 6
+            else:
+                header_row = 5
+            
+            ws.append([])  # Fila vacía
+            
+            # ===== ESTILOS =====
+            header_fill = PatternFill(start_color='9F2241', end_color='9F2241', fill_type='solid')
+            header_font = Font(bold=True, color='FFFFFF', size=10)
+            header_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            
+            thin_border = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
+            
+            # Colores para semáforo de caducidad
+            fill_vencido = PatternFill(start_color='FADBD8', end_color='FADBD8', fill_type='solid')
+            fill_critico = PatternFill(start_color='FCE4D6', end_color='FCE4D6', fill_type='solid')
+            fill_proximo = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid')
+            fill_ok = PatternFill(start_color='D5F5E3', end_color='D5F5E3', fill_type='solid')
+            fill_agotado = PatternFill(start_color='F5B7B1', end_color='F5B7B1', fill_type='solid')
+            
+            # ===== ENCABEZADOS DE TABLA =====
+            headers = [
+                'No.', 'Clave', 'Descripción del Producto', 'Unidad', 'Presentación',
+                'Número de Lote', 'Fecha Caducidad', 'Estado', 'Cant. Recibida', 
+                'Cant. Disponible', 'No. Donación', 'Fecha Donación', 'Donante'
+            ]
+            
+            for col_num, header in enumerate(headers, 1):
+                cell = ws.cell(row=header_row, column=col_num, value=header)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = header_alignment
+                cell.border = thin_border
+            
+            # Anchos de columna
+            col_widths = {
+                'A': 6,   # No.
+                'B': 12,  # Clave
+                'C': 40,  # Descripción
+                'D': 10,  # Unidad
+                'E': 15,  # Presentación
+                'F': 15,  # Lote
+                'G': 14,  # Caducidad
+                'H': 12,  # Estado
+                'I': 12,  # Recibida
+                'J': 12,  # Disponible
+                'K': 15,  # No. Donación
+                'L': 14,  # Fecha Donación
+                'M': 25,  # Donante
+            }
+            for col, width in col_widths.items():
+                ws.column_dimensions[col].width = width
+            
+            # ===== DATOS =====
+            from datetime import date, timedelta
+            hoy = date.today()
+            
+            for idx, item in enumerate(inventario, 1):
+                row_num = header_row + idx
+                
+                # Obtener datos del producto (priorizar producto_donacion)
+                if item.producto_donacion:
+                    clave = item.producto_donacion.clave
+                    nombre = item.producto_donacion.nombre
+                    unidad = item.producto_donacion.unidad_medida or 'PIEZA'
+                    presentacion = item.producto_donacion.presentacion or ''
+                elif item.producto:
+                    clave = item.producto.clave
+                    nombre = item.producto.nombre
+                    unidad = item.producto.unidad_medida or 'PIEZA'
+                    presentacion = item.producto.presentacion or ''
+                else:
+                    clave = '-'
+                    nombre = 'Producto no especificado'
+                    unidad = '-'
+                    presentacion = '-'
+                
+                # Fecha caducidad y semáforo
+                fecha_cad = item.fecha_caducidad
+                fecha_cad_str = fecha_cad.strftime('%d/%m/%Y') if fecha_cad else 'N/A'
+                
+                # Determinar semáforo
+                if fecha_cad:
+                    dias_restantes = (fecha_cad - hoy).days
+                    if dias_restantes < 0:
+                        semaforo_fill = fill_vencido
+                    elif dias_restantes <= 30:
+                        semaforo_fill = fill_critico
+                    elif dias_restantes <= 90:
+                        semaforo_fill = fill_proximo
+                    else:
+                        semaforo_fill = fill_ok
+                else:
+                    semaforo_fill = None
+                
+                # Estado del producto
+                estado = item.estado_producto or 'bueno'
+                
+                # Donación info
+                don_numero = item.donacion.numero if item.donacion else '-'
+                don_fecha = item.donacion.fecha_donacion.strftime('%d/%m/%Y') if item.donacion and item.donacion.fecha_donacion else '-'
+                don_donante = item.donacion.donante_nombre if item.donacion else '-'
+                
+                # Escribir fila
+                row_data = [
+                    idx,
+                    clave,
+                    nombre,
+                    unidad,
+                    presentacion,
+                    item.numero_lote or '-',
+                    fecha_cad_str,
+                    estado.capitalize(),
+                    item.cantidad,
+                    item.cantidad_disponible,
+                    don_numero,
+                    don_fecha,
+                    don_donante
+                ]
+                
+                for col_num, value in enumerate(row_data, 1):
+                    cell = ws.cell(row=row_num, column=col_num, value=value)
+                    cell.border = thin_border
+                    cell.alignment = Alignment(vertical='center')
+                    
+                    # Aplicar color a columna de caducidad
+                    if col_num == 7 and semaforo_fill:  # Columna Caducidad
+                        cell.fill = semaforo_fill
+                    
+                    # Aplicar color a cantidad disponible si es 0
+                    if col_num == 10 and item.cantidad_disponible == 0:
+                        cell.fill = fill_agotado
+                        cell.font = Font(bold=True, color='922B21')
+            
+            # ===== TOTALES =====
+            total_row = header_row + len(inventario) + 2
+            ws.cell(row=total_row, column=8, value='TOTALES:').font = Font(bold=True)
+            ws.cell(row=total_row, column=9, value=sum(i.cantidad for i in inventario)).font = Font(bold=True)
+            ws.cell(row=total_row, column=10, value=sum(i.cantidad_disponible for i in inventario)).font = Font(bold=True)
+            
+            # ===== LEYENDA =====
+            leyenda_row = total_row + 2
+            ws.cell(row=leyenda_row, column=1, value='Leyenda de colores (Caducidad):').font = Font(bold=True, size=9)
+            
+            leyenda_items = [
+                ('Verde', 'Vigente (+90 días)', fill_ok),
+                ('Amarillo', 'Próximo (31-90 días)', fill_proximo),
+                ('Naranja', 'Crítico (≤30 días)', fill_critico),
+                ('Rojo', 'Vencido', fill_vencido),
+            ]
+            
+            for i, (color, desc, fill) in enumerate(leyenda_items):
+                cell = ws.cell(row=leyenda_row + 1 + i, column=1, value=f'  {color}: {desc}')
+                cell.font = Font(size=8)
+            
+            # ===== RESPUESTA =====
+            response = HttpResponse(
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            filename = f'inventario_donaciones_trazabilidad_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            
+            wb.save(response)
+            return response
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error exportando inventario donaciones Excel: {e}")
+            return Response(
+                {'error': f'Error al exportar: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=False, methods=['get'], url_path='exportar-pdf')
+    def exportar_pdf(self, request):
+        """
+        Exporta el inventario de donaciones a PDF con formato profesional.
+        Respeta todos los filtros aplicados.
+        """
+        from reportlab.lib.pagesizes import letter, landscape
+        from reportlab.lib import colors
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch, cm
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+        from django.http import HttpResponse
+        from django.utils import timezone
+        from io import BytesIO
+        from datetime import date, timedelta
+        
+        try:
+            # Obtener datos filtrados
+            inventario = list(self.get_queryset())
+            hoy = date.today()
+            
+            # Crear buffer para PDF
+            buffer = BytesIO()
+            
+            # Configurar documento en landscape para más columnas
+            doc = SimpleDocTemplate(
+                buffer,
+                pagesize=landscape(letter),
+                rightMargin=0.5*inch,
+                leftMargin=0.5*inch,
+                topMargin=0.5*inch,
+                bottomMargin=0.5*inch
+            )
+            
+            elements = []
+            styles = getSampleStyleSheet()
+            
+            # Estilos personalizados
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=16,
+                textColor=colors.HexColor('#632842'),
+                alignment=TA_CENTER,
+                spaceAfter=6
+            )
+            
+            subtitle_style = ParagraphStyle(
+                'CustomSubtitle',
+                parent=styles['Heading2'],
+                fontSize=12,
+                textColor=colors.HexColor('#9F2241'),
+                alignment=TA_CENTER,
+                spaceAfter=12
+            )
+            
+            info_style = ParagraphStyle(
+                'InfoStyle',
+                parent=styles['Normal'],
+                fontSize=9,
+                textColor=colors.HexColor('#666666'),
+                alignment=TA_CENTER,
+                spaceAfter=6
+            )
+            
+            # ===== ENCABEZADO =====
+            elements.append(Paragraph('SISTEMA DE FARMACIA PENITENCIARIA', title_style))
+            elements.append(Paragraph('INVENTARIO DE DONACIONES', subtitle_style))
+            elements.append(Paragraph(f'Generado: {timezone.now().strftime("%d/%m/%Y %H:%M")}', info_style))
+            
+            # Mostrar filtros activos
+            filtros_activos = []
+            if request.query_params.get('search'):
+                filtros_activos.append(f"Búsqueda: '{request.query_params.get('search')}'")
+            if request.query_params.get('disponible'):
+                filtros_activos.append(f"Disponibilidad: {request.query_params.get('disponible')}")
+            if request.query_params.get('estado_producto'):
+                filtros_activos.append(f"Estado: {request.query_params.get('estado_producto')}")
+            if request.query_params.get('caducidad'):
+                filtros_activos.append(f"Caducidad: {request.query_params.get('caducidad')}")
+            
+            if filtros_activos:
+                elements.append(Paragraph(f'Filtros: {" | ".join(filtros_activos)}', info_style))
+            
+            elements.append(Spacer(1, 0.2*inch))
+            
+            # ===== TABLA DE DATOS =====
+            # ISS-FIX: Usar Paragraph para ajustar texto en celdas y evitar desbordamiento
+            from reportlab.platypus import Paragraph as TableParagraph
+            from reportlab.lib.styles import ParagraphStyle
+            
+            # Estilo para celdas con texto que puede desbordar
+            cell_style = ParagraphStyle(
+                'CellStyle',
+                fontName='Helvetica',
+                fontSize=7,
+                leading=8,
+                wordWrap='CJK',  # Permite wrap agresivo
+            )
+            cell_style_header = ParagraphStyle(
+                'CellStyleHeader',
+                fontName='Helvetica-Bold',
+                fontSize=8,
+                leading=9,
+                textColor=colors.whitesmoke,
+                alignment=TA_CENTER,
+            )
+            
+            # Encabezados más cortos para PDF
+            headers = [
+                TableParagraph('#', cell_style_header),
+                TableParagraph('Clave', cell_style_header),
+                TableParagraph('Producto', cell_style_header),
+                TableParagraph('Lote', cell_style_header),
+                TableParagraph('Caducidad', cell_style_header),
+                TableParagraph('Estado', cell_style_header),
+                TableParagraph('Recib.', cell_style_header),
+                TableParagraph('Disp.', cell_style_header),
+                TableParagraph('Donación', cell_style_header),
+                TableParagraph('Donante', cell_style_header),
+            ]
+            
+            data = [headers]
+            
+            for idx, item in enumerate(inventario, 1):
+                # Obtener datos del producto
+                if item.producto_donacion:
+                    clave = item.producto_donacion.clave[:12] if item.producto_donacion.clave else '-'
+                    nombre = item.producto_donacion.nombre[:35] if item.producto_donacion.nombre else '-'
+                elif item.producto:
+                    clave = item.producto.clave[:12] if item.producto.clave else '-'
+                    nombre = item.producto.nombre[:35] if item.producto.nombre else '-'
+                else:
+                    clave = '-'
+                    nombre = '-'
+                
+                # Fecha caducidad
+                fecha_cad = item.fecha_caducidad
+                fecha_cad_str = fecha_cad.strftime('%d/%m/%y') if fecha_cad else 'N/A'
+                
+                # Estado
+                estado = (item.estado_producto or 'bueno')[:6].capitalize()
+                
+                # Donación
+                don_numero = item.donacion.numero[:12] if item.donacion and item.donacion.numero else '-'
+                don_donante = item.donacion.donante_nombre[:18] if item.donacion and item.donacion.donante_nombre else '-'
+                
+                # ISS-FIX: Usar Paragraph para campos que pueden desbordar
+                data.append([
+                    str(idx),
+                    TableParagraph(clave, cell_style),
+                    TableParagraph(nombre, cell_style),
+                    TableParagraph((item.numero_lote or '-')[:12], cell_style),
+                    fecha_cad_str,
+                    estado,
+                    str(item.cantidad),
+                    str(item.cantidad_disponible),
+                    TableParagraph(don_numero, cell_style),
+                    TableParagraph(don_donante, cell_style),
+                ])
+            
+            # Crear tabla
+            col_widths = [0.4*inch, 0.9*inch, 2.2*inch, 0.9*inch, 0.8*inch, 0.6*inch, 0.5*inch, 0.5*inch, 0.9*inch, 1.2*inch]
+            
+            table = Table(data, colWidths=col_widths, repeatRows=1)
+            
+            # Estilo de tabla
+            table_style = TableStyle([
+                # Encabezados
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#9F2241')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 8),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                
+                # Datos
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 7),
+                ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # #
+                ('ALIGN', (6, 1), (7, -1), 'CENTER'),  # Cantidades
+                
+                # Bordes
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+                ('LINEBELOW', (0, 0), (-1, 0), 1.5, colors.HexColor('#632842')),
+                
+                # Alternar colores de fila
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F8F8')]),
+            ])
+            
+            # Colorear filas según caducidad y disponibilidad
+            for row_idx, item in enumerate(inventario, 1):
+                fecha_cad = item.fecha_caducidad
+                
+                # Color por caducidad
+                if fecha_cad:
+                    dias_restantes = (fecha_cad - hoy).days
+                    if dias_restantes < 0:
+                        table_style.add('BACKGROUND', (4, row_idx), (4, row_idx), colors.HexColor('#FADBD8'))
+                    elif dias_restantes <= 30:
+                        table_style.add('BACKGROUND', (4, row_idx), (4, row_idx), colors.HexColor('#FCE4D6'))
+                    elif dias_restantes <= 90:
+                        table_style.add('BACKGROUND', (4, row_idx), (4, row_idx), colors.HexColor('#FFF2CC'))
+                    else:
+                        table_style.add('BACKGROUND', (4, row_idx), (4, row_idx), colors.HexColor('#D5F5E3'))
+                
+                # Color por disponibilidad
+                if item.cantidad_disponible == 0:
+                    table_style.add('BACKGROUND', (7, row_idx), (7, row_idx), colors.HexColor('#F5B7B1'))
+                    table_style.add('TEXTCOLOR', (7, row_idx), (7, row_idx), colors.HexColor('#922B21'))
+                    table_style.add('FONTNAME', (7, row_idx), (7, row_idx), 'Helvetica-Bold')
+            
+            table.setStyle(table_style)
+            elements.append(table)
+            
+            # ===== TOTALES =====
+            elements.append(Spacer(1, 0.2*inch))
+            
+            total_recibido = sum(i.cantidad for i in inventario)
+            total_disponible = sum(i.cantidad_disponible for i in inventario)
+            
+            totales_data = [
+                ['', '', '', '', '', '', 'TOTALES:', str(total_recibido), str(total_disponible), '']
+            ]
+            totales_table = Table(totales_data, colWidths=col_widths)
+            totales_table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('ALIGN', (6, 0), (8, 0), 'CENTER'),
+                ('TEXTCOLOR', (6, 0), (8, 0), colors.HexColor('#632842')),
+            ]))
+            elements.append(totales_table)
+            
+            # ===== LEYENDA =====
+            elements.append(Spacer(1, 0.3*inch))
+            
+            leyenda_style = ParagraphStyle(
+                'Leyenda',
+                parent=styles['Normal'],
+                fontSize=7,
+                textColor=colors.HexColor('#666666')
+            )
+            
+            leyenda_text = '''
+            <b>Leyenda de colores (Caducidad):</b> 
+            <font color="#27AE60">■</font> Vigente (+90 días) | 
+            <font color="#F39C12">■</font> Próximo (31-90 días) | 
+            <font color="#E67E22">■</font> Crítico (≤30 días) | 
+            <font color="#E74C3C">■</font> Vencido |
+            <font color="#C0392B">■</font> Agotado (Disp.=0)
+            '''
+            elements.append(Paragraph(leyenda_text, leyenda_style))
+            
+            # Construir PDF
+            doc.build(elements)
+            
+            # Respuesta
+            buffer.seek(0)
+            response = HttpResponse(buffer, content_type='application/pdf')
+            filename = f'inventario_donaciones_{timezone.now().strftime("%Y%m%d_%H%M%S")}.pdf'
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            
+            return response
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error exportando inventario donaciones PDF: {e}")
+            return Response(
+                {'error': f'Error al exportar PDF: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 # =============================================================================
@@ -3850,14 +4448,20 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
         if fecha_hasta:
             queryset = queryset.filter(fecha_entrega__date__lte=fecha_hasta)
         
-        # Búsqueda general
+        # Búsqueda general - ISS-FIX: Incluir producto_donacion (nuevo catálogo)
         search = self.request.query_params.get('search')
         if search:
             queryset = queryset.filter(
                 Q(destinatario__icontains=search) |
                 Q(motivo__icontains=search) |
+                # Nuevo catálogo de donaciones
+                Q(detalle_donacion__producto_donacion__nombre__icontains=search) |
+                Q(detalle_donacion__producto_donacion__clave__icontains=search) |
+                # Legacy (compatibilidad)
                 Q(detalle_donacion__producto__nombre__icontains=search) |
-                Q(detalle_donacion__producto__clave__icontains=search)
+                Q(detalle_donacion__producto__clave__icontains=search) |
+                # Donación relacionada
+                Q(detalle_donacion__donacion__numero__icontains=search)
             )
         
         return queryset.order_by('-fecha_entrega')
