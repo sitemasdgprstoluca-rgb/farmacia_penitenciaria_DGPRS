@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { donacionesAPI, productosDonacionAPI, centrosAPI, lotesAPI, salidasDonacionesAPI, detallesDonacionAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
 import {
@@ -180,6 +180,9 @@ const Donaciones = () => {
   const [entregasTotalPages, setEntregasTotalPages] = useState(1);
   const [searchEntregas, setSearchEntregas] = useState('');
   
+  // Vista agrupada de entregas (para salidas masivas)
+  const [gruposExpandidos, setGruposExpandidos] = useState(new Set());
+  
   // Exportación de entregas (solo export, sin import)
   const [exportingEntregas, setExportingEntregas] = useState(false);
   
@@ -281,6 +284,62 @@ const Donaciones = () => {
   });
 
   const filtrosActivos = [searchTerm, filtroEstado, filtroTipoDonante, filtroCentro, filtroFechaDesde, filtroFechaHasta].filter(Boolean).length;
+
+  // ========== AGRUPACIÓN DE ENTREGAS MASIVAS ==========
+  // Agrupa entregas que fueron creadas en el mismo minuto con el mismo destinatario
+  // para mostrarlas como una sola "entrega masiva"
+  const entregasAgrupadas = useMemo(() => {
+    if (!todasEntregas || todasEntregas.length === 0) return [];
+    
+    const grupos = {};
+    
+    todasEntregas.forEach(entrega => {
+      // Crear clave de grupo: destinatario + fecha truncada al minuto
+      const fecha = new Date(entrega.fecha_entrega);
+      const fechaMinuto = fecha.toISOString().slice(0, 16); // YYYY-MM-DDTHH:MM
+      const claveGrupo = `${entrega.destinatario || ''}_${fechaMinuto}`;
+      
+      if (!grupos[claveGrupo]) {
+        grupos[claveGrupo] = {
+          clave: claveGrupo,
+          destinatario: entrega.destinatario,
+          fecha_entrega: entrega.fecha_entrega,
+          centro_destino_nombre: entrega.centro_destino_nombre,
+          entregado_por_nombre: entrega.entregado_por_nombre,
+          entregas: [],
+          totalCantidad: 0,
+          todosFinalizados: true,
+          algunoFinalizado: false,
+        };
+      }
+      
+      grupos[claveGrupo].entregas.push(entrega);
+      grupos[claveGrupo].totalCantidad += entrega.cantidad || 0;
+      
+      // Actualizar estados de finalización
+      const esFinalizado = entrega.estado_entrega === 'entregado' || entrega.finalizado;
+      grupos[claveGrupo].todosFinalizados = grupos[claveGrupo].todosFinalizados && esFinalizado;
+      grupos[claveGrupo].algunoFinalizado = grupos[claveGrupo].algunoFinalizado || esFinalizado;
+    });
+    
+    // Convertir a array y ordenar por fecha más reciente
+    return Object.values(grupos).sort((a, b) => 
+      new Date(b.fecha_entrega) - new Date(a.fecha_entrega)
+    );
+  }, [todasEntregas]);
+
+  // Toggle expandir/colapsar grupo
+  const toggleGrupo = (clave) => {
+    setGruposExpandidos(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(clave)) {
+        newSet.delete(clave);
+      } else {
+        newSet.add(clave);
+      }
+      return newSet;
+    });
+  };
 
   // Cargar siguiente número de donación
   const cargarSiguienteNumero = useCallback(async () => {
@@ -2451,13 +2510,13 @@ const Donaciones = () => {
             </div>
           </div>
 
-          {/* Tabla de entregas */}
+          {/* Tabla de entregas - Vista Agrupada para salidas masivas */}
           <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
             {loadingEntregas ? (
               <div className="flex items-center justify-center py-20">
                 <FaSpinner className="animate-spin text-4xl text-theme-primary" />
               </div>
-            ) : todasEntregas.length === 0 ? (
+            ) : entregasAgrupadas.length === 0 ? (
               <div className="text-center py-20 text-gray-500">
                 <FaHandHoldingMedical className="mx-auto text-5xl mb-4 opacity-30" />
                 <p>No hay entregas registradas</p>
@@ -2469,7 +2528,7 @@ const Donaciones = () => {
                   <thead className="bg-gray-50 border-b">
                     <tr>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Fecha</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Producto</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Productos</th>
                       <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Cantidad</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Destinatario</th>
                       <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Estado</th>
@@ -2478,100 +2537,199 @@ const Donaciones = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {todasEntregas.map((entrega) => (
-                      <tr key={entrega.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {new Date(entrega.fecha_entrega).toLocaleString('es-MX', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </td>
-                        <td className="px-4 py-3 font-medium">{entrega.producto_nombre || '-'}</td>
-                        <td className="px-4 py-3 text-center">
-                          <span className="font-bold text-primary">{entrega.cantidad}</span>
-                        </td>
-                        <td className="px-4 py-3">{entrega.destinatario}</td>
-                        <td className="px-4 py-3 text-center">
-                          {entrega.estado_entrega === 'entregado' || entrega.finalizado ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                              <FaCheckCircle className="text-green-600" />
-                              Entregado
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                              <FaClock className="text-yellow-600" />
-                              Pendiente
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{entrega.entregado_por_nombre || '-'}</td>
-                        <td className="px-4 py-3 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            {/* Botón Ver Detalles */}
-                            <button
-                              onClick={() => setDetalleEntregaModal(entrega)}
-                              className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                              title="Ver detalles de la entrega"
-                            >
-                              <FaEye />
-                            </button>
-                            {/* Botón Hoja de Entrega - solo si NO está entregado (para firma) */}
-                            {!(entrega.estado_entrega === 'entregado' || entrega.finalizado) && (
-                              <button
-                                onClick={() => handleDescargarReciboSalida(entrega, false)}
-                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                title="Hoja de Entrega (para firma)"
-                              >
-                                <FaFilePdf />
-                              </button>
-                            )}
-                            {/* Botón Confirmar Entrega - solo si no está entregado */}
-                            {!(entrega.estado_entrega === 'entregado' || entrega.finalizado) && puede.procesar && (
-                              <button
-                                onClick={() => setConfirmFinalizarEntrega(entrega)}
-                                disabled={actionLoading === entrega.id}
-                                className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                                title="Confirmar entrega"
-                              >
-                                {actionLoading === entrega.id ? (
-                                  <FaSpinner className="animate-spin" />
-                                ) : (
-                                  <FaCheck />
+                    {entregasAgrupadas.map((grupo) => {
+                      const estaExpandido = gruposExpandidos.has(grupo.clave);
+                      const esGrupo = grupo.entregas.length > 1;
+                      
+                      return (
+                        <React.Fragment key={grupo.clave}>
+                          {/* Fila del grupo/entrega */}
+                          <tr className={`hover:bg-gray-50 ${esGrupo ? 'bg-indigo-50/30' : ''}`}>
+                            <td className="px-4 py-3 text-sm text-gray-600">
+                              {new Date(grupo.fecha_entrega).toLocaleString('es-MX', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </td>
+                            <td className="px-4 py-3">
+                              {esGrupo ? (
+                                <button
+                                  onClick={() => toggleGrupo(grupo.clave)}
+                                  className="flex items-center gap-2 text-left font-medium text-indigo-700 hover:text-indigo-900"
+                                >
+                                  <FaChevronDown className={`transition-transform ${estaExpandido ? 'rotate-180' : ''}`} />
+                                  <span className="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full text-xs">
+                                    {grupo.entregas.length} productos
+                                  </span>
+                                </button>
+                              ) : (
+                                <span className="font-medium">{grupo.entregas[0]?.producto_nombre || '-'}</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className="font-bold text-primary">{grupo.totalCantidad}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                {grupo.centro_destino_nombre && (
+                                  <FaBuilding className="text-gray-400" title="Centro destino" />
                                 )}
-                              </button>
-                            )}
-                            {/* Botón Eliminar - solo si NO está entregado (devuelve stock) */}
-                            {!(entrega.estado_entrega === 'entregado' || entrega.finalizado) && puede.eliminar && (
-                              <button
-                                onClick={() => setConfirmEliminarEntrega(entrega)}
-                                disabled={actionLoading === entrega.id}
-                                className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Eliminar entrega (devuelve stock)"
-                              >
-                                {actionLoading === entrega.id ? (
-                                  <FaSpinner className="animate-spin" />
-                                ) : (
-                                  <FaTrash />
+                                <span>{grupo.destinatario}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              {grupo.todosFinalizados ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                  <FaCheckCircle className="text-green-600" />
+                                  Entregado
+                                </span>
+                              ) : grupo.algunoFinalizado ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                  <FaClock className="text-orange-600" />
+                                  Parcial
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                  <FaClock className="text-yellow-600" />
+                                  Pendiente
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{grupo.entregado_por_nombre || '-'}</td>
+                            <td className="px-4 py-3 text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                {/* Si es grupo, mostrar botón de expandir */}
+                                {esGrupo && (
+                                  <button
+                                    onClick={() => toggleGrupo(grupo.clave)}
+                                    className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                    title={estaExpandido ? "Colapsar" : "Ver productos"}
+                                  >
+                                    <FaEye />
+                                  </button>
                                 )}
-                              </button>
-                            )}
-                            {/* Botón Comprobante - solo si YA está entregado */}
-                            {(entrega.estado_entrega === 'entregado' || entrega.finalizado) && (
-                              <button
-                                onClick={() => handleDescargarReciboSalida(entrega, true)}
-                                className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                                title="Comprobante Entregado"
-                              >
-                                <FaCheckCircle />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                                {/* Si es entrega individual, mostrar acciones normales */}
+                                {!esGrupo && (
+                                  <>
+                                    <button
+                                      onClick={() => setDetalleEntregaModal(grupo.entregas[0])}
+                                      className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                      title="Ver detalles"
+                                    >
+                                      <FaEye />
+                                    </button>
+                                    {!grupo.todosFinalizados && (
+                                      <button
+                                        onClick={() => handleDescargarReciboSalida(grupo.entregas[0], false)}
+                                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                        title="Hoja de Entrega"
+                                      >
+                                        <FaFilePdf />
+                                      </button>
+                                    )}
+                                    {!grupo.todosFinalizados && puede.procesar && (
+                                      <button
+                                        onClick={() => setConfirmFinalizarEntrega(grupo.entregas[0])}
+                                        disabled={actionLoading === grupo.entregas[0].id}
+                                        className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                        title="Confirmar entrega"
+                                      >
+                                        <FaCheck />
+                                      </button>
+                                    )}
+                                    {!grupo.todosFinalizados && puede.eliminar && (
+                                      <button
+                                        onClick={() => setConfirmEliminarEntrega(grupo.entregas[0])}
+                                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                        title="Eliminar"
+                                      >
+                                        <FaTrash />
+                                      </button>
+                                    )}
+                                    {grupo.todosFinalizados && (
+                                      <button
+                                        onClick={() => handleDescargarReciboSalida(grupo.entregas[0], true)}
+                                        className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                        title="Comprobante"
+                                      >
+                                        <FaCheckCircle />
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                          
+                          {/* Filas expandidas del grupo (productos individuales) */}
+                          {esGrupo && estaExpandido && grupo.entregas.map((entrega) => (
+                            <tr key={entrega.id} className="bg-gray-50/70 border-l-4 border-indigo-300">
+                              <td className="px-4 py-2 text-sm text-gray-500 pl-8">
+                                └ {new Date(entrega.fecha_entrega).toLocaleTimeString('es-MX', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </td>
+                              <td className="px-4 py-2 font-medium text-sm">{entrega.producto_nombre || '-'}</td>
+                              <td className="px-4 py-2 text-center">
+                                <span className="font-bold text-primary text-sm">{entrega.cantidad}</span>
+                              </td>
+                              <td className="px-4 py-2 text-sm text-gray-500">-</td>
+                              <td className="px-4 py-2 text-center">
+                                {entrega.estado_entrega === 'entregado' || entrega.finalizado ? (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    <FaCheckCircle className="text-green-600 text-xs" />
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                    <FaClock className="text-yellow-600 text-xs" />
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-2 text-sm text-gray-500">-</td>
+                              <td className="px-4 py-2 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    onClick={() => setDetalleEntregaModal(entrega)}
+                                    className="p-1 text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                                    title="Ver detalles"
+                                  >
+                                    <FaEye className="text-xs" />
+                                  </button>
+                                  {!(entrega.estado_entrega === 'entregado' || entrega.finalizado) && puede.procesar && (
+                                    <button
+                                      onClick={() => setConfirmFinalizarEntrega(entrega)}
+                                      disabled={actionLoading === entrega.id}
+                                      className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
+                                      title="Confirmar"
+                                    >
+                                      {actionLoading === entrega.id ? (
+                                        <FaSpinner className="animate-spin text-xs" />
+                                      ) : (
+                                        <FaCheck className="text-xs" />
+                                      )}
+                                    </button>
+                                  )}
+                                  {!(entrega.estado_entrega === 'entregado' || entrega.finalizado) && puede.eliminar && (
+                                    <button
+                                      onClick={() => setConfirmEliminarEntrega(entrega)}
+                                      disabled={actionLoading === entrega.id}
+                                      className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                                      title="Eliminar"
+                                    >
+                                      <FaTrash className="text-xs" />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

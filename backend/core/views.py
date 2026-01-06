@@ -5026,6 +5026,33 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
             if salida.centro_destino:
                 centro_destino_nombre = salida.centro_destino.nombre
             
+            # FIX: Obtener datos del producto usando las propiedades del modelo DetalleDonacion
+            # que manejan tanto producto_donacion como producto legacy
+            detalle = salida.detalle_donacion
+            producto_nombre = 'N/A'
+            producto_presentacion = 'N/A'
+            numero_lote = 'N/A'
+            
+            if detalle:
+                # Usar las propiedades del modelo que manejan ambos casos
+                # nombre_producto puede retornar 'Sin producto' si no hay producto asociado
+                nombre = detalle.nombre_producto
+                if nombre and nombre != 'Sin producto':
+                    producto_nombre = nombre
+                
+                # numero_lote es un campo directo del modelo
+                if detalle.numero_lote:
+                    numero_lote = detalle.numero_lote
+                
+                # Obtener presentación del producto (donación o legacy)
+                if detalle.producto_donacion:
+                    producto_presentacion = detalle.producto_donacion.presentacion or detalle.producto_donacion.unidad_medida or 'N/A'
+                elif detalle.producto:
+                    producto_presentacion = detalle.producto.presentacion or 'N/A'
+                
+                # DEBUG: Log para diagnóstico
+                logger.debug(f"PDF Donación - Detalle ID: {detalle.id}, Producto: {producto_nombre}, Lote: {numero_lote}, Presentacion: {producto_presentacion}")
+            
             salida_data = {
                 'folio': salida.id,
                 'fecha': salida.fecha_entrega.strftime('%Y-%m-%d %H:%M') if salida.fecha_entrega else timezone.now().strftime('%Y-%m-%d %H:%M'),
@@ -5035,9 +5062,9 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
                 'centro_destino': {'nombre': centro_destino_nombre},
                 'cantidad': salida.cantidad,
                 'observaciones': salida.motivo or '',
-                'producto': salida.detalle_donacion.producto.nombre if salida.detalle_donacion and salida.detalle_donacion.producto else 'N/A',
-                'lote': salida.detalle_donacion.numero_lote if salida.detalle_donacion else 'N/A',
-                'presentacion': salida.detalle_donacion.producto.presentacion if salida.detalle_donacion and salida.detalle_donacion.producto else 'N/A',
+                'producto': producto_nombre,
+                'lote': numero_lote,
+                'presentacion': producto_presentacion,
             }
             
             # Si está finalizado, usar fecha de finalización o entrega
@@ -5402,6 +5429,10 @@ class AdminLimpiarDatosView(APIView):
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM donaciones")
                         eliminados['donaciones'] = cursor.rowcount
+                    # 4. Catálogo de productos de donación
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM productos_donacion")
+                        eliminados['productos_donacion'] = cursor.rowcount
                 
                 elif categoria == 'notificaciones':
                     # Solo notificaciones

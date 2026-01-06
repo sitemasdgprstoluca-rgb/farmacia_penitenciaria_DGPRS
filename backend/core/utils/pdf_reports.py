@@ -2104,6 +2104,7 @@ def generar_recibo_salida_donacion(movimiento_data, items_data=None, finalizado=
             ('TOPPADDING', (0, 0), (-1, -1), 6),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.Color(0.95, 0.95, 0.95)]),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ]))
         elements.append(items_table)
     else:
@@ -2119,18 +2120,41 @@ def generar_recibo_salida_donacion(movimiento_data, items_data=None, finalizado=
         cantidad = movimiento_data.get('cantidad', 0)
         presentacion = movimiento_data.get('presentacion', 'N/A')
         
+        # Estilo para celdas con texto que puede ser largo
+        cell_style = ParagraphStyle(
+            'CellStyle',
+            parent=styles['Normal'],
+            fontSize=9,
+            alignment=0,  # LEFT
+            wordWrap='CJK',  # Permite word wrap
+        )
+        cell_style_center = ParagraphStyle(
+            'CellStyleCenter',
+            parent=styles['Normal'],
+            fontSize=9,
+            alignment=1,  # CENTER
+        )
+        
+        # Usar Paragraph para que el texto se ajuste automáticamente
         simple_data = [
             ['Producto', 'Lote', 'Cantidad', 'Presentación'],
-            [str(producto)[:40], str(lote)[:20], str(cantidad), str(presentacion)[:25]]
+            [
+                Paragraph(str(producto) if producto else 'N/A', cell_style),
+                Paragraph(str(lote) if lote else 'N/A', cell_style),
+                Paragraph(str(cantidad), cell_style_center),
+                Paragraph(str(presentacion) if presentacion else 'N/A', cell_style)
+            ]
         ]
         
-        simple_table = Table(simple_data, colWidths=[180, 120, 80, 100])
+        # Ajustar anchos de columna para mejor distribución
+        simple_table = Table(simple_data, colWidths=[200, 120, 60, 100])
         simple_table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
             ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.2, 0.4, 0.6)),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
             ('TOPPADDING', (0, 0), (-1, -1), 8),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
