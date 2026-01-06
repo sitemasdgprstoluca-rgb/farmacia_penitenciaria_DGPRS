@@ -124,6 +124,8 @@ const Donaciones = () => {
   const [confirmProcesar, setConfirmProcesar] = useState(null);
   const [confirmRecibir, setConfirmRecibir] = useState(null);
   const [confirmRechazar, setConfirmRechazar] = useState(null);
+  const [confirmProcesarTodas, setConfirmProcesarTodas] = useState(false);
+  const [procesandoTodas, setProcesandoTodas] = useState(false);
   const [motivoRechazo, setMotivoRechazo] = useState('');
 
   // Salidas de donaciones (entregas a centros)
@@ -547,27 +549,68 @@ const Donaciones = () => {
       const formData = new FormData();
       formData.append('archivo', file);
       
+      console.log('[Donaciones] Importando archivo:', file.name);
       const response = await donacionesAPI.importarExcel(formData);
+      console.log('[Donaciones] Respuesta importación:', response.data);
       
-      const { resultados } = response.data;
+      const { resultados, mensaje } = response.data;
       
-      if (resultados.exitosos > 0) {
-        toast.success(`${resultados.exitosos} donaciones importadas correctamente`);
-        cargarDonaciones();
-      }
-      
-      if (resultados.fallidos > 0) {
-        toast.error(`${resultados.fallidos} donaciones fallaron`);
-        // Mostrar errores detallados
-        resultados.errores?.forEach((err, idx) => {
-          if (idx < 3) { // Mostrar máximo 3 errores
-            toast.error(`Fila ${err.fila}: ${err.error}`, { duration: 5000 });
+      // ISS-FIX: Siempre mostrar resultado de la importación
+      if (resultados) {
+        const { 
+          exitosos = 0, 
+          fallidos = 0, 
+          donaciones_creadas = 0, 
+          detalles_creados = 0, 
+          errores = [],
+          filas_procesadas = 0,
+          filas_vacias = 0,
+          filas_ejemplo = 0
+        } = resultados;
+        
+        console.log('[Donaciones] Resultados:', { exitosos, fallidos, donaciones_creadas, detalles_creados, filas_procesadas, filas_vacias, filas_ejemplo });
+        
+        if (donaciones_creadas > 0 || detalles_creados > 0) {
+          toast.success(`Importación exitosa: ${donaciones_creadas} donaciones, ${detalles_creados} detalles`);
+          cargarDonaciones();
+        } else if (exitosos > 0) {
+          toast.success(`${exitosos} registros importados correctamente`);
+          cargarDonaciones();
+        } else if (fallidos === 0 && exitosos === 0) {
+          // No se importó nada - dar información clara del por qué
+          if (filas_procesadas === 0 && filas_ejemplo > 0) {
+            toast.error(
+              `No se importó nada: ${filas_ejemplo} filas fueron ignoradas porque contienen "[EJEMPLO]" o "ELIMINAR". ` +
+              `Debe eliminar estas palabras de sus datos o eliminar las filas de ejemplo antes de importar.`,
+              { duration: 8000 }
+            );
+          } else if (filas_procesadas === 0 && filas_vacias > 0) {
+            toast.error('El archivo no contiene datos. Solo se encontraron filas vacías después de los encabezados.', { duration: 6000 });
+          } else if (filas_procesadas === 0) {
+            toast.error('No se encontraron datos para importar. Verifique que el archivo tenga el formato correcto.', { duration: 6000 });
+          } else if (filas_procesadas > 0) {
+            toast.error(
+              `Se procesaron ${filas_procesadas} filas pero ningún producto coincide con el Catálogo de Donaciones. ` +
+              `Verifique que las claves de producto existan en el catálogo.`,
+              { duration: 8000 }
+            );
           }
-        });
+        }
+        
+        if (fallidos > 0 || errores.length > 0) {
+          toast.error(`${fallidos || errores.length} errores durante la importación`);
+          // Mostrar errores detallados
+          errores.slice(0, 3).forEach((err) => {
+            toast.error(`Fila ${err.fila}: ${err.error}`, { duration: 5000 });
+          });
+        }
+      } else {
+        // Respuesta sin estructura esperada
+        toast.info(mensaje || 'Importación completada');
       }
     } catch (err) {
       console.error('Error importando donaciones:', err);
-      const errorMsg = err.response?.data?.error || 'Error al importar donaciones';
+      const errorMsg = err.response?.data?.error || err.response?.data?.mensaje || 'Error al importar donaciones';
       toast.error(errorMsg);
     } finally {
       setImportingDonaciones(false);
@@ -1156,6 +1199,34 @@ const Donaciones = () => {
     }
   };
 
+  // Procesar TODAS las donaciones pendientes de una vez
+  const handleProcesarTodas = async () => {
+    setProcesandoTodas(true);
+    try {
+      const response = await donacionesAPI.procesarTodas();
+      const { procesadas, errores } = response.data;
+      
+      if (procesadas > 0) {
+        toast.success(`${procesadas} donaciones procesadas correctamente`);
+        cargarDonaciones();
+      } else {
+        toast.info('No había donaciones pendientes para procesar');
+      }
+      
+      if (errores && errores.length > 0) {
+        errores.slice(0, 3).forEach(err => {
+          toast.error(`Error en ${err.donacion}: ${err.error}`);
+        });
+      }
+    } catch (err) {
+      console.error('Error procesando todas las donaciones:', err);
+      toast.error(err.response?.data?.error || 'Error al procesar donaciones');
+    } finally {
+      setProcesandoTodas(false);
+      setConfirmProcesarTodas(false);
+    }
+  };
+
   // Recibir donación (pendiente → recibida)
   const handleRecibir = async (id) => {
     setActionLoading(id);
@@ -1494,6 +1565,27 @@ const Donaciones = () => {
                         className="hidden"
                       />
                     </label>
+                    
+                    {/* Procesar Todas las Pendientes - Solo si hay pendientes */}
+                    {(() => {
+                      const pendientes = donaciones.filter(d => ['pendiente', 'recibida'].includes(d.estado)).length;
+                      if (pendientes === 0) return null;
+                      return (
+                        <button
+                          onClick={() => setConfirmProcesarTodas(true)}
+                          disabled={procesandoTodas}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg border text-orange-700 border-orange-300 hover:bg-orange-50 transition-colors disabled:opacity-50"
+                          title={`Procesar ${pendientes} donaciones pendientes de una vez`}
+                        >
+                          {procesandoTodas ? (
+                            <FaSpinner className="animate-spin" />
+                          ) : (
+                            <FaCheck />
+                          )}
+                          Procesar Todas ({pendientes})
+                        </button>
+                      );
+                    })()}
                   </>
                 )}
 
@@ -3008,6 +3100,18 @@ const Donaciones = () => {
         tone="info"
         onConfirm={() => confirmProcesar && handleProcesar(confirmProcesar.id)}
         onCancel={() => setConfirmProcesar(null)}
+      />
+
+      {/* Modal de confirmación procesar TODAS */}
+      <ConfirmModal
+        open={confirmProcesarTodas}
+        title="Procesar Todas las Donaciones"
+        message={`¿Estás seguro de procesar TODAS las ${donaciones.filter(d => ['pendiente', 'recibida'].includes(d.estado)).length} donaciones pendientes? Esto activará el stock disponible de todas ellas en el almacén de donaciones.`}
+        confirmText="Procesar Todas"
+        cancelText="Cancelar"
+        tone="warning"
+        onConfirm={handleProcesarTodas}
+        onCancel={() => setConfirmProcesarTodas(false)}
       />
 
       {/* Modal de rechazo con motivo */}

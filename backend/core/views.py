@@ -2755,6 +2755,62 @@ class DonacionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
+    @action(detail=False, methods=['post'], url_path='procesar-todas')
+    def procesar_todas(self, request):
+        """
+        Procesar TODAS las donaciones pendientes o recibidas de una vez.
+        Útil después de importaciones masivas.
+        """
+        from core.models import Donacion
+        
+        donaciones_pendientes = Donacion.objects.filter(
+            estado__in=['pendiente', 'recibida']
+        )
+        
+        if not donaciones_pendientes.exists():
+            return Response(
+                {'mensaje': 'No hay donaciones pendientes para procesar'},
+                status=status.HTTP_200_OK
+            )
+        
+        procesadas = 0
+        errores = []
+        
+        try:
+            with transaction.atomic():
+                for donacion in donaciones_pendientes:
+                    try:
+                        # Actualizar cantidad_disponible de cada detalle
+                        for detalle in donacion.detalles.all():
+                            detalle.cantidad_disponible = detalle.cantidad
+                            detalle.save()
+                        
+                        # Cambiar estado a procesada
+                        donacion.estado = 'procesada'
+                        donacion.save()
+                        procesadas += 1
+                        
+                    except Exception as e:
+                        errores.append({
+                            'donacion': donacion.numero,
+                            'error': str(e)
+                        })
+                
+                logger.info(f"Procesamiento masivo por {request.user.username}: {procesadas} donaciones procesadas")
+                
+                return Response({
+                    'mensaje': f'{procesadas} donaciones procesadas correctamente',
+                    'procesadas': procesadas,
+                    'errores': errores
+                })
+                
+        except Exception as e:
+            logger.error(f"Error en procesamiento masivo: {str(e)}")
+            return Response(
+                {'error': f'Error procesando donaciones: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
     @action(detail=True, methods=['post'], url_path='rechazar')
     def rechazar(self, request, pk=None):
         """Rechazar una donacion."""
@@ -2988,7 +3044,7 @@ class DonacionViewSet(viewsets.ModelViewSet):
             ws.title = 'Donaciones'
             
             # Título
-            ws.merge_cells('A1:H1')
+            ws.merge_cells('A1:J1')
             ws['A1'].value = 'PLANTILLA DE DONACIONES (SIMPLIFICADA)'
             ws['A1'].font = Font(bold=True, size=14, color='632842')
             ws['A1'].alignment = Alignment(horizontal='center')
@@ -2996,10 +3052,10 @@ class DonacionViewSet(viewsets.ModelViewSet):
             # Instrucciones breves
             ws['A2'].value = '⚠️ Elimine las filas de ejemplo (grises). Los productos DEBEN existir en el Catálogo de Productos de Donación.'
             ws['A2'].font = Font(italic=True, size=10, color='CC0000')
-            ws.merge_cells('A2:H2')
+            ws.merge_cells('A2:J2')
             ws.append([])
             
-            # Headers simplificados
+            # Headers - ahora incluye fecha_caducidad y estado_producto
             headers = [
                 'numero *',
                 'donante *', 
@@ -3008,6 +3064,8 @@ class DonacionViewSet(viewsets.ModelViewSet):
                 'producto_clave *',
                 'cantidad *',
                 'lote',
+                'fecha_caducidad',
+                'estado_producto',
                 'notas'
             ]
             ws.append(headers)
@@ -3019,6 +3077,9 @@ class DonacionViewSet(viewsets.ModelViewSet):
             
             # Ejemplos simplificados: una fila por producto donado
             # Cada fila tiene: donación + producto
+            from datetime import date, timedelta
+            fecha_ejemplo = (date.today() + timedelta(days=365)).strftime('%Y-%m-%d')  # 1 año de caducidad
+            
             ejemplos = []
             if productos_ejemplo:
                 for i, prod in enumerate(productos_ejemplo):
@@ -3027,9 +3088,11 @@ class DonacionViewSet(viewsets.ModelViewSet):
                         '[EJEMPLO] Empresa Donante SA - ELIMINAR' if i == 0 else '',  # donante
                         'empresa' if i == 0 else '',  # tipo
                         '2024-01-15' if i == 0 else '',  # fecha
-                        prod.clave,  # clave del producto del catálogo principal
+                        prod.clave,  # clave del producto del catálogo
                         100 + i * 50,  # cantidad
                         f'LOTE-{i+1}',  # lote
+                        fecha_ejemplo,  # fecha_caducidad
+                        'bueno',  # estado_producto (bueno/regular/deteriorado)
                         '[EJEMPLO] - ELIMINAR' if i == 0 else ''  # notas
                     ])
             else:
@@ -3042,6 +3105,8 @@ class DonacionViewSet(viewsets.ModelViewSet):
                     '⚠️ AGREGAR PRODUCTOS AL CATÁLOGO DE DONACIONES PRIMERO',
                     100,
                     'LOTE-001',
+                    fecha_ejemplo,
+                    'bueno',
                     '[EJEMPLO] - ELIMINAR'
                 ])
             
@@ -3054,8 +3119,8 @@ class DonacionViewSet(viewsets.ModelViewSet):
                     cell.font = example_font
                     cell.border = thin_border
             
-            # Ajustar anchos
-            column_widths = [30, 35, 15, 12, 15, 10, 15, 30]
+            # Ajustar anchos (10 columnas ahora)
+            column_widths = [30, 35, 15, 12, 15, 10, 15, 15, 15, 30]
             for i, width in enumerate(column_widths, 1):
                 ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
             
@@ -3168,6 +3233,8 @@ class DonacionViewSet(viewsets.ModelViewSet):
                 'producto_clave': ['producto clave', 'clave producto', 'producto', 'clave', 'medicamento'],
                 'cantidad': ['cantidad', 'cant', 'unidades'],
                 'lote': ['lote', 'numero lote', 'no lote'],
+                'fecha_caducidad': ['fecha caducidad', 'caducidad', 'vencimiento', 'fecha vencimiento', 'expira'],
+                'estado_producto': ['estado producto', 'estado', 'condicion'],
                 'notas': ['notas', 'observaciones', 'comentarios'],
             }
             
@@ -3220,15 +3287,22 @@ class DonacionViewSet(viewsets.ModelViewSet):
             }
             
             donaciones_map = {}  # numero -> instancia
+            filas_procesadas = 0
+            filas_vacias = 0
+            filas_ejemplo = 0
             
             with transaction.atomic():
                 for row_num, row in enumerate(ws.iter_rows(min_row=header_row + 1, values_only=True), start=header_row + 1):
                     if not row or all(cell is None or str(cell).strip() == '' for cell in row):
+                        filas_vacias += 1
                         continue
                     
                     # Ignorar filas de ejemplo
                     if es_fila_ejemplo(row):
+                        filas_ejemplo += 1
                         continue
+                    
+                    filas_procesadas += 1
                     
                     try:
                         numero = get_val(row, 'numero')
@@ -3310,14 +3384,24 @@ class DonacionViewSet(viewsets.ModelViewSet):
                             
                             donacion = donaciones_map[numero]
                             
+                            # Parsear fecha de caducidad si existe
+                            fecha_caducidad_raw = get_val(row, 'fecha_caducidad')
+                            fecha_caducidad = parse_fecha(fecha_caducidad_raw) if fecha_caducidad_raw else None
+                            
+                            # Estado del producto (default: bueno)
+                            estado_prod = str(get_val(row, 'estado_producto', 'bueno')).lower().strip()
+                            if estado_prod not in ['bueno', 'regular', 'deteriorado']:
+                                estado_prod = 'bueno'
+                            
                             DetalleDonacion.objects.create(
                                 donacion=donacion,
                                 producto=None,  # No usa catálogo principal
                                 producto_donacion=producto_donacion,  # Usa catálogo independiente
                                 numero_lote=str(get_val(row, 'lote', '')).strip()[:50] or None,
                                 cantidad=cantidad,
-                                cantidad_disponible=cantidad,
-                                estado_producto='bueno',
+                                cantidad_disponible=0,  # Stock NO disponible hasta procesar
+                                fecha_caducidad=fecha_caducidad,
+                                estado_producto=estado_prod,
                                 notas=str(get_val(row, 'notas', '')).strip() or None
                             )
                             resultados['detalles_creados'] += 1
@@ -3329,7 +3413,8 @@ class DonacionViewSet(viewsets.ModelViewSet):
                         })
             
             logger.info(f"Importación de donaciones por {request.user.username}: "
-                       f"{resultados['donaciones_creadas']} donaciones, {resultados['detalles_creados']} detalles")
+                       f"{resultados['donaciones_creadas']} donaciones, {resultados['detalles_creados']} detalles, "
+                       f"filas procesadas: {filas_procesadas}, vacias: {filas_vacias}, ejemplo: {filas_ejemplo}")
             
             status_code = status.HTTP_200_OK if len(resultados['errores']) == 0 else status.HTTP_207_MULTI_STATUS
             
@@ -3340,7 +3425,10 @@ class DonacionViewSet(viewsets.ModelViewSet):
                     'fallidos': len(resultados['errores']),
                     'donaciones_creadas': resultados['donaciones_creadas'],
                     'detalles_creados': resultados['detalles_creados'],
-                    'errores': resultados['errores']
+                    'errores': resultados['errores'],
+                    'filas_procesadas': filas_procesadas,
+                    'filas_vacias': filas_vacias,
+                    'filas_ejemplo': filas_ejemplo
                 },
                 'exitos': resultados['exitos'],
                 'errores': resultados['errores']
@@ -3758,6 +3846,10 @@ class DetalleDonacionViewSet(viewsets.ModelViewSet):
         donacion_id = self.request.query_params.get('donacion')
         if donacion_id:
             queryset = queryset.filter(donacion_id=donacion_id)
+        else:
+            # Si no se especifica donación, solo mostrar detalles de donaciones PROCESADAS
+            # El inventario solo debe mostrar productos con stock activado
+            queryset = queryset.filter(donacion__estado='procesada')
         
         # Filtrar solo con stock disponible
         solo_disponible = self.request.query_params.get('disponible')

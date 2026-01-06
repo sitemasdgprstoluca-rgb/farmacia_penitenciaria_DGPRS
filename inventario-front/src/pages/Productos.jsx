@@ -2033,14 +2033,17 @@ const Productos = () => {
       {puede.ver ? (
         <>
           {renderTabla()}
-
-          <Pagination
-            page={currentPage}
-            totalPages={totalPages}
-            totalItems={totalProductos}
-            pageSize={PAGE_SIZE}
-            onPageChange={setCurrentPage}
-          />
+          
+          {/* ISS-FIX: Agregar margen y asegurar visibilidad de paginación */}
+          <div className="mt-6">
+            <Pagination
+              page={currentPage}
+              totalPages={totalPages}
+              totalItems={totalProductos}
+              pageSize={PAGE_SIZE}
+              onPageChange={setCurrentPage}
+            />
+          </div>
         </>
       ) : (
         <div className="py-12 text-center bg-white rounded-lg shadow">

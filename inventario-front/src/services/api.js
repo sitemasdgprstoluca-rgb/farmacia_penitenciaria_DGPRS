@@ -1355,6 +1355,8 @@ export const donacionesAPI = {
   recibir: (id) => apiClient.post(`/donaciones/${id}/recibir/`),
   // Procesar donación (genera movimientos de entrada)
   procesar: (id) => apiClient.post(`/donaciones/${id}/procesar/`),
+  // Procesar TODAS las donaciones pendientes de una vez
+  procesarTodas: () => apiClient.post('/donaciones/procesar-todas/'),
   // Rechazar donación
   rechazar: (id, data) => apiClient.post(`/donaciones/${id}/rechazar/`, data),
   // Obtener siguiente número de donación
