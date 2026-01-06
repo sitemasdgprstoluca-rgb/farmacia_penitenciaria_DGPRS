@@ -2855,8 +2855,9 @@ class DetalleDonacion(models.Model):
         return ''
     
     def save(self, *args, **kwargs):
-        # Si es nuevo registro, cantidad_disponible = cantidad
-        if not self.pk and not self.cantidad_disponible:
+        # Si es nuevo registro y NO se especificó cantidad_disponible explícitamente,
+        # usar el valor de cantidad. Pero si se pasó 0, respetarlo (donación pendiente).
+        if not self.pk and self.cantidad_disponible is None:
             self.cantidad_disponible = self.cantidad
         super().save(*args, **kwargs)
 
