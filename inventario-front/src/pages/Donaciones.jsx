@@ -224,6 +224,10 @@ const Donaciones = () => {
   // Confirmación de finalización de entrega
   const [confirmFinalizarEntrega, setConfirmFinalizarEntrega] = useState(null);
   
+  // Confirmación de finalización de GRUPO de entregas (salida masiva)
+  const [confirmFinalizarGrupo, setConfirmFinalizarGrupo] = useState(null);
+  const [finalizandoGrupo, setFinalizandoGrupo] = useState(false);
+  
   // Confirmación de eliminación de entrega pendiente
   const [confirmEliminarEntrega, setConfirmEliminarEntrega] = useState(null);
   
@@ -1018,6 +1022,35 @@ const Donaciones = () => {
       setActionLoading(null);
       setConfirmFinalizarEntrega(null);
     }
+  };
+
+  // Finalizar GRUPO de entregas (salida masiva completa)
+  const handleFinalizarGrupo = async (grupo) => {
+    setFinalizandoGrupo(true);
+    const entregas = grupo.entregas.filter(e => !e.finalizado && e.estado_entrega !== 'entregado');
+    let exitosos = 0;
+    let errores = [];
+    
+    for (const entrega of entregas) {
+      try {
+        await salidasDonacionesAPI.finalizar(entrega.id);
+        exitosos++;
+      } catch (err) {
+        errores.push({ producto: entrega.producto_nombre, error: err.response?.data?.error || 'Error' });
+      }
+    }
+    
+    if (exitosos > 0) {
+      toast.success(`${exitosos} entregas finalizadas correctamente`);
+      cargarTodasEntregas();
+      cargarInventarioDonaciones();
+    }
+    if (errores.length > 0) {
+      toast.error(`${errores.length} entregas fallaron: ${errores[0].error}`);
+    }
+    
+    setFinalizandoGrupo(false);
+    setConfirmFinalizarGrupo(null);
   };
 
   // Eliminar una entrega pendiente (devuelve stock al inventario)
@@ -2601,15 +2634,42 @@ const Donaciones = () => {
                             <td className="px-4 py-3 text-sm text-gray-600">{grupo.entregado_por_nombre || '-'}</td>
                             <td className="px-4 py-3 text-center">
                               <div className="flex items-center justify-center gap-2">
-                                {/* Si es grupo, mostrar botón de expandir */}
+                                {/* Si es grupo, mostrar acciones de grupo */}
                                 {esGrupo && (
-                                  <button
-                                    onClick={() => toggleGrupo(grupo.clave)}
-                                    className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                    title={estaExpandido ? "Colapsar" : "Ver productos"}
-                                  >
-                                    <FaEye />
-                                  </button>
+                                  <>
+                                    <button
+                                      onClick={() => toggleGrupo(grupo.clave)}
+                                      className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                      title={estaExpandido ? "Colapsar" : "Ver productos"}
+                                    >
+                                      <FaEye />
+                                    </button>
+                                    {/* Botón finalizar grupo completo */}
+                                    {!grupo.todosFinalizados && puede.procesar && (
+                                      <button
+                                        onClick={() => setConfirmFinalizarGrupo(grupo)}
+                                        disabled={finalizandoGrupo}
+                                        className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                        title="Confirmar entrega completa"
+                                      >
+                                        {finalizandoGrupo ? (
+                                          <FaSpinner className="animate-spin" />
+                                        ) : (
+                                          <FaCheck />
+                                        )}
+                                      </button>
+                                    )}
+                                    {/* Comprobante si ya está entregado */}
+                                    {grupo.todosFinalizados && (
+                                      <button
+                                        onClick={() => handleDescargarReciboSalida(grupo.entregas[0], true)}
+                                        className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                        title="Comprobante"
+                                      >
+                                        <FaCheckCircle />
+                                      </button>
+                                    )}
+                                  </>
                                 )}
                                 {/* Si es entrega individual, mostrar acciones normales */}
                                 {!esGrupo && (
@@ -3838,6 +3898,18 @@ const Donaciones = () => {
         tone="primary"
         onConfirm={() => confirmFinalizarEntrega && handleFinalizarEntrega(confirmFinalizarEntrega)}
         onCancel={() => setConfirmFinalizarEntrega(null)}
+      />
+
+      {/* Modal de confirmación finalizar GRUPO de entregas (salida masiva) */}
+      <ConfirmModal
+        open={!!confirmFinalizarGrupo}
+        title="Confirmar Entrega Completa"
+        message={confirmFinalizarGrupo ? `¿Confirmas que TODA la entrega a "${confirmFinalizarGrupo.destinatario}" ha sido completada?\n\n• Productos: ${confirmFinalizarGrupo.entregas.length}\n• Cantidad total: ${confirmFinalizarGrupo.totalCantidad} unidades\n\nSe marcarán como entregados todos los productos pendientes de este grupo.` : ''}
+        confirmText={finalizandoGrupo ? "Procesando..." : "Sí, Confirmar Todo"}
+        cancelText="Cancelar"
+        tone="primary"
+        onConfirm={() => confirmFinalizarGrupo && handleFinalizarGrupo(confirmFinalizarGrupo)}
+        onCancel={() => setConfirmFinalizarGrupo(null)}
       />
 
       {/* Modal de confirmación eliminar entrega pendiente */}
