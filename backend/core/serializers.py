@@ -1561,14 +1561,42 @@ class MovimientoSerializer(serializers.ModelSerializer):
         return None
     
     def get_centro_nombre(self, obj):
-        """Retorna el nombre del centro (destino para entradas, origen para salidas)."""
-        if obj.centro_destino:
-            return obj.centro_destino.nombre
-        if obj.centro_origen:
-            return obj.centro_origen.nombre
-        if obj.lote and obj.lote.centro:
-            return obj.lote.centro.nombre
-        return 'Almacén Central'
+        """
+        Retorna el nombre del centro relevante según el tipo de movimiento:
+        - ENTRADA: centro donde ENTRA la mercancía (centro_destino o lote.centro)
+        - SALIDA: centro de donde SALE la mercancía (centro_origen o lote.centro)
+        
+        ISS-FIX: Para requisiciones, las entradas deben mostrar el centro destino
+        y las salidas deben mostrar el origen (Almacén Central).
+        """
+        tipo = (obj.tipo or '').lower()
+        
+        if tipo == 'entrada':
+            # Para entradas: mostrar dónde ENTRA (centro_destino o lote.centro)
+            if obj.centro_destino:
+                return obj.centro_destino.nombre
+            if obj.lote and obj.lote.centro:
+                return obj.lote.centro.nombre
+            return 'Almacén Central'
+        elif tipo == 'salida':
+            # Para salidas: mostrar de dónde SALE (centro_origen o lote.centro original)
+            if obj.centro_origen:
+                return obj.centro_origen.nombre
+            # Si el lote es de farmacia central (centro=null), mostrar "Almacén Central"
+            if obj.lote:
+                if obj.lote.centro:
+                    return obj.lote.centro.nombre
+                return 'Almacén Central'
+            return 'Almacén Central'
+        else:
+            # Otros tipos (ajuste): usar cualquier centro disponible
+            if obj.centro_destino:
+                return obj.centro_destino.nombre
+            if obj.centro_origen:
+                return obj.centro_origen.nombre
+            if obj.lote and obj.lote.centro:
+                return obj.lote.centro.nombre
+            return 'Almacén Central'
     
     def validate_subtipo_salida(self, value):
         """Validar que el subtipo de salida sea válido."""
