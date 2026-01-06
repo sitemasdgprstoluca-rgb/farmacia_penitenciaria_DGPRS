@@ -959,6 +959,9 @@ class MovimientoViewSet(
         Confirma la entrega física de un movimiento de salida individual.
         Marca el movimiento como confirmado agregando [CONFIRMADO] al motivo.
         
+        NOTA: El stock ya fue descontado al crear el movimiento.
+        Esta acción solo marca el movimiento como "confirmado/entregado".
+        
         Returns:
             - 200: Entrega confirmada exitosamente
             - 404: Movimiento no encontrado
@@ -974,16 +977,23 @@ class MovimientoViewSet(
                     'message': 'Solo se pueden confirmar entregas de movimientos de salida'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Verificar permisos - admin/farmacia o usuario del centro destino
+            # Verificar permisos - admin/farmacia o usuario del centro del lote
             user = request.user
             if not is_farmacia_or_admin(user):
                 user_centro = get_user_centro(user)
-                if user_centro and movimiento.centro_destino:
-                    if movimiento.centro_destino.id != user_centro.id:
-                        return Response({
-                            'error': True,
-                            'message': 'No tienes permiso para confirmar esta entrega'
-                        }, status=status.HTTP_403_FORBIDDEN)
+                # Verificar por centro_destino O por centro del lote
+                lote_centro = movimiento.lote.centro if movimiento.lote else None
+                puede_confirmar = False
+                if user_centro:
+                    if movimiento.centro_destino and movimiento.centro_destino.id == user_centro.id:
+                        puede_confirmar = True
+                    elif lote_centro and lote_centro.id == user_centro.id:
+                        puede_confirmar = True
+                if not puede_confirmar:
+                    return Response({
+                        'error': True,
+                        'message': 'No tienes permiso para confirmar esta entrega'
+                    }, status=status.HTTP_403_FORBIDDEN)
             
             # Verificar si ya está confirmado
             motivo_actual = movimiento.motivo or ''
@@ -993,9 +1003,12 @@ class MovimientoViewSet(
                     'message': 'Esta entrega ya fue confirmada anteriormente'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Marcar como confirmado
-            movimiento.motivo = f'[CONFIRMADO] {motivo_actual}'.strip()
-            movimiento.save(update_fields=['motivo'])
+            # Marcar como confirmado usando update directo para evitar validación clean()
+            # El stock ya fue descontado al crear el movimiento
+            from core.models import Movimiento as MovimientoModel
+            MovimientoModel.objects.filter(pk=movimiento.pk).update(
+                motivo=f'[CONFIRMADO] {motivo_actual}'.strip()
+            )
             
             logger.info(
                 f'Entrega de movimiento {movimiento.id} confirmada por {request.user.username}'

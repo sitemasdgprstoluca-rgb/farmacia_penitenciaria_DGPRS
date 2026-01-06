@@ -1603,28 +1603,40 @@ const Movimientos = () => {
                                     <div className="col-span-2 md:col-span-4 flex flex-wrap gap-3 mt-4 pt-4 border-t border-gray-200">
                                       {!mov.confirmado ? (
                                         <>
-                                          {/* Hoja de Entrega (solo si NO está confirmado) */}
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov); }}
-                                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"
-                                            title="Descargar hoja de entrega con campos para firmas"
-                                          >
-                                            <FaFilePdf className="text-lg" />
-                                            Hoja de Entrega
-                                          </button>
-                                          {/* Botón confirmar entrega */}
+                                          {/* Hoja de Entrega - solo para requisiciones/surtidos, NO para dispensaciones por receta */}
+                                          {mov.subtipo_salida !== 'receta' && (
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov); }}
+                                              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"
+                                              title="Descargar hoja de entrega con campos para firmas"
+                                            >
+                                              <FaFilePdf className="text-lg" />
+                                              Hoja de Entrega
+                                            </button>
+                                          )}
+                                          {/* Botón confirmar entrega/dispensación */}
                                           <button
                                             onClick={(e) => { e.stopPropagation(); confirmarEntregaIndividual(mov.id); }}
                                             disabled={confirmandoMovimiento === mov.id}
-                                            className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition text-sm font-medium disabled:opacity-50"
-                                            title="Confirmar que la entrega fue recibida"
+                                            className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg transition text-sm font-medium disabled:opacity-50 ${
+                                              mov.subtipo_salida === 'receta' 
+                                                ? 'bg-green-600 hover:bg-green-700' 
+                                                : 'bg-amber-500 hover:bg-amber-600'
+                                            }`}
+                                            title={mov.subtipo_salida === 'receta' 
+                                              ? "Confirmar que el medicamento fue entregado al paciente" 
+                                              : "Confirmar que la entrega fue recibida"
+                                            }
                                           >
                                             {confirmandoMovimiento === mov.id ? (
                                               <FaSpinner className="animate-spin text-lg" />
                                             ) : (
                                               <FaClipboardCheck className="text-lg" />
                                             )}
-                                            {confirmandoMovimiento === mov.id ? 'Confirmando...' : 'Confirmar Entrega'}
+                                            {confirmandoMovimiento === mov.id 
+                                              ? 'Confirmando...' 
+                                              : (mov.subtipo_salida === 'receta' ? 'Confirmar Dispensación' : 'Confirmar Entrega')
+                                            }
                                           </button>
                                         </>
                                       ) : (
@@ -1632,10 +1644,13 @@ const Movimientos = () => {
                                         <button
                                           onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
                                           className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
-                                          title="Descargar comprobante con sello de ENTREGADO"
+                                          title={mov.subtipo_salida === 'receta' 
+                                            ? "Descargar comprobante de dispensación" 
+                                            : "Descargar comprobante con sello de ENTREGADO"
+                                          }
                                         >
                                           <FaCheckCircle className="text-lg" />
-                                          Comprobante Entregado
+                                          {mov.subtipo_salida === 'receta' ? 'Comprobante Dispensación' : 'Comprobante Entregado'}
                                         </button>
                                       )}
                                     </div>
@@ -1775,38 +1790,54 @@ const Movimientos = () => {
                                 {/* Botones de acción para movimientos de salida */}
                                 {mov.tipo === 'salida' && (
                                   <div className="col-span-2 md:col-span-4 flex flex-wrap gap-3 mt-4 pt-4 border-t border-gray-200">
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov); }}
-                                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"
-                                      title="Descargar hoja de entrega con campos para firmas"
-                                    >
-                                      <FaFilePdf className="text-lg" />
-                                      Hoja de Entrega
-                                    </button>
+                                    {/* Hoja de Entrega - solo para requisiciones/surtidos, NO para dispensaciones por receta */}
+                                    {mov.subtipo_salida !== 'receta' && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov); }}
+                                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"
+                                        title="Descargar hoja de entrega con campos para firmas"
+                                      >
+                                        <FaFilePdf className="text-lg" />
+                                        Hoja de Entrega
+                                      </button>
+                                    )}
                                     {!mov.confirmado ? (
-                                      /* Botón confirmar entrega si no está confirmado */
+                                      /* Botón confirmar entrega/dispensación si no está confirmado */
                                       <button
                                         onClick={(e) => { e.stopPropagation(); confirmarEntregaIndividual(mov.id); }}
                                         disabled={confirmandoMovimiento === mov.id}
-                                        className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition text-sm font-medium disabled:opacity-50"
-                                        title="Confirmar que la entrega fue recibida"
+                                        className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg transition text-sm font-medium disabled:opacity-50 ${
+                                          mov.subtipo_salida === 'receta' 
+                                            ? 'bg-green-600 hover:bg-green-700' 
+                                            : 'bg-amber-500 hover:bg-amber-600'
+                                        }`}
+                                        title={mov.subtipo_salida === 'receta' 
+                                          ? "Confirmar que el medicamento fue entregado al paciente" 
+                                          : "Confirmar que la entrega fue recibida"
+                                        }
                                       >
                                         {confirmandoMovimiento === mov.id ? (
                                           <FaSpinner className="animate-spin text-lg" />
                                         ) : (
                                           <FaClipboardCheck className="text-lg" />
                                         )}
-                                        {confirmandoMovimiento === mov.id ? 'Confirmando...' : 'Confirmar Entrega'}
+                                        {confirmandoMovimiento === mov.id 
+                                          ? 'Confirmando...' 
+                                          : (mov.subtipo_salida === 'receta' ? 'Confirmar Dispensación' : 'Confirmar Entrega')
+                                        }
                                       </button>
                                     ) : (
                                       /* Botón comprobante solo si ya está confirmado */
                                       <button
                                         onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
                                         className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
-                                        title="Descargar comprobante con sello de ENTREGADO"
+                                        title={mov.subtipo_salida === 'receta' 
+                                          ? "Descargar comprobante de dispensación" 
+                                          : "Descargar comprobante con sello de ENTREGADO"
+                                        }
                                       >
                                         <FaCheckCircle className="text-lg" />
-                                        Comprobante Entregado
+                                        {mov.subtipo_salida === 'receta' ? 'Comprobante Dispensación' : 'Comprobante Entregado'}
                                       </button>
                                     )}
                                   </div>
