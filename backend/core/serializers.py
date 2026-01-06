@@ -1203,7 +1203,7 @@ class RequisicionListSerializer(serializers.ModelSerializer):
     folio = serializers.CharField(source='numero', read_only=True)
     centro_nombre = serializers.CharField(source='centro_origen.nombre', read_only=True, allow_null=True)
     centro = serializers.IntegerField(source='centro_origen_id', read_only=True, allow_null=True)
-    solicitante_nombre = serializers.CharField(source='solicitante.username', read_only=True, allow_null=True)
+    solicitante_nombre = serializers.SerializerMethodField()
     
     # Campos anotados desde el queryset (evitan N+1)
     total_productos = serializers.IntegerField(read_only=True)
@@ -1218,6 +1218,11 @@ class RequisicionListSerializer(serializers.ModelSerializer):
             'fecha_autorizacion', 'fecha_surtido', 'fecha_entrega',
         ]
         read_only_fields = fields
+    
+    def get_solicitante_nombre(self, obj):
+        if obj.solicitante:
+            return obj.solicitante.get_full_name() or obj.solicitante.username
+        return None
 
 
 class RequisicionSerializer(serializers.ModelSerializer):
