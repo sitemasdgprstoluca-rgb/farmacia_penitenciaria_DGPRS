@@ -5212,7 +5212,7 @@ class AdminLimpiarDatosView(APIView):
             Producto, Lote, Movimiento, Requisicion, DetalleRequisicion,
             HojaRecoleccion, DetalleHojaRecoleccion, LoteDocumento,
             ProductoImagen, ImportacionLog, DetalleDonacion, Donacion, SalidaDonacion,
-            Notificacion
+            Notificacion, ProductoDonacion
         )
         from django.db import connection
         
@@ -5235,6 +5235,7 @@ class AdminLimpiarDatosView(APIView):
         donaciones_count = Donacion.objects.count()
         detalles_donacion_count = DetalleDonacion.objects.count()
         salidas_donacion_count = SalidaDonacion.objects.count()
+        productos_donacion_count = ProductoDonacion.objects.count()
         
         # Conteo de notificaciones
         notificaciones_count = Notificacion.objects.count()
@@ -5299,14 +5300,15 @@ class AdminLimpiarDatosView(APIView):
                 },
                 'donaciones': {
                     'nombre': 'Donaciones',
-                    'descripcion': 'Elimina donaciones, sus detalles y registro de salidas',
-                    'total': donaciones_count + detalles_donacion_count + salidas_donacion_count,
+                    'descripcion': 'Elimina donaciones, detalles, salidas y catálogo de productos',
+                    'total': donaciones_count + detalles_donacion_count + salidas_donacion_count + productos_donacion_count,
                     'detalle': {
                         'donaciones': donaciones_count,
                         'detalles_donacion': detalles_donacion_count,
                         'salidas_donacion': salidas_donacion_count,
+                        'productos_donacion': productos_donacion_count,
                     },
-                    'dependencias': [],
+                    'dependencias': ['Incluye el catálogo de productos de donación'],
                 },
                 'notificaciones': {
                     'nombre': 'Notificaciones',
