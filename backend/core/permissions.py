@@ -133,12 +133,12 @@ class RoleHelper:
     @classmethod
     def is_medico(cls, user):
         """
-        ISS-MEDICO FIX: Verifica si usuario es específicamente médico.
+        ISS-MEDICO FIX v3: Verifica si usuario es específicamente médico.
         
-        El rol médico tiene restricciones adicionales:
-        - NO puede crear movimientos de inventario
-        - NO puede ver historial de movimientos
-        - Solo puede crear requisiciones
+        El rol médico tiene restricciones específicas:
+        - PUEDE crear movimientos de salida con subtipo 'receta' (dispensación)
+        - NO puede crear otros tipos de movimientos
+        - Puede crear requisiciones
         """
         if not user or not getattr(user, 'is_authenticated', False):
             return False
@@ -368,19 +368,20 @@ class IsCentroRole(permissions.BasePermission):
 
 class IsCentroCanManageInventory(permissions.BasePermission):
     """
-    ISS-MEDICO FIX v2: Permiso para gestión de inventario (movimientos).
+    ISS-MEDICO FIX v3: Permiso para gestión de inventario (movimientos).
     
     Este permiso permite al médico crear movimientos de SALIDA únicamente
-    (para dispensación de medicamentos a pacientes).
+    con subtipo 'receta' (para dispensación de medicamentos a pacientes).
+    La validación del subtipo se realiza en perform_create del ViewSet.
     
     Para operaciones de escritura (POST, PUT, PATCH, DELETE):
     - admin, farmacia: Permitido
     - centro, administrador_centro, director_centro: Permitido
-    - medico: PERMITIDO solo para POST (salidas) - validación adicional en perform_create
+    - medico: PERMITIDO solo para POST (salidas por receta) - validación en perform_create
     - vista: DENEGADO
     
     Para operaciones de lectura (GET):
-    - Todos los roles de centro pueden leer (incluyendo médico si configurado)
+    - Todos los roles de centro pueden leer (incluyendo médico)
     - ISS-019 FIX: vista puede leer para auditoría/trazabilidad
     """
     def has_permission(self, request, view):

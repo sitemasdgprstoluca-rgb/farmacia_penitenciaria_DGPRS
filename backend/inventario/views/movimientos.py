@@ -167,23 +167,32 @@ class MovimientoViewSet(
         SEGURIDAD:
         - Admin/farmacia: pueden crear cualquier movimiento en cualquier lote
         - Usuario de centro (administrador/director): pueden crear movimientos en lotes de su centro
-          y solo ciertos tipos: 'salida' (consumo), 'ajuste' (inventario fÃ­sico)
-        - MÃ©dico: NO puede crear movimientos (ISS-MEDICO FIX)
-        - Usuario de centro NO puede crear 'entrada' (solo vÃ­a surtido de requisiciÃ³n)
+          y solo ciertos tipos: 'salida' (consumo), 'ajuste' (inventario físico)
+        - Médico: SOLO puede crear salidas con subtipo 'receta' (dispensación por receta)
+        - Usuario de centro NO puede crear 'entrada' (solo vía surtido de requisición)
         """
         user = self.request.user
         
-        # ISS-MEDICO FIX: Bloquear explÃ­citamente a mÃ©dicos
-        if RoleHelper.is_medico(user):
-            raise serializers.ValidationError({
-                'detail': 'Los mÃ©dicos no tienen permiso para crear movimientos de inventario. Use requisiciones para solicitar medicamentos.'
-            })
-        
         lote = serializer.validated_data.get('lote')
         tipo = serializer.validated_data.get('tipo', '').lower()
+        subtipo_salida_raw = serializer.validated_data.get('subtipo_salida')
+        subtipo_salida = subtipo_salida_raw.lower() if subtipo_salida_raw else ''
+        numero_expediente = serializer.validated_data.get('numero_expediente')
         
-        # Validar que usuario de centro solo opere con sus lotes
-        if not is_farmacia_or_admin(user):
+        # ISS-MEDICO FIX v3: Médicos SOLO pueden crear salidas por receta
+        if RoleHelper.is_medico(user):
+            if tipo != 'salida' or subtipo_salida != 'receta':
+                raise serializers.ValidationError({
+                    'detail': 'Como médico, solo puede registrar dispensaciones por receta médica.'
+                })
+            # Validar que el lote pertenece al centro del médico
+            user_centro = get_user_centro(user)
+            if lote and lote.centro != user_centro:
+                raise serializers.ValidationError({
+                    'lote': 'Solo puede dispensar medicamentos de los lotes de su centro.'
+                })
+        # Validar que usuario de centro (no médico) solo opere con sus lotes
+        elif not is_farmacia_or_admin(user):
             user_centro = get_user_centro(user)
             
             # Validar que el lote pertenece al centro del usuario
@@ -193,20 +202,16 @@ class MovimientoViewSet(
                 })
             
             # Validar tipos de movimiento permitidos para centros
-            # Centros pueden: salida (consumo), ajuste (inventario fsico)
-            # Centros NO pueden: entrada (solo va surtido automtico)
+            # Centros pueden: salida (consumo), ajuste (inventario físico)
+            # Centros NO pueden: entrada (solo vía surtido automático)
             tipos_permitidos_centro = ['salida', 'ajuste']
             if tipo not in tipos_permitidos_centro:
                 raise serializers.ValidationError({
-                    'tipo': f'Los centros solo pueden registrar: {", ".join(tipos_permitidos_centro)}. Las entradas se generan automticamente al surtir requisiciones.'
+                    'tipo': f'Los centros solo pueden registrar: {", ".join(tipos_permitidos_centro)}. Las entradas se generan automáticamente al surtir requisiciones.'
                 })
         
-        # MEJORA FLUJO 5: Extraer campos de trazabilidad
-        subtipo_salida = serializer.validated_data.get('subtipo_salida')
-        numero_expediente = serializer.validated_data.get('numero_expediente')
-        
         # ISS-FIX: Para transferencias desde Almacén Central a Centro,
-        # el lote es de Almacén Central (centro=None) pero el destino es un Centro especÃ­fico.
+        # el lote es de Almacén Central (centro=None) pero el destino es un Centro específico.
         # Debemos permitir esto para admin/farmacia usando skip_centro_check=True
         
         # ISS-FIX-500: Convertir centro_id a objeto Centro si se pasa un ID
@@ -234,9 +239,9 @@ class MovimientoViewSet(
             requisicion=serializer.validated_data.get('requisicion'),
             # FIX: El serializer mapea 'observaciones' del frontend a 'motivo' via to_internal_value
             observaciones=serializer.validated_data.get('motivo', ''),
-            subtipo_salida=subtipo_salida,
+            subtipo_salida=subtipo_salida_raw,  # Usar valor original, no lowercase
             numero_expediente=numero_expediente,
-            # ISS-FIX: Saltear validaciÃ³n de centro para transferencias de Almacén Central
+            # ISS-FIX: Saltear validación de centro para transferencias de Almacén Central
             skip_centro_check=es_transferencia_farmacia
         )
         # Dejar instancia lista para serializer.data
