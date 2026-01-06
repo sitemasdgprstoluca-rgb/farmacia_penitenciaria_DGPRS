@@ -362,9 +362,9 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     else:
                         # Usuario sin centro no ve ningún lote
                         lotes = Lote.objects.none()
-                else:
-                    # Farmacia/Admin ven lotes de farmacia central por defecto
-                    lotes = lotes.filter(centro__isnull=True)
+                # ISS-FIX: Farmacia/Admin ven TODOS los lotes cuando no hay filtro de centro
+                # Esto coincide con lotes_activos del serializer que cuenta todos los lotes
+                # (antes filtraba incorrectamente a centro__isnull=True)
             
             # Filtro por activo
             activo_param = request.query_params.get('activo')
