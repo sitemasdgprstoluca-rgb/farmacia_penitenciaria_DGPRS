@@ -1565,29 +1565,29 @@ const Donaciones = () => {
                         className="hidden"
                       />
                     </label>
-                    
-                    {/* Procesar Todas las Pendientes - Solo si hay pendientes */}
-                    {(() => {
-                      const pendientes = donaciones.filter(d => ['pendiente', 'recibida'].includes(d.estado)).length;
-                      if (pendientes === 0) return null;
-                      return (
-                        <button
-                          onClick={() => setConfirmProcesarTodas(true)}
-                          disabled={procesandoTodas}
-                          className="flex items-center gap-2 px-4 py-2 rounded-lg border text-orange-700 border-orange-300 hover:bg-orange-50 transition-colors disabled:opacity-50"
-                          title={`Procesar ${pendientes} donaciones pendientes de una vez`}
-                        >
-                          {procesandoTodas ? (
-                            <FaSpinner className="animate-spin" />
-                          ) : (
-                            <FaCheck />
-                          )}
-                          Procesar Todas ({pendientes})
-                        </button>
-                      );
-                    })()}
                   </>
                 )}
+
+                {/* Procesar Todas las Pendientes - Botón separado para mayor visibilidad */}
+                {puede.procesar && (() => {
+                  const pendientes = donaciones.filter(d => ['pendiente', 'recibida'].includes(d.estado)).length;
+                  if (pendientes === 0) return null;
+                  return (
+                    <button
+                      onClick={() => setConfirmProcesarTodas(true)}
+                      disabled={procesandoTodas}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white hover:bg-orange-600 transition-colors disabled:opacity-50 font-medium shadow-sm"
+                      title={`Procesar ${pendientes} donaciones pendientes de una vez`}
+                    >
+                      {procesandoTodas ? (
+                        <FaSpinner className="animate-spin" />
+                      ) : (
+                        <FaCheck />
+                      )}
+                      Procesar Todas ({pendientes})
+                    </button>
+                  );
+                })()}
 
                 {/* Botón nueva donación */}
                 {puede.crear && (
@@ -2618,15 +2618,25 @@ const Donaciones = () => {
 
             {/* Contenido */}
             <div className="flex-1 overflow-y-auto p-6">
-              {/* Datos del donante */}
+              {/* Datos principales - Simplificados */}
               <div className="mb-6">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                  <FaUser /> Información del Donante
+                  <FaGift /> Datos de la Donación
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-1">Número *</label>
+                    <input
+                      type="text"
+                      value={formData.numero}
+                      onChange={(e) => setFormData({ ...formData, numero: e.target.value })}
+                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                      placeholder="DON-001"
+                    />
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium text-gray-600 mb-1">
-                      Nombre del Donante *
+                      Donante *
                     </label>
                     <input
                       type="text"
@@ -2637,7 +2647,7 @@ const Donaciones = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">Tipo de Donante</label>
+                    <label className="block text-sm font-medium text-gray-600 mb-1">Tipo</label>
                     <select
                       value={formData.donante_tipo}
                       onChange={(e) => setFormData({ ...formData, donante_tipo: e.target.value })}
@@ -2651,69 +2661,11 @@ const Donaciones = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">RFC</label>
-                    <input
-                      type="text"
-                      value={formData.donante_rfc}
-                      onChange={(e) => setFormData({ ...formData, donante_rfc: e.target.value })}
-                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
-                      placeholder="RFC del donante"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">Dirección</label>
-                    <input
-                      type="text"
-                      value={formData.donante_direccion}
-                      onChange={(e) => setFormData({ ...formData, donante_direccion: e.target.value })}
-                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
-                      placeholder="Dirección"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">Contacto</label>
-                    <input
-                      type="text"
-                      value={formData.donante_contacto}
-                      onChange={(e) => setFormData({ ...formData, donante_contacto: e.target.value })}
-                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
-                      placeholder="Teléfono o email"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Datos de la donación */}
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                  <FaGift /> Datos de la Donación
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">Número de Donación</label>
-                    <input
-                      type="text"
-                      value={formData.numero}
-                      onChange={(e) => setFormData({ ...formData, numero: e.target.value })}
-                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
-                      placeholder="DON-001"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">Fecha de Donación</label>
+                    <label className="block text-sm font-medium text-gray-600 mb-1">Fecha Donación *</label>
                     <input
                       type="date"
                       value={formData.fecha_donacion}
                       onChange={(e) => setFormData({ ...formData, fecha_donacion: e.target.value })}
-                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">Fecha de Recepción</label>
-                    <input
-                      type="date"
-                      value={formData.fecha_recepcion}
-                      onChange={(e) => setFormData({ ...formData, fecha_recepcion: e.target.value })}
                       className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
                     />
                   </div>
@@ -2732,26 +2684,14 @@ const Donaciones = () => {
                       ))}
                     </select>
                   </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">Documento de Donación</label>
-                    <input
-                      type="text"
-                      value={formData.documento_donacion}
-                      onChange={(e) => setFormData({ ...formData, documento_donacion: e.target.value })}
-                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
-                      placeholder="Nº Factura, Carta de Donación, Acta, etc."
-                    />
-                  </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-600 mb-1">Notas</label>
-                    <textarea
+                    <input
+                      type="text"
                       value={formData.notas}
                       onChange={(e) => setFormData({ ...formData, notas: e.target.value })}
-                      rows={2}
                       className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
-                      placeholder="Observaciones adicionales..."
+                      placeholder="Observaciones (opcional)"
                     />
                   </div>
                 </div>
@@ -2936,8 +2876,8 @@ const Donaciones = () => {
                 </span>
               </div>
 
-              {/* Info del donante */}
-              <div className="grid grid-cols-2 gap-4 mb-6">
+              {/* Info principal - Solo campos con datos */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6 bg-gray-50 p-4 rounded-lg">
                 <div>
                   <span className="text-sm text-gray-500">Donante</span>
                   <p className="font-medium">{viewingDonacion.donante_nombre}</p>
@@ -2947,29 +2887,21 @@ const Donaciones = () => {
                   <p className="font-medium capitalize">{viewingDonacion.donante_tipo}</p>
                 </div>
                 <div>
-                  <span className="text-sm text-gray-500">RFC</span>
-                  <p className="font-medium">{viewingDonacion.donante_rfc || '-'}</p>
-                </div>
-                <div>
-                  <span className="text-sm text-gray-500">Contacto</span>
-                  <p className="font-medium">{viewingDonacion.donante_contacto || '-'}</p>
-                </div>
-                <div>
-                  <span className="text-sm text-gray-500">Centro Destino</span>
-                  <p className="font-medium">{viewingDonacion.centro_destino_nombre || '-'}</p>
-                </div>
-                <div>
                   <span className="text-sm text-gray-500">Fecha Donación</span>
                   <p className="font-medium">{formatFecha(viewingDonacion.fecha_donacion)}</p>
                 </div>
-                <div>
-                  <span className="text-sm text-gray-500">Documento</span>
-                  <p className="font-medium">{viewingDonacion.documento_donacion || '-'}</p>
-                </div>
-                <div>
-                  <span className="text-sm text-gray-500">Notas</span>
-                  <p className="font-medium text-sm">{viewingDonacion.notas || '-'}</p>
-                </div>
+                {viewingDonacion.centro_destino_nombre && (
+                  <div>
+                    <span className="text-sm text-gray-500">Centro Destino</span>
+                    <p className="font-medium">{viewingDonacion.centro_destino_nombre}</p>
+                  </div>
+                )}
+                {viewingDonacion.notas && (
+                  <div className="col-span-2">
+                    <span className="text-sm text-gray-500">Notas</span>
+                    <p className="font-medium text-sm">{viewingDonacion.notas}</p>
+                  </div>
+                )}
               </div>
 
               {/* Productos */}
@@ -3040,14 +2972,6 @@ const Donaciones = () => {
                   <p className="text-gray-500">Sin productos registrados</p>
                 )}
               </div>
-
-              {/* Notas */}
-              {viewingDonacion.notas && (
-                <div className="mt-6">
-                  <h3 className="font-semibold text-gray-700 mb-2">Notas</h3>
-                  <p className="text-gray-600 bg-gray-50 p-3 rounded-lg">{viewingDonacion.notas}</p>
-                </div>
-              )}
             </div>
 
             {/* Footer */}
