@@ -1365,16 +1365,20 @@ const Movimientos = () => {
                         </div>
                       </td>
                     </tr>
-                  ) : !movimientos.length ? (
-                    <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
-                        Sin movimientos
-                      </td>
-                    </tr>
                   ) : vistaAgrupada && movimientosAgrupados ? (
                     <>
-                      {/* Mostrar grupos de salidas masivas y requisiciones */}
-                      {movimientosAgrupados.grupos.map((grupo, gIndex) => {
+                      {/* ISS-FIX: Mostrar mensaje si no hay datos en vista agrupada */}
+                      {(!movimientosAgrupados.grupos || movimientosAgrupados.grupos.length === 0) && 
+                       (!movimientosAgrupados.sinGrupo || movimientosAgrupados.sinGrupo.length === 0) ? (
+                        <tr>
+                          <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                            Sin movimientos
+                          </td>
+                        </tr>
+                      ) : (
+                        <>
+                          {/* Mostrar grupos de salidas masivas y requisiciones */}
+                          {movimientosAgrupados.grupos.map((grupo, gIndex) => {
                         // ISS-FIX: Determinar colores y etiquetas según tipo de grupo
                         const esRequisicion = grupo.tipo_grupo === 'requisicion';
                         const colorBase = esRequisicion ? 'blue' : 'rose';
@@ -1642,10 +1646,18 @@ const Movimientos = () => {
                           )}
                         </React.Fragment>
                       ))}
+                        </>
+                      )}
                     </>
                   ) : (
                     /* Vista individual (sin agrupar) */
-                    movimientos.map((mov, index) => (
+                    !movimientos.length ? (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                          Sin movimientos
+                        </td>
+                      </tr>
+                    ) : movimientos.map((mov, index) => (
                       <React.Fragment key={mov.id}>
                         <tr 
                           ref={highlightId === mov.id ? highlightRef : null}
