@@ -469,26 +469,19 @@ const Reportes = () => {
 
     if (filtros.tipo === 'inventario') {
       return (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gradient-to-r from-gray-50 to-white border-t">
-          <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
-            <FaBox className="text-2xl text-blue-600" />
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-4 p-3 md:p-4 bg-gradient-to-r from-gray-50 to-white border-t">
+          <div className="flex items-center gap-2 md:gap-3 p-2 md:p-3 bg-blue-50 rounded-lg">
+            <FaBox className="text-xl md:text-2xl text-blue-600" />
             <div>
-              <p className="text-xs text-blue-600 font-semibold">Total Productos</p>
-              <p className="text-xl font-bold text-blue-800">{resumen.total_productos || 0}</p>
+              <p className="text-[10px] md:text-xs text-blue-600 font-semibold">Total Productos</p>
+              <p className="text-lg md:text-xl font-bold text-blue-800">{resumen.total_productos || 0}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
-            <FaDatabase className="text-2xl text-green-600" />
+          <div className="flex items-center gap-2 md:gap-3 p-2 md:p-3 bg-green-50 rounded-lg">
+            <FaDatabase className="text-xl md:text-2xl text-green-600" />
             <div>
-              <p className="text-xs text-green-600 font-semibold">Inventario Total</p>
-              <p className="text-xl font-bold text-green-800">{(resumen.stock_total || 0).toLocaleString()}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 p-3 bg-red-50 rounded-lg">
-            <FaExclamationTriangle className="text-2xl text-red-600" />
-            <div>
-              <p className="text-xs text-red-600 font-semibold">Bajo Inventario Mínimo</p>
-              <p className="text-xl font-bold text-red-800">{resumen.productos_bajo_minimo || 0}</p>
+              <p className="text-[10px] md:text-xs text-green-600 font-semibold">Inventario Total</p>
+              <p className="text-lg md:text-xl font-bold text-green-800">{(resumen.stock_total || 0).toLocaleString()}</p>
             </div>
           </div>
         </div>
@@ -583,60 +576,60 @@ const Reportes = () => {
             : 'Todo el historial';
       
       return (
-        <div className="p-4 bg-gradient-to-r from-gray-50 to-white border-t">
+        <div className="p-3 md:p-4 bg-gradient-to-r from-gray-50 to-white border-t">
           {/* Indicador de período */}
-          <div className="flex items-center justify-center mb-3">
-            <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full flex items-center gap-2">
+          <div className="flex items-center justify-center mb-2 md:mb-3">
+            <span className="px-2 md:px-3 py-1 bg-blue-100 text-blue-800 text-[10px] md:text-xs font-semibold rounded-full flex items-center gap-1 md:gap-2">
               <FaClock className="text-blue-600" />
               Período: {periodoTexto}
             </span>
           </div>
           {/* Resumen general de transacciones */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-lg">
-              <FaClipboardList className="text-2xl text-indigo-600" />
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 md:gap-3">
+            <div className="flex items-center gap-2 md:gap-3 p-2 md:p-3 bg-indigo-50 rounded-lg">
+              <FaClipboardList className="text-lg md:text-2xl text-indigo-600" />
               <div>
-                <p className="text-xs text-indigo-600 font-semibold">Transacciones</p>
-                <p className="text-xl font-bold text-indigo-800">{resumen.total_transacciones || datos.length}</p>
-                <p className="text-[10px] text-indigo-500">grupos únicos</p>
+                <p className="text-[10px] md:text-xs text-indigo-600 font-semibold">Transacciones</p>
+                <p className="text-base md:text-xl font-bold text-indigo-800">{resumen.total_transacciones || datos.length}</p>
+                <p className="text-[9px] md:text-[10px] text-indigo-500">grupos únicos</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
-              <FaExchangeAlt className="text-2xl text-blue-600" />
+            <div className="flex items-center gap-2 md:gap-3 p-2 md:p-3 bg-blue-50 rounded-lg">
+              <FaExchangeAlt className="text-lg md:text-2xl text-blue-600" />
               <div>
-                <p className="text-xs text-blue-600 font-semibold">Productos</p>
-                <p className="text-xl font-bold text-blue-800">{resumen.total_movimientos || 0}</p>
-                <p className="text-[10px] text-blue-500">items movidos</p>
+                <p className="text-[10px] md:text-xs text-blue-600 font-semibold">Productos</p>
+                <p className="text-base md:text-xl font-bold text-blue-800">{resumen.total_movimientos || 0}</p>
+                <p className="text-[9px] md:text-[10px] text-blue-500">items movidos</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
-              <span className="text-2xl">📥</span>
+            <div className="flex items-center gap-2 md:gap-3 p-2 md:p-3 bg-green-50 rounded-lg">
+              <span className="text-lg md:text-2xl">📥</span>
               <div>
-                <p className="text-xs text-green-600 font-semibold">Entradas</p>
-                <p className="text-xl font-bold text-green-800">{(resumen.total_entradas || 0).toLocaleString()} uds</p>
-                <p className="text-[10px] text-green-500">{resumen.trans_entradas || 0} trans.</p>
+                <p className="text-[10px] md:text-xs text-green-600 font-semibold">Entradas</p>
+                <p className="text-base md:text-xl font-bold text-green-800">{(resumen.total_entradas || 0).toLocaleString()} uds</p>
+                <p className="text-[9px] md:text-[10px] text-green-500">{resumen.trans_entradas || 0} trans.</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-3 bg-red-50 rounded-lg">
-              <span className="text-2xl">📤</span>
+            <div className="flex items-center gap-2 md:gap-3 p-2 md:p-3 bg-red-50 rounded-lg">
+              <span className="text-lg md:text-2xl">📤</span>
               <div>
-                <p className="text-xs text-red-600 font-semibold">Salidas</p>
-                <p className="text-xl font-bold text-red-800">{(resumen.total_salidas || 0).toLocaleString()} uds</p>
-                <p className="text-[10px] text-red-500">{resumen.trans_salidas || 0} trans.</p>
+                <p className="text-[10px] md:text-xs text-red-600 font-semibold">Salidas</p>
+                <p className="text-base md:text-xl font-bold text-red-800">{(resumen.total_salidas || 0).toLocaleString()} uds</p>
+                <p className="text-[9px] md:text-[10px] text-red-500">{resumen.trans_salidas || 0} trans.</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-lg">
-              <FaDatabase className="text-2xl text-purple-600" />
+            <div className="flex items-center gap-2 md:gap-3 p-2 md:p-3 bg-purple-50 rounded-lg col-span-2 sm:col-span-1">
+              <FaDatabase className="text-lg md:text-2xl text-purple-600" />
               <div>
-                <p className="text-xs text-purple-600 font-semibold">Balance</p>
-                <p className={`text-xl font-bold ${(resumen.diferencia || 0) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                <p className="text-[10px] md:text-xs text-purple-600 font-semibold">Balance</p>
+                <p className={`text-base md:text-xl font-bold ${(resumen.diferencia || 0) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
                   {(resumen.diferencia || 0) >= 0 ? '+' : ''}{(resumen.diferencia || 0).toLocaleString()} uds
                 </p>
-                <p className="text-[10px] text-purple-500">neto</p>
+                <p className="text-[9px] md:text-[10px] text-purple-500">neto</p>
               </div>
             </div>
           </div>
-          <p className="text-xs text-gray-500 mt-2 text-center">
+          <p className="text-[10px] md:text-xs text-gray-500 mt-2 text-center">
             💡 Haz clic en una fila para ver los productos de cada transacción
           </p>
         </div>
@@ -654,7 +647,7 @@ const Reportes = () => {
   );
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6 max-w-full overflow-hidden">
       <PageHeader
         icon={FaChartBar}
         title="Reportes"
@@ -663,9 +656,9 @@ const Reportes = () => {
       />
 
       {/* Panel de Filtros */}
-      <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 card-theme-border">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold flex items-center gap-2 text-theme-primary-hover">
+      <div className="bg-white rounded-xl shadow-lg p-4 md:p-6 border-l-4 card-theme-border">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+          <h3 className="text-base md:text-lg font-bold flex items-center gap-2 text-theme-primary-hover">
             <FaFilter />
             Filtros de Reporte
           </h3>
@@ -675,7 +668,7 @@ const Reportes = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-4">
           {/* Tipo de reporte */}
           <div className="space-y-1">
             <label className="text-sm font-semibold text-gray-700">Tipo de reporte</label>
@@ -959,11 +952,11 @@ const Reportes = () => {
         </div>
 
         {/* Botones de acción */}
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-2 md:gap-3">
           <button
             onClick={cargarReporte}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white font-semibold transition-all hover:scale-105 disabled:opacity-60 bg-theme-gradient"
+            className="flex items-center gap-2 px-3 md:px-4 py-2 md:py-2.5 rounded-lg text-white font-semibold text-sm md:text-base transition-all hover:scale-105 disabled:opacity-60 bg-theme-gradient"
           >
             {loading ? (
               <>
@@ -980,14 +973,14 @@ const Reportes = () => {
           <button
             onClick={limpiarFiltros}
             disabled={loading}
-            className="px-4 py-2.5 rounded-lg bg-gray-200 text-gray-700 font-semibold hover:bg-gray-300 transition disabled:opacity-60"
+            className="px-3 md:px-4 py-2 md:py-2.5 rounded-lg bg-gray-200 text-gray-700 font-semibold text-sm md:text-base hover:bg-gray-300 transition disabled:opacity-60"
           >
             Limpiar
           </button>
           <button
             onClick={exportarExcel}
             disabled={loading || exporting || datos.length === 0}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700 transition disabled:opacity-60"
+            className="flex items-center gap-2 px-3 md:px-4 py-2 md:py-2.5 rounded-lg bg-green-600 text-white font-semibold text-sm md:text-base hover:bg-green-700 transition disabled:opacity-60"
           >
             {exporting ? (
               <>
@@ -1004,7 +997,7 @@ const Reportes = () => {
           <button
             onClick={exportarPDF}
             disabled={loading || exporting || datos.length === 0}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white font-semibold hover:opacity-90 transition disabled:opacity-60"
+            className="flex items-center gap-2 px-3 md:px-4 py-2 md:py-2.5 rounded-lg text-white font-semibold text-sm md:text-base hover:opacity-90 transition disabled:opacity-60"
             style={{ background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' }}
           >
             {exporting ? (
@@ -1030,14 +1023,14 @@ const Reportes = () => {
       </div>
 
       {/* Tabla de Datos */}
-      <div className="bg-white rounded-xl shadow-lg overflow-hidden border-l-4 card-theme-border">
-        <div className="p-4 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+      <div className="bg-white rounded-xl shadow-lg overflow-hidden border-l-4 card-theme-border max-w-full">
+        <div className="p-3 md:p-4 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
           <div>
-            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+            <h3 className="text-base md:text-lg font-bold text-gray-800 flex items-center gap-2">
               {getTipoIcon()}
               Reporte de {filtros.tipo.charAt(0).toUpperCase() + filtros.tipo.slice(1)}
             </h3>
-            <p className="text-sm text-gray-500">
+            <p className="text-xs md:text-sm text-gray-500">
               Mostrando {preview.length} de {datos.length} registros
             </p>
           </div>
@@ -1047,7 +1040,7 @@ const Reportes = () => {
         {renderResumen()}
 
         {/* Tabla */}
-        <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+        <div className="w-full overflow-x-auto" style={{ maxWidth: '100%' }}>
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="text-center">
@@ -1062,16 +1055,14 @@ const Reportes = () => {
               <p className="text-gray-500 mt-2">Intenta ajustar los filtros o selecciona otro tipo de reporte</p>
             </div>
           ) : (
-            <table className="w-full min-w-[1000px] text-sm">
+            <table className="w-full text-xs md:text-sm" style={{ minWidth: '800px' }}>
               <thead className="bg-theme-gradient sticky top-0 z-10">
                 <tr>
                   {columnas.map((col) => (
                     <th 
                       key={col.key} 
-                      className="px-4 py-3 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap"
+                      className="px-2 md:px-4 py-2 md:py-3 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap"
                       style={{ 
-                        width: col.width,
-                        minWidth: col.width,
                         textAlign: col.align || 'left'
                       }}
                     >
@@ -1095,7 +1086,7 @@ const Reportes = () => {
                         {columnas.map((col) => (
                           <td 
                             key={col.key} 
-                            className="px-4 py-3 text-gray-800 truncate"
+                            className="px-2 md:px-4 py-2 md:py-3 text-gray-800 truncate max-w-[200px]"
                             style={{ 
                               textAlign: col.align || 'left',
                               width: col.width,
