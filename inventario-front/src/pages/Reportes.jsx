@@ -16,7 +16,10 @@ import {
   FaSpinner,
   FaLock,
   FaChevronDown,
-  FaChevronRight
+  FaChevronRight,
+  FaChevronLeft,
+  FaAngleDoubleLeft,
+  FaAngleDoubleRight
 } from "react-icons/fa";
 import { reportesAPI, centrosAPI, descargarArchivo } from "../services/api";
 import PageHeader from "../components/PageHeader";
@@ -164,13 +167,22 @@ const Reportes = () => {
   
   const [filtros, setFiltros] = useState(baseFilters);
   const [datos, setDatos] = useState([]);
-  const [preview, setPreview] = useState([]);
   const [resumen, setResumen] = useState(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const [centros, setCentros] = useState([]);
   const [expandedRows, setExpandedRows] = useState({});  // Para expandir filas de movimientos
+  
+  // Paginación
+  const [paginaActual, setPaginaActual] = useState(1);
+  const registrosPorPagina = 25;
+  
+  // Calcular datos paginados
+  const totalPaginas = Math.ceil(datos.length / registrosPorPagina);
+  const indiceInicio = (paginaActual - 1) * registrosPorPagina;
+  const indiceFin = indiceInicio + registrosPorPagina;
+  const datosPaginados = datos.slice(indiceInicio, indiceFin);
 
   // Toggle para expandir/colapsar fila de transacción
   const toggleRowExpansion = (referencia) => {
@@ -230,7 +242,7 @@ const Reportes = () => {
     setLoading(true);
     setError("");
     setDatos([]);
-    setPreview([]);
+    setPaginaActual(1);
     setResumen(null);
 
     try {
@@ -255,10 +267,9 @@ const Reportes = () => {
       if (!Array.isArray(datosFull)) {
         console.warn('Datos no es un array:', datosFull);
         setDatos([]);
-        setPreview([]);
       } else {
         setDatos(datosFull);
-        setPreview(datosFull.slice(0, 50));
+        setPaginaActual(1);  // Reset a página 1
       }
       
       setResumen(payload.resumen || null);
@@ -381,7 +392,7 @@ const Reportes = () => {
     setFiltros(baseFilters);
     // Limpiar todos los datos del reporte
     setDatos([]);
-    setPreview([]);
+    setPaginaActual(1);
     setResumen(null);
     setError("");
   };
@@ -1031,7 +1042,7 @@ const Reportes = () => {
               Reporte de {filtros.tipo.charAt(0).toUpperCase() + filtros.tipo.slice(1)}
             </h3>
             <p className="text-xs md:text-sm text-gray-500">
-              Mostrando {preview.length} de {datos.length} registros
+              Mostrando {indiceInicio + 1}-{Math.min(indiceFin, datos.length)} de {datos.length} registros
             </p>
           </div>
         </div>
@@ -1048,7 +1059,7 @@ const Reportes = () => {
                 <p className="text-gray-600 font-semibold">Cargando reporte...</p>
               </div>
             </div>
-          ) : preview.length === 0 ? (
+          ) : datosPaginados.length === 0 ? (
             <div className="text-center py-20">
               <FaChartBar className="mx-auto text-6xl text-gray-300 mb-4" />
               <p className="text-xl font-semibold text-gray-600">No hay datos para mostrar</p>
@@ -1072,9 +1083,10 @@ const Reportes = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {preview.map((fila, idx) => {
+                {datosPaginados.map((fila, idx) => {
                   const isMovimientos = filtros.tipo === 'movimientos';
                   const isExpanded = isMovimientos && expandedRows[fila.referencia];
+                  const globalIdx = indiceInicio + idx;  // Índice global para numeración
                   
                   return (
                     <React.Fragment key={idx}>
@@ -1094,7 +1106,7 @@ const Reportes = () => {
                             }}
                             title={typeof fila[col.key] === 'string' ? fila[col.key] : undefined}
                           >
-                            {renderCellValue(fila, col, idx)}
+                            {renderCellValue(fila, col, globalIdx)}
                           </td>
                         ))}
                       </tr>
@@ -1145,11 +1157,80 @@ const Reportes = () => {
           )}
         </div>
 
-        {datos.length > 50 && (
-          <div className="p-4 bg-gray-50 border-t text-center">
-            <p className="text-sm text-gray-600">
-              Mostrando los primeros 50 registros. Exporta a Excel para ver todos los {datos.length} registros.
+        {/* Controles de Paginación */}
+        {datos.length > 0 && (
+          <div className="p-3 md:p-4 bg-gray-50 border-t flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p className="text-xs md:text-sm text-gray-600">
+              Página {paginaActual} de {totalPaginas} ({datos.length} registros)
             </p>
+            <div className="flex items-center gap-1 md:gap-2">
+              {/* Primera página */}
+              <button
+                onClick={() => setPaginaActual(1)}
+                disabled={paginaActual === 1}
+                className="p-1.5 md:p-2 rounded-lg bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                title="Primera página"
+              >
+                <FaAngleDoubleLeft className="text-sm" />
+              </button>
+              {/* Página anterior */}
+              <button
+                onClick={() => setPaginaActual(prev => Math.max(1, prev - 1))}
+                disabled={paginaActual === 1}
+                className="p-1.5 md:p-2 rounded-lg bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                title="Página anterior"
+              >
+                <FaChevronLeft className="text-sm" />
+              </button>
+              
+              {/* Números de página */}
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
+                  let pageNum;
+                  if (totalPaginas <= 5) {
+                    pageNum = i + 1;
+                  } else if (paginaActual <= 3) {
+                    pageNum = i + 1;
+                  } else if (paginaActual >= totalPaginas - 2) {
+                    pageNum = totalPaginas - 4 + i;
+                  } else {
+                    pageNum = paginaActual - 2 + i;
+                  }
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setPaginaActual(pageNum)}
+                      className={`w-7 h-7 md:w-8 md:h-8 rounded-lg text-xs md:text-sm font-semibold transition ${
+                        paginaActual === pageNum
+                          ? 'bg-theme-gradient text-white'
+                          : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+              
+              {/* Página siguiente */}
+              <button
+                onClick={() => setPaginaActual(prev => Math.min(totalPaginas, prev + 1))}
+                disabled={paginaActual === totalPaginas}
+                className="p-1.5 md:p-2 rounded-lg bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                title="Página siguiente"
+              >
+                <FaChevronRight className="text-sm" />
+              </button>
+              {/* Última página */}
+              <button
+                onClick={() => setPaginaActual(totalPaginas)}
+                disabled={paginaActual === totalPaginas}
+                className="p-1.5 md:p-2 rounded-lg bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                title="Última página"
+              >
+                <FaAngleDoubleRight className="text-sm" />
+              </button>
+            </div>
           </div>
         )}
       </div>
