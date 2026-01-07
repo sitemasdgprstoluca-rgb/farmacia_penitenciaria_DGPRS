@@ -9071,18 +9071,18 @@ def reporte_requisiciones(request):
             response['Content-Disposition'] = f"attachment; filename=Requisiciones_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
             return response
         
-        # Generar Excel
+        # Generar Excel con detalles de productos
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = 'Requisiciones'
         
-        ws.merge_cells('A1:G1')
+        ws.merge_cells('A1:J1')
         titulo_cell = ws['A1']
-        titulo_cell.value = 'REPORTE DE REQUISICIONES'
+        titulo_cell.value = 'REPORTE DE REQUISICIONES CON DETALLE'
         titulo_cell.font = Font(bold=True, size=14, color='632842')
         titulo_cell.alignment = Alignment(horizontal='center', vertical='center')
         
-        ws.merge_cells('A2:G2')
+        ws.merge_cells('A2:J2')
         fecha_cell = ws['A2']
         fecha_cell.value = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")}'
         fecha_cell.font = Font(size=10, italic=True)
@@ -9090,29 +9090,69 @@ def reporte_requisiciones(request):
         
         ws.append([])
         
-        headers = ['#', 'Folio', 'Centro', 'Fecha', 'Estado', 'Solicitante', 'Productos']
+        # Encabezados con columnas de detalle de producto
+        headers = ['#', 'Folio', 'Centro', 'Fecha', 'Estado', 'Solicitante', 'Clave Producto', 'Producto', 'Cant. Solicitada', 'Cant. Autorizada']
         ws.append(headers)
         
         header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
-        header_font = Font(bold=True, color='FFFFFF', size=11)
+        header_font = Font(bold=True, color='FFFFFF', size=10)
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
         
         for cell in ws[4]:
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = Alignment(horizontal='center', vertical='center')
+            cell.border = thin_border
         
+        row_num = 5
         for idx, item in enumerate(datos, 1):
-            ws.append([
-                idx,
-                item['folio'],
-                item['centro'],
-                item['fecha_solicitud'][:10] if item['fecha_solicitud'] else 'N/A',
-                item['estado'],
-                item['solicitante'],
-                item['total_productos']
-            ])
+            productos = item.get('productos', [])
+            
+            if not productos:
+                # Requisición sin productos
+                ws.append([
+                    idx,
+                    item['folio'],
+                    item['centro'],
+                    item['fecha_solicitud'][:10] if item['fecha_solicitud'] else 'N/A',
+                    item['estado'],
+                    item['solicitante'],
+                    '-',
+                    'Sin productos',
+                    0,
+                    0
+                ])
+                for cell in ws[row_num]:
+                    cell.border = thin_border
+                row_num += 1
+            else:
+                # Una fila por cada producto
+                first_row = True
+                for prod in productos:
+                    ws.append([
+                        idx if first_row else '',
+                        item['folio'] if first_row else '',
+                        item['centro'] if first_row else '',
+                        item['fecha_solicitud'][:10] if first_row and item['fecha_solicitud'] else ('' if not first_row else 'N/A'),
+                        item['estado'] if first_row else '',
+                        item['solicitante'] if first_row else '',
+                        prod.get('clave', 'N/A'),
+                        prod.get('nombre', 'N/A'),
+                        prod.get('cantidad_solicitada', 0),
+                        prod.get('cantidad_autorizada', 0)
+                    ])
+                    for cell in ws[row_num]:
+                        cell.border = thin_border
+                    first_row = False
+                    row_num += 1
         
-        for col, width in zip(['A','B','C','D','E','F','G'], [6,18,25,12,15,25,10]):
+        # Ajustar anchos de columna
+        for col, width in zip(['A','B','C','D','E','F','G','H','I','J'], [5,20,30,12,12,30,15,40,15,15]):
             ws.column_dimensions[col].width = width
         
         response = HttpResponse(
