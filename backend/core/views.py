@@ -1677,9 +1677,11 @@ class ReportesViewSet(viewsets.ViewSet):
     @method_decorator(cache_page(60 * 10))  # Cache 10 minutos
     @action(detail=False, methods=['get'])
     def requisiciones(self, request):
-        """GET /api/reportes/requisiciones/?formato=json|pdf"""
-        from django.http import FileResponse
+        """GET /api/reportes/requisiciones/?formato=json|pdf|excel"""
+        from django.http import FileResponse, HttpResponse
         from core.utils.pdf_reports import generar_reporte_requisiciones
+        import openpyxl
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
         
         formato = request.query_params.get('formato', 'json')
         estado = request.query_params.get('estado')
@@ -1688,7 +1690,7 @@ class ReportesViewSet(viewsets.ViewSet):
 
         queryset = Requisicion.objects.select_related(
             'centro_origen', 'centro_destino', 'solicitante', 'autorizador'
-        ).prefetch_related('detalles')
+        ).prefetch_related('detalles', 'detalles__producto')
 
         filtros = {}
         if estado:
@@ -1710,14 +1712,28 @@ class ReportesViewSet(viewsets.ViewSet):
                 centro_nombre = req.centro_destino.nombre
             elif req.centro_origen:
                 centro_nombre = req.centro_origen.nombre
+            
+            # Incluir productos/detalles para PDF y Excel
+            productos = []
+            for detalle in req.detalles.all():
+                productos.append({
+                    'clave': detalle.producto.clave if detalle.producto else 'N/A',
+                    'nombre': detalle.producto.descripcion if detalle.producto else 'N/A',
+                    'cantidad_solicitada': detalle.cantidad_solicitada,
+                    'cantidad_autorizada': detalle.cantidad_autorizada or 0,
+                    'cantidad_surtida': detalle.cantidad_surtida or 0,
+                })
+            
             datos.append({
                 'id': req.id,
                 'folio': req.folio,
+                'centro': centro_nombre,
                 'centro_nombre': centro_nombre,
                 'estado': req.estado,
                 'fecha_solicitud': req.fecha_solicitud.isoformat(),
-                'total_items': req.detalles.count(),
-                'usuario_solicita': req.solicitante.username if req.solicitante else '-'
+                'total_items': len(productos),
+                'usuario_solicita': req.solicitante.get_full_name() if req.solicitante else (req.solicitante.username if req.solicitante else '-'),
+                'productos': productos,
             })
 
         if formato == 'pdf':
@@ -1728,6 +1744,100 @@ class ReportesViewSet(viewsets.ViewSet):
                 as_attachment=True,
                 filename=f'reporte_requisiciones_{timezone.now().strftime("%Y%m%d")}.pdf'
             )
+        
+        if formato == 'excel':
+            # Generar Excel con detalles de productos
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = 'Requisiciones'
+            
+            # Estilos
+            header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
+            header_font = Font(bold=True, color='FFFFFF', size=10)
+            subheader_fill = PatternFill(start_color='9F2241', end_color='9F2241', fill_type='solid')
+            subheader_font = Font(bold=True, color='FFFFFF', size=9)
+            border = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
+            
+            # Título
+            ws.merge_cells('A1:H1')
+            ws['A1'] = 'REPORTE DE REQUISICIONES CON DETALLE'
+            ws['A1'].font = Font(bold=True, size=14, color='632842')
+            ws['A1'].alignment = Alignment(horizontal='center')
+            
+            ws.merge_cells('A2:H2')
+            ws['A2'] = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")}'
+            ws['A2'].font = Font(italic=True, size=10)
+            ws['A2'].alignment = Alignment(horizontal='center')
+            
+            # Encabezados principales
+            row = 4
+            headers = ['Folio', 'Centro', 'Estado', 'Fecha', 'Solicitante', 'Clave Producto', 'Producto', 'Cant. Solicitada', 'Cant. Autorizada', 'Cant. Surtida']
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=row, column=col, value=header)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.border = border
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+            
+            row += 1
+            
+            # Datos con detalles
+            for req in datos:
+                productos = req.get('productos', [])
+                if not productos:
+                    # Requisición sin productos
+                    ws.cell(row=row, column=1, value=req['folio']).border = border
+                    ws.cell(row=row, column=2, value=req['centro_nombre']).border = border
+                    ws.cell(row=row, column=3, value=req['estado'].upper()).border = border
+                    ws.cell(row=row, column=4, value=req['fecha_solicitud'][:10]).border = border
+                    ws.cell(row=row, column=5, value=req['usuario_solicita']).border = border
+                    ws.cell(row=row, column=6, value='-').border = border
+                    ws.cell(row=row, column=7, value='Sin productos').border = border
+                    ws.cell(row=row, column=8, value=0).border = border
+                    ws.cell(row=row, column=9, value=0).border = border
+                    ws.cell(row=row, column=10, value=0).border = border
+                    row += 1
+                else:
+                    # Primera fila con datos de requisición
+                    first_row = True
+                    for prod in productos:
+                        ws.cell(row=row, column=1, value=req['folio'] if first_row else '').border = border
+                        ws.cell(row=row, column=2, value=req['centro_nombre'] if first_row else '').border = border
+                        ws.cell(row=row, column=3, value=req['estado'].upper() if first_row else '').border = border
+                        ws.cell(row=row, column=4, value=req['fecha_solicitud'][:10] if first_row else '').border = border
+                        ws.cell(row=row, column=5, value=req['usuario_solicita'] if first_row else '').border = border
+                        ws.cell(row=row, column=6, value=prod['clave']).border = border
+                        ws.cell(row=row, column=7, value=prod['nombre']).border = border
+                        ws.cell(row=row, column=8, value=prod['cantidad_solicitada']).border = border
+                        ws.cell(row=row, column=9, value=prod['cantidad_autorizada']).border = border
+                        ws.cell(row=row, column=10, value=prod['cantidad_surtida']).border = border
+                        first_row = False
+                        row += 1
+            
+            # Ajustar anchos
+            ws.column_dimensions['A'].width = 20
+            ws.column_dimensions['B'].width = 35
+            ws.column_dimensions['C'].width = 12
+            ws.column_dimensions['D'].width = 12
+            ws.column_dimensions['E'].width = 30
+            ws.column_dimensions['F'].width = 15
+            ws.column_dimensions['G'].width = 40
+            ws.column_dimensions['H'].width = 15
+            ws.column_dimensions['I'].width = 15
+            ws.column_dimensions['J'].width = 15
+            
+            # Respuesta
+            response = HttpResponse(
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = f'attachment; filename="requisiciones_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx"'
+            wb.save(response)
+            return response
 
         return Response({
             'reporte': 'requisiciones',
