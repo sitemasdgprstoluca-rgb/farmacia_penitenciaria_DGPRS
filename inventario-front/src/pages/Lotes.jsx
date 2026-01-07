@@ -1186,6 +1186,9 @@ const handleImportar = async (e) => {
                     <td className="px-3 py-2">
                       <span className={`px-2 py-0.5 text-xs rounded-full ${getAlertaClass(lote.alerta_caducidad)}`}>
                         {getAlertaIcon(lote.alerta_caducidad)}
+                        {lote.alerta_caducidad === 'vencido' ? 'Vencido' :
+                         lote.alerta_caducidad === 'critico' ? '<90d' :
+                         lote.alerta_caducidad === 'proximo' ? '<180d' : 'OK'}
                       </span>
                     </td>
                     {/* Distribución - muestra en qué centros está el lote */}

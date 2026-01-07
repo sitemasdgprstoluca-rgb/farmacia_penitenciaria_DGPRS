@@ -3,10 +3,30 @@ Módulo para salida masiva de inventario - Solo Farmacia
 Permite agregar múltiples productos/lotes a una lista y procesarlos de una vez
 con generación de hoja de entrega para firma.
 
-ISS-FIX FLUJO CORRECTO:
-1. Crear salida → NO descuenta stock, marca [PENDIENTE]
-2. Confirmar entrega → Descuenta stock, marca [CONFIRMADO]
-3. Cancelar → Solo elimina movimientos PENDIENTES (no hay stock que devolver)
+FLUJO DE TRANSFERENCIAS A CENTROS PENITENCIARIOS:
+================================================
+
+FASE 1 - Centros SIN acceso al sistema (actual):
+    1. Farmacia hace salida masiva con auto_confirmar=True (default)
+    2. Stock se descuenta INMEDIATAMENTE del lote de Farmacia Central
+    3. Se CREA lote espejo en centro destino con la cantidad transferida
+    4. Se genera hoja de entrega para firma física del receptor
+    5. Movimientos quedan: SALIDA en Central + ENTRADA en Centro
+
+FASE 2 - Centros CON acceso al sistema (futuro):
+    1. El centro verá su lote con el stock que DEBERÍA tener según recibido
+    2. Si ya consumieron medicamentos, deberán registrar SALIDAS para justificar:
+       - Salida por receta (dispensación a pacientes)
+       - Consumo interno
+       - Merma/caducidad
+    3. Si hay diferencias inexplicables → AJUSTE con justificación obligatoria
+    4. Solo con inventario "limpio" podrán crear nuevas requisiciones
+
+AUDITORÍA:
+    - Todo movimiento tiene usuario, fecha y motivo
+    - Ajustes negativos requieren justificación ≥10 caracteres (ISS-003)
+    - Trazabilidad completa: Farmacia Central → Centro → Consumo final
+    - Hoja de entrega firmada como respaldo físico
 
 NOTA: Las salidas masivas desde Farmacia Central (centro_id=NULL en lotes)
 hacia centros penitenciarios se registran como tipo 'salida' con subtipo_salida='transferencia'
@@ -34,13 +54,17 @@ def salida_masiva(request):
     Procesa una salida masiva de inventario para un centro destino.
     Solo disponible para usuarios con rol Farmacia.
     
-    ISS-FIX FLUJO CORRECTO: NO descuenta stock al crear, solo registra movimientos
-    con estado [PENDIENTE]. El stock se descuenta al confirmar la entrega.
+    FLUJO SIMPLIFICADO (centros aún sin acceso al sistema):
+    - Por defecto auto_confirmar=true → Stock se descuenta inmediatamente
+    - Se crea lote espejo en centro destino con movimiento de ENTRADA
+    - Se genera hoja de entrega para firma física
+    - Historial completo queda registrado
     
     Body esperado:
     {
         "centro_destino_id": 1,
         "observaciones": "Entrega programada",
+        "auto_confirmar": true,  // Default: true - descuenta stock inmediatamente
         "items": [
             {"lote_id": 123, "cantidad": 10},
             {"lote_id": 456, "cantidad": 5},
@@ -57,6 +81,8 @@ def salida_masiva(request):
         centro_destino_id = request.data.get('centro_destino_id')
         observaciones = request.data.get('observaciones', '')
         items = request.data.get('items', [])
+        # Por defecto auto-confirmar (centros no tienen acceso aún)
+        auto_confirmar = request.data.get('auto_confirmar', True)
         
         # Validaciones básicas
         if not centro_destino_id:
@@ -132,6 +158,7 @@ def salida_masiva(request):
         grupo_salida = f'SAL-{timestamp}-{centro_destino.id}'
         
         movimientos_creados = []
+        estado_tag = '[CONFIRMADO]' if auto_confirmar else '[PENDIENTE]'
         
         with transaction.atomic():
             for item in items_validos:
@@ -141,24 +168,77 @@ def salida_masiva(request):
                 # Bloquear lote para verificación atómica
                 lote_locked = Lote.objects.select_for_update().get(pk=lote.pk)
                 
-                # Re-validar stock con reservas
-                stock_reservado = _calcular_stock_reservado(lote_locked)
-                stock_disponible = lote_locked.cantidad_actual - stock_reservado
+                # Re-validar stock disponible
+                if not auto_confirmar:
+                    # Si no es auto-confirmar, considerar reservas pendientes
+                    stock_reservado = _calcular_stock_reservado(lote_locked)
+                    stock_disponible = lote_locked.cantidad_actual - stock_reservado
+                else:
+                    # Si es auto-confirmar, solo validar stock real
+                    stock_disponible = lote_locked.cantidad_actual
                 
                 if stock_disponible < cantidad:
                     raise Exception(
                         f'Stock insuficiente en lote {lote_locked.numero_lote}. '
-                        f'Disponible real: {stock_disponible}, Solicitado: {cantidad}'
+                        f'Disponible: {stock_disponible}, Solicitado: {cantidad}'
                     )
                 
-                stock_actual = lote_locked.cantidad_actual
+                stock_anterior = lote_locked.cantidad_actual
                 
-                # ISS-FIX FLUJO CORRECTO: NO actualizar stock aquí
-                # El stock se descuenta al CONFIRMAR la entrega
+                # Si auto_confirmar: descontar stock inmediatamente
+                if auto_confirmar:
+                    nuevo_stock = stock_anterior - cantidad
+                    lote_locked.cantidad_actual = nuevo_stock
+                    
+                    # Marcar como inactivo si se agotó el stock
+                    if nuevo_stock == 0:
+                        lote_locked.activo = False
+                        lote_locked.save(update_fields=['cantidad_actual', 'activo', 'updated_at'])
+                    else:
+                        lote_locked.save(update_fields=['cantidad_actual', 'updated_at'])
+                    
+                    # ============= Crear lote en centro destino =============
+                    lote_destino, lote_creado = Lote.objects.get_or_create(
+                        numero_lote=lote_locked.numero_lote,
+                        producto=lote_locked.producto,
+                        centro=centro_destino,
+                        defaults={
+                            'cantidad_inicial': cantidad,
+                            'cantidad_actual': cantidad,
+                            'fecha_caducidad': lote_locked.fecha_caducidad,
+                            'fecha_fabricacion': lote_locked.fecha_fabricacion,
+                            'precio_unitario': lote_locked.precio_unitario,
+                            'marca': lote_locked.marca,
+                            'numero_contrato': lote_locked.numero_contrato,
+                            'ubicacion': lote_locked.ubicacion,
+                            'activo': True
+                        }
+                    )
+                    
+                    if not lote_creado:
+                        # Lote ya existe, sumar cantidad
+                        lote_destino.cantidad_actual += cantidad
+                        lote_destino.cantidad_inicial += cantidad
+                        lote_destino.activo = True
+                        lote_destino.save(update_fields=['cantidad_actual', 'cantidad_inicial', 'activo', 'updated_at'])
+                    
+                    # Crear movimiento de ENTRADA en centro destino
+                    motivo_entrada = f'[CONFIRMADO][{grupo_salida}] Entrada por transferencia desde Almacén Central'
+                    Movimiento.objects.create(
+                        tipo='entrada',
+                        producto=lote_destino.producto,
+                        lote=lote_destino,
+                        centro_origen=None,  # Viene de Farmacia Central
+                        centro_destino=centro_destino,
+                        cantidad=cantidad,
+                        motivo=motivo_entrada,
+                        usuario=request.user,
+                        subtipo_salida=None,
+                        referencia=grupo_salida
+                    )
                 
-                # Crear movimiento de SALIDA PENDIENTE desde Farmacia Central
-                # Nota: centro_origen=NULL indica Farmacia Central
-                motivo_completo = f'[PENDIENTE][{grupo_salida}] {observaciones}'.strip()
+                # Crear movimiento de SALIDA desde Farmacia Central
+                motivo_completo = f'{estado_tag}[{grupo_salida}] {observaciones}'.strip()
                 
                 movimiento = Movimiento(
                     tipo='salida',
@@ -166,14 +246,13 @@ def salida_masiva(request):
                     lote=lote_locked,
                     centro_origen=None,  # NULL = Farmacia Central
                     centro_destino=centro_destino,
-                    cantidad=cantidad,  # Cantidad positiva, se registra como salida
+                    cantidad=cantidad,
                     motivo=motivo_completo,
                     usuario=request.user,
                     subtipo_salida='transferencia',
                     referencia=grupo_salida
                 )
-                # Bypass validación de stock ya que no estamos modificando el lote
-                movimiento._stock_pre_movimiento = stock_actual
+                movimiento._stock_pre_movimiento = stock_anterior
                 movimiento.save()
                 
                 movimientos_creados.append({
@@ -183,18 +262,22 @@ def salida_masiva(request):
                     'producto_clave': lote_locked.producto.clave,
                     'producto_nombre': lote_locked.producto.nombre,
                     'cantidad': cantidad,
-                    'stock_actual': stock_actual  # Stock NO se modifica aún
+                    'stock_anterior': stock_anterior,
+                    'stock_actual': lote_locked.cantidad_actual,
+                    'confirmado': auto_confirmar
                 })
         
+        estado_mensaje = 'CONFIRMADA (stock descontado)' if auto_confirmar else 'PENDIENTE (requiere confirmación)'
         logger.info(
-            f'Salida masiva {grupo_salida} CREADA (PENDIENTE) por {request.user.username}: '
+            f'Salida masiva {grupo_salida} {estado_mensaje} por {request.user.username}: '
             f'{len(movimientos_creados)} items a centro {centro_destino.nombre}'
         )
         
         return Response({
             'success': True,
-            'message': f'Salida procesada exitosamente. {len(movimientos_creados)} productos entregados.',
+            'message': f'Salida procesada exitosamente. {len(movimientos_creados)} productos {"entregados" if auto_confirmar else "pendientes de confirmar"}.',
             'grupo_salida': grupo_salida,
+            'confirmado': auto_confirmar,
             'centro_destino': {
                 'id': centro_destino.id,
                 'nombre': centro_destino.nombre

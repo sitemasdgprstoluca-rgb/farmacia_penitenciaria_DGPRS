@@ -408,7 +408,15 @@ class LoteViewSet(viewsets.ModelViewSet):
         from collections import defaultdict
         
         # Obtener lotes activos con filtro opcional de centro
-        queryset = Lote.objects.select_related('producto', 'centro').filter(
+        # Optimización: usar only() para traer solo campos necesarios
+        queryset = Lote.objects.select_related('producto', 'centro').only(
+            'id', 'numero_lote', 'fecha_caducidad', 'fecha_fabricacion',
+            'precio_unitario', 'marca', 'numero_contrato', 'ubicacion',
+            'cantidad_inicial', 'cantidad_actual', 'activo',
+            'producto__id', 'producto__clave', 'producto__nombre', 
+            'producto__descripcion', 'producto__presentacion', 'producto__unidad_medida',
+            'centro__id', 'centro__nombre'
+        ).filter(
             activo=True,
             cantidad_actual__gt=0
         )
@@ -439,6 +447,25 @@ class LoteViewSet(viewsets.ModelViewSet):
         producto = request.query_params.get('producto')
         if producto:
             queryset = queryset.filter(producto_id=producto)
+        
+        # Filtrar por estado de caducidad (mismo que en get_queryset)
+        caducidad = request.query_params.get('caducidad')
+        if caducidad:
+            hoy = date.today()
+            if caducidad == 'vencido':
+                queryset = queryset.filter(fecha_caducidad__lt=hoy)
+            elif caducidad == 'critico':
+                queryset = queryset.filter(
+                    fecha_caducidad__gte=hoy,
+                    fecha_caducidad__lt=hoy + timedelta(days=90)
+                )
+            elif caducidad == 'proximo':
+                queryset = queryset.filter(
+                    fecha_caducidad__gte=hoy + timedelta(days=90),
+                    fecha_caducidad__lt=hoy + timedelta(days=180)
+                )
+            elif caducidad == 'normal':
+                queryset = queryset.filter(fecha_caducidad__gte=hoy + timedelta(days=180))
         
         queryset = queryset.order_by('producto__clave', 'numero_lote', 'fecha_caducidad')
         
