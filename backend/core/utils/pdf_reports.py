@@ -589,6 +589,122 @@ def generar_reporte_inventario(productos_data, formato='pdf', filtros=None):
     return buffer
 
 
+def generar_reporte_inventario_lotes(lotes_data, filtros=None):
+    """
+    Genera reporte PDF de inventario con DETALLE POR LOTES incluyendo marca/laboratorio
+    
+    Args:
+        lotes_data: Lista de diccionarios con datos de lotes individuales
+        filtros: Diccionario opcional con filtros aplicados
+    
+    Returns:
+        BytesIO con el PDF generado
+    """
+    buffer = BytesIO()
+    colores_tema = _obtener_colores_tema()
+    
+    # Usar fondo del tema o institucional
+    fondo_path = colores_tema.get('fondo_reportes_path')
+    if not fondo_path:
+        fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
+    
+    doc = _crear_doc_con_fondo(buffer, fondo_path)
+    
+    elements = []
+    styles = _obtener_estilos_institucionales(colores_tema)
+    
+    # Encabezado con logo
+    _crear_encabezado_con_logo(elements, styles, "INVENTARIO - DETALLE POR LOTES", colores_tema)
+    
+    # Título
+    titulo = Paragraph("REPORTE DE INVENTARIO - DETALLE POR LOTES", styles['TituloReporte'])
+    elements.append(titulo)
+    elements.append(Spacer(1, 0.15*inch))
+    
+    # Información del reporte
+    info_text = f"<b>Fecha de generación:</b> {filtros.get('fecha_generacion', 'N/A')}<br/>"
+    info_text += f"<b>Total de lotes:</b> {filtros.get('total_lotes', len(lotes_data))}"
+    info_text += f" | <b>Productos únicos:</b> {filtros.get('total_productos', 'N/A')}"
+    
+    if filtros and filtros.get('centro'):
+        info_text += f"<br/><b>Centro:</b> {filtros['centro']}"
+    
+    fecha_info = Paragraph(info_text, styles['Normal'])
+    elements.append(fecha_info)
+    elements.append(Spacer(1, 0.15*inch))
+    
+    # Estilo para celdas compactas
+    estilo_celda = ParagraphStyle(
+        'CeldaLote',
+        parent=styles['Normal'],
+        fontSize=6,
+        leading=7,
+        wordWrap='CJK',
+    )
+    
+    # Tabla de datos por lotes
+    data = [['Clave', 'Producto', 'Lote', 'Caducidad', 'Stock', 'Precio', 'Marca/Lab.']]
+    
+    total_unidades = 0
+    for lote in lotes_data:
+        producto_text = str(lote.get('producto', ''))[:35]
+        producto_paragraph = Paragraph(producto_text, estilo_celda)
+        marca_text = str(lote.get('marca', '-'))[:20]
+        marca_paragraph = Paragraph(marca_text, estilo_celda)
+        
+        cantidad = lote.get('cantidad', 0)
+        total_unidades += cantidad
+        
+        data.append([
+            str(lote.get('clave', '')),
+            producto_paragraph,
+            str(lote.get('numero_lote', ''))[:12],
+            str(lote.get('fecha_caducidad', '-')),
+            str(cantidad),
+            f"${lote.get('precio_unitario', 0):.2f}",
+            marca_paragraph
+        ])
+    
+    # Ajustar anchos (total ~7 pulgadas)
+    col_widths = [0.6*inch, 2.2*inch, 0.9*inch, 0.7*inch, 0.5*inch, 0.7*inch, 1.4*inch]
+    table = _crear_tabla_institucional(data, col_widths)
+    table.setStyle(TableStyle([
+        ('ALIGN', (4, 1), (5, -1), 'RIGHT'),  # Stock y Precio alineados a la derecha
+        ('FONTSIZE', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(table)
+    elements.append(Spacer(1, 0.2*inch))
+    
+    # Resumen
+    resumen_titulo = Paragraph("RESUMEN", styles['SeccionTitulo'])
+    elements.append(resumen_titulo)
+    
+    resumen_data = [
+        ['Total de lotes', str(len(lotes_data))],
+        ['Total de unidades', f"{total_unidades:,}"],
+        ['Productos únicos', str(filtros.get('total_productos', 'N/A'))],
+    ]
+    
+    resumen_table = Table(resumen_data, colWidths=[2*inch, 1.5*inch])
+    resumen_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+    ]))
+    elements.append(resumen_table)
+    
+    # Construir el documento con fondo
+    _build_con_fondo(doc, elements)
+    
+    buffer.seek(0)
+    logger.info(f"Reporte de inventario por lotes PDF generado: {len(lotes_data)} lotes")
+    return buffer
+
+
 def generar_reporte_caducidades(lotes_data, dias=30, filtros=None):
     """
     Genera reporte PDF de lotes próximos a caducar con fondo oficial

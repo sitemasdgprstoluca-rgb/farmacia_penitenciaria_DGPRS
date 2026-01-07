@@ -8299,91 +8299,178 @@ def reporte_inventario(request):
                 'resumen': resumen
             })
         
-        # Formato PDF
+        # Formato PDF - DETALLE POR LOTES
         if formato == 'pdf':
-            from core.utils.pdf_reports import generar_reporte_inventario
+            from core.utils.pdf_reports import generar_reporte_inventario_lotes
+            from inventario.models import Lote
             
-            # Preparar datos para el generador PDF
-            productos_data = []
-            for item in datos:
-                productos_data.append({
-                    'clave': item['clave'],
-                    'descripcion': item['descripcion'],
-                    'unidad_medida': item['unidad'],
-                    'stock_minimo': item['stock_minimo'],
-                    'stock_actual': item['stock_actual'],
-                    'lotes_activos': item['lotes_activos'],
-                    'nivel': item['nivel'],
-                    'precio_unitario': item['precio_unitario']
+            # Obtener lotes activos con información completa
+            lotes_query = Lote.objects.select_related('producto', 'centro').filter(
+                activo=True,
+                cantidad_actual__gt=0
+            ).order_by('producto__clave', 'fecha_caducidad')
+            
+            # Aplicar filtro de centro
+            if filtrar_por_centro:
+                if user_centro:
+                    lotes_query = lotes_query.filter(centro=user_centro)
+                else:
+                    lotes_query = lotes_query.filter(centro__isnull=True)
+            
+            # Preparar datos de lotes para el generador PDF
+            lotes_data = []
+            for lote in lotes_query:
+                producto = lote.producto
+                lotes_data.append({
+                    'clave': producto.clave,
+                    'producto': producto.nombre or producto.descripcion or '',
+                    'presentacion': producto.presentacion or '-',
+                    'numero_lote': lote.numero_lote,
+                    'fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else '-',
+                    'cantidad': lote.cantidad_actual,
+                    'precio_unitario': float(lote.precio_unitario or 0),
+                    'ubicacion': lote.ubicacion or '-',
+                    'marca': lote.marca or '-',
                 })
             
             filtros = {
-                'fecha_generacion': timezone.now().strftime('%d/%m/%Y %H:%M')
+                'fecha_generacion': timezone.now().strftime('%d/%m/%Y %H:%M'),
+                'total_lotes': len(lotes_data),
+                'total_productos': resumen['total_productos'],
             }
             if filtrar_por_centro and user_centro:
                 filtros['centro'] = user_centro.nombre
             
-            pdf_buffer = generar_reporte_inventario(productos_data, formato='pdf', filtros=filtros)
+            pdf_buffer = generar_reporte_inventario_lotes(lotes_data, filtros=filtros)
             
             response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
-            response['Content-Disposition'] = f"attachment; filename=Inventario_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            response['Content-Disposition'] = f"attachment; filename=Inventario_Lotes_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
             return response
         
-        # Formato Excel
+        # Formato Excel - DETALLE POR LOTES
+        from openpyxl.styles import Border, Side
+        
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws.title = 'Inventario'
+        ws.title = 'Inventario por Lotes'
 
-        ws.merge_cells('A1:I1')
+        ws.merge_cells('A1:K1')
         titulo = ws['A1']
-        titulo.value = 'REPORTE DE INVENTARIO ACTUAL'
+        titulo.value = 'REPORTE DE INVENTARIO - DETALLE POR LOTES'
         titulo.font = Font(bold=True, size=14, color='632842')
         titulo.alignment = Alignment(horizontal='center', vertical='center')
 
-        ws.merge_cells('A2:I2')
+        ws.merge_cells('A2:K2')
         subtitulo = ws['A2']
         subtitulo.value = f"Generado el {timezone.now().strftime('%d/%m/%Y %H:%M:%S')}"
         subtitulo.alignment = Alignment(horizontal='center')
         subtitulo.font = Font(size=10, italic=True)
 
         ws.append([])
-        headers = ['#', 'Clave', 'Descripcin', 'Unidad', 'Stock Mn.', 'Stock Actual', 'Lotes', 'Nivel', 'Precio']
+        headers = ['#', 'Clave', 'Producto', 'Presentación', 'Lote', 'Caducidad', 'Stock', 'Precio Unit.', 'Nivel', 'Ubicación', 'Marca / Laboratorio']
         ws.append(headers)
 
         header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
-        header_font = Font(bold=True, color='FFFFFF', size=11)
+        header_font = Font(bold=True, color='FFFFFF', size=10)
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
         for cell in ws[4]:
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = Alignment(horizontal='center', vertical='center')
+            cell.border = thin_border
 
-        for item in datos:
+        # Obtener lotes activos con información completa
+        from inventario.models import Lote
+        lotes_query = Lote.objects.select_related('producto', 'centro').filter(
+            activo=True,
+            cantidad_actual__gt=0
+        ).order_by('producto__clave', 'fecha_caducidad')
+        
+        # Aplicar filtro de centro
+        if filtrar_por_centro:
+            if user_centro:
+                lotes_query = lotes_query.filter(centro=user_centro)
+            else:
+                lotes_query = lotes_query.filter(centro__isnull=True)
+        
+        row_num = 5
+        total_lotes = 0
+        total_unidades = 0
+        
+        for idx, lote in enumerate(lotes_query, 1):
+            producto = lote.producto
+            
+            # Determinar nivel de stock
+            stock_producto = Lote.objects.filter(
+                producto=producto, activo=True
+            )
+            if filtrar_por_centro:
+                if user_centro:
+                    stock_producto = stock_producto.filter(centro=user_centro)
+                else:
+                    stock_producto = stock_producto.filter(centro__isnull=True)
+            stock_total_producto = stock_producto.aggregate(total=Sum('cantidad_actual'))['total'] or 0
+            
+            nivel = 'ALTO'
+            if stock_total_producto == 0:
+                nivel = 'SIN STOCK'
+            elif stock_total_producto < producto.stock_minimo:
+                nivel = 'BAJO'
+            elif stock_total_producto < producto.stock_minimo * 1.5:
+                nivel = 'NORMAL'
+            
             ws.append([
-                item['#'],
-                item['clave'],
-                item['descripcion'][:70],
-                item['unidad'],
-                item['stock_minimo'],
-                item['stock_actual'],
-                item['lotes_activos'],
-                item['nivel'].upper(),
-                item['precio_unitario']
+                idx,
+                producto.clave,
+                (producto.nombre or producto.descripcion or '')[:50],
+                producto.presentacion or '-',
+                lote.numero_lote,
+                lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else '-',
+                lote.cantidad_actual,
+                float(lote.precio_unitario or 0),
+                nivel,
+                lote.ubicacion or '-',
+                lote.marca or '-'
             ])
+            
+            for cell in ws[row_num]:
+                cell.border = thin_border
+            
+            # Colorear nivel
+            nivel_cell = ws.cell(row=row_num, column=9)
+            if nivel == 'ALTO':
+                nivel_cell.fill = PatternFill(start_color='D4EDDA', end_color='D4EDDA', fill_type='solid')
+                nivel_cell.font = Font(color='155724', bold=True)
+            elif nivel == 'BAJO':
+                nivel_cell.fill = PatternFill(start_color='FFF3CD', end_color='FFF3CD', fill_type='solid')
+                nivel_cell.font = Font(color='856404', bold=True)
+            elif nivel == 'SIN STOCK':
+                nivel_cell.fill = PatternFill(start_color='F8D7DA', end_color='F8D7DA', fill_type='solid')
+                nivel_cell.font = Font(color='721C24', bold=True)
+            
+            row_num += 1
+            total_lotes += 1
+            total_unidades += lote.cantidad_actual
 
+        # Resumen
         ws.append([])
         resumen_row = ws.max_row + 1
-        ws[f'B{resumen_row}'] = 'Total de Productos'
-        ws[f'C{resumen_row}'] = resumen['total_productos']
-        ws[f'B{resumen_row + 1}'] = 'Stock Total'
-        ws[f'C{resumen_row + 1}'] = resumen['total_stock']
-        ws[f'B{resumen_row + 2}'] = 'Productos bajo mnimo'
-        ws[f'C{resumen_row + 2}'] = resumen['productos_bajo_minimo']
+        ws[f'A{resumen_row}'] = 'RESUMEN:'
+        ws[f'A{resumen_row}'].font = Font(bold=True, size=11)
+        ws[f'B{resumen_row}'] = f'Total Lotes: {total_lotes}'
+        ws[f'D{resumen_row}'] = f'Total Unidades: {total_unidades:,}'
+        ws[f'F{resumen_row}'] = f'Productos únicos: {resumen["total_productos"]}'
 
-        for col, width in zip(['A','B','C','D','E','F','G','H','I'], [8,14,45,10,14,14,10,12,12]):
+        for col, width in zip(['A','B','C','D','E','F','G','H','I','J','K'], [5,10,35,25,15,12,10,12,10,15,20]):
             ws.column_dimensions[col].width = width
 
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        response['Content-Disposition'] = f"attachment; filename=Inventario_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        response['Content-Disposition'] = f"attachment; filename=Inventario_Lotes_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         wb.save(response)
         return response
 
