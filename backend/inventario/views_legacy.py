@@ -7742,9 +7742,12 @@ def dashboard_graficas(request):
         stock_por_centro = []
         
         if not filtrar_por_centro:
-            # Farmacia Central (lotes sin centro asignado)
+            # Farmacia Central: consolidar lotes sin centro + lotes de "Almacén Central"
+            # (Son conceptualmente el mismo lugar)
+            from django.db.models import Q
+            
             stock_farmacia = Lote.objects.filter(
-                centro__isnull=True,
+                Q(centro__isnull=True) | Q(centro__nombre__icontains='almacén central') | Q(centro__nombre__icontains='almacen central'),
                 activo=True,
                 cantidad_actual__gt=0
             ).aggregate(
@@ -7758,8 +7761,10 @@ def dashboard_graficas(request):
                     'stock': stock_farmacia
                 })
             
-            # Todos los centros activos CON STOCK
-            for centro in Centro.objects.filter(activo=True).order_by('nombre'):
+            # Todos los centros activos CON STOCK (excluyendo Almacén Central que ya está consolidado)
+            for centro in Centro.objects.filter(activo=True).exclude(
+                Q(nombre__icontains='almacén central') | Q(nombre__icontains='almacen central')
+            ).order_by('nombre'):
                 stock = Lote.objects.filter(
                     centro=centro,
                     activo=True,
