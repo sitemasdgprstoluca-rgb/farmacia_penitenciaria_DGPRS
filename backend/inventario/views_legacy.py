@@ -8302,7 +8302,7 @@ def reporte_inventario(request):
         # Formato PDF - DETALLE POR LOTES
         if formato == 'pdf':
             from core.utils.pdf_reports import generar_reporte_inventario_lotes
-            from inventario.models import Lote
+            from core.models import Lote
             
             # Obtener lotes activos con información completa
             lotes_query = Lote.objects.select_related('producto', 'centro').filter(
@@ -8385,7 +8385,7 @@ def reporte_inventario(request):
             cell.border = thin_border
 
         # Obtener lotes activos con información completa
-        from inventario.models import Lote
+        from core.models import Lote
         lotes_query = Lote.objects.select_related('producto', 'centro').filter(
             activo=True,
             cantidad_actual__gt=0
