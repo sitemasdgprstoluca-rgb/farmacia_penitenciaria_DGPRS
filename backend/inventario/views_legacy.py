@@ -8570,17 +8570,17 @@ def reporte_movimientos(request):
             return response
         
         if formato == 'excel':
-            # Generar Excel con formato agrupado por transacciones
+            # Generar Excel con detalle de productos (una fila por producto)
             wb = openpyxl.Workbook()
             
-            # === HOJA 1: RESUMEN DE TRANSACCIONES ===
+            # === HOJA PRINCIPAL: DETALLE POR PRODUCTO ===
             ws = wb.active
-            ws.title = 'Transacciones'
+            ws.title = 'Movimientos Detalle'
             
-            # Titulo - actualizado para 10 columnas
-            ws.merge_cells('A1:J1')
+            # Titulo - actualizado para 11 columnas
+            ws.merge_cells('A1:K1')
             titulo_cell = ws['A1']
-            titulo_cell.value = 'REPORTE DE MOVIMIENTOS - TRANSACCIONES'
+            titulo_cell.value = 'REPORTE DE MOVIMIENTOS CON DETALLE'
             titulo_cell.font = Font(bold=True, size=14, color='632842')
             titulo_cell.alignment = Alignment(horizontal='center', vertical='center')
             
@@ -8593,7 +8593,7 @@ def reporte_movimientos(request):
             if tipo:
                 filtros_text.append(f'Tipo: {tipo}')
             
-            ws.merge_cells('A2:J2')
+            ws.merge_cells('A2:K2')
             filtros_cell = ws['A2']
             filtros_cell.value = ' | '.join(filtros_text) if filtros_text else 'Sin filtros'
             filtros_cell.font = Font(size=10, italic=True)
@@ -8601,106 +8601,106 @@ def reporte_movimientos(request):
             
             # Resumen
             ws['A3'] = f"Total Transacciones: {resumen['total_transacciones']}"
-            ws['C3'] = f"Total Entradas: {resumen['total_entradas']}"
-            ws['E3'] = f"Total Salidas: {resumen['total_salidas']}"
-            ws['G3'] = f"Diferencia: {resumen['diferencia']}"
-            for col in ['A', 'C', 'E', 'G']:
+            ws['D3'] = f"Total Entradas: {resumen['total_entradas']}"
+            ws['G3'] = f"Total Salidas: {resumen['total_salidas']}"
+            ws['J3'] = f"Diferencia: {resumen['diferencia']}"
+            for col in ['A', 'D', 'G', 'J']:
                 ws[f'{col}3'].font = Font(bold=True, size=10)
             
             ws.append([])  # Linea en blanco
             
-            # Encabezados de transacciones - Agregado Subtipo y No. Expediente
-            headers = ['#', 'Referencia', 'Fecha', 'Tipo', 'Subtipo', 'Centro Origen', 'Centro Destino', 'No. Expediente', 'Productos', 'Cantidad Total']
+            # Encabezados - Una fila por producto
+            headers = ['#', 'Referencia', 'Fecha', 'Tipo', 'Subtipo', 'Clave', 'Producto', 'Lote', 'Cantidad', 'Centro', 'No. Expediente']
             ws.append(headers)
             
             # Estilo encabezados
             header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
-            header_font = Font(bold=True, color='FFFFFF', size=11)
+            header_font = Font(bold=True, color='FFFFFF', size=10)
+            thin_border = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
             
             for cell in ws[5]:  # Fila 5 tiene los encabezados
                 cell.fill = header_fill
                 cell.font = header_font
                 cell.alignment = Alignment(horizontal='center', vertical='center')
+                cell.border = thin_border
             
-            # Datos de transacciones - Agregado subtipo_display y numero_expediente
-            for idx, trans in enumerate(datos, 1):
-                ws.append([
-                    idx,
-                    trans['referencia'],
-                    trans['fecha'],
-                    trans['tipo'],
-                    trans.get('subtipo_display', ''),
-                    trans['centro_origen'],
-                    trans['centro_destino'],
-                    trans.get('numero_expediente', ''),
-                    trans['total_productos'],
-                    trans['total_cantidad']
-                ])
-                
-                # Colorear por tipo
-                row_num = idx + 5
-                tipo_cell = ws.cell(row=row_num, column=4)
-                if trans['tipo'].upper() == 'ENTRADA':
-                    tipo_cell.fill = PatternFill(start_color='D4EDDA', end_color='D4EDDA', fill_type='solid')
-                    tipo_cell.font = Font(color='155724', bold=True)
-                else:
-                    tipo_cell.fill = PatternFill(start_color='F8D7DA', end_color='F8D7DA', fill_type='solid')
-                    tipo_cell.font = Font(color='721C24', bold=True)
-            
-            # Ajustar anchos - actualizado para 10 columnas (agregado Subtipo y Expediente)
-            ws.column_dimensions['A'].width = 6
-            ws.column_dimensions['B'].width = 22
-            ws.column_dimensions['C'].width = 16
-            ws.column_dimensions['D'].width = 10
-            ws.column_dimensions['E'].width = 14
-            ws.column_dimensions['F'].width = 20
-            ws.column_dimensions['G'].width = 20
-            ws.column_dimensions['H'].width = 14
-            ws.column_dimensions['I'].width = 10
-            ws.column_dimensions['J'].width = 14
-            
-            # === HOJA 2: DETALLE DE PRODUCTOS ===
-            ws2 = wb.create_sheet('Detalle Productos')
-            
-            ws2.merge_cells('A1:H1')
-            ws2['A1'].value = 'DETALLE DE PRODUCTOS POR TRANSACCIÓN'
-            ws2['A1'].font = Font(bold=True, size=14, color='632842')
-            ws2['A1'].alignment = Alignment(horizontal='center')
-            
-            ws2.append([])
-            
-            # Encabezados detalle - Agregado Subtipo y No. Expediente
-            detail_headers = ['Referencia', 'Tipo', '#', 'Producto', 'Lote', 'Cantidad', 'Subtipo', 'No. Expediente']
-            ws2.append(detail_headers)
-            
-            for cell in ws2[3]:
-                cell.fill = header_fill
-                cell.font = header_font
-                cell.alignment = Alignment(horizontal='center', vertical='center')
-            
-            # Agregar detalles de cada transacción
+            # Datos - Una fila por cada producto en cada transacción
+            row_num = 6
+            global_idx = 1
             for trans in datos:
-                for det_idx, det in enumerate(trans.get('detalles', []), 1):
-                    ws2.append([
+                detalles = trans.get('detalles', [])
+                
+                if not detalles:
+                    # Transacción sin detalles
+                    ws.append([
+                        global_idx,
                         trans['referencia'],
+                        trans['fecha'],
                         trans['tipo'],
-                        det_idx,
-                        det['producto'],
-                        det['lote'],
-                        det['cantidad'],
-                        det.get('subtipo_salida', ''),
-                        det.get('numero_expediente', ''),
+                        trans.get('subtipo_display', ''),
+                        '-',
+                        'Sin productos',
+                        '-',
+                        0,
+                        trans['centro_destino'] if trans['tipo'] == 'SALIDA' else trans['centro_origen'],
+                        trans.get('numero_expediente', '')
                     ])
+                    for cell in ws[row_num]:
+                        cell.border = thin_border
+                    row_num += 1
+                    global_idx += 1
+                else:
+                    # Una fila por cada producto
+                    first_row = True
+                    for det in detalles:
+                        # Extraer clave y nombre del producto (formato: "CLAVE - NOMBRE")
+                        producto_full = det.get('producto', 'N/A')
+                        if ' - ' in producto_full:
+                            clave, nombre = producto_full.split(' - ', 1)
+                        else:
+                            clave = 'N/A'
+                            nombre = producto_full
+                        
+                        ws.append([
+                            global_idx if first_row else '',
+                            trans['referencia'] if first_row else '',
+                            trans['fecha'] if first_row else '',
+                            trans['tipo'] if first_row else '',
+                            trans.get('subtipo_display', '') if first_row else '',
+                            clave,
+                            nombre[:40],
+                            det.get('lote', 'N/A'),
+                            det.get('cantidad', 0),
+                            trans['centro_destino'] if trans['tipo'] == 'SALIDA' else trans['centro_origen'] if first_row else '',
+                            det.get('numero_expediente', '') or (trans.get('numero_expediente', '') if first_row else '')
+                        ])
+                        
+                        # Colorear tipo
+                        if first_row:
+                            tipo_cell = ws.cell(row=row_num, column=4)
+                            if trans['tipo'].upper() == 'ENTRADA':
+                                tipo_cell.fill = PatternFill(start_color='D4EDDA', end_color='D4EDDA', fill_type='solid')
+                                tipo_cell.font = Font(color='155724', bold=True)
+                            else:
+                                tipo_cell.fill = PatternFill(start_color='F8D7DA', end_color='F8D7DA', fill_type='solid')
+                                tipo_cell.font = Font(color='721C24', bold=True)
+                        
+                        for cell in ws[row_num]:
+                            cell.border = thin_border
+                        
+                        first_row = False
+                        row_num += 1
+                    global_idx += 1
             
-            # Ajustar anchos - actualizado para 8 columnas
-            ws2.column_dimensions['A'].width = 22
-            ws2.column_dimensions['B'].width = 10
-            ws2.column_dimensions['C'].width = 6
-            ws2.column_dimensions['D'].width = 45
-            ws2.column_dimensions['E'].width = 16
-            ws2.column_dimensions['F'].width = 10
-            ws2.column_dimensions['G'].width = 14
-            ws2.column_dimensions['H'].width = 14
+            # Ajustar anchos - 11 columnas
+            column_widths = {'A': 5, 'B': 20, 'C': 16, 'D': 10, 'E': 15, 'F': 12, 'G': 35, 'H': 14, 'I': 10, 'J': 22, 'K': 14}
+            for col, width in column_widths.items():
+                ws.column_dimensions[col].width = width
             
             response = HttpResponse(
                 content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
