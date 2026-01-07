@@ -361,6 +361,11 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
     } catch (err) {
       console.error('Error confirmando entrega:', err);
       const msg = err.response?.data?.message || 'Error al confirmar entrega';
+      // ISS-FIX: Si el error indica que ya fue confirmada, actualizar estado
+      // para ocultar los botones de confirmación
+      if (msg.includes('ya fue confirmada') || err.response?.status === 400) {
+        setEntregaConfirmada(true);
+      }
       toast.error(msg);
     } finally {
       setConfirmando(false);

@@ -234,11 +234,13 @@ const Movimientos = () => {
       
       // ISS-FIX: Agrupar si:
       // 1. Tiene grupo SAL-xxx y es salida/transferencia (salidas masivas)
-      // 2. Tiene grupo REQ-xxx (movimientos por requisición - entrada o salida)
+      // 2. Tiene grupo SAL-xxx y es entrada (entradas por salida masiva confirmada)
+      // 3. Tiene grupo REQ-xxx (movimientos por requisición - entrada o salida)
       const esSalidaMasiva = grupoId?.startsWith('SAL-') && mov.tipo === 'salida' && mov.subtipo_salida === 'transferencia';
+      const esEntradaSalidaMasiva = grupoId?.startsWith('SAL-') && mov.tipo === 'entrada';
       const esMovimientoRequisicion = grupoId?.startsWith('REQ-') || motivo.includes('_POR_REQUISICION');
       
-      if (grupoId && (esSalidaMasiva || esMovimientoRequisicion)) {
+      if (grupoId && (esSalidaMasiva || esEntradaSalidaMasiva || esMovimientoRequisicion)) {
         if (!grupos.has(grupoId)) {
           // Determinar tipo de grupo
           const tipoGrupo = grupoId.startsWith('SAL-') ? 'salida_masiva' : 'requisicion';
@@ -247,8 +249,8 @@ const Movimientos = () => {
             id: grupoId,
             tipo_grupo: tipoGrupo,
             items: [],
-            // ISS-FIX: Para requisiciones, capturar el centro DESTINO (de las entradas)
-            centro_nombre: tipoGrupo === 'requisicion' && mov.tipo === 'entrada' 
+            // ISS-FIX: Para salidas masivas y requisiciones, capturar el centro DESTINO (de las entradas)
+            centro_nombre: (tipoGrupo === 'requisicion' || tipoGrupo === 'salida_masiva') && mov.tipo === 'entrada' 
               ? (mov.centro_nombre || 'N/A') 
               : (mov.centro_nombre || 'Almacén Central'),
             fecha: mov.fecha || mov.fecha_movimiento,

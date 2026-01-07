@@ -856,19 +856,27 @@ class MovimientoViewSet(
             grupo_id = extraer_grupo(mov)
             motivo = mov.motivo or ''
             
-            # Determinar si debe agruparse
+            # ISS-FIX: Determinar si debe agruparse
+            # Salidas masivas: tipo=salida Y subtipo=transferencia con [SAL-xxx]
             es_salida_masiva = (
                 grupo_id and 
                 grupo_id.startswith('SAL-') and 
                 mov.tipo == 'salida' and 
                 mov.subtipo_salida == 'transferencia'
             )
+            # ISS-FIX: Entradas de salida masiva - se crean cuando se confirma
+            # Tienen el patrón [SAL-xxx] en el motivo
+            es_entrada_salida_masiva = (
+                grupo_id and 
+                grupo_id.startswith('SAL-') and 
+                mov.tipo == 'entrada'
+            )
             es_mov_requisicion = (
                 grupo_id and 
                 (grupo_id.startswith('REQ-') or '_POR_REQUISICION' in motivo)
             )
             
-            if grupo_id and (es_salida_masiva or es_mov_requisicion):
+            if grupo_id and (es_salida_masiva or es_entrada_salida_masiva or es_mov_requisicion):
                 grupo = grupos[grupo_id]
                 
                 if grupo['id'] is None:
