@@ -8570,6 +8570,9 @@ def reporte_movimientos(request):
             return response
         
         if formato == 'excel':
+            # Importar estilos adicionales para bordes
+            from openpyxl.styles import Border, Side
+            
             # Generar Excel con detalle de productos (una fila por producto)
             wb = openpyxl.Workbook()
             
@@ -9070,6 +9073,9 @@ def reporte_requisiciones(request):
             response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
             response['Content-Disposition'] = f"attachment; filename=Requisiciones_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
             return response
+        
+        # Importar estilos adicionales para bordes
+        from openpyxl.styles import Border, Side
         
         # Generar Excel con detalles de productos
         wb = openpyxl.Workbook()
