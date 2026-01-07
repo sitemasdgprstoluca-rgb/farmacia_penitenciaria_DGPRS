@@ -53,16 +53,19 @@ class MovimientoViewSet(
     - Medico: NO puede crear movimientos (ISS-MEDICO FIX)
     - Vista: solo lectura
     
-    FILTROS (alineados con exportacin):
+    FILTROS (alineados con exportación):
     - tipo: entrada/salida/ajuste
-    - centro: ID del centro
+    - centro: ID del centro origen (lote.centro)
+    - centro_destino: ID del centro destino (para ver transferencias a un centro)
     - producto: ID del producto
-    - lote: ID del lote
+    - lote: ID del lote o número de lote
+    - subtipo_salida: receta/consumo_interno/merma/transferencia/etc
+    - referencia: código de grupo de salida (ej: SAL-0107-1913-8)
     - fecha_inicio: YYYY-MM-DD
     - fecha_fin: YYYY-MM-DD
-    - search: bsqueda en observaciones, nmero de lote, producto
+    - search: búsqueda en motivo, número de lote, producto, referencia
     
-    Esto permite auditora completa de consumos en cada centro.
+    Esto permite auditoría completa de consumos y transferencias en cada centro.
     """
     queryset = Movimiento.objects.select_related('lote__producto', 'centro_origen', 'centro_destino', 'usuario').all()
     serializer_class = MovimientoSerializer
@@ -137,6 +140,16 @@ class MovimientoViewSet(
         if subtipo_salida:
             queryset = queryset.filter(subtipo_salida__iexact=subtipo_salida)
         
+        # Filtro por referencia (grupo_salida para transferencias)
+        referencia = self.request.query_params.get('referencia')
+        if referencia:
+            queryset = queryset.filter(referencia__icontains=referencia)
+        
+        # Filtro por centro_destino (para ver transferencias a un centro específico)
+        centro_destino = self.request.query_params.get('centro_destino')
+        if centro_destino:
+            queryset = queryset.filter(centro_destino_id=centro_destino)
+        
         # Filtro por rango de fechas
         fecha_inicio = self.request.query_params.get('fecha_inicio')
         if fecha_inicio:
@@ -146,7 +159,7 @@ class MovimientoViewSet(
         if fecha_fin:
             queryset = queryset.filter(fecha__date__lte=fecha_fin)
         
-        # Busqueda en motivo, lote y producto
+        # Busqueda en motivo, lote y producto (incluye referencia en búsqueda)
         search = self.request.query_params.get('search')
         if search and search.strip():
             search_term = search.strip()
@@ -155,7 +168,8 @@ class MovimientoViewSet(
                 Q(lote__numero_lote__icontains=search_term) |
                 Q(lote__producto__clave__icontains=search_term) |
                 Q(lote__producto__descripcion__icontains=search_term) |
-                Q(numero_expediente__icontains=search_term)
+                Q(numero_expediente__icontains=search_term) |
+                Q(referencia__icontains=search_term)
             )
         
         return queryset.order_by('-fecha')
