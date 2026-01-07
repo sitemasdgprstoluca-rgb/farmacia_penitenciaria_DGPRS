@@ -889,6 +889,18 @@ class MovimientoViewSet(
                     grupo['confirmado'] = es_confirmado(mov)
                     grupo['pendiente'] = es_pendiente(mov)
                 
+                # ISS-FIX: Determinar centro del movimiento
+                # Para ENTRADAS: el centro es donde entra (lote.centro o centro_destino)
+                # Para SALIDAS: el centro origen es Farmacia Central, destino es centro_destino
+                if mov.tipo == 'entrada':
+                    # Entradas: el centro es el del lote (donde se recibe)
+                    item_centro = mov.lote.centro.nombre if mov.lote and mov.lote.centro else (
+                        mov.centro_destino.nombre if mov.centro_destino else 'Almacén Central'
+                    )
+                else:
+                    # Salidas: mostrar el centro destino
+                    item_centro = mov.centro_destino.nombre if mov.centro_destino else 'Almacén Central'
+                
                 # Agregar item al grupo
                 item_data = {
                     'id': mov.id,
@@ -899,6 +911,7 @@ class MovimientoViewSet(
                     'lote_numero': mov.lote.numero_lote if mov.lote else None,
                     'producto_clave': mov.lote.producto.clave if mov.lote and mov.lote.producto else None,
                     'producto_nombre': mov.lote.producto.nombre if mov.lote and mov.lote.producto else None,
+                    'centro_nombre': item_centro,  # ISS-FIX: Agregar centro del item
                 }
                 grupo['items'].append(item_data)
                 
