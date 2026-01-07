@@ -1119,10 +1119,20 @@ const handleImportar = async (e) => {
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         {/* Tabla */}
         <div className="w-full overflow-x-auto">
-          <table className="w-full min-w-[1200px] divide-y divide-gray-200">
+          <table className="w-full min-w-[900px] divide-y divide-gray-200 table-fixed">
+            <colgroup>
+              <col className="w-10" /> {/* # */}
+              <col className="w-32" /> {/* Producto */}
+              <col className="w-24" /> {/* Lote */}
+              <col className="w-24" /> {/* Caducidad */}
+              <col className="w-16" /> {/* Alerta */}
+              <col className="w-32" /> {/* Distribución */}
+              <col className="w-24" /> {/* Inventario */}
+              <col className="w-20" /> {/* Acciones */}
+            </colgroup>
             <thead className="bg-theme-gradient sticky top-0 z-10">
             <tr>
-              {['#', 'Producto', 'Presentación', 'Número Lote', 'Marca / Laboratorio', 'Caducidad', 'Días', 'Alerta', 'Distribución', 'Inventario', 'Acciones'].map((col) => (
+              {['#', 'Producto', 'Lote', 'Caducidad', 'Alerta', 'Distribución', 'Inventario', 'Acciones'].map((col) => (
                 <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   {col}
                 </th>
@@ -1132,13 +1142,13 @@ const handleImportar = async (e) => {
             <tbody className="bg-white divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan="11" className="p-0">
+                  <td colSpan="8" className="p-0">
                     <LotesSkeleton />
                   </td>
                 </tr>
               ) : lotes.length === 0 ? (
                 <tr>
-                  <td colSpan="11" className="text-center py-8 text-gray-500">
+                  <td colSpan="8" className="text-center py-8 text-gray-500">
                     No hay lotes registrados
                   </td>
                 </tr>
@@ -1148,77 +1158,49 @@ const handleImportar = async (e) => {
                     <td className="px-4 py-3 text-sm font-semibold text-gray-500">
                       {(currentPage - 1) * pageSize + index + 1}
                     </td>
-                    <td className="px-4 py-3 text-sm">
-                      <div className="font-semibold text-gray-800">{lote.producto_clave}</div>
-                      <div 
-                        className="text-gray-500 text-xs cursor-help relative group"
-                        title={lote.producto_nombre}
-                      >
-                        {lote.producto_nombre?.substring(0, 30)}{lote.producto_nombre?.length > 30 ? '...' : ''}
-                        {/* Tooltip on hover */}
-                        <div className="absolute z-50 hidden group-hover:block bg-gray-900 text-white text-xs rounded-lg py-2 px-3 -top-2 left-0 transform -translate-y-full w-64 shadow-lg">
-                          <p className="font-semibold mb-1">Nombre completo:</p>
-                          <p>{lote.producto_nombre}</p>
-                          <div className="absolute bottom-0 left-4 transform translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900"></div>
-                        </div>
+                    <td className="px-3 py-2 text-sm">
+                      <div className="font-semibold text-gray-800 text-xs">{lote.producto_clave}</div>
+                      <div className="text-gray-500 text-xs truncate max-w-[120px]" title={lote.producto_nombre}>
+                        {lote.producto_nombre?.substring(0, 20)}{lote.producto_nombre?.length > 20 ? '...' : ''}
                       </div>
+                      {lote.marca && <div className="text-gray-400 text-xs truncate">{lote.marca}</div>}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      {lote.producto_info?.presentacion || lote.presentacion || <span className="text-gray-400 italic text-xs">-</span>}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm font-mono font-bold text-gray-800">
+                    <td className="px-3 py-2 text-xs font-mono font-bold text-gray-800">
                       {lote.numero_lote}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                      {lote.marca || <span className="text-gray-400 italic">-</span>}
+                    <td className="px-3 py-2 text-xs">
+                      <div>{new Date(lote.fecha_caducidad).toLocaleDateString()}</div>
+                      <div className="text-gray-500">{lote.dias_para_caducar}d</div>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm">
-                      {new Date(lote.fecha_caducidad).toLocaleDateString()}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm">
-                      {lote.dias_para_caducar}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded-full ${getAlertaClass(lote.alerta_caducidad)}`}>
+                    <td className="px-3 py-2">
+                      <span className={`px-2 py-0.5 text-xs rounded-full ${getAlertaClass(lote.alerta_caducidad)}`}>
                         {getAlertaIcon(lote.alerta_caducidad)}
-                        {lote.alerta_caducidad?.toUpperCase()}
                       </span>
                     </td>
                     {/* Distribución - muestra en qué centros está el lote */}
-                    <td className="px-4 py-3 text-sm">
+                    <td className="px-3 py-2 text-xs">
                       {lote.centros ? (
                         <div className="space-y-0.5">
                           {lote.centros.slice(0, 2).map((centro, idx) => (
-                            <div key={idx} className="text-xs text-gray-600 truncate max-w-[150px]" title={centro}>
-                              {centro}
+                            <div key={idx} className="text-gray-600 truncate max-w-[120px]" title={centro}>
+                              {centro.replace('CENTRO PENITENCIARIO ', 'C.P. ')}
                             </div>
                           ))}
                           {lote.centros.length > 2 && (
-                            <div className="text-xs text-blue-600 font-medium">
-                              +{lote.centros.length - 2} más
-                            </div>
+                            <div className="text-blue-600 font-medium">+{lote.centros.length - 2}</div>
                           )}
                         </div>
                       ) : (
-                        <span className="text-xs text-gray-400">
-                          {lote.centro_nombre || 'Almacén Central'}
+                        <span className="text-gray-400">
+                          {(lote.centro_nombre || 'Almacén Central').replace('CENTRO PENITENCIARIO ', 'C.P. ')}
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm">
-                      <div className="space-y-1">
-                        {/* Disponible - resaltado */}
-                        <div className={`font-bold ${lote.cantidad_actual === 0 ? 'text-red-600' : 'text-green-700'}`}>
-                          Disp: {lote.cantidad_actual}
-                        </div>
-                        {/* Desglose */}
-                        <div className="text-xs text-gray-500 space-y-0.5">
-                          <div>Inicial: {lote.cantidad_inicial}</div>
-                          <div className="text-orange-600">
-                            Salidas: {lote.cantidad_inicial - lote.cantidad_actual}
-                          </div>
-                        </div>
+                    <td className="px-3 py-2 text-xs">
+                      <div className={`font-bold text-base ${lote.cantidad_actual === 0 ? 'text-red-600' : 'text-green-700'}`}>
+                        {lote.cantidad_actual}
                       </div>
+                      <div className="text-gray-500">de {lote.cantidad_inicial}</div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm">
                       <div className="flex items-center gap-3">

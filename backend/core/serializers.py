@@ -711,11 +711,14 @@ class ProductoSerializer(serializers.ModelSerializer):
         return getattr(obj, 'stock_calculado', None) or obj.stock_actual or 0
     
     def get_lotes_activos(self, obj):
-        # PERFORMANCE: Usar anotación del ViewSet si existe, evita N+1 queries
-        # ISS-FIX: lotes_centro_count ya viene filtrada por centro del usuario
-        lotes_centro = getattr(obj, 'lotes_centro_count', None)
-        if lotes_centro is not None:
-            return lotes_centro
+        """
+        TRAZABILIDAD: Cuenta lotes ÚNICOS (consolidados por numero_lote).
+        Un lote físico distribuido en múltiples centros cuenta como 1.
+        """
+        # PERFORMANCE: Usar anotación del ViewSet si existe
+        lotes_unicos_count = getattr(obj, 'lotes_unicos_count', None)
+        if lotes_unicos_count is not None:
+            return lotes_unicos_count
         
         # ISS-FIX: Obtener centro del request para filtrar correctamente
         request = self.context.get('request')
@@ -724,7 +727,7 @@ class ProductoSerializer(serializers.ModelSerializer):
             user = request.user
             if not user.is_superuser:
                 rol = getattr(user, 'rol', '').lower()
-                if rol not in ('admin', 'farmacia', 'administrador', 'usuario_farmacia', 'admin_farmacia'):
+                if rol not in ('admin', 'farmacia', 'administrador', 'usuario_farmacia', 'admin_farmacia', 'vista'):
                     user_centro = getattr(user, 'centro', None)
         
         # Fallback: usar prefetch_related si disponible
@@ -732,13 +735,16 @@ class ProductoSerializer(serializers.ModelSerializer):
             lotes_filtrados = [l for l in obj.lotes.all() if l.activo and l.cantidad_actual > 0]
             if user_centro:
                 lotes_filtrados = [l for l in lotes_filtrados if l.centro_id == user_centro.id]
-            return len(lotes_filtrados)
+            # TRAZABILIDAD: Contar lotes únicos por numero_lote
+            numeros_unicos = set(l.numero_lote for l in lotes_filtrados)
+            return len(numeros_unicos)
         
         # Último recurso: query directa con filtro de centro
         filtro = {'activo': True, 'cantidad_actual__gt': 0}
         if user_centro:
             filtro['centro'] = user_centro
-        return obj.lotes.filter(**filtro).count()
+        # TRAZABILIDAD: Contar valores distintos de numero_lote
+        return obj.lotes.filter(**filtro).values('numero_lote').distinct().count()
     
     def get_marca(self, obj):
         """

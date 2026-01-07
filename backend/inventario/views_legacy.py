@@ -7890,9 +7890,31 @@ def trazabilidad_producto(request, clave):
             lotes = lotes.filter(centro=user_centro)
         
         lotes = lotes.order_by('-created_at')
-        lotes_data = []
-
+        
+        # TRAZABILIDAD: Consolidar lotes por numero_lote (mismo lote puede estar en varios centros)
+        # Agrupamos por numero_lote para mostrar información consolidada
+        lotes_consolidados = {}
         for lote in lotes:
+            key = lote.numero_lote
+            if key not in lotes_consolidados:
+                lotes_consolidados[key] = {
+                    'lote_principal': lote,
+                    'cantidad_total': 0,
+                    'lotes_ids': [],
+                    'centros': [],
+                }
+            lotes_consolidados[key]['cantidad_total'] += lote.cantidad_actual or 0
+            lotes_consolidados[key]['lotes_ids'].append(lote.id)
+            if lote.centro:
+                centro_nombre = lote.centro.nombre
+                if centro_nombre not in lotes_consolidados[key]['centros']:
+                    lotes_consolidados[key]['centros'].append(centro_nombre)
+            elif 'Farmacia Central' not in lotes_consolidados[key]['centros']:
+                lotes_consolidados[key]['centros'].append('Farmacia Central')
+        
+        lotes_data = []
+        for key, data in lotes_consolidados.items():
+            lote = data['lote_principal']
             dias_caducidad = (lote.fecha_caducidad - date.today()).days if lote.fecha_caducidad else None
             if dias_caducidad is None:
                 estado_caducidad = 'DESCONOCIDO'
@@ -7905,17 +7927,18 @@ def trazabilidad_producto(request, clave):
             else:
                 estado_caducidad = 'NORMAL'
 
-            movimientos_lote = Movimiento.objects.filter(lote=lote)
+            # Calcular totales de movimientos para todos los lotes con este numero_lote
+            movimientos_lote = Movimiento.objects.filter(lote_id__in=data['lotes_ids'])
             total_entradas = movimientos_lote.filter(tipo='entrada').aggregate(total=Sum('cantidad'))['total'] or 0
             total_salidas = movimientos_lote.filter(tipo='salida').aggregate(total=Sum('cantidad'))['total'] or 0
 
             lotes_data.append({
-                'id': lote.id,
+                'id': lote.id,  # ID del lote principal
                 'numero_lote': lote.numero_lote,
                 'fecha_caducidad': lote.fecha_caducidad.isoformat() if lote.fecha_caducidad else None,
                 'dias_para_caducar': dias_caducidad,
                 'estado_caducidad': estado_caducidad,
-                'cantidad_actual': lote.cantidad_actual,
+                'cantidad_actual': data['cantidad_total'],  # Cantidad consolidada
                 'cantidad_inicial': lote.cantidad_inicial,
                 'total_entradas': total_entradas,
                 'total_salidas': total_salidas,
@@ -7924,7 +7947,10 @@ def trazabilidad_producto(request, clave):
                 # Campos de trazabilidad de contratos (solo para ADMIN/FARMACIA)
                 'numero_contrato': (lote.numero_contrato or '') if is_farmacia_or_admin(user) else None,
                 'activo': getattr(lote, 'activo', True),
-                'created_at': lote.created_at.isoformat()
+                'created_at': lote.created_at.isoformat(),
+                # NUEVO: Ubicaciones donde está distribuido el lote
+                'ubicaciones': data['centros'],
+                'distribuido_en': len(data['centros']) if data['centros'] else 0,
             })
 
         movimientos = Movimiento.objects.filter(lote__producto=producto).select_related('lote', 'centro_origen', 'centro_destino')
@@ -7969,8 +7995,9 @@ def trazabilidad_producto(request, clave):
             })
 
         stock_total = lotes.filter(activo=True).aggregate(total=Sum('cantidad_actual'))['total'] or 0
-        lotes_activos = lotes.filter(activo=True, cantidad_actual__gt=0).count()
-        total_lotes = lotes.count()
+        # TRAZABILIDAD: Contar lotes ÚNICOS (consolidados por numero_lote)
+        lotes_activos = len([k for k, v in lotes_consolidados.items() if v['cantidad_total'] > 0])
+        total_lotes = len(lotes_consolidados)  # Lotes únicos, no registros duplicados
         
         # Totales de entradas/salidas filtrados por centro si aplica
         mov_query = Movimiento.objects.filter(lote__producto=producto)
@@ -8300,60 +8327,92 @@ def reporte_inventario(request):
             })
         
         # =====================================================
-        # CONSOLIDACIÓN DE LOTES: Un lote físico = Un registro
-        # Los lotes duplicados por centro se consolidan sumando cantidades
+        # LOTES PARA PDF/EXCEL: Respeta filtro de centro
+        # Por defecto muestra solo Farmacia Central (centro=NULL)
+        # Si se pasa centro=todos, muestra consolidado de todos
         # =====================================================
         from core.models import Lote
-        from django.db.models import Min, Max
         from collections import defaultdict
         
-        # Obtener TODOS los lotes activos (sin filtro de centro para consolidar)
+        # Aplicar MISMO filtro de centro que el JSON
         lotes_query = Lote.objects.select_related('producto', 'centro').filter(
             activo=True,
             cantidad_actual__gt=0
-        ).order_by('producto__clave', 'numero_lote', 'fecha_caducidad')
-        
-        # Consolidar lotes por (producto_id, numero_lote) - TRAZABILIDAD REAL
-        # Un lote físico puede estar distribuido en varios centros
-        lotes_consolidados = defaultdict(lambda: {
-            'producto': None,
-            'numero_lote': '',
-            'cantidad_total': 0,
-            'fecha_caducidad': None,
-            'precio_unitario': 0,
-            'marca': '-',
-            'centros': [],  # Lista de centros donde está distribuido
-            'ubicacion_original': '-',
-        })
-        
-        for lote in lotes_query:
-            key = (lote.producto_id, lote.numero_lote)
-            consolidado = lotes_consolidados[key]
-            
-            if consolidado['producto'] is None:
-                consolidado['producto'] = lote.producto
-                consolidado['numero_lote'] = lote.numero_lote
-                consolidado['fecha_caducidad'] = lote.fecha_caducidad
-                consolidado['precio_unitario'] = float(lote.precio_unitario or 0)
-                consolidado['marca'] = lote.marca or '-'
-                # Ubicación original es la del lote sin centro (farmacia) o el primero
-                if not lote.centro:
-                    consolidado['ubicacion_original'] = lote.ubicacion or 'Almacén Central'
-            
-            consolidado['cantidad_total'] += lote.cantidad_actual
-            
-            # Registrar en qué centros está distribuido
-            centro_nombre = lote.centro.nombre if lote.centro else 'Almacén Central'
-            if centro_nombre not in consolidado['centros']:
-                consolidado['centros'].append(centro_nombre)
-        
-        # Convertir a lista ordenada
-        lotes_lista = sorted(
-            lotes_consolidados.values(),
-            key=lambda x: (x['producto'].clave, x['numero_lote'])
         )
         
-        # Formato PDF - LOTES CONSOLIDADOS
+        # Aplicar filtro de centro (igual que arriba)
+        if filtrar_por_centro:
+            if user_centro:
+                lotes_query = lotes_query.filter(centro=user_centro)
+            else:
+                # centro=NULL significa farmacia central (por defecto)
+                lotes_query = lotes_query.filter(centro__isnull=True)
+        
+        lotes_query = lotes_query.order_by('producto__clave', 'numero_lote', 'fecha_caducidad')
+        
+        # Determinar si consolidar (solo si no hay filtro de centro)
+        debe_consolidar = not filtrar_por_centro or centro_param == 'todos'
+        
+        if debe_consolidar:
+            # Consolidar lotes por (producto_id, numero_lote)
+            lotes_consolidados = defaultdict(lambda: {
+                'producto': None,
+                'numero_lote': '',
+                'cantidad_total': 0,
+                'fecha_caducidad': None,
+                'precio_unitario': 0,
+                'marca': '-',
+                'centros': [],
+                'ubicacion': '-',
+            })
+            
+            for lote in lotes_query:
+                key = (lote.producto_id, lote.numero_lote)
+                consolidado = lotes_consolidados[key]
+                
+                if consolidado['producto'] is None:
+                    consolidado['producto'] = lote.producto
+                    consolidado['numero_lote'] = lote.numero_lote
+                    consolidado['fecha_caducidad'] = lote.fecha_caducidad
+                    consolidado['precio_unitario'] = float(lote.precio_unitario or 0)
+                    consolidado['marca'] = lote.marca or '-'
+                
+                consolidado['cantidad_total'] += lote.cantidad_actual
+                centro_nombre = lote.centro.nombre if lote.centro else 'Almacén Central'
+                if centro_nombre not in consolidado['centros']:
+                    consolidado['centros'].append(centro_nombre)
+            
+            lotes_lista = sorted(
+                lotes_consolidados.values(),
+                key=lambda x: (x['producto'].clave, x['numero_lote'])
+            )
+        else:
+            # Sin consolidación: lista normal de lotes
+            lotes_lista = []
+            for lote in lotes_query:
+                lotes_lista.append({
+                    'producto': lote.producto,
+                    'numero_lote': lote.numero_lote,
+                    'cantidad_total': lote.cantidad_actual,
+                    'fecha_caducidad': lote.fecha_caducidad,
+                    'precio_unitario': float(lote.precio_unitario or 0),
+                    'marca': lote.marca or '-',
+                    'centros': [lote.centro.nombre if lote.centro else 'Almacén Central'],
+                    'ubicacion': lote.ubicacion or '-',
+                })
+        
+        # Determinar título según filtro
+        if not filtrar_por_centro or centro_param == 'todos':
+            titulo_reporte = 'REPORTE DE INVENTARIO - LOTES CONSOLIDADOS'
+            subtitulo_reporte = f"Generado el {timezone.now().strftime('%d/%m/%Y %H:%M:%S')} - Todos los centros"
+        elif user_centro:
+            titulo_reporte = f'INVENTARIO DE {user_centro.nombre.upper()}'
+            subtitulo_reporte = f"Generado el {timezone.now().strftime('%d/%m/%Y %H:%M:%S')}"
+        else:
+            titulo_reporte = 'INVENTARIO DE FARMACIA CENTRAL'
+            subtitulo_reporte = f"Generado el {timezone.now().strftime('%d/%m/%Y %H:%M:%S')} - Almacén Central"
+        
+        # Formato PDF - LOTES (con o sin consolidación según filtro)
         if formato == 'pdf':
             from core.utils.pdf_reports import generar_reporte_inventario_lotes
             
@@ -8376,6 +8435,7 @@ def reporte_inventario(request):
                 'fecha_generacion': timezone.now().strftime('%d/%m/%Y %H:%M'),
                 'total_lotes': len(lotes_data),
                 'total_productos': resumen['total_productos'],
+                'titulo': titulo_reporte,
             }
             
             pdf_buffer = generar_reporte_inventario_lotes(lotes_data, filtros=filtros)
@@ -8384,7 +8444,7 @@ def reporte_inventario(request):
             response['Content-Disposition'] = f"attachment; filename=Inventario_Lotes_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
             return response
         
-        # Formato Excel - LOTES CONSOLIDADOS
+        # Formato Excel - LOTES (con o sin consolidación según filtro)
         from openpyxl.styles import Border, Side
         
         wb = openpyxl.Workbook()
@@ -8393,13 +8453,13 @@ def reporte_inventario(request):
 
         ws.merge_cells('A1:K1')
         titulo = ws['A1']
-        titulo.value = 'REPORTE DE INVENTARIO - LOTES CONSOLIDADOS'
+        titulo.value = titulo_reporte
         titulo.font = Font(bold=True, size=14, color='632842')
         titulo.alignment = Alignment(horizontal='center', vertical='center')
 
         ws.merge_cells('A2:K2')
         subtitulo = ws['A2']
-        subtitulo.value = f"Generado el {timezone.now().strftime('%d/%m/%Y %H:%M:%S')} - Lotes únicos (trazabilidad)"
+        subtitulo.value = subtitulo_reporte
         subtitulo.alignment = Alignment(horizontal='center')
         subtitulo.font = Font(size=10, italic=True)
 
