@@ -265,21 +265,32 @@ const Lotes = () => {
       if (filtroCaducidad) params.caducidad = filtroCaducidad;
       if (filtroConStock) params.con_stock = filtroConStock;
       if (filtroActivo) params.activo = filtroActivo;
-      // Forzar filtro de centro para usuarios sin permisos globales
-      const centroParaCargar = !puedeVerGlobal ? (centroUsuario?.toString() || filtroCentro) : filtroCentro;
-      // SEGURIDAD: Si no tiene permiso global y no hay centro, NO cargar
-      if (!puedeVerGlobal && !centroParaCargar) {
-        console.warn('Usuario sin centro intentando cargar lotes - bloqueado');
-        setLotes([]);
-        setLoading(false);
-        return;
-      }
-      if (centroParaCargar) params.centro = centroParaCargar;
+      
+      // TRAZABILIDAD: Admin/Farmacia ven lotes CONSOLIDADOS (únicos, sin duplicados)
+      // Usuarios de centro ven solo sus lotes (no consolidados)
+      if (puedeVerGlobal && !filtroCentro) {
+        // Usar endpoint consolidado para vista global de trazabilidad
+        const response = await lotesAPI.getConsolidados(params);
+        setLotes(response.data.results || response.data);
+        setTotalLotes(response.data.count || 0);
+        setTotalPages(response.data.total_pages || Math.ceil((response.data.count || 0) / pageSize));
+      } else {
+        // Usuarios de centro o con filtro específico: ver lotes normales
+        const centroParaCargar = !puedeVerGlobal ? (centroUsuario?.toString() || filtroCentro) : filtroCentro;
+        // SEGURIDAD: Si no tiene permiso global y no hay centro, NO cargar
+        if (!puedeVerGlobal && !centroParaCargar) {
+          console.warn('Usuario sin centro intentando cargar lotes - bloqueado');
+          setLotes([]);
+          setLoading(false);
+          return;
+        }
+        if (centroParaCargar) params.centro = centroParaCargar;
 
-      const response = await lotesAPI.getAll(params);
-      setLotes(response.data.results || response.data);
-      setTotalLotes(response.data.count || 0);
-      setTotalPages(Math.ceil((response.data.count || 0) / pageSize));
+        const response = await lotesAPI.getAll(params);
+        setLotes(response.data.results || response.data);
+        setTotalLotes(response.data.count || 0);
+        setTotalPages(Math.ceil((response.data.count || 0) / pageSize));
+      }
     } catch (error) {
       if (DEV_CONFIG.ENABLED) {
         applyMockLotes();
@@ -1111,7 +1122,7 @@ const handleImportar = async (e) => {
           <table className="w-full min-w-[1200px] divide-y divide-gray-200">
             <thead className="bg-theme-gradient sticky top-0 z-10">
             <tr>
-              {['#', 'Producto', 'Presentación', 'Número Lote', 'Marca / Laboratorio', 'Caducidad', 'Días', 'Alerta', 'Inventario', 'Acciones'].map((col) => (
+              {['#', 'Producto', 'Presentación', 'Número Lote', 'Marca / Laboratorio', 'Caducidad', 'Días', 'Alerta', 'Distribución', 'Inventario', 'Acciones'].map((col) => (
                 <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   {col}
                 </th>
@@ -1121,13 +1132,13 @@ const handleImportar = async (e) => {
             <tbody className="bg-white divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan="10" className="p-0">
+                  <td colSpan="11" className="p-0">
                     <LotesSkeleton />
                   </td>
                 </tr>
               ) : lotes.length === 0 ? (
                 <tr>
-                  <td colSpan="10" className="text-center py-8 text-gray-500">
+                  <td colSpan="11" className="text-center py-8 text-gray-500">
                     No hay lotes registrados
                   </td>
                 </tr>
@@ -1172,6 +1183,27 @@ const handleImportar = async (e) => {
                         {getAlertaIcon(lote.alerta_caducidad)}
                         {lote.alerta_caducidad?.toUpperCase()}
                       </span>
+                    </td>
+                    {/* Distribución - muestra en qué centros está el lote */}
+                    <td className="px-4 py-3 text-sm">
+                      {lote.centros ? (
+                        <div className="space-y-0.5">
+                          {lote.centros.slice(0, 2).map((centro, idx) => (
+                            <div key={idx} className="text-xs text-gray-600 truncate max-w-[150px]" title={centro}>
+                              {centro}
+                            </div>
+                          ))}
+                          {lote.centros.length > 2 && (
+                            <div className="text-xs text-blue-600 font-medium">
+                              +{lote.centros.length - 2} más
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">
+                          {lote.centro_nombre || 'Almacén Central'}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-sm">
                       <div className="space-y-1">

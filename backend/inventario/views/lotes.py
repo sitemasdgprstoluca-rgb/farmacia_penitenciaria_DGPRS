@@ -383,6 +383,154 @@ class LoteViewSet(viewsets.ModelViewSet):
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=False, methods=['get'], url_path='consolidados')
+    def consolidados(self, request):
+        """
+        TRAZABILIDAD: Obtiene lotes consolidados (únicos por numero_lote + producto).
+        
+        Los lotes que se distribuyen a múltiples centros se consolidan sumando
+        las cantidades de todos los centros. Esto representa la trazabilidad real:
+        un lote físico = un registro, aunque esté distribuido en varios centros.
+        
+        GET /api/lotes/consolidados/
+        
+        Parámetros opcionales:
+        - search: Buscar por número de lote o clave/nombre de producto
+        - producto: Filtrar por ID de producto
+        - activo: true/false
+        - page, page_size: Paginación
+        
+        Returns:
+            Lista de lotes únicos con cantidad_total sumada de todos los centros
+            y lista de centros donde está distribuido cada lote.
+        """
+        from collections import defaultdict
+        
+        # Obtener TODOS los lotes activos (sin filtro de centro)
+        queryset = Lote.objects.select_related('producto', 'centro').filter(
+            activo=True,
+            cantidad_actual__gt=0
+        )
+        
+        # Aplicar filtros de búsqueda
+        search = request.query_params.get('search')
+        if search and search.strip():
+            search_term = search.strip()
+            queryset = queryset.filter(
+                Q(numero_lote__icontains=search_term) |
+                Q(producto__clave__icontains=search_term) |
+                Q(producto__nombre__icontains=search_term)
+            )
+        
+        producto = request.query_params.get('producto')
+        if producto:
+            queryset = queryset.filter(producto_id=producto)
+        
+        queryset = queryset.order_by('producto__clave', 'numero_lote', 'fecha_caducidad')
+        
+        # Consolidar por (producto_id, numero_lote)
+        lotes_consolidados = defaultdict(lambda: {
+            'id': None,  # ID del primer lote encontrado (para referencia)
+            'producto': None,
+            'producto_id': None,
+            'producto_clave': '',
+            'producto_nombre': '',
+            'producto_info': None,
+            'numero_lote': '',
+            'cantidad_total': 0,
+            'cantidad_inicial_total': 0,
+            'fecha_caducidad': None,
+            'precio_unitario': 0,
+            'marca': '-',
+            'numero_contrato': None,
+            'centros': [],
+            'centros_detalle': [],  # Lista con nombre y cantidad por centro
+            'activo': True,
+            'dias_para_caducar': 999,
+            'alerta_caducidad': 'normal',
+        })
+        
+        hoy = date.today()
+        
+        for lote in queryset:
+            key = (lote.producto_id, lote.numero_lote)
+            cons = lotes_consolidados[key]
+            
+            if cons['id'] is None:
+                cons['id'] = lote.id
+                cons['producto'] = lote.producto_id
+                cons['producto_id'] = lote.producto_id
+                cons['producto_clave'] = lote.producto.clave
+                cons['producto_nombre'] = lote.producto.nombre or lote.producto.descripcion or ''
+                cons['producto_info'] = {
+                    'presentacion': lote.producto.presentacion or '',
+                    'unidad_medida': lote.producto.unidad_medida or 'PIEZA',
+                }
+                cons['numero_lote'] = lote.numero_lote
+                cons['fecha_caducidad'] = lote.fecha_caducidad.isoformat() if lote.fecha_caducidad else None
+                cons['precio_unitario'] = float(lote.precio_unitario or 0)
+                cons['marca'] = lote.marca or '-'
+                cons['numero_contrato'] = lote.numero_contrato
+                
+                # Calcular días para caducar y alerta
+                if lote.fecha_caducidad:
+                    dias = (lote.fecha_caducidad - hoy).days
+                    cons['dias_para_caducar'] = dias
+                    if dias < 0:
+                        cons['alerta_caducidad'] = 'vencido'
+                    elif dias < 90:
+                        cons['alerta_caducidad'] = 'critico'
+                    elif dias < 180:
+                        cons['alerta_caducidad'] = 'proximo'
+                    else:
+                        cons['alerta_caducidad'] = 'normal'
+            
+            cons['cantidad_total'] += lote.cantidad_actual
+            cons['cantidad_inicial_total'] += lote.cantidad_inicial
+            
+            # Registrar centro
+            centro_nombre = lote.centro.nombre if lote.centro else 'Almacén Central'
+            if centro_nombre not in cons['centros']:
+                cons['centros'].append(centro_nombre)
+            
+            cons['centros_detalle'].append({
+                'centro_id': lote.centro_id,
+                'centro_nombre': centro_nombre,
+                'cantidad': lote.cantidad_actual,
+                'ubicacion': lote.ubicacion or '-',
+            })
+        
+        # Convertir a lista y agregar campos calculados
+        resultados = []
+        for key, cons in lotes_consolidados.items():
+            # Calcular porcentaje consumido
+            if cons['cantidad_inicial_total'] > 0:
+                porcentaje = round((1 - cons['cantidad_total'] / cons['cantidad_inicial_total']) * 100, 1)
+            else:
+                porcentaje = 0
+            cons['porcentaje_consumido'] = porcentaje
+            cons['cantidad_actual'] = cons['cantidad_total']  # Alias para compatibilidad
+            cons['cantidad_inicial'] = cons['cantidad_inicial_total']
+            cons['centro_nombre'] = ', '.join(cons['centros'][:2]) + ('...' if len(cons['centros']) > 2 else '')
+            resultados.append(cons)
+        
+        # Ordenar por clave de producto y número de lote
+        resultados.sort(key=lambda x: (x['producto_clave'], x['numero_lote']))
+        
+        # Paginación simple
+        page_size = int(request.query_params.get('page_size', 25))
+        page = int(request.query_params.get('page', 1))
+        total = len(resultados)
+        start = (page - 1) * page_size
+        end = start + page_size
+        
+        return Response({
+            'count': total,
+            'total_pages': (total + page_size - 1) // page_size,
+            'current_page': page,
+            'results': resultados[start:end],
+        })
+
     @action(detail=False, methods=['get'], url_path='diagnostico-centro')
     def diagnostico_centro(self, request):
         """

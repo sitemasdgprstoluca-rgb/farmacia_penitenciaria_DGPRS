@@ -331,62 +331,173 @@ class ProductoViewSet(viewsets.ModelViewSet):
         Obtiene los lotes de un producto.
         GET /api/productos/{id}/lotes/
         
+        TRAZABILIDAD: Para admin/farmacia sin filtro de centro, devuelve lotes CONSOLIDADOS
+        (un lote físico = un registro, con cantidades sumadas de todos los centros).
+        
         Parámetros opcionales:
-        - centro: ID del centro o 'central' para farmacia central
+        - centro: ID del centro o 'central' para farmacia central (desactiva consolidación)
         - activo: 'true' para solo lotes activos
         - con_stock: 'true' para solo lotes con cantidad > 0
+        - consolidar: 'false' para desactivar consolidación (admin/farmacia)
         """
         try:
             from core.models import Lote
             from core.serializers import LoteSerializer
+            from collections import defaultdict
+            from datetime import date
             
             producto = self.get_object()
             user = request.user
             
             # Filtro base: lotes del producto
-            lotes = Lote.objects.filter(producto=producto)
+            lotes_qs = Lote.objects.select_related('centro').filter(producto=producto)
             
-            # Filtro por centro
+            # Determinar si consolidar
             centro_param = request.query_params.get('centro')
+            consolidar_param = request.query_params.get('consolidar', 'true').lower()
+            es_admin_farmacia = is_farmacia_or_admin(user) or user.is_superuser
+            
+            # TRAZABILIDAD: Consolidar para admin/farmacia cuando no hay filtro de centro
+            debe_consolidar = es_admin_farmacia and not centro_param and consolidar_param != 'false'
+            
+            # Filtro por centro (si se especifica, no se consolida)
             if centro_param:
                 if centro_param == 'central':
-                    lotes = lotes.filter(centro__isnull=True)
+                    lotes_qs = lotes_qs.filter(centro__isnull=True)
                 else:
-                    lotes = lotes.filter(centro_id=centro_param)
-            else:
-                # Por defecto, usuarios de centro solo ven lotes de su centro
-                if not is_farmacia_or_admin(user) and not user.is_superuser:
-                    user_centro = get_user_centro(user)
-                    if user_centro:
-                        lotes = lotes.filter(centro=user_centro)
-                    else:
-                        # Usuario sin centro no ve ningún lote
-                        lotes = Lote.objects.none()
-                # ISS-FIX: Farmacia/Admin ven TODOS los lotes cuando no hay filtro de centro
-                # Esto coincide con lotes_activos del serializer que cuenta todos los lotes
-                # (antes filtraba incorrectamente a centro__isnull=True)
+                    lotes_qs = lotes_qs.filter(centro_id=centro_param)
+            elif not es_admin_farmacia:
+                # Usuarios de centro solo ven lotes de su centro
+                user_centro = get_user_centro(user)
+                if user_centro:
+                    lotes_qs = lotes_qs.filter(centro=user_centro)
+                else:
+                    lotes_qs = Lote.objects.none()
             
             # Filtro por activo
             activo_param = request.query_params.get('activo')
             if activo_param == 'true':
-                lotes = lotes.filter(activo=True)
+                lotes_qs = lotes_qs.filter(activo=True)
             elif activo_param == 'false':
-                lotes = lotes.filter(activo=False)
+                lotes_qs = lotes_qs.filter(activo=False)
             
             # Filtro por stock
             con_stock = request.query_params.get('con_stock')
             if con_stock == 'true':
-                lotes = lotes.filter(cantidad_actual__gt=0)
+                lotes_qs = lotes_qs.filter(cantidad_actual__gt=0)
             
             # Ordenar por fecha de caducidad
-            lotes = lotes.order_by('fecha_caducidad')
+            lotes_qs = lotes_qs.order_by('fecha_caducidad')
             
-            # Calcular totales
-            total_lotes = lotes.count()
-            total_stock = sum(l.cantidad_actual for l in lotes)
-            
-            # Serializar
-            serializer = LoteSerializer(lotes, many=True)
+            if debe_consolidar:
+                # TRAZABILIDAD: Consolidar lotes por numero_lote
+                hoy = date.today()
+                lotes_consolidados = defaultdict(lambda: {
+                    'id': None,
+                    'producto': producto.id,
+                    'producto_nombre': producto.nombre,
+                    'producto_clave': producto.clave,
+                    'producto_descripcion': producto.nombre,
+                    'producto_info': {
+                        'presentacion': producto.presentacion or '',
+                        'unidad_medida': producto.unidad_medida or 'PIEZA',
+                    },
+                    'numero_lote': '',
+                    'fecha_caducidad': None,
+                    'fecha_fabricacion': None,
+                    'cantidad_inicial': 0,
+                    'cantidad_actual': 0,
+                    'precio_unitario': '0.00',
+                    'precio_compra': '0.00',
+                    'numero_contrato': None,
+                    'marca': '-',
+                    'ubicacion': '',
+                    'activo': True,
+                    'estado': 'disponible',
+                    'dias_para_caducar': 999,
+                    'alerta_caducidad': 'normal',
+                    'porcentaje_consumido': 0,
+                    'documentos': [],
+                    'tiene_documentos': False,
+                    'centros': [],
+                    'centros_detalle': [],
+                    'centro': None,
+                    'centro_nombre': '',
+                    'created_at': None,
+                    'updated_at': None,
+                })
+                
+                for lote in lotes_qs:
+                    key = lote.numero_lote
+                    cons = lotes_consolidados[key]
+                    
+                    if cons['id'] is None:
+                        cons['id'] = lote.id
+                        cons['numero_lote'] = lote.numero_lote
+                        cons['fecha_caducidad'] = lote.fecha_caducidad.isoformat() if lote.fecha_caducidad else None
+                        cons['fecha_fabricacion'] = lote.fecha_fabricacion.isoformat() if lote.fecha_fabricacion else None
+                        cons['precio_unitario'] = str(lote.precio_unitario or 0)
+                        cons['precio_compra'] = str(lote.precio_unitario or 0)
+                        cons['numero_contrato'] = lote.numero_contrato
+                        cons['marca'] = lote.marca or '-'
+                        cons['created_at'] = lote.created_at.isoformat() if lote.created_at else None
+                        cons['updated_at'] = lote.updated_at.isoformat() if lote.updated_at else None
+                        
+                        # Calcular días para caducar y alerta
+                        if lote.fecha_caducidad:
+                            dias = (lote.fecha_caducidad - hoy).days
+                            cons['dias_para_caducar'] = dias
+                            if dias < 0:
+                                cons['alerta_caducidad'] = 'vencido'
+                                cons['estado'] = 'vencido'
+                            elif dias < 90:
+                                cons['alerta_caducidad'] = 'critico'
+                            elif dias < 180:
+                                cons['alerta_caducidad'] = 'proximo'
+                    
+                    cons['cantidad_inicial'] += lote.cantidad_inicial
+                    cons['cantidad_actual'] += lote.cantidad_actual
+                    
+                    # Registrar centro donde está
+                    centro_nombre = lote.centro.nombre if lote.centro else 'Almacén Central'
+                    if centro_nombre not in cons['centros']:
+                        cons['centros'].append(centro_nombre)
+                    
+                    cons['centros_detalle'].append({
+                        'centro_id': lote.centro_id,
+                        'centro_nombre': centro_nombre,
+                        'cantidad': lote.cantidad_actual,
+                        'ubicacion': lote.ubicacion or '-',
+                    })
+                
+                # Construir lista final
+                lotes_data = []
+                for key, cons in lotes_consolidados.items():
+                    # Calcular porcentaje consumido
+                    if cons['cantidad_inicial'] > 0:
+                        cons['porcentaje_consumido'] = round(
+                            (1 - cons['cantidad_actual'] / cons['cantidad_inicial']) * 100
+                        )
+                    
+                    # Ubicación muestra centros
+                    cons['ubicacion'] = ', '.join(cons['centros'][:2])
+                    if len(cons['centros']) > 2:
+                        cons['ubicacion'] += f' (+{len(cons["centros"]) - 2})'
+                    
+                    cons['centro_nombre'] = cons['ubicacion']
+                    lotes_data.append(cons)
+                
+                # Ordenar por fecha de caducidad
+                lotes_data.sort(key=lambda x: x['fecha_caducidad'] or '9999-12-31')
+                
+                total_lotes = len(lotes_data)
+                total_stock = sum(l['cantidad_actual'] for l in lotes_data)
+            else:
+                # Sin consolidación: serializar normalmente
+                serializer = LoteSerializer(lotes_qs, many=True)
+                lotes_data = serializer.data
+                total_lotes = len(lotes_data)
+                total_stock = sum(l['cantidad_actual'] for l in lotes_data)
             
             return Response({
                 'producto_id': producto.id,
@@ -398,10 +509,11 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     'nombre': producto.nombre,
                     'unidad_medida': producto.unidad_medida,
                 },
-                'lotes': serializer.data,
+                'lotes': lotes_data,
                 'total': total_lotes,
                 'total_lotes': total_lotes,
                 'total_stock': total_stock,
+                'consolidado': debe_consolidar,  # Indica si los lotes están consolidados
             })
             
         except Producto.DoesNotExist:

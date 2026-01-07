@@ -823,6 +823,8 @@ export const productosAPI = {
 // ISS-006 FIX (audit33): getAll acepta config adicional para AbortController
 export const lotesAPI = {
   getAll: (params, config = {}) => apiClient.get('/lotes/', { params, ...config }),
+  // TRAZABILIDAD: Lotes consolidados (únicos, sin duplicados por centro)
+  getConsolidados: (params) => apiClient.get('/lotes/consolidados/', { params }),
   // ISS-FIX: getById acepta params opcionales (ej: para_requisicion=true)
   getById: (id, params = {}) => apiClient.get(`/lotes/${id}/`, { params }),
   create: (data) => apiClient.post('/lotes/', data),
