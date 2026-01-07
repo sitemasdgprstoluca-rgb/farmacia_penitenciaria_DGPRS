@@ -61,16 +61,16 @@ const baseFilters = {
 // Configuración de columnas por tipo de reporte
 const COLUMNAS_CONFIG = {
   inventario: [
-    { key: '#', label: '#', width: '60px' },
-    { key: 'clave', label: 'Clave', width: '100px' },
-    { key: 'descripcion', label: 'Descripción', width: '200px' },
-    { key: 'presentacion', label: 'Presentación', width: '120px' },
-    { key: 'unidad_medida', label: 'Unidad', width: '80px' },
-    { key: 'stock_actual', label: 'Inventario', width: '90px', align: 'right' },
-    { key: 'lotes_activos', label: 'Lotes', width: '60px', align: 'center' },
-    { key: 'nivel_stock', label: 'Nivel', width: '90px', align: 'center' },
-    { key: 'precio_unitario', label: 'Precio', width: '90px', align: 'right' },
-    { key: 'marca', label: 'Marca/Proveedor', width: '120px' },
+    { key: '#', label: '#', width: '50px' },
+    { key: 'clave', label: 'Clave', width: '80px' },
+    { key: 'descripcion', label: 'Descripción', width: '180px' },
+    { key: 'presentacion', label: 'Presentación', width: '140px' },
+    { key: 'unidad_medida', label: 'Unidad', width: '70px' },
+    { key: 'stock_actual', label: 'Inventario', width: '80px', align: 'right' },
+    { key: 'lotes_activos', label: 'Lotes', width: '50px', align: 'center' },
+    { key: 'nivel_stock', label: 'Nivel', width: '70px', align: 'center' },
+    { key: 'precio_unitario', label: 'Precio', width: '80px', align: 'right' },
+    { key: 'marca', label: 'Marca / Laboratorio', width: '130px' },
   ],
   caducidades: [
     { key: 'producto', label: 'Producto', width: '300px' },

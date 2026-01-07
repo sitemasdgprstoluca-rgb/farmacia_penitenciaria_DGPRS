@@ -8255,12 +8255,22 @@ def reporte_inventario(request):
             if nivel_stock_filtro and nivel != nivel_stock_filtro:
                 continue
 
+            # Obtener marca del lote con más stock (o el más reciente)
+            marca_lote = ''
+            lote_con_marca = lotes_query.filter(
+                cantidad_actual__gt=0, 
+                marca__isnull=False
+            ).exclude(marca='').order_by('-cantidad_actual').first()
+            if lote_con_marca:
+                marca_lote = lote_con_marca.marca or ''
+
             # Se incluye 'nivel_stock' para compatibilidad con el frontend
             # Usar 'nombre' del producto como descripción principal
             datos.append({
                 '#': idx,
                 'clave': producto.clave,
                 'descripcion': producto.nombre,  # nombre es el campo principal del producto
+                'presentacion': producto.presentacion or '-',  # Presentación del producto
                 'unidad': producto.unidad_medida,
                 'unidad_medida': producto.unidad_medida,  # alias esperado por frontend
                 'stock_minimo': producto.stock_minimo,
@@ -8269,6 +8279,7 @@ def reporte_inventario(request):
                 'nivel': nivel,
                 'nivel_stock': nivel,
                 'precio_unitario': float(precio_promedio),
+                'marca': marca_lote,  # Marca del lote con más stock
             })
             total_productos += 1
             total_stock += stock_total
