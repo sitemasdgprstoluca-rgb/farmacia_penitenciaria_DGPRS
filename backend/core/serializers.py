@@ -687,17 +687,20 @@ class ProductoSerializer(serializers.ModelSerializer):
     stock_actual = serializers.SerializerMethodField()
     lotes_activos = serializers.SerializerMethodField()
     marca = serializers.SerializerMethodField()
+    # ISS-FIX: Unidad base normalizada para filtros del frontend
+    unidad_base = serializers.SerializerMethodField()
     
     class Meta:
         model = Producto
         fields = [
             'id', 'clave', 'nombre', 'nombre_comercial', 'descripcion', 'unidad_medida',
+            'unidad_base',  # ISS-FIX: Campo agregado para filtros
             'categoria', 'sustancia_activa', 'presentacion', 'concentracion',
             'via_administracion', 'requiere_receta', 'es_controlado',
             'stock_minimo', 'stock_actual', 'activo', 'imagen',
             'lotes_activos', 'marca', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'stock_actual', 'marca']
+        read_only_fields = ['created_at', 'updated_at', 'stock_actual', 'marca', 'unidad_base']
         extra_kwargs = {
             'clave': {'required': True},
             'nombre': {'required': True},
@@ -705,6 +708,14 @@ class ProductoSerializer(serializers.ModelSerializer):
             'descripcion': {'required': False, 'allow_null': True, 'allow_blank': True},
             'nombre_comercial': {'required': False, 'allow_null': True, 'allow_blank': True},
         }
+    
+    def get_unidad_base(self, obj):
+        """
+        ISS-FIX: Normaliza la unidad de medida compuesta a su forma base.
+        Ejemplo: "CAJA CON 20 TABLETAS" -> "CAJA"
+        """
+        from core.constants import normalizar_unidad_medida
+        return normalizar_unidad_medida(obj.unidad_medida)
     
     def get_stock_actual(self, obj):
         # Priorizar stock_calculado (anotación) sobre el campo
@@ -1946,23 +1957,24 @@ class TemaGlobalPublicoSerializer(serializers.ModelSerializer):
 class DetalleHojaRecoleccionSerializer(serializers.ModelSerializer):
     """
     Serializer para DetalleHojaRecoleccion.
-    ISS-FIX: Actualizado para usar campos reales del modelo Supabase
-    (no tiene lote directo, tiene requisicion_id)
+    ISS-FIX: Actualizado para usar campos reales del modelo Supabase:
+    hoja_id, lote_id, cantidad_recolectar, cantidad_recolectada, motivo, observaciones
     """
-    requisicion_folio = serializers.CharField(source='requisicion.folio', read_only=True, allow_null=True)
+    lote_numero = serializers.CharField(source='lote.numero_lote', read_only=True, allow_null=True)
+    producto_nombre = serializers.CharField(source='lote.producto.nombre', read_only=True, allow_null=True)
     
     class Meta:
         model = DetalleHojaRecoleccion
         fields = [
-            'id', 'hoja', 'requisicion', 'requisicion_folio',
-            'orden', 'recolectado', 'fecha_recoleccion',
-            'notas', 'created_at'
+            'id', 'hoja', 'lote', 'lote_numero', 'producto_nombre',
+            'cantidad_recolectar', 'cantidad_recolectada',
+            'motivo', 'observaciones', 'created_at'
         ]
         read_only_fields = ['created_at']
         extra_kwargs = {
-            'orden': {'required': False, 'default': 0},
-            'recolectado': {'required': False, 'default': False},
-            'notas': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'cantidad_recolectada': {'required': False, 'default': 0},
+            'motivo': {'required': False, 'default': 'caducidad'},
+            'observaciones': {'required': False, 'allow_null': True, 'allow_blank': True},
         }
 
 

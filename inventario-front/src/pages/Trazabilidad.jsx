@@ -567,9 +567,8 @@ const Trazabilidad = () => {
 
   // Buscar trazabilidad global
   const buscarGlobal = async () => {
-    // ISS-FIX: Permitir a usuarios de centro ver su trazabilidad global (filtrada por su centro)
-    // Solo bloquear si NO es admin/farmacia Y tampoco es usuario de centro con centro asignado
-    if (!esAdminOFarmacia && !esCentroUser) {
+    // Solo admin/farmacia pueden acceder a trazabilidad global (alineado con backend)
+    if (!esAdminOFarmacia) {
       toast.error('No tienes permiso para ver trazabilidad global');
       return;
     }
@@ -585,10 +584,8 @@ const Trazabilidad = () => {
       if (fechaFin) params.fecha_fin = fechaFin;
       if (tipoMovimiento) params.tipo = tipoMovimiento;
       
-      // ISS-FIX: Para usuarios de centro, siempre filtrar por su centro
-      if (esCentroUser && centroUsuarioId) {
-        params.centro = centroUsuarioId;
-      } else if (centroFiltro) {
+      // Admin/Farmacia pueden filtrar por centro seleccionado
+      if (centroFiltro) {
         params.centro = centroFiltro;
       }
       

@@ -1712,17 +1712,28 @@ const Requisiciones = () => {
                   onChange={(e) => setFiltroEstado(e.target.value)}
                   className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                 >
-                  {/* ISS-DB-002: Estados alineados con BD Supabase */}
+                  {/* ISS-DB-002: Estados alineados con BD Supabase + FLUJO V2 */}
                   <option value="">Todos los estados</option>
-                  <option value="borrador">Borrador</option>
-                  <option value="enviada">Enviada</option>
-                  <option value="autorizada">Autorizada</option>
-                  <option value="en_surtido">En Surtido</option>
-                  <option value="parcial">Parcialmente Surtida</option>
-                  <option value="rechazada">Rechazada</option>
-                  <option value="surtida">Surtida</option>
-                  <option value="entregada">Entregada</option>
-                  <option value="cancelada">Cancelada</option>
+                  <optgroup label="En Centro">
+                    <option value="borrador">Borrador</option>
+                    <option value="pendiente_admin">Pendiente Admin</option>
+                    <option value="pendiente_director">Pendiente Director</option>
+                    <option value="devuelta">Devuelta</option>
+                  </optgroup>
+                  <optgroup label="En Farmacia">
+                    <option value="enviada">Enviada</option>
+                    <option value="en_revision">En Revisión</option>
+                    <option value="autorizada">Autorizada</option>
+                    <option value="en_surtido">En Surtido</option>
+                    <option value="parcial">Parcialmente Surtida</option>
+                    <option value="surtida">Surtida</option>
+                  </optgroup>
+                  <optgroup label="Finalizados">
+                    <option value="entregada">Entregada</option>
+                    <option value="rechazada">Rechazada</option>
+                    <option value="cancelada">Cancelada</option>
+                    <option value="vencida">Vencida</option>
+                  </optgroup>
                 </select>
               </div>
               {/* Solo mostrar filtro de centro para farmacia/admin */}

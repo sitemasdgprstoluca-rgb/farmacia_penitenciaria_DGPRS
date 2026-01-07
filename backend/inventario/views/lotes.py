@@ -407,7 +407,7 @@ class LoteViewSet(viewsets.ModelViewSet):
         """
         from collections import defaultdict
         
-        # Obtener lotes activos con filtro opcional de centro
+        # Obtener lotes con filtro opcional de centro
         # Optimización: usar only() para traer solo campos necesarios
         queryset = Lote.objects.select_related('producto', 'centro').only(
             'id', 'numero_lote', 'fecha_caducidad', 'fecha_fabricacion',
@@ -416,10 +416,31 @@ class LoteViewSet(viewsets.ModelViewSet):
             'producto__id', 'producto__clave', 'producto__nombre', 
             'producto__descripcion', 'producto__presentacion', 'producto__unidad_medida',
             'centro__id', 'centro__nombre'
-        ).filter(
-            activo=True,
-            cantidad_actual__gt=0
         )
+        
+        # Filtrar por activo (default: True, pero respeta el filtro del frontend)
+        activo_param = request.query_params.get('activo')
+        if activo_param is not None:
+            if activo_param.lower() in ['true', '1', 'activo']:
+                queryset = queryset.filter(activo=True)
+            elif activo_param.lower() in ['false', '0', 'inactivo']:
+                queryset = queryset.filter(activo=False)
+            # Si es vacío o 'todos', no filtrar por activo
+        else:
+            # Por defecto mostrar solo activos
+            queryset = queryset.filter(activo=True)
+        
+        # Filtrar por con_stock (default: con stock, pero respeta el filtro)
+        con_stock_param = request.query_params.get('con_stock')
+        if con_stock_param:
+            if con_stock_param.lower() in ['con_stock', 'true', '1']:
+                queryset = queryset.filter(cantidad_actual__gt=0)
+            elif con_stock_param.lower() in ['sin_stock', 'false', '0']:
+                queryset = queryset.filter(cantidad_actual=0)
+            # Si no especifica, no filtrar por stock
+        else:
+            # Por defecto mostrar solo con stock
+            queryset = queryset.filter(cantidad_actual__gt=0)
         
         # Filtrar por centro si se especifica
         centro_param = request.query_params.get('centro')

@@ -5336,6 +5336,7 @@ class AdminLimpiarDatosView(APIView):
         # Conteos
         productos_count = Producto.objects.count()
         lotes_count = Lote.objects.count()
+        lotes_centros_count = Lote.objects.filter(centro__isnull=False).count()  # Lotes duplicados en centros
         movimientos_count = Movimiento.objects.count()
         requisiciones_count = Requisicion.objects.count()
         detalles_req_count = DetalleRequisicion.objects.count()
@@ -5401,12 +5402,13 @@ class AdminLimpiarDatosView(APIView):
                 },
                 'movimientos': {
                     'nombre': 'Movimientos',
-                    'descripcion': 'Elimina solo el historial de movimientos de inventario',
-                    'total': movimientos_count,
+                    'descripcion': 'Elimina historial de movimientos y lotes duplicados en centros',
+                    'total': movimientos_count + lotes_centros_count,
                     'detalle': {
                         'movimientos': movimientos_count,
+                        'lotes_en_centros': lotes_centros_count,
                     },
-                    'dependencias': [],
+                    'dependencias': ['También eliminará: lotes duplicados en centros (creados por salidas)'],
                 },
                 'donaciones': {
                     'nombre': 'Donaciones',
@@ -5522,10 +5524,16 @@ class AdminLimpiarDatosView(APIView):
                 # ============================================================
                 
                 if categoria == 'movimientos':
-                    # Solo movimientos
+                    # Movimientos y lotes duplicados en centros (creados por salidas)
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM movimientos")
                         eliminados['movimientos'] = cursor.rowcount
+                    
+                    # ISS-FIX: Eliminar lotes de centros (son duplicados creados por movimientos)
+                    # Los lotes originales de Farmacia Central (centro_id IS NULL) se mantienen
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM lotes WHERE centro_id IS NOT NULL")
+                        eliminados['lotes_centros'] = cursor.rowcount
                 
                 elif categoria == 'donaciones':
                     # Eliminar donaciones en orden de dependencias FK

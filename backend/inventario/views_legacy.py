@@ -7559,7 +7559,8 @@ def dashboard_resumen(request):
             stock_total = lotes_query.aggregate(
                 total=Coalesce(Sum('cantidad_actual'), 0, output_field=IntegerField())
             )['total']
-            lotes_activos = lotes_query.count()
+            # ISS-FIX: Contar lotes ÚNICOS por numero_lote (no registros duplicados por centro)
+            lotes_activos = lotes_query.values('numero_lote').distinct().count()
 
             # === MOVIMIENTOS DEL MES ===
             inicio_mes = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)

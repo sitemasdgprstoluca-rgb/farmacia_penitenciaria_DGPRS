@@ -113,19 +113,29 @@ const getNivelColor = (nivel) => {
 
 const getEstadoColor = (estado) => {
   const e = (estado || '').toLowerCase();
+  // Estados de caducidades
   if (e === 'vencido') return { bg: '#FEE2E2', text: '#991B1B' };
   if (e === 'critico') return { bg: '#FFEDD5', text: '#9A3412' };
   if (e === 'proximo') return { bg: '#FEF3C7', text: '#92400E' };
+  // Estados de requisiciones - FLUJO V2
+  // Estados del flujo del centro
   if (e === 'borrador') return { bg: '#E5E7EB', text: '#374151' };
-  // ISS-DB-002: Estados alineados con BD Supabase
+  if (e === 'pendiente_admin') return { bg: '#FEF3C7', text: '#92400E' };
+  if (e === 'pendiente_director') return { bg: '#FEF3C7', text: '#92400E' };
+  if (e === 'devuelta') return { bg: '#FFEDD5', text: '#9A3412' };
+  // Estados del flujo de farmacia
   if (e === 'enviada') return { bg: '#DBEAFE', text: '#1E40AF' };
+  if (e === 'en_revision') return { bg: '#E0E7FF', text: '#3730A3' };
   if (e === 'autorizada') return { bg: '#D1FAE5', text: '#065F46' };
   if (e === 'en_surtido') return { bg: '#FFEDD5', text: '#9A3412' };
-  if (e === 'parcial') return { bg: '#FEF3C7', text: '#92400E' };
-  if (e === 'rechazada') return { bg: '#FEE2E2', text: '#991B1B' };
   if (e === 'surtida') return { bg: '#D1FAE5', text: '#065F46' };
   if (e === 'entregada') return { bg: '#DBEAFE', text: '#1E40AF' };
+  // Estados finales negativos
+  if (e === 'rechazada') return { bg: '#FEE2E2', text: '#991B1B' };
+  if (e === 'vencida') return { bg: '#FEE2E2', text: '#991B1B' };
   if (e === 'cancelada') return { bg: '#E5E7EB', text: '#6B7280' };
+  // Compatibilidad legacy
+  if (e === 'parcial') return { bg: '#FEF3C7', text: '#92400E' };
   return { bg: '#F3F4F6', text: '#374151' };
 };
 
@@ -759,17 +769,24 @@ const Reportes = () => {
                   onChange={(e) => handleFiltro("estado", e.target.value)}
                   className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
                 >
-                  {/* ISS-DB-002: Estados alineados con BD Supabase */}
+                  {/* ISS-DB-002: Estados alineados con BD Supabase y FLUJO V2 */}
                   <option value="">Todos los estados</option>
+                  {/* Estados del flujo del centro */}
                   <option value="borrador">📝 Borrador</option>
+                  <option value="pendiente_admin">⏳ Pendiente Admin</option>
+                  <option value="pendiente_director">⏳ Pendiente Director</option>
+                  {/* Estados del flujo de farmacia */}
                   <option value="enviada">📤 Enviada</option>
+                  <option value="en_revision">🔍 En Revisión</option>
                   <option value="autorizada">✅ Autorizada</option>
                   <option value="en_surtido">🔄 En Surtido</option>
-                  <option value="parcial">⏳ Parcialmente Surtida</option>
-                  <option value="rechazada">❌ Rechazada</option>
                   <option value="surtida">✔️ Surtida</option>
                   <option value="entregada">📦 Entregada</option>
+                  {/* Estados finales negativos */}
+                  <option value="rechazada">❌ Rechazada</option>
+                  <option value="vencida">⏰ Vencida</option>
                   <option value="cancelada">🚫 Cancelada</option>
+                  <option value="devuelta">↩️ Devuelta</option>
                 </select>
               </div>
               <div className="space-y-1">

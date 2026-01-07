@@ -150,9 +150,22 @@ class ProductoViewSet(viewsets.ModelViewSet):
         elif activo == 'false':
             queryset = queryset.filter(activo=False)
         
+        # ISS-FIX: Filtro de unidad_medida flexible
+        # La BD puede tener valores compuestos ("CAJA CON 20 TABLETAS")
+        # El frontend envía valores simples ("CAJA")
+        # Buscamos productos cuya unidad_medida INICIE con el valor o lo CONTENGA
         unidad = self.request.query_params.get('unidad_medida')
         if unidad and unidad != '':
-            queryset = queryset.filter(unidad_medida=unidad)
+            unidad_upper = unidad.upper()
+            # Buscar coincidencia exacta, que empiece con, o que contenga la palabra
+            queryset = queryset.filter(
+                Q(unidad_medida__iexact=unidad_upper) |
+                Q(unidad_medida__istartswith=unidad_upper + ' ') |
+                Q(unidad_medida__istartswith=unidad_upper + '/') |
+                Q(unidad_medida__icontains=' ' + unidad_upper + ' ') |
+                Q(unidad_medida__icontains=' ' + unidad_upper) |
+                Q(unidad_medida__iendswith=' ' + unidad_upper)
+            )
         
         search = self.request.query_params.get('search')
         if search and search.strip():

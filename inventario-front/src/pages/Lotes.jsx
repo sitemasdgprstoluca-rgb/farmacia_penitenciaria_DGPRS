@@ -873,16 +873,19 @@ const handleImportar = async (e) => {
 
   const getAlertaClass = (alerta) => {
     const classes = {
-      vencido: 'bg-red-100 text-red-800 font-bold',
-      critico: 'bg-orange-100 text-orange-800 font-bold',
-      proximo: 'bg-yellow-100 text-yellow-800',
-      normal: 'bg-green-100 text-green-800'
+      vencido: 'bg-gradient-to-r from-red-500 to-red-600 text-white font-bold shadow-sm ring-1 ring-red-600/20',
+      critico: 'bg-gradient-to-r from-orange-400 to-orange-500 text-white font-bold shadow-sm ring-1 ring-orange-500/20',
+      proximo: 'bg-gradient-to-r from-amber-300 to-yellow-400 text-amber-900 font-semibold shadow-sm ring-1 ring-yellow-500/20',
+      normal: 'bg-gradient-to-r from-emerald-400 to-green-500 text-white font-medium shadow-sm ring-1 ring-green-500/20'
     };
     return classes[alerta] || 'bg-gray-100 text-gray-800';
   };
 
   const getAlertaIcon = (alerta) => {
-    if (alerta === 'vencido' || alerta === 'critico') {
+    if (alerta === 'vencido') {
+      return <FaExclamationTriangle className="inline mr-1 animate-pulse" />;
+    }
+    if (alerta === 'critico') {
       return <FaExclamationTriangle className="inline mr-1" />;
     }
     return null;
@@ -1137,13 +1140,13 @@ const handleImportar = async (e) => {
               <col className="w-24" /> {/* Lote */}
               <col className="w-24" /> {/* Caducidad */}
               <col className="w-16" /> {/* Alerta */}
-              <col className="w-32" /> {/* Distribución */}
+              <col className="w-32" /> {/* Marca / Lab */}
               <col className="w-24" /> {/* Inventario */}
-              <col className="w-20" /> {/* Acciones */}
+              <col className="w-20" /> {/* Acciones */
             </colgroup>
             <thead className="bg-theme-gradient sticky top-0 z-10">
             <tr>
-              {['#', 'Producto', 'Lote', 'Caducidad', 'Alerta', 'Distribución', 'Inventario', 'Acciones'].map((col) => (
+              {['#', 'Producto', 'Lote', 'Caducidad', 'Alerta', 'Marca / Lab', 'Inventario', 'Acciones'].map((col) => (
                 <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   {col}
                 </th>
@@ -1174,7 +1177,6 @@ const handleImportar = async (e) => {
                       <div className="text-gray-500 text-xs truncate max-w-[120px]" title={lote.producto_nombre}>
                         {lote.producto_nombre?.substring(0, 20)}{lote.producto_nombre?.length > 20 ? '...' : ''}
                       </div>
-                      {lote.marca && <div className="text-gray-400 text-xs truncate">{lote.marca}</div>}
                     </td>
                     <td className="px-3 py-2 text-xs font-mono font-bold text-gray-800">
                       {lote.numero_lote}
@@ -1184,30 +1186,23 @@ const handleImportar = async (e) => {
                       <div className="text-gray-500">{lote.dias_para_caducar}d</div>
                     </td>
                     <td className="px-3 py-2">
-                      <span className={`px-2 py-0.5 text-xs rounded-full ${getAlertaClass(lote.alerta_caducidad)}`}>
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full ${getAlertaClass(lote.alerta_caducidad)}`}>
                         {getAlertaIcon(lote.alerta_caducidad)}
-                        {lote.alerta_caducidad === 'vencido' ? 'Vencido' :
-                         lote.alerta_caducidad === 'critico' ? '<90d' :
-                         lote.alerta_caducidad === 'proximo' ? '<180d' : 'OK'}
+                        <span>
+                          {lote.alerta_caducidad === 'vencido' ? '⛔ Vencido' :
+                           lote.alerta_caducidad === 'critico' ? '🔥 <90d' :
+                           lote.alerta_caducidad === 'proximo' ? '⏰ <180d' : '✓ OK'}
+                        </span>
                       </span>
                     </td>
-                    {/* Distribución - muestra en qué centros está el lote */}
+                    {/* Marca / Laboratorio */}
                     <td className="px-3 py-2 text-xs">
-                      {lote.centros ? (
-                        <div className="space-y-0.5">
-                          {lote.centros.slice(0, 2).map((centro, idx) => (
-                            <div key={idx} className="text-gray-600 truncate max-w-[120px]" title={centro}>
-                              {centro.replace('CENTRO PENITENCIARIO ', 'C.P. ')}
-                            </div>
-                          ))}
-                          {lote.centros.length > 2 && (
-                            <div className="text-blue-600 font-medium">+{lote.centros.length - 2}</div>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-gray-400">
-                          {(lote.centro_nombre || 'Almacén Central').replace('CENTRO PENITENCIARIO ', 'C.P. ')}
+                      {lote.marca ? (
+                        <span className="text-gray-700 truncate max-w-[120px]" title={lote.marca}>
+                          {lote.marca.length > 20 ? lote.marca.substring(0, 20) + '...' : lote.marca}
                         </span>
+                      ) : (
+                        <span className="text-gray-400 italic">Sin marca</span>
                       )}
                     </td>
                     <td className="px-3 py-2 text-xs">
