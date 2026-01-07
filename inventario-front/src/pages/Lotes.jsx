@@ -268,15 +268,26 @@ const Lotes = () => {
       
       // TRAZABILIDAD: Admin/Farmacia ven lotes CONSOLIDADOS (únicos, sin duplicados)
       // Usuarios de centro ven solo sus lotes (no consolidados)
-      if (puedeVerGlobal && !filtroCentro) {
-        // Usar endpoint consolidado para vista global de trazabilidad
+      if (puedeVerGlobal) {
+        // Usar endpoint consolidado para admin/farmacia
+        // Por DEFECTO mostrar solo Farmacia Central (valor vacío o 'central')
+        // Si selecciona 'todos' muestra consolidado de todo el sistema
+        if (filtroCentro === 'todos') {
+          // Sin parámetro centro = ver todo consolidado
+        } else if (filtroCentro) {
+          // Un centro específico por ID
+          params.centro = filtroCentro;
+        } else {
+          // Vacío = Farmacia Central por defecto
+          params.centro = 'central';
+        }
         const response = await lotesAPI.getConsolidados(params);
         setLotes(response.data.results || response.data);
         setTotalLotes(response.data.count || 0);
         setTotalPages(response.data.total_pages || Math.ceil((response.data.count || 0) / pageSize));
       } else {
-        // Usuarios de centro o con filtro específico: ver lotes normales
-        const centroParaCargar = !puedeVerGlobal ? (centroUsuario?.toString() || filtroCentro) : filtroCentro;
+        // Usuarios de centro: ver lotes normales de su centro
+        const centroParaCargar = centroUsuario?.toString() || filtroCentro;
         // SEGURIDAD: Si no tiene permiso global y no hay centro, NO cargar
         if (!puedeVerGlobal && !centroParaCargar) {
           console.warn('Usuario sin centro intentando cargar lotes - bloqueado');
@@ -1091,8 +1102,8 @@ const handleImportar = async (e) => {
                     onChange={(e) => setFiltroCentro(e.target.value)}
                     className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                   >
-                    <option value="">Todos los centros</option>
-                    <option value="central">Almacén Central</option>
+                    <option value="">Almacén Central</option>
+                    <option value="todos">Todos (consolidado)</option>
                     {centros.map(c => (
                       <option key={c.id} value={c.id}>
                         {c.nombre}

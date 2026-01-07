@@ -397,6 +397,7 @@ class LoteViewSet(viewsets.ModelViewSet):
         Parámetros opcionales:
         - search: Buscar por número de lote o clave/nombre de producto
         - producto: Filtrar por ID de producto
+        - centro: ID del centro o 'central' para farmacia central
         - activo: true/false
         - page, page_size: Paginación
         
@@ -406,11 +407,24 @@ class LoteViewSet(viewsets.ModelViewSet):
         """
         from collections import defaultdict
         
-        # Obtener TODOS los lotes activos (sin filtro de centro)
+        # Obtener lotes activos con filtro opcional de centro
         queryset = Lote.objects.select_related('producto', 'centro').filter(
             activo=True,
             cantidad_actual__gt=0
         )
+        
+        # Filtrar por centro si se especifica
+        centro_param = request.query_params.get('centro')
+        if centro_param:
+            if centro_param == 'central':
+                # Solo farmacia central (centro=NULL)
+                queryset = queryset.filter(centro__isnull=True)
+            elif centro_param != 'todos':
+                # Centro específico por ID
+                try:
+                    queryset = queryset.filter(centro_id=int(centro_param))
+                except (ValueError, TypeError):
+                    pass
         
         # Aplicar filtros de búsqueda
         search = request.query_params.get('search')

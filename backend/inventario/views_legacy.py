@@ -7938,6 +7938,7 @@ def trazabilidad_producto(request, clave):
                 'fecha_caducidad': lote.fecha_caducidad.isoformat() if lote.fecha_caducidad else None,
                 'dias_para_caducar': dias_caducidad,
                 'estado_caducidad': estado_caducidad,
+                'estado': estado_caducidad,  # Alias para frontend
                 'cantidad_actual': data['cantidad_total'],  # Cantidad consolidada
                 'cantidad_inicial': lote.cantidad_inicial,
                 'total_entradas': total_entradas,
@@ -8291,6 +8292,11 @@ def reporte_inventario(request):
             if lote_con_marca:
                 marca_lote = lote_con_marca.marca or ''
 
+            # Si hay filtro de centro activo, NO mostrar productos sin stock en ese centro
+            # (evita confusión de ver 76 productos cuando solo 4 tienen stock)
+            if filtrar_por_centro and stock_total == 0:
+                continue
+            
             # Se incluye 'nivel_stock' para compatibilidad con el frontend
             # Usar 'nombre' del producto como descripción principal
             datos.append({

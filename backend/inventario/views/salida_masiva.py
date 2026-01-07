@@ -375,7 +375,7 @@ def confirmar_entrega(request, grupo_salida):
         
         items_confirmados = []
         
-        # ISS-FIX FLUJO CORRECTO: Descontar stock y marcar como confirmados
+        # ISS-FIX FLUJO CORRECTO: Descontar stock, crear lote destino y marcar como confirmados
         with transaction.atomic():
             for mov in movimientos:
                 if mov.lote and _es_movimiento_pendiente(mov):
@@ -393,7 +393,7 @@ def confirmar_entrega(request, grupo_salida):
                             f'Disponible: {stock_anterior}, Requerido: {cantidad}'
                         )
                     
-                    # Actualizar stock del lote origen
+                    # Actualizar stock del lote origen (Farmacia Central)
                     lote_locked.cantidad_actual = nuevo_stock
                     
                     # Marcar como inactivo si se agotó el stock
@@ -402,6 +402,51 @@ def confirmar_entrega(request, grupo_salida):
                         lote_locked.save(update_fields=['cantidad_actual', 'activo', 'updated_at'])
                     else:
                         lote_locked.save(update_fields=['cantidad_actual', 'updated_at'])
+                    
+                    # ===============================================================
+                    # ISS-FIX CRÍTICO: Crear/actualizar lote en centro destino
+                    # ===============================================================
+                    centro_destino = mov.centro_destino
+                    if centro_destino:
+                        # Buscar si ya existe un lote con mismo numero_lote en el centro destino
+                        lote_destino, created = Lote.objects.get_or_create(
+                            numero_lote=lote_locked.numero_lote,
+                            producto=lote_locked.producto,
+                            centro=centro_destino,
+                            defaults={
+                                'cantidad_inicial': cantidad,
+                                'cantidad_actual': cantidad,
+                                'fecha_caducidad': lote_locked.fecha_caducidad,
+                                'fecha_fabricacion': lote_locked.fecha_fabricacion,
+                                'precio_unitario': lote_locked.precio_unitario,
+                                'marca': lote_locked.marca,
+                                'numero_contrato': lote_locked.numero_contrato,
+                                'ubicacion': lote_locked.ubicacion,
+                                'activo': True
+                            }
+                        )
+                        
+                        if not created:
+                            # Lote ya existe, sumar cantidad
+                            lote_destino.cantidad_actual += cantidad
+                            lote_destino.cantidad_inicial += cantidad
+                            lote_destino.activo = True
+                            lote_destino.save(update_fields=['cantidad_actual', 'cantidad_inicial', 'activo', 'updated_at'])
+                        
+                        # Crear movimiento de ENTRADA en centro destino
+                        motivo_entrada = f'[CONFIRMADO][{grupo_salida}] Entrada por transferencia desde Almacén Central'
+                        Movimiento.objects.create(
+                            tipo='entrada',
+                            producto=lote_destino.producto,
+                            lote=lote_destino,
+                            centro_origen=None,  # Viene de Farmacia Central
+                            centro_destino=centro_destino,
+                            cantidad=cantidad,
+                            motivo=motivo_entrada,
+                            usuario=request.user,
+                            subtipo_salida=None,
+                            referencia=grupo_salida
+                        )
                     
                     # Cambiar estado de [PENDIENTE] a [CONFIRMADO]
                     nuevo_motivo = (mov.motivo or '').replace('[PENDIENTE]', '[CONFIRMADO]')
@@ -413,7 +458,9 @@ def confirmar_entrega(request, grupo_salida):
                         'numero_lote': lote_locked.numero_lote,
                         'cantidad': cantidad,
                         'stock_anterior': stock_anterior,
-                        'stock_actual': nuevo_stock
+                        'stock_actual': nuevo_stock,
+                        'centro_destino': centro_destino.nombre if centro_destino else None,
+                        'lote_destino_creado': created if centro_destino else None
                     })
         
         logger.info(

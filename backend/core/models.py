@@ -2457,15 +2457,17 @@ class DetalleHojaRecoleccion(models.Model):
     """
     Detalle de Hoja de Recolección - Supabase
     
-    Campos en Supabase: id, hoja_recoleccion_id, requisicion_id, orden,
-    recolectado, fecha_recoleccion, notas, created_at
+    Campos en Supabase: id, hoja_id, lote_id, cantidad_recolectar, cantidad_recolectada,
+    motivo, observaciones, created_at
+    
+    ISS-DB-ALIGN: Corregido db_column de hoja_recoleccion_id a hoja_id según esquema BD real
     """
-    hoja = models.ForeignKey(HojaRecoleccion, on_delete=models.CASCADE, related_name='detalles', db_column='hoja_recoleccion_id')
-    requisicion = models.ForeignKey('Requisicion', on_delete=models.CASCADE, related_name='detalles_hoja_recoleccion', db_column='requisicion_id')
-    orden = models.IntegerField(default=0)
-    recolectado = models.BooleanField(default=False)
-    fecha_recoleccion = models.DateTimeField(null=True, blank=True)
-    notas = models.TextField(blank=True, null=True)
+    hoja = models.ForeignKey(HojaRecoleccion, on_delete=models.CASCADE, related_name='detalles', db_column='hoja_id')
+    lote = models.ForeignKey(Lote, on_delete=models.CASCADE, related_name='detalles_recoleccion', db_column='lote_id')
+    cantidad_recolectar = models.IntegerField()
+    cantidad_recolectada = models.IntegerField(default=0, null=True, blank=True)
+    motivo = models.CharField(max_length=50, default='caducidad')  # caducidad, dañado, etc.
+    observaciones = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
