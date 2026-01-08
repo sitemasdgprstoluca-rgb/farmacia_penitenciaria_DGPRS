@@ -970,7 +970,7 @@ const Movimientos = () => {
             </div>
             
             {hayFiltrosActivos && (
-              <span className="bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-1.5 rounded-full text-xs font-bold shadow-lg animate-pulse">
+              <span className="bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-1.5 rounded-full text-xs font-bold shadow-lg">
                 ⚡ {Object.values(filtrosAplicados).filter(v => v !== "").length} filtros activos
               </span>
             )}

@@ -1,43 +1,57 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { FaUser, FaLock, FaSignInAlt, FaSpinner, FaEye, FaEyeSlash, FaShieldAlt, FaFingerprint } from 'react-icons/fa';
+import { FaUser, FaLock, FaSignInAlt, FaSpinner, FaEye, FaEyeSlash, FaShieldAlt, FaRoute } from 'react-icons/fa';
 import { authAPI } from '../services/api';
 import { usePermissions } from '../hooks/usePermissions';
 import { useTheme } from '../hooks/useTheme';
 import { setAccessToken, clearTokens } from '../services/tokenManager';
 
-// 🎨 Componente de partículas flotantes animadas
+// 🎨 Componente de partículas flotantes animadas - MÁS VISIBLES
 const FloatingParticles = () => (
   <div className="absolute inset-0 overflow-hidden pointer-events-none">
-    {[...Array(20)].map((_, i) => (
+    {[...Array(30)].map((_, i) => (
       <div
         key={i}
-        className="absolute rounded-full bg-white/10 animate-float"
+        className="absolute rounded-full animate-float"
         style={{
-          width: `${Math.random() * 10 + 5}px`,
-          height: `${Math.random() * 10 + 5}px`,
+          width: `${Math.random() * 12 + 6}px`,
+          height: `${Math.random() * 12 + 6}px`,
           left: `${Math.random() * 100}%`,
           top: `${Math.random() * 100}%`,
           animationDelay: `${Math.random() * 5}s`,
-          animationDuration: `${Math.random() * 10 + 10}s`,
+          animationDuration: `${Math.random() * 8 + 8}s`,
+          background: i % 3 === 0 
+            ? 'rgba(201, 168, 118, 0.4)' // Dorado
+            : i % 3 === 1 
+              ? 'rgba(255, 255, 255, 0.3)' // Blanco
+              : 'rgba(255, 255, 255, 0.15)', // Blanco suave
+          boxShadow: i % 3 === 0 
+            ? '0 0 10px rgba(201, 168, 118, 0.5)' 
+            : '0 0 8px rgba(255, 255, 255, 0.3)',
         }}
       />
     ))}
   </div>
 );
 
-// 🌟 Componente de anillos concéntricos animados
+// 🌟 Componente de anillos concéntricos animados - MÁS VISIBLES
 const AnimatedRings = () => (
   <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
-    {[...Array(3)].map((_, i) => (
+    {[...Array(4)].map((_, i) => (
       <div
         key={i}
-        className="absolute rounded-full border border-white/5 animate-pulse-ring"
+        className="absolute rounded-full animate-pulse-ring"
         style={{
-          width: `${(i + 1) * 300}px`,
-          height: `${(i + 1) * 300}px`,
-          animationDelay: `${i * 0.5}s`,
+          width: `${(i + 1) * 250}px`,
+          height: `${(i + 1) * 250}px`,
+          animationDelay: `${i * 0.7}s`,
+          border: i % 2 === 0 
+            ? '2px solid rgba(201, 168, 118, 0.25)' // Dorado
+            : '1px solid rgba(255, 255, 255, 0.15)', // Blanco
+          boxShadow: i % 2 === 0 
+            ? '0 0 20px rgba(201, 168, 118, 0.15), inset 0 0 20px rgba(201, 168, 118, 0.05)' 
+            : 'none',
         }}
       />
     ))}
@@ -181,21 +195,13 @@ function Login() {
         }`}>
           <div className="w-full max-w-md">
             
-            {/* Logo */}
-            <div className="text-center mb-8">
-              <div className="relative inline-block group">
-                <img 
-                  src={logoLoginUrl || "/logo-sistema.png"} 
-                  alt="Logo del Sistema" 
-                  className="h-28 sm:h-32 w-auto mx-auto object-contain transition-transform duration-500 group-hover:scale-105"
-                  onError={(e) => { e.target.src = "/logo-sistema.png"; }}
-                />
-              </div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mt-4">
+            {/* Header del formulario */}
+            <div className="text-center mb-10">
+              <h1 className="text-3xl sm:text-4xl font-bold text-gray-800">
                 Iniciar Sesión
               </h1>
-              <p className="text-gray-500 text-sm mt-2">
-                Ingresa tus credenciales para acceder
+              <p className="text-gray-500 text-sm mt-3">
+                Ingresa tus credenciales para acceder al sistema
               </p>
             </div>
             
@@ -311,22 +317,32 @@ function Login() {
           
           {/* Contenido del branding */}
           <div className="relative z-10 flex flex-col justify-center items-center p-12 xl:p-16 w-full">
-            <div className="max-w-lg text-center space-y-6">
+            <div className="max-w-lg text-center space-y-8">
               
-              {/* Título principal */}
-              <div className="space-y-4">
-                <h2 className="text-4xl xl:text-5xl font-black text-white leading-tight tracking-tight drop-shadow-lg">
-                  {nombreSistema || temaGlobal?.reporte_titulo_institucion || 'Sistema de Farmacia'}
+              {/* Logo con fondo que resalta */}
+              <div className="relative group mb-4">
+                <div className="absolute inset-0 bg-white/20 rounded-3xl blur-xl scale-110 group-hover:bg-white/30 transition-all duration-500" />
+                <div className="relative bg-white/95 backdrop-blur-sm rounded-2xl p-6 shadow-2xl">
+                  <img 
+                    src={logoLoginUrl || "/logo-sistema.png"} 
+                    alt="Logo del Sistema" 
+                    className="h-32 xl:h-40 w-auto mx-auto object-contain transition-transform duration-500 group-hover:scale-105"
+                    onError={(e) => { e.target.src = "/logo-sistema.png"; }}
+                  />
+                </div>
+              </div>
+              
+              {/* Título principal - Sin duplicación */}
+              <div className="space-y-3">
+                <h2 className="text-3xl xl:text-4xl font-black text-white leading-tight tracking-tight drop-shadow-lg">
+                  {nombreSistema || temaGlobal?.reporte_titulo_institucion || 'Sistema de Farmacia Penitenciaria'}
                 </h2>
-                <p className="text-2xl xl:text-3xl font-light text-white/70">
-                  Penitenciaria
-                </p>
                 
-                {/* Línea decorativa dorada */}
-                <div className="flex items-center justify-center gap-3 py-3">
-                  <div className="h-px w-12 bg-gradient-to-r from-transparent to-[#C9A876]" />
-                  <div className="w-2 h-2 rounded-full bg-[#C9A876] shadow-lg shadow-[#C9A876]/30" />
-                  <div className="h-px w-12 bg-gradient-to-l from-transparent to-[#C9A876]" />
+                {/* Línea decorativa dorada más visible */}
+                <div className="flex items-center justify-center gap-4 py-4">
+                  <div className="h-0.5 w-16 bg-gradient-to-r from-transparent via-[#C9A876] to-[#C9A876] rounded-full" />
+                  <div className="w-3 h-3 rounded-full bg-[#C9A876] shadow-lg shadow-[#C9A876]/50 animate-pulse" />
+                  <div className="h-0.5 w-16 bg-gradient-to-l from-transparent via-[#C9A876] to-[#C9A876] rounded-full" />
                 </div>
               </div>
               
@@ -345,7 +361,7 @@ function Login() {
               <div className="flex justify-center gap-6 pt-4">
                 {[
                   { icon: FaShieldAlt, label: 'Seguro' },
-                  { icon: FaFingerprint, label: 'Trazable' },
+                  { icon: FaRoute, label: 'Trazable' },
                   { icon: FaUser, label: 'Rol-Based' },
                 ].map(({ icon: Icon, label }) => (
                   <div key={label} className="flex flex-col items-center gap-2 group">

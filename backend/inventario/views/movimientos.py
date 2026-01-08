@@ -103,14 +103,17 @@ class MovimientoViewSet(
         # SEGURIDAD: Filtrar por centro segun rol
         user = self.request.user
         if not is_farmacia_or_admin(user):
-            # Usuario de centro: forzado a su centro
-            # ISS-CENTRO FIX: Incluir movimientos donde el centro es origen, destino O el lote pertenece al centro
+            # Usuario de centro: solo ve movimientos relevantes a su centro
+            # ISS-CENTRO FIX v2: Solo mostrar:
+            # 1. Movimientos donde el lote pertenece a su centro (entradas/salidas de su inventario)
+            # 2. Movimientos donde su centro es el ORIGEN (salidas que hizo su centro)
+            # NO mostrar: Salidas de Farmacia Central aunque centro_destino=su centro
+            # (para esas, se muestra la ENTRADA correspondiente, no la salida de farmacia)
             user_centro = get_user_centro(user)
             if user_centro:
                 queryset = queryset.filter(
                     Q(lote__centro=user_centro) | 
-                    Q(centro_origen=user_centro) | 
-                    Q(centro_destino=user_centro)
+                    Q(centro_origen=user_centro)
                 )
             else:
                 return Movimiento.objects.none()

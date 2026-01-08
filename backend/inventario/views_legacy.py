@@ -7567,8 +7567,10 @@ def dashboard_resumen(request):
             
             movimientos_base = Movimiento.objects.all()
             if filtrar_por_centro and user_centro:
+                # ISS-CENTRO FIX v2: Solo movimientos donde el lote pertenece al centro
+                # o donde el centro es el origen (no incluir salidas de otros centros hacia este)
                 movimientos_base = movimientos_base.filter(
-                    Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
+                    Q(lote__centro=user_centro) | Q(centro_origen=user_centro)
                 )
             
             # Contar movimientos del mes actual
@@ -7591,8 +7593,10 @@ def dashboard_resumen(request):
         # === ÚLTIMOS MOVIMIENTOS (siempre frescos, no cacheados) ===
         movimientos_base = Movimiento.objects.all()
         if filtrar_por_centro and user_centro:
+            # ISS-CENTRO FIX v2: Solo movimientos donde el lote pertenece al centro
+            # o donde el centro es el origen (no incluir salidas de otros centros hacia este)
             movimientos_base = movimientos_base.filter(
-                Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
+                Q(lote__centro=user_centro) | Q(centro_origen=user_centro)
             )
         
         ultimos_movimientos = movimientos_base.select_related(
@@ -7718,8 +7722,10 @@ def dashboard_graficas(request):
             )
             
             if filtrar_por_centro and user_centro:
+                # ISS-CENTRO FIX v2: Solo movimientos donde el lote pertenece al centro
+                # o donde el centro es el origen (no incluir salidas de otros centros hacia este)
                 mov_mes = mov_mes.filter(
-                    Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
+                    Q(lote__centro=user_centro) | Q(centro_origen=user_centro)
                 )
             
             # Calcular entradas y salidas
