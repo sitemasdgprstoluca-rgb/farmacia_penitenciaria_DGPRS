@@ -269,10 +269,14 @@ const Lotes = () => {
       // TRAZABILIDAD: Admin/Farmacia ven lotes CONSOLIDADOS (únicos, sin duplicados)
       // Usuarios de centro ven solo sus lotes (no consolidados)
       if (puedeVerGlobal) {
-        // Usar endpoint consolidado para admin/farmacia
-        // Por DEFECTO mostrar solo Farmacia Central (valor vacío o 'central')
-        // Si selecciona 'todos' muestra consolidado de todo el sistema
-        if (filtroCentro === 'todos') {
+        // FIX: Cuando hay término de búsqueda, buscar en TODOS los centros
+        // para que el lote aparezca sin importar dónde esté
+        const hayBusqueda = searchTerm && searchTerm.trim().length > 0;
+        
+        if (hayBusqueda) {
+          // Buscar en todos los centros cuando hay búsqueda
+          // NO enviar parámetro centro = backend devuelve todos
+        } else if (filtroCentro === 'todos') {
           // Sin parámetro centro = ver todo consolidado
         } else if (filtroCentro) {
           // Un centro específico por ID

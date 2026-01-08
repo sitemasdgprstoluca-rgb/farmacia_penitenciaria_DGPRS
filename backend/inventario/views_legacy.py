@@ -10150,9 +10150,9 @@ def trazabilidad_global(request):
                 'numero_contrato': mov.lote.numero_contrato if mov.lote else None,
             })
         
-        # Estadísticas
-        total_entradas = sum(m['cantidad'] for m in movimientos_data if m['tipo'] == 'ENTRADA')
-        total_salidas = sum(m['cantidad'] for m in movimientos_data if m['tipo'] == 'SALIDA')
+        # Estadísticas - usar abs() para cantidades porque salidas pueden ser negativas
+        total_entradas = sum(abs(m['cantidad']) for m in movimientos_data if m['tipo'] == 'ENTRADA')
+        total_salidas = sum(abs(m['cantidad']) for m in movimientos_data if m['tipo'] == 'SALIDA')
         total_ajustes = sum(m['cantidad'] for m in movimientos_data if m['tipo'] == 'AJUSTE')
         
         # Contar lotes únicos
