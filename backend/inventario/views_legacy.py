@@ -4088,12 +4088,16 @@ class MovimientoViewSet(
         """
         queryset = Movimiento.objects.select_related('lote__producto', 'centro_origen', 'centro_destino', 'usuario')
         
+        # Obtener parámetros de filtro
+        tipo = self.request.query_params.get('tipo')
+        tipo_lower = (tipo or '').lower()
+        
         # ISS-019 FIX: Filtrar por centro según rol usando has_global_read_access
         # que incluye admin, farmacia Y vista para lectura global
         user = self.request.user
         if not has_global_read_access(user):
             # Usuario de centro: forzado a su centro
-            # ISS-CENTRO FIX: Incluir movimientos donde el centro es origen, destino O el lote pertenece al centro
+            # Incluir movimientos donde el centro es origen, destino O el lote pertenece al centro
             user_centro = get_user_centro(user)
             if user_centro:
                 queryset = queryset.filter(
@@ -4106,16 +4110,23 @@ class MovimientoViewSet(
         else:
             # Admin/farmacia/vista: pueden filtrar por centro especifico
             centro_param = self.request.query_params.get('centro')
-            if centro_param:
-                # ISS-CENTRO FIX: Filtrar por centro origen, destino O lote
-                queryset = queryset.filter(
-                    Q(lote__centro_id=centro_param) | 
-                    Q(centro_origen_id=centro_param) | 
-                    Q(centro_destino_id=centro_param)
-                )
+            if centro_param and centro_param.lower() != 'todos':
+                # ISS-FIX: Filtrar de forma ESTRICTA por centro según tipo de movimiento
+                # Evitar usar lote__centro para que no se cuelen movimientos de otros contextos
+                if tipo_lower == 'salida':
+                    # Para SALIDAS: solo donde el centro es ORIGEN (salidas DESDE ese centro)
+                    queryset = queryset.filter(centro_origen_id=centro_param)
+                elif tipo_lower == 'entrada':
+                    # Para ENTRADAS: solo donde el centro es DESTINO (entradas HACIA ese centro)
+                    queryset = queryset.filter(centro_destino_id=centro_param)
+                else:
+                    # Sin tipo: movimientos donde el centro es origen O destino
+                    queryset = queryset.filter(
+                        Q(centro_origen_id=centro_param) | 
+                        Q(centro_destino_id=centro_param)
+                    )
         
-        # Filtro por tipo
-        tipo = self.request.query_params.get('tipo')
+        # Filtro por tipo (ya lo tenemos arriba, aplicar si existe)
         if tipo:
             queryset = queryset.filter(tipo=tipo.lower())
         
@@ -4280,10 +4291,11 @@ class MovimientoViewSet(
                 lote__producto=producto
             ).select_related('lote', 'centro_origen', 'centro_destino', 'usuario')
             
-            # Aplicar filtro de centro si corresponde
+            # ISS-FIX: Aplicar filtro de centro de forma ESTRICTA
+            # Solo donde el centro es origen O destino (no por lote__centro)
             if filtrar_por_centro and user_centro:
                 movimientos = movimientos.filter(
-                    Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
+                    Q(centro_origen=user_centro) | Q(centro_destino=user_centro)
                 )
             
             movimientos = movimientos.order_by('-fecha')[:100]
@@ -7986,10 +7998,11 @@ def trazabilidad_producto(request, clave):
 
         movimientos = Movimiento.objects.filter(lote__producto=producto).select_related('lote', 'centro_origen', 'centro_destino')
         
-        # Aplicar filtro de centro a movimientos
+        # ISS-FIX: Aplicar filtro de centro de forma ESTRICTA a movimientos
+        # Solo donde el centro es origen O destino (no por lote__centro)
         if filtrar_por_centro and user_centro:
             movimientos = movimientos.filter(
-                Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
+                Q(centro_origen=user_centro) | Q(centro_destino=user_centro)
             )
         
         # Aplicar filtros de fecha a movimientos
@@ -8086,6 +8099,11 @@ def trazabilidad_lote(request, codigo):
     """
     Trazabilidad completa de un lote por su numero.
     
+    IMPORTANTE: Busca movimientos de TODOS los lotes con el mismo numero_lote,
+    incluyendo el lote original en Farmacia Central y los lotes espejo en centros.
+    Esto permite ver la trazabilidad completa: desde la entrada en farmacia,
+    las transferencias a centros, y las dispensaciones/salidas en cada centro.
+    
     Filtros soportados:
     - fecha_inicio: Fecha inicio (YYYY-MM-DD) para filtrar movimientos
     - fecha_fin: Fecha fin (YYYY-MM-DD) para filtrar movimientos
@@ -8109,17 +8127,38 @@ def trazabilidad_lote(request, codigo):
         fecha_fin = request.query_params.get('fecha_fin')
         tipo_movimiento = request.query_params.get('tipo')
         
-        lote_query = Lote.objects.select_related('producto').filter(numero_lote__iexact=codigo)
+        # TRAZABILIDAD COMPLETA: Buscar TODOS los lotes con el mismo numero_lote
+        # Esto incluye el lote original en Farmacia Central y los lotes espejo en centros
+        lotes_con_mismo_numero = Lote.objects.select_related('producto', 'centro').filter(numero_lote__iexact=codigo)
         
-        # Aplicar filtro de centro
-        if filtrar_por_centro and user_centro:
-            lote_query = lote_query.filter(centro=user_centro)
-        
-        lote = lote_query.first()
-        if not lote:
+        if not lotes_con_mismo_numero.exists():
             return Response({'error': 'Lote no encontrado', 'codigo_buscado': codigo}, status=status.HTTP_404_NOT_FOUND)
-
-        movimientos = Movimiento.objects.select_related('centro_origen', 'centro_destino', 'usuario').filter(lote=lote)
+        
+        # Usar el lote de Farmacia Central como principal (centro=NULL) o el primero disponible
+        lote_principal = lotes_con_mismo_numero.filter(centro__isnull=True).first()
+        if not lote_principal:
+            lote_principal = lotes_con_mismo_numero.first()
+        
+        # Obtener todos los IDs de lotes con el mismo numero_lote
+        lotes_ids = list(lotes_con_mismo_numero.values_list('id', flat=True))
+        
+        # Calcular cantidad total consolidada (suma de todos los lotes espejo)
+        cantidad_total_consolidada = lotes_con_mismo_numero.aggregate(total=Sum('cantidad_actual'))['total'] or 0
+        
+        # Obtener centros donde está distribuido el lote
+        centros_distribucion = []
+        for lote_item in lotes_con_mismo_numero:
+            centro_nombre = lote_item.centro.nombre if lote_item.centro else 'Farmacia Central'
+            if centro_nombre not in centros_distribucion:
+                centros_distribucion.append({
+                    'nombre': centro_nombre,
+                    'cantidad': lote_item.cantidad_actual
+                })
+        
+        # TRAZABILIDAD COMPLETA: Buscar movimientos de TODOS los lotes con el mismo numero_lote
+        movimientos = Movimiento.objects.select_related(
+            'centro_origen', 'centro_destino', 'usuario', 'lote', 'lote__centro'
+        ).filter(lote_id__in=lotes_ids)
         
         # Aplicar filtros de fecha
         if fecha_inicio:
@@ -8146,22 +8185,33 @@ def trazabilidad_lote(request, codigo):
         saldo = 0
         for mov in movimientos:
             saldo += mov.cantidad
+            # Determinar el centro del movimiento de forma más precisa
+            if mov.centro_destino:
+                centro_mov = mov.centro_destino.nombre
+            elif mov.centro_origen:
+                centro_mov = mov.centro_origen.nombre
+            elif mov.lote and mov.lote.centro:
+                centro_mov = mov.lote.centro.nombre
+            else:
+                centro_mov = 'Farmacia Central'
+            
             historial.append({
                 'id': mov.id,
                 'fecha': mov.fecha.isoformat(),
                 'tipo': mov.tipo.upper(),
                 'cantidad': mov.cantidad,
                 'saldo': saldo,
-                'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
+                'centro': centro_mov,
                 'usuario': mov.usuario.username if mov.usuario else '-',
                 'lote': mov.lote.numero_lote if mov.lote else '-',
                 'observaciones': mov.motivo or ''
             })
 
         total_entradas = movimientos.filter(tipo='entrada').aggregate(total=Sum('cantidad'))['total'] or 0
-        total_salidas = movimientos.filter(tipo='salida').aggregate(total=Sum('cantidad'))['total'] or 0
+        total_salidas = abs(movimientos.filter(tipo='salida').aggregate(total=Sum('cantidad'))['total'] or 0)
 
         from datetime import date
+        lote = lote_principal  # Usar lote principal para datos generales
         dias_caducidad = (lote.fecha_caducidad - date.today()).days if lote.fecha_caducidad else None
         if dias_caducidad is None:
             estado_caducidad = 'DESCONOCIDO'
@@ -8193,7 +8243,7 @@ def trazabilidad_lote(request, codigo):
                 'producto': lote.producto.clave,
                 'producto_nombre': lote.producto.nombre,  # Campo para frontend
                 'producto_descripcion': lote.producto.descripcion or lote.producto.nombre,
-                'cantidad_actual': lote.cantidad_actual,
+                'cantidad_actual': cantidad_total_consolidada,  # Cantidad consolidada de todos los centros
                 'cantidad_inicial': lote.cantidad_inicial,
                 'activo': lote.activo,
                 'fecha_caducidad': lote.fecha_caducidad.isoformat() if lote.fecha_caducidad else None,
@@ -8206,15 +8256,17 @@ def trazabilidad_lote(request, codigo):
                 'centro_id': lote.centro.id if lote.centro else None,
                 # Campos de trazabilidad de contratos (solo para ADMIN/FARMACIA)
                 'numero_contrato': lote.numero_contrato if is_farmacia_or_admin(user) else None,
+                # NUEVO: Distribución del lote en centros
+                'distribucion': centros_distribucion,
             },
             'estadisticas': {
                 'total_entradas': total_entradas,
                 'total_salidas': total_salidas,
                 'diferencia': total_entradas - total_salidas,
-                'cantidad_actual': lote.cantidad_actual,
+                'cantidad_actual': cantidad_total_consolidada,
                 'saldo_calculado': saldo,
-                'diferencia_stock': saldo - lote.cantidad_actual,
-                'consistente': saldo == lote.cantidad_actual
+                'diferencia_stock': saldo - cantidad_total_consolidada,
+                'consistente': saldo == cantidad_total_consolidada
             },
             'movimientos': historial,
             'historial': historial,  # compatibilidad hacia atr?s
@@ -8644,24 +8696,22 @@ def reporte_movimientos(request):
         if tipo:
             movimientos = movimientos.filter(tipo=tipo.lower())
         
-        # ISS-FIX: Aplicar filtro de centro de forma inteligente según el tipo de movimiento
-        # Si hay tipo especificado, filtrar de forma más precisa para evitar duplicados
+        # ISS-FIX: Aplicar filtro de centro de forma ESTRICTA según el tipo de movimiento
+        # Cuando admin/farmacia filtra por un centro específico, solo mostrar movimientos
+        # directamente relacionados con ese centro (origen o destino), NO por lote__centro
         if filtrar_por_centro and user_centro:
             tipo_lower = (tipo or '').lower()
             if tipo_lower == 'salida':
-                # Para salidas: solo mostrar donde el centro es ORIGEN (salidas DESDE ese centro)
-                # o donde el lote pertenece al centro
-                movimientos = movimientos.filter(
-                    Q(centro_origen=user_centro) | Q(lote__centro=user_centro)
-                )
+                # Para SALIDAS: solo mostrar donde el centro es ORIGEN (salidas DESDE ese centro)
+                # Excluimos lote__centro para evitar traer movimientos no relacionados
+                movimientos = movimientos.filter(centro_origen=user_centro)
             elif tipo_lower == 'entrada':
-                # Para entradas: solo mostrar donde el centro es DESTINO (entradas HACIA ese centro)
-                # o donde el lote pertenece al centro
-                movimientos = movimientos.filter(
-                    Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
-                )
+                # Para ENTRADAS: solo mostrar donde el centro es DESTINO (entradas HACIA ese centro)
+                movimientos = movimientos.filter(centro_destino=user_centro)
             else:
-                # Sin tipo especificado: mostrar todos los movimientos relacionados con el centro
+                # Sin tipo especificado: mostrar movimientos donde el centro es origen O destino
+                # Se incluye lote__centro SOLO cuando no hay tipo para que usuarios de centro 
+                # puedan ver sus propios movimientos internos (dispensaciones)
                 movimientos = movimientos.filter(
                     Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
                 )
@@ -9537,7 +9587,7 @@ def reporte_consumo(request):
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
         centro_param = request.query_params.get('centro')
-        if centro_param and is_farmacia_or_admin(user):
+        if centro_param and centro_param.lower() != 'todos' and is_farmacia_or_admin(user):
             try:
                 user_centro = Centro.objects.get(pk=centro_param)
                 filtrar_por_centro = True
@@ -9548,11 +9598,10 @@ def reporte_consumo(request):
         fecha_fin = request.query_params.get('fecha_fin')
         movimientos = Movimiento.objects.select_related('lote__producto', 'centro_origen', 'centro_destino').filter(tipo='salida')
         
-        # Aplicar filtro de centro
+        # ISS-FIX: Aplicar filtro de centro de forma ESTRICTA
+        # Para salidas: solo donde el centro es ORIGEN (salidas DESDE ese centro)
         if filtrar_por_centro and user_centro:
-            movimientos = movimientos.filter(
-                Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
-            )
+            movimientos = movimientos.filter(centro_origen=user_centro)
         
         if fecha_inicio:
             movimientos = movimientos.filter(fecha__gte=fecha_inicio)
@@ -10325,23 +10374,23 @@ def trazabilidad_producto_exportar(request, clave):
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
-        if centro_param and is_farmacia_or_admin(user):
-            if centro_param != 'todos':
-                try:
-                    user_centro = Centro.objects.get(pk=centro_param)
-                    filtrar_por_centro = True
-                except Centro.DoesNotExist:
-                    pass
+        if centro_param and centro_param.lower() != 'todos' and is_farmacia_or_admin(user):
+            try:
+                user_centro = Centro.objects.get(pk=centro_param)
+                filtrar_por_centro = True
+            except Centro.DoesNotExist:
+                pass
         
         # Obtener movimientos
         movimientos = Movimiento.objects.filter(
             lote__producto=producto
         ).select_related('lote', 'centro_origen', 'centro_destino', 'usuario')
         
-        # Aplicar filtro de centro
+        # ISS-FIX: Aplicar filtro de centro de forma ESTRICTA
+        # Para trazabilidad: solo donde el centro es origen O destino (no por lote__centro)
         if filtrar_por_centro and user_centro:
             movimientos = movimientos.filter(
-                Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
+                Q(centro_origen=user_centro) | Q(centro_destino=user_centro)
             )
         
         # Aplicar filtros de fecha
@@ -10585,7 +10634,11 @@ def _exportar_producto_excel(movimientos, producto_info):
 @api_view(['GET'])
 def trazabilidad_lote_exportar(request, codigo):
     """
-    Exportar trazabilidad de un lote con filtros de fecha.
+    Exportar trazabilidad COMPLETA de un lote con filtros de fecha.
+    
+    IMPORTANTE: Busca movimientos de TODOS los lotes con el mismo numero_lote,
+    incluyendo el lote original en Farmacia Central y los lotes espejo en centros.
+    Esto permite ver la trazabilidad completa del lote físico.
     
     Parámetros:
     - fecha_inicio: Fecha inicio (YYYY-MM-DD)
@@ -10603,20 +10656,33 @@ def trazabilidad_lote_exportar(request, codigo):
         if not is_farmacia_or_admin(user):
             return Response({'error': 'Solo administradores y farmacia pueden exportar trazabilidad de lotes'}, status=status.HTTP_403_FORBIDDEN)
         
-        # Obtener lote
-        lote = Lote.objects.select_related('producto', 'centro').filter(numero_lote__iexact=codigo).first()
-        if not lote:
+        # TRAZABILIDAD COMPLETA: Obtener TODOS los lotes con el mismo numero_lote
+        lotes_con_mismo_numero = Lote.objects.select_related('producto', 'centro').filter(numero_lote__iexact=codigo)
+        
+        if not lotes_con_mismo_numero.exists():
             return Response({'error': 'Lote no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Usar el lote de Farmacia Central como principal (centro=NULL) o el primero disponible
+        lote_principal = lotes_con_mismo_numero.filter(centro__isnull=True).first()
+        if not lote_principal:
+            lote_principal = lotes_con_mismo_numero.first()
+        lote = lote_principal
+        
+        # Obtener todos los IDs de lotes con el mismo numero_lote
+        lotes_ids = list(lotes_con_mismo_numero.values_list('id', flat=True))
+        
+        # Calcular cantidad total consolidada
+        cantidad_total_consolidada = lotes_con_mismo_numero.aggregate(total=Sum('cantidad_actual'))['total'] or 0
         
         # Filtros
         fecha_inicio = request.query_params.get('fecha_inicio')
         fecha_fin = request.query_params.get('fecha_fin')
         formato = request.query_params.get('formato', 'pdf')
         
-        # Obtener movimientos
+        # TRAZABILIDAD COMPLETA: Obtener movimientos de TODOS los lotes con el mismo numero_lote
         movimientos = Movimiento.objects.filter(
-            lote=lote
-        ).select_related('centro_origen', 'centro_destino', 'usuario')
+            lote_id__in=lotes_ids
+        ).select_related('centro_origen', 'centro_destino', 'usuario', 'lote', 'lote__centro')
         
         # Aplicar filtros de fecha
         if fecha_inicio:
@@ -10641,13 +10707,23 @@ def trazabilidad_lote_exportar(request, codigo):
         saldo = 0
         for mov in movimientos:
             saldo += mov.cantidad
+            # Determinar el centro del movimiento de forma más precisa
+            if mov.centro_destino:
+                centro_mov = mov.centro_destino.nombre
+            elif mov.centro_origen:
+                centro_mov = mov.centro_origen.nombre
+            elif mov.lote and mov.lote.centro:
+                centro_mov = mov.lote.centro.nombre
+            else:
+                centro_mov = 'Farmacia Central'
+            
             trazabilidad_data.append({
                 'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
                 'tipo': mov.tipo.upper(),
                 'lote': lote.numero_lote,
                 'cantidad': mov.cantidad,
                 'saldo': saldo,
-                'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
+                'centro': centro_mov,
                 'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
                 'observaciones': mov.motivo or ''
             })
@@ -10656,7 +10732,7 @@ def trazabilidad_lote_exportar(request, codigo):
             'clave': lote.producto.clave if lote.producto else 'N/A',
             'descripcion': lote.producto.nombre if lote.producto else 'N/A',
             'unidad_medida': lote.producto.unidad_medida if lote.producto else 'N/A',
-            'stock_actual': lote.cantidad_actual,
+            'stock_actual': cantidad_total_consolidada,  # Cantidad consolidada de todos los centros
             'stock_minimo': lote.producto.stock_minimo if lote.producto else 0,
             'numero_lote': lote.numero_lote,
             'fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else 'N/A',
