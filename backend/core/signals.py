@@ -303,8 +303,9 @@ def auditar_cambios_requisicion(sender, instance, created, **kwargs):
 def _notificar_admin_centro(requisicion):
     """
     FLUJO V2: Notifica al Administrador del Centro cuando un médico envía una requisición.
+    Incluye protección contra notificaciones duplicadas.
     """
-    from .models import User
+    from .models import User, Notificacion
     
     centro = requisicion.centro_destino or requisicion.centro_origen
     if not centro:
@@ -325,7 +326,19 @@ def _notificar_admin_centro(requisicion):
     
     solicitante_nombre = requisicion.solicitante.get_full_name() or requisicion.solicitante.username if requisicion.solicitante else 'Usuario'
     
+    notificaciones_creadas = 0
     for admin in admins_centro:
+        # ISS-FIX: Verificar si ya existe una notificación similar
+        notificacion_existente = Notificacion.objects.filter(
+            usuario=admin,
+            titulo='Nueva Requisición para Autorizar',
+            datos__requisicion_id=requisicion.pk
+        ).exists()
+        
+        if notificacion_existente:
+            logger.debug(f"Notificación ya existe para admin {admin.username} - requisición {requisicion.numero}")
+            continue
+        
         try:
             Notificacion.objects.create(
                 usuario=admin,
@@ -340,18 +353,20 @@ def _notificar_admin_centro(requisicion):
                 },
                 url=f'/requisiciones/{requisicion.pk}'
             )
+            notificaciones_creadas += 1
             logger.debug(f"Notificación enviada a admin {admin.username}: Requisición {requisicion.numero}")
         except Exception as exc:
             logger.error(f"Error creando notificación para admin {admin.username}: {exc}")
     
-    logger.info(f"Notificaciones enviadas a {admins_centro.count()} admin(s) del centro {centro.nombre}")
+    logger.info(f"Notificaciones creadas: {notificaciones_creadas} de {admins_centro.count()} admin(s) del centro {centro.nombre}")
 
 
 def _notificar_director_centro(requisicion):
     """
     FLUJO V2: Notifica al Director del Centro cuando el admin autoriza una requisición.
+    Incluye protección contra notificaciones duplicadas.
     """
-    from .models import User
+    from .models import User, Notificacion
     
     centro = requisicion.centro_destino or requisicion.centro_origen
     if not centro:
@@ -370,7 +385,19 @@ def _notificar_director_centro(requisicion):
         logger.warning(f"No hay directores en el centro {centro.nombre} para notificar")
         return
     
+    notificaciones_creadas = 0
     for director in directores_centro:
+        # ISS-FIX: Verificar si ya existe una notificación similar
+        notificacion_existente = Notificacion.objects.filter(
+            usuario=director,
+            titulo='Requisición Pendiente de Autorización',
+            datos__requisicion_id=requisicion.pk
+        ).exists()
+        
+        if notificacion_existente:
+            logger.debug(f"Notificación ya existe para director {director.username} - requisición {requisicion.numero}")
+            continue
+        
         try:
             Notificacion.objects.create(
                 usuario=director,
@@ -385,18 +412,20 @@ def _notificar_director_centro(requisicion):
                 },
                 url=f'/requisiciones/{requisicion.pk}'
             )
+            notificaciones_creadas += 1
             logger.debug(f"Notificación enviada a director {director.username}: Requisición {requisicion.numero}")
         except Exception as exc:
             logger.error(f"Error creando notificación para director {director.username}: {exc}")
     
-    logger.info(f"Notificaciones enviadas a {directores_centro.count()} director(es) del centro {centro.nombre}")
+    logger.info(f"Notificaciones creadas: {notificaciones_creadas} de {directores_centro.count()} director(es) del centro {centro.nombre}")
 
 
 def _notificar_farmacia_nueva_requisicion(requisicion):
     """
     Notifica a todos los usuarios de Farmacia cuando un Centro envía una requisición.
+    Incluye protección contra notificaciones duplicadas.
     """
-    from .models import User
+    from .models import User, Notificacion
     
     # Obtener usuarios de farmacia y admin que deben recibir notificaciones
     # Roles de farmacia según ROLES_USUARIO en constants.py
@@ -407,7 +436,20 @@ def _notificar_farmacia_nueva_requisicion(requisicion):
     
     centro_nombre = requisicion.centro_origen.nombre if requisicion.centro_origen else 'Centro desconocido'
     
+    notificaciones_creadas = 0
     for usuario in usuarios_farmacia:
+        # ISS-FIX: Verificar si ya existe una notificación similar para este usuario y requisición
+        # (evitar duplicados cuando el estado cambia múltiples veces)
+        notificacion_existente = Notificacion.objects.filter(
+            usuario=usuario,
+            titulo='Nueva Requisición Recibida',
+            datos__requisicion_id=requisicion.pk
+        ).exists()
+        
+        if notificacion_existente:
+            logger.debug(f"Notificación ya existe para {usuario.username} - requisición {requisicion.numero}")
+            continue
+        
         try:
             Notificacion.objects.create(
                 usuario=usuario,
@@ -424,11 +466,12 @@ def _notificar_farmacia_nueva_requisicion(requisicion):
                 },
                 url=f'/requisiciones/{requisicion.pk}'
             )
+            notificaciones_creadas += 1
             logger.debug(f"Notificación enviada a {usuario.username}: Nueva requisición {requisicion.numero}")
         except Exception as exc:
             logger.error(f"Error creando notificación para {usuario.username}: {exc}")
     
-    logger.info(f"Notificaciones enviadas a {usuarios_farmacia.count()} usuarios de Farmacia para requisición {requisicion.numero}")
+    logger.info(f"Notificaciones creadas: {notificaciones_creadas} de {usuarios_farmacia.count()} usuarios de Farmacia para requisición {requisicion.numero}")
 
 
 def _notificar_solicitante(requisicion, tipo, titulo, mensaje):
