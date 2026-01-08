@@ -584,14 +584,25 @@ const Trazabilidad = () => {
       if (fechaFin) params.fecha_fin = fechaFin;
       if (tipoMovimiento) params.tipo = tipoMovimiento;
       
-      // Admin/Farmacia pueden filtrar por centro seleccionado
+      // FILTRO DE CENTRO - Lógica clara:
+      // - vacío/undefined: Backend usa 'central' (Farmacia Central) por defecto
+      // - 'todos': Ver todos los movimientos de todos los centros
+      // - ID numérico: Centro específico
       if (centroFiltro) {
         params.centro = centroFiltro;
       }
+      // Si no hay centroFiltro, el backend asume 'central' por defecto
       
       const response = await trazabilidadAPI.global(params);
       setResultadosGlobal(response.data);
-      toast.success(`Trazabilidad global cargada: ${response.data?.total_movimientos || 0} movimientos`);
+      
+      // Mensaje informativo según el filtro
+      const centroMsg = centroFiltro === 'todos' 
+        ? '(todos los centros)' 
+        : centroFiltro 
+          ? `(centro seleccionado)` 
+          : '(Farmacia Central)';
+      toast.success(`Trazabilidad cargada ${centroMsg}: ${response.data?.total_movimientos || 0} movimientos`);
     } catch (error) {
       console.error('Error al cargar trazabilidad global:', error);
       toast.error(error.response?.data?.error || 'Error al cargar trazabilidad global');
@@ -883,24 +894,36 @@ const Trazabilidad = () => {
               )}
             </div>
 
-            {/* Selector de centro (solo para admin/farmacia) */}
+            {/* Selector de centro (solo para admin/farmacia) - Con opciones claras y organizadas */}
             {esAdminOFarmacia && (
               <div>
-                <label className="block text-sm font-medium mb-2">Centro</label>
+                <label className="block text-sm font-medium mb-2">
+                  Filtrar por Centro
+                  <span className="ml-1 text-xs text-gray-400 font-normal">(reportes y exportaciones)</span>
+                </label>
                 <select
                   value={centroFiltro}
                   onChange={(e) => setCentroFiltro(e.target.value)}
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                   disabled={loading}
                 >
-                  <option value="">Todos los centros</option>
-                  <option value="central">🏥 Farmacia Central</option>
-                  {centros.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nombre}
-                    </option>
-                  ))}
+                  <option value="">🏥 Farmacia Central (por defecto)</option>
+                  <option value="todos">🌐 Todos los Centros (consolidado)</option>
+                  <optgroup label="── Centros Penitenciarios ──">
+                    {centros.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        🏢 {c.nombre}
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  {centroFiltro === 'todos' 
+                    ? '📊 Verás movimientos de TODOS los centros combinados'
+                    : centroFiltro 
+                      ? '🏢 Verás solo movimientos de este centro específico'
+                      : '🏥 Verás solo movimientos de Farmacia Central'}
+                </p>
               </div>
             )}
 
@@ -1084,18 +1107,29 @@ const Trazabilidad = () => {
             </div>
           )}
           
-          {/* Indicador de modo global */}
+          {/* Indicador de modo global - Muestra claramente qué centro se está viendo */}
           {modoGlobal && resultadosGlobal && (
-            <div className="text-xs text-gray-500 flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
-                🌐 Reporte Global
-              </span>
-              <span>{resultadosGlobal.total_movimientos} movimientos encontrados</span>
-              {(fechaInicio || fechaFin) && (
-                <span className="text-gray-400">
-                  | Período: {fechaInicio || '---'} a {fechaFin || '---'}
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="px-3 py-1 rounded-full bg-purple-100 text-purple-700 font-semibold text-sm">
+                  {centroFiltro === 'todos' ? '🌐 Todos los Centros' : 
+                   centroFiltro ? `🏢 Centro: ${centros.find(c => c.id.toString() === centroFiltro)?.nombre || centroFiltro}` : 
+                   '🏥 Farmacia Central'}
                 </span>
-              )}
+                <span className="text-sm text-purple-700">
+                  <strong>{resultadosGlobal.total_movimientos}</strong> movimientos encontrados
+                </span>
+                {(fechaInicio || fechaFin) && (
+                  <span className="text-sm text-purple-600">
+                    | {fechaInicio || '---'} a {fechaFin || 'hoy'}
+                  </span>
+                )}
+              </div>
+              <span className="text-xs text-purple-500 bg-purple-100 px-2 py-1 rounded">
+                {centroFiltro === 'todos' ? 'Datos combinados de todos los centros' : 
+                 centroFiltro ? 'Solo datos de este centro' : 
+                 'Solo datos de Farmacia Central'}
+              </span>
             </div>
           )}
         </form>
@@ -1134,13 +1168,30 @@ const Trazabilidad = () => {
           <div className="bg-white p-6 rounded-lg shadow">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className="bg-purple-100 p-3 rounded-lg">
-                  <FaGlobe className="text-purple-600 text-2xl" />
+                <div className={`p-3 rounded-lg ${
+                  centroFiltro === 'todos' ? 'bg-indigo-100' : 
+                  centroFiltro ? 'bg-blue-100' : 'bg-purple-100'
+                }`}>
+                  {centroFiltro === 'todos' ? (
+                    <FaGlobe className="text-indigo-600 text-2xl" />
+                  ) : centroFiltro ? (
+                    <FaBuilding className="text-blue-600 text-2xl" />
+                  ) : (
+                    <FaWarehouse className="text-purple-600 text-2xl" />
+                  )}
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold">Trazabilidad Global</h2>
+                  <h2 className="text-lg font-bold">
+                    {centroFiltro === 'todos' ? 'Trazabilidad - Todos los Centros' : 
+                     centroFiltro ? `Trazabilidad - ${centros.find(c => c.id.toString() === centroFiltro)?.nombre || 'Centro'}` : 
+                     'Trazabilidad - Farmacia Central'}
+                  </h2>
                   <p className="text-sm text-gray-600">
-                    Reporte de todos los movimientos del sistema
+                    {centroFiltro === 'todos' 
+                      ? 'Movimientos combinados de todos los centros del sistema' 
+                      : centroFiltro 
+                        ? 'Movimientos específicos de este centro penitenciario'
+                        : 'Movimientos del almacén central de medicamentos'}
                   </p>
                 </div>
               </div>

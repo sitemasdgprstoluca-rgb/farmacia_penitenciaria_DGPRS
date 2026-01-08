@@ -418,7 +418,17 @@ class LoteViewSet(viewsets.ModelViewSet):
             'centro__id', 'centro__nombre'
         )
         
-        # Filtrar por activo (default: True, pero respeta el filtro del frontend)
+        # Determinar rol del usuario PRIMERO
+        user = request.user
+        es_admin_farmacia = is_farmacia_or_admin(user)
+        
+        # Verificar si hay búsqueda específica por número de lote
+        search = request.query_params.get('search', '').strip()
+        busqueda_especifica = bool(search and len(search) >= 3)
+        
+        # Filtrar por activo según rol:
+        # - Farmacia/Admin: Ven TODOS los lotes (activos e inactivos) para trazabilidad completa
+        # - Centro: Solo ven lotes activos
         activo_param = request.query_params.get('activo')
         if activo_param is not None:
             if activo_param.lower() in ['true', '1', 'activo']:
@@ -426,15 +436,14 @@ class LoteViewSet(viewsets.ModelViewSet):
             elif activo_param.lower() in ['false', '0', 'inactivo']:
                 queryset = queryset.filter(activo=False)
             # Si es vacío o 'todos', no filtrar por activo
-        else:
-            # Por defecto mostrar solo activos
+        elif not es_admin_farmacia:
+            # Usuarios de Centro: por defecto solo ver lotes activos
             queryset = queryset.filter(activo=True)
+        # Farmacia/Admin sin filtro: ver TODOS los lotes (activos e inactivos) para trazabilidad
         
         # Filtrar por con_stock según rol del usuario:
         # - Farmacia/Admin: Por defecto ven TODOS los lotes (con y sin stock) para trazabilidad
         # - Centro: Por defecto solo ven lotes CON stock disponible
-        user = request.user
-        es_admin_farmacia = is_farmacia_or_admin(user)
         
         con_stock_param = request.query_params.get('con_stock')
         if con_stock_param:

@@ -10019,12 +10019,19 @@ def trazabilidad_global(request):
     Filtros soportados:
     - fecha_inicio: Fecha inicio (YYYY-MM-DD)
     - fecha_fin: Fecha fin (YYYY-MM-DD)
-    - centro: ID del centro o 'central'
+    - centro: Filtro de centro:
+        * vacío o 'central': Solo movimientos de Farmacia Central (por defecto)
+        * 'todos': Todos los movimientos de todos los centros
+        * ID numérico: Solo movimientos del centro específico
     - tipo: tipo de movimiento (entrada, salida, ajuste)
     - producto: ID del producto
     - formato: json (default), excel, pdf
     
     SEGURIDAD: Solo admin/farmacia pueden acceder.
+    
+    IMPORTANTE: Para evitar confusiones en reportes:
+    - Por defecto se muestran SOLO movimientos de Farmacia Central
+    - Para ver todos los centros juntos, usar centro='todos' explícitamente
     """
     from datetime import datetime, timedelta
     from django.utils import timezone
@@ -10046,7 +10053,9 @@ def trazabilidad_global(request):
         formato = request.query_params.get('formato', 'json')
         
         # Construir query base de lotes
-        lotes_query = Lote.objects.select_related('producto', 'centro').filter(activo=True)
+        # TRAZABILIDAD: Incluir TODOS los lotes (activos e inactivos) para trazabilidad completa
+        # Solo admin/farmacia acceden a este endpoint, necesitan ver historial completo
+        lotes_query = Lote.objects.select_related('producto', 'centro')
         
         # Filtrar por centro
         if centro_param:
@@ -10069,10 +10078,34 @@ def trazabilidad_global(request):
                 )
         
         # Construir query de movimientos
+        # TRAZABILIDAD: Incluir movimientos de TODOS los lotes (activos e inactivos)
         movimientos_query = Movimiento.objects.select_related(
             'lote', 'lote__producto', 'lote__centro',
             'centro_origen', 'centro_destino', 'usuario'
-        ).filter(lote__activo=True)
+        )
+        
+        # FILTRO DE CENTRO - Lógica clara para evitar confusiones:
+        # - vacío o 'central': Solo Farmacia Central (centro_id=NULL)
+        # - 'todos': Todos los movimientos sin filtrar por centro
+        # - ID numérico: Solo ese centro específico
+        if not centro_param or centro_param == 'central':
+            # Por defecto: Solo movimientos de Farmacia Central
+            movimientos_query = movimientos_query.filter(
+                Q(lote__centro__isnull=True) |
+                Q(centro_origen__isnull=True, centro_destino__isnull=True)
+            )
+        elif centro_param != 'todos':
+            # Centro específico por ID
+            try:
+                centro_id = int(centro_param)
+                movimientos_query = movimientos_query.filter(
+                    Q(lote__centro_id=centro_id) |
+                    Q(centro_origen_id=centro_id) |
+                    Q(centro_destino_id=centro_id)
+                )
+            except (ValueError, TypeError):
+                pass
+        # Si centro_param == 'todos': No aplicar filtro de centro (mostrar todo)
         
         # FIX: Filtrar movimientos por fecha usando fecha__date para ignorar hora
         if fecha_inicio:
@@ -10090,23 +10123,8 @@ def trazabilidad_global(request):
             except ValueError:
                 pass
         
-        # Filtrar por centro en movimientos
-        if centro_param:
-            if centro_param == 'central':
-                movimientos_query = movimientos_query.filter(
-                    Q(lote__centro__isnull=True) |
-                    Q(centro_origen__isnull=True, centro_destino__isnull=True)
-                )
-            else:
-                try:
-                    centro_id = int(centro_param)
-                    movimientos_query = movimientos_query.filter(
-                        Q(lote__centro_id=centro_id) |
-                        Q(centro_origen_id=centro_id) |
-                        Q(centro_destino_id=centro_id)
-                    )
-                except ValueError:
-                    pass
+        # NOTA: El filtro de centro ya se aplicó arriba con la nueva lógica
+        # (vacío/central = Farmacia Central, todos = sin filtro, ID = centro específico)
         
         # Filtrar por tipo de movimiento
         if tipo_movimiento:
@@ -10205,7 +10223,7 @@ def _exportar_trazabilidad_global_excel(movimientos, filtros):
     
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Trazabilidad Global"
+    ws.title = "Trazabilidad"
     
     # Estilos
     header_font = Font(bold=True, color="FFFFFF")
@@ -10217,31 +10235,47 @@ def _exportar_trazabilidad_global_excel(movimientos, filtros):
         bottom=Side(style='thin')
     )
     
-    # Título
-    ws.merge_cells('A1:I1')
-    ws['A1'] = "REPORTE DE TRAZABILIDAD GLOBAL"
+    # Determinar título según el filtro de centro
+    centro_param = filtros.get('centro', '')
+    if centro_param == 'todos':
+        titulo_centro = "TODOS LOS CENTROS (CONSOLIDADO)"
+    elif centro_param and centro_param != 'central':
+        try:
+            centro_obj = Centro.objects.get(pk=int(centro_param))
+            titulo_centro = centro_obj.nombre.upper()
+        except (Centro.DoesNotExist, ValueError):
+            titulo_centro = f"CENTRO {centro_param}"
+    else:
+        titulo_centro = "FARMACIA CENTRAL"
+    
+    # Título dinámico según el centro
+    ws.merge_cells('A1:K1')
+    ws['A1'] = f"REPORTE DE TRAZABILIDAD - {titulo_centro}"
     ws['A1'].font = Font(bold=True, size=14)
     ws['A1'].alignment = Alignment(horizontal='center')
     
     # Filtros aplicados
     row = 3
-    if any(filtros.values()):
-        ws[f'A{row}'] = "Filtros aplicados:"
-        ws[f'A{row}'].font = Font(bold=True)
+    ws[f'A{row}'] = "Filtros aplicados:"
+    ws[f'A{row}'].font = Font(bold=True)
+    row += 1
+    
+    # Siempre mostrar el centro para claridad
+    ws[f'A{row}'] = f"Centro: {titulo_centro}"
+    row += 1
+    
+    if filtros.get('fecha_inicio'):
+        ws[f'A{row}'] = f"Fecha inicio: {filtros['fecha_inicio']}"
         row += 1
-        if filtros.get('fecha_inicio'):
-            ws[f'A{row}'] = f"Fecha inicio: {filtros['fecha_inicio']}"
-            row += 1
-        if filtros.get('fecha_fin'):
-            ws[f'A{row}'] = f"Fecha fin: {filtros['fecha_fin']}"
-            row += 1
-        if filtros.get('centro'):
-            ws[f'A{row}'] = f"Centro: {filtros['centro']}"
-            row += 1
-        if filtros.get('tipo'):
-            ws[f'A{row}'] = f"Tipo: {filtros['tipo']}"
-            row += 1
+    if filtros.get('fecha_fin'):
+        ws[f'A{row}'] = f"Fecha fin: {filtros['fecha_fin']}"
         row += 1
+    if filtros.get('tipo'):
+        ws[f'A{row}'] = f"Tipo de movimiento: {filtros['tipo'].upper()}"
+        row += 1
+    
+    ws[f'A{row}'] = f"Total movimientos: {len(movimientos)}"
+    row += 2
     
     # Encabezados - ISS-FIX: Agregado Subtipo Salida y No. Expediente para trazabilidad completa
     headers = ['Fecha', 'Tipo', 'Subtipo', 'Producto', 'Nombre Producto', 'Lote', 'Cantidad', 'Centro', 'Usuario', 'No. Expediente', 'Observaciones']
@@ -10305,6 +10339,19 @@ def _exportar_trazabilidad_global_pdf(movimientos, data):
     from io import BytesIO
     from django.utils import timezone
     
+    # Determinar el nombre del centro para el título del PDF
+    centro_param = data.get('filtros_aplicados', {}).get('centro', '')
+    if centro_param == 'todos':
+        titulo_centro = "TODOS LOS CENTROS (CONSOLIDADO)"
+    elif centro_param and centro_param != 'central':
+        try:
+            centro_obj = Centro.objects.get(pk=int(centro_param))
+            titulo_centro = centro_obj.nombre.upper()
+        except (Centro.DoesNotExist, ValueError):
+            titulo_centro = f"CENTRO {centro_param}"
+    else:
+        titulo_centro = "FARMACIA CENTRAL"
+    
     # Adaptar datos al formato esperado por generar_reporte_trazabilidad
     # ISS-FIX: Incluir subtipo_salida y numero_expediente para trazabilidad completa
     trazabilidad_data = []
@@ -10322,26 +10369,29 @@ def _exportar_trazabilidad_global_pdf(movimientos, data):
             'producto': f"{mov['producto_clave']} - {mov['producto_nombre'][:30]}"
         })
     
-    # Info del reporte
+    # Info del reporte con título dinámico
     producto_info = {
         'clave': 'GLOBAL',
-        'descripcion': 'Reporte de Trazabilidad Global',
+        'descripcion': f'Reporte de Trazabilidad - {titulo_centro}',
         'unidad_medida': '-',
         # ISS-FIX: Nunca mostrar stock negativo - usar max(0, ...)
         'stock_actual': max(0, data['estadisticas']['total_entradas'] - data['estadisticas']['total_salidas']),
         'stock_minimo': 0,
         'es_global': True,
         'filtros': data['filtros_aplicados'],
-        'estadisticas': data['estadisticas']
+        'estadisticas': data['estadisticas'],
+        'titulo_centro': titulo_centro,  # Para el PDF
     }
     
     pdf_buffer = generar_reporte_trazabilidad(trazabilidad_data, producto_info=producto_info)
     
+    # Nombre de archivo dinámico según el centro
+    nombre_centro_archivo = titulo_centro.replace(' ', '_').replace('(', '').replace(')', '')
     response = HttpResponse(
         pdf_buffer.getvalue(),
         content_type='application/pdf'
     )
-    response['Content-Disposition'] = f'attachment; filename="Trazabilidad_Global_{timezone.now().strftime("%Y%m%d_%H%M")}.pdf"'
+    response['Content-Disposition'] = f'attachment; filename="Trazabilidad_{nombre_centro_archivo}_{timezone.now().strftime("%Y%m%d_%H%M")}.pdf"'
     return response
 
 

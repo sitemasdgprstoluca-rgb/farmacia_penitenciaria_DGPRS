@@ -1708,7 +1708,10 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
             info_text += f"<br/><b>Hasta:</b> {filtros_aplicados['fecha_fin']}"
         if filtros_aplicados.get('lote'):
             info_text += f"<br/><b>Lote:</b> {filtros_aplicados['lote']}"
-        if filtros_aplicados.get('centro'):
+        # ISS-FIX: Mostrar titulo_centro legible en lugar del ID/código
+        if producto_info and producto_info.get('titulo_centro'):
+            info_text += f"<br/><b>Centro:</b> {producto_info['titulo_centro']}"
+        elif filtros_aplicados.get('centro'):
             info_text += f"<br/><b>Centro:</b> {filtros_aplicados['centro']}"
     
     info = Paragraph(info_text, styles['Normal'])
