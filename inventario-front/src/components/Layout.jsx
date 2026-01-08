@@ -508,7 +508,7 @@ function Layout() {
           className={`fixed top-0 right-0 z-30 h-16 flex items-center px-4 sm:px-6 transition-all duration-500 ${sidebarOpen ? 'lg:left-72' : 'left-0'}`}
           style={{ 
             background: "linear-gradient(135deg, var(--color-header-bg, var(--color-primary, #9F2241)) 0%, var(--color-primary-hover, #6B1839) 100%)",
-            boxShadow: '0 2px 20px rgba(0, 0, 0, 0.1)',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
           }}
         >
           <div className="flex items-center justify-between w-full gap-4">
@@ -516,39 +516,28 @@ function Layout() {
             <div className="flex items-center gap-4 min-w-0">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="relative w-10 h-10 rounded-xl transition-all duration-300 hover:bg-white/15 flex items-center justify-center group"
-                style={{ color: "var(--color-header-text, white)" }}
+                className="relative w-10 h-10 rounded-lg transition-all duration-300 hover:bg-white/15 flex items-center justify-center"
+                style={{ color: 'var(--color-header-text, #FFFFFF)' }}
                 title={sidebarOpen ? "Ocultar menú" : "Mostrar menú"}
               >
-                {/* Hamburguesa animada */}
-                <div className="relative w-5 h-4 flex flex-col justify-between">
-                  <span 
-                    className="block h-0.5 rounded-full bg-current transition-all duration-300 origin-center"
-                    style={{
-                      transform: sidebarOpen ? 'rotate(45deg) translateY(7px)' : 'rotate(0)',
-                    }}
-                  />
-                  <span 
-                    className="block h-0.5 rounded-full bg-current transition-all duration-300"
-                    style={{
-                      opacity: sidebarOpen ? 0 : 1,
-                      transform: sidebarOpen ? 'translateX(-10px)' : 'translateX(0)',
-                    }}
-                  />
-                  <span 
-                    className="block h-0.5 rounded-full bg-current transition-all duration-300 origin-center"
-                    style={{
-                      transform: sidebarOpen ? 'rotate(-45deg) translateY(-7px)' : 'rotate(0)',
-                    }}
-                  />
-                </div>
+                {sidebarOpen ? (
+                  /* Icono de flecha izquierda (ocultar) */
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                  </svg>
+                ) : (
+                  /* Icono de menú hamburguesa */
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                )}
               </button>
               
               {/* Título del sistema */}
               <div className="hidden sm:block min-w-0">
                 <h1
-                  className="text-sm md:text-base font-bold truncate"
-                  style={{ color: "var(--color-header-text, white)" }}
+                  className="text-sm md:text-base font-semibold truncate tracking-wide"
+                  style={{ color: 'var(--color-header-text, #FFFFFF)' }}
                 >
                   {nombreSistema || "Sistema de Farmacia Penitenciaria"}
                 </h1>
@@ -566,8 +555,11 @@ function Layout() {
               {/* Badge desarrollo */}
               {DEV_CONFIG?.ENABLED && (
                 <span
-                  className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold text-white"
-                  style={{ background: "linear-gradient(135deg, #14B8A6 0%, #0D9488 100%)" }}
+                  className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold"
+                  style={{ 
+                    background: "linear-gradient(135deg, #14B8A6 0%, #0D9488 100%)",
+                    color: 'var(--color-header-text, #FFFFFF)',
+                  }}
                 >
                   <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
                   DEV
@@ -577,11 +569,14 @@ function Layout() {
               {/* Avatar mini en móvil */}
               <button 
                 onClick={() => navigate('/perfil')}
-                className="lg:hidden w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs"
+                className="lg:hidden w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs border-2 transition-all"
                 style={{ 
-                  backgroundColor: 'rgba(255,255,255,0.2)',
-                  color: 'white',
+                  backgroundColor: 'rgba(255,255,255,0.15)',
+                  color: 'var(--color-header-text, #FFFFFF)',
+                  borderColor: 'rgba(255,255,255,0.3)',
                 }}
+                onMouseEnter={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.5)'}
+                onMouseLeave={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)'}
               >
                 {inicialesUsuario}
               </button>

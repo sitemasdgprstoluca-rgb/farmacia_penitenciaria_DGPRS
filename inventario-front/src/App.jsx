@@ -637,7 +637,10 @@ function App() {
           )}
           <SessionManager />
           <Toaster 
-            position="top-right"
+            position="top-center"
+            containerStyle={{
+              top: 80, // Debajo del header (h-16 = 64px + margen)
+            }}
             toastOptions={{
               // Estilos base para todos los toasts
               style: {

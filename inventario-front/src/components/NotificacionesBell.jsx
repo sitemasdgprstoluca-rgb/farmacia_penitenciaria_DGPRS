@@ -202,7 +202,8 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
       <button
         ref={botonRef}
         onClick={handleToggleDropdown}
-        className="relative p-2 text-white hover:text-white/80 transition"
+        className="relative p-2 hover:bg-white/15 transition-all rounded-lg"
+        style={{ color: 'var(--color-header-text, #FFFFFF)' }}
         aria-label="Notificaciones"
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
