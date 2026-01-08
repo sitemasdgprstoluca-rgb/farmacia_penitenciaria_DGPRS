@@ -207,8 +207,14 @@ const Movimientos = () => {
   const cargarCatalogos = useCallback(async () => {
     try {
       // Cargar productos (todos pueden ver el catálogo de productos)
-      const prodResp = await productosAPI.getAll({ page_size: 500, ordering: "descripcion", activo: true });
-      setProductos(prodResp.data.results || prodResp.data || []);
+      const prodResp = await productosAPI.getAll({ page_size: 500, ordering: "clave", activo: true });
+      // Ordenar por clave numérica
+      const productosOrdenados = (prodResp.data.results || prodResp.data || []).sort((a, b) => {
+        const claveA = parseInt(a.clave) || 0;
+        const claveB = parseInt(b.clave) || 0;
+        return claveA - claveB;
+      });
+      setProductos(productosOrdenados);
       
       // Cargar centros según permisos
       if (puedeVerTodosCentros) {
@@ -969,7 +975,7 @@ const Movimientos = () => {
               </div>
             </div>
             
-            {hayFiltrosActivos && (
+            {!esMedico && hayFiltrosActivos && (
               <span className="bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-1.5 rounded-full text-xs font-bold shadow-lg">
                 ⚡ {Object.values(filtrosAplicados).filter(v => v !== "").length} filtros activos
               </span>
@@ -1081,25 +1087,52 @@ const Movimientos = () => {
           <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
             <div className="bg-theme-gradient px-6 py-4">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <span className="text-xl">➕</span> Nuevo Movimiento
+                Nuevo Movimiento
               </h2>
             </div>
             <div className="p-6 space-y-4">
               {/* Filtro por producto */}
               <div className="space-y-2">
                 <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Producto (filtro)</label>
-                <select
-                  value={productoFiltro}
-                  onChange={(e) => setProductoFiltro(e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 transition-all duration-200"
-                >
-                  <option value="">-- Todos --</option>
-                  {productos.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.clave} - {p.nombre}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <input
+                    type="text"
+                    list="productos-list"
+                    placeholder="Buscar producto por clave o nombre..."
+                    value={productos.find(p => p.id.toString() === productoFiltro)?.clave ? `${productos.find(p => p.id.toString() === productoFiltro)?.clave} - ${productos.find(p => p.id.toString() === productoFiltro)?.nombre}` : ''}
+                    onChange={(e) => {
+                      const valor = e.target.value;
+                      if (valor === '') {
+                        setProductoFiltro('');
+                      } else {
+                        // Buscar el producto que coincida con el texto
+                        const productoEncontrado = productos.find(p => 
+                          `${p.clave} - ${p.nombre}` === valor || 
+                          p.clave === valor.split(' - ')[0]
+                        );
+                        if (productoEncontrado) {
+                          setProductoFiltro(productoEncontrado.id.toString());
+                        }
+                      }
+                    }}
+                    className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 transition-all duration-200"
+                  />
+                  <datalist id="productos-list">
+                    {productos.map((p) => (
+                      <option key={p.id} value={`${p.clave} - ${p.nombre}`} />
+                    ))}
+                  </datalist>
+                  {productoFiltro && (
+                    <button
+                      type="button"
+                      onClick={() => setProductoFiltro('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                      title="Limpiar filtro"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Selección de lote */}
@@ -1668,7 +1701,7 @@ const Movimientos = () => {
                                             {cancelandoGrupo === grupo.id ? <FaSpinner className="text-xs animate-spin" /> : <FaTrash className="text-xs" />}
                                           </button>
                                         </div>
-                                      ) : grupo.confirmado ? (
+                                      ) : (grupo.confirmado && !esMedico) ? (
                                         <button
                                           onClick={(e) => { e.stopPropagation(); descargarComprobanteGrupo(grupo.id); }}
                                           className="p-2 bg-gradient-to-b from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 shadow-sm hover:shadow-md"
@@ -2027,7 +2060,7 @@ const Movimientos = () => {
                                                 }
                                               </button>
                                             </>
-                                          ) : (
+                                          ) : !esMedico ? (
                                             <button
                                               onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
                                               className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-b from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md"
@@ -2036,6 +2069,11 @@ const Movimientos = () => {
                                               <FaCheckCircle className="text-base" />
                                               {mov.subtipo_salida === 'receta' ? 'Comprobante Dispensación' : 'Comprobante Entregado'}
                                             </button>
+                                          ) : (
+                                            <span className="inline-flex items-center gap-2 px-4 py-2.5 text-emerald-600 text-sm font-semibold">
+                                              <FaCheckCircle className="text-base" />
+                                              Entregado
+                                            </span>
                                           )}
                                         </div>
                                       </div>
@@ -2255,7 +2293,7 @@ const Movimientos = () => {
                                               : (mov.subtipo_salida === 'receta' ? 'Confirmar Dispensación' : 'Confirmar Entrega')
                                             }
                                           </button>
-                                        ) : (
+                                        ) : !esMedico ? (
                                           <button
                                             onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
                                             className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-b from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md"
@@ -2264,6 +2302,11 @@ const Movimientos = () => {
                                             <FaCheckCircle className="text-base" />
                                             {mov.subtipo_salida === 'receta' ? 'Comprobante Dispensación' : 'Comprobante Entregado'}
                                           </button>
+                                        ) : (
+                                          <span className="inline-flex items-center gap-2 px-4 py-2.5 text-emerald-600 text-sm font-semibold">
+                                            <FaCheckCircle className="text-base" />
+                                            Entregado
+                                          </span>
                                         )}
                                       </div>
                                     </div>
