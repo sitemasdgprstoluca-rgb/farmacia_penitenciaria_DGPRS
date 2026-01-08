@@ -818,18 +818,34 @@ class LoteViewSet(viewsets.ModelViewSet):
                     'cantidad_inicial': 0,
                     'cantidad_actual': 0,
                     'ubicaciones': set(),
-                    'activo': False
+                    'activo': False,
+                    'found_main': False          # Flag para saber si ya encontramos el lote de farmacia central
                 })
                 
                 for lote in lotes:
                     key = (lote.producto_id, lote.numero_lote)
                     item = lotes_map[key]
                     
-                    if item['lote_obj'] is None:
-                        item['lote_obj'] = lote
+                    # LOGICA CORREGIDA: Cantidad Inicial NO se suma.
+                    # Se toma la del lote de Farmacia Central (origen) o el primero que se encuentre.
+                    es_farmacia_central = (lote.centro is None)
                     
-                    item['cantidad_inicial'] += lote.cantidad_inicial
+                    if item['lote_obj'] is None:
+                        # Primer registro encontrado para este lote
+                        item['lote_obj'] = lote
+                        item['cantidad_inicial'] = lote.cantidad_inicial
+                        item['found_main'] = es_farmacia_central
+                    elif es_farmacia_central:
+                        # Encontramos el registro maestro (Farmacia Central), este tiene la verdad histórica
+                        item['lote_obj'] = lote
+                        item['cantidad_inicial'] = lote.cantidad_inicial
+                        item['found_main'] = True
+                    # Si ya tenemos un lote y este no es el principal, ignoramos su cantidad_inicial
+                    # para evitar sumar duplicados (transfrencias, etc).
+                    
+                    # La cantidad actual SI se suma (es el stock disperso total)
                     item['cantidad_actual'] += lote.cantidad_actual
+                    
                     item['ubicaciones'].add(lote.ubicacion or '')
                     if lote.activo:
                         item['activo'] = True

@@ -927,12 +927,12 @@ const Trazabilidad = () => {
               </div>
             )}
 
-            {/* Botones de acción - ISS-UX: Separados y mejor etiquetados */}
-            <div className="flex items-end gap-2">
+            {/* Botones de acción - ISS-UX: Centrados como solicitado */}
+            <div className="flex items-end gap-2 justify-center">
               <button
                 type="submit"
                 disabled={loading || !terminoBusqueda.trim()}
-                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all"
+                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all min-w-[200px]"
                 title="Buscar trazabilidad de un producto o lote específico"
               >
                 {loading && !modoGlobal ? (
@@ -950,7 +950,7 @@ const Trazabilidad = () => {
                 type="button"
                 onClick={limpiarBusqueda}
                 disabled={loading || exportingPdf || exportingExcel}
-                className="px-4 py-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                className="px-6 py-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all min-w-[100px]"
               >
                 Limpiar
               </button>
@@ -959,9 +959,9 @@ const Trazabilidad = () => {
 
           {/* Filtros de fecha y tipo - SIEMPRE VISIBLES */}
           <div className="bg-gradient-to-r from-gray-50 to-blue-50 p-4 rounded-xl border border-gray-200">
-            <div className="flex flex-wrap items-end gap-4">
+            <div className="flex flex-wrap items-end gap-4 justify-center">
               {/* Fecha inicio */}
-              <div className="flex-1 min-w-[140px]">
+              <div className="min-w-[140px]">
                 <label className="block text-xs font-semibold mb-1.5 text-gray-600">
                   <FaCalendarAlt className="inline mr-1 text-blue-500" />
                   Fecha inicio
@@ -976,7 +976,7 @@ const Trazabilidad = () => {
               </div>
               
               {/* Fecha fin */}
-              <div className="flex-1 min-w-[140px]">
+              <div className="min-w-[140px]">
                 <label className="block text-xs font-semibold mb-1.5 text-gray-600">
                   <FaCalendarAlt className="inline mr-1 text-blue-500" />
                   Fecha fin
@@ -991,7 +991,7 @@ const Trazabilidad = () => {
               </div>
               
               {/* Tipo movimiento */}
-              <div className="flex-1 min-w-[140px]">
+              <div className="min-w-[140px]">
                 <label className="block text-xs font-semibold mb-1.5 text-gray-600">
                   <FaFilter className="inline mr-1 text-purple-500" />
                   Tipo movimiento
@@ -1036,34 +1036,36 @@ const Trazabilidad = () => {
             
             {/* Indicador de filtros activos */}
             {(fechaInicio || fechaFin || tipoMovimiento) && (
-              <div className="mt-3 pt-3 border-t border-gray-200 flex items-center justify-between">
-                <p className="text-xs text-blue-600 font-medium flex items-center gap-1">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
-                  Filtros activos - se aplicarán a búsquedas y exportaciones
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFechaInicio('');
-                    setFechaFin('');
-                    setTipoMovimiento('');
-                  }}
-                  className="text-xs text-gray-500 hover:text-red-600 flex items-center gap-1"
-                >
-                  <FaTimes className="text-[10px]" /> Limpiar filtros
-                </button>
+              <div className="mt-3 pt-3 border-t border-gray-200 flex items-center justify-center">
+                <div className="flex items-center gap-4">
+                  <p className="text-xs text-blue-600 font-medium flex items-center gap-1">
+                    <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                    Filtros activos - se aplicarán a búsquedas y exportaciones
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFechaInicio('');
+                      setFechaFin('');
+                      setTipoMovimiento('');
+                    }}
+                    className="text-xs text-gray-500 hover:text-red-600 flex items-center gap-1 border-l pl-4 border-gray-300"
+                  >
+                    <FaTimes className="text-[10px]" /> Limpiar filtros
+                  </button>
+                </div>
               </div>
             )}
           </div>
 
           {/* Botón Control de Inventarios */}
           {esAdminOFarmacia && (
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col items-center gap-2 py-2">
               <button
                 type="button"
                 onClick={handleExportarControlInventarios}
                 disabled={exportingControl || loading}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 shadow-md"
+                className="flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 shadow-md min-w-[300px] justify-center"
                 style={{ background: 'linear-gradient(135deg, #047857 0%, #065f46 100%)' }}
                 title="Exportar Control de Inventarios del Almacén Central (Formato Licitación)"
               >
@@ -1079,7 +1081,7 @@ const Trazabilidad = () => {
                   </>
                 )}
               </button>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-gray-500 text-center">
                 Genera el Excel con el formato oficial de &quot;Control de Inventarios del Almacén Central de Medicamentos&quot;
               </span>
             </div>
