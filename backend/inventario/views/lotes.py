@@ -796,15 +796,58 @@ class LoteViewSet(viewsets.ModelViewSet):
     def exportar_excel(self, request):
         """
         Exporta lotes aplicando los filtros de listado.
-        
-        Columnas basadas estrictamente en formulario "Editar Lote" + Cantidad Actual:
-        - Producto, Presentacion, Codigo Lote, Fecha Caducidad
-        - Cantidad Inicial, Cantidad Actual, Precio Unitario, Fecha Fabricacion
-        - Ubicacion, Numero Contrato, Marca/Laboratorio, Activo
+        Si el usuario tiene permisos globales, se exporta la vista CONSOLIDADA (agrupada por producto y lote)
+        para coincidir con la visualización del frontend.
+
+        Columnas basadas estrictamente en formulario "Editar Lote" + Cantidad Actual.
         """
         try:
+            from collections import defaultdict
+            
             # Reutilizar el queryset que ya aplica todos los filtros
             lotes = self.get_queryset()
+            
+            # ISS-FIX: Determinar si debemos consolidar
+            user = request.user
+            es_farmacia_admin = is_farmacia_or_admin(user)
+            
+            # Lógica de consolidación
+            if es_farmacia_admin:
+                lotes_map = defaultdict(lambda: {
+                    'lote_obj': None,            # Objeto lote representativo
+                    'cantidad_inicial': 0,
+                    'cantidad_actual': 0,
+                    'ubicaciones': set(),
+                    'activo': False
+                })
+                
+                for lote in lotes:
+                    key = (lote.producto_id, lote.numero_lote)
+                    item = lotes_map[key]
+                    
+                    if item['lote_obj'] is None:
+                        item['lote_obj'] = lote
+                    
+                    item['cantidad_inicial'] += lote.cantidad_inicial
+                    item['cantidad_actual'] += lote.cantidad_actual
+                    item['ubicaciones'].add(lote.ubicacion or '')
+                    if lote.activo:
+                        item['activo'] = True
+                        
+                lista_exportar = []
+                for val in lotes_map.values():
+                    lote_base = val['lote_obj']
+                    lote_base.cantidad_inicial_total = val['cantidad_inicial']
+                    lote_base.cantidad_actual_total = val['cantidad_actual']
+                    lote_base.activo_consolidado = val['activo']
+                    lista_exportar.append(lote_base)
+            else:
+                lista_exportar = list(lotes)
+                for l in lista_exportar:
+                    l.cantidad_inicial_total = l.cantidad_inicial
+                    l.cantidad_actual_total = l.cantidad_actual
+                    l.activo_consolidado = l.activo
+
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = 'Lotes'
@@ -824,8 +867,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                 cell.font = header_font
                 cell.alignment = Alignment(horizontal='center', vertical='center')
 
-            for idx, lote in enumerate(lotes, 1):
-                # Obtener nombre + clave del producto
+            for idx, lote in enumerate(lista_exportar, 1):
                 if lote.producto:
                     nom_prod = f"{lote.producto.clave or ''} - {lote.producto.nombre}"
                     presentacion = lote.producto.presentacion or ''
@@ -833,19 +875,26 @@ class LoteViewSet(viewsets.ModelViewSet):
                     nom_prod = 'Producto Desconocido'
                     presentacion = ''
 
+                cant_inicial = getattr(lote, 'cantidad_inicial_total', lote.cantidad_inicial)
+                cant_actual = getattr(lote, 'cantidad_actual_total', lote.cantidad_actual)
+                activo_str = 'Sí' if getattr(lote, 'activo_consolidado', lote.activo) else 'No'
+                
+                # Para reporte consolidado, forzamos Almacén Central
+                ubicacion_str = 'Almacén Central' if es_farmacia_admin else (lote.ubicacion or '')
+
                 ws.append([
                     nom_prod,
                     presentacion,
                     lote.numero_lote or '',
                     lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else '',
-                    lote.cantidad_inicial,
-                    lote.cantidad_actual,
+                    cant_inicial,
+                    cant_actual,
                     float(lote.precio_unitario) if lote.precio_unitario else 0.00,
                     lote.fecha_fabricacion.strftime('%d/%m/%Y') if lote.fecha_fabricacion else '',
-                    lote.ubicacion or '',
+                    ubicacion_str,
                     lote.numero_contrato or '',
                     lote.marca or '',
-                    'Sí' if lote.activo else 'No'
+                    activo_str
                 ])
 
             # Ajustar anchos de columna
