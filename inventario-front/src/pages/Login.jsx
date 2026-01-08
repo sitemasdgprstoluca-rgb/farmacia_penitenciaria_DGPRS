@@ -319,17 +319,14 @@ function Login() {
           <div className="relative z-10 flex flex-col justify-center items-center p-12 xl:p-16 w-full">
             <div className="max-w-lg text-center space-y-8">
               
-              {/* Logo con fondo que resalta */}
+              {/* Logo directo sin contenedor */}
               <div className="relative group mb-4">
-                <div className="absolute inset-0 bg-white/20 rounded-3xl blur-xl scale-110 group-hover:bg-white/30 transition-all duration-500" />
-                <div className="relative bg-white/95 backdrop-blur-sm rounded-2xl p-6 shadow-2xl">
-                  <img 
-                    src={logoLoginUrl || "/logo-sistema.png"} 
-                    alt="Logo del Sistema" 
-                    className="h-32 xl:h-40 w-auto mx-auto object-contain transition-transform duration-500 group-hover:scale-105"
-                    onError={(e) => { e.target.src = "/logo-sistema.png"; }}
-                  />
-                </div>
+                <img 
+                  src={logoLoginUrl || "/logo-sistema.png"} 
+                  alt="Logo del Sistema" 
+                  className="h-32 xl:h-40 w-auto mx-auto object-contain transition-transform duration-500 group-hover:scale-105 drop-shadow-2xl"
+                  onError={(e) => { e.target.src = "/logo-sistema.png"; }}
+                />
               </div>
               
               {/* Título principal - Sin duplicación */}
