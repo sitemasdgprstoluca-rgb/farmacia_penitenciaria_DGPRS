@@ -745,6 +745,16 @@ def generar_hoja_consulta(requisicion):
         alignment=TA_CENTER,
     )
     
+    # ISS-FIX: Estilo para celdas de información (centro, solicitante)
+    celda_info_style = ParagraphStyle(
+        'CeldaInfoConsulta',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=11,
+        wordWrap='CJK',
+        alignment=TA_LEFT,
+    )
+    
     # Título principal
     titulo = Paragraph("HOJA DE CONSULTA - REQUISICIÓN DE MEDICAMENTOS", titulo_style)
     story.append(titulo)
@@ -794,10 +804,14 @@ def generar_hoja_consulta(requisicion):
         except:
             fecha_solicitud_texto = str(fecha_solicitud)
     
+    # ISS-FIX: Usar Paragraph para campos con texto largo para que se ajusten
+    centro_paragraph = Paragraph(centro_nombre, celda_info_style)
+    solicitante_paragraph = Paragraph(solicitante_nombre, celda_info_style)
+    
     info_data = [
         ['Folio:', requisicion.folio or f'REQ-{requisicion.id}', 'Estado:', (requisicion.estado or '').upper()],
-        ['Centro Solicitante:', centro_nombre, 'Fecha de Solicitud:', fecha_solicitud_texto],
-        ['Solicitante:', solicitante_nombre, 'Fecha de Surtido:', fecha_surtido_texto],
+        ['Centro Solicitante:', centro_paragraph, 'Fecha de Solicitud:', fecha_solicitud_texto],
+        ['Solicitante:', solicitante_paragraph, 'Fecha de Surtido:', fecha_surtido_texto],
         ['', '', 'Fecha de Entrega:', fecha_entrega_texto],
     ]
     
