@@ -19,6 +19,9 @@ Pillow>=10.4.0  # Compatible con Python 3.13
 # Configuración de entorno
 python-decouple==3.8
 
+# Email (Resend para producción)
+resend==2.0.0
+
 # Archivos estáticos en producción
 whitenoise==6.6.0
 
