@@ -580,14 +580,14 @@ class ProductoViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='exportar-excel')
     def exportar_excel(self, request):
         """
-        Exporta todos los productos a un archivo Excel.
+        Exporta productos aplicando filtros de la interfaz.
         
-        Columnas alineadas con schema real de productos (incluye nombre_comercial):
-        - #, Clave, Nombre, Nombre Comercial, Categoria, Unidad Medida, Stock Minimo, Stock Actual,
-          Sustancia Activa, Presentacion, Concentracion, Via Admin, Requiere Receta, Controlado, 
-          Lotes Activos, Estado
+        Columnas (basadas en formulario de Productos):
+        - Clave, Nombre, Nombre Comercial, Unidad Medida, Stock Minimo, Categoria, Presentacion
+        - Descripcion, Sustancia Activa, Concentracion, Via Admin, Requiere Receta, Controlado
         """
         try:
+            # Reutilizar el metodo get_queryset que ya aplica TODOS los filtros
             productos = self.get_queryset()
             
             # Crear libro de Excel
@@ -595,11 +595,13 @@ class ProductoViewSet(viewsets.ModelViewSet):
             ws = wb.active
             ws.title = 'Productos'
             
-            # Encabezados alineados con schema de Supabase (incluye nombre_comercial)
-            headers = ['#', 'Clave', 'Nombre', 'Nombre Comercial', 'Categoria', 'Unidad Medida', 
-                       'Stock Minimo', 'Stock Actual', 'Sustancia Activa', 'Presentacion',
-                       'Concentracion', 'Via Admin', 'Requiere Receta', 'Controlado', 
-                       'Lotes Activos', 'Estado']
+            # Encabezados exactos según formulario solicitado
+            headers = [
+                'Clave', 'Nombre', 'Nombre Comercial', 
+                'Unidad de Medida', 'Stock Mínimo', 'Categoría', 'Presentación',
+                'Descripción Adicional', 'Sustancia Activa', 'Concentración', 'Vía de Administración',
+                'Requiere Receta', 'Es Controlado'
+            ]
             ws.append(headers)
             
             # Estilo de encabezados
@@ -613,41 +615,36 @@ class ProductoViewSet(viewsets.ModelViewSet):
             
             # Datos de productos
             for idx, producto in enumerate(productos, start=1):
-                stock_actual = producto.lotes.filter(activo=True).aggregate(total=Sum('cantidad_actual'))['total'] or 0
-                lotes_activos = producto.lotes.filter(activo=True, cantidad_actual__gt=0).count()
-                
                 ws.append([
-                    idx,
                     producto.clave or '',
                     producto.nombre,
                     producto.nombre_comercial or '',
-                    producto.categoria or '',
                     producto.unidad_medida,
                     producto.stock_minimo,
-                    stock_actual,
-                    producto.sustancia_activa or '',
+                    producto.categoria or '',
                     producto.presentacion or '',
+                    producto.descripcion or '',
+                    producto.sustancia_activa or '',
                     producto.concentracion or '',
                     producto.via_administracion or '',
                     'Sí' if producto.requiere_receta else 'No',
-                    'Sí' if producto.es_controlado else 'No',
-                    lotes_activos,
-                    'Activo' if producto.activo else 'Inactivo'
+                    'Sí' if producto.es_controlado else 'No'
                 ])
                 
-                # Colorear fila si el stock está por debajo del mínimo
-                if stock_actual < producto.stock_minimo:
-                    for col in range(1, 17):
-                        ws.cell(row=idx+1, column=col).fill = PatternFill(
-                            start_color='FFF4E6', 
-                            end_color='FFF4E6', 
-                            fill_type='solid'
-                        )
-            
             # Ajustar anchos de columna
-            ws.column_dimensions['A'].width = 6    # #
-            ws.column_dimensions['B'].width = 18   # Clave
-            ws.column_dimensions['C'].width = 40   # Nombre
+            # Clave(15), Nombre(40), NomCom(30), Unidad(15), Min(10), Cat(15), Pres(20), Desc(30), Sust(20), Conc(15), Via(15), Receta(12), Control(12)
+            column_widths = [15, 40, 30, 15, 12, 18, 25, 30, 20, 15, 20, 15, 15]
+            for i, width in enumerate(column_widths, start=1):
+                ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
+                
+            response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            response['Content-Disposition'] = f'attachment; filename=Productos_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+            wb.save(response)
+            return response
+
+        except Exception as e:
+            logger.error(f"Error al exportar productos: {str(e)}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             ws.column_dimensions['D'].width = 25   # Nombre Comercial
             ws.column_dimensions['E'].width = 18   # Categoria
             ws.column_dimensions['F'].width = 18   # Unidad Medida

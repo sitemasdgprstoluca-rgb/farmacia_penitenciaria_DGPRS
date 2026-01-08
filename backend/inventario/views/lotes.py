@@ -795,63 +795,62 @@ class LoteViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='exportar-excel')
     def exportar_excel(self, request):
         """
-        Exporta lotes aplicando los mismos filtros de listado.
+        Exporta lotes aplicando los filtros de listado.
         
-        ISS-DB: Incluye todos los campos de la tabla lotes de Supabase:
-        - clave (de producto)
-        - numero_lote, fecha_fabricacion, fecha_caducidad
-        - cantidad_inicial, cantidad_actual
-        - precio_unitario, numero_contrato, marca, ubicacion
-        - centro (nombre), activo
+        Columnas basadas estrictamente en formulario "Editar Lote" + Cantidad Actual:
+        - Producto, Presentacion, Codigo Lote, Fecha Caducidad
+        - Cantidad Inicial, Cantidad Actual, Precio Unitario, Fecha Fabricacion
+        - Ubicacion, Numero Contrato, Marca/Laboratorio, Activo
         """
         try:
+            # Reutilizar el queryset que ya aplica todos los filtros
             lotes = self.get_queryset()
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = 'Lotes'
 
-            ws.merge_cells('A1:N1')
-            ws['A1'] = 'REPORTE DE LOTES - SISTEMA DE INVENTARIO FARMACEUTICO PENITENCIARIO'
-            ws['A1'].font = Font(bold=True, size=14, color='632842')
-            ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
-
-            ws.append([])
-            # Headers alineados con esquema real - incluye nombre_comercial, sin ubicacion
+            # Headers exactos
             headers = [
-                '#', 'Clave', 'Nombre Producto', 'Nombre Comercial', 'Número Lote',
-                'Fecha Fabricación', 'Fecha Caducidad',
-                'Cantidad Inicial', 'Cantidad Actual',
-                'Precio Unitario', 'Número Contrato', 'Marca',
-                'Centro', 'Activo'
+                'Producto', 'Presentación', 'Código de Lote', 'Fecha de Caducidad',
+                'Cantidad Inicial', 'Cantidad Actual', 'Precio Unitario', 'Fecha de Fabricación',
+                'Ubicación', 'Número de Contrato', 'Marca / Laboratorio', 'Lote activo'
             ]
             ws.append(headers)
+            
             header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
             header_font = Font(bold=True, color='FFFFFF', size=11)
-            for cell in ws[3]:
+            for cell in ws[1]:
                 cell.fill = header_fill
                 cell.font = header_font
                 cell.alignment = Alignment(horizontal='center', vertical='center')
 
             for idx, lote in enumerate(lotes, 1):
+                # Obtener nombre + clave del producto
+                if lote.producto:
+                    nom_prod = f"{lote.producto.clave or ''} - {lote.producto.nombre}"
+                    presentacion = lote.producto.presentacion or ''
+                else:
+                    nom_prod = 'Producto Desconocido'
+                    presentacion = ''
+
                 ws.append([
-                    idx,
-                    getattr(lote.producto, 'clave', '') or '',
-                    getattr(lote.producto, 'nombre', '') or '',
-                    getattr(lote.producto, 'nombre_comercial', '') or '',
+                    nom_prod,
+                    presentacion,
                     lote.numero_lote or '',
-                    lote.fecha_fabricacion.strftime('%Y-%m-%d') if lote.fecha_fabricacion else '',
-                    lote.fecha_caducidad.strftime('%Y-%m-%d') if lote.fecha_caducidad else '',
+                    lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else '',
                     lote.cantidad_inicial,
                     lote.cantidad_actual,
                     float(lote.precio_unitario) if lote.precio_unitario else 0.00,
+                    lote.fecha_fabricacion.strftime('%d/%m/%Y') if lote.fecha_fabricacion else '',
+                    lote.ubicacion or '',
                     lote.numero_contrato or '',
                     lote.marca or '',
-                    getattr(lote.centro, 'nombre', 'Farmacia Central') if lote.centro else 'Farmacia Central',
                     'Sí' if lote.activo else 'No'
                 ])
 
-            # Ajustar anchos de columna (14 columnas sin ubicacion, con nombre_comercial)
-            column_widths = [6, 15, 25, 25, 15, 14, 14, 12, 12, 12, 18, 15, 18, 8]
+            # Ajustar anchos de columna
+            # Prod(40), Pres(25), Lote(15), Cadu(15), Ini(15), Act(15), Prec(15), Fab(15), Ubi(20), Cont(20), Mar(20), Act(12)
+            column_widths = [40, 25, 15, 15, 15, 15, 15, 15, 20, 20, 20, 12]
             for col_idx, width in enumerate(column_widths, 1):
                 ws.column_dimensions[get_column_letter(col_idx)].width = width
 
