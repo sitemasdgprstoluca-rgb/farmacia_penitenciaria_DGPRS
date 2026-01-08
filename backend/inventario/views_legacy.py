@@ -7903,7 +7903,8 @@ def trazabilidad_producto(request, clave):
         if not producto:
             return Response({'error': 'Producto no encontrado', 'clave_buscada': clave}, status=status.HTTP_404_NOT_FOUND)
 
-        lotes = Lote.objects.filter(producto=producto, activo=True)
+        # ISS-FIX: No filtrar por activo=True para permitir ver lotes históricos
+        lotes = Lote.objects.filter(producto=producto)
         
         # Aplicar filtro de centro
         if filtrar_por_centro and user_centro:
@@ -9896,10 +9897,12 @@ def trazabilidad_autocomplete(request):
             Q(nombre__icontains=search)
         )
         
-        # Filtrar productos que tengan lotes accesibles
+        # ISS-FIX: Para trazabilidad NO filtrar por cantidad_actual
+        # Los productos con lotes agotados deben ser buscables para consulta histórica
+        # Solo filtrar por centro si el usuario es de centro
         if filtrar_por_centro and user_centro:
             productos_con_lotes = Lote.objects.filter(
-                centro=user_centro, activo=True, cantidad_actual__gt=0
+                centro=user_centro, activo=True
             ).values_list('producto_id', flat=True).distinct()
             productos_query = productos_query.filter(id__in=productos_con_lotes)
         
@@ -9913,10 +9916,9 @@ def trazabilidad_autocomplete(request):
             })
         
         # 2. Buscar lotes (solo admin/farmacia)
+        # ISS-FIX: No filtrar por activo=True para permitir búsqueda de lotes históricos
         if es_admin_farmacia:
             lotes_query = Lote.objects.select_related('producto').filter(
-                activo=True
-            ).filter(
                 Q(numero_lote__icontains=search) |
                 Q(producto__clave__icontains=search) |
                 Q(producto__nombre__icontains=search)
@@ -9926,11 +9928,13 @@ def trazabilidad_autocomplete(request):
                 lotes_query = lotes_query.filter(centro=user_centro)
             
             for lote in lotes_query[:5]:
+                # Indicar si el lote está agotado
+                stock_info = f" (Stock: {lote.cantidad_actual})" if lote.cantidad_actual == 0 else ""
                 results.append({
                     'tipo': 'lote',
                     'id': lote.id,
                     'identificador': lote.numero_lote,
-                    'display': f"🏷️ {lote.numero_lote}",
+                    'display': f"🏷️ {lote.numero_lote}{stock_info}",
                     'secundario': f"{lote.producto.clave} - {lote.producto.nombre[:30]}",
                 })
         

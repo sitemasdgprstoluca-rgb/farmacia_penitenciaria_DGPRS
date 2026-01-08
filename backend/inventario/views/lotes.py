@@ -430,17 +430,15 @@ class LoteViewSet(viewsets.ModelViewSet):
             # Por defecto mostrar solo activos
             queryset = queryset.filter(activo=True)
         
-        # Filtrar por con_stock (default: con stock, pero respeta el filtro)
+        # Filtrar por con_stock - ISS-FIX: Por defecto NO filtrar por stock
+        # para permitir ver lotes históricos agotados (trazabilidad)
         con_stock_param = request.query_params.get('con_stock')
         if con_stock_param:
             if con_stock_param.lower() in ['con_stock', 'true', '1']:
                 queryset = queryset.filter(cantidad_actual__gt=0)
             elif con_stock_param.lower() in ['sin_stock', 'false', '0']:
                 queryset = queryset.filter(cantidad_actual=0)
-            # Si no especifica, no filtrar por stock
-        else:
-            # Por defecto mostrar solo con stock
-            queryset = queryset.filter(cantidad_actual__gt=0)
+        # Si no especifica, mostrar TODOS los lotes (con y sin stock)
         
         # Filtrar por centro si se especifica
         centro_param = request.query_params.get('centro')

@@ -42,7 +42,7 @@ from django.http import HttpResponse
 import logging
 
 from core.models import Lote, Movimiento, Centro, Producto
-from core.permissions import IsFarmaciaRole
+from core.permissions import IsFarmaciaRole, IsCentroRole
 
 logger = logging.getLogger(__name__)
 
@@ -359,10 +359,14 @@ def _es_movimiento_confirmado(movimiento):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated, IsFarmaciaRole])
+@permission_classes([IsAuthenticated])
 def hoja_entrega_pdf(request, grupo_salida):
     """
     Genera PDF de hoja de entrega para una salida masiva.
+    
+    Permisos:
+        - Farmacia/Admin: Pueden descargar cualquier hoja de entrega
+        - Centro: Solo pueden descargar hojas de entregas destinadas a su centro
     
     Args:
         grupo_salida: ID del grupo de salida (ej: SAL-20251217120000-1)
@@ -375,6 +379,17 @@ def hoja_entrega_pdf(request, grupo_salida):
     """
     try:
         from core.utils.pdf_generator import generar_hoja_entrega
+        
+        user = request.user
+        rol = (getattr(user, 'rol_efectivo', None) or getattr(user, 'rol', '') or '').lower()
+        
+        # Normalizar aliases de roles
+        ROLE_ALIASES = {
+            'administrador_centro': 'centro',
+            'director_centro': 'centro',
+            'medico': 'centro',
+        }
+        rol_normalizado = ROLE_ALIASES.get(rol, rol)
         
         finalizado = request.query_params.get('finalizado', 'false').lower() == 'true'
         
@@ -397,6 +412,22 @@ def hoja_entrega_pdf(request, grupo_salida):
         # Obtener datos del grupo
         primer_mov = movimientos.first()
         centro_destino = primer_mov.centro_destino
+        
+        # Validar permisos según rol
+        if rol_normalizado == 'centro':
+            # Usuarios de centro solo pueden ver entregas a su propio centro
+            user_centro_id = getattr(user, 'centro_id', None)
+            if not user_centro_id or (centro_destino and centro_destino.id != user_centro_id):
+                return Response({
+                    'error': True,
+                    'message': 'No tienes permisos para ver esta hoja de entrega'
+                }, status=status.HTTP_403_FORBIDDEN)
+        elif rol_normalizado not in ['admin', 'farmacia', 'vista']:
+            return Response({
+                'error': True,
+                'message': 'No tienes permisos para esta acción'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
         usuario = primer_mov.usuario
         fecha = primer_mov.fecha
         
