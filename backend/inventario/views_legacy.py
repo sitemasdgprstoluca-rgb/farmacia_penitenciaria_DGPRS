@@ -7953,12 +7953,24 @@ def trazabilidad_producto(request, clave):
         fecha_fin = request.query_params.get('fecha_fin')
         tipo_movimiento = request.query_params.get('tipo')
         
+        # ISS-FIX: Manejar valores especiales de centro
         if centro_param and is_farmacia_or_admin(user):
-            try:
-                user_centro = Centro.objects.get(pk=centro_param)
-                filtrar_por_centro = True
-            except Centro.DoesNotExist:
-                pass
+            if centro_param.lower() in ('central', 'todos'):
+                # 'central' = Farmacia Central (sin filtro extra)
+                # 'todos' = ver todo
+                if centro_param.lower() == 'central':
+                    user_centro = None
+                else:
+                    filtrar_por_centro = False
+            else:
+                try:
+                    if centro_param.isdigit():
+                        user_centro = Centro.objects.get(pk=centro_param)
+                    else:
+                        user_centro = Centro.objects.get(nombre__iexact=centro_param)
+                    filtrar_por_centro = True
+                except Centro.DoesNotExist:
+                    pass
         
         producto = Producto.objects.filter(
             Q(clave__iexact=clave) | Q(descripcion__iexact=clave)
@@ -8360,15 +8372,20 @@ def reporte_inventario(request):
         # Admin/farmacia puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
         if centro_param and is_farmacia_or_admin(user):
-            if centro_param == 'central':
+            if centro_param.lower() == 'central':
                 # Filtrar solo farmacia central (ya es el default)
                 user_centro = None
-            elif centro_param == 'todos':
+            elif centro_param.lower() == 'todos':
                 # Ver todo (sin filtro de centro)
                 filtrar_por_centro = False
             else:
                 try:
-                    user_centro = Centro.objects.get(pk=centro_param)
+                    # ISS-FIX: Buscar por ID o nombre
+                    if centro_param.isdigit():
+                        user_centro = Centro.objects.get(pk=centro_param)
+                    else:
+                        user_centro = Centro.objects.get(nombre__iexact=centro_param)
+                    filtrar_por_centro = True
                 except Centro.DoesNotExist:
                     pass
         
@@ -8723,11 +8740,19 @@ def reporte_movimientos(request):
         # Ignorar 'todos' como parámetro de centro
         if centro_param and centro_param.lower() == 'todos':
             centro_param = None
+        # ISS-FIX: También ignorar 'central' ya que es Farmacia Central (sin filtro)
+        if centro_param and centro_param.lower() == 'central':
+            centro_param = None
         if centro_param and is_farmacia_or_admin(user):
             try:
-                user_centro = Centro.objects.get(pk=centro_param)
+                # ISS-FIX: Buscar por ID numérico o por nombre
+                if centro_param.isdigit():
+                    user_centro = Centro.objects.get(pk=centro_param)
+                else:
+                    user_centro = Centro.objects.get(nombre__iexact=centro_param)
                 filtrar_por_centro = True
             except Centro.DoesNotExist:
+                # Si no encuentra el centro, no filtrar (mostrar todos)
                 pass
         
         # Obtener parametros
@@ -9521,11 +9546,21 @@ def reporte_medicamentos_por_caducar(request):
         
         centro_param = request.query_params.get('centro')
         if centro_param and is_farmacia_or_admin(user):
-            try:
-                user_centro = Centro.objects.get(pk=centro_param)
-                filtrar_por_centro = True
-            except Centro.DoesNotExist:
-                pass
+            if centro_param.lower() in ('central', 'todos'):
+                if centro_param.lower() == 'central':
+                    user_centro = None
+                else:
+                    filtrar_por_centro = False
+            else:
+                try:
+                    # ISS-FIX: Buscar por ID o nombre
+                    if centro_param.isdigit():
+                        user_centro = Centro.objects.get(pk=centro_param)
+                    else:
+                        user_centro = Centro.objects.get(nombre__iexact=centro_param)
+                    filtrar_por_centro = True
+                except Centro.DoesNotExist:
+                    pass
         
         dias = int(request.query_params.get('dias', 30))
         hoy = date.today()
@@ -9591,11 +9626,20 @@ def reporte_bajo_stock(request):
         
         centro_param = request.query_params.get('centro')
         if centro_param and is_farmacia_or_admin(user):
-            try:
-                user_centro = Centro.objects.get(pk=centro_param)
-                filtrar_por_centro = True
-            except Centro.DoesNotExist:
-                pass
+            if centro_param.lower() in ('central', 'todos'):
+                if centro_param.lower() == 'central':
+                    user_centro = None
+                else:
+                    filtrar_por_centro = False
+            else:
+                try:
+                    if centro_param.isdigit():
+                        user_centro = Centro.objects.get(pk=centro_param)
+                    else:
+                        user_centro = Centro.objects.get(nombre__iexact=centro_param)
+                    filtrar_por_centro = True
+                except Centro.DoesNotExist:
+                    pass
         
         productos = Producto.objects.filter(activo=True)
         resultados = []
@@ -10510,12 +10554,21 @@ def trazabilidad_producto_exportar(request, clave):
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
-        if centro_param and centro_param.lower() != 'todos' and is_farmacia_or_admin(user):
-            try:
-                user_centro = Centro.objects.get(pk=centro_param)
-                filtrar_por_centro = True
-            except Centro.DoesNotExist:
-                pass
+        if centro_param and is_farmacia_or_admin(user):
+            if centro_param.lower() in ('central', 'todos'):
+                if centro_param.lower() == 'central':
+                    user_centro = None
+                else:
+                    filtrar_por_centro = False
+            else:
+                try:
+                    if centro_param.isdigit():
+                        user_centro = Centro.objects.get(pk=centro_param)
+                    else:
+                        user_centro = Centro.objects.get(nombre__iexact=centro_param)
+                    filtrar_por_centro = True
+                except Centro.DoesNotExist:
+                    pass
         
         # Obtener movimientos
         movimientos = Movimiento.objects.filter(
