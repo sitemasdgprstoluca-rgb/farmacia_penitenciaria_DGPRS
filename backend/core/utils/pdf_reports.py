@@ -2004,7 +2004,7 @@ def generar_recibo_salida_movimiento(movimiento_data, finalizado=False):
     
     # Sección de firmas o sello de entregado
     if finalizado:
-        # Mostrar sello de ENTREGADO
+        # Mostrar sello de ENTREGADO centrado
         elements.append(Spacer(1, 30))
         
         entregado_box = Table(
@@ -2021,8 +2021,16 @@ def generar_recibo_salida_movimiento(movimiento_data, finalizado=False):
             ('BOTTOMPADDING', (0, 0), (-1, -1), 15),
         ]))
         
-        # Centrar la tabla
-        elements.append(Table([[entregado_box]], colWidths=[480]))
+        # Centrar el sello usando una tabla contenedora con alineación central
+        centered_table = Table(
+            [[entregado_box]], 
+            colWidths=[500]
+        )
+        centered_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        elements.append(centered_table)
         elements.append(Spacer(1, 10))
         
         fecha_entrega = movimiento_data.get('fecha_entrega', datetime.now().strftime('%d/%m/%Y %H:%M'))

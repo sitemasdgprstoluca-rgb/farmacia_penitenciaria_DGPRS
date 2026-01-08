@@ -7727,6 +7727,15 @@ def dashboard_graficas(request):
                 mov_mes = mov_mes.filter(
                     Q(lote__centro=user_centro) | Q(centro_origen=user_centro)
                 )
+            elif not filtrar_por_centro:
+                # ISS-FIX: Farmacia Central sin filtro de centro específico
+                # Mostrar solo movimientos de lotes de Farmacia Central (sin centro asignado)
+                # o lotes de "Almacén Central"
+                mov_mes = mov_mes.filter(
+                    Q(lote__centro__isnull=True) | 
+                    Q(lote__centro__nombre__icontains='almacén central') |
+                    Q(lote__centro__nombre__icontains='almacen central')
+                )
             
             # Calcular entradas y salidas
             entradas = mov_mes.filter(tipo='entrada').aggregate(
@@ -8617,12 +8626,6 @@ def reporte_movimientos(request):
         # Filtrar movimientos
         movimientos = Movimiento.objects.select_related('lote__producto', 'centro_origen', 'centro_destino').all()
         
-        # Aplicar filtro de centro
-        if filtrar_por_centro and user_centro:
-            movimientos = movimientos.filter(
-                Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
-            )
-        
         # FIX: Usar fecha__date para comparar solo la fecha (ignorar hora)
         if fecha_inicio:
             movimientos = movimientos.filter(fecha__date__gte=fecha_inicio)
@@ -8630,6 +8633,28 @@ def reporte_movimientos(request):
             movimientos = movimientos.filter(fecha__date__lte=fecha_fin)
         if tipo:
             movimientos = movimientos.filter(tipo=tipo.lower())
+        
+        # ISS-FIX: Aplicar filtro de centro de forma inteligente según el tipo de movimiento
+        # Si hay tipo especificado, filtrar de forma más precisa para evitar duplicados
+        if filtrar_por_centro and user_centro:
+            tipo_lower = (tipo or '').lower()
+            if tipo_lower == 'salida':
+                # Para salidas: solo mostrar donde el centro es ORIGEN (salidas DESDE ese centro)
+                # o donde el lote pertenece al centro
+                movimientos = movimientos.filter(
+                    Q(centro_origen=user_centro) | Q(lote__centro=user_centro)
+                )
+            elif tipo_lower == 'entrada':
+                # Para entradas: solo mostrar donde el centro es DESTINO (entradas HACIA ese centro)
+                # o donde el lote pertenece al centro
+                movimientos = movimientos.filter(
+                    Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
+                )
+            else:
+                # Sin tipo especificado: mostrar todos los movimientos relacionados con el centro
+                movimientos = movimientos.filter(
+                    Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
+                )
         
         movimientos = movimientos.order_by('-fecha')
         

@@ -102,6 +102,10 @@ class MovimientoViewSet(
         
         # SEGURIDAD: Filtrar por centro segun rol
         user = self.request.user
+        
+        # Obtener tipo de filtro (para aplicar filtro de centro inteligente)
+        tipo_param = self.request.query_params.get('tipo', '').lower()
+        
         if not is_farmacia_or_admin(user):
             # Usuario de centro: solo ve movimientos relevantes a su centro
             # ISS-CENTRO FIX v2: Solo mostrar:
@@ -121,12 +125,26 @@ class MovimientoViewSet(
             # Admin/farmacia/vista: pueden filtrar por centro especifico
             centro_param = self.request.query_params.get('centro')
             if centro_param:
-                # ISS-CENTRO FIX: Filtrar por centro origen, destino O lote
-                queryset = queryset.filter(
-                    Q(lote__centro_id=centro_param) | 
-                    Q(centro_origen_id=centro_param) | 
-                    Q(centro_destino_id=centro_param)
-                )
+                # ISS-FIX: Filtrar centro de forma inteligente según el tipo para evitar duplicados
+                if tipo_param == 'salida':
+                    # Para salidas: solo mostrar donde el centro es ORIGEN
+                    queryset = queryset.filter(
+                        Q(lote__centro_id=centro_param) | 
+                        Q(centro_origen_id=centro_param)
+                    )
+                elif tipo_param == 'entrada':
+                    # Para entradas: solo mostrar donde el centro es DESTINO
+                    queryset = queryset.filter(
+                        Q(lote__centro_id=centro_param) | 
+                        Q(centro_destino_id=centro_param)
+                    )
+                else:
+                    # Sin tipo: mostrar todos relacionados
+                    queryset = queryset.filter(
+                        Q(lote__centro_id=centro_param) | 
+                        Q(centro_origen_id=centro_param) | 
+                        Q(centro_destino_id=centro_param)
+                    )
         
         # Filtro por tipo
         tipo = self.request.query_params.get('tipo')
@@ -468,9 +486,16 @@ class MovimientoViewSet(
             if producto:
                 queryset = queryset.filter(lote__producto_id=producto)
             
+            # ISS-FIX: Filtrar centro de forma inteligente según el tipo para evitar duplicados
             centro = request.query_params.get('centro')
             if centro:
-                queryset = queryset.filter(Q(centro_origen_id=centro) | Q(centro_destino_id=centro) | Q(lote__centro_id=centro))
+                tipo_lower = (tipo or '').lower()
+                if tipo_lower == 'salida':
+                    queryset = queryset.filter(Q(centro_origen_id=centro) | Q(lote__centro_id=centro))
+                elif tipo_lower == 'entrada':
+                    queryset = queryset.filter(Q(centro_destino_id=centro) | Q(lote__centro_id=centro))
+                else:
+                    queryset = queryset.filter(Q(centro_origen_id=centro) | Q(centro_destino_id=centro) | Q(lote__centro_id=centro))
             
             lote = request.query_params.get('lote')
             if lote:
@@ -584,9 +609,16 @@ class MovimientoViewSet(
             if producto:
                 queryset = queryset.filter(lote__producto_id=producto)
             
+            # ISS-FIX: Filtrar centro de forma inteligente según el tipo para evitar duplicados
             centro = request.query_params.get('centro')
             if centro:
-                queryset = queryset.filter(Q(centro_origen_id=centro) | Q(centro_destino_id=centro) | Q(lote__centro_id=centro))
+                tipo_lower = (tipo or '').lower()
+                if tipo_lower == 'salida':
+                    queryset = queryset.filter(Q(centro_origen_id=centro) | Q(lote__centro_id=centro))
+                elif tipo_lower == 'entrada':
+                    queryset = queryset.filter(Q(centro_destino_id=centro) | Q(lote__centro_id=centro))
+                else:
+                    queryset = queryset.filter(Q(centro_origen_id=centro) | Q(centro_destino_id=centro) | Q(lote__centro_id=centro))
             
             lote = request.query_params.get('lote')
             if lote:
