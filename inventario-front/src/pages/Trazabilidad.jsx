@@ -814,9 +814,12 @@ const Trazabilidad = () => {
 
       <div className="bg-white p-6 rounded-lg shadow">
         <form onSubmit={handleBuscar} className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-4">
-            {/* Buscador unificado */}
-            <div className="md:col-span-2 relative">
+          
+          {/* Fila 1: Campos de entrada (Buscador y Centro) */}
+          <div className="grid gap-4 md:grid-cols-3 items-end">
+            
+            {/* Buscador unificado - Ocupa 2/3 o todo si no hay filtro centro */}
+            <div className={`${esAdminOFarmacia ? 'md:col-span-2' : 'md:col-span-3'} relative`}>
               <label className="block text-sm font-medium mb-2">
                 Buscar por lote, producto o clave
               </label>
@@ -894,9 +897,9 @@ const Trazabilidad = () => {
               )}
             </div>
 
-            {/* Selector de centro (solo para admin/farmacia) - Con opciones claras y organizadas */}
+            {/* Selector de centro (solo para admin/farmacia) */}
             {esAdminOFarmacia && (
-              <div>
+              <div className="md:col-span-1">
                 <label className="block text-sm font-medium mb-2">
                   Filtrar por Centro
                   <span className="ml-1 text-xs text-gray-400 font-normal">(reportes y exportaciones)</span>
@@ -917,22 +920,16 @@ const Trazabilidad = () => {
                     ))}
                   </optgroup>
                 </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  {centroFiltro === 'todos' 
-                    ? '📊 Verás movimientos de TODOS los centros combinados'
-                    : centroFiltro 
-                      ? '🏢 Verás solo movimientos de este centro específico'
-                      : '🏥 Verás solo movimientos de Farmacia Central'}
-                </p>
               </div>
             )}
+          </div>
 
-            {/* Botones de acción - ISS-UX: Centrados como solicitado */}
-            <div className="flex items-end gap-2 justify-center">
+          {/* Fila 2: Botones de Acción (Centrados en su propia fila) */}
+          <div className="flex items-center justify-center gap-4 py-2 border-b border-gray-100 pb-4">
               <button
                 type="submit"
                 disabled={loading || !terminoBusqueda.trim()}
-                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all min-w-[200px]"
+                className="bg-blue-600 text-white px-8 py-2.5 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all shadow-sm min-w-[220px]"
                 title="Buscar trazabilidad de un producto o lote específico"
               >
                 {loading && !modoGlobal ? (
@@ -946,18 +943,18 @@ const Trazabilidad = () => {
                   </>
                 )}
               </button>
+              
               <button
                 type="button"
                 onClick={limpiarBusqueda}
                 disabled={loading || exportingPdf || exportingExcel}
-                className="px-6 py-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all min-w-[100px]"
+                className="px-6 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all min-w-[120px] shadow-sm"
               >
                 Limpiar
               </button>
-            </div>
           </div>
 
-          {/* Filtros de fecha y tipo - SIEMPRE VISIBLES */}
+          {/* Fila 3: Filtros de Fecha y Tipo */}
           <div className="bg-gradient-to-r from-gray-50 to-blue-50 p-4 rounded-xl border border-gray-200">
             <div className="flex flex-wrap items-end gap-4 justify-center">
               {/* Fecha inicio */}
