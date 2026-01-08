@@ -168,225 +168,213 @@ function Login() {
   };
 
   return (
-    <div className="min-h-screen w-full flex relative overflow-hidden">
-      {/* 🎨 Fondo con gradiente dinámico del tema - Colores Pantone Institucionales */}
-      <div 
-        className="absolute inset-0 transition-all duration-1000"
-        style={{
-          background: `
-            radial-gradient(ellipse at 20% 20%, rgba(155, 126, 76, 0.15) 0%, transparent 50%),
-            radial-gradient(ellipse at 80% 80%, rgba(0,0,0,0.25) 0%, transparent 50%),
-            linear-gradient(135deg, 
-              var(--color-primary, #932043) 0%, 
-              var(--color-primary-hover, #632842) 50%, 
-              ${temaGlobal?.color_primario_hover || '#632842'} 100%
-            )
-          `,
-        }}
-      />
+    <div className="min-h-screen w-full flex relative overflow-hidden bg-gray-50">
       
-      {/* Efectos visuales de fondo */}
-      <FloatingParticles />
-      <AnimatedRings />
-      
-      {/* 📱 Layout de dos columnas en desktop */}
+      {/* 📱 Layout: Formulario izquierda, Branding derecha */}
       <div className="relative z-10 w-full flex flex-col lg:flex-row min-h-screen">
         
-        {/* 🖼️ Panel Izquierdo - Branding (visible en lg+) */}
-        <div className={`hidden lg:flex lg:w-1/2 xl:w-3/5 flex-col justify-center items-center p-12 transition-all duration-1000 ${
+        {/* ═══════════════════════════════════════════════════════════════════
+            📝 PANEL IZQUIERDO - Formulario (fondo claro)
+            ═══════════════════════════════════════════════════════════════════ */}
+        <div className={`w-full lg:w-[45%] xl:w-[40%] flex flex-col justify-center items-center p-6 sm:p-8 lg:p-12 bg-white transition-all duration-1000 ${
           mounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-10'
-        }`}>
-          <div className="max-w-lg text-center space-y-8">
-            {/* Logo grande con efecto glassmorphism */}
-            <div className="relative group">
-              <div className="absolute -inset-4 bg-white/10 rounded-3xl blur-xl group-hover:bg-white/20 transition-all duration-500" />
-              <div className="relative bg-white/10 backdrop-blur-xl rounded-3xl p-8 border border-white/20 shadow-2xl">
-                <img 
-                  src={logoLoginUrl || "/logo-sistema.png"} 
-                  alt="Logo del Sistema" 
-                  className="h-48 w-auto mx-auto object-contain filter drop-shadow-2xl transition-transform duration-500 group-hover:scale-105"
-                  onError={(e) => { e.target.src = "/logo-sistema.png"; }}
-                />
-              </div>
-            </div>
-            
-            {/* Título con efecto de texto */}
-            <div className="space-y-4">
-              <h1 className="text-4xl xl:text-5xl font-black text-white leading-tight tracking-tight">
-                {nombreSistema || temaGlobal?.reporte_titulo_institucion || 'Sistema de Farmacia'}
-                <span className="block text-2xl xl:text-3xl font-light mt-2 text-white/80">
-                  Penitenciaria
-                </span>
-              </h1>
-              
-              {/* Línea decorativa con dorado institucional Pantone 7504C */}
-              <div 
-                className="h-1 w-32 mx-auto rounded-full" 
-                style={{ background: 'linear-gradient(90deg, transparent, var(--pantone-7504c, #9B7E4C), var(--pantone-467c, #C9A876), var(--pantone-7504c, #9B7E4C), transparent)' }}
-              />
-              
-              <p className="text-lg text-white/70 font-light max-w-md mx-auto">
-                Gestión integral de medicamentos e insumos para centros penitenciarios
-              </p>
-            </div>
-            
-            {/* Características destacadas */}
-            <div className="grid grid-cols-3 gap-4 pt-8">
-              {[
-                { icon: FaShieldAlt, label: 'Seguro' },
-                { icon: FaFingerprint, label: 'Trazable' },
-                { icon: FaUser, label: 'Rol-Based' },
-              ].map(({ icon: Icon, label }) => (
-                <div key={label} className="flex flex-col items-center gap-2 text-white/60 hover:text-white/90 transition-colors">
-                  <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-sm border border-white/10">
-                    <Icon size={20} />
-                  </div>
-                  <span className="text-xs font-medium">{label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        
-        {/* 📝 Panel Derecho - Formulario de Login */}
-        <div className={`w-full lg:w-1/2 xl:w-2/5 flex items-center justify-center p-4 sm:p-8 transition-all duration-1000 delay-300 ${
-          mounted ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-10'
         }`}>
           <div className="w-full max-w-md">
             
-            {/* Logo móvil (visible solo en < lg) */}
-            <div className="lg:hidden text-center mb-8">
-              <div className="inline-block bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20 shadow-xl mb-4">
+            {/* Logo */}
+            <div className="text-center mb-8">
+              <div className="relative inline-block group">
                 <img 
                   src={logoLoginUrl || "/logo-sistema.png"} 
-                  alt="Logo" 
-                  className="h-24 w-auto mx-auto object-contain"
+                  alt="Logo del Sistema" 
+                  className="h-28 sm:h-32 w-auto mx-auto object-contain transition-transform duration-500 group-hover:scale-105"
                   onError={(e) => { e.target.src = "/logo-sistema.png"; }}
                 />
               </div>
-              <h1 className="text-2xl font-bold text-white">
-                {nombreSistema || 'Sistema de Farmacia'}
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mt-4">
+                Iniciar Sesión
               </h1>
+              <p className="text-gray-500 text-sm mt-2">
+                Ingresa tus credenciales para acceder
+              </p>
             </div>
             
-            {/* Card del formulario con glassmorphism */}
-            <div className="relative group">
-              {/* Glow effect */}
-              <div className="absolute -inset-1 bg-gradient-to-r from-white/20 via-white/10 to-white/20 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-              
-              <div className="relative bg-white/95 backdrop-blur-2xl rounded-3xl shadow-2xl overflow-hidden border border-white/50">
-                {/* Header del formulario */}
-                <div 
-                  className="bg-theme-gradient px-8 py-6 relative overflow-hidden"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 animate-shimmer" />
-                  <div className="relative flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30 shadow-lg">
-                      <FaSignInAlt className="text-white text-xl" />
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-bold text-white">Bienvenido</h2>
-                      <p className="text-white/70 text-sm">Ingresa tus credenciales para continuar</p>
-                    </div>
+            {/* Formulario */}
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {/* Mensaje de error */}
+              {errorMessage && (
+                <div className="animate-shake rounded-xl bg-red-50 border border-red-200 px-4 py-3 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                    <span className="text-red-500 text-sm">⚠️</span>
                   </div>
+                  <p className="text-sm text-red-700 font-medium">{errorMessage}</p>
                 </div>
-                
-                {/* Cuerpo del formulario */}
-                <div className="p-8">
-                  <form onSubmit={handleSubmit} className="space-y-6">
-                    {/* Mensaje de error con animación */}
-                    {errorMessage && (
-                      <div className="animate-shake rounded-xl bg-gradient-to-r from-red-50 to-rose-50 border border-red-200 px-4 py-3 flex items-center gap-3 shadow-sm">
-                        <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-                          <span className="text-red-500 text-sm">⚠️</span>
-                        </div>
-                        <p className="text-sm text-red-700 font-medium">{errorMessage}</p>
-                      </div>
-                    )}
+              )}
 
-                    {/* Input de usuario */}
-                    <PremiumInput
-                      icon={FaUser}
-                      label="Usuario o correo electrónico"
-                      type="text"
-                      value={credentials.username}
-                      onChange={(e) => setCredentials({ ...credentials, username: e.target.value })}
-                      placeholder="ejemplo@correo.com"
-                      required
-                      autoComplete="username"
-                    />
+              {/* Input de usuario */}
+              <PremiumInput
+                icon={FaUser}
+                label="Usuario o correo electrónico"
+                type="text"
+                value={credentials.username}
+                onChange={(e) => setCredentials({ ...credentials, username: e.target.value })}
+                placeholder="ejemplo@correo.com"
+                required
+                autoComplete="username"
+              />
 
-                    {/* Input de contraseña */}
-                    <PremiumInput
-                      icon={FaLock}
-                      label="Contraseña"
-                      type={showPassword ? "text" : "password"}
-                      value={credentials.password}
-                      onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
-                      placeholder="••••••••••"
-                      required
-                      autoComplete="current-password"
-                      showPassword={showPassword}
-                      togglePassword={() => setShowPassword(!showPassword)}
-                    />
+              {/* Input de contraseña */}
+              <PremiumInput
+                icon={FaLock}
+                label="Contraseña"
+                type={showPassword ? "text" : "password"}
+                value={credentials.password}
+                onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
+                placeholder="••••••••••"
+                required
+                autoComplete="current-password"
+                showPassword={showPassword}
+                togglePassword={() => setShowPassword(!showPassword)}
+              />
 
-                    {/* Link olvidé contraseña */}
-                    <div className="flex justify-end">
-                      <Link 
-                        to="/recuperar-password" 
-                        className="text-sm font-medium text-theme-primary hover:text-theme-primary-hover transition-colors hover:underline underline-offset-4"
-                      >
-                        ¿Olvidaste tu contraseña?
-                      </Link>
-                    </div>
-
-                    {/* Botón de submit premium */}
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="relative w-full overflow-hidden text-white py-4 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed font-bold shadow-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl active:scale-[0.98] group bg-theme-gradient"
-                    >
-                      {/* Efecto de brillo */}
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
-                      
-                      <span className="relative flex items-center justify-center gap-3">
-                        {loading ? (
-                          <>
-                            <FaSpinner className="animate-spin" size={18} />
-                            <span>Verificando credenciales...</span>
-                          </>
-                        ) : (
-                          <>
-                            <FaSignInAlt size={18} />
-                            <span>Iniciar Sesión</span>
-                          </>
-                        )}
-                      </span>
-                    </button>
-                  </form>
-                </div>
+              {/* Link olvidé contraseña */}
+              <div className="flex justify-end">
+                <Link 
+                  to="/recuperar-password" 
+                  className="text-sm font-medium text-theme-primary hover:text-theme-primary-hover transition-colors hover:underline underline-offset-4"
+                >
+                  ¿Olvidaste tu contraseña?
+                </Link>
               </div>
-            </div>
+
+              {/* Botón de submit */}
+              <button
+                type="submit"
+                disabled={loading}
+                className="relative w-full overflow-hidden text-white py-4 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed font-bold shadow-lg transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl active:scale-[0.98] group bg-theme-gradient"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
+                
+                <span className="relative flex items-center justify-center gap-3">
+                  {loading ? (
+                    <>
+                      <FaSpinner className="animate-spin" size={18} />
+                      <span>Verificando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FaSignInAlt size={18} />
+                      <span>Iniciar Sesión</span>
+                    </>
+                  )}
+                </span>
+              </button>
+            </form>
             
-            {/* Footer institucional */}
-            <div className={`mt-8 text-center space-y-2 transition-all duration-1000 delay-500 ${
-              mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
-            }`}>
-              <p className="text-white font-semibold text-sm">
+            {/* Footer en móvil */}
+            <div className="lg:hidden mt-8 pt-6 border-t border-gray-100 text-center">
+              <p className="text-gray-600 font-medium text-sm">
                 {temaGlobal?.reporte_subtitulo || 'Gobierno del Estado de México'}
               </p>
-              <p className="text-white/60 text-xs">
-                {temaGlobal?.reporte_pie_pagina || 'Subsecretaría de Seguridad'} 
-                {temaGlobal?.reporte_ano_visible !== false && ` • ${new Date().getFullYear()}`}
+              <p className="text-gray-400 text-xs mt-1">
+                {temaGlobal?.reporte_pie_pagina || 'Subsecretaría de Seguridad'} · {new Date().getFullYear()}
               </p>
-              <div className="flex items-center justify-center gap-2 pt-2">
-                <div className="h-px w-8 bg-gradient-to-r from-transparent to-white/30" />
-                <span className="text-white/40 text-xs">Sistema Seguro</span>
-                <div className="h-px w-8 bg-gradient-to-r from-white/30 to-transparent" />
-              </div>
             </div>
           </div>
         </div>
+        
+        {/* ═══════════════════════════════════════════════════════════════════
+            🎨 PANEL DERECHO - Branding (gradiente institucional)
+            ═══════════════════════════════════════════════════════════════════ */}
+        <div className={`hidden lg:flex lg:w-[55%] xl:w-[60%] relative overflow-hidden transition-all duration-1000 delay-200 ${
+          mounted ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-10'
+        }`}>
+          {/* Fondo con gradiente */}
+          <div 
+            className="absolute inset-0"
+            style={{
+              background: `
+                radial-gradient(ellipse at 30% 20%, rgba(155, 126, 76, 0.2) 0%, transparent 50%),
+                radial-gradient(ellipse at 70% 80%, rgba(0,0,0,0.3) 0%, transparent 50%),
+                linear-gradient(135deg, 
+                  var(--color-primary, #932043) 0%, 
+                  var(--color-primary-hover, #632842) 60%, 
+                  ${temaGlobal?.color_primario_hover || '#4a1a2e'} 100%
+                )
+              `,
+            }}
+          />
+          
+          {/* Efectos visuales */}
+          <FloatingParticles />
+          <AnimatedRings />
+          
+          {/* Contenido del branding */}
+          <div className="relative z-10 flex flex-col justify-center items-center p-12 xl:p-16 w-full">
+            <div className="max-w-lg text-center space-y-6">
+              
+              {/* Título principal */}
+              <div className="space-y-4">
+                <h2 className="text-4xl xl:text-5xl font-black text-white leading-tight tracking-tight drop-shadow-lg">
+                  {nombreSistema || temaGlobal?.reporte_titulo_institucion || 'Sistema de Farmacia'}
+                </h2>
+                <p className="text-2xl xl:text-3xl font-light text-white/70">
+                  Penitenciaria
+                </p>
+                
+                {/* Línea decorativa dorada */}
+                <div className="flex items-center justify-center gap-3 py-3">
+                  <div className="h-px w-12 bg-gradient-to-r from-transparent to-[#C9A876]" />
+                  <div className="w-2 h-2 rounded-full bg-[#C9A876] shadow-lg shadow-[#C9A876]/30" />
+                  <div className="h-px w-12 bg-gradient-to-l from-transparent to-[#C9A876]" />
+                </div>
+              </div>
+              
+              {/* Mensaje descriptivo - Estilo card sutil */}
+              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/10">
+                <h3 className="text-lg font-semibold text-white mb-2">
+                  Gestión Integral de Medicamentos
+                </h3>
+                <p className="text-white/60 text-sm leading-relaxed">
+                  Control de inventario, trazabilidad completa y distribución 
+                  eficiente de medicamentos e insumos para centros penitenciarios.
+                </p>
+              </div>
+              
+              {/* Características */}
+              <div className="flex justify-center gap-6 pt-4">
+                {[
+                  { icon: FaShieldAlt, label: 'Seguro' },
+                  { icon: FaFingerprint, label: 'Trazable' },
+                  { icon: FaUser, label: 'Rol-Based' },
+                ].map(({ icon: Icon, label }) => (
+                  <div key={label} className="flex flex-col items-center gap-2 group">
+                    <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center transition-all duration-300 group-hover:bg-white/20 group-hover:scale-110">
+                      <Icon size={20} className="text-white/60 group-hover:text-white transition-colors" />
+                    </div>
+                    <span className="text-xs text-white/50 group-hover:text-white/70 transition-colors">{label}</span>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Footer institucional */}
+              <div className="pt-8 border-t border-white/10">
+                <p className="text-white/80 font-medium text-sm">
+                  {temaGlobal?.reporte_subtitulo || 'Gobierno del Estado de México'}
+                </p>
+                <p className="text-white/40 text-xs mt-1">
+                  {temaGlobal?.reporte_pie_pagina || 'Subsecretaría de Seguridad'} · {new Date().getFullYear()}
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          {/* Decoración esquina inferior */}
+          <div className="absolute bottom-0 right-0 w-64 h-64 opacity-10">
+            <div className="absolute bottom-0 right-0 w-full h-full bg-white rounded-tl-full" />
+          </div>
+        </div>
+        
       </div>
       
       {/* 🎨 Estilos de animaciones */}
