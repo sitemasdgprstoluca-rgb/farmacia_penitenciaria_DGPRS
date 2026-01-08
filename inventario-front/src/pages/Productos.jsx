@@ -1487,7 +1487,7 @@ const Productos = () => {
 
       <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
 
-        <table className="w-full min-w-[1000px] divide-y divide-gray-200">
+        <table className="w-full min-w-[800px] lg:min-w-[1000px] divide-y divide-gray-200">
 
           <thead className="bg-theme-gradient sticky top-0 z-10">
 
@@ -1507,17 +1507,17 @@ const Productos = () => {
 
                 'Lotes',
 
-                'Inv. Mínimo',
+                'Inv. Mín.',
 
                 'Estado',
 
-                'Nivel Inv.',
+                'Nivel',
 
                 ...(puede.tieneAcciones ? ['Acciones'] : []),
 
               ].map((col) => (
 
-                <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
+                <th key={col} className="px-2 sm:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
 
                   {col}
 
@@ -1552,17 +1552,17 @@ const Productos = () => {
 
               >
 
-                <td className="px-3 py-3 text-sm font-semibold text-gray-500">{consecutivo}</td>
+                <td className="px-2 sm:px-3 py-3 text-sm font-semibold text-gray-500">{consecutivo}</td>
 
-                <td className="px-4 py-3 text-sm font-semibold text-gray-800">{producto.clave || '-'}</td>
+                <td className="px-2 sm:px-4 py-3 text-sm font-semibold text-gray-800">{producto.clave || '-'}</td>
 
-                <td className="px-4 py-3 text-sm text-gray-600">{producto.nombre}</td>
+                <td className="px-2 sm:px-4 py-3 text-sm text-gray-600 max-w-[200px] truncate" title={producto.nombre}>{producto.nombre}</td>
 
-                <td className="px-4 py-3 text-sm text-gray-600">{producto.presentacion || producto.unidad_medida || <span className="text-gray-400 italic text-xs">-</span>}</td>
+                <td className="px-2 sm:px-4 py-3 text-sm text-gray-600">{producto.presentacion || producto.unidad_medida || <span className="text-gray-400 italic text-xs">-</span>}</td>
 
-                <td className="px-4 py-3 text-sm">{formatInventario(producto)}</td>
+                <td className="px-2 sm:px-4 py-3 text-sm">{formatInventario(producto)}</td>
 
-                <td className="px-4 py-3 text-sm">
+                <td className="px-2 sm:px-4 py-3 text-sm">
                   <button
                     type="button"
                     onClick={() => verLotesProducto(producto)}
@@ -1574,16 +1574,16 @@ const Productos = () => {
                   </button>
                 </td>
 
-                <td className="px-4 py-3 text-sm">{producto.stock_minimo}</td>
+                <td className="px-2 sm:px-4 py-3 text-sm">{producto.stock_minimo}</td>
 
-                <td className="px-4 py-3 text-sm">{renderEstadoBadge(estadoInventario.label, estadoInventario.activo)}</td>
+                <td className="px-2 sm:px-4 py-3 text-sm">{renderEstadoBadge(estadoInventario.label, estadoInventario.activo)}</td>
 
-                <td className="px-4 py-3 text-sm">{renderStockBadge(nivelStock)}</td>
+                <td className="px-2 sm:px-4 py-3 text-sm">{renderStockBadge(nivelStock)}</td>
 
                 {puede.tieneAcciones && (
-                <td className="px-4 py-3 text-sm">
+                <td className="px-2 sm:px-4 py-3 text-sm">
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 sm:gap-3">
 
                     {puede.editar && (
 
@@ -1738,20 +1738,20 @@ const Productos = () => {
 
           )}
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-2 sm:gap-3 w-full sm:w-auto justify-end">
               <ProtectedButton
                 permission="exportarProductos"
                 type="button"
                 onClick={handleExportar}
                 disabled={exportLoading}
-                className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
+                className="flex items-center gap-1 sm:gap-2 rounded-full px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
               >
                 {exportLoading ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent inline-block" />
                 ) : (
                   <FaDownload />
                 )}
-                {exportLoading ? 'Exportando...' : 'Exportar'}
+                <span className="hidden sm:inline">{exportLoading ? 'Exportando...' : 'Exportar'}</span>
               </ProtectedButton>
 
               <ProtectedButton
@@ -1759,14 +1759,14 @@ const Productos = () => {
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={importLoading}
-                className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
+                className="flex items-center gap-1 sm:gap-2 rounded-full px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
               >
                 {importLoading ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent inline-block" />
                 ) : (
                   <FaFileUpload />
                 )}
-                {importLoading ? 'Importando...' : 'Importar'}
+                <span className="hidden sm:inline">{importLoading ? 'Importando...' : 'Importar'}</span>
               </ProtectedButton>
               
               {/* Botón de descarga de plantilla */}
@@ -1774,11 +1774,11 @@ const Productos = () => {
                 permission="importarProductos"
                 type="button"
                 onClick={handleDescargarPlantilla}
-                className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-theme-primary bg-white/90 hover:bg-white transition"
+                className="flex items-center gap-1 sm:gap-2 rounded-full px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-theme-primary bg-white/90 hover:bg-white transition"
                 title="Descargar plantilla Excel para importación"
               >
                 <FaDownload />
-                Plantilla
+                <span className="hidden sm:inline">Plantilla</span>
               </ProtectedButton>
               
               <input
@@ -1794,10 +1794,10 @@ const Productos = () => {
                 permission="crearProducto"
                 type="button"
                 onClick={() => openModal()}
-                className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white text-theme-primary"
+                className="flex items-center gap-1 sm:gap-2 rounded-full bg-white/90 px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold hover:bg-white text-theme-primary"
               >
                 <FaPlus />
-                Nuevo Producto
+                <span className="hidden sm:inline">Nuevo Producto</span>
               </ProtectedButton>
               
               {/* Botón de limpieza de inventario - SOLO SUPERUSUARIOS */}

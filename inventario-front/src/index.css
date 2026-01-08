@@ -3,34 +3,43 @@
 @tailwind utilities;
 
 :root {
-  /* Paleta Oficial Gobierno del Estado de México */
-  --pantone-504c: #632842;
-  --pantone-7504c: #9B7E4C;
-  --pantone-467c: #C9A876;
-  --pantone-warm-grey-1c: #D6CFC4;
+  /* ═══════════════════════════════════════════════════════════════════════════
+     PALETA OFICIAL - GOBIERNO DEL ESTADO DE MÉXICO
+     Colores Pantone institucionales para uso en todo el sistema
+     ═══════════════════════════════════════════════════════════════════════════ */
   
-  --pantone-7420c: #932043;
-  --pantone-4635c: #9F663E;
-  --pantone-465c: #B98C6B;
-  --pantone-468c: #D2B595;
+  /* Fila Superior - Tonos Guinda y Dorados */
+  --pantone-504c: #632842;      /* Guinda oscuro - para hovers y acentos oscuros */
+  --pantone-7504c: #9B7E4C;     /* Dorado oscuro - acentos elegantes */
+  --pantone-467c: #C9A876;      /* Dorado medio - detalles decorativos */
+  --pantone-warm-grey-1c: #D6CFC4; /* Gris cálido - fondos neutros */
   
-  /* Colores Dinámicos del Sistema - Valores por defecto institucionales (guinda/rojo)
-     Estos valores serán actualizados dinámicamente por ThemeContext */
-  --color-primary: #9F2241;
-  --color-primary-hover: #6B1839;
-  --color-primary-light: rgba(159, 34, 65, 0.2);
+  /* Fila Inferior - Tonos Complementarios */
+  --pantone-7420c: #932043;     /* Rojo guinda - COLOR PRIMARIO INSTITUCIONAL */
+  --pantone-4635c: #9F663E;     /* Terracota - alertas y warnings */
+  --pantone-465c: #B98C6B;      /* Beige oscuro - bordes sutiles */
+  --pantone-468c: #D2B595;      /* Beige claro - fondos suaves */
+  
+  /* ═══════════════════════════════════════════════════════════════════════════
+     COLORES DINÁMICOS DEL SISTEMA
+     Valores por defecto usando la paleta Pantone institucional
+     Estos valores son actualizados dinámicamente por ThemeContext
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --color-primary: #932043;           /* Pantone 7420 C - Guinda principal */
+  --color-primary-hover: #632842;     /* Pantone 504 C - Guinda oscuro para hover */
+  --color-primary-light: rgba(147, 32, 67, 0.15);
   --color-secondary: #424242;
-  --color-accent: #BC955C;
+  --color-accent: #9B7E4C;            /* Pantone 7504 C - Dorado institucional */
   --color-background: #F5F5F5;
-  --color-sidebar-bg: #9F2241;
-  --color-header-bg: #9F2241;
+  --color-sidebar-bg: #932043;        /* Pantone 7420 C */
+  --color-header-bg: #932043;         /* Pantone 7420 C */
   --color-card-bg: #FFFFFF;
   --color-text: #212121;
   --color-text-secondary: #757575;
   --color-sidebar-text: #FFFFFF;
   --color-header-text: #FFFFFF;
   --color-success: #4CAF50;
-  --color-warning: #FF9800;
+  --color-warning: #9F663E;           /* Pantone 4635 C - Terracota para warnings */
   --color-error: #F44336;
   --color-info: #2196F3;
   
@@ -480,39 +489,42 @@ code {
 /* ========================================
    CLASES UTILITARIAS DEL TEMA GLOBAL
    Estas clases usan las variables CSS que el ThemeContext actualiza dinámicamente
+   Fallbacks: Pantone 7420C (#932043) como primario, Pantone 504C (#632842) como hover
    ======================================== */
 
 /* Spinner institucional - usa color primario del tema */
 .spinner-theme,
 .spinner-institucional {
-  border-color: color-mix(in srgb, var(--color-primary, #9F2241) 20%, transparent);
-  border-top-color: var(--color-primary, #9F2241) !important;
+  border-color: color-mix(in srgb, var(--color-primary, #932043) 20%, transparent);
+  border-top-color: var(--color-primary, #932043) !important;
 }
 
-/* Colores de texto del tema */
-.text-theme-primary { color: var(--color-primary, #9F2241); }
-.text-theme-primary-hover { color: var(--color-primary-hover, #6B1839); }
+/* Colores de texto del tema - Pantone institucionales */
+.text-theme-primary { color: var(--color-primary, #932043); }
+.text-theme-primary-hover { color: var(--color-primary-hover, #632842); }
 .text-theme-secondary { color: var(--color-text-secondary, #757575); }
+.text-theme-accent { color: var(--color-accent, #9B7E4C); } /* Pantone 7504C - Dorado */
 
-/* Colores de fondo del tema */
-.bg-theme-primary { background-color: var(--color-primary, #9F2241); }
-.bg-theme-primary-hover { background-color: var(--color-primary-hover, #6B1839); }
-.bg-theme-sidebar { background: var(--color-sidebar-bg, #9F2241); }
-.bg-theme-light { background-color: color-mix(in srgb, var(--color-primary, #9F2241) 15%, transparent); }
+/* Colores de fondo del tema - Pantone institucionales */
+.bg-theme-primary { background-color: var(--color-primary, #932043); }
+.bg-theme-primary-hover { background-color: var(--color-primary-hover, #632842); }
+.bg-theme-sidebar { background: var(--color-sidebar-bg, #932043); }
+.bg-theme-light { background-color: color-mix(in srgb, var(--color-primary, #932043) 15%, transparent); }
+.bg-theme-accent { background-color: var(--color-accent, #9B7E4C); } /* Pantone 7504C - Dorado */
 
-
-/* Gradientes del tema */
+/* Gradientes del tema - Pantone institucionales */
 .gradient-theme-primary {
-  background: linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%);
+  background: linear-gradient(135deg, var(--color-primary, #932043) 0%, var(--color-primary-hover, #632842) 100%);
 }
 
-/* Bordes del tema */
-.border-theme-primary { border-color: var(--color-primary, #9F2241); }
-.border-theme-primary-hover { border-color: var(--color-primary-hover, #6B1839); }
+/* Bordes del tema - Pantone institucionales */
+.border-theme-primary { border-color: var(--color-primary, #932043); }
+.border-theme-primary-hover { border-color: var(--color-primary-hover, #632842); }
+.border-theme-accent { border-color: var(--color-accent, #9B7E4C); } /* Pantone 7504C - Dorado */
 
 /* Labels de formulario con color del tema */
 .form-label-theme {
-  color: var(--color-primary-hover, #6B1839);
+  color: var(--color-primary-hover, #632842);
   font-weight: 700;
   font-size: 0.875rem;
 }
@@ -558,24 +570,25 @@ code {
 
 /* Botones del tema */
 .btn-theme-primary {
-  background: linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%);
+  background: linear-gradient(135deg, var(--color-primary, #932043) 0%, var(--color-primary-hover, #632842) 100%);
   color: white;
 }
 .btn-theme-primary:hover {
   opacity: 0.9;
 }
 .btn-theme-outline {
-  border: 2px solid var(--color-primary, #9F2241);
-  color: var(--color-primary, #9F2241);
+  border: 2px solid var(--color-primary, #932043);
+  color: var(--color-primary, #932043);
   background: transparent;
 }
 .btn-theme-outline:hover {
-  background: color-mix(in srgb, var(--color-primary, #9F2241) 10%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #932043) 10%, transparent);
 }
 
 /* Gradiente de fondo del tema - para botones y elementos destacados */
+/* Fallbacks: Pantone 7420C (#932043) y Pantone 504C (#632842) */
 .bg-theme-gradient {
-  background: linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%) !important;
+  background: linear-gradient(135deg, var(--color-primary, #932043) 0%, var(--color-primary-hover, #632842) 100%) !important;
 }
 
 /* ===== RESPONSIVE DESIGN IMPROVEMENTS ===== */

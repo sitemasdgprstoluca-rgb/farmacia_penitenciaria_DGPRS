@@ -5,13 +5,102 @@ import Pagination from "../components/Pagination";
 import SalidaMasiva from "../components/SalidaMasiva";
 import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, salidaMasivaAPI, descargarArchivo } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
-import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList, FaFileDownload, FaCheckCircle, FaClipboardCheck, FaTrash } from "react-icons/fa";
+import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList, FaFileDownload, FaCheckCircle, FaClipboardCheck, FaTrash, FaBoxes, FaHistory } from "react-icons/fa";
 import { COLORS } from "../constants/theme";
 
 // ISS-FIX: Constantes de paginación
-const PAGE_SIZE_INDIVIDUAL = 25;  // Para vista individual: 25 movimientos por página
-const PAGE_SIZE_AGRUPADA = 200;   // Para vista agrupada: cargar más para agrupar correctamente
-const GRUPOS_POR_PAGINA = 15;     // Cuántos grupos mostrar por página en vista agrupada
+const PAGE_SIZE_INDIVIDUAL = 25;
+const PAGE_SIZE_AGRUPADA = 200;
+const GRUPOS_POR_PAGINA = 15;
+
+// 🎨 DISEÑO PREMIUM: Configuración de colores y estilos por tipo de grupo
+const GRUPO_STYLES = {
+  requisicion: {
+    gradient: 'from-blue-50 via-blue-100 to-blue-50',
+    border: 'border-l-blue-500',
+    borderConfirmed: 'border-l-emerald-500',
+    headerBg: 'bg-gradient-to-r from-blue-100 to-indigo-100',
+    badge: 'bg-blue-600 text-white',
+    icon: 'text-blue-600',
+    hoverBg: 'hover:from-blue-100 hover:to-indigo-100',
+    label: 'REQUISICIÓN',
+    emoji: '📋',
+  },
+  salida_masiva: {
+    gradient: 'from-pink-50 via-rose-100 to-pink-50',
+    border: 'border-l-pink-500',
+    borderConfirmed: 'border-l-emerald-500',
+    headerBg: 'bg-gradient-to-r from-pink-100 to-rose-100',
+    badge: 'bg-pink-600 text-white',
+    icon: 'text-pink-600',
+    hoverBg: 'hover:from-pink-100 hover:to-rose-100',
+    label: 'MASIVA',
+    emoji: '🚚',
+  },
+  transferencia: {
+    gradient: 'from-amber-50 via-yellow-100 to-amber-50',
+    border: 'border-l-amber-500',
+    borderConfirmed: 'border-l-emerald-500',
+    headerBg: 'bg-gradient-to-r from-amber-100 to-yellow-100',
+    badge: 'bg-amber-600 text-white',
+    icon: 'text-amber-600',
+    hoverBg: 'hover:from-amber-100 hover:to-yellow-100',
+    label: 'TRANSF.',
+    emoji: '🔄',
+  },
+};
+
+// 🦴 Skeleton component para loading elegante
+const SkeletonRow = ({ index }) => (
+  <tr className={`animate-pulse ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+    <td className="px-3 py-4">
+      <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+      <div className="h-3 bg-gray-100 rounded w-1/2"></div>
+    </td>
+    <td className="px-2 py-4"><div className="h-6 bg-gray-200 rounded w-16"></div></td>
+    <td className="px-2 py-4 text-right"><div className="h-4 bg-gray-200 rounded w-10 ml-auto"></div></td>
+    <td className="px-2 py-4"><div className="h-4 bg-gray-200 rounded w-24"></div></td>
+    <td className="px-2 py-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
+    <td className="px-2 py-4"><div className="h-4 bg-gray-200 rounded w-8 mx-auto"></div></td>
+  </tr>
+);
+
+// 🏷️ Badge component reutilizable
+const StatusBadge = ({ tipo, confirmado, pendiente }) => {
+  if (confirmado) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-r from-emerald-500 to-green-500 text-white text-xs font-bold shadow-sm">
+        <FaCheckCircle className="text-[10px]" /> Confirmado
+      </span>
+    );
+  }
+  if (pendiente) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-r from-yellow-400 to-amber-400 text-yellow-900 text-xs font-bold shadow-sm animate-pulse">
+        <span className="w-2 h-2 bg-yellow-600 rounded-full"></span> Pendiente
+      </span>
+    );
+  }
+  return null;
+};
+
+// 📊 Contador animado de movimientos
+const MovCounter = ({ salidas, entradas }) => (
+  <div className="flex items-center gap-2 flex-wrap">
+    {salidas > 0 && (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-semibold border border-red-200">
+        <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+        {salidas} salida{salidas > 1 ? 's' : ''}
+      </span>
+    )}
+    {entradas > 0 && (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold border border-emerald-200">
+        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
+        {entradas} entrada{entradas > 1 ? 's' : ''}
+      </span>
+    )}
+  </div>
+);
 
 const Movimientos = () => {
   const location = useLocation();
@@ -192,6 +281,13 @@ const Movimientos = () => {
       return `REQ-${mov.requisicion_id || mov.requisicion}`;
     }
     
+    // Patrón 4: Transferencias a centro que no tienen grupo explícito pero son del mismo momento
+    // Agrupar por timestamp cercano (dentro de 5 segundos) y mismo centro
+    if (mov.tipo === 'salida' && mov.subtipo_salida === 'transferencia') {
+      const fecha = new Date(mov.fecha_movimiento || mov.fecha).getTime();
+      return `TRANSF-${Math.floor(fecha / 5000)}-${mov.centro_id || mov.centro || 'NC'}`;
+    }
+    
     return null;
   };
   
@@ -228,67 +324,81 @@ const Movimientos = () => {
     const grupos = new Map();
     const sinGrupo = [];
     
+    // ISS-FIX: Primera pasada - agrupar movimientos
     movimientos.forEach(mov => {
       const grupoId = extraerGrupoSalida(mov);
       const motivo = mov.observaciones || mov.motivo || '';
       
-      // ISS-FIX: Agrupar si:
-      // 1. Tiene grupo SAL-xxx y es salida/transferencia (salidas masivas)
-      // 2. Tiene grupo SAL-xxx y es entrada (entradas por salida masiva confirmada)
-      // 3. Tiene grupo REQ-xxx (movimientos por requisición - entrada o salida)
-      const esSalidaMasiva = grupoId?.startsWith('SAL-') && mov.tipo === 'salida' && mov.subtipo_salida === 'transferencia';
-      const esEntradaSalidaMasiva = grupoId?.startsWith('SAL-') && mov.tipo === 'entrada';
-      const esMovimientoRequisicion = grupoId?.startsWith('REQ-') || motivo.includes('_POR_REQUISICION');
+      // ISS-FIX MEJORADO: Criterios de agrupación más amplios
+      // 1. Tiene grupo SAL-xxx (salida masiva)
+      // 2. Tiene grupo REQ-xxx (requisición)
+      // 3. Tiene grupo TRANSF-xxx (transferencias agrupadas por timestamp)
+      // 4. Cualquier transferencia a centro
+      const esSalidaMasiva = grupoId?.startsWith('SAL-');
+      const esRequisicion = grupoId?.startsWith('REQ-') || motivo.includes('_POR_REQUISICION');
+      const esTransferencia = grupoId?.startsWith('TRANSF-') || (mov.tipo === 'salida' && mov.subtipo_salida === 'transferencia');
       
-      if (grupoId && (esSalidaMasiva || esEntradaSalidaMasiva || esMovimientoRequisicion)) {
+      // Determinar si debe agruparse
+      const debeAgruparse = grupoId && (esSalidaMasiva || esRequisicion || esTransferencia);
+      
+      if (debeAgruparse) {
         if (!grupos.has(grupoId)) {
-          // Determinar tipo de grupo
-          const tipoGrupo = grupoId.startsWith('SAL-') ? 'salida_masiva' : 'requisicion';
+          // Determinar tipo de grupo y colores
+          let tipoGrupo = 'transferencia';
+          if (grupoId.startsWith('SAL-')) tipoGrupo = 'salida_masiva';
+          else if (grupoId.startsWith('REQ-')) tipoGrupo = 'requisicion';
+          else if (grupoId.startsWith('TRANSF-')) tipoGrupo = 'transferencia';
           
           grupos.set(grupoId, {
             id: grupoId,
             tipo_grupo: tipoGrupo,
             items: [],
-            // ISS-FIX: Para salidas masivas y requisiciones, capturar el centro DESTINO (de las entradas)
-            centro_nombre: (tipoGrupo === 'requisicion' || tipoGrupo === 'salida_masiva') && mov.tipo === 'entrada' 
-              ? (mov.centro_nombre || 'N/A') 
-              : (mov.centro_nombre || 'Almacén Central'),
+            // Inicialmente tomar centro del movimiento
+            centro_nombre: mov.centro_nombre || 'Almacén Central',
+            centro_id: mov.centro_id || mov.centro,
             fecha: mov.fecha || mov.fecha_movimiento,
             usuario_nombre: mov.usuario_nombre || 'Sistema',
-            total_cantidad: 0,
-            // ISS-FIX: Contadores separados para entradas y salidas
+            // Contadores detallados
+            salidas: [],
+            entradas: [],
             cantidad_salidas: 0,
             cantidad_entradas: 0,
             num_salidas: 0,
             num_entradas: 0,
+            total_cantidad: 0,
             confirmado: estaConfirmado(mov),
-            // ISS-FIX FLUJO: Agregar estado pendiente
             pendiente: estaPendiente(mov),
-            // Para requisiciones, extraer info adicional
             requisicion_folio: tipoGrupo === 'requisicion' ? grupoId : null,
           });
         }
+        
         const grupo = grupos.get(grupoId);
         grupo.items.push(mov);
         
-        // ISS-FIX: Contar separadamente entradas y salidas para requisiciones
+        // Clasificar el movimiento como entrada o salida
         if (mov.tipo === 'salida') {
+          grupo.salidas.push(mov);
           grupo.cantidad_salidas += Math.abs(mov.cantidad || 0);
           grupo.num_salidas += 1;
         } else if (mov.tipo === 'entrada') {
+          grupo.entradas.push(mov);
           grupo.cantidad_entradas += Math.abs(mov.cantidad || 0);
           grupo.num_entradas += 1;
-          // Actualizar centro_nombre con el del centro destino (de entrada)
+          // Capturar centro destino de las entradas
           if (mov.centro_nombre && mov.centro_nombre !== 'Almacén Central') {
             grupo.centro_nombre = mov.centro_nombre;
+            grupo.centro_id = mov.centro_id || mov.centro;
           }
         }
         
-        // ISS-FIX: Para requisiciones, mostrar solo la cantidad de UN lado (no duplicar)
-        // Usamos salidas como referencia principal (lo que sale de farmacia)
+        // Total = lo que salió (o entró si no hay salidas)
         grupo.total_cantidad = grupo.cantidad_salidas || grupo.cantidad_entradas;
         
-        // Actualizar fecha con la más reciente del grupo
+        // Actualizar estados si algún item lo tiene
+        if (estaConfirmado(mov)) grupo.confirmado = true;
+        if (estaPendiente(mov)) grupo.pendiente = true;
+        
+        // Fecha más reciente
         const fechaMov = new Date(mov.fecha || mov.fecha_movimiento);
         const fechaGrupo = new Date(grupo.fecha);
         if (fechaMov > fechaGrupo) {
@@ -299,26 +409,27 @@ const Movimientos = () => {
       }
     });
     
+    // ISS-FIX: Ordenar items dentro de cada grupo (salidas primero, luego entradas)
+    grupos.forEach(grupo => {
+      grupo.items = [...grupo.salidas, ...grupo.entradas];
+    });
+    
     // Convertir a array y ordenar por fecha descendente
     const gruposArray = Array.from(grupos.values()).sort((a, b) => 
       new Date(b.fecha) - new Date(a.fecha)
     );
     
     // ISS-FIX: Calcular total de elementos para paginación en frontend
-    // Total = grupos + movimientos sin grupo
     const totalElementos = gruposArray.length + sinGrupo.length;
     
-    // ISS-FIX: Aplicar paginación en frontend para vista agrupada
+    // Aplicar paginación en frontend para vista agrupada
     const startIndex = (pageGrupos - 1) * GRUPOS_POR_PAGINA;
     const endIndex = startIndex + GRUPOS_POR_PAGINA;
     
-    // Combinar grupos y sinGrupo para paginar juntos
-    const todosElementos = [...gruposArray.map(g => ({ tipo: 'grupo', data: g })), ...sinGrupo.map(m => ({ tipo: 'individual', data: m }))];
-    const elementosPaginados = todosElementos.slice(startIndex, endIndex);
-    
-    // Separar de nuevo para el render
-    const gruposPaginados = elementosPaginados.filter(e => e.tipo === 'grupo').map(e => e.data);
-    const sinGrupoPaginados = elementosPaginados.filter(e => e.tipo === 'individual').map(e => e.data);
+    // Paginar grupos primero, luego individuales
+    const gruposPaginados = gruposArray.slice(startIndex, Math.min(endIndex, gruposArray.length));
+    const espacioRestante = endIndex - gruposArray.length;
+    const sinGrupoPaginados = espacioRestante > 0 ? sinGrupo.slice(0, espacioRestante) : [];
     
     return { 
       grupos: gruposPaginados, 
@@ -817,66 +928,81 @@ const Movimientos = () => {
   };
 
   return (
-    <div className="space-y-6 p-4 sm:p-6">
-      {/* Header con gradiente institucional */}
-      <div
-        className="rounded-2xl p-6 text-white shadow-lg bg-theme-gradient"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="bg-white/20 p-3 rounded-full">
-              <FaExchangeAlt size={24} />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold">Movimientos de Inventario</h1>
-              {/* ISS-FIX: Mostrar info correcta según vista */}
-              <p className="text-white/80 text-sm">
-                {vistaAgrupada ? (
-                  <>
-                    {hayFiltrosActivos ? 'Filtrados:' : 'Total:'} {totalGrupos} {totalGrupos === 1 ? 'grupo' : 'grupos'}
-                    {movimientosAgrupados && (
-                      <span className="ml-1 opacity-70">
-                        ({movimientosAgrupados.totalGrupos || 0} requisiciones/salidas, {movimientosAgrupados.totalSinGrupo || 0} individuales)
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <>{hayFiltrosActivos ? 'Filtrados:' : 'Total:'} {total} movimientos</>
-                )}
-              </p>
-            </div>
+    <div className="space-y-6 p-4 sm:p-6 max-w-[1600px] mx-auto">
+      {/* 🎯 HEADER PREMIUM con gradiente institucional del tema */}
+      <div className="rounded-2xl overflow-hidden shadow-xl">
+        <div className="bg-theme-gradient p-6 text-white relative">
+          {/* Decoración de fondo */}
+          <div className="absolute inset-0 opacity-10">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full blur-3xl transform translate-x-1/3 -translate-y-1/3"></div>
+            <div className="absolute bottom-0 left-0 w-48 h-48 bg-white rounded-full blur-3xl transform -translate-x-1/3 translate-y-1/3"></div>
           </div>
-          {hayFiltrosActivos && (
-            <span className="bg-white/20 px-4 py-1 rounded-full text-sm font-semibold">
-              {Object.values(filtrosAplicados).filter(v => v !== "").length} filtros activos
-            </span>
-          )}
-          <div className="flex flex-wrap gap-3">
-            {/* Botón Salida Masiva - Solo Farmacia */}
-            {esFarmacia && (
-              <button
-                onClick={() => setShowSalidaMasiva(true)}
-                className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition bg-white text-rose-700 hover:bg-rose-50"
-                title="Salida masiva a centros"
-              >
-                <FaTruck />
-                Salida Masiva
-              </button>
+          
+          <div className="relative flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="bg-gradient-to-br from-white/20 to-white/5 p-4 rounded-2xl backdrop-blur-sm border border-white/10 shadow-lg">
+                <FaExchangeAlt size={28} className="text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Movimientos de Inventario</h1>
+                <p className="text-white/70 text-sm mt-1 flex items-center gap-2">
+                  {vistaAgrupada ? (
+                    <>
+                      <span className="inline-flex items-center gap-1">
+                        <FaLayerGroup className="text-xs" />
+                        {hayFiltrosActivos ? 'Filtrados:' : 'Total:'} 
+                        <span className="font-bold text-white">{totalGrupos}</span> {totalGrupos === 1 ? 'grupo' : 'grupos'}
+                      </span>
+                      {movimientosAgrupados && (
+                        <span className="hidden sm:inline text-white/50">
+                          • {movimientosAgrupados.totalGrupos || 0} agrupados, {movimientosAgrupados.totalSinGrupo || 0} individuales
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <FaList className="text-xs" />
+                      {hayFiltrosActivos ? 'Filtrados:' : 'Total:'} <span className="font-bold text-white">{total}</span> movimientos
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+            
+            {hayFiltrosActivos && (
+              <span className="bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-1.5 rounded-full text-xs font-bold shadow-lg animate-pulse">
+                ⚡ {Object.values(filtrosAplicados).filter(v => v !== "").length} filtros activos
+              </span>
             )}
-            {/* Toggle Vista Agrupada/Individual */}
-            <button
-              onClick={() => setVistaAgrupada(!vistaAgrupada)}
-              className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
-                vistaAgrupada 
-                  ? 'bg-white text-rose-700 hover:bg-rose-50' 
-                  : 'bg-white/20 text-white hover:bg-white/30'
-              }`}
-              title={vistaAgrupada ? "Ver movimientos individuales" : "Agrupar salidas masivas"}
-            >
-              {vistaAgrupada ? <FaLayerGroup /> : <FaList />}
-              {vistaAgrupada ? 'Agrupado' : 'Individual'}
-            </button>
-            {/* TEMPORALMENTE OCULTO: Exportar PDF/Excel - pendiente de revisión
+            
+            <div className="flex flex-wrap gap-2 sm:gap-3">
+              {/* Botón Salida Masiva - Solo Farmacia */}
+              {esFarmacia && (
+                <button
+                  onClick={() => setShowSalidaMasiva(true)}
+                  className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all duration-300 bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:from-pink-600 hover:to-rose-600 shadow-lg hover:shadow-xl hover:scale-[1.02]"
+                  title="Salida masiva a centros"
+                >
+                  <FaTruck />
+                  <span className="hidden sm:inline">Salida Masiva</span>
+                </button>
+              )}
+              {/* Toggle Vista Agrupada/Individual */}
+              <button
+                onClick={() => setVistaAgrupada(!vistaAgrupada)}
+                className={`
+                  flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all duration-300
+                  ${vistaAgrupada 
+                    ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg hover:shadow-xl hover:scale-[1.02]' 
+                    : 'bg-white/10 text-white border border-white/20 hover:bg-white/20'
+                  }
+                `}
+                title={vistaAgrupada ? "Ver movimientos individuales" : "Agrupar salidas masivas"}
+              >
+                {vistaAgrupada ? <FaLayerGroup /> : <FaList />}
+                <span className="hidden sm:inline">{vistaAgrupada ? 'Vista Agrupada' : 'Vista Individual'}</span>
+              </button>
+              {/* TEMPORALMENTE OCULTO: Exportar PDF/Excel - pendiente de revisión
             {puedeExportar && (
               <>
                 <button
@@ -908,35 +1034,38 @@ const Movimientos = () => {
               </>
             )}
             */}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ISS-FIX: Banner para usuarios CENTRO indicando que solo ven movimientos de su centro */}
+      {/* 🏷️ Banner para usuarios CENTRO */}
       {esCentroUser && centroNombre && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-3">
-          <div className="bg-blue-100 p-2 rounded-lg">
-            <FaInfoCircle className="text-blue-600" />
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 flex items-center gap-4 shadow-sm">
+          <div className="bg-gradient-to-br from-blue-500 to-indigo-500 p-3 rounded-xl shadow-lg">
+            <FaInfoCircle className="text-white text-lg" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-blue-800">
-              Movimientos de: {centroNombre}
+            <p className="text-sm font-bold text-blue-900">
+              📍 Movimientos de: {centroNombre}
             </p>
-            <p className="text-xs text-blue-600">
+            <p className="text-xs text-blue-600/80">
               Estás viendo solo los movimientos relacionados a tu centro.
             </p>
           </div>
         </div>
       )}
 
-      {/* ISS-CENTRO: Aviso si usuario de centro no tiene centro asignado */}
+      {/* ⚠️ Aviso si usuario de centro no tiene centro asignado */}
       {esCentroUser && !centroUsuario && (
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg">
-          <div className="flex items-center">
-            <FaExclamationTriangle className="text-yellow-400 mr-3 text-xl" />
+        <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border-l-4 border-yellow-400 p-4 rounded-xl shadow-sm">
+          <div className="flex items-center gap-4">
+            <div className="bg-yellow-100 p-3 rounded-xl">
+              <FaExclamationTriangle className="text-yellow-600 text-xl" />
+            </div>
             <div>
-              <h3 className="text-lg font-semibold text-yellow-800">Centro no asignado</h3>
-              <p className="text-yellow-700 mt-1">
+              <h3 className="text-lg font-bold text-yellow-800">Centro no asignado</h3>
+              <p className="text-yellow-700 text-sm mt-1">
                 Tu cuenta está configurada como usuario de Centro pero no tienes un centro asignado.
                 Por favor contacta al administrador para que te asigne un centro.
               </p>
@@ -945,21 +1074,24 @@ const Movimientos = () => {
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-          {/* Formulario de registro - solo para admin/farmacia */}
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+          {/* 📝 FORMULARIO DE REGISTRO - solo para admin/farmacia */}
           {puedeRegistrarMovimiento ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Nuevo movimiento</h2>
-
-            <div className="space-y-4">
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+            <div className="bg-theme-gradient px-6 py-4">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <span className="text-xl">➕</span> Nuevo Movimiento
+              </h2>
+            </div>
+            <div className="p-6 space-y-4">
               {/* Filtro por producto */}
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">Producto (filtro)</label>
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Producto (filtro)</label>
                 <select
                   value={productoFiltro}
                   onChange={(e) => setProductoFiltro(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 transition-all duration-200"
                 >
                   <option value="">-- Todos --</option>
                   {productos.map((p) => (
@@ -1345,318 +1477,570 @@ const Movimientos = () => {
                 </div>
               )}
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-b-xl">
               <table className="w-full text-sm table-fixed">
-                <thead className="bg-theme-gradient sticky top-0 z-10">
+                <thead className="bg-theme-gradient sticky top-0 z-10 shadow-md">
                   <tr>
-                    <th className="w-[30%] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">Producto</th>
-                    <th className="w-[15%] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">Tipo</th>
-                    <th className="w-[10%] px-2 py-3 text-right text-xs font-semibold uppercase tracking-wider text-white">Cant.</th>
-                    <th className="w-[20%] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">Centro</th>
-                    <th className="w-[15%] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">Fecha</th>
-                    <th className="w-[10%] px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white">Acc.</th>
+                    <th className="w-[30%] px-3 py-4 text-left text-xs font-bold uppercase tracking-wider text-white/90">
+                      <div className="flex items-center gap-2">
+                        <FaBoxes className="text-white/70" />
+                        <span>Producto</span>
+                      </div>
+                    </th>
+                    <th className="w-[15%] px-2 py-4 text-left text-xs font-bold uppercase tracking-wider text-white/90">Tipo</th>
+                    <th className="w-[10%] px-2 py-4 text-right text-xs font-bold uppercase tracking-wider text-white/90">Cant.</th>
+                    <th className="w-[20%] px-2 py-4 text-left text-xs font-bold uppercase tracking-wider text-white/90 hidden sm:table-cell">Centro</th>
+                    <th className="w-[15%] px-2 py-4 text-left text-xs font-bold uppercase tracking-wider text-white/90 hidden md:table-cell">Fecha</th>
+                    <th className="w-[10%] px-2 py-4 text-center text-xs font-bold uppercase tracking-wider text-white/90">Acc.</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-100">
+                <tbody className="bg-white divide-y divide-gray-50">
                   {loading ? (
-                    <tr>
-                      <td colSpan={6} className="text-center py-8">
-                        <div className="flex justify-center items-center">
-                          <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent spinner-institucional"></div>
-                          <span className="ml-2 text-gray-600">Cargando movimientos...</span>
-                        </div>
-                      </td>
-                    </tr>
+                    /* 🦴 Skeleton Loading Premium */
+                    <>
+                      {[...Array(8)].map((_, i) => <SkeletonRow key={i} index={i} />)}
+                    </>
                   ) : vistaAgrupada && movimientosAgrupados ? (
                     <>
-                      {/* ISS-FIX: Mostrar mensaje si no hay datos en vista agrupada */}
+                      {/* 📭 Empty State Premium */}
                       {(!movimientosAgrupados.grupos || movimientosAgrupados.grupos.length === 0) && 
                        (!movimientosAgrupados.sinGrupo || movimientosAgrupados.sinGrupo.length === 0) ? (
                         <tr>
-                          <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
-                            Sin movimientos
+                          <td colSpan={6} className="px-4 py-16 text-center">
+                            <div className="flex flex-col items-center justify-center">
+                              <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mb-4 shadow-inner">
+                                <FaHistory className="text-3xl text-gray-400" />
+                              </div>
+                              <h3 className="text-lg font-semibold text-gray-600 mb-1">Sin movimientos</h3>
+                              <p className="text-sm text-gray-400">No hay registros que coincidan con los filtros</p>
+                            </div>
                           </td>
                         </tr>
                       ) : (
                         <>
-                          {/* Mostrar grupos de salidas masivas y requisiciones */}
+                          {/* 🎨 GRUPOS CON DISEÑO PREMIUM */}
                           {movimientosAgrupados.grupos.map((grupo, gIndex) => {
-                        // ISS-FIX: Determinar colores y etiquetas según tipo de grupo
-                        const esRequisicion = grupo.tipo_grupo === 'requisicion';
-                        const colorBase = esRequisicion ? 'blue' : 'rose';
-                        const etiqueta = esRequisicion ? 'REQUISICIÓN' : 'MASIVA';
-                        const idCorto = esRequisicion ? grupo.id : `SM: ${grupo.id.slice(-8)}`;
-                        
-                        return (
-                        <React.Fragment key={grupo.id}>
-                          {/* Fila del grupo colapsado */}
-                          <tr 
-                            className={`transition cursor-pointer ${gIndex % 2 === 0 ? `bg-${colorBase}-50` : `bg-${colorBase}-100/50`} hover:bg-${colorBase}-100 border-l-4 ${grupo.confirmado ? 'border-green-500' : `border-${colorBase}-500`}`}
-                            style={{ 
-                              backgroundColor: gIndex % 2 === 0 
-                                ? (esRequisicion ? '#EFF6FF' : '#FFF1F2') 
-                                : (esRequisicion ? '#DBEAFE' : '#FFE4E6'),
-                              borderLeftColor: grupo.confirmado ? '#22C55E' : (esRequisicion ? '#3B82F6' : '#F43F5E')
-                            }}
-                            onClick={() => toggleGrupo(grupo.id)}
-                          >
-                            <td className="px-4 py-3 text-sm">
-                              <div className="flex items-center gap-2">
-                                {gruposExpandidos.has(grupo.id) ? <FaChevronDown className={esRequisicion ? 'text-blue-600' : 'text-rose-600'} style={{ flexShrink: 0 }} /> : <FaChevronRight className={esRequisicion ? 'text-blue-600' : 'text-rose-600'} style={{ flexShrink: 0 }} />}
-                                <div className="min-w-0">
-                                  <div className={`font-bold ${esRequisicion ? 'text-blue-800' : 'text-rose-800'} flex items-center gap-1 flex-wrap`}>
-                                    {esRequisicion ? <FaClipboardCheck className="text-blue-600" style={{ flexShrink: 0 }} /> : <FaTruck className="text-rose-600" style={{ flexShrink: 0 }} />}
-                                    <span className="truncate">{idCorto}</span>
-                                    {grupo.confirmado && (
-                                      <span className="px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">✓</span>
-                                    )}
-                                  </div>
-                                  {/* ISS-FIX: Mostrar desglose de movimientos para requisiciones */}
-                                  <div className={`text-xs ${esRequisicion ? 'text-blue-600' : 'text-rose-600'}`}>
-                                    {esRequisicion ? (
-                                      <>
-                                        {grupo.num_salidas > 0 && <span>{grupo.num_salidas} salida{grupo.num_salidas > 1 ? 's' : ''}</span>}
-                                        {grupo.num_salidas > 0 && grupo.num_entradas > 0 && ' + '}
-                                        {grupo.num_entradas > 0 && <span>{grupo.num_entradas} entrada{grupo.num_entradas > 1 ? 's' : ''}</span>}
-                                      </>
-                                    ) : (
-                                      <>{grupo.items?.length || 0} mov.</>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-2 py-3">
-                              <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${esRequisicion ? 'bg-blue-200 text-blue-800' : 'bg-rose-200 text-rose-800'}`}>
-                                {etiqueta}
-                              </span>
-                            </td>
-                            <td className={`px-2 py-3 text-right font-bold ${esRequisicion ? 'text-blue-800' : 'text-rose-800'}`}>
-                              {grupo.total_cantidad}
-                            </td>
-                            <td className={`px-2 py-3 ${esRequisicion ? 'text-blue-800' : 'text-rose-800'} font-semibold text-xs truncate`} title={grupo.centro_nombre}>{grupo.centro_nombre}</td>
-                            <td className={`px-2 py-3 ${esRequisicion ? 'text-blue-700' : 'text-rose-700'} text-xs`}>
-                              {grupo.fecha ? new Date(grupo.fecha).toLocaleDateString('es-MX') : ''}
-                            </td>
-                            <td className="px-2 py-3">
-                              <div className="flex items-center justify-center gap-1 flex-wrap">
-                                {esRequisicion ? (
-                                  /* Para requisiciones: enlace a ver detalles */
-                                  <a 
-                                    href={`/requisiciones?folio=${grupo.id}`}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                                  >
-                                    Ver en Requisiciones
-                                  </a>
-                                ) : grupo.pendiente ? (
-                                  /* ISS-FIX FLUJO: Mostrar botones solo si está PENDIENTE */
+                            // Determinar tipo y estilos
+                            const esRequisicion = grupo.tipo_grupo === 'requisicion';
+                            const esSalidaMasiva = grupo.tipo_grupo === 'salida_masiva';
+                            const esTransferencia = grupo.tipo_grupo === 'transferencia';
+                            const styles = GRUPO_STYLES[grupo.tipo_grupo] || GRUPO_STYLES.transferencia;
+                            
+                            // ID formateado elegantemente
+                            const idFormateado = esRequisicion 
+                              ? grupo.id 
+                              : esSalidaMasiva 
+                                ? `${styles.emoji} ${grupo.id.slice(-8).toUpperCase()}` 
+                                : `${styles.emoji} ${grupo.id.slice(-6).toUpperCase()}`;
+                            
+                            const isExpanded = gruposExpandidos.has(grupo.id);
+                            
+                            return (
+                              <React.Fragment key={grupo.id}>
+                                {/* ═══════════════════════════════════════════════════════════════════
+                                    🎯 HEADER DEL GRUPO - Diseño Premium con Gradientes y Animaciones
+                                    ═══════════════════════════════════════════════════════════════════ */}
+                                <tr 
+                                  className={`
+                                    group cursor-pointer transition-all duration-300 ease-out
+                                    bg-gradient-to-r ${styles.gradient}
+                                    ${styles.hoverBg}
+                                    border-l-4 ${grupo.confirmado ? styles.borderConfirmed : styles.border}
+                                    ${isExpanded ? 'shadow-md' : 'hover:shadow-sm'}
+                                  `}
+                                  onClick={() => toggleGrupo(grupo.id)}
+                                >
+                                  {/* Columna: Producto/Info */}
+                                  <td className="px-3 py-3.5">
+                                    <div className="flex items-center gap-3">
+                                      {/* Chevron con animación */}
+                                      <div className={`
+                                        transition-transform duration-300 ease-out ${styles.icon}
+                                        ${isExpanded ? 'rotate-90' : 'rotate-0'}
+                                      `}>
+                                        <FaChevronRight className="text-lg" />
+                                      </div>
+                                      
+                                      <div className="min-w-0 flex-1">
+                                        {/* Título y badges */}
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className="font-bold text-sm text-gray-800 tracking-tight">
+                                            {idFormateado}
+                                          </span>
+                                          <StatusBadge 
+                                            tipo={grupo.tipo_grupo} 
+                                            confirmado={grupo.confirmado} 
+                                            pendiente={grupo.pendiente} 
+                                          />
+                                        </div>
+                                        
+                                        {/* Contadores */}
+                                        <div className="mt-1.5">
+                                          <MovCounter 
+                                            salidas={grupo.num_salidas} 
+                                            entradas={grupo.num_entradas} 
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  
+                                  {/* Columna: Tipo Badge */}
+                                  <td className="px-2 py-3.5">
+                                    <span className={`
+                                      inline-flex items-center px-2.5 py-1.5 rounded-lg text-xs font-bold
+                                      ${styles.badge} shadow-sm
+                                      transform transition-transform duration-200 group-hover:scale-105
+                                    `}>
+                                      {styles.label}
+                                    </span>
+                                  </td>
+                                  
+                                  {/* Columna: Cantidad Total */}
+                                  <td className="px-2 py-3.5 text-right">
+                                    <div className="flex flex-col items-end">
+                                      <span className="font-black text-xl text-gray-800 tabular-nums">
+                                        {grupo.total_cantidad}
+                                      </span>
+                                      <span className="text-[10px] text-gray-500 uppercase tracking-wider">
+                                        unidades
+                                      </span>
+                                    </div>
+                                  </td>
+                                  
+                                  {/* Columna: Centro */}
+                                  <td className="px-2 py-3.5 hidden sm:table-cell">
+                                    <div className="max-w-[150px]">
+                                      <span className="font-semibold text-xs text-gray-700 truncate block" title={grupo.centro_nombre}>
+                                        {grupo.centro_nombre}
+                                      </span>
+                                      {grupo.usuario_nombre && (
+                                        <span className="text-[10px] text-gray-400 truncate block">
+                                          por {grupo.usuario_nombre}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  
+                                  {/* Columna: Fecha */}
+                                  <td className="px-2 py-3.5 hidden md:table-cell">
+                                    <div className="text-xs text-gray-600">
+                                      <div className="font-medium">
+                                        {grupo.fecha ? new Date(grupo.fecha).toLocaleDateString('es-MX', { 
+                                          day: '2-digit', month: 'short', year: 'numeric' 
+                                        }) : '-'}
+                                      </div>
+                                      <div className="text-[10px] text-gray-400">
+                                        {grupo.fecha ? new Date(grupo.fecha).toLocaleTimeString('es-MX', { 
+                                          hour: '2-digit', minute: '2-digit' 
+                                        }) : ''}
+                                      </div>
+                                    </div>
+                                  </td>
+                                  
+                                  {/* Columna: Acciones */}
+                                  <td className="px-2 py-3.5">
+                                    <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                      {esRequisicion ? (
+                                        <a 
+                                          href={`/requisiciones?folio=${grupo.id}`}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 hover:text-blue-800 transition-all duration-200 border border-blue-200"
+                                        >
+                                          <FaClipboardCheck className="text-[10px]" />
+                                          <span className="hidden lg:inline">Ver</span>
+                                        </a>
+                                      ) : grupo.pendiente ? (
+                                        <div className="flex gap-1">
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); descargarHojaEntregaGrupo(grupo.id); }}
+                                            className="p-2 bg-gradient-to-b from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                                            title="Hoja de recolección"
+                                          >
+                                            <FaClipboardCheck className="text-xs" />
+                                          </button>
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); setConfirmCancelarGrupo(grupo.id); }}
+                                            disabled={cancelandoGrupo === grupo.id}
+                                            className="p-2 bg-gradient-to-b from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                                            title="Cancelar salida"
+                                          >
+                                            {cancelandoGrupo === grupo.id ? <FaSpinner className="text-xs animate-spin" /> : <FaTrash className="text-xs" />}
+                                          </button>
+                                        </div>
+                                      ) : grupo.confirmado ? (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); descargarComprobanteGrupo(grupo.id); }}
+                                          className="p-2 bg-gradient-to-b from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                                          title="Descargar comprobante"
+                                        >
+                                          <FaFileDownload className="text-xs" />
+                                        </button>
+                                      ) : (
+                                        <span className="text-gray-300">—</span>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                                
+                                {/* ═══════════════════════════════════════════════════════════════════
+                                    📦 ITEMS EXPANDIDOS - Detalle de cada movimiento
+                                    ═══════════════════════════════════════════════════════════════════ */}
+                                {isExpanded && (
                                   <>
-                                    {/* Hoja de Entrega (para firmas) */}
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); descargarHojaEntregaGrupo(grupo.id); }}
-                                      className="inline-flex items-center gap-1 px-2 py-1 bg-rose-600 text-white rounded text-xs font-medium hover:bg-rose-700 transition"
-                                      title="Hoja de recolección"
-                                    >
-                                      <FaClipboardCheck className="text-xs" />
-                                    </button>
-                                    {/* Confirmar Entrega */}
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); confirmarEntregaGrupo(grupo.id); }}
-                                      disabled={confirmandoGrupo === grupo.id}
-                                      className="inline-flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                                      title="Confirmar entrega física (descuenta stock)"
-                                    >
-                                      {confirmandoGrupo === grupo.id ? (
-                                        <FaSpinner className="text-xs animate-spin" />
-                                      ) : (
-                                        <FaCheckCircle className="text-xs" />
-                                      )}
-                                    </button>
-                                    {/* Cancelar Salida */}
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); setConfirmCancelarGrupo(grupo.id); }}
-                                      disabled={cancelandoGrupo === grupo.id}
-                                      className="inline-flex items-center gap-1 px-2 py-1 bg-red-600 text-white rounded text-xs font-medium hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                                      title="Cancelar salida"
-                                    >
-                                      {cancelandoGrupo === grupo.id ? (
-                                        <FaSpinner className="text-xs animate-spin" />
-                                      ) : (
-                                        <FaTrash className="text-xs" />
-                                      )}
-                                    </button>
+                                    {/* 🔴 SECCIÓN DE SALIDAS */}
+                                    {grupo.salidas?.length > 0 && (
+                                      <>
+                                        <tr className="bg-gradient-to-r from-red-50 to-red-100 border-l-4 border-red-400">
+                                          <td colSpan={6} className="px-4 py-2">
+                                            <div className="flex items-center gap-2 text-red-700">
+                                              <div className="w-6 h-6 rounded-full bg-red-200 flex items-center justify-center">
+                                                <span className="text-sm">📤</span>
+                                              </div>
+                                              <span className="font-bold text-xs uppercase tracking-wider">
+                                                Salidas (Farmacia Central)
+                                              </span>
+                                              <span className="text-xs bg-red-200 text-red-800 px-2 py-0.5 rounded-full font-medium">
+                                                {grupo.salidas.length} item{grupo.salidas.length > 1 ? 's' : ''}
+                                              </span>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                        {grupo.salidas.map((mov, iIndex) => (
+                                          <tr 
+                                            key={`sal-${mov.id}`}
+                                            className={`
+                                              transition-all duration-200 hover:bg-red-100
+                                              ${iIndex % 2 === 0 ? 'bg-red-50/50' : 'bg-red-50/80'}
+                                              border-l-4 border-red-300
+                                            `}
+                                          >
+                                            <td className="px-3 py-2.5 pl-10">
+                                              <div className="font-medium text-gray-800 text-sm">{mov.producto_nombre || mov.producto || ""}</div>
+                                              <div className="text-xs text-gray-500 mt-0.5">
+                                                <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
+                                                  Lote: {mov.lote_numero || mov.lote_codigo || mov.numero_lote || 'N/A'}
+                                                </span>
+                                              </div>
+                                            </td>
+                                            <td className="px-2 py-2.5">
+                                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-red-100 text-red-700 border border-red-200">
+                                                <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+                                                SALIDA
+                                              </span>
+                                            </td>
+                                            <td className="px-2 py-2.5 text-right">
+                                              <span className="font-bold text-red-600 text-base tabular-nums">
+                                                -{Math.abs(mov.cantidad)}
+                                              </span>
+                                            </td>
+                                            <td className="px-2 py-2.5 text-gray-600 text-xs hidden sm:table-cell">Almacén Central</td>
+                                            <td className="px-2 py-2.5 text-gray-500 text-xs hidden md:table-cell">
+                                              {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX') : ''}
+                                            </td>
+                                            <td className="px-2 py-2.5 text-center">
+                                              <span className="text-xs text-gray-400 font-mono">#{mov.id}</span>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </>
+                                    )}
+                                    
+                                    {/* 🟢 SECCIÓN DE ENTRADAS */}
+                                    {grupo.entradas?.length > 0 && (
+                                      <>
+                                        <tr className="bg-gradient-to-r from-emerald-50 to-emerald-100 border-l-4 border-emerald-400">
+                                          <td colSpan={6} className="px-4 py-2">
+                                            <div className="flex items-center gap-2 text-emerald-700">
+                                              <div className="w-6 h-6 rounded-full bg-emerald-200 flex items-center justify-center">
+                                                <span className="text-sm">📥</span>
+                                              </div>
+                                              <span className="font-bold text-xs uppercase tracking-wider">
+                                                Entradas ({grupo.centro_nombre})
+                                              </span>
+                                              <span className="text-xs bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-full font-medium">
+                                                {grupo.entradas.length} item{grupo.entradas.length > 1 ? 's' : ''}
+                                              </span>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                        {grupo.entradas.map((mov, iIndex) => (
+                                          <tr 
+                                            key={`ent-${mov.id}`}
+                                            className={`
+                                              transition-all duration-200 hover:bg-emerald-100
+                                              ${iIndex % 2 === 0 ? 'bg-emerald-50/50' : 'bg-emerald-50/80'}
+                                              border-l-4 border-emerald-300
+                                            `}
+                                          >
+                                            <td className="px-3 py-2.5 pl-10">
+                                              <div className="font-medium text-gray-800 text-sm">{mov.producto_nombre || mov.producto || ""}</div>
+                                              <div className="text-xs text-gray-500 mt-0.5">
+                                                <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
+                                                  Lote: {mov.lote_numero || mov.lote_codigo || mov.numero_lote || 'N/A'}
+                                                </span>
+                                              </div>
+                                            </td>
+                                            <td className="px-2 py-2.5">
+                                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                                                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
+                                                ENTRADA
+                                              </span>
+                                            </td>
+                                            <td className="px-2 py-2.5 text-right">
+                                              <span className="font-bold text-emerald-600 text-base tabular-nums">
+                                                +{Math.abs(mov.cantidad)}
+                                              </span>
+                                            </td>
+                                            <td className="px-2 py-2.5 text-gray-600 text-xs hidden sm:table-cell">{mov.centro_nombre || grupo.centro_nombre}</td>
+                                            <td className="px-2 py-2.5 text-gray-500 text-xs hidden md:table-cell">
+                                              {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX') : ''}
+                                            </td>
+                                            <td className="px-2 py-2.5 text-center">
+                                              <span className="text-xs text-gray-400 font-mono">#{mov.id}</span>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </>
+                                    )}
+                                    
+                                    {/* ⚪ Items sin clasificar (fallback) */}
+                                    {(!grupo.salidas?.length && !grupo.entradas?.length && grupo.items?.length > 0) && grupo.items.map((mov, iIndex) => (
+                                      <tr 
+                                        key={mov.id}
+                                        className={`
+                                          transition-all duration-200 hover:bg-gray-100
+                                          ${iIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                                          border-l-4 ${mov.tipo === 'entrada' ? 'border-emerald-300' : 'border-red-300'}
+                                        `}
+                                      >
+                                        <td className="px-3 py-2.5 pl-10">
+                                          <div className="font-medium text-gray-800 text-sm">{mov.producto_nombre || mov.producto || ""}</div>
+                                          <div className="text-xs text-gray-500 mt-0.5">
+                                            <span className="bg-gray-100 px-1.5 py-0.5 rounded">
+                                              Lote: {mov.lote_numero || mov.lote_codigo || mov.numero_lote || 'N/A'}
+                                            </span>
+                                          </div>
+                                        </td>
+                                        <td className="px-2 py-2.5">
+                                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold ${mov.tipo === 'entrada' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
+                                            <span className={`w-1.5 h-1.5 rounded-full ${mov.tipo === 'entrada' ? 'bg-emerald-500' : 'bg-red-500'}`}></span>
+                                            {mov.tipo?.toUpperCase()}
+                                          </span>
+                                        </td>
+                                        <td className="px-2 py-2.5 text-right">
+                                          <span className={`font-bold text-base tabular-nums ${mov.tipo === 'entrada' ? 'text-emerald-600' : 'text-red-600'}`}>
+                                            {mov.tipo === 'entrada' ? '+' : '-'}{Math.abs(mov.cantidad)}
+                                          </span>
+                                        </td>
+                                        <td className="px-2 py-2.5 text-gray-600 text-xs hidden sm:table-cell">{mov.centro_nombre || "Almacén Central"}</td>
+                                        <td className="px-2 py-2.5 text-gray-500 text-xs hidden md:table-cell">
+                                          {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX') : ''}
+                                        </td>
+                                        <td className="px-2 py-2.5 text-center">
+                                          <span className="text-xs text-gray-400 font-mono">#{mov.id}</span>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                    
+                                    {/* Espaciador visual entre grupos */}
+                                    <tr className="bg-gray-100/50">
+                                      <td colSpan={6} className="h-2"></td>
+                                    </tr>
                                   </>
-                                ) : grupo.confirmado ? (
-                                  /* Solo comprobante si ya está CONFIRMADO */
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); descargarComprobanteGrupo(grupo.id); }}
-                                    className="inline-flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition"
-                                    title="Descargar comprobante de entrega"
-                                  >
-                                    <FaFileDownload className="text-xs" />
-                                  </button>
-                                ) : (
-                                  /* Sin acciones si no está pendiente ni confirmado */
-                                  <span className="text-xs text-gray-400">-</span>
                                 )}
-                              </div>
-                            </td>
-                          </tr>
-                          {/* Items del grupo expandidos */}
-                          {gruposExpandidos.has(grupo.id) && grupo.items?.map((mov, iIndex) => (
-                            <tr 
-                              key={mov.id}
-                              className="transition hover:bg-gray-100"
-                              style={{ 
-                                backgroundColor: iIndex % 2 === 0 ? '#FFFFFF' : '#F9FAFB',
-                                borderLeftWidth: '4px',
-                                borderLeftColor: esRequisicion ? '#BFDBFE' : '#FECDD3'
-                              }}
-                            >
-                              <td className="px-2 py-2 text-sm pl-8">
-                                <div className="font-medium text-gray-800 truncate text-xs">{mov.producto_nombre || mov.producto || ""}</div>
-                                <div className="text-xs text-gray-500">Lote: {mov.lote_numero || mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
-                              </td>
-                              <td className="px-2 py-2">
-                                <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${mov.tipo === 'entrada' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                                  {mov.tipo || 'item'}
-                                </span>
-                              </td>
-                              <td className={`px-2 py-2 text-right font-semibold ${mov.tipo === 'entrada' ? 'text-green-700' : 'text-gray-700'}`}>
-                                {mov.tipo === 'entrada' ? '+' : '-'}{Math.abs(mov.cantidad)}
-                              </td>
-                              <td className="px-2 py-2 text-gray-600 text-xs truncate">{mov.centro_nombre || "Almacén Central"}</td>
-                              <td className="px-2 py-2 text-gray-500 text-xs">
-                                {mov.lote?.fecha_caducidad ? new Date(mov.lote.fecha_caducidad).toLocaleDateString('es-MX') : ''}
-                              </td>
-                              <td className="px-2 py-2 text-center text-xs text-gray-400">
-                                #{mov.id}
-                              </td>
-                            </tr>
-                          ))}
-                        </React.Fragment>
-                        );
-                      })}
-                      {/* Mostrar movimientos sin grupo (individuales) */}
-                      {movimientosAgrupados.sinGrupo.map((mov, index) => (
+                              </React.Fragment>
+                            );
+                          })}
+                          
+                          {/* 📋 MOVIMIENTOS INDIVIDUALES (sin grupo) */}
+                          {movimientosAgrupados.sinGrupo.map((mov, index) => (
                         <React.Fragment key={mov.id}>
                           <tr 
                             ref={highlightId === mov.id ? highlightRef : null}
-                            className={`transition cursor-pointer ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100 ${
-                              highlightId === mov.id ? 'bg-yellow-50 ring-2 ring-yellow-400' : ''
-                            } ${expandedId === mov.id ? 'bg-blue-50' : ''}`}
+                            className={`
+                              transition-all duration-200 cursor-pointer
+                              ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}
+                              hover:bg-blue-50/50
+                              ${highlightId === mov.id ? 'bg-yellow-50 ring-2 ring-yellow-400 ring-inset' : ''}
+                              ${expandedId === mov.id ? 'bg-blue-50 shadow-inner' : ''}
+                              border-l-4 ${mov.tipo === 'entrada' ? 'border-emerald-400' : mov.tipo === 'salida' ? 'border-red-400' : 'border-gray-300'}
+                            `}
                             onClick={() => setExpandedId(expandedId === mov.id ? null : mov.id)}
                           >
-                            <td className="px-2 py-3">
-                              <div className="font-semibold text-gray-800 truncate text-sm">{mov.producto_nombre || mov.producto || ""}</div>
-                              <div className="text-xs text-gray-500">Lote: {mov.lote_numero || mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
+                            <td className="px-3 py-3.5">
+                              <div className="font-semibold text-gray-800 text-sm">{mov.producto_nombre || mov.producto || ""}</div>
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                <span className="bg-gray-100 px-1.5 py-0.5 rounded">
+                                  Lote: {mov.lote_numero || mov.lote_codigo || mov.numero_lote || 'N/A'}
+                                </span>
+                              </div>
                             </td>
-                            <td className="px-2 py-3">
-                              <div className="flex flex-col gap-0.5">
-                                <span className={`px-1.5 py-0.5 rounded text-xs font-semibold inline-block w-fit ${
-                                  mov.tipo === "entrada" ? "bg-green-100 text-green-800" :
-                                  mov.tipo === "salida" ? "bg-red-100 text-red-800" : "bg-yellow-100 text-yellow-800"
-                                }`}>
+                            <td className="px-2 py-3.5">
+                              <div className="flex flex-col gap-1">
+                                <span className={`
+                                  inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold w-fit
+                                  ${mov.tipo === "entrada" ? "bg-emerald-100 text-emerald-700 border border-emerald-200" :
+                                    mov.tipo === "salida" ? "bg-red-100 text-red-700 border border-red-200" : 
+                                    "bg-yellow-100 text-yellow-700 border border-yellow-200"}
+                                `}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${
+                                    mov.tipo === "entrada" ? "bg-emerald-500" :
+                                    mov.tipo === "salida" ? "bg-red-500" : "bg-yellow-500"
+                                  }`}></span>
                                   {mov.tipo?.toUpperCase()}
                                 </span>
                                 {mov.tipo === 'salida' && mov.subtipo_salida && (
-                                  <span className="text-xs text-gray-500">
-                                    {mov.subtipo_salida === 'receta' ? '💊' :
-                                     mov.subtipo_salida === 'consumo_interno' ? '🏥' :
-                                     mov.subtipo_salida === 'merma' ? '📉' :
-                                     mov.subtipo_salida === 'caducidad' ? '⏰' :
-                                     mov.subtipo_salida === 'transferencia' ? '🔄' : ''}
+                                  <span className="text-xs text-gray-500 pl-0.5">
+                                    {mov.subtipo_salida === 'receta' ? '💊 Receta' :
+                                     mov.subtipo_salida === 'consumo_interno' ? '🏥 Interno' :
+                                     mov.subtipo_salida === 'merma' ? '📉 Merma' :
+                                     mov.subtipo_salida === 'caducidad' ? '⏰ Caducidad' :
+                                     mov.subtipo_salida === 'transferencia' ? '🔄 Transfer.' : ''}
                                   </span>
                                 )}
                               </div>
                             </td>
-                            <td className="px-2 py-3 text-right font-semibold text-gray-900">
-                              {mov.tipo === 'salida' ? '-' : '+'}{Math.abs(mov.cantidad)}
+                            <td className="px-2 py-3.5 text-right">
+                              <span className={`font-black text-lg tabular-nums ${
+                                mov.tipo === 'salida' ? 'text-red-600' : 
+                                mov.tipo === 'entrada' ? 'text-emerald-600' : 'text-gray-700'
+                              }`}>
+                                {mov.tipo === 'salida' ? '-' : '+'}{Math.abs(mov.cantidad)}
+                              </span>
                             </td>
-                            <td className="px-2 py-3 text-gray-700 text-xs truncate">{mov.centro_nombre || mov.centro || "Almacén Central"}</td>
-                            <td className="px-2 py-3 text-gray-600 text-xs">
-                              {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX') :
-                               mov.fecha ? new Date(mov.fecha).toLocaleDateString('es-MX') : ""}
+                            <td className="px-2 py-3.5 text-gray-700 text-xs hidden sm:table-cell">
+                              <span className="truncate block max-w-[120px]" title={mov.centro_nombre || mov.centro || "Almacén Central"}>
+                                {mov.centro_nombre || mov.centro || "Almacén Central"}
+                              </span>
                             </td>
-                            <td className="px-2 py-3 text-center">
+                            <td className="px-2 py-3.5 text-gray-600 text-xs hidden md:table-cell">
+                              {mov.fecha_movimiento
+                                ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX')
+                                : mov.fecha
+                                ? new Date(mov.fecha).toLocaleDateString('es-MX')
+                                : ""}
+                            </td>
+                            <td className="px-2 py-3.5 text-center">
                               <button 
-                                className="text-blue-600 hover:text-blue-800 text-xs"
+                                className={`
+                                  w-7 h-7 flex items-center justify-center rounded-full
+                                  transition-all duration-200
+                                  ${expandedId === mov.id 
+                                    ? 'bg-blue-100 text-blue-600 rotate-180' 
+                                    : 'bg-gray-100 text-gray-500 hover:bg-blue-50 hover:text-blue-600'
+                                  }
+                                `}
                                 onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === mov.id ? null : mov.id); }}
                               >
-                                {expandedId === mov.id ? '▲' : '▼'}
+                                <FaChevronDown className="text-xs" />
                               </button>
                             </td>
                           </tr>
+                          {/* 📋 PANEL EXPANDIDO - Detalles del movimiento individual */}
                           {expandedId === mov.id && (
-                            <tr className="bg-gray-50">
-                              <td colSpan={6} className="px-4 py-3">
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                                  <div><span className="font-semibold text-gray-600">ID:</span><p className="text-gray-800">{mov.id}</p></div>
-                                  <div><span className="font-semibold text-gray-600">Usuario:</span><p className="text-gray-800">{mov.usuario_nombre || 'Sistema'}</p></div>
-                                  {mov.observaciones && (
-                                    <div className="col-span-2 md:col-span-4">
-                                      <span className="font-semibold text-gray-600">Observaciones:</span>
-                                      <p className="text-gray-800 bg-white p-2 rounded border mt-1">{mov.observaciones}</p>
+                            <tr className="bg-gradient-to-b from-gray-50 to-white">
+                              <td colSpan={6} className="px-4 py-4">
+                                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                                  {/* Header del panel */}
+                                  <div className="bg-gradient-to-r from-slate-100 to-gray-100 px-4 py-2 border-b border-gray-200">
+                                    <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                                      Detalles del Movimiento #{mov.id}
+                                    </span>
+                                  </div>
+                                  
+                                  <div className="p-4">
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                      <div className="bg-gray-50 rounded-lg p-3">
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">ID</span>
+                                        <p className="text-gray-800 font-mono font-bold">{mov.id}</p>
+                                      </div>
+                                      <div className="bg-gray-50 rounded-lg p-3">
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Usuario</span>
+                                        <p className="text-gray-800 font-medium">{mov.usuario_nombre || 'Sistema'}</p>
+                                      </div>
+                                      <div className="bg-gray-50 rounded-lg p-3">
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Centro</span>
+                                        <p className="text-gray-800 font-medium">{mov.centro_nombre || 'Almacén Central'}</p>
+                                      </div>
+                                      <div className="bg-gray-50 rounded-lg p-3">
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Fecha</span>
+                                        <p className="text-gray-800 font-medium text-sm">
+                                          {(mov.fecha_movimiento || mov.fecha) 
+                                            ? new Date(mov.fecha_movimiento || mov.fecha).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) 
+                                            : '-'}
+                                        </p>
+                                      </div>
                                     </div>
-                                  )}
-                                  {/* Botones de acción para movimientos de salida */}
-                                  {mov.tipo === 'salida' && (
-                                    <div className="col-span-2 md:col-span-4 flex flex-wrap gap-3 mt-4 pt-4 border-t border-gray-200">
-                                      {!mov.confirmado ? (
-                                        <>
-                                          {/* Hoja de Entrega - solo para requisiciones/surtidos, NO para dispensaciones por receta */}
-                                          {mov.subtipo_salida !== 'receta' && (
+                                    
+                                    {mov.observaciones && (
+                                      <div className="mt-4">
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-2">Observaciones</span>
+                                        <p className="text-gray-700 bg-amber-50 p-3 rounded-lg border border-amber-200 text-sm leading-relaxed">
+                                          {mov.observaciones}
+                                        </p>
+                                      </div>
+                                    )}
+                                    
+                                    {/* Acciones para movimientos de salida */}
+                                    {mov.tipo === 'salida' && (
+                                      <div className="mt-5 pt-4 border-t border-gray-200">
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-3">Acciones</span>
+                                        <div className="flex flex-wrap gap-3">
+                                          {!mov.confirmado ? (
+                                            <>
+                                              {mov.subtipo_salida !== 'receta' && (
+                                                <button
+                                                  onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov); }}
+                                                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-b from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md"
+                                                  title="Descargar hoja de entrega"
+                                                >
+                                                  <FaFilePdf className="text-base" />
+                                                  Hoja de Entrega
+                                                </button>
+                                              )}
+                                              <button
+                                                onClick={(e) => { e.stopPropagation(); confirmarEntregaIndividual(mov.id); }}
+                                                disabled={confirmandoMovimiento === mov.id}
+                                                className={`
+                                                  inline-flex items-center gap-2 px-4 py-2.5 text-white rounded-xl 
+                                                  transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md
+                                                  disabled:opacity-50 disabled:cursor-not-allowed
+                                                  ${mov.subtipo_salida === 'receta' 
+                                                    ? 'bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700' 
+                                                    : 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700'
+                                                  }
+                                                `}
+                                                title={mov.subtipo_salida === 'receta' 
+                                                  ? "Confirmar dispensación" 
+                                                  : "Confirmar entrega"
+                                                }
+                                              >
+                                                {confirmandoMovimiento === mov.id ? (
+                                                  <FaSpinner className="animate-spin text-base" />
+                                                ) : (
+                                                  <FaClipboardCheck className="text-base" />
+                                                )}
+                                                {confirmandoMovimiento === mov.id 
+                                                  ? 'Confirmando...' 
+                                                  : (mov.subtipo_salida === 'receta' ? 'Confirmar Dispensación' : 'Confirmar Entrega')
+                                                }
+                                              </button>
+                                            </>
+                                          ) : (
                                             <button
-                                              onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov); }}
-                                              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"
-                                              title="Descargar hoja de entrega con campos para firmas"
+                                              onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
+                                              className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-b from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md"
+                                              title="Descargar comprobante"
                                             >
-                                              <FaFilePdf className="text-lg" />
-                                              Hoja de Entrega
+                                              <FaCheckCircle className="text-base" />
+                                              {mov.subtipo_salida === 'receta' ? 'Comprobante Dispensación' : 'Comprobante Entregado'}
                                             </button>
                                           )}
-                                          {/* Botón confirmar entrega/dispensación */}
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); confirmarEntregaIndividual(mov.id); }}
-                                            disabled={confirmandoMovimiento === mov.id}
-                                            className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg transition text-sm font-medium disabled:opacity-50 ${
-                                              mov.subtipo_salida === 'receta' 
-                                                ? 'bg-green-600 hover:bg-green-700' 
-                                                : 'bg-amber-500 hover:bg-amber-600'
-                                            }`}
-                                            title={mov.subtipo_salida === 'receta' 
-                                              ? "Confirmar que el medicamento fue entregado al paciente" 
-                                              : "Confirmar que la entrega fue recibida"
-                                            }
-                                          >
-                                            {confirmandoMovimiento === mov.id ? (
-                                              <FaSpinner className="animate-spin text-lg" />
-                                            ) : (
-                                              <FaClipboardCheck className="text-lg" />
-                                            )}
-                                            {confirmandoMovimiento === mov.id 
-                                              ? 'Confirmando...' 
-                                              : (mov.subtipo_salida === 'receta' ? 'Confirmar Dispensación' : 'Confirmar Entrega')
-                                            }
-                                          </button>
-                                        </>
-                                      ) : (
-                                        /* Comprobante solo si ya está confirmado */
-                                        <button
-                                          onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
-                                          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
-                                          title={mov.subtipo_salida === 'receta' 
-                                            ? "Descargar comprobante de dispensación" 
-                                            : "Descargar comprobante con sello de ENTREGADO"
-                                          }
-                                        >
-                                          <FaCheckCircle className="text-lg" />
-                                          {mov.subtipo_salida === 'receta' ? 'Comprobante Dispensación' : 'Comprobante Entregado'}
-                                        </button>
-                                      )}
-                                    </div>
-                                  )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               </td>
                             </tr>
@@ -1667,183 +2051,224 @@ const Movimientos = () => {
                       )}
                     </>
                   ) : (
-                    /* Vista individual (sin agrupar) */
+                    /* 📋 VISTA INDIVIDUAL (sin agrupar) */
                     !movimientos.length ? (
                       <tr>
-                        <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
-                          Sin movimientos
+                        <td colSpan={6} className="px-4 py-16 text-center">
+                          <div className="flex flex-col items-center justify-center">
+                            <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mb-4 shadow-inner">
+                              <FaHistory className="text-3xl text-gray-400" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-600 mb-1">Sin movimientos</h3>
+                            <p className="text-sm text-gray-400">No hay registros que coincidan</p>
+                          </div>
                         </td>
                       </tr>
                     ) : movimientos.map((mov, index) => (
                       <React.Fragment key={mov.id}>
                         <tr 
                           ref={highlightId === mov.id ? highlightRef : null}
-                          className={`transition cursor-pointer ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100 ${
-                            highlightId === mov.id ? 'bg-yellow-50 ring-2 ring-yellow-400' : ''
-                          } ${expandedId === mov.id ? 'bg-blue-50' : ''}`}
+                          className={`
+                            transition-all duration-200 cursor-pointer
+                            ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}
+                            hover:bg-blue-50/50
+                            ${highlightId === mov.id ? 'bg-yellow-50 ring-2 ring-yellow-400 ring-inset' : ''}
+                            ${expandedId === mov.id ? 'bg-blue-50 shadow-inner' : ''}
+                            border-l-4 ${mov.tipo === 'entrada' ? 'border-emerald-400' : mov.tipo === 'salida' ? 'border-red-400' : 'border-gray-300'}
+                          `}
                           onClick={() => setExpandedId(expandedId === mov.id ? null : mov.id)}
                         >
-                          <td className="px-2 py-3">
-                            <div className="font-semibold text-gray-800 truncate text-sm">{mov.producto_nombre || mov.producto || ""}</div>
-                            <div className="text-xs text-gray-500">Lote: {mov.lote_codigo || mov.numero_lote || 'N/A'}</div>
+                          <td className="px-3 py-3.5">
+                            <div className="font-semibold text-gray-800 text-sm">{mov.producto_nombre || mov.producto || ""}</div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              <span className="bg-gray-100 px-1.5 py-0.5 rounded">Lote: {mov.lote_codigo || mov.numero_lote || 'N/A'}</span>
+                            </div>
                           </td>
-                          <td className="px-2 py-3">
-                            <div className="flex flex-col gap-0.5">
-                              <span
-                                className={`px-1.5 py-0.5 rounded text-xs font-semibold inline-block w-fit ${
-                                  mov.tipo === "entrada"
-                                    ? "bg-green-100 text-green-800"
-                                    : mov.tipo === "salida"
-                                    ? "bg-red-100 text-red-800"
-                                    : "bg-yellow-100 text-yellow-800"
-                                }`}
-                              >
+                          <td className="px-2 py-3.5">
+                            <div className="flex flex-col gap-1">
+                              <span className={`
+                                inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold w-fit
+                                ${mov.tipo === "entrada" ? "bg-emerald-100 text-emerald-700 border border-emerald-200" :
+                                  mov.tipo === "salida" ? "bg-red-100 text-red-700 border border-red-200" : 
+                                  "bg-yellow-100 text-yellow-700 border border-yellow-200"}
+                              `}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${
+                                  mov.tipo === "entrada" ? "bg-emerald-500" :
+                                  mov.tipo === "salida" ? "bg-red-500" : "bg-yellow-500"
+                                }`}></span>
                                 {mov.tipo?.toUpperCase()}
                               </span>
                               {mov.tipo === 'salida' && mov.subtipo_salida && (
-                                <span className="text-xs text-gray-500">
-                                  {mov.subtipo_salida === 'receta' ? '💊' :
-                                   mov.subtipo_salida === 'consumo_interno' ? '🏥' :
-                                   mov.subtipo_salida === 'merma' ? '📉' :
-                                   mov.subtipo_salida === 'caducidad' ? '⏰' :
-                                   mov.subtipo_salida === 'transferencia' ? '🔄' : ''}
+                                <span className="text-xs text-gray-500 pl-0.5">
+                                  {mov.subtipo_salida === 'receta' ? '💊 Receta' :
+                                   mov.subtipo_salida === 'consumo_interno' ? '🏥 Interno' :
+                                   mov.subtipo_salida === 'merma' ? '📉 Merma' :
+                                   mov.subtipo_salida === 'caducidad' ? '⏰ Caducidad' :
+                                   mov.subtipo_salida === 'transferencia' ? '🔄 Transfer.' : ''}
                                 </span>
                               )}
                             </div>
                           </td>
-                          <td className="px-2 py-3 text-right font-semibold text-gray-900">
-                            {mov.tipo === 'salida' ? '-' : '+'}{Math.abs(mov.cantidad)}
+                          <td className="px-2 py-3.5 text-right">
+                            <span className={`font-black text-lg tabular-nums ${
+                              mov.tipo === 'salida' ? 'text-red-600' : 
+                              mov.tipo === 'entrada' ? 'text-emerald-600' : 'text-gray-700'
+                            }`}>
+                              {mov.tipo === 'salida' ? '-' : '+'}{Math.abs(mov.cantidad)}
+                            </span>
                           </td>
-                          <td className="px-2 py-3 text-gray-700 text-xs truncate">{mov.centro_nombre || mov.centro || "Almacén Central"}</td>
-                          <td className="px-2 py-3 text-gray-600 text-xs">
+                          <td className="px-2 py-3.5 text-gray-700 text-xs hidden sm:table-cell">
+                            <span className="truncate block max-w-[120px]">{mov.centro_nombre || mov.centro || "Almacén Central"}</span>
+                          </td>
+                          <td className="px-2 py-3.5 text-gray-600 text-xs hidden md:table-cell">
                             {mov.fecha_movimiento
                               ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX')
                               : mov.fecha
                               ? new Date(mov.fecha).toLocaleDateString('es-MX')
                               : ""}
                           </td>
-                          <td className="px-2 py-3 text-center">
+                          <td className="px-2 py-3.5 text-center">
                             <button 
-                              className="text-blue-600 hover:text-blue-800 text-xs"
+                              className={`
+                                w-7 h-7 flex items-center justify-center rounded-full
+                                transition-all duration-200
+                                ${expandedId === mov.id 
+                                  ? 'bg-blue-100 text-blue-600 rotate-180' 
+                                  : 'bg-gray-100 text-gray-500 hover:bg-blue-50 hover:text-blue-600'
+                                }
+                              `}
                               onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === mov.id ? null : mov.id); }}
                             >
-                              {expandedId === mov.id ? '▲' : '▼'}
+                              <FaChevronDown className="text-xs" />
                             </button>
                           </td>
                         </tr>
-                        {/* Fila expandida con detalles */}
+                        {/* 📋 PANEL EXPANDIDO Premium */}
                         {expandedId === mov.id && (
-                          <tr className="bg-gray-50">
-                            <td colSpan={6} className="px-4 py-3">
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                                <div>
-                                  <span className="font-semibold text-gray-600">ID Movimiento:</span>
-                                  <p className="text-gray-800">{mov.id}</p>
+                          <tr className="bg-gradient-to-b from-gray-50 to-white">
+                            <td colSpan={6} className="px-4 py-4">
+                              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                                <div className="bg-gradient-to-r from-slate-100 to-gray-100 px-4 py-2 border-b border-gray-200">
+                                  <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                                    Detalles del Movimiento #{mov.id}
+                                  </span>
                                 </div>
-                                <div>
-                                  <span className="font-semibold text-gray-600">Producto:</span>
-                                  <p className="text-gray-800">{mov.producto_clave || 'N/A'} - {mov.producto_nombre || ''}</p>
-                                </div>
-                                <div>
-                                  <span className="font-semibold text-gray-600">Lote:</span>
-                                  <p className="text-gray-800">{mov.lote_codigo || mov.numero_lote || 'N/A'}</p>
-                                </div>
-                                <div>
-                                  <span className="font-semibold text-gray-600">Centro:</span>
-                                  <p className="text-gray-800">{mov.centro_nombre || 'Almacén Central'}</p>
-                                </div>
-                                <div>
-                                  <span className="font-semibold text-gray-600">Usuario:</span>
-                                  <p className="text-gray-800">{mov.usuario_nombre || mov.usuario || 'Sistema'}</p>
-                                </div>
-                                <div>
-                                  <span className="font-semibold text-gray-600">Requisición:</span>
-                                  <p className="text-gray-800">{mov.requisicion_folio || 'N/A'}</p>
-                                </div>
-                                {mov.tipo === 'salida' && (
-                                  <div>
-                                    <span className="font-semibold text-gray-600">Subtipo Salida:</span>
-                                    <p className="text-gray-800">
-                                      {mov.subtipo_salida === 'receta' ? '💊 Receta médica' :
-                                       mov.subtipo_salida === 'consumo_interno' ? '🏥 Consumo interno' :
-                                       mov.subtipo_salida === 'merma' ? '📉 Merma' :
-                                       mov.subtipo_salida === 'caducidad' ? '⏰ Caducidad' :
-                                       mov.subtipo_salida === 'transferencia' ? '🔄 Transferencia' :
-                                       mov.subtipo_salida || 'No especificado'}
-                                    </p>
-                                  </div>
-                                )}
-                                {mov.tipo === 'salida' && mov.subtipo_salida === 'receta' && (
-                                  <div>
-                                    <span className="font-semibold text-gray-600">No. Expediente:</span>
-                                    <p className="text-gray-800 font-mono bg-blue-50 px-2 py-1 rounded">{mov.numero_expediente || 'N/A'}</p>
-                                  </div>
-                                )}
-                                <div>
-                                  <span className="font-semibold text-gray-600">Fecha exacta:</span>
-                                  <p className="text-gray-800">{mov.fecha_movimiento || mov.fecha ? new Date(mov.fecha_movimiento || mov.fecha).toLocaleString('es-MX', { dateStyle: 'full', timeStyle: 'medium' }) : ''}</p>
-                                </div>
-                                {mov.observaciones && (
-                                  <div className="col-span-2 md:col-span-4">
-                                    <span className="font-semibold text-gray-600">Observaciones:</span>
-                                    <p className="text-gray-800 bg-white p-2 rounded border mt-1">{mov.observaciones}</p>
-                                  </div>
-                                )}
-                                {/* Botones de acción para movimientos de salida */}
-                                {mov.tipo === 'salida' && (
-                                  <div className="col-span-2 md:col-span-4 flex flex-wrap gap-3 mt-4 pt-4 border-t border-gray-200">
-                                    {/* Hoja de Entrega - solo para requisiciones/surtidos, NO para dispensaciones por receta */}
-                                    {mov.subtipo_salida !== 'receta' && (
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov); }}
-                                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"
-                                        title="Descargar hoja de entrega con campos para firmas"
-                                      >
-                                        <FaFilePdf className="text-lg" />
-                                        Hoja de Entrega
-                                      </button>
+                                <div className="p-4">
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="bg-gray-50 rounded-lg p-3">
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Producto</span>
+                                      <p className="text-gray-800 font-medium text-sm">{mov.producto_clave || 'N/A'} - {mov.producto_nombre || ''}</p>
+                                    </div>
+                                    <div className="bg-gray-50 rounded-lg p-3">
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Lote</span>
+                                      <p className="text-gray-800 font-mono font-medium">{mov.lote_codigo || mov.numero_lote || 'N/A'}</p>
+                                    </div>
+                                    <div className="bg-gray-50 rounded-lg p-3">
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Centro</span>
+                                      <p className="text-gray-800 font-medium">{mov.centro_nombre || 'Almacén Central'}</p>
+                                    </div>
+                                    <div className="bg-gray-50 rounded-lg p-3">
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Usuario</span>
+                                      <p className="text-gray-800 font-medium">{mov.usuario_nombre || mov.usuario || 'Sistema'}</p>
+                                    </div>
+                                    {mov.requisicion_folio && (
+                                      <div className="bg-blue-50 rounded-lg p-3">
+                                        <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider block mb-1">Requisición</span>
+                                        <p className="text-blue-800 font-bold">{mov.requisicion_folio}</p>
+                                      </div>
                                     )}
-                                    {!mov.confirmado ? (
-                                      /* Botón confirmar entrega/dispensación si no está confirmado */
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); confirmarEntregaIndividual(mov.id); }}
-                                        disabled={confirmandoMovimiento === mov.id}
-                                        className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg transition text-sm font-medium disabled:opacity-50 ${
-                                          mov.subtipo_salida === 'receta' 
-                                            ? 'bg-green-600 hover:bg-green-700' 
-                                            : 'bg-amber-500 hover:bg-amber-600'
-                                        }`}
-                                        title={mov.subtipo_salida === 'receta' 
-                                          ? "Confirmar que el medicamento fue entregado al paciente" 
-                                          : "Confirmar que la entrega fue recibida"
-                                        }
-                                      >
-                                        {confirmandoMovimiento === mov.id ? (
-                                          <FaSpinner className="animate-spin text-lg" />
-                                        ) : (
-                                          <FaClipboardCheck className="text-lg" />
+                                    {mov.tipo === 'salida' && (
+                                      <div className="bg-gray-50 rounded-lg p-3">
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Subtipo</span>
+                                        <p className="text-gray-800 font-medium">
+                                          {mov.subtipo_salida === 'receta' ? '💊 Receta médica' :
+                                           mov.subtipo_salida === 'consumo_interno' ? '🏥 Consumo interno' :
+                                           mov.subtipo_salida === 'merma' ? '📉 Merma' :
+                                           mov.subtipo_salida === 'caducidad' ? '⏰ Caducidad' :
+                                           mov.subtipo_salida === 'transferencia' ? '🔄 Transferencia' :
+                                           mov.subtipo_salida || 'No especificado'}
+                                        </p>
+                                      </div>
+                                    )}
+                                    {mov.tipo === 'salida' && mov.subtipo_salida === 'receta' && mov.numero_expediente && (
+                                      <div className="bg-purple-50 rounded-lg p-3">
+                                        <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider block mb-1">No. Expediente</span>
+                                        <p className="text-purple-800 font-mono font-bold">{mov.numero_expediente}</p>
+                                      </div>
+                                    )}
+                                    <div className="bg-gray-50 rounded-lg p-3">
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Fecha Exacta</span>
+                                      <p className="text-gray-800 font-medium text-sm">
+                                        {(mov.fecha_movimiento || mov.fecha) 
+                                          ? new Date(mov.fecha_movimiento || mov.fecha).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) 
+                                          : '-'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  
+                                  {mov.observaciones && (
+                                    <div className="mt-4">
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-2">Observaciones</span>
+                                      <p className="text-gray-700 bg-amber-50 p-3 rounded-lg border border-amber-200 text-sm leading-relaxed">
+                                        {mov.observaciones}
+                                      </p>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Acciones para movimientos de salida */}
+                                  {mov.tipo === 'salida' && (
+                                    <div className="mt-5 pt-4 border-t border-gray-200">
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-3">Acciones</span>
+                                      <div className="flex flex-wrap gap-3">
+                                        {mov.subtipo_salida !== 'receta' && (
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov); }}
+                                            className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-b from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md"
+                                            title="Descargar hoja de entrega"
+                                          >
+                                            <FaFilePdf className="text-base" />
+                                            Hoja de Entrega
+                                          </button>
                                         )}
-                                        {confirmandoMovimiento === mov.id 
-                                          ? 'Confirmando...' 
-                                          : (mov.subtipo_salida === 'receta' ? 'Confirmar Dispensación' : 'Confirmar Entrega')
-                                        }
-                                      </button>
-                                    ) : (
-                                      /* Botón comprobante solo si ya está confirmado */
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
-                                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
-                                        title={mov.subtipo_salida === 'receta' 
-                                          ? "Descargar comprobante de dispensación" 
-                                          : "Descargar comprobante con sello de ENTREGADO"
-                                        }
-                                      >
-                                        <FaCheckCircle className="text-lg" />
-                                        {mov.subtipo_salida === 'receta' ? 'Comprobante Dispensación' : 'Comprobante Entregado'}
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
+                                        {!mov.confirmado ? (
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); confirmarEntregaIndividual(mov.id); }}
+                                            disabled={confirmandoMovimiento === mov.id}
+                                            className={`
+                                              inline-flex items-center gap-2 px-4 py-2.5 text-white rounded-xl 
+                                              transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md
+                                              disabled:opacity-50 disabled:cursor-not-allowed
+                                              ${mov.subtipo_salida === 'receta' 
+                                                ? 'bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700' 
+                                                : 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700'
+                                              }
+                                            `}
+                                            title={mov.subtipo_salida === 'receta' ? "Confirmar dispensación" : "Confirmar entrega"}
+                                          >
+                                            {confirmandoMovimiento === mov.id ? (
+                                              <FaSpinner className="animate-spin text-base" />
+                                            ) : (
+                                              <FaClipboardCheck className="text-base" />
+                                            )}
+                                            {confirmandoMovimiento === mov.id 
+                                              ? 'Confirmando...' 
+                                              : (mov.subtipo_salida === 'receta' ? 'Confirmar Dispensación' : 'Confirmar Entrega')
+                                            }
+                                          </button>
+                                        ) : (
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
+                                            className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-b from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md"
+                                            title="Descargar comprobante"
+                                          >
+                                            <FaCheckCircle className="text-base" />
+                                            {mov.subtipo_salida === 'receta' ? 'Comprobante Dispensación' : 'Comprobante Entregado'}
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </td>
                           </tr>
@@ -1857,9 +2282,8 @@ const Movimientos = () => {
           </div>
         </div>
 
-        {/* ISS-FIX: Paginación diferente para vista agrupada vs individual */}
+        {/* 📄 PAGINACIÓN Premium */}
         {vistaAgrupada ? (
-          // Vista Agrupada: Paginar por grupos (frontend)
           totalGrupos > 0 && (
             <div className="mt-6">
               <Pagination
@@ -1872,7 +2296,6 @@ const Movimientos = () => {
             </div>
           )
         ) : (
-          // Vista Individual: Paginar por movimientos (backend)
           total > 0 && (
             <div className="mt-6">
               <Pagination

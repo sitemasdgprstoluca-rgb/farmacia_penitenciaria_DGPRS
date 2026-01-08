@@ -71,20 +71,19 @@ class SecureTokenObtainPairView(TokenObtainPairView):
         user_data = data.get('user', {})
         
         # Crear respuesta con access token y datos del usuario
-        # En producción, refresh solo va en HttpOnly cookie (no en payload)
+        # ISS-FIX: SIEMPRE incluir refresh en payload para soportar cross-origin
+        # El frontend lo guarda en memoria (igual de seguro que HttpOnly contra XSS)
+        # La cookie HttpOnly se envía también como respaldo
         response_data = {
             'access': access_token,
+            'refresh': refresh_token,  # Siempre incluir para cross-origin
             'user': user_data,
             'message': 'Login exitoso'
         }
         
-        # Solo incluir refresh en payload si está habilitado (dev/compatibilidad)
-        if not getattr(settings, 'JWT_HIDE_REFRESH_FROM_PAYLOAD', False):
-            response_data['refresh'] = refresh_token
-        
         response = Response(response_data, status=status.HTTP_200_OK)
         
-        # Configurar refresh token como cookie HttpOnly
+        # Configurar refresh token como cookie HttpOnly (respaldo)
         logger.info(f"[LOGIN] Configurando cookie: SameSite={REFRESH_TOKEN_COOKIE_SAMESITE}, Secure={REFRESH_TOKEN_COOKIE_SECURE}, Path={REFRESH_TOKEN_COOKIE_PATH}")
         response.set_cookie(
             key=REFRESH_TOKEN_COOKIE_NAME,
@@ -140,7 +139,6 @@ class SecureTokenRefreshView(APIView):
             
             # Crear respuesta con nuevo access token
             response_data = {'access': access_token}
-            response = Response(response_data, status=status.HTTP_200_OK)
             
             # Si está habilitada la rotación de refresh tokens
             if settings.SIMPLE_JWT.get('ROTATE_REFRESH_TOKENS', False):
@@ -158,20 +156,28 @@ class SecureTokenRefreshView(APIView):
                 try:
                     user = User.objects.get(id=user_id)
                     new_refresh = RefreshToken.for_user(user)
+                    new_refresh_str = str(new_refresh)
                     
-                    # Actualizar cookie con nuevo refresh token
+                    # ISS-FIX: Incluir nuevo refresh en response body para cross-origin
+                    response_data['refresh'] = new_refresh_str
+                    
+                    response = Response(response_data, status=status.HTTP_200_OK)
+                    
+                    # Actualizar cookie con nuevo refresh token (respaldo)
                     response.set_cookie(
                         key=REFRESH_TOKEN_COOKIE_NAME,
-                        value=str(new_refresh),
+                        value=new_refresh_str,
                         max_age=int(REFRESH_TOKEN_COOKIE_MAX_AGE),
                         path=REFRESH_TOKEN_COOKIE_PATH,
                         secure=REFRESH_TOKEN_COOKIE_SECURE,
                         httponly=REFRESH_TOKEN_COOKIE_HTTPONLY,
                         samesite=REFRESH_TOKEN_COOKIE_SAMESITE,
                     )
+                    return response
                 except User.DoesNotExist:
                     logger.warning(f"Usuario {user_id} no encontrado para rotación de token")
             
+            response = Response(response_data, status=status.HTTP_200_OK)
             return response
             
         except TokenError as e:

@@ -15,6 +15,8 @@ import {
   clearTokens,
   isLogoutInProgress,
   setRefreshInProgress,
+  getRefreshToken,
+  setRefreshToken,
 } from './tokenManager';
 
 // === CONFIGURACIÓN DE BASE URL CON VALIDACIÓN DE SEGURIDAD (ISS-001, ISS-005) ===
@@ -563,16 +565,21 @@ apiClient.interceptors.response.use(
       try {
         // ISS-003: Construir payload según modo configurado
         const refreshPayload = {};
-        const axiosConfig = { withCredentials: AUTH_CONFIG.refreshInCookie };
         
-        // ISS-003: Si el backend espera refresh en body (no en cookie)
-        // obtener el refresh token del tokenManager (si está disponible)
-        if (AUTH_CONFIG.refreshInBody) {
-          const storedRefresh = localStorage.getItem('_rt'); // Solo si no es HttpOnly
-          if (storedRefresh) {
-            refreshPayload[AUTH_CONFIG.refreshTokenField] = storedRefresh;
-          }
+        // ISS-FIX: Usar refresh token del body si está disponible (fallback cuando cookie no funciona)
+        const storedRefresh = getRefreshToken();
+        if (storedRefresh) {
+          refreshPayload[AUTH_CONFIG.refreshTokenField] = storedRefresh;
         }
+        
+        // ISS-FIX: Configuración completa para el refresh request
+        const axiosConfig = { 
+          withCredentials: AUTH_CONFIG.refreshInCookie,
+          timeout: 60000, // 60s timeout para cold starts de Render
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        };
         
         const response = await axios.post(
           `${apiBaseUrl}${AUTH_CONFIG.refreshEndpoint}`, 
@@ -597,6 +604,14 @@ apiClient.interceptors.response.use(
         
         // Guardar nuevo access token en memoria
         setAccessToken(newAccessToken);
+        
+        // ISS-FIX: Guardar nuevo refresh token si viene en la respuesta (rotación)
+        const newRefreshToken = response.data?.[AUTH_CONFIG.refreshTokenField]
+          || response.data?.refresh
+          || response.data?.refresh_token;
+        if (newRefreshToken) {
+          setRefreshToken(newRefreshToken);
+        }
         
         // Actualizar headers del request original
         originalRequest.headers['Authorization'] = 'Bearer ' + newAccessToken;
@@ -1078,6 +1093,15 @@ export const authAPI = {
       || response.data?.access_token
       || response.data?.token;
     
+    // ISS-FIX: Guardar refresh token si viene en la respuesta (fallback para cross-origin)
+    const refreshToken = response.data?.[AUTH_CONFIG.refreshTokenField]
+      || response.data?.refresh
+      || response.data?.refresh_token;
+    
+    if (refreshToken) {
+      setRefreshToken(refreshToken);
+    }
+    
     if (!accessToken && response.status === 200) {
       console.warn('[API] Login exitoso pero sin access token en respuesta esperada:', {
         expectedField: AUTH_CONFIG.accessTokenField,
@@ -1095,7 +1119,15 @@ export const authAPI = {
     };
   },
   // ISS-003: Refresh usa configuración de AUTH_CONFIG
-  refresh: () => apiClient.post(AUTH_CONFIG.refreshEndpoint, {}),
+  // ISS-FIX: Enviar refresh token en body para cross-origin
+  refresh: () => {
+    const refreshPayload = {};
+    const storedRefresh = getRefreshToken();
+    if (storedRefresh) {
+      refreshPayload[AUTH_CONFIG.refreshTokenField] = storedRefresh;
+    }
+    return apiClient.post(AUTH_CONFIG.refreshEndpoint, refreshPayload);
+  },
   // ISS-003: Logout con endpoint parametrizable
   logout: (data = {}) => apiClient.post(AUTH_CONFIG.logoutEndpoint, data),
   // Dev login (solo desarrollo)

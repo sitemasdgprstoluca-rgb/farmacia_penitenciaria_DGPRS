@@ -603,17 +603,22 @@ const Dashboard = () => {
   const { getRolPrincipal, permisos, user, loading: cargandoPermisos } = usePermissions();
   const rolPrincipal = getRolPrincipal();
   
-  // Roles y permisos
-  const esAdmin = rolPrincipal === 'ADMIN';
-  const esFarmacia = rolPrincipal === 'FARMACIA';
-  const esVista = rolPrincipal === 'VISTA';
-  const esCentro = rolPrincipal === 'CENTRO';
+  // ISS-FIX: Verificar si los permisos están validándose
+  const permisosEnValidacion = permisos?._isValidating || permisos?._source === 'pending_validation';
   
-  const puedeVerGlobal = checkPuedeVerGlobal(user, permisos);
+  // Roles y permisos - usar valores seguros durante validación
+  const esAdmin = !permisosEnValidacion && rolPrincipal === 'ADMIN';
+  const esFarmacia = !permisosEnValidacion && rolPrincipal === 'FARMACIA';
+  const esVista = !permisosEnValidacion && rolPrincipal === 'VISTA';
+  const esCentro = !permisosEnValidacion && rolPrincipal === 'CENTRO';
+  
+  // ISS-FIX: Durante validación, usar permisos del user si están disponibles
+  const puedeVerGlobal = permisosEnValidacion ? false : checkPuedeVerGlobal(user, permisos);
   const puedeFiltrarPorCentro = (esAdmin || esFarmacia) && !esCentro;
   const centroUsuario = user?.centro?.id || user?.centro;
   const nombreCentroUsuario = user?.centro?.nombre || user?.centro_nombre || '';
-  const esCentroRestringido = esCentro || (!puedeVerGlobal && centroUsuario);
+  // ISS-FIX: Si tiene centro asignado, restringir por defecto hasta validar
+  const esCentroRestringido = esCentro || (!puedeVerGlobal && centroUsuario) || (permisosEnValidacion && centroUsuario);
   
   const puedeVerGraficasCompletas = esAdmin || esFarmacia || permisos?.isSuperuser;
   const puedeVerGraficasBasicas = puedeVerGraficasCompletas || esVista || esCentro;
@@ -731,14 +736,22 @@ const Dashboard = () => {
 
   // Sincronizar centro
   useEffect(() => {
-    if (!cargandoPermisos && esCentroRestringido && centroUsuario) {
+    // ISS-FIX: También esperar a que terminen de validarse los permisos
+    if (!cargandoPermisos && !permisosEnValidacion && esCentroRestringido && centroUsuario) {
       setSelectedCentro(centroUsuario);
     }
-  }, [cargandoPermisos, esCentroRestringido, centroUsuario]);
+  }, [cargandoPermisos, permisosEnValidacion, esCentroRestringido, centroUsuario]);
 
   // Cargar datos
   useEffect(() => {
+    // Esperar a que termine la carga de permisos
     if (cargandoPermisos) return;
+    
+    // ISS-FIX: También esperar si los permisos están en validación (aún no completos)
+    // Esto evita que el Dashboard se "salte" la carga cuando los permisos están validándose
+    if (permisos?._isValidating) return;
+    
+    // Solo bloquear si permisos están completos Y no tiene acceso
     if (!permisos?.verDashboard) {
       setLoading(false);
       return;
@@ -749,7 +762,7 @@ const Dashboard = () => {
       return;
     }
     loadDashboard(selectedCentro);
-  }, [loadDashboard, selectedCentro, permisos?.verDashboard, cargandoPermisos]);
+  }, [loadDashboard, selectedCentro, permisos?.verDashboard, permisos?._isValidating, cargandoPermisos]);
 
   const handleCentroChange = (centroId, nombreCentro = '') => {
     if (esCentroRestringido) return;

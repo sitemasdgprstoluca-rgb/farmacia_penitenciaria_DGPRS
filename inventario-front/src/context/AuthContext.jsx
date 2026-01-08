@@ -15,7 +15,9 @@ import {
   clearTokens, 
   getAccessToken,
   migrateFromLocalStorage,
-  setLogoutInProgress
+  setLogoutInProgress,
+  setRefreshToken,
+  getRefreshToken
 } from '../services/tokenManager';
 import { devWarn } from '../config/dev';
 import { ADMIN_ROLES } from '../utils/roles';
@@ -37,11 +39,15 @@ export function AuthProvider({ children }) {
         const response = await authAPI.me();
         setUser(response.data);
       } else {
-        // Intentar refresh (la cookie HttpOnly puede existir)
+        // Intentar refresh (la cookie HttpOnly o el token en memoria)
         try {
           const refreshResponse = await authAPI.refresh();
           if (refreshResponse.data.access) {
             setAccessToken(refreshResponse.data.access);
+            // ISS-FIX: Guardar nuevo refresh si viene en la respuesta
+            if (refreshResponse.data.refresh) {
+              setRefreshToken(refreshResponse.data.refresh);
+            }
             const profileResponse = await authAPI.me();
             setUser(profileResponse.data);
           }
@@ -61,13 +67,15 @@ export function AuthProvider({ children }) {
 
   const login = async (credentials) => {
     const response = await authAPI.login(credentials);
-    const { access, user: userData } = response.data;
+    const { access, refresh, user: userData } = response.data;
     
     // Guardar access token en memoria (NO en localStorage)
     setAccessToken(access);
     
-    // El refresh token viene como cookie HttpOnly del servidor
-    // No necesitamos manejarlo en el frontend
+    // ISS-FIX: Guardar refresh token en memoria para cross-origin
+    if (refresh) {
+      setRefreshToken(refresh);
+    }
     
     // Obtener perfil completo si no viene en la respuesta
     let finalUser;
