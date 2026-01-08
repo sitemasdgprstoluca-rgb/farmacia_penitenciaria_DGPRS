@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { FaEnvelope, FaArrowLeft, FaPaperPlane, FaSpinner, FaCheckCircle, FaShieldAlt, FaLock } from 'react-icons/fa';
 import { passwordResetAPI } from '../services/api';
@@ -63,7 +63,22 @@ function RecuperarPassword() {
   const [loading, setLoading] = useState(false);
   const [enviado, setEnviado] = useState(false);
   const [debugInfo, setDebugInfo] = useState(null);
+  const [mounted, setMounted] = useState(false);
+  const [exiting, setExiting] = useState(false);
+  const navigate = useNavigate();
   const { temaGlobal, logoLoginUrl, nombreSistema } = useTheme();
+
+  // Animación de entrada
+  useEffect(() => {
+    const timer = setTimeout(() => setMounted(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Navegación con transición suave
+  const navigateWithTransition = (path) => {
+    setExiting(true);
+    setTimeout(() => navigate(path), 300);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -94,11 +109,15 @@ function RecuperarPassword() {
   };
 
   return (
-    <div className="min-h-screen w-full flex">
+    <div className={`min-h-screen w-full flex transition-all duration-300 ${
+      exiting ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
+    }`}>
       {/* ========================================= */}
       {/* 📋 PANEL IZQUIERDO - Formulario */}
       {/* ========================================= */}
-      <div className="w-full lg:w-1/2 flex flex-col justify-center items-center p-8 lg:p-16 bg-white">
+      <div className={`w-full lg:w-1/2 flex flex-col justify-center items-center p-8 lg:p-16 bg-white transition-all duration-500 ${
+        mounted && !exiting ? 'opacity-100 translate-x-0' : exiting ? 'opacity-0 translate-x-10' : 'opacity-0 translate-x-10'
+      }`}>
         <div className="w-full max-w-md">
           {/* Logo para móvil */}
           <div className="lg:hidden mb-8 text-center">
@@ -234,14 +253,15 @@ function RecuperarPassword() {
 
           {/* Link volver */}
           <div className="mt-8 pt-6 border-t border-gray-100 text-center">
-            <Link 
-              to="/login" 
-              className="inline-flex items-center gap-2 font-medium transition-colors hover:opacity-80"
+            <button 
+              type="button"
+              onClick={() => navigateWithTransition('/login')}
+              className="inline-flex items-center gap-2 font-medium transition-all duration-300 hover:opacity-80 hover:-translate-x-1"
               style={{ color: 'var(--color-primary, #932043)' }}
             >
-              <FaArrowLeft />
+              <FaArrowLeft className="transition-transform duration-300" />
               Volver al inicio de sesión
-            </Link>
+            </button>
           </div>
         </div>
       </div>
@@ -249,7 +269,9 @@ function RecuperarPassword() {
       {/* ========================================= */}
       {/* 🎨 PANEL DERECHO - Branding (solo desktop) */}
       {/* ========================================= */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
+      <div className={`hidden lg:flex lg:w-1/2 relative overflow-hidden transition-all duration-500 delay-100 ${
+        mounted && !exiting ? 'opacity-100 translate-x-0' : exiting ? 'opacity-0 -translate-x-10' : 'opacity-0 -translate-x-10'
+      }`}>
         {/* Fondo gradiente */}
         <div 
           className="absolute inset-0"

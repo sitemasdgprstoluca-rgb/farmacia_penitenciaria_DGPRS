@@ -115,6 +115,7 @@ function Login() {
   const [errorMessage, setErrorMessage] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [exiting, setExiting] = useState(false);
   const navigate = useNavigate();
   const { recargarUsuario } = usePermissions();
   const { temaGlobal, logoLoginUrl, nombreSistema } = useTheme();
@@ -124,6 +125,12 @@ function Login() {
     const timer = setTimeout(() => setMounted(true), 100);
     return () => clearTimeout(timer);
   }, []);
+
+  // Navegación con transición suave
+  const navigateWithTransition = (path) => {
+    setExiting(true);
+    setTimeout(() => navigate(path), 300);
+  };
 
   const persistSession = (user, accessToken) => {
     if (accessToken) {
@@ -182,7 +189,9 @@ function Login() {
   };
 
   return (
-    <div className="min-h-screen w-full flex relative overflow-hidden bg-gray-50">
+    <div className={`min-h-screen w-full flex relative overflow-hidden bg-gray-50 transition-all duration-300 ${
+      exiting ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
+    }`}>
       
       {/* 📱 Layout: Formulario izquierda, Branding derecha */}
       <div className="relative z-10 w-full flex flex-col lg:flex-row min-h-screen">
@@ -190,8 +199,8 @@ function Login() {
         {/* ═══════════════════════════════════════════════════════════════════
             📝 PANEL IZQUIERDO - Formulario (fondo claro)
             ═══════════════════════════════════════════════════════════════════ */}
-        <div className={`w-full lg:w-[45%] xl:w-[40%] flex flex-col justify-center items-center p-6 sm:p-8 lg:p-12 bg-white transition-all duration-1000 ${
-          mounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-10'
+        <div className={`w-full lg:w-[45%] xl:w-[40%] flex flex-col justify-center items-center p-6 sm:p-8 lg:p-12 bg-white transition-all duration-500 ${
+          mounted && !exiting ? 'opacity-100 translate-x-0' : exiting ? 'opacity-0 -translate-x-10' : 'opacity-0 -translate-x-10'
         }`}>
           <div className="w-full max-w-md">
             
@@ -245,12 +254,13 @@ function Login() {
 
               {/* Link olvidé contraseña */}
               <div className="flex justify-end">
-                <Link 
-                  to="/recuperar-password" 
-                  className="text-sm font-medium text-theme-primary hover:text-theme-primary-hover transition-colors hover:underline underline-offset-4"
+                <button 
+                  type="button"
+                  onClick={() => navigateWithTransition('/recuperar-password')}
+                  className="text-sm font-medium text-theme-primary hover:text-theme-primary-hover transition-all duration-300 hover:underline underline-offset-4 hover:translate-x-1"
                 >
                   ¿Olvidaste tu contraseña?
-                </Link>
+                </button>
               </div>
 
               {/* Botón de submit */}
@@ -292,8 +302,8 @@ function Login() {
         {/* ═══════════════════════════════════════════════════════════════════
             🎨 PANEL DERECHO - Branding (gradiente institucional)
             ═══════════════════════════════════════════════════════════════════ */}
-        <div className={`hidden lg:flex lg:w-[55%] xl:w-[60%] relative overflow-hidden transition-all duration-1000 delay-200 ${
-          mounted ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-10'
+        <div className={`hidden lg:flex lg:w-[55%] xl:w-[60%] relative overflow-hidden transition-all duration-500 delay-100 ${
+          mounted && !exiting ? 'opacity-100 translate-x-0' : exiting ? 'opacity-0 translate-x-10' : 'opacity-0 translate-x-10'
         }`}>
           {/* Fondo con gradiente */}
           <div 
