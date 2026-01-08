@@ -10148,6 +10148,9 @@ def trazabilidad_global(request):
                 'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
                 'observaciones': mov.motivo or '',
                 'numero_contrato': mov.lote.numero_contrato if mov.lote else None,
+                # ISS-FIX: Campos de trazabilidad para salidas de centro
+                'subtipo_salida': getattr(mov, 'subtipo_salida', None) or '',
+                'numero_expediente': getattr(mov, 'numero_expediente', None) or '',
             })
         
         # Estadísticas - usar abs() para cantidades porque salidas pueden ser negativas
@@ -10240,8 +10243,8 @@ def _exportar_trazabilidad_global_excel(movimientos, filtros):
             row += 1
         row += 1
     
-    # Encabezados
-    headers = ['Fecha', 'Tipo', 'Producto', 'Nombre Producto', 'Lote', 'Cantidad', 'Centro', 'Usuario', 'Observaciones']
+    # Encabezados - ISS-FIX: Agregado Subtipo Salida y No. Expediente para trazabilidad completa
+    headers = ['Fecha', 'Tipo', 'Subtipo', 'Producto', 'Nombre Producto', 'Lote', 'Cantidad', 'Centro', 'Usuario', 'No. Expediente', 'Observaciones']
     for col, header in enumerate(headers, 1):
         cell = ws.cell(row=row, column=col, value=header)
         cell.font = header_font
@@ -10249,34 +10252,38 @@ def _exportar_trazabilidad_global_excel(movimientos, filtros):
         cell.border = thin_border
         cell.alignment = Alignment(horizontal='center')
     
-    # Datos
+    # Datos - ISS-FIX: Incluye subtipo_salida y numero_expediente
     for mov in movimientos:
         row += 1
         data = [
             mov['fecha_str'],
             mov['tipo'],
+            mov.get('subtipo_salida', '') or '-',  # Subtipo de salida (receta, transferencia, etc.)
             mov['producto_clave'],
             mov['producto_nombre'][:40] if mov['producto_nombre'] else '',
             mov['lote'],
             mov['cantidad'],
             mov['centro'],
             mov['usuario'],
-            mov['observaciones'][:50] if mov['observaciones'] else ''
+            mov.get('numero_expediente', '') or '-',  # No. Expediente del paciente
+            mov['observaciones'][:80] if mov['observaciones'] else ''  # Observaciones más amplias
         ]
         for col, value in enumerate(data, 1):
             cell = ws.cell(row=row, column=col, value=value)
             cell.border = thin_border
     
-    # Ajustar anchos
-    ws.column_dimensions['A'].width = 18
-    ws.column_dimensions['B'].width = 10
-    ws.column_dimensions['C'].width = 15
-    ws.column_dimensions['D'].width = 40
-    ws.column_dimensions['E'].width = 18
-    ws.column_dimensions['F'].width = 12
-    ws.column_dimensions['G'].width = 20
-    ws.column_dimensions['H'].width = 20
-    ws.column_dimensions['I'].width = 30
+    # Ajustar anchos - ISS-FIX: Nuevas columnas agregadas
+    ws.column_dimensions['A'].width = 18  # Fecha
+    ws.column_dimensions['B'].width = 10  # Tipo
+    ws.column_dimensions['C'].width = 14  # Subtipo
+    ws.column_dimensions['D'].width = 15  # Producto
+    ws.column_dimensions['E'].width = 35  # Nombre Producto
+    ws.column_dimensions['F'].width = 16  # Lote
+    ws.column_dimensions['G'].width = 10  # Cantidad
+    ws.column_dimensions['H'].width = 22  # Centro
+    ws.column_dimensions['I'].width = 18  # Usuario
+    ws.column_dimensions['J'].width = 15  # No. Expediente
+    ws.column_dimensions['K'].width = 35  # Observaciones
     
     # Guardar
     buffer = BytesIO()
@@ -10299,16 +10306,19 @@ def _exportar_trazabilidad_global_pdf(movimientos, data):
     from django.utils import timezone
     
     # Adaptar datos al formato esperado por generar_reporte_trazabilidad
+    # ISS-FIX: Incluir subtipo_salida y numero_expediente para trazabilidad completa
     trazabilidad_data = []
     for mov in movimientos[:200]:  # Limitar para PDF
         trazabilidad_data.append({
             'fecha': mov['fecha_str'],
             'tipo': mov['tipo'],
+            'subtipo_salida': mov.get('subtipo_salida', '') or '',
             'lote': mov['lote'],
             'cantidad': mov['cantidad'],
             'centro': mov['centro'],
             'usuario': mov['usuario'],
-            'observaciones': mov['observaciones'],
+            'numero_expediente': mov.get('numero_expediente', '') or '',
+            'observaciones': mov['observaciones'] or '',
             'producto': f"{mov['producto_clave']} - {mov['producto_nombre'][:30]}"
         })
     

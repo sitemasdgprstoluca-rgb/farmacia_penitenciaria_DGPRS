@@ -904,21 +904,22 @@ const Trazabilidad = () => {
               </div>
             )}
 
-            {/* Botones de acción */}
+            {/* Botones de acción - ISS-UX: Separados y mejor etiquetados */}
             <div className="flex items-end gap-2">
               <button
                 type="submit"
                 disabled={loading || !terminoBusqueda.trim()}
                 className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all"
+                title="Buscar trazabilidad de un producto o lote específico"
               >
-                {loading ? (
+                {loading && !modoGlobal ? (
                   <>
                     <FaSpinner className="animate-spin" />
                     Buscando...
                   </>
                 ) : (
                   <>
-                    <FaSearch /> Buscar
+                    <FaSearch /> Buscar Producto/Lote
                   </>
                 )}
               </button>
@@ -984,7 +985,7 @@ const Trazabilidad = () => {
                 </select>
               </div>
               
-              {/* Botón Reporte Global */}
+              {/* Botón Reporte Global - ISS-UX: Mejor etiquetado y tooltip */}
               {esAdminOFarmacia && (
                 <div className="flex-shrink-0">
                   <button
@@ -992,10 +993,19 @@ const Trazabilidad = () => {
                     onClick={buscarGlobal}
                     disabled={loading}
                     className="bg-gradient-to-r from-purple-600 to-purple-700 text-white px-5 py-2 rounded-lg hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg"
-                    title="Ver trazabilidad de todos los lotes"
+                    title="Ver todos los movimientos del sistema (filtrados por centro/fechas seleccionadas)"
                   >
-                    <FaGlobe />
-                    Reporte Global
+                    {loading && modoGlobal ? (
+                      <>
+                        <FaSpinner className="animate-spin" />
+                        Cargando...
+                      </>
+                    ) : (
+                      <>
+                        <FaGlobe />
+                        Ver Todos los Movimientos
+                      </>
+                    )}
                   </button>
                 </div>
               )}
@@ -1213,23 +1223,25 @@ const Trazabilidad = () => {
                 </span>
               </h3>
               <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
-                <table className="w-full min-w-[900px] divide-y divide-gray-200 text-sm">
+                <table className="w-full min-w-[1100px] divide-y divide-gray-200 text-sm">
                   <thead className="bg-theme-gradient sticky top-0 z-10">
                     <tr>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Fecha</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Tipo</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Producto</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Cantidad</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Centro</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Usuario</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Fecha</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Tipo</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Producto</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Cantidad</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Centro</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Usuario</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">No. Expediente</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Observaciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {resultadosGlobal.movimientos.slice(0, 100).map((mov, idx) => (
                       <tr key={mov.id || idx} className="hover:bg-gray-50">
-                        <td className="px-4 py-2">{mov.fecha_str || '-'}</td>
-                        <td className="px-4 py-2">
+                        <td className="px-3 py-2 text-xs">{mov.fecha_str || '-'}</td>
+                        <td className="px-3 py-2">
                           <span
                             className={`px-2 py-1 text-xs rounded-full ${
                               mov.tipo === 'ENTRADA'
@@ -1240,17 +1252,24 @@ const Trazabilidad = () => {
                             }`}
                           >
                             {mov.tipo}
+                            {mov.subtipo_salida && (
+                              <span className="ml-1 opacity-75">/{mov.subtipo_salida?.slice(0, 8)}</span>
+                            )}
                           </span>
                         </td>
-                        <td className="px-4 py-2">
-                          <span className="font-medium">{mov.producto_clave}</span>
+                        <td className="px-3 py-2">
+                          <span className="font-medium text-xs">{mov.producto_clave}</span>
                           <br />
-                          <span className="text-xs text-gray-500">{mov.producto_nombre?.slice(0, 30)}</span>
+                          <span className="text-xs text-gray-500">{mov.producto_nombre?.slice(0, 25)}</span>
                         </td>
-                        <td className="px-4 py-2 font-mono text-xs">{mov.lote}</td>
-                        <td className="px-4 py-2 font-semibold">{mov.cantidad}</td>
-                        <td className="px-4 py-2">{mov.centro}</td>
-                        <td className="px-4 py-2">{mov.usuario}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{mov.lote}</td>
+                        <td className="px-3 py-2 font-semibold text-xs">{mov.cantidad}</td>
+                        <td className="px-3 py-2 text-xs">{mov.centro?.slice(0, 20)}</td>
+                        <td className="px-3 py-2 text-xs">{mov.usuario?.slice(0, 15)}</td>
+                        <td className="px-3 py-2 text-xs font-medium text-blue-700">{mov.numero_expediente || '-'}</td>
+                        <td className="px-3 py-2 text-xs text-gray-600 max-w-[150px] truncate" title={mov.observaciones}>
+                          {mov.observaciones?.slice(0, 40) || '-'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

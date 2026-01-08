@@ -1755,12 +1755,13 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
     estilo_celda = ParagraphStyle(
         'CeldaTextoTraz',
         parent=styles['Normal'],
-        fontSize=7,
-        leading=9,
+        fontSize=6,
+        leading=8,
         wordWrap='CJK',
     )
     
-    data = [['Fecha', 'Tipo', 'Lote', 'Cant.', 'Centro/Destino', 'Usuario', 'Referencia']]
+    # ISS-FIX: Incluir Subtipo, No. Expediente y Observaciones para trazabilidad completa
+    data = [['Fecha', 'Tipo', 'Lote', 'Cant.', 'Centro', 'Usuario', 'Expediente', 'Observaciones']]
     
     for mov in trazabilidad_data:
         fecha = mov.get('fecha', mov.get('fecha_movimiento', ''))
@@ -1771,24 +1772,36 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
         
         cantidad = mov.get('cantidad', 0)
         tipo = str(mov.get('tipo', '')).upper()
+        subtipo = mov.get('subtipo_salida', '')
+        # Mostrar tipo con subtipo si existe
+        tipo_display = tipo[:5]
+        if subtipo:
+            tipo_display = f"{tipo[:3]}/{subtipo[:6]}"
         signo = '+' if tipo == 'ENTRADA' else ('-' if tipo == 'SALIDA' else '')
         
         centro = str(mov.get('centro_nombre', mov.get('centro', mov.get('destino', ''))))
-        centro_paragraph = Paragraph(centro, estilo_celda)
-        referencia = str(mov.get('documento_referencia', mov.get('referencia', '')))
-        ref_paragraph = Paragraph(referencia, estilo_celda)
+        centro_paragraph = Paragraph(centro[:25], estilo_celda)
+        
+        # No. Expediente - Campo crítico para trazabilidad de pacientes
+        num_expediente = str(mov.get('numero_expediente', '') or '-')
+        
+        # Observaciones
+        observaciones = str(mov.get('observaciones', mov.get('documento_referencia', mov.get('referencia', ''))) or '')
+        obs_paragraph = Paragraph(observaciones[:40], estilo_celda)
         
         data.append([
-            fecha,
-            tipo[:8],
-            str(mov.get('numero_lote', mov.get('lote', '')))[:12],
+            fecha[:10],  # Solo fecha, sin hora para más espacio
+            tipo_display,
+            str(mov.get('numero_lote', mov.get('lote', '')))[:10],
             f"{signo}{cantidad}",
             centro_paragraph,
-            str(mov.get('usuario', mov.get('usuario_username', '')))[:12],
-            ref_paragraph
+            str(mov.get('usuario', mov.get('usuario_username', '')))[:10],
+            num_expediente[:12],
+            obs_paragraph
         ])
     
-    col_widths = [0.95*inch, 0.55*inch, 0.85*inch, 0.5*inch, 1.3*inch, 0.85*inch, 1.15*inch]
+    # ISS-FIX: Anchos ajustados para incluir nuevas columnas
+    col_widths = [0.7*inch, 0.6*inch, 0.7*inch, 0.4*inch, 1.0*inch, 0.7*inch, 0.8*inch, 1.25*inch]
     table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
     
