@@ -23,7 +23,7 @@ def send_password_reset_email(user, uid, token):
     ISS-003: Los tokens NUNCA deben aparecer en logs.
     """
     frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
-    reset_url = f"{frontend_url}/reset-password?uid={uid}&token={token}"
+    reset_url = f"{frontend_url}/restablecer-password?uid={uid}&token={token}"
     
     subject = 'Recuperación de contraseña - Sistema de Farmacia Penitenciaria'
     message = f"""

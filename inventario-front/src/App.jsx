@@ -658,6 +658,8 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/recuperar-password" element={<RecuperarPassword />} />
           <Route path="/restablecer-password" element={<RestablecerPassword />} />
+          {/* Alias para compatibilidad con enlaces antiguos */}
+          <Route path="/reset-password" element={<RestablecerPassword />} />
           
           <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route index element={<Navigate to="/dashboard" replace />} />

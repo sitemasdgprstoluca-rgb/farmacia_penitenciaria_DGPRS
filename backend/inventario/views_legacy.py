@@ -4302,13 +4302,30 @@ class MovimientoViewSet(
             
             trazabilidad_data = []
             for mov in movimientos:
+                # ISS-FIX: Lógica clara para centro según tipo de movimiento
+                tipo_upper = mov.tipo.upper()
+                if tipo_upper == 'SALIDA':
+                    centro_display = mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central'
+                elif tipo_upper == 'ENTRADA':
+                    centro_display = mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'
+                else:
+                    centro_display = mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central')
+                
+                # ISS-FIX: Mostrar username si no hay nombre completo
+                if mov.usuario:
+                    usuario_display = mov.usuario.get_full_name()
+                    if not usuario_display or usuario_display.strip() == '':
+                        usuario_display = mov.usuario.username
+                else:
+                    usuario_display = 'Sistema'
+                
                 trazabilidad_data.append({
                     'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
-                    'tipo': mov.tipo.upper(),
+                    'tipo': tipo_upper,
                     'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                     'cantidad': mov.cantidad,
-                    'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Almacén Central'),
-                    'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
+                    'centro': centro_display,
+                    'usuario': usuario_display,
                     'observaciones': mov.motivo or ''
                 })
             
@@ -4368,13 +4385,30 @@ class MovimientoViewSet(
             
             trazabilidad_data = []
             for mov in movimientos:
+                # ISS-FIX: Lógica clara para centro según tipo de movimiento
+                tipo_upper = mov.tipo.upper()
+                if tipo_upper == 'SALIDA':
+                    centro_display = mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central'
+                elif tipo_upper == 'ENTRADA':
+                    centro_display = mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'
+                else:
+                    centro_display = mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central')
+                
+                # ISS-FIX: Mostrar username si no hay nombre completo
+                if mov.usuario:
+                    usuario_display = mov.usuario.get_full_name()
+                    if not usuario_display or usuario_display.strip() == '':
+                        usuario_display = mov.usuario.username
+                else:
+                    usuario_display = 'Sistema'
+                
                 trazabilidad_data.append({
                     'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
-                    'tipo': mov.tipo.upper(),
+                    'tipo': tipo_upper,
                     'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                     'cantidad': mov.cantidad,
-                    'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Almacén Central'),
-                    'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
+                    'centro': centro_display,
+                    'usuario': usuario_display,
                     'observaciones': mov.motivo or ''
                 })
             
@@ -4613,16 +4647,33 @@ class MovimientoViewSet(
             
             # Datos - MEJORA FLUJO 5: Incluir campos de trazabilidad
             for idx, mov in enumerate(movimientos, 1):
+                # ISS-FIX: Lógica clara para centro según tipo de movimiento
+                tipo_upper = mov.tipo.upper()
+                if tipo_upper == 'SALIDA':
+                    centro_display = mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central'
+                elif tipo_upper == 'ENTRADA':
+                    centro_display = mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'
+                else:
+                    centro_display = mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central')
+                
+                # ISS-FIX: Mostrar username si no hay nombre completo
+                if mov.usuario:
+                    usuario_display = mov.usuario.get_full_name()
+                    if not usuario_display or usuario_display.strip() == '':
+                        usuario_display = mov.usuario.username
+                else:
+                    usuario_display = 'Sistema'
+                
                 ws.append([
                     idx,
                     mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
-                    mov.tipo.upper(),
+                    tipo_upper,
                     (mov.subtipo_salida or '').upper() if mov.tipo == 'salida' else '',
                     mov.lote.producto.descripcion if mov.lote and mov.lote.producto else 'N/A',
                     mov.lote.numero_lote if mov.lote else 'N/A',
                     mov.cantidad,
-                    mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Almacén Central'),
-                    mov.usuario.get_full_name() or mov.usuario.username if mov.usuario else 'Sistema',
+                    centro_display,
+                    usuario_display,
                     mov.numero_expediente or '',
                     (mov.motivo or ''),
                 ])
@@ -10151,19 +10202,40 @@ def trazabilidad_global(request):
         # Preparar datos de movimientos
         movimientos_data = []
         for mov in movimientos_query:
+            # ISS-FIX: Lógica clara para mostrar el centro relevante
+            # Para SALIDA: mostrar destino (a dónde va)
+            # Para ENTRADA: mostrar origen (de dónde viene)
+            tipo_upper = mov.tipo.upper()
+            if tipo_upper == 'SALIDA':
+                centro_display = mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central'
+            elif tipo_upper == 'ENTRADA':
+                centro_display = mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'
+            else:
+                # Ajuste u otro: mostrar cualquiera que tenga
+                centro_display = (
+                    mov.centro_destino.nombre if mov.centro_destino else 
+                    (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central')
+                )
+            
+            # ISS-FIX: Mostrar nombre completo del usuario o username
+            if mov.usuario:
+                usuario_display = mov.usuario.get_full_name()
+                if not usuario_display or usuario_display.strip() == '':
+                    usuario_display = mov.usuario.username
+            else:
+                usuario_display = 'Sistema'
+            
             movimientos_data.append({
                 'id': mov.id,
                 'fecha': mov.fecha.isoformat() if mov.fecha else None,
                 'fecha_str': mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
-                'tipo': mov.tipo.upper(),
+                'tipo': tipo_upper,
                 'cantidad': mov.cantidad,
                 'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                 'producto_clave': mov.lote.producto.clave if mov.lote and mov.lote.producto else 'N/A',
                 'producto_nombre': mov.lote.producto.nombre if mov.lote and mov.lote.producto else 'N/A',
-                'centro': mov.centro_destino.nombre if mov.centro_destino else (
-                    mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'
-                ),
-                'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
+                'centro': centro_display,
+                'usuario': usuario_display,
                 'observaciones': mov.motivo or '',
                 'numero_contrato': mov.lote.numero_contrato if mov.lote else None,
                 # ISS-FIX: Campos de trazabilidad para salidas de centro
@@ -10478,13 +10550,30 @@ def trazabilidad_producto_exportar(request, clave):
         # Preparar datos de movimientos
         trazabilidad_data = []
         for mov in movimientos:
+            # ISS-FIX: Lógica clara para centro según tipo de movimiento
+            tipo_upper = mov.tipo.upper()
+            if tipo_upper == 'SALIDA':
+                centro_display = mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central'
+            elif tipo_upper == 'ENTRADA':
+                centro_display = mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'
+            else:
+                centro_display = mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central')
+            
+            # ISS-FIX: Mostrar username si no hay nombre completo
+            if mov.usuario:
+                usuario_display = mov.usuario.get_full_name()
+                if not usuario_display or usuario_display.strip() == '':
+                    usuario_display = mov.usuario.username
+            else:
+                usuario_display = 'Sistema'
+            
             trazabilidad_data.append({
                 'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
-                'tipo': mov.tipo.upper(),
+                'tipo': tipo_upper,
                 'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                 'cantidad': mov.cantidad,
-                'centro': mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'),
-                'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
+                'centro': centro_display,
+                'usuario': usuario_display,
                 'observaciones': mov.motivo or ''
             })
         

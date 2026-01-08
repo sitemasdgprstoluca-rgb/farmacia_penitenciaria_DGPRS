@@ -9,6 +9,7 @@ function RestablecerPassword() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get('token');
+  const uid = searchParams.get('uid');
   const { temaGlobal, logoLoginUrl, nombreSistema } = useTheme();
 
   const [loading, setLoading] = useState(true);
@@ -26,14 +27,14 @@ function RestablecerPassword() {
 
   useEffect(() => {
     const validateToken = async () => {
-      if (!token) {
-        setErrorMessage('No se proporcionó un token válido');
+      if (!token || !uid) {
+        setErrorMessage('No se proporcionó un enlace válido');
         setLoading(false);
         return;
       }
 
       try {
-        const response = await passwordResetAPI.validate(token);
+        const response = await passwordResetAPI.validate({ token, uid });
         if (response.data.valid) {
           setValidToken(true);
         } else {
@@ -47,7 +48,7 @@ function RestablecerPassword() {
     };
 
     validateToken();
-  }, [token]);
+  }, [token, uid]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -66,6 +67,7 @@ function RestablecerPassword() {
     try {
       await passwordResetAPI.confirm({
         token,
+        uid,
         new_password: formData.new_password,
         confirm_password: formData.confirm_password
       });

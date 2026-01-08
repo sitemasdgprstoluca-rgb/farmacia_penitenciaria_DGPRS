@@ -1644,18 +1644,9 @@ class RequisicionService:
         # Producto es requerido en la BD
         producto_movimiento = producto or (lote.producto if lote else None)
         
-        # ISS-008 FIX: Construir observaciones con trazabilidad completa
-        user_rol = getattr(self.usuario, 'rol', 'N/A') if self.usuario else 'Sistema'
-        user_centro = getattr(self.usuario, 'centro', None)
-        user_centro_nombre = user_centro.nombre if user_centro else 'Farmacia Central'
-        
-        trazabilidad = (
-            f"{observaciones} | "
-            f"Ejecutor: {self.usuario.username if self.usuario else 'Sistema'} | "
-            f"Rol: {user_rol} | "
-            f"Adscripcion: {user_centro_nombre} | "
-            f"Timestamp: {timezone.now().isoformat()}"
-        )
+        # ISS-008 FIX: Observaciones simplificadas (sin timestamp largo)
+        # El timestamp ya está en el campo fecha del movimiento
+        trazabilidad = observaciones
         
         movimiento = Movimiento(
             tipo=tipo,

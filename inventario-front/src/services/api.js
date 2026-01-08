@@ -1142,8 +1142,13 @@ export const passwordResetAPI = {
   request: (email) => apiClient.post('/password-reset/request/', { email }),
   // Confirmar nueva contraseña con token
   confirm: (data) => apiClient.post('/password-reset/confirm/', data),
-  // Validar si un token es válido
-  validate: (token) => apiClient.post('/password-reset/validate/', { token }),
+  // Validar si un token es válido (acepta { token, uid } o solo token para compatibilidad)
+  validate: (data) => {
+    if (typeof data === 'string') {
+      return apiClient.post('/password-reset/validate/', { token: data });
+    }
+    return apiClient.post('/password-reset/validate/', data);
+  },
 };
 
 // Movimientos
