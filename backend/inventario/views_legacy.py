@@ -4618,17 +4618,17 @@ class MovimientoViewSet(
                     mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else 'N/A',
                     mov.tipo.upper(),
                     (mov.subtipo_salida or '').upper() if mov.tipo == 'salida' else '',
-                    mov.lote.producto.descripcion[:50] if mov.lote and mov.lote.producto else 'N/A',
+                    mov.lote.producto.descripcion if mov.lote and mov.lote.producto else 'N/A',
                     mov.lote.numero_lote if mov.lote else 'N/A',
                     mov.cantidad,
                     mov.centro_destino.nombre if mov.centro_destino else (mov.centro_origen.nombre if mov.centro_origen else 'Almacén Central'),
                     mov.usuario.get_full_name() or mov.usuario.username if mov.usuario else 'Sistema',
                     mov.numero_expediente or '',
-                    (mov.motivo or '')[:100],
+                    (mov.motivo or ''),
                 ])
             
-            # Ajustar anchos - actualizado para 11 columnas
-            column_widths = [8, 18, 12, 15, 45, 15, 10, 25, 20, 18, 30]
+            # Ajustar anchos - actualizado para 11 columnas - Columnas más anchas para textos completos
+            column_widths = [8, 18, 12, 15, 60, 18, 10, 40, 20, 18, 60]
             for i, width in enumerate(column_widths, 1):
                 ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
             
@@ -10663,7 +10663,7 @@ def _exportar_producto_excel(movimientos, producto_info):
                 mov['cantidad'],
                 mov['centro'],
                 mov['usuario'],
-                mov['observaciones'][:50] if mov['observaciones'] else ''
+                mov['observaciones'] if mov['observaciones'] else ''
             ]
             for col, value in enumerate(data, 1):
                 cell = ws.cell(row=row, column=col, value=value)
@@ -10674,14 +10674,14 @@ def _exportar_producto_excel(movimientos, producto_info):
         ws[f'A{row}'] = "No hay movimientos registrados"
         ws[f'A{row}'].alignment = Alignment(horizontal='center')
     
-    # Ajustar anchos
+    # Ajustar anchos - Columnas más anchas para textos completos
     ws.column_dimensions['A'].width = 18
     ws.column_dimensions['B'].width = 15
-    ws.column_dimensions['C'].width = 15
+    ws.column_dimensions['C'].width = 18
     ws.column_dimensions['D'].width = 12
-    ws.column_dimensions['E'].width = 20
+    ws.column_dimensions['E'].width = 40  # Centro más ancho para nombres largos
     ws.column_dimensions['F'].width = 20
-    ws.column_dimensions['G'].width = 30
+    ws.column_dimensions['G'].width = 60  # Observaciones mucho más ancho para texto completo
     
     buffer = BytesIO()
     wb.save(buffer)
@@ -11130,20 +11130,20 @@ def _exportar_lote_excel(movimientos, producto_info):
             mov.get('saldo', ''),
             mov['centro'],
             mov['usuario'],
-            mov['observaciones'][:50] if mov['observaciones'] else ''
+            mov['observaciones'] if mov['observaciones'] else ''
         ]
         for col, value in enumerate(data, 1):
             cell = ws.cell(row=row, column=col, value=value)
             cell.border = thin_border
     
-    # Ajustar anchos
+    # Ajustar anchos - Columnas más anchas para textos completos
     ws.column_dimensions['A'].width = 18
-    ws.column_dimensions['B'].width = 10
+    ws.column_dimensions['B'].width = 12
     ws.column_dimensions['C'].width = 12
     ws.column_dimensions['D'].width = 12
-    ws.column_dimensions['E'].width = 20
+    ws.column_dimensions['E'].width = 40  # Centro más ancho para nombres largos
     ws.column_dimensions['F'].width = 20
-    ws.column_dimensions['G'].width = 30
+    ws.column_dimensions['G'].width = 60  # Observaciones mucho más ancho para texto completo
     
     buffer = BytesIO()
     wb.save(buffer)

@@ -647,10 +647,13 @@ def generar_reporte_inventario_lotes(lotes_data, filtros=None):
     
     total_unidades = 0
     for lote in lotes_data:
-        producto_text = str(lote.get('producto', ''))[:35]
+        # SIN TRUNCAR - usar Paragraph para wrap automático
+        producto_text = str(lote.get('producto', ''))
         producto_paragraph = Paragraph(producto_text, estilo_celda)
-        marca_text = str(lote.get('marca', '-'))[:20]
+        marca_text = str(lote.get('marca', '-'))
         marca_paragraph = Paragraph(marca_text, estilo_celda)
+        lote_text = str(lote.get('numero_lote', ''))
+        lote_paragraph = Paragraph(lote_text, estilo_celda)
         
         cantidad = lote.get('cantidad', 0)
         total_unidades += cantidad
@@ -658,7 +661,7 @@ def generar_reporte_inventario_lotes(lotes_data, filtros=None):
         data.append([
             str(lote.get('clave', '')),
             producto_paragraph,
-            str(lote.get('numero_lote', ''))[:12],
+            lote_paragraph,
             str(lote.get('fecha_caducidad', '-')),
             str(cantidad),
             f"${lote.get('precio_unitario', 0):.2f}",
@@ -973,7 +976,8 @@ def generar_reporte_lotes(lotes_data, filtros=None):
     data = [['#', 'Clave', 'Producto', 'Lote', 'F. Fabricación', 'F. Caducidad', 'Cant. Inicial', 'Cant. Actual', 'Centro', 'Estado']]
     
     for idx, lote in enumerate(lotes_data, 1):
-        producto_desc = str(lote.get('producto_nombre', lote.get('producto', '')))[:30]
+        # SIN TRUNCAR - usar Paragraph para wrap automático
+        producto_desc = str(lote.get('producto_nombre', lote.get('producto', '')))
         producto_paragraph = Paragraph(producto_desc, estilo_celda)
         
         # ISS-FIX: No truncar el nombre del centro - usar Paragraph para wrap automático
@@ -1004,13 +1008,17 @@ def generar_reporte_lotes(lotes_data, filtros=None):
         
         activo = 'Activo' if lote.get('activo', True) else 'Inactivo'
         
+        # SIN TRUNCAR clave y lote - usar Paragraph para wrap automático
+        clave_paragraph = Paragraph(str(lote.get('producto_clave', lote.get('clave', ''))), estilo_celda)
+        lote_num_paragraph = Paragraph(str(lote.get('numero_lote', '')), estilo_celda)
+        
         data.append([
             str(idx),
-            str(lote.get('producto_clave', lote.get('clave', '')))[:12],
+            clave_paragraph,
             producto_paragraph,
-            str(lote.get('numero_lote', ''))[:12],
-            str(lote.get('fecha_fabricacion', ''))[:10],
-            str(lote.get('fecha_caducidad', ''))[:10],
+            lote_num_paragraph,
+            str(lote.get('fecha_fabricacion', '')),
+            str(lote.get('fecha_caducidad', '')),
             str(lote.get('cantidad_inicial', 0)),
             str(lote.get('cantidad_actual', 0)),
             centro_paragraph,
@@ -1136,7 +1144,7 @@ def generar_reporte_requisiciones(requisiciones_data, filtros=None):
             str(req.get('folio', '')),
             centro_paragraph,
             str(req.get('estado', '')).upper(),
-            str(req.get('fecha_solicitud', ''))[:10],
+            str(req.get('fecha_solicitud', '')),
             str(req.get('total_items', req.get('total_productos', 0))),
             solicitante_paragraph
         ])
@@ -1176,9 +1184,8 @@ def generar_reporte_requisiciones(requisiciones_data, filtros=None):
         productos_data = [['Clave', 'Producto', 'Solicitado', 'Autorizado', 'Surtido']]
         
         for prod in productos:
+            # ISS-FIX: Sin truncar - usar Paragraph para wrap automático
             nombre = str(prod.get('nombre', 'N/A'))
-            if len(nombre) > 40:
-                nombre = nombre[:37] + '...'
             productos_data.append([
                 str(prod.get('clave', 'N/A')),
                 Paragraph(nombre, estilo_celda),
@@ -1335,7 +1342,7 @@ def generar_reporte_movimientos(transacciones_data, filtros=None, resumen=None):
         tipo = str(trans.get('tipo', '')).upper()
         # Usar Paragraph para textos largos - SIN TRUNCAR para mejor legibilidad
         referencia_p = Paragraph(str(trans.get('referencia', '')), estilo_celda)
-        fecha_p = Paragraph(str(trans.get('fecha', ''))[:16], estilo_celda)
+        fecha_p = Paragraph(str(trans.get('fecha', '')), estilo_celda)
         # Centros sin truncar - el Paragraph hará wrap automático
         origen_texto = str(trans.get('centro_origen', 'Farmacia Central'))
         destino_texto = str(trans.get('centro_destino', 'Farmacia Central'))
@@ -1538,18 +1545,24 @@ def generar_reporte_auditoria(auditoria_data, filtros=None):
         if hasattr(fecha, 'strftime'):
             fecha = fecha.strftime('%d/%m/%Y %H:%M')
         else:
-            fecha = str(fecha)[:16]
+            fecha = str(fecha)
         
         descripcion = str(log.get('objeto_repr', log.get('descripcion', '')))
         descripcion_paragraph = Paragraph(descripcion, estilo_celda)
         
+        # SIN TRUNCAR - usar Paragraph para wrap automático
+        usuario_p = Paragraph(str(log.get('usuario', log.get('usuario_username', 'Sistema'))), estilo_celda)
+        accion_p = Paragraph(str(log.get('accion', '')), estilo_celda)
+        modelo_p = Paragraph(str(log.get('modelo', '')), estilo_celda)
+        ip_p = Paragraph(str(log.get('ip_address', log.get('ip', ''))), estilo_celda)
+        
         data.append([
             fecha,
-            str(log.get('usuario', log.get('usuario_username', 'Sistema')))[:12],
-            str(log.get('accion', ''))[:12],
-            str(log.get('modelo', ''))[:15],
+            usuario_p,
+            accion_p,
+            modelo_p,
             descripcion_paragraph,
-            str(log.get('ip_address', log.get('ip', '')))[:15]
+            ip_p
         ])
     
     col_widths = [1*inch, 0.85*inch, 0.7*inch, 0.9*inch, 2.1*inch, 0.7*inch]
@@ -1762,32 +1775,43 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
     historial_titulo = Paragraph("HISTORIAL DE MOVIMIENTOS", styles['SeccionTitulo'])
     elements.append(historial_titulo)
     
-    # Estilo para celdas de texto largo
+    # Estilo para celdas de texto largo - Mejorado para wrap efectivo
     estilo_celda = ParagraphStyle(
         'CeldaTextoTraz',
         parent=styles['Normal'],
         fontSize=6,
         leading=8,
         wordWrap='CJK',
+        splitLongWords=True,
     )
     
     # ISS-FIX: Incluir Subtipo, No. Expediente y Observaciones para trazabilidad completa
-    data = [['Fecha', 'Tipo', 'Lote', 'Cant.', 'Centro', 'Usuario', 'Expediente', 'Observaciones']]
+    data = [['Fecha', 'Tipo', 'Lote', 'Cant.', 'Centro', 'Usuario', 'Exp.', 'Observaciones']]
     
     for mov in trazabilidad_data:
         fecha = mov.get('fecha', mov.get('fecha_movimiento', ''))
         if hasattr(fecha, 'strftime'):
-            fecha = fecha.strftime('%d/%m/%Y %H:%M')
+            fecha = fecha.strftime('%d/%m/%Y')
         else:
-            fecha = str(fecha)[:16]
+            # Convertir fecha string a formato corto sin truncar arbitrariamente
+            fecha_str = str(fecha)
+            if 'T' in fecha_str:
+                fecha = fecha_str.split('T')[0]
+            elif ' ' in fecha_str:
+                fecha = fecha_str.split(' ')[0]
+            else:
+                fecha = fecha_str
+        fecha_p = Paragraph(str(fecha), estilo_celda)
         
         cantidad = mov.get('cantidad', 0)
         tipo = str(mov.get('tipo', '')).upper()
         subtipo = mov.get('subtipo_salida', '')
-        # Mostrar tipo con subtipo si existe
-        tipo_display = tipo[:5]
+        # SIN TRUNCAR - mostrar tipo completo con subtipo si existe
         if subtipo:
-            tipo_display = f"{tipo[:3]}/{subtipo[:6]}"
+            tipo_display = f"{tipo}/{subtipo}"
+        else:
+            tipo_display = tipo
+        tipo_p = Paragraph(tipo_display, estilo_celda)
         signo = '+' if tipo == 'ENTRADA' else ('-' if tipo == 'SALIDA' else '')
         
         # ISS-FIX: Centro SIN truncar - usar Paragraph para wrap automático
@@ -1798,23 +1822,32 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
         num_expediente = str(mov.get('numero_expediente', '') or '-')
         num_expediente_p = Paragraph(num_expediente, estilo_celda)
         
+        # Usuario - usar Paragraph para wrap
+        usuario = str(mov.get('usuario', mov.get('usuario_username', '')))
+        usuario_p = Paragraph(usuario, estilo_celda)
+        
         # ISS-FIX: Observaciones SIN truncar - usar Paragraph para wrap automático
         observaciones = str(mov.get('observaciones', mov.get('documento_referencia', mov.get('referencia', ''))) or '')
         obs_paragraph = Paragraph(observaciones, estilo_celda)
         
+        # Lote SIN truncar - usar Paragraph
+        lote_texto = str(mov.get('numero_lote', mov.get('lote', '')))
+        lote_p = Paragraph(lote_texto, estilo_celda)
+        
         data.append([
-            fecha[:10],  # Solo fecha, sin hora para más espacio
-            tipo_display,
-            str(mov.get('numero_lote', mov.get('lote', ''))),  # Lote sin truncar
+            fecha_p,
+            tipo_p,
+            lote_p,
             f"{signo}{cantidad}",
             centro_paragraph,
-            str(mov.get('usuario', mov.get('usuario_username', '')))[:12],
+            usuario_p,
             num_expediente_p,
             obs_paragraph
         ])
     
-    # ISS-FIX: Anchos ajustados - más espacio para Centro, Expediente y Observaciones
-    col_widths = [0.65*inch, 0.55*inch, 0.65*inch, 0.35*inch, 1.3*inch, 0.6*inch, 0.75*inch, 1.3*inch]
+    # ISS-FIX: Anchos recalculados - Página letter tiene 8.5", con márgenes 0.6" = 7.3" disponibles
+    # Fecha:0.55 + Tipo:0.45 + Lote:0.6 + Cant:0.35 + Centro:1.5 + Usuario:0.6 + Exp:0.65 + Obs:1.6 = 6.3"
+    col_widths = [0.55*inch, 0.45*inch, 0.6*inch, 0.35*inch, 1.5*inch, 0.6*inch, 0.65*inch, 1.6*inch]
     table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
     
@@ -1932,7 +1965,7 @@ def generar_recibo_salida_movimiento(movimiento_data, finalizado=False):
     folio = movimiento_data.get('folio', movimiento_data.get('id', 'N/A'))
     fecha = movimiento_data.get('fecha', datetime.now().strftime('%Y-%m-%d %H:%M'))
     if isinstance(fecha, str) and 'T' in fecha:
-        fecha = fecha.replace('T', ' ')[:16]
+        fecha = fecha.replace('T', ' ')
     
     centro_origen = movimiento_data.get('centro_origen', {})
     if isinstance(centro_origen, dict):
@@ -2218,6 +2251,15 @@ def generar_recibo_salida_donacion(movimiento_data, items_data=None, finalizado=
         elements.append(Paragraph("<b>Detalle de Productos:</b>", normal_style))
         elements.append(Spacer(1, 10))
         
+        # Estilo para celdas con texto largo
+        item_cell_style = ParagraphStyle(
+            'ItemCellStyle',
+            parent=styles['Normal'],
+            fontSize=8,
+            leading=10,
+            wordWrap='CJK',
+        )
+        
         items_header = ['#', 'Producto', 'Lote', 'Cantidad', 'Presentación']
         items_rows = [items_header]
         
@@ -2233,12 +2275,17 @@ def generar_recibo_salida_donacion(movimiento_data, items_data=None, finalizado=
             cantidad = item.get('cantidad', 0)
             presentacion = item.get('presentacion', item.get('presentacion_producto', 'N/A'))
             
+            # SIN TRUNCAR - usar Paragraph para wrap automático
+            producto_p = Paragraph(str(producto), item_cell_style)
+            lote_p = Paragraph(str(lote), item_cell_style)
+            presentacion_p = Paragraph(str(presentacion), item_cell_style)
+            
             items_rows.append([
                 str(idx),
-                str(producto)[:40],
-                str(lote)[:20],
+                producto_p,
+                lote_p,
                 str(cantidad),
-                str(presentacion)[:25]
+                presentacion_p
             ])
         
         items_table = Table(items_rows, colWidths=[30, 180, 100, 60, 110])

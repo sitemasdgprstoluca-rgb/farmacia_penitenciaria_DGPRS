@@ -75,12 +75,12 @@ class MovimientoViewSet(
     http_method_names = ['get', 'post', 'head', 'options']
 
     def _get_producto_display(self, mov):
-        """Helper para obtener display de producto de forma segura."""
+        """Helper para obtener display de producto de forma segura - SIN TRUNCAR."""
         if not mov.lote or not mov.lote.producto:
             return 'N/A'
         producto = mov.lote.producto
         nombre = producto.nombre or producto.descripcion or ''
-        return f"{producto.clave} - {nombre[:40]}"
+        return f"{producto.clave} - {nombre}"
 
     def get_queryset(self):
         """
@@ -673,10 +673,10 @@ class MovimientoViewSet(
             
             # Datos - Con centro origen, destino, subtipo_salida y numero_expediente
             for idx, mov in enumerate(movimientos, 1):
-                # ISS-FIX: Usar nombre o descripcion, manejar None correctamente
+                # ISS-FIX: Usar nombre o descripcion, manejar None correctamente - SIN TRUNCAR
                 producto_nombre = ''
                 if mov.lote and mov.lote.producto:
-                    producto_nombre = (mov.lote.producto.nombre or mov.lote.producto.descripcion or '')[:50]
+                    producto_nombre = (mov.lote.producto.nombre or mov.lote.producto.descripcion or '')
                 
                 # Formatear subtipo de salida para mostrar
                 subtipo_display = ''
@@ -702,11 +702,11 @@ class MovimientoViewSet(
                     mov.centro_destino.nombre if mov.centro_destino else 'Almacén Central',
                     mov.numero_expediente or '',
                     mov.usuario.get_full_name() or mov.usuario.username if mov.usuario else 'Sistema',
-                    (mov.motivo or '')[:100],
+                    (mov.motivo or ''),  # SIN TRUNCAR
                 ])
             
-            # Ajustar anchos - actualizado para 12 columnas (agregado Subtipo y Expediente)
-            column_widths = [6, 16, 10, 16, 40, 14, 10, 20, 20, 14, 18, 28]
+            # Ajustar anchos - Columnas más anchas para textos completos
+            column_widths = [6, 16, 10, 16, 60, 18, 10, 40, 40, 14, 18, 60]
             for i, width in enumerate(column_widths, 1):
                 ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
             

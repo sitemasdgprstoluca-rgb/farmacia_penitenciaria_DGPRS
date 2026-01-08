@@ -1141,17 +1141,17 @@ class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):
                     log.usuario.username if log.usuario else 'Sistema',
                     log.accion,
                     log.modelo,
-                    str(objeto_repr)[:100],
+                    str(objeto_repr),  # SIN TRUNCAR
                     log.ip_address or ''
                 ])
             
-            # Ajustar anchos
+            # Ajustar anchos - Columna Descripción más ancha para texto completo
             ws.column_dimensions['A'].width = 8
             ws.column_dimensions['B'].width = 20
             ws.column_dimensions['C'].width = 15
             ws.column_dimensions['D'].width = 12
             ws.column_dimensions['E'].width = 20
-            ws.column_dimensions['F'].width = 50
+            ws.column_dimensions['F'].width = 80  # Más ancho para descripciones completas
             ws.column_dimensions['G'].width = 15
             
             from django.http import HttpResponse
@@ -4377,13 +4377,13 @@ class DetalleDonacionViewSet(viewsets.ModelViewSet):
             data = [headers]
             
             for idx, item in enumerate(inventario, 1):
-                # Obtener datos del producto
+                # Obtener datos del producto - SIN TRUNCAR, usar Paragraph para wrap
                 if item.producto_donacion:
-                    clave = item.producto_donacion.clave[:12] if item.producto_donacion.clave else '-'
-                    nombre = item.producto_donacion.nombre[:35] if item.producto_donacion.nombre else '-'
+                    clave = item.producto_donacion.clave if item.producto_donacion.clave else '-'
+                    nombre = item.producto_donacion.nombre if item.producto_donacion.nombre else '-'
                 elif item.producto:
-                    clave = item.producto.clave[:12] if item.producto.clave else '-'
-                    nombre = item.producto.nombre[:35] if item.producto.nombre else '-'
+                    clave = item.producto.clave if item.producto.clave else '-'
+                    nombre = item.producto.nombre if item.producto.nombre else '-'
                 else:
                     clave = '-'
                     nombre = '-'
@@ -4393,18 +4393,18 @@ class DetalleDonacionViewSet(viewsets.ModelViewSet):
                 fecha_cad_str = fecha_cad.strftime('%d/%m/%y') if fecha_cad else 'N/A'
                 
                 # Estado
-                estado = (item.estado_producto or 'bueno')[:6].capitalize()
+                estado = (item.estado_producto or 'bueno').capitalize()
                 
-                # Donación
-                don_numero = item.donacion.numero[:12] if item.donacion and item.donacion.numero else '-'
-                don_donante = item.donacion.donante_nombre[:18] if item.donacion and item.donacion.donante_nombre else '-'
+                # Donación - SIN TRUNCAR
+                don_numero = item.donacion.numero if item.donacion and item.donacion.numero else '-'
+                don_donante = item.donacion.donante_nombre if item.donacion and item.donacion.donante_nombre else '-'
                 
                 # ISS-FIX: Usar Paragraph para campos que pueden desbordar
                 data.append([
                     str(idx),
                     TableParagraph(clave, cell_style),
                     TableParagraph(nombre, cell_style),
-                    TableParagraph((item.numero_lote or '-')[:12], cell_style),
+                    TableParagraph((item.numero_lote or '-'), cell_style),
                     fecha_cad_str,
                     estado,
                     str(item.cantidad),

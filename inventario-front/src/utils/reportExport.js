@@ -184,10 +184,32 @@ const createPdfReport = ({ title, subtitle, columns, rows, fileName, orientation
         typeof col.value === 'function' ? col.value(row, index) : row[col.key] ?? ''
       )
     ),
-    styles: { fontSize: 9, cellPadding: 6, textColor: textRgb },
-    headStyles: { fillColor: primaryRgb, textColor: [255, 255, 255] },
+    styles: { 
+      fontSize: 8, 
+      cellPadding: 4, 
+      textColor: textRgb,
+      overflow: 'linebreak',  // IMPORTANTE: ajustar texto con saltos de línea
+      cellWidth: 'wrap',      // Permitir que las celdas se expandan verticalmente
+    },
+    headStyles: { 
+      fillColor: primaryRgb, 
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      halign: 'center',
+    },
     alternateRowStyles: { fillColor: hexToRgb(colors.reporteFilasAlternas) },
-    margin: { left: 40, right: 40 },
+    margin: { left: 30, right: 30 },
+    tableWidth: 'auto',
+    // Configuración para columnas específicas que pueden tener texto largo
+    columnStyles: {
+      // Permitir que las columnas con texto largo se ajusten
+    },
+    didParseCell: function(data) {
+      // Asegurar que el texto nunca se trunque
+      if (data.cell.text && data.cell.text.length > 0) {
+        data.cell.styles.cellWidth = 'wrap';
+      }
+    },
   });
 
   // Pie de página con texto del tema
