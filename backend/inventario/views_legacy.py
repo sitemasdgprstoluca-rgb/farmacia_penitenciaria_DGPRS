@@ -7903,8 +7903,17 @@ def trazabilidad_producto(request, clave):
         if not producto:
             return Response({'error': 'Producto no encontrado', 'clave_buscada': clave}, status=status.HTTP_404_NOT_FOUND)
 
-        # ISS-FIX: No filtrar por activo=True para permitir ver lotes históricos
-        lotes = Lote.objects.filter(producto=producto)
+        # ISS-FIX: Filtrar lotes según rol del usuario
+        # - Farmacia/Admin: Ver todos los lotes (para trazabilidad histórica completa)
+        # - Centro: Solo lotes activos con stock
+        es_admin_farmacia = is_farmacia_or_admin(user)
+        
+        if es_admin_farmacia:
+            # Farmacia/Admin: ver todos los lotes incluyendo históricos
+            lotes = Lote.objects.filter(producto=producto)
+        else:
+            # Centro: solo lotes activos con stock disponible
+            lotes = Lote.objects.filter(producto=producto, activo=True, cantidad_actual__gt=0)
         
         # Aplicar filtro de centro
         if filtrar_por_centro and user_centro:
@@ -9897,12 +9906,13 @@ def trazabilidad_autocomplete(request):
             Q(nombre__icontains=search)
         )
         
-        # ISS-FIX: Para trazabilidad NO filtrar por cantidad_actual
-        # Los productos con lotes agotados deben ser buscables para consulta histórica
-        # Solo filtrar por centro si el usuario es de centro
+        # ISS-FIX: Filtrar productos según rol del usuario
+        # - Farmacia/Admin: Ver todos los productos (para trazabilidad histórica)
+        # - Centro: Solo productos con lotes que tengan stock en su centro
         if filtrar_por_centro and user_centro:
+            # Usuarios de Centro: solo productos con lotes CON stock
             productos_con_lotes = Lote.objects.filter(
-                centro=user_centro, activo=True
+                centro=user_centro, activo=True, cantidad_actual__gt=0
             ).values_list('producto_id', flat=True).distinct()
             productos_query = productos_query.filter(id__in=productos_con_lotes)
         
@@ -9915,8 +9925,8 @@ def trazabilidad_autocomplete(request):
                 'secundario': producto.nombre[:50] + ('...' if len(producto.nombre) > 50 else ''),
             })
         
-        # 2. Buscar lotes (solo admin/farmacia)
-        # ISS-FIX: No filtrar por activo=True para permitir búsqueda de lotes históricos
+        # 2. Buscar lotes (solo admin/farmacia para trazabilidad completa)
+        # Farmacia/Admin pueden ver lotes históricos sin stock
         if es_admin_farmacia:
             lotes_query = Lote.objects.select_related('producto').filter(
                 Q(numero_lote__icontains=search) |

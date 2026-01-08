@@ -430,15 +430,22 @@ class LoteViewSet(viewsets.ModelViewSet):
             # Por defecto mostrar solo activos
             queryset = queryset.filter(activo=True)
         
-        # Filtrar por con_stock - ISS-FIX: Por defecto NO filtrar por stock
-        # para permitir ver lotes históricos agotados (trazabilidad)
+        # Filtrar por con_stock según rol del usuario:
+        # - Farmacia/Admin: Por defecto ven TODOS los lotes (con y sin stock) para trazabilidad
+        # - Centro: Por defecto solo ven lotes CON stock disponible
+        user = request.user
+        es_admin_farmacia = is_farmacia_or_admin(user)
+        
         con_stock_param = request.query_params.get('con_stock')
         if con_stock_param:
             if con_stock_param.lower() in ['con_stock', 'true', '1']:
                 queryset = queryset.filter(cantidad_actual__gt=0)
             elif con_stock_param.lower() in ['sin_stock', 'false', '0']:
                 queryset = queryset.filter(cantidad_actual=0)
-        # Si no especifica, mostrar TODOS los lotes (con y sin stock)
+        elif not es_admin_farmacia:
+            # Usuarios de Centro: por defecto solo ver lotes con stock
+            queryset = queryset.filter(cantidad_actual__gt=0)
+        # Farmacia/Admin sin filtro: mostrar todos los lotes
         
         # Filtrar por centro si se especifica
         centro_param = request.query_params.get('centro')
