@@ -1333,11 +1333,14 @@ def generar_reporte_movimientos(transacciones_data, filtros=None, resumen=None):
     
     for trans in transacciones_data:
         tipo = str(trans.get('tipo', '')).upper()
-        # Usar Paragraph para todos los textos largos para que se ajusten
-        referencia_p = Paragraph(str(trans.get('referencia', ''))[:25], estilo_celda)
+        # Usar Paragraph para textos largos - SIN TRUNCAR para mejor legibilidad
+        referencia_p = Paragraph(str(trans.get('referencia', '')), estilo_celda)
         fecha_p = Paragraph(str(trans.get('fecha', ''))[:16], estilo_celda)
-        origen_p = Paragraph(str(trans.get('centro_origen', 'F. Central'))[:22], estilo_celda)
-        destino_p = Paragraph(str(trans.get('centro_destino', 'F. Central'))[:22], estilo_celda)
+        # Centros sin truncar - el Paragraph hará wrap automático
+        origen_texto = str(trans.get('centro_origen', 'Farmacia Central'))
+        destino_texto = str(trans.get('centro_destino', 'Farmacia Central'))
+        origen_p = Paragraph(origen_texto, estilo_celda)
+        destino_p = Paragraph(destino_texto, estilo_celda)
         
         data.append([
             referencia_p,
@@ -1349,8 +1352,8 @@ def generar_reporte_movimientos(transacciones_data, filtros=None, resumen=None):
             str(trans.get('total_cantidad', 0))
         ])
     
-    # Anchos de columnas para tabla de transacciones - ajustados para mejor visualización
-    col_widths = [1.3*inch, 0.95*inch, 0.65*inch, 1.3*inch, 1.3*inch, 0.5*inch, 0.5*inch]
+    # Anchos de columnas - Origen y Destino más anchos para nombres completos
+    col_widths = [1.2*inch, 0.85*inch, 0.55*inch, 1.5*inch, 1.5*inch, 0.45*inch, 0.45*inch]
     table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
     elements.append(Spacer(1, 0.25*inch))
@@ -1365,28 +1368,30 @@ def generar_reporte_movimientos(transacciones_data, filtros=None, resumen=None):
         if not detalles:
             continue
             
-        # Mini encabezado de la transacción
+        # Mini encabezado de la transacción - Mejorado para centros largos
+        origen = trans.get('centro_origen', 'Farmacia Central') or 'Farmacia Central'
+        destino = trans.get('centro_destino', 'Farmacia Central') or 'Farmacia Central'
         trans_header = f"<b>{trans.get('referencia', 'N/A')}</b> | {trans.get('fecha', '')} | " \
-                       f"<b>{trans.get('tipo', '')}</b> | " \
-                       f"{trans.get('centro_origen', '')} → {trans.get('centro_destino', '')}"
+                       f"<b>{trans.get('tipo', '')}</b><br/>" \
+                       f"<i>Origen:</i> {origen} → <i>Destino:</i> {destino}"
         trans_header_p = Paragraph(trans_header, ParagraphStyle(
             'TransHeader',
             parent=styles['Normal'],
             fontSize=8,
-            leading=10,
+            leading=11,
             spaceAfter=4,
-            textColor=COLOR_GUINDA
+            textColor=COLOR_GUINDA,
+            wordWrap='CJK',
         ))
         elements.append(trans_header_p)
         
         # Tabla de productos
         det_data = [['#', 'Producto', 'Lote', 'Cantidad']]
         for idx, det in enumerate(detalles, 1):
-            # Usar Paragraph para producto para que se ajuste el texto
+            # Usar Paragraph para producto - SIN truncar para mejor legibilidad
             producto_texto = str(det.get('producto', ''))
-            # Limitar a longitud razonable pero permitir wrap
-            producto_p = Paragraph(producto_texto[:60], estilo_celda_pequena)
-            lote_p = Paragraph(str(det.get('lote', 'N/A'))[:20], estilo_celda_pequena)
+            producto_p = Paragraph(producto_texto, estilo_celda_pequena)
+            lote_p = Paragraph(str(det.get('lote', 'N/A')), estilo_celda_pequena)
             det_data.append([
                 str(idx),
                 producto_p,
@@ -1665,14 +1670,17 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
             # Tabla de lotes
             lotes_header = [['No. Lote', 'No. Contrato', 'Caducidad', 'Stock', 'Marca', 'Centro']]
             for lote in lotes:
-                # ISS-FIX: Usar Paragraph para centro para permitir wrap
+                # ISS-FIX: Usar Paragraph para todos los campos de texto para permitir wrap
+                lote_paragraph = Paragraph(str(lote.get('numero_lote', 'N/A')), estilo_celda_lote)
+                contrato_paragraph = Paragraph(str(lote.get('numero_contrato', 'N/A')), estilo_celda_lote)
+                marca_paragraph = Paragraph(str(lote.get('marca', 'N/A')), estilo_celda_lote)
                 centro_paragraph = Paragraph(str(lote.get('centro', 'N/A')), estilo_celda_lote)
                 lotes_header.append([
-                    str(lote.get('numero_lote', 'N/A'))[:15],
-                    str(lote.get('numero_contrato', 'N/A'))[:15],
+                    lote_paragraph,
+                    contrato_paragraph,
                     str(lote.get('fecha_caducidad', 'N/A')),
                     str(lote.get('cantidad_actual', 0)),
-                    str(lote.get('marca', 'N/A'))[:15],
+                    marca_paragraph,
                     centro_paragraph,
                 ])
             
@@ -1782,29 +1790,31 @@ def generar_reporte_trazabilidad(trazabilidad_data, producto_info=None, filtros=
             tipo_display = f"{tipo[:3]}/{subtipo[:6]}"
         signo = '+' if tipo == 'ENTRADA' else ('-' if tipo == 'SALIDA' else '')
         
+        # ISS-FIX: Centro SIN truncar - usar Paragraph para wrap automático
         centro = str(mov.get('centro_nombre', mov.get('centro', mov.get('destino', ''))))
-        centro_paragraph = Paragraph(centro[:25], estilo_celda)
+        centro_paragraph = Paragraph(centro, estilo_celda)
         
         # No. Expediente - Campo crítico para trazabilidad de pacientes
         num_expediente = str(mov.get('numero_expediente', '') or '-')
+        num_expediente_p = Paragraph(num_expediente, estilo_celda)
         
-        # Observaciones
+        # ISS-FIX: Observaciones SIN truncar - usar Paragraph para wrap automático
         observaciones = str(mov.get('observaciones', mov.get('documento_referencia', mov.get('referencia', ''))) or '')
-        obs_paragraph = Paragraph(observaciones[:40], estilo_celda)
+        obs_paragraph = Paragraph(observaciones, estilo_celda)
         
         data.append([
             fecha[:10],  # Solo fecha, sin hora para más espacio
             tipo_display,
-            str(mov.get('numero_lote', mov.get('lote', '')))[:10],
+            str(mov.get('numero_lote', mov.get('lote', ''))),  # Lote sin truncar
             f"{signo}{cantidad}",
             centro_paragraph,
-            str(mov.get('usuario', mov.get('usuario_username', '')))[:10],
-            num_expediente[:12],
+            str(mov.get('usuario', mov.get('usuario_username', '')))[:12],
+            num_expediente_p,
             obs_paragraph
         ])
     
-    # ISS-FIX: Anchos ajustados para incluir nuevas columnas
-    col_widths = [0.7*inch, 0.6*inch, 0.7*inch, 0.4*inch, 1.0*inch, 0.7*inch, 0.8*inch, 1.25*inch]
+    # ISS-FIX: Anchos ajustados - más espacio para Centro, Expediente y Observaciones
+    col_widths = [0.65*inch, 0.55*inch, 0.65*inch, 0.35*inch, 1.3*inch, 0.6*inch, 0.75*inch, 1.3*inch]
     table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
     

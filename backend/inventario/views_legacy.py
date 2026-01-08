@@ -10287,37 +10287,41 @@ def _exportar_trazabilidad_global_excel(movimientos, filtros):
         cell.alignment = Alignment(horizontal='center')
     
     # Datos - ISS-FIX: Incluye subtipo_salida y numero_expediente
+    # NO truncar texto - Excel maneja el ajuste automático
     for mov in movimientos:
         row += 1
         data = [
             mov['fecha_str'],
             mov['tipo'],
-            mov.get('subtipo_salida', '') or '-',  # Subtipo de salida (receta, transferencia, etc.)
+            mov.get('subtipo_salida', '') or '-',
             mov['producto_clave'],
-            mov['producto_nombre'][:40] if mov['producto_nombre'] else '',
+            mov['producto_nombre'] or '',  # Sin truncar
             mov['lote'],
             mov['cantidad'],
-            mov['centro'],
+            mov['centro'] or '',  # Sin truncar
             mov['usuario'],
-            mov.get('numero_expediente', '') or '-',  # No. Expediente del paciente
-            mov['observaciones'][:80] if mov['observaciones'] else ''  # Observaciones más amplias
+            mov.get('numero_expediente', '') or '-',
+            mov['observaciones'] or ''  # Sin truncar
         ]
         for col, value in enumerate(data, 1):
             cell = ws.cell(row=row, column=col, value=value)
             cell.border = thin_border
+            # Habilitar ajuste de texto en celdas con contenido largo
+            if col in [5, 8, 11]:  # Nombre Producto, Centro, Observaciones
+                cell.alignment = Alignment(wrap_text=True, vertical='top')
     
-    # Ajustar anchos - ISS-FIX: Nuevas columnas agregadas
+    # Ajustar anchos - Columnas más anchas para mejor legibilidad
     ws.column_dimensions['A'].width = 18  # Fecha
     ws.column_dimensions['B'].width = 10  # Tipo
     ws.column_dimensions['C'].width = 14  # Subtipo
-    ws.column_dimensions['D'].width = 15  # Producto
-    ws.column_dimensions['E'].width = 35  # Nombre Producto
-    ws.column_dimensions['F'].width = 16  # Lote
+    ws.column_dimensions['D'].width = 12  # Producto (clave)
+    ws.column_dimensions['E'].width = 45  # Nombre Producto - MÁS ANCHO
+    ws.column_dimensions['F'].width = 14  # Lote
     ws.column_dimensions['G'].width = 10  # Cantidad
-    ws.column_dimensions['H'].width = 22  # Centro
+    ws.column_dimensions['H'].width = 35  # Centro - MÁS ANCHO
     ws.column_dimensions['I'].width = 18  # Usuario
-    ws.column_dimensions['J'].width = 15  # No. Expediente
-    ws.column_dimensions['K'].width = 35  # Observaciones
+    ws.column_dimensions['J'].width = 14  # No. Expediente
+    ws.column_dimensions['K'].width = 50  # Observaciones - MÁS ANCHO
     
     # Guardar
     buffer = BytesIO()
