@@ -7667,6 +7667,7 @@ def dashboard_graficas(request):
     """
     try:
         from dateutil.relativedelta import relativedelta
+        from django.db.models import Q  # ISS-FIX: Importar Q al inicio de la función
         
         # SEGURIDAD: Determinar filtro de centro
         user = request.user
@@ -7744,8 +7745,6 @@ def dashboard_graficas(request):
         if not filtrar_por_centro:
             # Farmacia Central: consolidar lotes sin centro + lotes de "Almacén Central"
             # (Son conceptualmente el mismo lugar)
-            from django.db.models import Q
-            
             stock_farmacia = Lote.objects.filter(
                 Q(centro__isnull=True) | Q(centro__nombre__icontains='almacén central') | Q(centro__nombre__icontains='almacen central'),
                 activo=True,

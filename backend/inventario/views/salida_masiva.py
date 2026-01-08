@@ -236,6 +236,36 @@ def salida_masiva(request):
                         subtipo_salida=None,
                         referencia=grupo_salida
                     )
+                    
+                    # ===============================================================
+                    # DISPENSACIÓN AUTOMÁTICA: Al confirmar, el centro dispensa
+                    # inmediatamente los medicamentos a los internos.
+                    # ===============================================================
+                    
+                    # Guardar stock antes de descontar (para validación del movimiento)
+                    stock_antes_dispensacion = lote_destino.cantidad_actual
+                    
+                    # Crear movimiento de SALIDA (dispensación) en centro ANTES de descontar
+                    motivo_salida = f'[CONFIRMADO][{grupo_salida}] Dispensación a internos del centro'
+                    mov_dispensacion = Movimiento(
+                        tipo='salida',
+                        producto=lote_destino.producto,
+                        lote=lote_destino,
+                        centro_origen=centro_destino,
+                        centro_destino=None,  # Sale a pacientes
+                        cantidad=cantidad,
+                        motivo=motivo_salida,
+                        usuario=request.user,
+                        subtipo_salida='dispensacion',
+                        referencia=grupo_salida
+                    )
+                    mov_dispensacion._stock_pre_movimiento = stock_antes_dispensacion
+                    mov_dispensacion.save()
+                    
+                    # Ahora sí descontar del lote destino (queda en 0)
+                    lote_destino.cantidad_actual = 0
+                    lote_destino.activo = False
+                    lote_destino.save(update_fields=['cantidad_actual', 'activo', 'updated_at'])
                 
                 # Crear movimiento de SALIDA desde Farmacia Central
                 motivo_completo = f'{estado_tag}[{grupo_salida}] {observaciones}'.strip()
@@ -348,9 +378,12 @@ def hoja_entrega_pdf(request, grupo_salida):
         
         finalizado = request.query_params.get('finalizado', 'false').lower() == 'true'
         
-        # Buscar movimientos de este grupo
+        # ISS-FIX: Buscar solo movimientos de SALIDA de este grupo
+        # El PDF de hoja de entrega muestra lo que SE ENVÍA al centro
+        # (las salidas de Farmacia Central, NO las entradas al centro destino)
         movimientos = Movimiento.objects.filter(
-            motivo__contains=f'[{grupo_salida}]'
+            motivo__contains=f'[{grupo_salida}]',
+            tipo='salida'  # Solo salidas - lo que se envía
         ).select_related(
             'lote', 'lote__producto', 'centro_destino', 'usuario'
         ).order_by('id')
@@ -530,6 +563,37 @@ def confirmar_entrega(request, grupo_salida):
                             subtipo_salida=None,
                             referencia=grupo_salida
                         )
+                        
+                        # ===============================================================
+                        # DISPENSACIÓN AUTOMÁTICA: Al confirmar entrega, el centro 
+                        # dispensa inmediatamente los medicamentos a los internos.
+                        # Esto mantiene el inventario del centro en 0.
+                        # ===============================================================
+                        
+                        # Guardar stock antes de descontar (para validación del movimiento)
+                        stock_antes_dispensacion = lote_destino.cantidad_actual
+                        
+                        # Crear movimiento de SALIDA (dispensación) ANTES de descontar
+                        motivo_salida = f'[CONFIRMADO][{grupo_salida}] Dispensación a internos del centro'
+                        mov_dispensacion = Movimiento(
+                            tipo='salida',
+                            producto=lote_destino.producto,
+                            lote=lote_destino,
+                            centro_origen=centro_destino,
+                            centro_destino=None,  # Sale a pacientes
+                            cantidad=cantidad,
+                            motivo=motivo_salida,
+                            usuario=request.user,
+                            subtipo_salida='dispensacion',
+                            referencia=grupo_salida
+                        )
+                        mov_dispensacion._stock_pre_movimiento = stock_antes_dispensacion
+                        mov_dispensacion.save()
+                        
+                        # Ahora sí descontar del lote destino (queda en 0)
+                        lote_destino.cantidad_actual = 0
+                        lote_destino.activo = False
+                        lote_destino.save(update_fields=['cantidad_actual', 'activo', 'updated_at'])
                     
                     # Cambiar estado de [PENDIENTE] a [CONFIRMADO]
                     nuevo_motivo = (mov.motivo or '').replace('[PENDIENTE]', '[CONFIRMADO]')
