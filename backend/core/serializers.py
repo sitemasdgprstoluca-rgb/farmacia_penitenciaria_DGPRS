@@ -876,6 +876,8 @@ class LoteSerializer(serializers.ModelSerializer):
     # Documentos asociados al lote
     documentos = serializers.SerializerMethodField()
     tiene_documentos = serializers.SerializerMethodField()
+    # ISS-TRAZ: Indicar si el lote tiene movimientos (para bloquear edición de campos críticos)
+    tiene_movimientos = serializers.SerializerMethodField()
     
     class Meta:
         model = Lote
@@ -887,10 +889,10 @@ class LoteSerializer(serializers.ModelSerializer):
             'cantidad_inicial', 'cantidad_actual', 'precio_unitario', 'precio_compra',
             'numero_contrato', 'marca', 'ubicacion', 'activo', 'estado',
             'dias_para_caducar', 'alerta_caducidad', 'porcentaje_consumido',
-            'documentos', 'tiene_documentos',
+            'documentos', 'tiene_documentos', 'tiene_movimientos',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'estado', 'documentos', 'tiene_documentos']
+        read_only_fields = ['created_at', 'updated_at', 'estado', 'documentos', 'tiene_documentos', 'tiene_movimientos']
         extra_kwargs = {
             'cantidad_actual': {'required': False, 'default': 0},
             'numero_contrato': {'required': False, 'allow_null': True, 'allow_blank': True},
@@ -987,6 +989,55 @@ class LoteSerializer(serializers.ModelSerializer):
         
         return super().validate(attrs)
     
+    def update(self, instance, validated_data):
+        """
+        ISS-TRAZ: Proteger campos críticos en lotes con movimientos.
+        
+        Si el lote ya tiene movimientos registrados, no se pueden modificar:
+        - producto: Cambiar el producto rompería la trazabilidad
+        - numero_lote: El código de lote es identificador único
+        - cantidad_inicial: Solo se modifica vía movimientos de entrada
+        - fecha_caducidad: Afecta reportes de caducidad históricos
+        - numero_contrato: Clave para auditoría de adquisiciones
+        """
+        from .models import Movimiento
+        
+        # Verificar si el lote tiene movimientos
+        tiene_movimientos = Movimiento.objects.filter(lote=instance).exists()
+        
+        if tiene_movimientos:
+            campos_protegidos = {
+                'producto': 'producto',
+                'numero_lote': 'código de lote', 
+                'cantidad_inicial': 'cantidad inicial',
+                'fecha_caducidad': 'fecha de caducidad',
+                'numero_contrato': 'número de contrato',
+            }
+            
+            errores = {}
+            for campo, nombre in campos_protegidos.items():
+                if campo in validated_data:
+                    valor_nuevo = validated_data[campo]
+                    valor_actual = getattr(instance, campo)
+                    
+                    # Comparar valores (manejar FKs correctamente)
+                    if campo == 'producto':
+                        valor_actual_id = valor_actual.id if valor_actual else None
+                        valor_nuevo_id = valor_nuevo.id if valor_nuevo else None
+                        if valor_nuevo_id != valor_actual_id:
+                            errores[campo] = f'No se puede modificar el {nombre} de un lote con movimientos registrados'
+                    elif valor_nuevo != valor_actual:
+                        errores[campo] = f'No se puede modificar la {nombre} de un lote con movimientos registrados'
+            
+            if errores:
+                raise serializers.ValidationError(errores)
+            
+            # Remover campos protegidos del validated_data para evitar cambios accidentales
+            for campo in campos_protegidos.keys():
+                validated_data.pop(campo, None)
+        
+        return super().update(instance, validated_data)
+    
     def get_dias_para_caducar(self, obj):
         if obj.fecha_caducidad:
             delta = obj.fecha_caducidad - timezone.now().date()
@@ -1050,6 +1101,14 @@ class LoteSerializer(serializers.ModelSerializer):
         if hasattr(obj, '_prefetched_objects_cache') and 'documentos' in obj._prefetched_objects_cache:
             return len(obj._prefetched_objects_cache['documentos']) > 0
         return obj.documentos.exists()
+    
+    def get_tiene_movimientos(self, obj):
+        """
+        ISS-TRAZ: Indica si el lote tiene movimientos registrados.
+        Si tiene movimientos, los campos críticos no son editables.
+        """
+        from .models import Movimiento
+        return Movimiento.objects.filter(lote=obj).exists()
 
 
 # =============================================================================
