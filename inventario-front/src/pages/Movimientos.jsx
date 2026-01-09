@@ -191,6 +191,9 @@ const Movimientos = () => {
     numero_expediente: "",
   });
   const [productoFiltro, setProductoFiltro] = useState("");
+  const [productoBusqueda, setProductoBusqueda] = useState(""); // Texto de búsqueda del producto
+  const [showProductoDropdown, setShowProductoDropdown] = useState(false); // Mostrar dropdown de productos
+  const productoDropdownRef = useRef(null); // Ref para cerrar al hacer click fuera
   const [submitting, setSubmitting] = useState(false);
   const [exporting, setExporting] = useState(null); // 'pdf' | 'excel' | null
   const [showFiltersMenu, setShowFiltersMenu] = useState(false);
@@ -203,6 +206,27 @@ const Movimientos = () => {
     () => ["producto", "tipo", "cantidad", "centro", "fecha"],
     []
   );
+
+  // Filtrar productos según texto de búsqueda
+  const productosFiltrados = useMemo(() => {
+    if (!productoBusqueda.trim()) return productos;
+    const busqueda = productoBusqueda.toLowerCase().trim();
+    return productos.filter(p => 
+      p.clave?.toLowerCase().includes(busqueda) ||
+      p.nombre?.toLowerCase().includes(busqueda)
+    );
+  }, [productos, productoBusqueda]);
+
+  // Cerrar dropdown al hacer click fuera
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (productoDropdownRef.current && !productoDropdownRef.current.contains(event.target)) {
+        setShowProductoDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const cargarCatalogos = useCallback(async () => {
     try {
@@ -691,6 +715,7 @@ const Movimientos = () => {
         numero_expediente: "",
       });
       setProductoFiltro("");
+      setProductoBusqueda(""); // Limpiar también el texto de búsqueda
       cargarMovimientos();
       cargarCatalogos();
     } catch (err) {
@@ -1091,48 +1116,88 @@ const Movimientos = () => {
               </h2>
             </div>
             <div className="p-6 space-y-4">
-              {/* Filtro por producto */}
+              {/* Filtro por producto con búsqueda mejorada */}
               <div className="space-y-2">
                 <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Producto (filtro)</label>
-                <div className="relative">
+                <div className="relative" ref={productoDropdownRef}>
                   <input
                     type="text"
-                    list="productos-list"
                     placeholder="Buscar producto por clave o nombre..."
-                    value={productos.find(p => p.id.toString() === productoFiltro)?.clave ? `${productos.find(p => p.id.toString() === productoFiltro)?.clave} - ${productos.find(p => p.id.toString() === productoFiltro)?.nombre}` : ''}
+                    value={productoBusqueda}
                     onChange={(e) => {
-                      const valor = e.target.value;
-                      if (valor === '') {
+                      setProductoBusqueda(e.target.value);
+                      setShowProductoDropdown(true);
+                      // Si borra todo, limpiar también el filtro seleccionado
+                      if (e.target.value === '') {
                         setProductoFiltro('');
-                      } else {
-                        // Buscar el producto que coincida con el texto
-                        const productoEncontrado = productos.find(p => 
-                          `${p.clave} - ${p.nombre}` === valor || 
-                          p.clave === valor.split(' - ')[0]
-                        );
-                        if (productoEncontrado) {
-                          setProductoFiltro(productoEncontrado.id.toString());
-                        }
                       }
                     }}
-                    className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 transition-all duration-200"
+                    onFocus={() => setShowProductoDropdown(true)}
+                    className="w-full rounded-xl border border-gray-200 px-4 py-3 pr-10 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 transition-all duration-200"
                   />
-                  <datalist id="productos-list">
-                    {productos.map((p) => (
-                      <option key={p.id} value={`${p.clave} - ${p.nombre}`} />
-                    ))}
-                  </datalist>
-                  {productoFiltro && (
+                  {(productoFiltro || productoBusqueda) && (
                     <button
                       type="button"
-                      onClick={() => setProductoFiltro('')}
+                      onClick={() => {
+                        setProductoFiltro('');
+                        setProductoBusqueda('');
+                        setShowProductoDropdown(false);
+                      }}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
                       title="Limpiar filtro"
                     >
                       ✕
                     </button>
                   )}
+                  {/* Dropdown de productos filtrados */}
+                  {showProductoDropdown && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {!productoBusqueda.trim() ? (
+                        <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                          ✍️ Escribe para buscar productos por clave o nombre
+                        </div>
+                      ) : productosFiltrados.length > 0 ? (
+                        <>
+                          {productosFiltrados.slice(0, 50).map((p) => (
+                            <div
+                              key={p.id}
+                              onClick={() => {
+                                setProductoFiltro(p.id.toString());
+                                setProductoBusqueda(`${p.clave} - ${p.nombre}`);
+                                setShowProductoDropdown(false);
+                              }}
+                              className={`px-4 py-2 cursor-pointer hover:bg-blue-50 transition-colors ${
+                                productoFiltro === p.id.toString() ? 'bg-blue-100 font-semibold' : ''
+                              }`}
+                            >
+                              <span className="font-medium text-gray-900">{p.clave}</span>
+                              <span className="text-gray-500"> - {p.nombre}</span>
+                            </div>
+                          ))}
+                          {productosFiltrados.length > 50 && (
+                            <div className="px-4 py-2 text-sm text-gray-500 bg-gray-50 border-t">
+                              Mostrando 50 de {productosFiltrados.length} productos. Escribe más para filtrar.
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                          No se encontraron productos con "{productoBusqueda}"
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
+                {/* Mostrar producto seleccionado */}
+                {productoFiltro && (() => {
+                  const prod = productos.find(p => p.id.toString() === productoFiltro);
+                  return prod ? (
+                    <div className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+                      <FaCheckCircle className="text-blue-600" />
+                      <span><strong>{prod.clave}</strong> - {prod.nombre}</span>
+                    </div>
+                  ) : null;
+                })()}
               </div>
 
               {/* Selección de lote */}
