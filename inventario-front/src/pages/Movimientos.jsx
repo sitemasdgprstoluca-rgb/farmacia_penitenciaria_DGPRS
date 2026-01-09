@@ -260,7 +260,9 @@ const Movimientos = () => {
       // CENTRO/MEDICO: solo lotes activos con stock
       if (puedeVerTodosCentros) {
         lotesParamsBase.centro = "central";  // Farmacia central
-        // NO agregar filtro activo=true para poder ver lotes vacíos y reabastecerlos
+        // ISS-FIX: Incluir lotes inactivos (cantidad=0) para reabastecimiento
+        // NO pasar filtro activo = backend devuelve todos
+        lotesParamsBase.incluir_inactivos = true;  // Parámetro explícito para incluir inactivos
       } else if (centroUsuario) {
         // Usuario de centro/médico ve lotes de su centro (los surtidos por farmacia)
         lotesParamsBase.centro = centroUsuario;

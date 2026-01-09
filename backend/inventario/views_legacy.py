@@ -2682,6 +2682,9 @@ class LoteViewSet(viewsets.ModelViewSet):
         if producto:
             queryset = queryset.filter(producto_id=producto)
         
+        # ISS-FIX: Parámetro para incluir lotes inactivos (para reabastecimiento)
+        incluir_inactivos = self.request.query_params.get('incluir_inactivos', '').lower() == 'true'
+        
         # Filtrar por activo (el campo real en la BD)
         activo = self.request.query_params.get('activo')
         if activo is not None:
@@ -2689,6 +2692,10 @@ class LoteViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(activo=True)
             elif activo.lower() in ['false', '0', 'no']:
                 queryset = queryset.filter(activo=False)
+        elif not incluir_inactivos:
+            # Por defecto: solo lotes activos (a menos que se pida incluir inactivos)
+            queryset = queryset.filter(activo=True)
+        # Si incluir_inactivos=true y no hay filtro activo, mostrar todos
         
         # Busqueda por numero de lote, clave o nombre producto (ISS-003)
         search = self.request.query_params.get('search')
