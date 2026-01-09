@@ -249,28 +249,31 @@ const Movimientos = () => {
       
       // ISS-FIX (lotes-central): Para Farmacia/Admin, cargar lotes de Farmacia Central
       // Para usuarios de centro/médico, cargar lotes de su centro (los que farmacia les ha enviado)
-      const lotesParams = { 
+      // ISS-FIX (reabastecimiento): FARMACIA/ADMIN necesitan ver lotes sin stock para reabastecer
+      const lotesParamsBase = { 
         page_size: 500, 
         ordering: "-fecha_caducidad", 
-        activo: true,  // ISS-FIX: Solo lotes activos
-        con_stock: true,  // ISS-FIX: Solo lotes con stock > 0
       };
       
       // ISS-FIX: Farmacia/Admin ven lotes de farmacia central para transferencias
+      // FARMACIA/ADMIN: cargar TODOS los lotes (activos e inactivos) para poder reabastecer
+      // CENTRO/MEDICO: solo lotes activos con stock
       if (puedeVerTodosCentros) {
-        lotesParams.centro = "central";  // Farmacia central
+        lotesParamsBase.centro = "central";  // Farmacia central
+        // NO agregar filtro activo=true para poder ver lotes vacíos y reabastecerlos
       } else if (centroUsuario) {
         // Usuario de centro/médico ve lotes de su centro (los surtidos por farmacia)
-        lotesParams.centro = centroUsuario;
+        lotesParamsBase.centro = centroUsuario;
+        lotesParamsBase.activo = true;  // Centro solo ve lotes activos (con stock)
       }
       
-      const lotesResp = await lotesAPI.getAll(lotesParams);
+      const lotesResp = await lotesAPI.getAll(lotesParamsBase);
       const lotesData = lotesResp.data.results || lotesResp.data || [];
       setLotes(lotesData);
       // ISS-FIX: FARMACIA/ADMIN pueden ver lotes sin stock (para entradas/reabastecimiento)
       // CENTRO solo ve lotes con stock > 0 (solo hacen salidas)
       if (puedeVerTodosCentros) {
-        // Farmacia/Admin: mostrar todos los lotes (con y sin stock)
+        // Farmacia/Admin: mostrar todos los lotes (con y sin stock para reabastecimiento)
         setLotesDisponibles(lotesData);
       } else {
         // Centro: solo lotes con stock disponible
@@ -697,8 +700,14 @@ const Movimientos = () => {
         return;
       }
       
-      // Validar expediente para recetas (MEDICO/CENTRO)
-      if (formData.subtipo_salida === 'receta' && !formData.numero_expediente?.trim()) {
+      // MEDICO: siempre requiere expediente (siempre es dispensación por receta)
+      if (esMedico && !formData.numero_expediente?.trim()) {
+        toast.error("Debe ingresar el número de expediente del paciente");
+        return;
+      }
+      
+      // CENTRO: validar expediente solo si eligió receta
+      if (!esMedico && formData.subtipo_salida === 'receta' && !formData.numero_expediente?.trim()) {
         toast.error("Debe ingresar el número de expediente para dispensación por receta");
         return;
       }
@@ -735,14 +744,16 @@ const Movimientos = () => {
           payload.centro = parseInt(formData.centro);
           payload.subtipo_salida = "transferencia";
         } else {
-          // MEDICO/CENTRO: usar su propio centro y subtipo seleccionado
+          // MEDICO/CENTRO: usar su propio centro
           if (centroUsuario) {
             payload.centro = parseInt(centroUsuario);
           }
-          payload.subtipo_salida = formData.subtipo_salida || (esMedico ? "receta" : "consumo_interno");
           
-          // Agregar expediente si es receta
-          if (formData.subtipo_salida === 'receta' && formData.numero_expediente) {
+          // MEDICO: siempre es "receta" | CENTRO: usa el subtipo seleccionado
+          payload.subtipo_salida = esMedico ? "receta" : (formData.subtipo_salida || "consumo_interno");
+          
+          // Agregar expediente para dispensación por receta
+          if ((esMedico || formData.subtipo_salida === 'receta') && formData.numero_expediente) {
             payload.numero_expediente = formData.numero_expediente.trim();
           }
         }
@@ -1392,31 +1403,30 @@ const Movimientos = () => {
               {!puedeHacerEntradas && formData.tipo === "salida" && (
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-gray-700">Motivo de salida <span className="text-red-500">*</span></label>
-                  <select
-                    value={formData.subtipo_salida}
-                    onChange={(e) => handleFormChange("subtipo_salida", e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  >
-                    {esMedico ? (
-                      <>
-                        <option value="receta">💊 Dispensación por receta</option>
-                        <option value="consumo_interno">🏥 Consumo interno</option>
-                      </>
-                    ) : (
-                      <>
-                        <option value="consumo_interno">🏥 Consumo interno</option>
-                        <option value="receta">💊 Dispensación por receta</option>
-                        <option value="merma">📉 Merma / Pérdida</option>
-                        <option value="caducidad">⏰ Caducidad</option>
-                      </>
-                    )}
-                  </select>
+                  {esMedico ? (
+                    /* MÉDICO: Solo dispensación por receta (fijo, no editable) */
+                    <div className="w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-blue-800 font-medium">
+                      💊 Dispensación por receta
+                    </div>
+                  ) : (
+                    /* CENTRO: Todas las opciones de salida */
+                    <select
+                      value={formData.subtipo_salida}
+                      onChange={(e) => handleFormChange("subtipo_salida", e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required
+                    >
+                      <option value="consumo_interno">🏥 Consumo interno</option>
+                      <option value="receta">💊 Dispensación por receta</option>
+                      <option value="merma">📉 Merma / Pérdida</option>
+                      <option value="caducidad">⏰ Caducidad</option>
+                    </select>
+                  )}
                 </div>
               )}
 
-              {/* Número de expediente para dispensación por receta */}
-              {formData.subtipo_salida === 'receta' && (
+              {/* Número de expediente para dispensación por receta (MEDICO siempre, CENTRO cuando selecciona receta) */}
+              {(esMedico || formData.subtipo_salida === 'receta') && (
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-gray-700">No. Expediente <span className="text-red-500">*</span></label>
                   <input
