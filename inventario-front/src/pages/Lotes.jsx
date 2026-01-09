@@ -362,15 +362,33 @@ const Lotes = () => {
     setSavingLote(true);
     
     try {
-      // Verificar si la presentación cambió y actualizar el producto
+      // REGLA DE NEGOCIO: La presentación es propiedad del PRODUCTO
+      // Si el usuario necesita otra presentación, debe crear un nuevo producto
+      // Al modificar la presentación aquí, se actualiza en el producto (afecta TODOS sus lotes)
       const productoSeleccionado = productos.find(p => String(p.id) === String(formData.producto));
       const presentacionOriginal = productoSeleccionado?.presentacion || '';
       const presentacionNueva = formData.presentacion_producto?.trim();
       
       if (presentacionNueva && presentacionNueva !== presentacionOriginal) {
+        // Advertir si se está cambiando la presentación de un producto existente
+        if (presentacionOriginal) {
+          const confirmar = window.confirm(
+            `⚠️ ADVERTENCIA: Está cambiando la presentación del producto.\n\n` +
+            `Presentación actual: "${presentacionOriginal}"\n` +
+            `Nueva presentación: "${presentacionNueva}"\n\n` +
+            `Este cambio afectará a TODOS los lotes de este producto.\n` +
+            `Si necesita otra presentación diferente, considere crear un nuevo producto.\n\n` +
+            `¿Desea continuar?`
+          );
+          if (!confirmar) {
+            setSavingLote(false);
+            return;
+          }
+        }
         // Actualizar presentación del producto
         try {
           await productosAPI.update(formData.producto, { presentacion: presentacionNueva });
+          toast.info('Presentación del producto actualizada');
         } catch (err) {
           console.warn('No se pudo actualizar la presentación del producto:', err);
         }
@@ -1337,7 +1355,7 @@ const handleImportar = async (e) => {
                 {/* Presentación del Producto */}
                 <div>
                   <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                    PRESENTACIÓN <span className="text-red-600">*</span>
+                    PRESENTACIÓN DEL PRODUCTO <span className="text-red-600">*</span>
                   </label>
                   <input
                     type="text"
@@ -1352,11 +1370,13 @@ const handleImportar = async (e) => {
                       e.target.style.borderColor = '#E5E7EB';
                       e.target.style.boxShadow = 'none';
                     }}
-                    placeholder="Ej: TABLETA 500MG, CAJA CON 30 COMPRIMIDOS"
+                    placeholder="Ej: CAJA CON 30 TABLETAS, FRASCO 120ML"
                     required
                     maxLength={200}
                   />
-                  <p className="text-xs text-gray-500 italic mt-1">Forma farmacéutica y cantidad por envase. Si modifica, se actualizará en el producto.</p>
+                  <p className="text-xs text-gray-500 italic mt-1">
+                    <strong>Nota:</strong> La presentación es propiedad del PRODUCTO. Si necesita otra presentación, cree un nuevo producto.
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
