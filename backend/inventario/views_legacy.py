@@ -808,8 +808,9 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         # ISS-FIX: Para entradas (reabastecimiento), SUMAR a cantidad_inicial
         # Esto refleja que se recibió más mercancía del mismo contrato/lote
         # Ej: cantidad_inicial=84, entrada=50 → cantidad_inicial=134
+        # FIX: Usar abs(cantidad_int) para asegurar valor entero positivo
         if tipo_normalizado == 'entrada':
-            update_dict['cantidad_inicial'] = F('cantidad_inicial') + cantidad
+            update_dict['cantidad_inicial'] = F('cantidad_inicial') + abs(cantidad_int)
         
         Lote.objects.filter(pk=lote_ref.pk).update(**update_dict)
         lote_ref.refresh_from_db()
