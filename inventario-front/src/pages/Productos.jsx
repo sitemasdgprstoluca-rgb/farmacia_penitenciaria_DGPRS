@@ -2109,6 +2109,23 @@ const Productos = () => {
               </div>
             )}
 
+            {/* Banner de advertencia cuando el producto tiene lotes o movimientos asociados */}
+            {editingProduct && (editingProduct.tiene_lotes || editingProduct.tiene_movimientos) && (
+              <div className="mx-6 mt-4 rounded-lg border border-blue-300 bg-blue-50 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="text-xl">🔒</span>
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-blue-800">Campos protegidos por integridad de datos</h4>
+                    <p className="text-sm text-blue-700 mt-1">
+                      {editingProduct.tiene_movimientos 
+                        ? 'Este producto tiene movimientos registrados. Para garantizar la trazabilidad y auditoría, los campos críticos (Clave, Nombre, Presentación, Unidad de Medida y Categoría) no pueden modificarse.'
+                        : 'Este producto tiene lotes asociados. Para garantizar la integridad de los datos, el campo Clave no puede modificarse.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-4 px-6 py-6">
 
               {/* Clave y Descripción */}
@@ -2130,9 +2147,15 @@ const Productos = () => {
 
                     placeholder="Ej: MED-001"
 
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.clave ? 'border-red-500' : 'border-theme-primary'}`}
+                    disabled={editingProduct?.tiene_lotes}
+
+                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.clave ? 'border-red-500' : 'border-theme-primary'} ${editingProduct?.tiene_lotes ? 'bg-gray-100 cursor-not-allowed text-gray-600' : ''}`}
 
                   />
+
+                  {editingProduct?.tiene_lotes && (
+                    <p className="text-xs text-blue-600 mt-1">🔒 Protegido - producto con lotes</p>
+                  )}
 
                   {formErrors.clave && <p className="text-xs text-red-600">{formErrors.clave}</p>}
 
@@ -2154,9 +2177,15 @@ const Productos = () => {
 
                     placeholder="Ej: Paracetamol 500mg Tabletas"
 
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.nombre ? 'border-red-500' : 'border-theme-primary'}`}
+                    disabled={editingProduct?.tiene_movimientos}
+
+                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.nombre ? 'border-red-500' : 'border-theme-primary'} ${editingProduct?.tiene_movimientos ? 'bg-gray-100 cursor-not-allowed text-gray-600' : ''}`}
 
                   />
+
+                  {editingProduct?.tiene_movimientos && (
+                    <p className="text-xs text-blue-600 mt-1">🔒 Protegido - producto con movimientos</p>
+                  )}
 
                   {formErrors.nombre && <p className="text-xs text-red-600">{formErrors.nombre}</p>}
 
@@ -2200,7 +2229,9 @@ const Productos = () => {
 
                     onChange={(e) => setFormData({ ...formData, unidad_medida: e.target.value })}
 
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.unidad_medida ? 'border-red-500' : 'border-theme-primary'}`}
+                    disabled={editingProduct?.tiene_movimientos}
+
+                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.unidad_medida ? 'border-red-500' : 'border-theme-primary'} ${editingProduct?.tiene_movimientos ? 'bg-gray-100 cursor-not-allowed text-gray-600' : ''}`}
 
                   >
 
@@ -2213,6 +2244,10 @@ const Productos = () => {
                     ))}
 
                   </select>
+
+                  {editingProduct?.tiene_movimientos && (
+                    <p className="text-xs text-blue-600 mt-1">🔒 Protegido - producto con movimientos</p>
+                  )}
 
                   {formErrors.unidad_medida && <p className="text-xs text-red-600">{formErrors.unidad_medida}</p>}
 
@@ -2251,7 +2286,8 @@ const Productos = () => {
                   <select
                     value={formData.categoria}
                     onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.categoria ? 'border-red-500' : 'border-theme-primary'}`}
+                    disabled={editingProduct?.tiene_movimientos}
+                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.categoria ? 'border-red-500' : 'border-theme-primary'} ${editingProduct?.tiene_movimientos ? 'bg-gray-100 cursor-not-allowed text-gray-600' : ''}`}
                   >
                     {CATEGORIAS.map((cat) => (
                       <option key={cat} value={cat}>
@@ -2259,6 +2295,9 @@ const Productos = () => {
                       </option>
                     ))}
                   </select>
+                  {editingProduct?.tiene_movimientos && (
+                    <p className="text-xs text-blue-600 mt-1">🔒 Protegido - producto con movimientos</p>
+                  )}
                   {formErrors.categoria && <p className="text-xs text-red-600">{formErrors.categoria}</p>}
                 </div>
                 <div>
@@ -2269,8 +2308,12 @@ const Productos = () => {
                     onChange={(e) => setFormData({ ...formData, presentacion: e.target.value })}
                     maxLength={200}
                     placeholder="Ej: CAJA CON 10 TABLETAS, FRASCO 120ML"
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.presentacion ? 'border-red-500' : 'border-theme-primary'}`}
+                    disabled={editingProduct?.tiene_movimientos}
+                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.presentacion ? 'border-red-500' : 'border-theme-primary'} ${editingProduct?.tiene_movimientos ? 'bg-gray-100 cursor-not-allowed text-gray-600' : ''}`}
                   />
+                  {editingProduct?.tiene_movimientos && (
+                    <p className="text-xs text-blue-600 mt-1">🔒 Protegido - producto con movimientos</p>
+                  )}
                   {formErrors.presentacion && <p className="text-xs text-red-600">{formErrors.presentacion}</p>}
                 </div>
               </div>

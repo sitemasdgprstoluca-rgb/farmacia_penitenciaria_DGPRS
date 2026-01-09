@@ -689,6 +689,9 @@ class ProductoSerializer(serializers.ModelSerializer):
     marca = serializers.SerializerMethodField()
     # ISS-FIX: Unidad base normalizada para filtros del frontend
     unidad_base = serializers.SerializerMethodField()
+    # ISS-TRAZ: Indicadores para bloquear edición de campos críticos
+    tiene_lotes = serializers.SerializerMethodField()
+    tiene_movimientos = serializers.SerializerMethodField()
     
     class Meta:
         model = Producto
@@ -698,9 +701,10 @@ class ProductoSerializer(serializers.ModelSerializer):
             'categoria', 'sustancia_activa', 'presentacion', 'concentracion',
             'via_administracion', 'requiere_receta', 'es_controlado',
             'stock_minimo', 'stock_actual', 'activo', 'imagen',
-            'lotes_activos', 'marca', 'created_at', 'updated_at'
+            'lotes_activos', 'marca', 'tiene_lotes', 'tiene_movimientos',
+            'created_at', 'updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'stock_actual', 'marca', 'unidad_base']
+        read_only_fields = ['created_at', 'updated_at', 'stock_actual', 'marca', 'unidad_base', 'tiene_lotes', 'tiene_movimientos']
         extra_kwargs = {
             'clave': {'required': True},
             'nombre': {'required': True},
@@ -850,6 +854,90 @@ class ProductoSerializer(serializers.ModelSerializer):
     
     def validate(self, attrs):
         return attrs
+    
+    def get_tiene_lotes(self, obj):
+        """
+        ISS-TRAZ: Indica si el producto tiene lotes asociados.
+        Si tiene lotes, algunos campos críticos no son editables.
+        """
+        return obj.lotes.exists()
+    
+    def get_tiene_movimientos(self, obj):
+        """
+        ISS-TRAZ: Indica si el producto tiene movimientos registrados.
+        Si tiene movimientos, los campos críticos están completamente bloqueados.
+        """
+        from .models import Movimiento
+        return Movimiento.objects.filter(producto=obj).exists()
+    
+    def update(self, instance, validated_data):
+        """
+        ISS-TRAZ: Proteger campos críticos en productos con lotes/movimientos.
+        
+        Campos SIEMPRE protegidos si tiene LOTES:
+        - clave: Identificador único, usado en reportes y trazabilidad
+        
+        Campos protegidos si tiene MOVIMIENTOS:
+        - clave: Identificador único
+        - nombre: Afecta reportes históricos
+        - presentacion: Afecta trazabilidad de lotes
+        - unidad_medida: Afecta cálculos de stock en reportes
+        - categoria: Afecta clasificación en reportes
+        
+        Campos SIEMPRE editables (informativos):
+        - nombre_comercial, descripcion, stock_minimo, activo, imagen
+        - sustancia_activa, concentracion, via_administracion
+        - requiere_receta, es_controlado
+        """
+        from .models import Movimiento
+        
+        tiene_lotes = instance.lotes.exists()
+        tiene_movimientos = Movimiento.objects.filter(producto=instance).exists()
+        
+        errores = {}
+        
+        # Si tiene lotes, la clave NO puede cambiar (es el identificador)
+        if tiene_lotes and 'clave' in validated_data:
+            valor_nuevo = validated_data['clave']
+            if valor_nuevo != instance.clave:
+                errores['clave'] = 'No se puede modificar la clave de un producto con lotes asociados'
+        
+        # Si tiene movimientos, más campos están protegidos
+        if tiene_movimientos:
+            campos_protegidos_mov = {
+                'clave': 'clave',
+                'nombre': 'nombre',
+                'presentacion': 'presentación',
+                'unidad_medida': 'unidad de medida',
+                'categoria': 'categoría',
+            }
+            
+            for campo, nombre in campos_protegidos_mov.items():
+                if campo in validated_data:
+                    valor_nuevo = validated_data[campo]
+                    valor_actual = getattr(instance, campo)
+                    
+                    # Normalizar para comparación (manejar None y strings)
+                    if valor_nuevo is None:
+                        valor_nuevo = ''
+                    if valor_actual is None:
+                        valor_actual = ''
+                    
+                    # Comparar valores normalizados
+                    if str(valor_nuevo).strip().upper() != str(valor_actual).strip().upper():
+                        errores[campo] = f'No se puede modificar {nombre} de un producto con movimientos registrados'
+        
+        if errores:
+            raise serializers.ValidationError(errores)
+        
+        # Remover campos protegidos del validated_data para evitar cambios accidentales
+        if tiene_movimientos:
+            for campo in ['clave', 'nombre', 'presentacion', 'unidad_medida', 'categoria']:
+                validated_data.pop(campo, None)
+        elif tiene_lotes:
+            validated_data.pop('clave', None)
+        
+        return super().update(instance, validated_data)
 
 
 # =============================================================================
