@@ -121,9 +121,11 @@ const Movimientos = () => {
   // Detectar si es usuario Farmacia/Admin (puede usar formulario de movimientos y salida masiva)
   const esFarmacia = rolPrincipal === 'FARMACIA' || rolPrincipal === 'ADMIN';
   
-  // ISS-FIX: Solo FARMACIA y ADMIN pueden usar el formulario de Nuevo Movimiento
-  // Esto incluye tanto salidas/transferencias como entradas al almacén
-  const puedeRegistrarMovimiento = esFarmacia; // Solo farmacia y admin
+  // ISS-FIX: Permisos diferenciados por rol
+  // - FARMACIA/ADMIN: pueden hacer entradas Y salidas
+  // - MEDICO/CENTRO: pueden hacer SOLO salidas (dispensación/consumo de su inventario)
+  const puedeRegistrarMovimiento = esFarmacia || esMedico || esCentroUser;
+  const puedeHacerEntradas = esFarmacia; // Solo farmacia/admin pueden reabastecer
   const puedeExportar = permisos?.exportarMovimientos === true;
   
   const [movimientos, setMovimientos] = useState([]);
@@ -174,15 +176,16 @@ const Movimientos = () => {
   const [lotes, setLotes] = useState([]);
   const [lotesDisponibles, setLotesDisponibles] = useState([]);
 
-  // Formulario de registro - SOLO para FARMACIA y ADMIN
-  // Opciones: "salida" (Transferencia a Centro) o "entrada" (Entrada a Almacén)
+  // Formulario de registro de movimientos
+  // - FARMACIA/ADMIN: pueden elegir entre "entrada" y "salida"
+  // - MEDICO/CENTRO: solo pueden hacer "salida" (dispensación/consumo)
   const [formData, setFormData] = useState({
     lote: "",
-    tipo: "salida",  // Por defecto: Salida/Transferencia
+    tipo: "salida",  // Por defecto: Salida
     cantidad: "",
     centro: "",
     observaciones: "",
-    subtipo_salida: "transferencia",
+    subtipo_salida: esFarmacia ? "transferencia" : (esMedico ? "receta" : "consumo_interno"),
     numero_expediente: "",
   });
   const [productoFiltro, setProductoFiltro] = useState("");
@@ -264,8 +267,15 @@ const Movimientos = () => {
       const lotesResp = await lotesAPI.getAll(lotesParams);
       const lotesData = lotesResp.data.results || lotesResp.data || [];
       setLotes(lotesData);
-      // ISS-FIX: El filtro ya viene del backend, solo confirmar cantidad > 0
-      setLotesDisponibles(lotesData.filter(l => l.cantidad_actual > 0));
+      // ISS-FIX: FARMACIA/ADMIN pueden ver lotes sin stock (para entradas/reabastecimiento)
+      // CENTRO solo ve lotes con stock > 0 (solo hacen salidas)
+      if (puedeVerTodosCentros) {
+        // Farmacia/Admin: mostrar todos los lotes (con y sin stock)
+        setLotesDisponibles(lotesData);
+      } else {
+        // Centro: solo lotes con stock disponible
+        setLotesDisponibles(lotesData.filter(l => l.cantidad_actual > 0));
+      }
     } catch (err) {
       console.warn("No se pudieron cargar catálogos", err.message);
     }
@@ -601,18 +611,32 @@ const Movimientos = () => {
     }
   }, [highlightId, loading, movimientos]);
 
-  // Filtrar lotes cuando cambia el producto
+  // Filtrar lotes cuando cambia el producto o el tipo de movimiento
+  // FARMACIA/ADMIN pueden ver lotes sin stock si van a hacer una ENTRADA
+  // CENTRO solo ve lotes con stock > 0 (solo pueden hacer salidas)
   useEffect(() => {
+    const esEntrada = formData.tipo === 'entrada';
+    const mostrarSinStock = esFarmacia && esEntrada; // Solo farmacia/admin en modo entrada
+    
     if (productoFiltro) {
-      const lotesFiltrados = lotes.filter(
-        l => l.producto === parseInt(productoFiltro) && l.cantidad_actual > 0
-      );
+      const lotesFiltrados = lotes.filter(l => {
+        const esDelProducto = l.producto === parseInt(productoFiltro);
+        const tieneStock = l.cantidad_actual > 0;
+        // Farmacia/Admin en modo entrada: mostrar todos los del producto
+        // Otros casos: solo con stock > 0
+        return esDelProducto && (mostrarSinStock || tieneStock);
+      });
       setLotesDisponibles(lotesFiltrados);
       setFormData(prev => ({ ...prev, lote: "" }));
     } else {
-      setLotesDisponibles(lotes.filter(l => l.cantidad_actual > 0));
+      // Sin filtro de producto
+      if (mostrarSinStock) {
+        setLotesDisponibles(lotes); // Farmacia/Admin entrada: todos los lotes
+      } else {
+        setLotesDisponibles(lotes.filter(l => l.cantidad_actual > 0)); // Solo con stock
+      }
     }
-  }, [productoFiltro, lotes]);
+  }, [productoFiltro, lotes, formData.tipo, esFarmacia]);
 
   const handleFormChange = (field, value) => {
     setFormData(prev => {
@@ -638,7 +662,10 @@ const Movimientos = () => {
   const getLoteLabel = (lote) => {
     const producto = productos.find(p => p.id === lote.producto);
     const fechaCad = lote.fecha_caducidad ? new Date(lote.fecha_caducidad).toLocaleDateString() : 'S/F';
-    return `${lote.numero_lote} - ${producto?.nombre?.substring(0, 25) || 'Producto'} (${lote.cantidad_actual} uds, Cad: ${fechaCad})`;
+    const stockInfo = lote.cantidad_actual > 0 
+      ? `${lote.cantidad_actual} uds` 
+      : '⚠️ SIN STOCK';
+    return `${lote.numero_lote} - ${producto?.nombre?.substring(0, 25) || 'Producto'} (${stockInfo}, Cad: ${fechaCad})`;
   };
 
   const registrarMovimiento = async () => {
@@ -658,8 +685,8 @@ const Movimientos = () => {
     
     // Validaciones específicas para SALIDA
     if (esSalida) {
-      // Validar centro destino obligatorio para transferencias
-      if (!formData.centro) {
+      // Validar centro destino obligatorio SOLO para FARMACIA/ADMIN (transferencias)
+      if (puedeHacerEntradas && !formData.centro) {
         toast.error("Selecciona el centro destino para la transferencia");
         return;
       }
@@ -667,6 +694,18 @@ const Movimientos = () => {
       // Validar que no exceda el stock disponible
       if (loteSeleccionado && Number(formData.cantidad) > loteSeleccionado.cantidad_actual) {
         toast.error(`Inventario insuficiente. Disponible: ${loteSeleccionado.cantidad_actual}`);
+        return;
+      }
+      
+      // Validar expediente para recetas (MEDICO/CENTRO)
+      if (formData.subtipo_salida === 'receta' && !formData.numero_expediente?.trim()) {
+        toast.error("Debe ingresar el número de expediente para dispensación por receta");
+        return;
+      }
+      
+      // Validar observaciones para médicos
+      if (esMedico && (!formData.observaciones || formData.observaciones.trim().length < 5)) {
+        toast.error("Indique el motivo de la dispensación (mínimo 5 caracteres)");
         return;
       }
     }
@@ -689,28 +728,50 @@ const Movimientos = () => {
         observaciones: formData.observaciones || '',
       };
       
-      // Campos adicionales solo para SALIDA
+      // Campos adicionales para SALIDA
       if (esSalida) {
-        payload.centro = parseInt(formData.centro);
-        payload.subtipo_salida = "transferencia";
+        // FARMACIA/ADMIN: transferencia a centro específico
+        if (puedeHacerEntradas) {
+          payload.centro = parseInt(formData.centro);
+          payload.subtipo_salida = "transferencia";
+        } else {
+          // MEDICO/CENTRO: usar su propio centro y subtipo seleccionado
+          if (centroUsuario) {
+            payload.centro = parseInt(centroUsuario);
+          }
+          payload.subtipo_salida = formData.subtipo_salida || (esMedico ? "receta" : "consumo_interno");
+          
+          // Agregar expediente si es receta
+          if (formData.subtipo_salida === 'receta' && formData.numero_expediente) {
+            payload.numero_expediente = formData.numero_expediente.trim();
+          }
+        }
       }
       
       await movimientosAPI.create(payload);
       
-      const mensajeExito = esEntrada 
-        ? "✅ Entrada registrada exitosamente - Stock incrementado"
-        : "✅ Salida/Transferencia registrada exitosamente";
+      // Mensaje según tipo y rol
+      let mensajeExito = "";
+      if (esEntrada) {
+        mensajeExito = "✅ Entrada registrada exitosamente - Stock incrementado";
+      } else if (puedeHacerEntradas) {
+        mensajeExito = "✅ Transferencia registrada exitosamente";
+      } else if (esMedico) {
+        mensajeExito = "✅ Dispensación registrada exitosamente";
+      } else {
+        mensajeExito = "✅ Salida registrada exitosamente";
+      }
       
       toast.success(mensajeExito);
       
       // Reset del formulario
       setFormData({
         lote: "",
-        tipo: "salida",  // Por defecto vuelve a salida
+        tipo: "salida",
         cantidad: "",
         centro: "",
         observaciones: "",
-        subtipo_salida: "transferencia",
+        subtipo_salida: puedeHacerEntradas ? "transferencia" : (esMedico ? "receta" : "consumo_interno"),
         numero_expediente: "",
       });
       setProductoFiltro("");
@@ -1237,18 +1298,43 @@ const Movimientos = () => {
                   const loteInfo = lotesDisponibles.find(l => l.id === parseInt(formData.lote));
                   const productoInfo = loteInfo ? productos.find(p => p.id === loteInfo.producto) : null;
                   if (!loteInfo) return null;
+                  
+                  const sinStock = loteInfo.cantidad_actual === 0;
+                  const esEntrada = formData.tipo === 'entrada';
+                  
                   return (
-                    <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                      <div className="flex items-center gap-2 text-blue-800">
+                    <div className={`mt-2 p-3 rounded-lg border ${
+                      sinStock 
+                        ? 'bg-amber-50 border-amber-300' 
+                        : 'bg-blue-50 border-blue-200'
+                    }`}>
+                      <div className={`flex items-center gap-2 ${sinStock ? 'text-amber-800' : 'text-blue-800'}`}>
                         <FaInfoCircle />
-                        <span className="font-semibold">Stock disponible</span>
+                        <span className="font-semibold">
+                          {sinStock ? '⚠️ Lote sin existencias' : 'Stock disponible'}
+                        </span>
                       </div>
-                      <div className="mt-1 text-sm text-blue-700">
+                      <div className={`mt-1 text-sm ${sinStock ? 'text-amber-700' : 'text-blue-700'}`}>
                         <div><strong>Producto:</strong> {productoInfo?.nombre || 'N/A'}</div>
                         <div><strong>Lote:</strong> {loteInfo.numero_lote}</div>
-                        <div><strong>Disponible:</strong> <span className="font-bold text-lg">{loteInfo.cantidad_actual}</span> unidades</div>
+                        <div>
+                          <strong>Disponible:</strong>{' '}
+                          <span className={`font-bold text-lg ${sinStock ? 'text-red-600' : ''}`}>
+                            {loteInfo.cantidad_actual}
+                          </span> unidades
+                        </div>
                         {loteInfo.fecha_caducidad && (
                           <div><strong>Caducidad:</strong> {new Date(loteInfo.fecha_caducidad).toLocaleDateString()}</div>
+                        )}
+                        {sinStock && esEntrada && (
+                          <div className="mt-2 p-2 bg-emerald-100 border border-emerald-300 rounded text-emerald-700 text-xs">
+                            💡 <strong>Reabastecimiento:</strong> Puede registrar una entrada para este lote.
+                          </div>
+                        )}
+                        {sinStock && !esEntrada && (
+                          <div className="mt-2 p-2 bg-red-100 border border-red-300 rounded text-red-700 text-xs">
+                            ⚠️ <strong>Sin stock:</strong> Cambie a "Entrada" para reabastecer este lote.
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1256,24 +1342,39 @@ const Movimientos = () => {
                 })()}
               </div>
 
-              {/* Tipo de Movimiento: Salida o Entrada - Solo FARMACIA/ADMIN */}
+              {/* Tipo de Movimiento - Diferente según el rol */}
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-700">Tipo de Movimiento <span className="text-red-500">*</span></label>
-                <select
-                  value={formData.tipo}
-                  onChange={(e) => handleFormChange("tipo", e.target.value)}
-                  className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-800 font-medium transition-all duration-200"
-                >
-                  <option value="salida">🚚 Salida / Transferencia a Centro</option>
-                  <option value="entrada">📦 Entrada a Almacén (Nueva compra, reabastecimiento)</option>
-                </select>
-                {/* Descripción según tipo seleccionado */}
+                
+                {/* FARMACIA/ADMIN: pueden elegir entre entrada y salida */}
+                {puedeHacerEntradas ? (
+                  <select
+                    value={formData.tipo}
+                    onChange={(e) => handleFormChange("tipo", e.target.value)}
+                    className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-800 font-medium transition-all duration-200"
+                  >
+                    <option value="salida">🚚 Salida / Transferencia a Centro</option>
+                    <option value="entrada">📦 Entrada a Almacén (Nueva compra, reabastecimiento)</option>
+                  </select>
+                ) : (
+                  /* MEDICO/CENTRO: solo pueden hacer salidas */
+                  <div className="w-full rounded-xl border-2 border-rose-200 bg-rose-50 px-4 py-3 text-rose-800 font-medium">
+                    🏥 Salida / Dispensación de inventario
+                  </div>
+                )}
+                
+                {/* Descripción según tipo y rol */}
                 {formData.tipo === "salida" ? (
                   <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
                     <p className="text-xs text-rose-700">
                       <FaTruck className="inline mr-1" />
-                      <strong>Salida:</strong> Transfiere medicamentos desde Almacén Central hacia un Centro Penitenciario. 
-                      El stock se descuenta del lote seleccionado.
+                      {puedeHacerEntradas ? (
+                        <><strong>Salida:</strong> Transfiere medicamentos desde Almacén Central hacia un Centro Penitenciario. El stock se descuenta del lote seleccionado.</>
+                      ) : esMedico ? (
+                        <><strong>Dispensación:</strong> Registra la salida de medicamentos para atención médica. El stock se descuenta del inventario de tu centro.</>
+                      ) : (
+                        <><strong>Consumo:</strong> Registra la salida de medicamentos de tu centro. El stock se descuenta del inventario asignado.</>
+                      )}
                     </p>
                   </div>
                 ) : (
@@ -1287,8 +1388,50 @@ const Movimientos = () => {
                 )}
               </div>
 
-              {/* Centro destino - Solo para SALIDAS */}
-              {formData.tipo === "salida" && (
+              {/* Subtipo de salida para MEDICO/CENTRO */}
+              {!puedeHacerEntradas && formData.tipo === "salida" && (
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700">Motivo de salida <span className="text-red-500">*</span></label>
+                  <select
+                    value={formData.subtipo_salida}
+                    onChange={(e) => handleFormChange("subtipo_salida", e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    {esMedico ? (
+                      <>
+                        <option value="receta">💊 Dispensación por receta</option>
+                        <option value="consumo_interno">🏥 Consumo interno</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="consumo_interno">🏥 Consumo interno</option>
+                        <option value="receta">💊 Dispensación por receta</option>
+                        <option value="merma">📉 Merma / Pérdida</option>
+                        <option value="caducidad">⏰ Caducidad</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+              )}
+
+              {/* Número de expediente para dispensación por receta */}
+              {formData.subtipo_salida === 'receta' && (
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700">No. Expediente <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={formData.numero_expediente}
+                    onChange={(e) => handleFormChange("numero_expediente", e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Número de expediente del paciente"
+                    required
+                  />
+                </div>
+              )}
+
+              {/* Centro destino - Solo para SALIDAS de FARMACIA/ADMIN */}
+              {formData.tipo === "salida" && puedeHacerEntradas && (
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-gray-700">Centro Destino <span className="text-red-500">*</span></label>
                   <select
@@ -1324,23 +1467,32 @@ const Movimientos = () => {
 
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-700">
-                  Observaciones {formData.tipo === "entrada" && <span className="text-red-500">*</span>}
+                  Observaciones {(formData.tipo === "entrada" || esMedico) && <span className="text-red-500">*</span>}
                 </label>
                 <textarea
                   value={formData.observaciones}
                   onChange={(e) => handleFormChange("observaciones", e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder={formData.tipo === "entrada" 
-                    ? "Motivo de la entrada (Ej: Nueva compra, Reabastecimiento, Devolución proveedor)..."
-                    : "Notas adicionales (opcional)..."
+                  placeholder={
+                    formData.tipo === "entrada" 
+                      ? "Motivo de la entrada (Ej: Nueva compra, Reabastecimiento, Devolución proveedor)..."
+                      : esMedico 
+                        ? "Motivo de la dispensación (Ej: Tratamiento dolor, Antibiótico para infección)..."
+                        : "Notas adicionales (opcional)..."
                   }
                   rows={2}
-                  required={formData.tipo === "entrada"}
+                  required={formData.tipo === "entrada" || esMedico}
                 />
                 {formData.tipo === "entrada" && (
                   <p className="text-xs text-emerald-600">
                     <FaInfoCircle className="inline mr-1" />
                     <strong>Requerido:</strong> Indique el motivo de la entrada para trazabilidad (mín. 5 caracteres).
+                  </p>
+                )}
+                {esMedico && formData.tipo === "salida" && (
+                  <p className="text-xs text-blue-600">
+                    <FaInfoCircle className="inline mr-1" />
+                    <strong>Obligatorio:</strong> Indique el motivo médico de la dispensación (mín. 5 caracteres).
                   </p>
                 )}
               </div>
@@ -1359,7 +1511,11 @@ const Movimientos = () => {
                   ? "Registrando..." 
                   : formData.tipo === "entrada" 
                     ? "📦 Registrar Entrada" 
-                    : "🚚 Registrar Salida/Transferencia"
+                    : esMedico 
+                      ? "💊 Registrar Dispensación"
+                      : puedeHacerEntradas 
+                        ? "🚚 Registrar Transferencia" 
+                        : "📤 Registrar Salida"
                 }
               </button>
             </div>
