@@ -140,7 +140,7 @@ const Lotes = () => {
   // fecha_fabricacion, fecha_caducidad, precio_unitario, numero_contrato, marca, ubicacion, centro_id, activo
   const [formData, setFormData] = useState({
     producto: '',
-    presentacion_producto: '', // Campo para mostrar/editar presentación del producto
+    presentacion_producto: '', // Campo solo lectura - presentación viene del producto
     numero_lote: '',
     fecha_fabricacion: '',    // Campo real en DB
     fecha_caducidad: '',
@@ -329,12 +329,6 @@ const Lotes = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Validar presentación obligatoria
-    if (!formData.presentacion_producto?.trim()) {
-      toast.error('La presentación es obligatoria');
-      return;
-    }
-    
     // Validar y parsear cantidades antes de enviar
     const cantidadInicial = parseInt(formData.cantidad_inicial, 10);
     
@@ -366,37 +360,9 @@ const Lotes = () => {
     setSavingLote(true);
     
     try {
-      // REGLA DE NEGOCIO: La presentación es propiedad del PRODUCTO
-      // Si el usuario necesita otra presentación, debe crear un nuevo producto
-      // Al modificar la presentación aquí, se actualiza en el producto (afecta TODOS sus lotes)
-      const productoSeleccionado = productos.find(p => String(p.id) === String(formData.producto));
-      const presentacionOriginal = productoSeleccionado?.presentacion || '';
-      const presentacionNueva = formData.presentacion_producto?.trim();
-      
-      if (presentacionNueva && presentacionNueva !== presentacionOriginal) {
-        // Advertir si se está cambiando la presentación de un producto existente
-        if (presentacionOriginal) {
-          const confirmar = window.confirm(
-            `⚠️ ADVERTENCIA: Está cambiando la presentación del producto.\n\n` +
-            `Presentación actual: "${presentacionOriginal}"\n` +
-            `Nueva presentación: "${presentacionNueva}"\n\n` +
-            `Este cambio afectará a TODOS los lotes de este producto.\n` +
-            `Si necesita otra presentación diferente, considere crear un nuevo producto.\n\n` +
-            `¿Desea continuar?`
-          );
-          if (!confirmar) {
-            setSavingLote(false);
-            return;
-          }
-        }
-        // Actualizar presentación del producto
-        try {
-          await productosAPI.update(formData.producto, { presentacion: presentacionNueva });
-          toast.info('Presentación del producto actualizada');
-        } catch (err) {
-          console.warn('No se pudo actualizar la presentación del producto:', err);
-        }
-      }
+      // NOTA: La presentación es propiedad del PRODUCTO, no del lote
+      // El campo presentacion_producto es solo lectura y NO se actualiza desde aquí
+      // Si necesita otra presentación, debe crear un nuevo producto
       
       const dataToSend = {
         ...formData,
@@ -1357,27 +1323,18 @@ const handleImportar = async (e) => {
                   <p className="text-xs text-gray-500 italic mt-1">No se puede cambiar el producto de un lote existente</p>
                 </div>
 
-                {/* Presentación del Producto */}
+                {/* Presentación del Producto - SOLO LECTURA */}
                 <div>
                   <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                    PRESENTACIÓN DEL PRODUCTO <span className="text-red-600">*</span>
+                    PRESENTACIÓN DEL PRODUCTO
                   </label>
                   <input
                     type="text"
                     value={formData.presentacion_producto}
-                    onChange={(e) => setFormData({...formData, presentacion_producto: e.target.value})}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl transition-all focus:outline-none"
-                    onFocus={(e) => {
-                      e.target.style.borderColor = '#9F2241';
-                      e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.borderColor = '#E5E7EB';
-                      e.target.style.boxShadow = 'none';
-                    }}
-                    placeholder="Ej: CAJA CON 30 TABLETAS, FRASCO 120ML"
-                    required
-                    maxLength={200}
+                    readOnly
+                    disabled
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-gray-100 text-gray-700 cursor-not-allowed"
+                    placeholder="La presentación se obtiene del producto seleccionado"
                   />
                   <p className="text-xs text-gray-500 italic mt-1">
                     <strong>Nota:</strong> La presentación es propiedad del PRODUCTO. Si necesita otra presentación, cree un nuevo producto.
