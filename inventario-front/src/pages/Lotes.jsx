@@ -118,7 +118,11 @@ const Lotes = () => {
   const [filtroProducto, setFiltroProducto] = useState('');
   const [filtroCaducidad, setFiltroCaducidad] = useState('');
   const [filtroConStock, setFiltroConStock] = useState('');
-  const [filtroActivo, setFiltroActivo] = useState('');
+  // ISS-FIX: CENTRO/MEDICO solo ven lotes activos por defecto (con stock)
+  // FARMACIA/ADMIN pueden ver todos (incluidos sin stock) para gestión completa
+  const [filtroActivo, setFiltroActivo] = useState(() => {
+    return puedeVerGlobal ? '' : 'true';  // Centro/Medico: solo activos por defecto
+  });
   // Usuarios sin permisos globales siempre deben filtrar por su centro
   // CORREGIDO: Usar contexto de autenticación (centroUsuario) en lugar de localStorage
   // para evitar desincronización en cambios de sesión
@@ -603,7 +607,8 @@ const Lotes = () => {
     setFiltroProducto('');
     setFiltroCaducidad('');
     setFiltroConStock('');
-    setFiltroActivo('');
+    // ISS-FIX: CENTRO/MEDICO mantienen filtro activo=true al limpiar
+    setFiltroActivo(puedeVerGlobal ? '' : 'true');
     // Si no puede ver global, mantener filtro de su centro
     if (puedeVerGlobal) {
       setFiltroCentro('');

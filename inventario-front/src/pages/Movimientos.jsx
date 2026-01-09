@@ -619,13 +619,14 @@ const Movimientos = () => {
   // CENTRO solo ve lotes con stock > 0 (solo pueden hacer salidas)
   useEffect(() => {
     const esEntrada = formData.tipo === 'entrada';
-    const mostrarSinStock = esFarmacia && esEntrada; // Solo farmacia/admin en modo entrada
+    // FARMACIA/ADMIN: mostrar lotes sin stock cuando están en modo ENTRADA
+    const mostrarSinStock = esFarmacia && esEntrada;
     
     if (productoFiltro) {
       const lotesFiltrados = lotes.filter(l => {
         const esDelProducto = l.producto === parseInt(productoFiltro);
         const tieneStock = l.cantidad_actual > 0;
-        // Farmacia/Admin en modo entrada: mostrar todos los del producto
+        // Farmacia/Admin en modo entrada: mostrar todos los del producto (incluido sin stock)
         // Otros casos: solo con stock > 0
         return esDelProducto && (mostrarSinStock || tieneStock);
       });
@@ -634,9 +635,14 @@ const Movimientos = () => {
     } else {
       // Sin filtro de producto
       if (mostrarSinStock) {
-        setLotesDisponibles(lotes); // Farmacia/Admin entrada: todos los lotes
+        // Farmacia/Admin en modo entrada: todos los lotes (incluidos sin stock)
+        setLotesDisponibles(lotes);
+      } else if (esFarmacia) {
+        // Farmacia/Admin en modo salida: solo lotes con stock > 0 (no puede transferir lo que no tiene)
+        setLotesDisponibles(lotes.filter(l => l.cantidad_actual > 0));
       } else {
-        setLotesDisponibles(lotes.filter(l => l.cantidad_actual > 0)); // Solo con stock
+        // CENTRO/MEDICO: siempre solo lotes con stock > 0
+        setLotesDisponibles(lotes.filter(l => l.cantidad_actual > 0));
       }
     }
   }, [productoFiltro, lotes, formData.tipo, esFarmacia]);
