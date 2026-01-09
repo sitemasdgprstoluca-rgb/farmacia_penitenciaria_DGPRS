@@ -874,17 +874,14 @@ class ProductoSerializer(serializers.ModelSerializer):
         """
         ISS-TRAZ: Proteger campos críticos en productos con lotes/movimientos.
         
-        Campos SIEMPRE protegidos si tiene LOTES:
+        Campos protegidos si tiene LOTES (campos obligatorios):
         - clave: Identificador único, usado en reportes y trazabilidad
-        
-        Campos protegidos si tiene MOVIMIENTOS:
-        - clave: Identificador único
         - nombre: Afecta reportes históricos
         - presentacion: Afecta trazabilidad de lotes
         - unidad_medida: Afecta cálculos de stock en reportes
         - categoria: Afecta clasificación en reportes
         
-        Campos SIEMPRE editables (informativos):
+        Campos SIEMPRE editables (informativos/opcionales):
         - nombre_comercial, descripcion, stock_minimo, activo, imagen
         - sustancia_activa, concentracion, via_administracion
         - requiere_receta, es_controlado
@@ -892,19 +889,12 @@ class ProductoSerializer(serializers.ModelSerializer):
         from .models import Movimiento
         
         tiene_lotes = instance.lotes.exists()
-        tiene_movimientos = Movimiento.objects.filter(producto=instance).exists()
         
         errores = {}
         
-        # Si tiene lotes, la clave NO puede cambiar (es el identificador)
-        if tiene_lotes and 'clave' in validated_data:
-            valor_nuevo = validated_data['clave']
-            if valor_nuevo != instance.clave:
-                errores['clave'] = 'No se puede modificar la clave de un producto con lotes asociados'
-        
-        # Si tiene movimientos, más campos están protegidos
-        if tiene_movimientos:
-            campos_protegidos_mov = {
+        # Si tiene lotes, los campos obligatorios NO pueden cambiar
+        if tiene_lotes:
+            campos_protegidos = {
                 'clave': 'clave',
                 'nombre': 'nombre',
                 'presentacion': 'presentación',
@@ -912,7 +902,7 @@ class ProductoSerializer(serializers.ModelSerializer):
                 'categoria': 'categoría',
             }
             
-            for campo, nombre in campos_protegidos_mov.items():
+            for campo, nombre in campos_protegidos.items():
                 if campo in validated_data:
                     valor_nuevo = validated_data[campo]
                     valor_actual = getattr(instance, campo)
@@ -925,17 +915,15 @@ class ProductoSerializer(serializers.ModelSerializer):
                     
                     # Comparar valores normalizados
                     if str(valor_nuevo).strip().upper() != str(valor_actual).strip().upper():
-                        errores[campo] = f'No se puede modificar {nombre} de un producto con movimientos registrados'
+                        errores[campo] = f'No se puede modificar {nombre} de un producto con lotes asociados'
         
         if errores:
             raise serializers.ValidationError(errores)
         
         # Remover campos protegidos del validated_data para evitar cambios accidentales
-        if tiene_movimientos:
+        if tiene_lotes:
             for campo in ['clave', 'nombre', 'presentacion', 'unidad_medida', 'categoria']:
                 validated_data.pop(campo, None)
-        elif tiene_lotes:
-            validated_data.pop('clave', None)
         
         return super().update(instance, validated_data)
 
@@ -1041,18 +1029,22 @@ class LoteSerializer(serializers.ModelSerializer):
         2. Que la cantidad no exceda límites del ContratoProducto
         3. Que el monto total no exceda el monto máximo del contrato
         4. Que la fecha de caducidad sea válida
+        
+        NOTA: El modelo Contrato es opcional (puede no existir en la BD).
         """
         from django.core.exceptions import ValidationError as DjangoValidationError
-        from .models import Contrato
         
         numero_contrato = attrs.get('numero_contrato')
         producto = attrs.get('producto')
         cantidad = attrs.get('cantidad_inicial', 0)
         fecha_caducidad = attrs.get('fecha_caducidad')
         
-        # ISS-007: Si hay numero_contrato, buscar y validar el Contrato
+        # ISS-007: Si hay numero_contrato, buscar y validar el Contrato (si existe el modelo)
         if numero_contrato and producto and cantidad > 0:
             try:
+                # Intentar importar el modelo Contrato (puede no existir)
+                from .models import Contrato
+                
                 # Buscar contrato por número
                 contrato = Contrato.objects.filter(
                     numero_contrato=numero_contrato,
@@ -1069,6 +1061,9 @@ class LoteSerializer(serializers.ModelSerializer):
                 # Si no existe contrato con ese número, solo es advertencia (no bloquea)
                 # porque el contrato podría estar en otro sistema o ser legacy
                 
+            except ImportError:
+                # El modelo Contrato no existe - continuar sin validación de contrato
+                pass
             except DjangoValidationError as e:
                 # Convertir ValidationError de Django a DRF
                 if hasattr(e, 'message_dict'):
