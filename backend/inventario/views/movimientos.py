@@ -203,6 +203,25 @@ class MovimientoViewSet(
                 Q(referencia__icontains=search_term)
             )
         
+        # ISS-FIX: Filtro por estado de confirmación (entrega)
+        # - confirmado: salidas con [CONFIRMADO] en el motivo
+        # - pendiente: salidas SIN [CONFIRMADO] en el motivo
+        # NOTA: Este filtro se omite para la vista agrupada (se aplica post-agrupación)
+        # El flag _skip_estado_confirmacion se usa internamente
+        skip_estado_filter = getattr(self, '_skip_estado_confirmacion', False)
+        estado_confirmacion = self.request.query_params.get('estado_confirmacion')
+        if estado_confirmacion and not skip_estado_filter:
+            estado_lower = estado_confirmacion.lower()
+            if estado_lower == 'confirmado':
+                # Confirmados: solo salidas que tienen [CONFIRMADO]
+                queryset = queryset.filter(
+                    tipo='salida',
+                    motivo__icontains='[CONFIRMADO]'
+                )
+            elif estado_lower == 'pendiente':
+                # Pendientes: solo salidas que NO tienen [CONFIRMADO]
+                queryset = queryset.filter(tipo='salida').exclude(motivo__icontains='[CONFIRMADO]')
+        
         return queryset.order_by('-fecha')
 
     def perform_create(self, serializer):
@@ -859,6 +878,7 @@ class MovimientoViewSet(
             - page: Página actual (default 1)
             - page_size: Grupos por página (default 15)
             - tipo, centro, fecha_inicio, fecha_fin, search: Filtros estándar
+            - estado_confirmacion: 'confirmado' o 'pendiente' - filtra grupos/movimientos
             
         Returns:
             - grupos: Lista de grupos paginados
@@ -869,8 +889,15 @@ class MovimientoViewSet(
         import re
         from collections import defaultdict
         
-        # Obtener queryset base con filtros aplicados
+        # ISS-FIX: Para vista agrupada, capturamos el filtro de estado_confirmacion
+        # y lo aplicamos DESPUÉS de agrupar (para no romper la agrupación)
+        estado_confirmacion = request.query_params.get('estado_confirmacion', '').lower()
+        
+        # Omitir el filtro de estado_confirmacion en get_queryset
+        # para obtener todos los movimientos relacionados y agrupar correctamente
+        self._skip_estado_confirmacion = True
         queryset = self.get_queryset()
+        self._skip_estado_confirmacion = False
         
         # Obtener TODOS los movimientos (sin paginar) para agrupar correctamente
         # Limitamos a un máximo razonable para evitar problemas de memoria
@@ -1034,7 +1061,21 @@ class MovimientoViewSet(
             reverse=True
         )
         
-        # Calcular totales
+        # ISS-FIX: Aplicar filtro de estado_confirmacion a grupos y movimientos individuales
+        # Para grupos: filtrar basándose en si el grupo está confirmado o pendiente
+        # Para sin_grupo: filtrar basándose en el estado del movimiento individual (solo salidas)
+        if estado_confirmacion == 'confirmado':
+            # Filtrar grupos confirmados
+            grupos_list = [g for g in grupos_list if g.get('confirmado', False)]
+            # Filtrar movimientos individuales: solo salidas confirmadas
+            sin_grupo = [m for m in sin_grupo if m.get('tipo') == 'salida' and m.get('confirmado', False)]
+        elif estado_confirmacion == 'pendiente':
+            # Filtrar grupos pendientes (no confirmados)
+            grupos_list = [g for g in grupos_list if not g.get('confirmado', False)]
+            # Filtrar movimientos individuales: solo salidas pendientes (no confirmadas)
+            sin_grupo = [m for m in sin_grupo if m.get('tipo') == 'salida' and not m.get('confirmado', False)]
+        
+        # Calcular totales (después de filtrar por estado)
         total_grupos = len(grupos_list)
         total_sin_grupo = len(sin_grupo)
         total_elementos = total_grupos + total_sin_grupo

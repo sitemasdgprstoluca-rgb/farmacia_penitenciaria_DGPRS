@@ -500,8 +500,8 @@ const Movimientos = () => {
   const cargarMovimientos = useCallback(async () => {
     setLoading(true);
     try {
-      // Crear copia de filtros sin estado_confirmacion (se filtra en frontend para vista individual)
-      const { estado_confirmacion, ...filtrosBackend } = filtrosAplicados;
+      // ISS-FIX: Enviar estado_confirmacion al backend para filtrar correctamente
+      // El backend ahora soporta este filtro
       
       if (vistaAgrupada) {
         // ISS-FIX: Vista agrupada - usar endpoint que agrupa en backend
@@ -509,7 +509,7 @@ const Movimientos = () => {
           page: pageGrupos,
           page_size: GRUPOS_POR_PAGINA,
           ordering: "-fecha",
-          ...filtrosBackend,
+          ...filtrosAplicados,
         };
         // Limpiar parámetros vacíos
         Object.keys(params).forEach(key => {
@@ -529,7 +529,7 @@ const Movimientos = () => {
           page: page,
           page_size: PAGE_SIZE_INDIVIDUAL,
           ordering: "-fecha",
-          ...filtrosBackend,
+          ...filtrosAplicados,
         };
         // Limpiar parámetros vacíos
         Object.keys(params).forEach(key => {
@@ -545,13 +545,6 @@ const Movimientos = () => {
           ...mov,
           confirmado: estaConfirmado(mov)
         }));
-        
-        // Filtrar por estado de confirmación en frontend
-        if (estado_confirmacion === 'confirmado') {
-          dataConConfirmado = dataConConfirmado.filter(mov => mov.confirmado);
-        } else if (estado_confirmacion === 'pendiente') {
-          dataConConfirmado = dataConConfirmado.filter(mov => !mov.confirmado && mov.tipo === 'salida');
-        }
         
         setMovimientos(dataConConfirmado);
         setTotal(response.data?.count || data.length || 0);
@@ -987,6 +980,17 @@ const Movimientos = () => {
       // Limpiar subtipo_salida si el tipo cambia a algo que no es salida
       if (field === 'tipo' && value !== 'salida' && value !== '') {
         newState.subtipo_salida = '';
+        // También limpiar estado_confirmacion si cambia de salida (pendiente solo aplica a salidas)
+        if (prev.estado_confirmacion === 'pendiente') {
+          newState.estado_confirmacion = '';
+        }
+      }
+      // ISS-FIX: Si selecciona "pendiente", automáticamente filtrar solo salidas
+      if (field === 'estado_confirmacion' && value === 'pendiente') {
+        // Pendiente solo tiene sentido para salidas
+        if (newState.tipo !== 'salida' && newState.tipo !== '') {
+          newState.tipo = 'salida';
+        }
       }
       return newState;
     });
