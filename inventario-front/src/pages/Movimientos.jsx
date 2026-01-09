@@ -1127,9 +1127,10 @@ const Movimientos = () => {
                     onChange={(e) => {
                       setProductoBusqueda(e.target.value);
                       setShowProductoDropdown(true);
-                      // Si borra todo, limpiar también el filtro seleccionado
+                      // Si borra todo, limpiar también el filtro seleccionado y el lote
                       if (e.target.value === '') {
                         setProductoFiltro('');
+                        setFormData(prev => ({ ...prev, lote: '' }));
                       }
                     }}
                     onFocus={() => setShowProductoDropdown(true)}
@@ -1142,6 +1143,7 @@ const Movimientos = () => {
                         setProductoFiltro('');
                         setProductoBusqueda('');
                         setShowProductoDropdown(false);
+                        setFormData(prev => ({ ...prev, lote: '' }));
                       }}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
                       title="Limpiar filtro"
@@ -1152,12 +1154,17 @@ const Movimientos = () => {
                   {/* Dropdown de productos filtrados */}
                   {showProductoDropdown && (
                     <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                      {!productoBusqueda.trim() ? (
+                      {productos.length === 0 ? (
                         <div className="px-4 py-3 text-sm text-gray-500 text-center">
-                          ✍️ Escribe para buscar productos por clave o nombre
+                          ⏳ Cargando productos...
                         </div>
                       ) : productosFiltrados.length > 0 ? (
                         <>
+                          {!productoBusqueda.trim() && (
+                            <div className="px-4 py-2 text-xs text-gray-400 bg-gray-50 border-b">
+                              ✍️ Escribe para filtrar o selecciona de la lista
+                            </div>
+                          )}
                           {productosFiltrados.slice(0, 50).map((p) => (
                             <div
                               key={p.id}
