@@ -1637,6 +1637,9 @@ class RequisicionService:
         Returns:
             Movimiento: Instancia creada con trazabilidad completa
         """
+        # ISS-FIX: Obtener rol del usuario para log de auditoría
+        user_rol = (getattr(self.usuario, 'rol', '') or 'N/A').lower() if self.usuario else 'sistema'
+        
         # Determinar centro_origen/centro_destino según tipo
         centro_origen = centro if tipo == 'salida' else None
         centro_destino = centro if tipo == 'entrada' else None
