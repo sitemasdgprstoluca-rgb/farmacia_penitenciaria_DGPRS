@@ -48,6 +48,17 @@ const GRUPO_STYLES = {
     label: 'TRANSF.',
     emoji: '🔄',
   },
+  salida_centro: {
+    gradient: 'from-violet-50 via-purple-100 to-violet-50',
+    border: 'border-l-violet-500',
+    borderConfirmed: 'border-l-emerald-500',
+    headerBg: 'bg-gradient-to-r from-violet-100 to-purple-100',
+    badge: 'bg-violet-600 text-white',
+    icon: 'text-violet-600',
+    hoverBg: 'hover:from-violet-100 hover:to-purple-100',
+    label: 'SALIDA CENTRO',
+    emoji: '🏥',
+  },
 };
 
 // 🦴 Skeleton component para loading elegante
@@ -374,9 +385,10 @@ const Movimientos = () => {
       const esSalidaMasiva = grupoId?.startsWith('SAL-');
       const esRequisicion = grupoId?.startsWith('REQ-') || motivo.includes('_POR_REQUISICION');
       const esTransferencia = grupoId?.startsWith('TRANSF-') || (mov.tipo === 'salida' && mov.subtipo_salida === 'transferencia');
+      const esSalidaCentro = grupoId?.startsWith('AUTO-');
       
       // Determinar si debe agruparse
-      const debeAgruparse = grupoId && (esSalidaMasiva || esRequisicion || esTransferencia);
+      const debeAgruparse = grupoId && (esSalidaMasiva || esRequisicion || esTransferencia || esSalidaCentro);
       
       if (debeAgruparse) {
         if (!grupos.has(grupoId)) {
@@ -385,6 +397,7 @@ const Movimientos = () => {
           if (grupoId.startsWith('SAL-')) tipoGrupo = 'salida_masiva';
           else if (grupoId.startsWith('REQ-')) tipoGrupo = 'requisicion';
           else if (grupoId.startsWith('TRANSF-')) tipoGrupo = 'transferencia';
+          else if (grupoId.startsWith('AUTO-')) tipoGrupo = 'salida_centro';
           
           grupos.set(grupoId, {
             id: grupoId,
@@ -1790,6 +1803,7 @@ const Movimientos = () => {
                             const esRequisicion = grupo.tipo_grupo === 'requisicion';
                             const esSalidaMasiva = grupo.tipo_grupo === 'salida_masiva';
                             const esTransferencia = grupo.tipo_grupo === 'transferencia';
+                            const esSalidaCentro = grupo.tipo_grupo === 'salida_centro';
                             const styles = GRUPO_STYLES[grupo.tipo_grupo] || GRUPO_STYLES.transferencia;
                             
                             // ID formateado elegantemente
@@ -1797,7 +1811,9 @@ const Movimientos = () => {
                               ? grupo.id 
                               : esSalidaMasiva 
                                 ? `${styles.emoji} ${grupo.id.slice(-8).toUpperCase()}` 
-                                : `${styles.emoji} ${grupo.id.slice(-6).toUpperCase()}`;
+                                : esSalidaCentro
+                                  ? `${styles.emoji} Salida ${grupo.centro_nombre || 'Centro'}`
+                                  : `${styles.emoji} ${grupo.id.slice(-6).toUpperCase()}`;
                             
                             const isExpanded = gruposExpandidos.has(grupo.id);
                             

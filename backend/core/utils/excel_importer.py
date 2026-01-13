@@ -306,8 +306,14 @@ def importar_productos_desde_excel(archivo, usuario):
                 es_controlado = _parse_bool(get_val('es_controlado', 'No'))
                 
                 # ========== ACTIVO/ESTADO ==========
-                estado_raw = get_val('activo', 'Activo')
-                activo = _parse_bool(estado_raw) if estado_raw else True
+                # ISS-FIX: Por defecto activo=True, solo desactivar si explícitamente dice 'No' o 'Inactivo'
+                estado_raw = get_val('activo', None)
+                if estado_raw is None or str(estado_raw).strip() == '':
+                    activo = True  # Default: activo
+                else:
+                    valor_str = str(estado_raw).strip().lower()
+                    # Solo es inactivo si explícitamente dice no/inactivo/false/0
+                    activo = valor_str not in ['no', 'inactivo', 'false', '0', 'n', 'inactive']
                 
                 # ========== DESCRIPCION ==========
                 desc_parts = [p for p in [presentacion, concentracion, marca] if p]

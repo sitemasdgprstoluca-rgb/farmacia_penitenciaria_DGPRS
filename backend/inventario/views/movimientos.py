@@ -931,18 +931,34 @@ class MovimientoViewSet(
             # Patrón 1: Salidas masivas [SAL-xxx]
             match_sal = re.search(r'\[(SAL-[^\]]+)\]', motivo)
             if match_sal:
-                return match_sal.group(1)
+                return match_sal.group(1), 'salida_masiva'
             
             # Patrón 2: Movimientos por requisición
             match_req = re.search(r'(SALIDA|ENTRADA)_POR_REQUISICION\s+(REQ-[\w-]+)', motivo, re.IGNORECASE)
             if match_req:
-                return match_req.group(2)
+                return match_req.group(2), 'requisicion'
             
             # Patrón 3: Campo requisicion directo
             if hasattr(mov, 'requisicion_id') and mov.requisicion_id:
-                return f'REQ-{mov.requisicion_id}'
+                return f'REQ-{mov.requisicion_id}', 'requisicion'
             
-            return None
+            # Patrón 4: ISS-FIX - Agrupar salidas del MISMO CENTRO, MISMO DÍA, MISMA HORA Y MINUTO
+            # Esto detecta salidas masivas de centro que no tienen etiqueta [SAL-xxx]
+            if mov.tipo == 'salida' and mov.fecha:
+                # Obtener centro destino (para salidas a un centro específico)
+                centro_id = None
+                if mov.centro_destino:
+                    centro_id = mov.centro_destino.id
+                elif mov.lote and mov.lote.centro:
+                    centro_id = mov.lote.centro.id
+                
+                if centro_id:
+                    # Crear ID de grupo basado en: centro + fecha + hora + minuto
+                    fecha_str = mov.fecha.strftime('%Y%m%d-%H%M')
+                    grupo_auto = f'AUTO-{centro_id}-{fecha_str}'
+                    return grupo_auto, 'salida_centro'
+            
+            return None, None
         
         def es_confirmado(mov):
             return '[CONFIRMADO]' in (mov.motivo or '')
@@ -951,36 +967,17 @@ class MovimientoViewSet(
             return '[PENDIENTE]' in (mov.motivo or '')
         
         for mov in movimientos:
-            grupo_id = extraer_grupo(mov)
+            grupo_id, tipo_grupo_detectado = extraer_grupo(mov)
             motivo = mov.motivo or ''
             
-            # ISS-FIX: Determinar si debe agruparse
-            # Salidas masivas: tipo=salida Y subtipo=transferencia con [SAL-xxx]
-            es_salida_masiva = (
-                grupo_id and 
-                grupo_id.startswith('SAL-') and 
-                mov.tipo == 'salida' and 
-                mov.subtipo_salida == 'transferencia'
-            )
-            # ISS-FIX: Entradas de salida masiva - se crean cuando se confirma
-            # Tienen el patrón [SAL-xxx] en el motivo
-            es_entrada_salida_masiva = (
-                grupo_id and 
-                grupo_id.startswith('SAL-') and 
-                mov.tipo == 'entrada'
-            )
-            es_mov_requisicion = (
-                grupo_id and 
-                (grupo_id.startswith('REQ-') or '_POR_REQUISICION' in motivo)
-            )
-            
-            if grupo_id and (es_salida_masiva or es_entrada_salida_masiva or es_mov_requisicion):
+            # ISS-FIX: Si se detectó un grupo, procesarlo
+            if grupo_id:
                 grupo = grupos[grupo_id]
                 
                 if grupo['id'] is None:
                     # Inicializar grupo
                     grupo['id'] = grupo_id
-                    grupo['tipo_grupo'] = 'salida_masiva' if grupo_id.startswith('SAL-') else 'requisicion'
+                    grupo['tipo_grupo'] = tipo_grupo_detectado
                     grupo['fecha'] = mov.fecha.isoformat() if mov.fecha else None
                     if mov.usuario:
                         grupo['usuario_nombre'] = mov.usuario.get_full_name() or mov.usuario.username
@@ -1023,6 +1020,11 @@ class MovimientoViewSet(
                 if mov.tipo == 'salida':
                     grupo['cantidad_salidas'] += abs(mov.cantidad or 0)
                     grupo['num_salidas'] += 1
+                    # ISS-FIX: Para salidas automáticas (salida_centro), el centro es el destino
+                    if tipo_grupo_detectado == 'salida_centro' and mov.centro_destino:
+                        grupo['centro_nombre'] = mov.centro_destino.nombre
+                    elif tipo_grupo_detectado == 'salida_centro' and mov.lote and mov.lote.centro:
+                        grupo['centro_nombre'] = mov.lote.centro.nombre
                 elif mov.tipo == 'entrada':
                     grupo['cantidad_entradas'] += abs(mov.cantidad or 0)
                     grupo['num_entradas'] += 1
