@@ -7979,14 +7979,17 @@ def trazabilidad_producto(request, clave):
         tipo_movimiento = request.query_params.get('tipo')
         
         # ISS-FIX: Manejar valores especiales de centro
+        # Variable para indicar si filtrar solo Almacén Central (centro=null)
+        filtrar_solo_central = False
+        
         if centro_param and is_farmacia_or_admin(user):
-            if centro_param.lower() in ('central', 'todos'):
-                # 'central' = Farmacia Central (sin filtro extra)
-                # 'todos' = ver todo
-                if centro_param.lower() == 'central':
-                    user_centro = None
-                else:
-                    filtrar_por_centro = False
+            if centro_param.lower() == 'central':
+                # 'central' = Solo Farmacia Central (centro=null)
+                filtrar_solo_central = True
+                filtrar_por_centro = False
+            elif centro_param.lower() == 'todos':
+                # 'todos' = ver todo (sin filtro)
+                filtrar_por_centro = False
             else:
                 try:
                     if centro_param.isdigit():
@@ -8015,8 +8018,11 @@ def trazabilidad_producto(request, clave):
             # Centro: solo lotes activos con stock disponible
             lotes = Lote.objects.filter(producto=producto, activo=True, cantidad_actual__gt=0)
         
-        # Aplicar filtro de centro
-        if filtrar_por_centro and user_centro:
+        # ISS-FIX: Aplicar filtro de centro
+        if filtrar_solo_central:
+            # Solo Almacén Central (centro=null)
+            lotes = lotes.filter(centro__isnull=True)
+        elif filtrar_por_centro and user_centro:
             lotes = lotes.filter(centro=user_centro)
         
         lotes = lotes.order_by('-created_at')

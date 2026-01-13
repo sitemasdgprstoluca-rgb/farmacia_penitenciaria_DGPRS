@@ -189,7 +189,8 @@ const Trazabilidad = () => {
   
   // Filtro de centro (solo para admin/farmacia)
   const [centros, setCentros] = useState([]);
-  const [centroFiltro, setCentroFiltro] = useState('');
+  // ISS-FIX: Por defecto 'central' para que solo muestre Almacén Central
+  const [centroFiltro, setCentroFiltro] = useState('central');
   
   // Refs
   const debounceRef = useRef(null);
@@ -585,13 +586,15 @@ const Trazabilidad = () => {
       if (tipoMovimiento) params.tipo = tipoMovimiento;
       
       // FILTRO DE CENTRO - Lógica clara:
-      // - vacío/undefined: Backend usa 'central' (Farmacia Central) por defecto
+      // - 'central': Solo Farmacia Central (centro=null en BD)
       // - 'todos': Ver todos los movimientos de todos los centros
       // - ID numérico: Centro específico
       if (centroFiltro) {
         params.centro = centroFiltro;
+      } else {
+        // ISS-FIX: Enviar 'central' por defecto para admin/farmacia
+        params.centro = 'central';
       }
-      // Si no hay centroFiltro, el backend asume 'central' por defecto
       
       const response = await trazabilidadAPI.global(params);
       setResultadosGlobal(response.data);
