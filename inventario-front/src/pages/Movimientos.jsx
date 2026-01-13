@@ -1982,160 +1982,195 @@ const Movimientos = () => {
                                     ═══════════════════════════════════════════════════════════════════ */}
                                 {isExpanded && (
                                   <>
-                                    {/* 🔴 SECCIÓN DE SALIDAS */}
-                                    {grupo.salidas?.length > 0 && (
-                                      <>
-                                        <tr className="bg-gradient-to-r from-red-50 to-red-100 border-l-4 border-red-400">
-                                          <td colSpan={6} className="px-4 py-2">
-                                            <div className="flex items-center gap-2 text-red-700">
-                                              <div className="w-6 h-6 rounded-full bg-red-200 flex items-center justify-center">
-                                                <span className="text-sm">📤</span>
-                                              </div>
-                                              <span className="font-bold text-xs uppercase tracking-wider">
-                                                Salidas (Farmacia Central)
-                                              </span>
-                                              <span className="text-xs bg-red-200 text-red-800 px-2 py-0.5 rounded-full font-medium">
-                                                {grupo.salidas.length} item{grupo.salidas.length > 1 ? 's' : ''}
-                                              </span>
-                                            </div>
-                                          </td>
-                                        </tr>
-                                        {grupo.salidas.map((mov, iIndex) => (
-                                          <tr 
-                                            key={`sal-${mov.id}`}
-                                            className={`
-                                              transition-all duration-200 hover:bg-red-100
-                                              ${iIndex % 2 === 0 ? 'bg-red-50/50' : 'bg-red-50/80'}
-                                              border-l-4 border-red-300
-                                            `}
-                                          >
-                                            <td className="px-3 py-2.5 pl-10">
-                                              <div className="font-medium text-gray-800 text-sm">{mov.producto_nombre || mov.producto || ""}</div>
-                                              <div className="text-xs text-gray-500 mt-0.5">
-                                                <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
-                                                  Lote: {mov.lote_numero || mov.lote_codigo || mov.numero_lote || 'N/A'}
+                                    {/* 🔴 SECCIÓN 1: SALIDAS ALMACÉN (Transferencias) */}
+                                    {(() => {
+                                      const salidasAlmacen = (grupo.salidas || grupo.items || []).filter(
+                                        m => m.tipo === 'salida' && (m.subtipo_salida === 'transferencia' || m.centro_nombre === 'Almacén Central')
+                                      );
+                                      if (salidasAlmacen.length === 0) return null;
+                                      return (
+                                        <>
+                                          <tr className="bg-gradient-to-r from-red-50 to-red-100 border-l-4 border-red-400">
+                                            <td colSpan={6} className="px-4 py-2">
+                                              <div className="flex items-center gap-2 text-red-700">
+                                                <div className="w-6 h-6 rounded-full bg-red-200 flex items-center justify-center">
+                                                  <span className="text-sm">📤</span>
+                                                </div>
+                                                <span className="font-bold text-xs uppercase tracking-wider">
+                                                  1. Salida Almacén Central (Transferencia)
+                                                </span>
+                                                <span className="text-xs bg-red-200 text-red-800 px-2 py-0.5 rounded-full font-medium">
+                                                  {salidasAlmacen.length} item{salidasAlmacen.length > 1 ? 's' : ''}
                                                 </span>
                                               </div>
                                             </td>
-                                            <td className="px-2 py-2.5">
-                                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-red-100 text-red-700 border border-red-200">
-                                                <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span>
-                                                SALIDA
-                                              </span>
-                                            </td>
-                                            <td className="px-2 py-2.5 text-right">
-                                              <span className="font-bold text-red-600 text-base tabular-nums">
-                                                -{Math.abs(mov.cantidad)}
-                                              </span>
-                                            </td>
-                                            <td className="px-2 py-2.5 text-gray-600 text-xs hidden sm:table-cell">Almacén Central</td>
-                                            <td className="px-2 py-2.5 text-gray-500 text-xs hidden md:table-cell">
-                                              {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX') : ''}
-                                            </td>
-                                            <td className="px-2 py-2.5 text-center">
-                                              <span className="text-xs text-gray-400 font-mono">#{mov.id}</span>
-                                            </td>
                                           </tr>
-                                        ))}
-                                      </>
-                                    )}
+                                          {salidasAlmacen.map((mov, iIndex) => (
+                                            <tr 
+                                              key={`sal-alm-${mov.id}`}
+                                              className={`
+                                                transition-all duration-200 hover:bg-red-100
+                                                ${iIndex % 2 === 0 ? 'bg-red-50/50' : 'bg-red-50/80'}
+                                                border-l-4 border-red-300
+                                              `}
+                                            >
+                                              <td className="px-3 py-2.5 pl-10">
+                                                <div className="font-medium text-gray-800 text-sm">{mov.producto_nombre || mov.producto || ""}</div>
+                                                <div className="text-xs text-gray-500 mt-0.5">
+                                                  <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
+                                                    Lote: {mov.lote_numero || mov.lote_codigo || mov.numero_lote || 'N/A'}
+                                                  </span>
+                                                </div>
+                                              </td>
+                                              <td className="px-2 py-2.5">
+                                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-red-100 text-red-700 border border-red-200">
+                                                  <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+                                                  SALIDA
+                                                </span>
+                                              </td>
+                                              <td className="px-2 py-2.5 text-right">
+                                                <span className="font-bold text-red-600 text-base tabular-nums">
+                                                  -{Math.abs(mov.cantidad)}
+                                                </span>
+                                              </td>
+                                              <td className="px-2 py-2.5 text-gray-600 text-xs hidden sm:table-cell">Almacén Central</td>
+                                              <td className="px-2 py-2.5 text-gray-500 text-xs hidden md:table-cell">
+                                                {mov.fecha ? new Date(mov.fecha).toLocaleDateString('es-MX') : ''}
+                                              </td>
+                                              <td className="px-2 py-2.5 text-center">
+                                                <span className="text-xs text-gray-400 font-mono">#{mov.id}</span>
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </>
+                                      );
+                                    })()}
                                     
-                                    {/* 🟢 SECCIÓN DE ENTRADAS */}
-                                    {grupo.entradas?.length > 0 && (
-                                      <>
-                                        <tr className="bg-gradient-to-r from-emerald-50 to-emerald-100 border-l-4 border-emerald-400">
-                                          <td colSpan={6} className="px-4 py-2">
-                                            <div className="flex items-center gap-2 text-emerald-700">
-                                              <div className="w-6 h-6 rounded-full bg-emerald-200 flex items-center justify-center">
-                                                <span className="text-sm">📥</span>
-                                              </div>
-                                              <span className="font-bold text-xs uppercase tracking-wider">
-                                                Entradas ({grupo.centro_nombre})
-                                              </span>
-                                              <span className="text-xs bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-full font-medium">
-                                                {grupo.entradas.length} item{grupo.entradas.length > 1 ? 's' : ''}
-                                              </span>
-                                            </div>
-                                          </td>
-                                        </tr>
-                                        {grupo.entradas.map((mov, iIndex) => (
-                                          <tr 
-                                            key={`ent-${mov.id}`}
-                                            className={`
-                                              transition-all duration-200 hover:bg-emerald-100
-                                              ${iIndex % 2 === 0 ? 'bg-emerald-50/50' : 'bg-emerald-50/80'}
-                                              border-l-4 border-emerald-300
-                                            `}
-                                          >
-                                            <td className="px-3 py-2.5 pl-10">
-                                              <div className="font-medium text-gray-800 text-sm">{mov.producto_nombre || mov.producto || ""}</div>
-                                              <div className="text-xs text-gray-500 mt-0.5">
-                                                <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
-                                                  Lote: {mov.lote_numero || mov.lote_codigo || mov.numero_lote || 'N/A'}
+                                    {/* 🟢 SECCIÓN 2: ENTRADAS CENTRO (Recepción) */}
+                                    {(() => {
+                                      const entradasCentro = (grupo.entradas || grupo.items || []).filter(m => m.tipo === 'entrada');
+                                      if (entradasCentro.length === 0) return null;
+                                      return (
+                                        <>
+                                          <tr className="bg-gradient-to-r from-emerald-50 to-emerald-100 border-l-4 border-emerald-400">
+                                            <td colSpan={6} className="px-4 py-2">
+                                              <div className="flex items-center gap-2 text-emerald-700">
+                                                <div className="w-6 h-6 rounded-full bg-emerald-200 flex items-center justify-center">
+                                                  <span className="text-sm">📥</span>
+                                                </div>
+                                                <span className="font-bold text-xs uppercase tracking-wider">
+                                                  2. Entrada Centro (Recepción)
+                                                </span>
+                                                <span className="text-xs bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-full font-medium">
+                                                  {entradasCentro.length} item{entradasCentro.length > 1 ? 's' : ''}
                                                 </span>
                                               </div>
                                             </td>
-                                            <td className="px-2 py-2.5">
-                                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
-                                                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
-                                                ENTRADA
-                                              </span>
-                                            </td>
-                                            <td className="px-2 py-2.5 text-right">
-                                              <span className="font-bold text-emerald-600 text-base tabular-nums">
-                                                +{Math.abs(mov.cantidad)}
-                                              </span>
-                                            </td>
-                                            <td className="px-2 py-2.5 text-gray-600 text-xs hidden sm:table-cell">{mov.centro_nombre || grupo.centro_nombre}</td>
-                                            <td className="px-2 py-2.5 text-gray-500 text-xs hidden md:table-cell">
-                                              {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX') : ''}
-                                            </td>
-                                            <td className="px-2 py-2.5 text-center">
-                                              <span className="text-xs text-gray-400 font-mono">#{mov.id}</span>
+                                          </tr>
+                                          {entradasCentro.map((mov, iIndex) => (
+                                            <tr 
+                                              key={`ent-${mov.id}`}
+                                              className={`
+                                                transition-all duration-200 hover:bg-emerald-100
+                                                ${iIndex % 2 === 0 ? 'bg-emerald-50/50' : 'bg-emerald-50/80'}
+                                                border-l-4 border-emerald-300
+                                              `}
+                                            >
+                                              <td className="px-3 py-2.5 pl-10">
+                                                <div className="font-medium text-gray-800 text-sm">{mov.producto_nombre || mov.producto || ""}</div>
+                                                <div className="text-xs text-gray-500 mt-0.5">
+                                                  <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
+                                                    Lote: {mov.lote_numero || mov.lote_codigo || mov.numero_lote || 'N/A'}
+                                                  </span>
+                                                </div>
+                                              </td>
+                                              <td className="px-2 py-2.5">
+                                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                                                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
+                                                  ENTRADA
+                                                </span>
+                                              </td>
+                                              <td className="px-2 py-2.5 text-right">
+                                                <span className="font-bold text-emerald-600 text-base tabular-nums">
+                                                  +{Math.abs(mov.cantidad)}
+                                                </span>
+                                              </td>
+                                              <td className="px-2 py-2.5 text-gray-600 text-xs hidden sm:table-cell">{mov.centro_nombre || grupo.centro_nombre}</td>
+                                              <td className="px-2 py-2.5 text-gray-500 text-xs hidden md:table-cell">
+                                                {mov.fecha ? new Date(mov.fecha).toLocaleDateString('es-MX') : ''}
+                                              </td>
+                                              <td className="px-2 py-2.5 text-center">
+                                                <span className="text-xs text-gray-400 font-mono">#{mov.id}</span>
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </>
+                                      );
+                                    })()}
+                                    
+                                    {/* 🟠 SECCIÓN 3: SALIDAS CENTRO (Dispensación) */}
+                                    {(() => {
+                                      const salidasCentro = (grupo.salidas || grupo.items || []).filter(
+                                        m => m.tipo === 'salida' && m.subtipo_salida === 'dispensacion' && m.centro_nombre !== 'Almacén Central'
+                                      );
+                                      if (salidasCentro.length === 0) return null;
+                                      return (
+                                        <>
+                                          <tr className="bg-gradient-to-r from-orange-50 to-orange-100 border-l-4 border-orange-400">
+                                            <td colSpan={6} className="px-4 py-2">
+                                              <div className="flex items-center gap-2 text-orange-700">
+                                                <div className="w-6 h-6 rounded-full bg-orange-200 flex items-center justify-center">
+                                                  <span className="text-sm">💊</span>
+                                                </div>
+                                                <span className="font-bold text-xs uppercase tracking-wider">
+                                                  3. Salida Centro (Dispensación a Internos)
+                                                </span>
+                                                <span className="text-xs bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full font-medium">
+                                                  {salidasCentro.length} item{salidasCentro.length > 1 ? 's' : ''}
+                                                </span>
+                                              </div>
                                             </td>
                                           </tr>
-                                        ))}
-                                      </>
-                                    )}
-                                    
-                                    {/* ⚪ Items sin clasificar (fallback) */}
-                                    {(!grupo.salidas?.length && !grupo.entradas?.length && grupo.items?.length > 0) && grupo.items.map((mov, iIndex) => (
-                                      <tr 
-                                        key={mov.id}
-                                        className={`
-                                          transition-all duration-200 hover:bg-gray-100
-                                          ${iIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
-                                          border-l-4 ${mov.tipo === 'entrada' ? 'border-emerald-300' : 'border-red-300'}
-                                        `}
-                                      >
-                                        <td className="px-3 py-2.5 pl-10">
-                                          <div className="font-medium text-gray-800 text-sm">{mov.producto_nombre || mov.producto || ""}</div>
-                                          <div className="text-xs text-gray-500 mt-0.5">
-                                            <span className="bg-gray-100 px-1.5 py-0.5 rounded">
-                                              Lote: {mov.lote_numero || mov.lote_codigo || mov.numero_lote || 'N/A'}
-                                            </span>
-                                          </div>
-                                        </td>
-                                        <td className="px-2 py-2.5">
-                                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold ${mov.tipo === 'entrada' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
-                                            <span className={`w-1.5 h-1.5 rounded-full ${mov.tipo === 'entrada' ? 'bg-emerald-500' : 'bg-red-500'}`}></span>
-                                            {mov.tipo?.toUpperCase()}
-                                          </span>
-                                        </td>
-                                        <td className="px-2 py-2.5 text-right">
-                                          <span className={`font-bold text-base tabular-nums ${mov.tipo === 'entrada' ? 'text-emerald-600' : 'text-red-600'}`}>
-                                            {mov.tipo === 'entrada' ? '+' : '-'}{Math.abs(mov.cantidad)}
-                                          </span>
-                                        </td>
-                                        <td className="px-2 py-2.5 text-gray-600 text-xs hidden sm:table-cell">{mov.centro_nombre || "Almacén Central"}</td>
-                                        <td className="px-2 py-2.5 text-gray-500 text-xs hidden md:table-cell">
-                                          {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX') : ''}
-                                        </td>
-                                        <td className="px-2 py-2.5 text-center">
-                                          <span className="text-xs text-gray-400 font-mono">#{mov.id}</span>
-                                        </td>
-                                      </tr>
-                                    ))}
+                                          {salidasCentro.map((mov, iIndex) => (
+                                            <tr 
+                                              key={`sal-cen-${mov.id}`}
+                                              className={`
+                                                transition-all duration-200 hover:bg-orange-100
+                                                ${iIndex % 2 === 0 ? 'bg-orange-50/50' : 'bg-orange-50/80'}
+                                                border-l-4 border-orange-300
+                                              `}
+                                            >
+                                              <td className="px-3 py-2.5 pl-10">
+                                                <div className="font-medium text-gray-800 text-sm">{mov.producto_nombre || mov.producto || ""}</div>
+                                                <div className="text-xs text-gray-500 mt-0.5">
+                                                  <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
+                                                    Lote: {mov.lote_numero || mov.lote_codigo || mov.numero_lote || 'N/A'}
+                                                  </span>
+                                                </div>
+                                              </td>
+                                              <td className="px-2 py-2.5">
+                                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-orange-100 text-orange-700 border border-orange-200">
+                                                  <span className="w-1.5 h-1.5 bg-orange-500 rounded-full"></span>
+                                                  DISPENSACIÓN
+                                                </span>
+                                              </td>
+                                              <td className="px-2 py-2.5 text-right">
+                                                <span className="font-bold text-orange-600 text-base tabular-nums">
+                                                  -{Math.abs(mov.cantidad)}
+                                                </span>
+                                              </td>
+                                              <td className="px-2 py-2.5 text-gray-600 text-xs hidden sm:table-cell">{mov.centro_nombre || grupo.centro_nombre}</td>
+                                              <td className="px-2 py-2.5 text-gray-500 text-xs hidden md:table-cell">
+                                                {mov.fecha ? new Date(mov.fecha).toLocaleDateString('es-MX') : ''}
+                                              </td>
+                                              <td className="px-2 py-2.5 text-center">
+                                                <span className="text-xs text-gray-400 font-mono">#{mov.id}</span>
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </>
+                                      );
+                                    })()}
                                     
                                     {/* Espaciador visual entre grupos */}
                                     <tr className="bg-gray-100/50">

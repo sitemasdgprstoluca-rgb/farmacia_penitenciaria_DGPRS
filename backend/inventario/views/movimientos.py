@@ -1020,9 +1020,26 @@ class MovimientoViewSet(
                         item_centro = 'Centro destino'
                 
                 # Agregar item al grupo
+                # Determinar subtipo descriptivo para mostrar en UI
+                if mov.tipo == 'salida':
+                    if mov.subtipo_salida == 'dispensacion' or mov.centro_origen:
+                        subtipo_desc = 'dispensacion'
+                        tipo_display = 'Salida Centro (Dispensación)'
+                    elif mov.subtipo_salida == 'transferencia' or mov.centro_destino:
+                        subtipo_desc = 'transferencia'
+                        tipo_display = 'Salida Almacén (Transferencia)'
+                    else:
+                        subtipo_desc = mov.subtipo_salida or 'salida'
+                        tipo_display = 'Salida'
+                else:
+                    subtipo_desc = None
+                    tipo_display = 'Entrada Centro (Recepción)'
+                
                 item_data = {
                     'id': mov.id,
                     'tipo': mov.tipo,
+                    'subtipo_salida': subtipo_desc,
+                    'tipo_display': tipo_display,
                     'cantidad': mov.cantidad,
                     'fecha': mov.fecha.isoformat() if mov.fecha else None,
                     'motivo': mov.motivo,
