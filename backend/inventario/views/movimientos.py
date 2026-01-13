@@ -928,12 +928,24 @@ class MovimientoViewSet(
             """Extrae el ID del grupo de un movimiento."""
             motivo = mov.motivo or ''
             
-            # Patrón 1: Salidas masivas [SAL-xxx]
+            # PRIORIDAD 0: Campo referencia (método más confiable)
+            # Todos los movimientos de una salida masiva comparten la misma referencia
+            if hasattr(mov, 'referencia') and mov.referencia:
+                ref = mov.referencia
+                # Determinar tipo de grupo por el prefijo de la referencia
+                if ref.startswith('SAL-'):
+                    return ref, 'salida_masiva'
+                elif ref.startswith('REQ-'):
+                    return ref, 'requisicion'
+                else:
+                    return ref, 'referencia'
+            
+            # Patrón 1: Salidas masivas [SAL-xxx] en motivo (fallback)
             match_sal = re.search(r'\[(SAL-[^\]]+)\]', motivo)
             if match_sal:
                 return match_sal.group(1), 'salida_masiva'
             
-            # Patrón 2: Movimientos por requisición
+            # Patrón 2: Movimientos por requisición en motivo
             match_req = re.search(r'(SALIDA|ENTRADA)_POR_REQUISICION\s+(REQ-[\w-]+)', motivo, re.IGNORECASE)
             if match_req:
                 return match_req.group(2), 'requisicion'
@@ -944,11 +956,16 @@ class MovimientoViewSet(
             
             # Patrón 4: Auto-agrupar movimientos hacia UN CENTRO ESPECÍFICO
             # Agrupa salidas y entradas que tienen el mismo centro_destino + misma fecha/hora
-            # Esto captura transferencias completas: salida de almacén + entrada al centro
             if mov.fecha and mov.centro_destino_id:
                 fecha_str = mov.fecha.strftime('%Y%m%d-%H%M')
                 grupo_auto = f'AUTO-{mov.centro_destino_id}-{fecha_str}'
                 return grupo_auto, 'transferencia_centro'
+            
+            # Patrón 5: Auto-agrupar salidas DESDE un centro (dispensaciones)
+            if mov.fecha and mov.centro_origen_id and mov.tipo == 'salida':
+                fecha_str = mov.fecha.strftime('%Y%m%d-%H%M')
+                grupo_auto = f'AUTO-DISP-{mov.centro_origen_id}-{fecha_str}'
+                return grupo_auto, 'dispensacion_centro'
             
             return None, None
         
