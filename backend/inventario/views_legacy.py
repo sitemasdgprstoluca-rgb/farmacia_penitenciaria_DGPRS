@@ -8122,6 +8122,14 @@ def trazabilidad_producto(request, clave):
         movimientos = movimientos.order_by('-fecha')[:100]
         movimientos_data = []
         for mov in movimientos:
+            # ISS-FIX: Determinar el centro a mostrar según el tipo de movimiento
+            # - ENTRADA: mostrar centro_destino (donde llega)
+            # - SALIDA: mostrar centro_origen (de donde sale)
+            if mov.tipo.lower() == 'entrada':
+                centro_display = mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central'
+            else:
+                centro_display = mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'
+            
             movimientos_data.append({
                 'id': mov.id,
                 'tipo_movimiento': mov.tipo.upper(),
@@ -8129,7 +8137,12 @@ def trazabilidad_producto(request, clave):
                 'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                 'cantidad': mov.cantidad,
                 'fecha_movimiento': mov.fecha.isoformat(),
-                'observaciones': mov.motivo or ''
+                'observaciones': mov.motivo or '',
+                # ISS-FIX: Agregar información de centro
+                'centro': centro_display,
+                'centro_origen': mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central',
+                'centro_destino': mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central',
+                'usuario': mov.usuario.username if mov.usuario else '-',
             })
 
         stock_total = lotes.filter(activo=True).aggregate(total=Sum('cantidad_actual'))['total'] or 0
