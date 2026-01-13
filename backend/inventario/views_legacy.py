@@ -10019,7 +10019,33 @@ def trazabilidad_buscar(request):
                 except Centro.DoesNotExist:
                     pass
         
+        # ISS-FIX: Priorizar búsqueda exacta de producto por clave
+        # Si existe un producto con esa clave exacta, retornarlo primero
+        # Esto evita que claves cortas como "618" coincidan con números de lote
+        producto_exacto = Producto.objects.filter(clave__iexact=query).first()
+        if producto_exacto:
+            # Verificar si hay lotes accesibles para este usuario
+            lotes_accesibles = Lote.objects.filter(producto=producto_exacto, activo=True)
+            if filtrar_solo_central:
+                lotes_accesibles = lotes_accesibles.filter(centro__isnull=True)
+            elif filtrar_por_centro and user_centro:
+                lotes_accesibles = lotes_accesibles.filter(centro=user_centro)
+            
+            if lotes_accesibles.exists() or es_admin_farmacia:
+                return Response({
+                    'tipo': 'producto',
+                    'encontrado': True,
+                    'identificador': producto_exacto.clave,
+                    'id': producto_exacto.id,
+                    'datos': {
+                        'clave': producto_exacto.clave,
+                        'nombre': producto_exacto.nombre,
+                        'descripcion': producto_exacto.descripcion,
+                    }
+                })
+        
         # 1. Intentar buscar como lote (solo admin/farmacia)
+        # Solo si no se encontró producto exacto
         if es_admin_farmacia:
             lote_query = Lote.objects.select_related('producto', 'centro').filter(
                 Q(numero_lote__iexact=query) |
@@ -10046,12 +10072,11 @@ def trazabilidad_buscar(request):
                     }
                 })
         
-        # 2. Buscar como producto (clave o nombre)
+        # 2. Buscar como producto por nombre parcial (ya no incluye clave exacta, se buscó arriba)
         producto = Producto.objects.filter(
-            Q(clave__iexact=query) |
             Q(clave__icontains=query) |
             Q(nombre__icontains=query)
-        ).first()
+        ).exclude(clave__iexact=query).first()  # Excluir el exacto que ya se buscó
         
         if producto:
             # Verificar si hay lotes accesibles para este usuario
@@ -10138,13 +10163,30 @@ def trazabilidad_autocomplete(request):
         
         results = []
         
-        # 1. Buscar productos
+        # ISS-FIX: Priorizar producto con clave exacta
+        # Si existe un producto con esa clave exacta, mostrarlo primero
+        producto_exacto = Producto.objects.filter(clave__iexact=search, activo=True).first()
+        if producto_exacto:
+            results.append({
+                'tipo': 'producto',
+                'id': producto_exacto.id,
+                'identificador': producto_exacto.clave,
+                'display': f"📦 {producto_exacto.clave}",
+                'secundario': producto_exacto.nombre[:50] + ('...' if len(producto_exacto.nombre) > 50 else ''),
+                'es_exacto': True,  # Marcar como coincidencia exacta
+            })
+        
+        # 1. Buscar productos (excluyendo el exacto si ya se encontró)
         productos_query = Producto.objects.filter(
             activo=True
         ).filter(
             Q(clave__icontains=search) |
             Q(nombre__icontains=search)
         )
+        
+        # Excluir el producto exacto si ya lo agregamos
+        if producto_exacto:
+            productos_query = productos_query.exclude(id=producto_exacto.id)
         
         # ISS-FIX: Filtrar productos según rol del usuario y centro seleccionado
         # - filtrar_solo_central: Solo productos con lotes en Almacén Central
