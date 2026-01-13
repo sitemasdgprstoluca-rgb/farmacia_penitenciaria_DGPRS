@@ -8048,6 +8048,19 @@ def trazabilidad_producto(request, clave):
             elif 'Farmacia Central' not in lotes_consolidados[key]['centros']:
                 lotes_consolidados[key]['centros'].append('Farmacia Central')
         
+        # ISS-FIX: Pre-cargar contratos de lotes originales (Farmacia Central)
+        # para lookup cuando lotes de centros no tengan el contrato
+        lotes_numeros = list(lotes_consolidados.keys())
+        lotes_farmacia_contratos = {}
+        if lotes_numeros:
+            for lote_fc in Lote.objects.filter(
+                producto=producto,
+                centro__isnull=True,  # Solo Farmacia Central
+                numero_lote__in=lotes_numeros,
+                numero_contrato__isnull=False
+            ).exclude(numero_contrato=''):
+                lotes_farmacia_contratos[lote_fc.numero_lote] = lote_fc.numero_contrato
+        
         lotes_data = []
         for key, data in lotes_consolidados.items():
             lote = data['lote_principal']
@@ -8068,6 +8081,11 @@ def trazabilidad_producto(request, clave):
             total_entradas = movimientos_lote.filter(tipo='entrada').aggregate(total=Sum('cantidad'))['total'] or 0
             total_salidas = movimientos_lote.filter(tipo='salida').aggregate(total=Sum('cantidad'))['total'] or 0
 
+            # ISS-FIX: Si el lote principal no tiene contrato, buscar del lote de Farmacia Central
+            numero_contrato = lote.numero_contrato
+            if not numero_contrato:
+                numero_contrato = lotes_farmacia_contratos.get(lote.numero_lote, '')
+
             lotes_data.append({
                 'id': lote.id,  # ID del lote principal
                 'numero_lote': lote.numero_lote,
@@ -8082,7 +8100,7 @@ def trazabilidad_producto(request, clave):
                 'marca': lote.marca or 'N/A',
                 'precio_unitario': str(lote.precio_unitario) if lote.precio_unitario else None,
                 # Campos de trazabilidad de contratos (solo para ADMIN/FARMACIA)
-                'numero_contrato': (lote.numero_contrato or '') if is_farmacia_or_admin(user) else None,
+                'numero_contrato': numero_contrato if is_farmacia_or_admin(user) else None,
                 'activo': getattr(lote, 'activo', True),
                 'created_at': lote.created_at.isoformat(),
                 # NUEVO: Ubicaciones donde está distribuido el lote
@@ -10724,11 +10742,30 @@ def trazabilidad_producto_exportar(request, clave):
             lotes_query = lotes_query.filter(centro=user_centro)
         lotes_query = lotes_query.select_related('centro').order_by('-fecha_caducidad')
         
+        # ISS-FIX: Pre-cargar contratos de lotes originales (Farmacia Central) para lookup
+        # Esto permite mostrar el contrato correcto aunque el lote del centro no lo tenga
+        lotes_farmacia_contratos = {}
+        lotes_numeros = [lote.numero_lote for lote in lotes_query]
+        if lotes_numeros:
+            for lote_fc in Lote.objects.filter(
+                producto=producto,
+                centro__isnull=True,  # Solo Farmacia Central
+                numero_lote__in=lotes_numeros,
+                numero_contrato__isnull=False
+            ).exclude(numero_contrato=''):
+                lotes_farmacia_contratos[lote_fc.numero_lote] = lote_fc.numero_contrato
+        
         lotes_data = []
         for lote in lotes_query:
+            # ISS-FIX: Si el lote no tiene contrato, buscar del lote original de Farmacia Central
+            numero_contrato = lote.numero_contrato
+            if not numero_contrato and lote.centro is not None:
+                # Lote de centro sin contrato - buscar del original
+                numero_contrato = lotes_farmacia_contratos.get(lote.numero_lote)
+            
             lotes_data.append({
                 'numero_lote': lote.numero_lote,
-                'numero_contrato': lote.numero_contrato or 'N/A',
+                'numero_contrato': numero_contrato or 'N/A',
                 'fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else 'N/A',
                 'cantidad_actual': lote.cantidad_actual,
                 'cantidad_inicial': lote.cantidad_inicial,
@@ -11022,6 +11059,14 @@ def trazabilidad_lote_exportar(request, codigo):
                 'observaciones': mov.motivo or ''
             })
         
+        # ISS-FIX: Si el lote principal no tiene contrato, buscar en todos los lotes con mismo numero_lote
+        numero_contrato = lote.numero_contrato
+        if not numero_contrato:
+            for l in lotes_con_mismo_numero:
+                if l.numero_contrato:
+                    numero_contrato = l.numero_contrato
+                    break
+        
         producto_info = {
             'clave': lote.producto.clave if lote.producto else 'N/A',
             'descripcion': lote.producto.nombre if lote.producto else 'N/A',
@@ -11031,7 +11076,7 @@ def trazabilidad_lote_exportar(request, codigo):
             'numero_lote': lote.numero_lote,
             'fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else 'N/A',
             'proveedor': lote.marca or 'No especificado',
-            'numero_contrato': lote.numero_contrato or 'N/A',
+            'numero_contrato': numero_contrato or 'N/A',
             'precio_unitario': float(lote.precio_unitario) if lote.precio_unitario else 0,
             'filtros': {
                 'fecha_inicio': fecha_inicio,

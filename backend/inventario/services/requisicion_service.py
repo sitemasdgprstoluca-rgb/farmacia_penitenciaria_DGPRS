@@ -1838,6 +1838,7 @@ class RequisicionService:
             )
             try:
                 # Crear nuevo lote: COPIA FIEL del lote de farmacia
+                # ISS-FIX: Incluir numero_contrato para mantener trazabilidad completa
                 lote_destino = Lote.objects.create(
                     producto=lote_origen.producto,
                     numero_lote=lote_origen.numero_lote,
@@ -1848,6 +1849,8 @@ class RequisicionService:
                     activo=True,
                     precio_unitario=lote_origen.precio_unitario,
                     marca=lote_origen.marca,
+                    numero_contrato=lote_origen.numero_contrato,  # ISS-FIX: Copiar contrato
+                    fecha_fabricacion=lote_origen.fecha_fabricacion,  # ISS-FIX: Copiar fecha fab
                     ubicacion=f'Transferido via REQ-{self.requisicion.numero}'
                 )
                 logger.info(
