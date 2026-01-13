@@ -1317,10 +1317,14 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     )
                     lotes_queryset = lotes_queryset.none()
             else:
-                # ISS-FIX: Admin/farmacia ven todos los lotes
+                # ISS-FIX: Admin/farmacia solo ven lotes de Almacén Central (centro=null)
+                # Los lotes de otros centros se ven en Trazabilidad y Dashboard
+                lotes_antes = lotes_queryset.count()
+                lotes_queryset = lotes_queryset.filter(centro__isnull=True)
+                lotes_despues = lotes_queryset.count()
                 logger.info(
-                    f"ISS-LOTES-PROD: Usuario admin/farmacia, mostrando todos los lotes. "
-                    f"Total: {lotes_queryset.count()}"
+                    f"ISS-LOTES-PROD: Usuario admin/farmacia, mostrando solo lotes de Almacén Central. "
+                    f"Lotes antes: {lotes_antes}, después (solo central): {lotes_despues}"
                 )
             
             # Ordenar por fecha de caducidad (más próximos a vencer primero)
@@ -7876,13 +7880,10 @@ def dashboard_graficas(request):
                 
                 # Solo agregar centros con stock > 0
                 if stock > 0:
-                    # Truncar nombre largo
-                    nombre = centro.nombre
-                    if len(nombre) > 20:
-                        nombre = nombre[:17] + '...'
-                    
+                    # ISS-FIX: Enviar nombre completo para el tooltip
+                    # El truncado se hace en el frontend solo para el eje Y
                     stock_por_centro.append({
-                        'centro': nombre,
+                        'centro': centro.nombre,
                         'stock': stock
                     })
         else:

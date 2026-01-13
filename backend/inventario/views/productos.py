@@ -365,21 +365,32 @@ class ProductoViewSet(viewsets.ModelViewSet):
             # Filtro base: lotes del producto
             lotes_qs = Lote.objects.select_related('centro').filter(producto=producto)
             
-            # Determinar si consolidar
+            # Determinar si consolidar (usado en Trazabilidad)
             centro_param = request.query_params.get('centro')
             consolidar_param = request.query_params.get('consolidar', 'true').lower()
             es_admin_farmacia = is_farmacia_or_admin(user) or user.is_superuser
             
-            # TRAZABILIDAD: Consolidar para admin/farmacia cuando no hay filtro de centro
-            debe_consolidar = es_admin_farmacia and not centro_param and consolidar_param != 'false'
+            # ISS-FIX: Por defecto para admin/farmacia, solo mostrar Almacén Central
+            # Para ver todos los centros (Trazabilidad), pasar ?centro=todos o ?consolidar=true
+            todos_centros = request.query_params.get('centro') == 'todos'
             
-            # Filtro por centro (si se especifica, no se consolida)
+            # TRAZABILIDAD: Consolidar solo cuando se pide explícitamente todos los centros
+            debe_consolidar = es_admin_farmacia and todos_centros and consolidar_param != 'false'
+            
+            # Filtro por centro
             if centro_param:
                 if centro_param == 'central':
                     lotes_qs = lotes_qs.filter(centro__isnull=True)
+                elif centro_param == 'todos':
+                    # Mostrar todos los centros (para Trazabilidad)
+                    pass  # No filtrar
                 else:
                     lotes_qs = lotes_qs.filter(centro_id=centro_param)
-            elif not es_admin_farmacia:
+            elif es_admin_farmacia:
+                # ISS-FIX: Admin/farmacia por defecto solo ve Almacén Central
+                # Los lotes de otros centros se ven en Trazabilidad con ?centro=todos
+                lotes_qs = lotes_qs.filter(centro__isnull=True)
+            else:
                 # Usuarios de centro solo ven lotes de su centro
                 user_centro = get_user_centro(user)
                 if user_centro:

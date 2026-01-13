@@ -1208,14 +1208,18 @@ const Dashboard = () => {
           {/* Stock por Centro - Bar Chart Horizontal */}
           <ChartCard title="Inventario por Centro" icon={FaWarehouse} expandable>
             {graficas.stock_por_centro.length > 0 ? (
-              <ResponsiveContainer width="100%" height={Math.max(320, graficas.stock_por_centro.length * 60)}>
+              <ResponsiveContainer width="100%" height={Math.max(320, graficas.stock_por_centro.length * 80)}>
                 <BarChart 
                   data={graficas.stock_por_centro} 
                   layout="vertical"
-                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  margin={{ top: 5, right: 80, left: 20, bottom: 5 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" horizontal={false} />
-                  <XAxis type="number" tick={{ fill: '#6B7280', fontSize: 12 }} />
+                  <XAxis 
+                    type="number" 
+                    tick={{ fill: '#6B7280', fontSize: 12 }}
+                    tickFormatter={(value) => value.toLocaleString('es-MX')}
+                  />
                   <YAxis 
                     dataKey="centro" 
                     type="category" 
@@ -1229,10 +1233,10 @@ const Dashboard = () => {
                           dy={4} 
                           textAnchor="end" 
                           fill="#374151" 
-                          fontSize={11}
-                          fontWeight={500}
+                          fontSize={12}
+                          fontWeight={600}
                         >
-                          {payload.value.length > 22 ? `${payload.value.slice(0, 22)}…` : payload.value}
+                          {payload.value.length > 20 ? `${payload.value.slice(0, 17)}...` : payload.value}
                         </text>
                       </g>
                     )}
@@ -1242,8 +1246,8 @@ const Dashboard = () => {
                       if (!active || !payload?.length) return null;
                       const data = payload[0].payload;
                       return (
-                        <div className="bg-white rounded-xl shadow-xl border border-gray-200 p-4 min-w-[200px]">
-                          <p className="font-bold text-gray-800 mb-2 text-sm leading-tight">
+                        <div className="bg-white rounded-xl shadow-xl border border-gray-200 p-4 min-w-[250px]">
+                          <p className="font-bold text-gray-800 mb-2 text-base leading-tight">
                             {data.centro}
                           </p>
                           <div className="flex items-center gap-2">
@@ -1252,7 +1256,7 @@ const Dashboard = () => {
                               style={{ backgroundColor: 'var(--color-primary, #9F2241)' }}
                             />
                             <span className="text-gray-600 text-sm">Inventario:</span>
-                            <span className="font-bold text-gray-900">
+                            <span className="font-bold text-gray-900 text-lg">
                               {data.stock?.toLocaleString('es-MX')} uds
                             </span>
                           </div>
@@ -1265,6 +1269,17 @@ const Dashboard = () => {
                     name="Inventario"
                     radius={[0, 8, 8, 0]}
                     fill="var(--color-primary, #9F2241)"
+                    label={({ x, y, width, value }) => (
+                      <text
+                        x={x + width + 8}
+                        y={y + 16}
+                        fill="#374151"
+                        fontSize={12}
+                        fontWeight={600}
+                      >
+                        {value?.toLocaleString('es-MX')} uds
+                      </text>
+                    )}
                   />
                 </BarChart>
               </ResponsiveContainer>
