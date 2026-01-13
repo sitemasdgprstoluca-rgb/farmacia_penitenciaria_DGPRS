@@ -1629,7 +1629,7 @@ class RequisicionService:
             lote: Lote asociado
             tipo: 'entrada' o 'salida'
             cantidad: Cantidad (negativo para salidas)
-            centro: Centro del movimiento
+            centro: Centro del movimiento (origen para salidas, destino para entradas)
             observaciones: Texto descriptivo
             stock_previo: Stock antes del movimiento (para validación)
             producto: Producto asociado (si no se pasa, se toma del lote)
@@ -1640,9 +1640,29 @@ class RequisicionService:
         # ISS-FIX: Obtener rol del usuario para log de auditoría
         user_rol = (getattr(self.usuario, 'rol', '') or 'N/A').lower() if self.usuario else 'sistema'
         
-        # Determinar centro_origen/centro_destino según tipo
-        centro_origen = centro if tipo == 'salida' else None
-        centro_destino = centro if tipo == 'entrada' else None
+        # ISS-FIX: Determinar centro_origen/centro_destino correctamente
+        # Para SALIDAS de Farmacia Central (centro=None):
+        #   - centro_origen = None (Farmacia Central)
+        #   - centro_destino = centro de la requisición (a dónde van)
+        # Para SALIDAS desde un Centro (centro != None):
+        #   - centro_origen = centro (de donde salen)
+        #   - centro_destino = None
+        # Para ENTRADAS:
+        #   - centro_origen = None
+        #   - centro_destino = centro (donde llegan)
+        if tipo == 'salida':
+            if centro is None:
+                # Salida desde Farmacia Central hacia centro de la requisición
+                centro_origen = None
+                centro_destino = self.requisicion.centro_destino if self.requisicion else None
+            else:
+                # Salida desde un centro específico
+                centro_origen = centro
+                centro_destino = None
+        else:
+            # Entrada
+            centro_origen = None
+            centro_destino = centro
         
         # Producto es requerido en la BD
         producto_movimiento = producto or (lote.producto if lote else None)
