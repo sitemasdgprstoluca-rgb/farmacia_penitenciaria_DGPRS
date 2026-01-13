@@ -942,8 +942,14 @@ class MovimientoViewSet(
             if hasattr(mov, 'requisicion_id') and mov.requisicion_id:
                 return f'REQ-{mov.requisicion_id}', 'requisicion'
             
-            # NO auto-agrupar salidas individuales - solo agrupar si tienen etiqueta explícita
-            # Las salidas sin etiqueta [SAL-xxx] se muestran individualmente
+            # Patrón 4: Auto-agrupar salidas de UN CENTRO ESPECÍFICO (no Almacén Central)
+            # Solo si tienen centro_origen (salidas desde un centro, no desde almacén central)
+            if mov.tipo == 'salida' and mov.fecha and mov.centro_origen_id:
+                # centro_origen_id indica que es una salida DESDE un centro específico
+                # (las salidas desde Almacén Central tienen centro_origen_id = null)
+                fecha_str = mov.fecha.strftime('%Y%m%d-%H%M')
+                grupo_auto = f'AUTO-{mov.centro_origen_id}-{fecha_str}'
+                return grupo_auto, 'salida_centro'
             
             return None, None
         
@@ -1007,11 +1013,10 @@ class MovimientoViewSet(
                 if mov.tipo == 'salida':
                     grupo['cantidad_salidas'] += abs(mov.cantidad or 0)
                     grupo['num_salidas'] += 1
-                    # ISS-FIX: Para salidas automáticas (salida_centro), el centro es el destino
-                    if tipo_grupo_detectado == 'salida_centro' and mov.centro_destino:
-                        grupo['centro_nombre'] = mov.centro_destino.nombre
-                    elif tipo_grupo_detectado == 'salida_centro' and mov.lote and mov.lote.centro:
-                        grupo['centro_nombre'] = mov.lote.centro.nombre
+                    # ISS-FIX: Para salidas automáticas (salida_centro), el centro es el ORIGEN
+                    # (de donde salen los productos, no a donde van)
+                    if tipo_grupo_detectado == 'salida_centro' and mov.centro_origen:
+                        grupo['centro_nombre'] = mov.centro_origen.nombre
                 elif mov.tipo == 'entrada':
                     grupo['cantidad_entradas'] += abs(mov.cantidad or 0)
                     grupo['num_entradas'] += 1
