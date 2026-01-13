@@ -10072,13 +10072,23 @@ def trazabilidad_autocomplete(request):
         filtrar_por_centro = not es_admin_farmacia
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
+        # ISS-FIX: Variable para indicar filtro solo Almacén Central
+        filtrar_solo_central = False
+        
         centro_param = request.query_params.get('centro')
-        if centro_param and es_admin_farmacia and centro_param != 'todos':
-            try:
-                user_centro = Centro.objects.get(pk=centro_param)
-                filtrar_por_centro = True
-            except Centro.DoesNotExist:
-                pass
+        if centro_param and es_admin_farmacia:
+            if centro_param == 'central':
+                # Solo Almacén Central (centro=null)
+                filtrar_solo_central = True
+            elif centro_param == 'todos':
+                # Ver todo, sin filtro
+                filtrar_por_centro = False
+            else:
+                try:
+                    user_centro = Centro.objects.get(pk=centro_param)
+                    filtrar_por_centro = True
+                except Centro.DoesNotExist:
+                    pass
         
         results = []
         
@@ -10090,11 +10100,18 @@ def trazabilidad_autocomplete(request):
             Q(nombre__icontains=search)
         )
         
-        # ISS-FIX: Filtrar productos según rol del usuario
-        # - Farmacia/Admin: Ver todos los productos (para trazabilidad histórica)
-        # - Centro: Solo productos con lotes que tengan stock en su centro
-        if filtrar_por_centro and user_centro:
-            # Usuarios de Centro: solo productos con lotes CON stock
+        # ISS-FIX: Filtrar productos según rol del usuario y centro seleccionado
+        # - filtrar_solo_central: Solo productos con lotes en Almacén Central
+        # - filtrar_por_centro + user_centro: Solo productos con lotes en ese centro
+        # - Sin filtro: Ver todos los productos
+        if filtrar_solo_central:
+            # Solo productos con lotes en Almacén Central (centro=null)
+            productos_con_lotes = Lote.objects.filter(
+                centro__isnull=True, activo=True, cantidad_actual__gt=0
+            ).values_list('producto_id', flat=True).distinct()
+            productos_query = productos_query.filter(id__in=productos_con_lotes)
+        elif filtrar_por_centro and user_centro:
+            # Usuarios de Centro: solo productos con lotes CON stock en su centro
             productos_con_lotes = Lote.objects.filter(
                 centro=user_centro, activo=True, cantidad_actual__gt=0
             ).values_list('producto_id', flat=True).distinct()
@@ -10118,7 +10135,10 @@ def trazabilidad_autocomplete(request):
                 Q(producto__nombre__icontains=search)
             )
             
-            if filtrar_por_centro and user_centro:
+            # ISS-FIX: Aplicar filtro de centro a lotes
+            if filtrar_solo_central:
+                lotes_query = lotes_query.filter(centro__isnull=True)
+            elif filtrar_por_centro and user_centro:
                 lotes_query = lotes_query.filter(centro=user_centro)
             
             for lote in lotes_query[:5]:
