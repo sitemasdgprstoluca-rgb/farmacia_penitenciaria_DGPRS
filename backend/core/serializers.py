@@ -1270,6 +1270,7 @@ class RequisicionHistorialEstadosSerializer(serializers.ModelSerializer):
 class DetalleRequisicionSerializer(serializers.ModelSerializer):
     producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
     producto_unidad = serializers.CharField(source='producto.unidad_medida', read_only=True)
+    producto_presentacion = serializers.CharField(source='producto.presentacion', read_only=True, allow_null=True)
     lote_numero = serializers.CharField(source='lote.numero_lote', read_only=True, allow_null=True)
     # ISS-DB: Alias para compatibilidad con frontend
     producto_clave = serializers.CharField(source='producto.clave', read_only=True, allow_null=True)
@@ -1277,6 +1278,7 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
     lote_caducidad = serializers.DateField(source='lote.fecha_caducidad', read_only=True, allow_null=True)
     lote_stock = serializers.IntegerField(source='lote.cantidad_actual', read_only=True, allow_null=True)
     stock_disponible = serializers.SerializerMethodField()  # ISS-FIX: Usar método para calcular stock real
+    stock_centro = serializers.SerializerMethodField()  # Stock del producto/lote en el centro destino
     # cantidad_surtida tiene default 0 en BD
     cantidad_surtida = serializers.IntegerField(required=False, default=0, allow_null=True)
     # MEJORA FLUJO 3: Campo para explicar ajustes de cantidad
@@ -1286,8 +1288,8 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
         model = DetalleRequisicion
         fields = [
             'id', 'producto', 'lote', 
-            'producto_nombre', 'producto_clave', 'producto_descripcion', 'producto_unidad',
-            'lote_numero', 'lote_caducidad', 'lote_stock', 'stock_disponible',
+            'producto_nombre', 'producto_clave', 'producto_descripcion', 'producto_unidad', 'producto_presentacion',
+            'lote_numero', 'lote_caducidad', 'lote_stock', 'stock_disponible', 'stock_centro',
             'cantidad_solicitada', 'cantidad_autorizada', 
             'cantidad_surtida', 'cantidad_recibida', 'notas', 'motivo_ajuste',
             'created_at', 'updated_at'
@@ -1327,6 +1329,37 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
             return stock_total or 0
         
         return 0
+    
+    def get_stock_centro(self, obj):
+        """
+        Calcula el stock del producto/lote en el centro destino de la requisición.
+        """
+        # Obtener el centro destino de la requisición
+        centro_destino = None
+        if hasattr(obj, 'requisicion') and obj.requisicion:
+            centro_destino = obj.requisicion.centro_destino
+        
+        if not centro_destino or not obj.producto:
+            return 0
+        
+        from django.db.models import Sum
+        
+        # Si hay lote específico, buscar ese lote en el centro
+        if obj.lote:
+            lote_centro = obj.producto.lotes.filter(
+                numero_lote=obj.lote.numero_lote,
+                centro=centro_destino,
+                activo=True
+            ).first()
+            return lote_centro.cantidad_actual if lote_centro else 0
+        
+        # Si no hay lote, calcular stock total del producto en el centro
+        stock_total = obj.producto.lotes.filter(
+            activo=True,
+            cantidad_actual__gt=0,
+            centro=centro_destino
+        ).aggregate(total=Sum('cantidad_actual'))['total']
+        return stock_total or 0
     
     def validate(self, data):
         """

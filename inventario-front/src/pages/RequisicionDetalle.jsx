@@ -1326,14 +1326,20 @@ const RequisicionDetalle = () => {
                 <tr>
                   <th className="px-2 py-2 text-left text-xs font-semibold uppercase text-white w-16">Clave</th>
                   <th className="px-2 py-2 text-left text-xs font-semibold uppercase text-white">Producto</th>
+                  <th className="px-2 py-2 text-left text-xs font-semibold uppercase text-white w-24">Presentación</th>
                   <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white w-24">Lote</th>
                   <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white w-20">Unidad</th>
                   <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white w-14">Solic.</th>
-                  {/* ISS-UI-FIX: Mostrar Stock en modo autorización para tomar decisiones */}
+                  {/* ISS-UI-FIX: Mostrar Inventario Almacén y Centro para tomar decisiones */}
                   {(modoAutorizar || esFarmacia) && (
-                    <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white bg-blue-600 w-14">
-                      Stock
-                    </th>
+                    <>
+                      <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white bg-blue-600 w-16">
+                        Inv. Almacén
+                      </th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white bg-purple-600 w-16">
+                        Inv. Centro
+                      </th>
+                    </>
                   )}
                   <th className={`px-2 py-2 text-center text-xs font-semibold uppercase w-16 ${modoAutorizar ? 'bg-green-600 text-white' : 'text-white'}`}>
                     Autoriz.
@@ -1356,6 +1362,9 @@ const RequisicionDetalle = () => {
                     <td className="px-2 py-2 text-xs text-gray-800">
                       {detalle.producto_nombre || detalle.producto?.nombre || detalle.nombre || '-'}
                     </td>
+                    <td className="px-2 py-2 text-xs text-gray-600">
+                      {detalle.producto_presentacion || detalle.producto?.presentacion || '—'}
+                    </td>
                     <td className="px-2 py-2 text-center text-xs">
                       {detalle.lote_numero ? (
                         <div>
@@ -1374,19 +1383,28 @@ const RequisicionDetalle = () => {
                     <td className="px-2 py-2 text-center font-bold text-gray-800">
                       {detalle.cantidad_solicitada}
                     </td>
-                    {/* ISS-UI-FIX: Stock visible en modo autorización para tomar decisiones */}
+                    {/* ISS-UI-FIX: Inventario Almacén y Centro visible en modo autorización */}
                     {(modoAutorizar || esFarmacia) && (
-                      <td className="px-2 py-2 text-center bg-blue-50">
-                        <span className={`font-bold ${
-                          (detalle.lote_stock || detalle.stock_disponible || 0) < detalle.cantidad_solicitada 
-                            ? 'text-red-600' 
-                            : (detalle.lote_stock || detalle.stock_disponible || 0) === 0
-                              ? 'text-red-600'
-                              : 'text-green-600'
-                        }`}>
-                          {detalle.lote_stock ?? detalle.stock_disponible ?? 0}
-                        </span>
-                      </td>
+                      <>
+                        <td className="px-2 py-2 text-center bg-blue-50">
+                          <span className={`font-bold ${
+                            (detalle.lote_stock || detalle.stock_disponible || 0) < detalle.cantidad_solicitada 
+                              ? 'text-red-600' 
+                              : (detalle.lote_stock || detalle.stock_disponible || 0) === 0
+                                ? 'text-red-600'
+                                : 'text-green-600'
+                          }`}>
+                            {detalle.lote_stock ?? detalle.stock_disponible ?? 0}
+                          </span>
+                        </td>
+                        <td className="px-2 py-2 text-center bg-purple-50">
+                          <span className={`font-bold ${
+                            (detalle.stock_centro || 0) > 0 ? 'text-purple-600' : 'text-gray-400'
+                          }`}>
+                            {detalle.stock_centro ?? 0}
+                          </span>
+                        </td>
+                      </>
                     )}
                     <td className={`px-2 py-2 text-center ${modoAutorizar ? 'bg-green-50' : ''}`}>
                       {modoAutorizar ? (
