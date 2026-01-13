@@ -9970,9 +9970,18 @@ def trazabilidad_buscar(request):
         filtrar_por_centro = not es_admin_farmacia
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
+        # ISS-FIX: Variable para indicar filtro solo Almacén Central
+        filtrar_solo_central = False
+        
         centro_param = request.query_params.get('centro')
         if centro_param and es_admin_farmacia:
-            if centro_param != 'todos':
+            if centro_param == 'central':
+                # Solo Almacén Central (centro=null)
+                filtrar_solo_central = True
+            elif centro_param == 'todos':
+                # Ver todo, sin filtro
+                filtrar_por_centro = False
+            else:
                 try:
                     user_centro = Centro.objects.get(pk=centro_param)
                     filtrar_por_centro = True
@@ -9985,7 +9994,10 @@ def trazabilidad_buscar(request):
                 Q(numero_lote__iexact=query) |
                 Q(numero_lote__icontains=query)
             )
-            if filtrar_por_centro and user_centro:
+            # ISS-FIX: Aplicar filtro de centro
+            if filtrar_solo_central:
+                lote_query = lote_query.filter(centro__isnull=True)
+            elif filtrar_por_centro and user_centro:
                 lote_query = lote_query.filter(centro=user_centro)
             
             lote = lote_query.first()
@@ -10013,7 +10025,10 @@ def trazabilidad_buscar(request):
         if producto:
             # Verificar si hay lotes accesibles para este usuario
             lotes_accesibles = Lote.objects.filter(producto=producto, activo=True)
-            if filtrar_por_centro and user_centro:
+            # ISS-FIX: Aplicar filtro de centro
+            if filtrar_solo_central:
+                lotes_accesibles = lotes_accesibles.filter(centro__isnull=True)
+            elif filtrar_por_centro and user_centro:
                 lotes_accesibles = lotes_accesibles.filter(centro=user_centro)
             
             if lotes_accesibles.exists() or es_admin_farmacia:
