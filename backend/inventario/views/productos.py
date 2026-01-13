@@ -689,6 +689,8 @@ class ProductoViewSet(viewsets.ModelViewSet):
         - Extensiones: .xlsx
         """
         from core.utils.excel_importer import importar_productos_desde_excel, crear_log_importacion
+        from django.core.cache import cache
+        from core.models import Centro
         
         file = request.FILES.get('file')
         
@@ -703,6 +705,13 @@ class ProductoViewSet(viewsets.ModelViewSet):
         try:
             # Ejecutar importación
             resultado = importar_productos_desde_excel(file, request.user)
+            
+            # ISS-FIX: Invalidar caché del dashboard después de importar productos
+            cache.delete('dashboard_resumen_global')
+            cache.delete('dashboard_graficas_global')
+            for centro in Centro.objects.all():
+                cache.delete(f'dashboard_resumen_{centro.id}')
+                cache.delete(f'dashboard_graficas_{centro.id}')
             
             # Crear log de importación
             crear_log_importacion(

@@ -909,6 +909,8 @@ class MovimientoViewSet(
             'id': None,
             'tipo_grupo': None,
             'items': [],
+            'salidas': [],  # ISS-FIX: Lista separada de salidas para el frontend
+            'entradas': [],  # ISS-FIX: Lista separada de entradas para el frontend
             'centro_nombre': 'Almacén Central',
             'fecha': None,
             'usuario_nombre': 'Sistema',
@@ -1010,6 +1012,12 @@ class MovimientoViewSet(
                     'centro_nombre': item_centro,  # ISS-FIX: Agregar centro del item
                 }
                 grupo['items'].append(item_data)
+                
+                # ISS-FIX: Agregar a lista de salidas o entradas según el tipo
+                if mov.tipo == 'salida':
+                    grupo['salidas'].append(item_data)
+                elif mov.tipo == 'entrada':
+                    grupo['entradas'].append(item_data)
                 
                 # Contabilizar
                 if mov.tipo == 'salida':

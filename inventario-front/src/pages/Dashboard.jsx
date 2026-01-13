@@ -673,7 +673,11 @@ const Dashboard = () => {
       }
 
       const centroEfectivo = esCentroRestringido ? centroUsuario : centroId;
-      const params = centroEfectivo ? { centro: centroEfectivo } : {};
+      // ISS-FIX: Agregar refresh=true para forzar recarga sin caché cuando el usuario hace click en actualizar
+      const params = { 
+        ...(centroEfectivo ? { centro: centroEfectivo } : {}),
+        ...(isRefresh ? { refresh: 'true' } : {})
+      };
 
       const response = await dashboardAPI.getResumen(params);
       

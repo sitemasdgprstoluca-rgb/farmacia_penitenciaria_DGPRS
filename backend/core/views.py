@@ -2813,6 +2813,13 @@ class DonacionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Validar que tenga productos
+        if not donacion.detalles.exists():
+            return Response(
+                {'error': 'No se puede recibir una donación sin productos. Agregue al menos un producto antes de continuar.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         donacion.estado = 'recibida'
         donacion.recibido_por = request.user
         donacion.fecha_recepcion = timezone.now()
@@ -2835,6 +2842,13 @@ class DonacionViewSet(viewsets.ModelViewSet):
         if donacion.estado not in ['pendiente', 'recibida']:
             return Response(
                 {'error': 'Solo se pueden procesar donaciones pendientes o recibidas'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar que tenga productos
+        if not donacion.detalles.exists():
+            return Response(
+                {'error': 'No se puede procesar una donación sin productos. Agregue al menos un producto antes de continuar.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -2890,6 +2904,14 @@ class DonacionViewSet(viewsets.ModelViewSet):
             with transaction.atomic():
                 for donacion in donaciones_pendientes:
                     try:
+                        # Validar que tenga productos
+                        if not donacion.detalles.exists():
+                            errores.append({
+                                'donacion': donacion.numero,
+                                'error': 'La donación no tiene productos'
+                            })
+                            continue
+                        
                         # Actualizar cantidad_disponible de cada detalle
                         for detalle in donacion.detalles.all():
                             detalle.cantidad_disponible = detalle.cantidad
@@ -5778,6 +5800,22 @@ class AdminLimpiarDatosView(APIView):
                 
                 # Calcular totales
                 total_eliminados = sum(eliminados.values())
+                
+                # ISS-FIX: INVALIDAR CACHÉ DEL DASHBOARD después de limpiar datos
+                # Esto asegura que el dashboard se actualice inmediatamente
+                from django.core.cache import cache
+                from core.models import Centro
+                
+                # Invalidar caché global
+                cache.delete('dashboard_resumen_global')
+                cache.delete('dashboard_graficas_global')
+                
+                # Invalidar caché de cada centro
+                for centro in Centro.objects.all():
+                    cache.delete(f'dashboard_resumen_{centro.id}')
+                    cache.delete(f'dashboard_graficas_{centro.id}')
+                
+                logger.info("Caché del dashboard invalidado después de limpieza de datos")
                 
                 # Nombres de categorías para el log
                 nombres_categorias = {

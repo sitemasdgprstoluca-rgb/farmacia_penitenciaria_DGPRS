@@ -7582,6 +7582,10 @@ def dashboard_resumen(request):
     - Usuarios de centro: solo ven datos de su centro
     - Admin/farmacia/vista: ven datos globales por defecto
     - Admin/farmacia/vista pueden usar ?centro=ID para filtrar por centro específico
+    
+    PARÁMETROS:
+    - centro: ID del centro para filtrar (opcional, solo admin/farmacia/vista)
+    - refresh: Si es 'true', fuerza recarga sin usar caché (útil después de importar datos)
     """
     try:
         # SEGURIDAD: Filtrar por centro si el usuario no es admin/farmacia/vista
@@ -7603,8 +7607,11 @@ def dashboard_resumen(request):
         centro_id = user_centro.id if user_centro else 'global'
         cache_key = f'dashboard_resumen_{centro_id}'
         
-        # ISS-005: Intentar obtener del caché (excepto últimos movimientos que son dinámicos)
-        cached_kpi = cache.get(cache_key)
+        # ISS-FIX: Parámetro refresh para forzar recarga sin caché
+        force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+        
+        # ISS-005: Intentar obtener del caché (excepto si se fuerza refresh)
+        cached_kpi = None if force_refresh else cache.get(cache_key)
         
         if cached_kpi is None:
             # === PRODUCTOS ===
@@ -7741,6 +7748,10 @@ def dashboard_graficas(request):
     
     SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
     Admin/farmacia puede usar ?centro=ID para filtrar por centro específico.
+    
+    PARÁMETROS:
+    - centro: ID del centro para filtrar (opcional, solo admin/farmacia/vista)
+    - refresh: Si es 'true', fuerza recarga sin usar caché
     """
     try:
         from dateutil.relativedelta import relativedelta
@@ -7765,8 +7776,11 @@ def dashboard_graficas(request):
         centro_id = user_centro.id if user_centro else 'global'
         cache_key = f'dashboard_graficas_{centro_id}'
         
-        # ISS-005: Intentar obtener del caché
-        cached_data = cache.get(cache_key)
+        # ISS-FIX: Parámetro refresh para forzar recarga sin caché
+        force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+        
+        # ISS-005: Intentar obtener del caché (excepto si se fuerza refresh)
+        cached_data = None if force_refresh else cache.get(cache_key)
         if cached_data is not None:
             return Response(cached_data)
         

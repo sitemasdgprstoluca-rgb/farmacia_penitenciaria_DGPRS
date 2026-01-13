@@ -1221,8 +1221,14 @@ const Donaciones = () => {
 
   // Guardar donación
   const handleGuardar = async () => {
-    if (!formData.donante_nombre || !formData.centro_destino || formData.detalles.length === 0) {
-      toast.error('Completa los campos obligatorios y agrega al menos un producto');
+    // Validación: debe tener productos
+    if (formData.detalles.length === 0) {
+      toast.error('Debe agregar al menos un producto a la donación');
+      return;
+    }
+    
+    if (!formData.donante_nombre || !formData.centro_destino) {
+      toast.error('Completa el nombre del donante y el centro destino');
       return;
     }
 
@@ -3031,30 +3037,42 @@ const Donaciones = () => {
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setShowModal(false);
-                  resetForm();
-                }}
-                className="px-4 py-2 border rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleGuardar}
-                disabled={actionLoading === 'guardar'}
-                className="px-6 py-2 rounded-lg text-white transition-colors disabled:opacity-50 flex items-center gap-2"
-                style={{ backgroundColor: COLORS.primary }}
-              >
-                {actionLoading === 'guardar' ? (
-                  <>
-                    <FaSpinner className="animate-spin" /> Guardando...
-                  </>
-                ) : (
-                  <>Guardar Donación</>
-                )}
-              </button>
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-between items-center">
+              {/* Mensaje de ayuda si no hay productos */}
+              {formData.detalles.length === 0 && (
+                <p className="text-sm text-amber-600 flex items-center gap-1">
+                  <FaExclamationTriangle className="text-amber-500" />
+                  Agregue al menos un producto para guardar
+                </p>
+              )}
+              {formData.detalles.length > 0 && <div />}
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowModal(false);
+                    resetForm();
+                  }}
+                  className="px-4 py-2 border rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleGuardar}
+                  disabled={actionLoading === 'guardar' || formData.detalles.length === 0}
+                  className="px-6 py-2 rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  style={{ backgroundColor: formData.detalles.length === 0 ? '#9CA3AF' : COLORS.primary }}
+                  title={formData.detalles.length === 0 ? 'Debe agregar al menos un producto' : ''}
+                >
+                  {actionLoading === 'guardar' ? (
+                    <>
+                      <FaSpinner className="animate-spin" /> Guardando...
+                    </>
+                  ) : (
+                    <>Guardar Donación</>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

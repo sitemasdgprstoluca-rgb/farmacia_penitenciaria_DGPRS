@@ -953,6 +953,8 @@ class LoteViewSet(viewsets.ModelViewSet):
         - Extensiones: .xlsx, .xls
         """
         from core.utils.excel_importer import importar_lotes_desde_excel, crear_log_importacion
+        from django.core.cache import cache
+        from core.models import Centro
         
         file = request.FILES.get('file')
         
@@ -972,6 +974,13 @@ class LoteViewSet(viewsets.ModelViewSet):
             
             # Ejecutar importación
             resultado = importar_lotes_desde_excel(file, request.user, centro_id=centro_id)
+            
+            # ISS-FIX: Invalidar caché del dashboard después de importar lotes
+            cache.delete('dashboard_resumen_global')
+            cache.delete('dashboard_graficas_global')
+            for centro in Centro.objects.all():
+                cache.delete(f'dashboard_resumen_{centro.id}')
+                cache.delete(f'dashboard_graficas_{centro.id}')
             
             # Crear log de importación
             crear_log_importacion(

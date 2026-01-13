@@ -2413,8 +2413,28 @@ class DonacionSerializer(serializers.ModelSerializer):
     def get_folio(self, obj):
         return f"DON-{obj.numero}"
     
+    def validate(self, data):
+        """
+        Validación personalizada: no se puede guardar una donación sin productos.
+        """
+        detalles = data.get('detalles', [])
+        
+        # En creación, los detalles deben existir
+        if not self.instance and not detalles:
+            raise serializers.ValidationError({
+                'detalles': 'Debe agregar al menos un producto a la donación.'
+            })
+        
+        return data
+    
     def create(self, validated_data):
         detalles_data = validated_data.pop('detalles', [])
+        
+        # Validación adicional en creación
+        if not detalles_data:
+            raise serializers.ValidationError({
+                'detalles': 'Debe agregar al menos un producto a la donación.'
+            })
         
         # Generar numero automatico
         if 'numero' not in validated_data or not validated_data.get('numero'):
@@ -2436,6 +2456,12 @@ class DonacionSerializer(serializers.ModelSerializer):
         instance.save()
         
         if detalles_data is not None:
+            # Validar que no se quede sin productos (si se envían detalles vacíos)
+            if len(detalles_data) == 0:
+                raise serializers.ValidationError({
+                    'detalles': 'No se puede actualizar una donación dejándola sin productos.'
+                })
+            
             # Eliminar detalles existentes y crear nuevos
             instance.detalles.all().delete()
             for detalle_data in detalles_data:
