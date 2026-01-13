@@ -942,21 +942,8 @@ class MovimientoViewSet(
             if hasattr(mov, 'requisicion_id') and mov.requisicion_id:
                 return f'REQ-{mov.requisicion_id}', 'requisicion'
             
-            # Patrón 4: ISS-FIX - Agrupar salidas del MISMO CENTRO, MISMO DÍA, MISMA HORA Y MINUTO
-            # Esto detecta salidas masivas de centro que no tienen etiqueta [SAL-xxx]
-            if mov.tipo == 'salida' and mov.fecha:
-                # Obtener centro destino (para salidas a un centro específico)
-                centro_id = None
-                if mov.centro_destino:
-                    centro_id = mov.centro_destino.id
-                elif mov.lote and mov.lote.centro:
-                    centro_id = mov.lote.centro.id
-                
-                if centro_id:
-                    # Crear ID de grupo basado en: centro + fecha + hora + minuto
-                    fecha_str = mov.fecha.strftime('%Y%m%d-%H%M')
-                    grupo_auto = f'AUTO-{centro_id}-{fecha_str}'
-                    return grupo_auto, 'salida_centro'
+            # NO auto-agrupar salidas individuales - solo agrupar si tienen etiqueta explícita
+            # Las salidas sin etiqueta [SAL-xxx] se muestran individualmente
             
             return None, None
         
