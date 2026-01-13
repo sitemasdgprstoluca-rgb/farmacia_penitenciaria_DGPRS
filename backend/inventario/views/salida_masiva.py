@@ -823,6 +823,7 @@ def lotes_disponibles_farmacia(request):
                 'producto_id': lote.producto_id,
                 'producto_clave': lote.producto.clave,
                 'producto_nombre': lote.producto.nombre,
+                'presentacion': lote.producto.presentacion or '',
                 'unidad_medida': lote.producto.unidad_medida,
                 'cantidad_disponible': lote.cantidad_actual,
                 'fecha_caducidad': lote.fecha_caducidad.strftime('%Y-%m-%d') if lote.fecha_caducidad else None,

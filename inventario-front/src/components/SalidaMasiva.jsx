@@ -250,6 +250,7 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
           producto_id: lote.producto_id,
           producto_clave: lote.producto_clave,
           producto_nombre: lote.producto_nombre,
+          presentacion: lote.presentacion || '',
           unidad_medida: lote.unidad_medida,
           lotes: []
         };
@@ -669,6 +670,7 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
                       <tr>
                         <th className="text-left px-4 py-3 font-semibold text-gray-700">Clave</th>
                         <th className="text-left px-4 py-3 font-semibold text-gray-700">Producto</th>
+                        <th className="text-left px-4 py-3 font-semibold text-gray-700">Presentación</th>
                         <th className="text-left px-4 py-3 font-semibold text-gray-700">Lote</th>
                         <th className="text-center px-4 py-3 font-semibold text-gray-700">Caducidad</th>
                         <th className="text-center px-4 py-3 font-semibold text-gray-700">Disponible</th>
@@ -705,6 +707,12 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
                                   >
                                     <span className="line-clamp-2">{grupo.producto_nombre}</span>
                                     <span className="text-xs text-gray-500 block">{grupo.unidad_medida}</span>
+                                  </td>
+                                  <td 
+                                    className="px-4 py-3 align-top text-sm text-gray-600"
+                                    rowSpan={grupo.lotes.length}
+                                  >
+                                    {grupo.presentacion || '—'}
                                   </td>
                                 </>
                               ) : null}
