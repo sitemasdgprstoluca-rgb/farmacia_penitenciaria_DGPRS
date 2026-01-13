@@ -107,7 +107,7 @@ class HojaRecoleccionViewSet(viewsets.ReadOnlyModelViewSet):
         Usado por el frontend para verificar si existe una hoja para una requisición.
         
         ISS-FIX: Buscar a través de detalles__requisicion_id ya que la relación
-        está en la tabla detalle_hojas_recoleccion, no en hojas_recoleccion
+        está en la tabla detalle_hojas_recoleccion con campo requisicion_id
         ISS-FIX-500: Capturar cualquier error y devolver 200 con existe=false
         """
         try:
@@ -120,7 +120,8 @@ class HojaRecoleccionViewSet(viewsets.ReadOnlyModelViewSet):
         
         try:
             # Buscar hoja asociada a la requisición a través de detalles
-            hoja = self.get_queryset().filter(detalles__requisicion_id=requisicion_id).distinct().first()
+            # El campo es detalles__requisicion (FK a Requisicion)
+            hoja = self.get_queryset().filter(detalles__requisicion__id=requisicion_id).distinct().first()
             
             if not hoja:
                 # ISS-FIX: Devolver 200 con existe=false para que el frontend no muestre error

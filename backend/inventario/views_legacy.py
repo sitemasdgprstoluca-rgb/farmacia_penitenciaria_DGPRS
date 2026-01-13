@@ -9885,7 +9885,7 @@ class HojaRecoleccionViewSet(viewsets.ReadOnlyModelViewSet):
     def por_requisicion(self, request, requisicion_id=None):
         """
         Obtiene la hoja de recolección asociada a una requisición específica.
-        ISS-FIX: Buscar a través de detalles__requisicion_id
+        ISS-FIX: Buscar a través de detalles__requisicion__id (FK a Requisicion)
         ISS-FIX-500: Siempre devolver 200 con existe=false si hay error
         """
         try:
@@ -9898,7 +9898,7 @@ class HojaRecoleccionViewSet(viewsets.ReadOnlyModelViewSet):
             }, status=status.HTTP_200_OK)
             
         try:
-            hoja = self.get_queryset().filter(detalles__requisicion_id=requisicion_id).distinct().first()
+            hoja = self.get_queryset().filter(detalles__requisicion__id=requisicion_id).distinct().first()
             if hoja:
                 return Response({
                     'existe': True,
