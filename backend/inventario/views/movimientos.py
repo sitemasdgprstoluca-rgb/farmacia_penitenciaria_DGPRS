@@ -977,16 +977,24 @@ class MovimientoViewSet(
                     grupo['pendiente'] = es_pendiente(mov)
                 
                 # ISS-FIX: Determinar centro del movimiento correctamente
-                # SALIDAS: salen de Farmacia Central (Almacén Central)
-                # ENTRADAS: entran al centro destino (el centro del lote)
-                if mov.tipo == 'entrada':
-                    # Entradas: el centro es donde se recibe (centro del lote o centro_destino)
-                    item_centro = mov.lote.centro.nombre if mov.lote and mov.lote.centro else (
-                        mov.centro_destino.nombre if mov.centro_destino else 'Centro destino'
-                    )
+                # Para SALIDAS: mostrar el centro DESTINO (a dónde van los productos)
+                # Para ENTRADAS: mostrar el centro donde se reciben
+                if mov.tipo == 'salida':
+                    # Salidas: mostrar destino (a dónde van)
+                    if mov.centro_destino:
+                        item_centro = mov.centro_destino.nombre
+                    elif mov.lote and mov.lote.centro:
+                        item_centro = mov.lote.centro.nombre
+                    else:
+                        item_centro = 'Sin destino'
                 else:
-                    # Salidas: salen de Farmacia Central (Almacén Central)
-                    item_centro = 'Farmacia Central'
+                    # Entradas: el centro es donde se recibe
+                    if mov.centro_destino:
+                        item_centro = mov.centro_destino.nombre
+                    elif mov.lote and mov.lote.centro:
+                        item_centro = mov.lote.centro.nombre
+                    else:
+                        item_centro = 'Centro destino'
                 
                 # Agregar item al grupo
                 item_data = {
@@ -998,7 +1006,7 @@ class MovimientoViewSet(
                     'lote_numero': mov.lote.numero_lote if mov.lote else None,
                     'producto_clave': mov.lote.producto.clave if mov.lote and mov.lote.producto else None,
                     'producto_nombre': mov.lote.producto.nombre if mov.lote and mov.lote.producto else None,
-                    'centro_nombre': item_centro,  # ISS-FIX: Agregar centro del item
+                    'centro_nombre': item_centro,
                 }
                 grupo['items'].append(item_data)
                 
