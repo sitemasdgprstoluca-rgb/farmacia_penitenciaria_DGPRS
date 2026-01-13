@@ -5556,6 +5556,12 @@ class AdminLimpiarDatosView(APIView):
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM lotes WHERE centro_id IS NOT NULL")
                         eliminados['lotes_centros'] = cursor.rowcount
+                    
+                    # ISS-FIX: Recalcular cantidad_inicial de lotes restantes
+                    # Sin movimientos, cantidad_inicial debe ser igual a cantidad_actual
+                    with connection.cursor() as cursor:
+                        cursor.execute("UPDATE lotes SET cantidad_inicial = cantidad_actual WHERE centro_id IS NULL")
+                        eliminados['lotes_recalculados'] = cursor.rowcount
                 
                 elif categoria == 'donaciones':
                     # Eliminar donaciones en orden de dependencias FK
@@ -5612,6 +5618,30 @@ class AdminLimpiarDatosView(APIView):
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM movimientos WHERE requisicion_id IS NOT NULL")
                         eliminados['movimientos'] = cursor.rowcount
+                    
+                    # ISS-FIX: Eliminar lotes de centros (creados por requisiciones)
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM lotes WHERE centro_id IS NOT NULL")
+                        eliminados['lotes_centros'] = cursor.rowcount
+                    
+                    # ISS-FIX: Recalcular cantidad_inicial de lotes restantes
+                    # Después de eliminar movimientos de requisiciones, recalcular
+                    with connection.cursor() as cursor:
+                        cursor.execute("""
+                            UPDATE lotes l SET cantidad_inicial = (
+                                SELECT COALESCE(l.cantidad_actual - COALESCE(SUM(
+                                    CASE WHEN m.tipo = 'entrada' THEN m.cantidad 
+                                         WHEN m.tipo = 'salida' THEN -m.cantidad 
+                                         ELSE 0 END
+                                ), 0), l.cantidad_actual)
+                                FROM lotes l2 
+                                LEFT JOIN movimientos m ON m.lote_id = l2.id
+                                WHERE l2.id = l.id
+                                GROUP BY l2.id
+                            )
+                            WHERE l.centro_id IS NULL
+                        """)
+                        eliminados['lotes_recalculados'] = cursor.rowcount
                     
                     # 7. Requisiciones
                     with connection.cursor() as cursor:
