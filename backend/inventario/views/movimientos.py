@@ -942,14 +942,13 @@ class MovimientoViewSet(
             if hasattr(mov, 'requisicion_id') and mov.requisicion_id:
                 return f'REQ-{mov.requisicion_id}', 'requisicion'
             
-            # Patrón 4: Auto-agrupar salidas de UN CENTRO ESPECÍFICO (no Almacén Central)
-            # Solo si tienen centro_origen (salidas desde un centro, no desde almacén central)
-            if mov.tipo == 'salida' and mov.fecha and mov.centro_origen_id:
-                # centro_origen_id indica que es una salida DESDE un centro específico
-                # (las salidas desde Almacén Central tienen centro_origen_id = null)
+            # Patrón 4: Auto-agrupar movimientos hacia UN CENTRO ESPECÍFICO
+            # Agrupa salidas y entradas que tienen el mismo centro_destino + misma fecha/hora
+            # Esto captura transferencias completas: salida de almacén + entrada al centro
+            if mov.fecha and mov.centro_destino_id:
                 fecha_str = mov.fecha.strftime('%Y%m%d-%H%M')
-                grupo_auto = f'AUTO-{mov.centro_origen_id}-{fecha_str}'
-                return grupo_auto, 'salida_centro'
+                grupo_auto = f'AUTO-{mov.centro_destino_id}-{fecha_str}'
+                return grupo_auto, 'transferencia_centro'
             
             return None, None
         
@@ -1013,18 +1012,17 @@ class MovimientoViewSet(
                 if mov.tipo == 'salida':
                     grupo['cantidad_salidas'] += abs(mov.cantidad or 0)
                     grupo['num_salidas'] += 1
-                    # ISS-FIX: Para salidas automáticas (salida_centro), el centro es el ORIGEN
-                    # (de donde salen los productos, no a donde van)
-                    if tipo_grupo_detectado == 'salida_centro' and mov.centro_origen:
-                        grupo['centro_nombre'] = mov.centro_origen.nombre
                 elif mov.tipo == 'entrada':
                     grupo['cantidad_entradas'] += abs(mov.cantidad or 0)
                     grupo['num_entradas'] += 1
-                    # Centro destino viene de las entradas
-                    if mov.centro_destino:
-                        grupo['centro_nombre'] = mov.centro_destino.nombre
-                    elif mov.lote and mov.lote.centro:
-                        grupo['centro_nombre'] = mov.lote.centro.nombre
+                
+                # ISS-FIX: Para grupos automáticos, el centro es el DESTINO
+                if tipo_grupo_detectado == 'transferencia_centro' and mov.centro_destino:
+                    grupo['centro_nombre'] = mov.centro_destino.nombre
+                elif mov.centro_destino:
+                    grupo['centro_nombre'] = mov.centro_destino.nombre
+                elif mov.lote and mov.lote.centro:
+                    grupo['centro_nombre'] = mov.lote.centro.nombre
                 
                 # Total = salidas (o entradas si no hay salidas)
                 grupo['total_cantidad'] = grupo['cantidad_salidas'] or grupo['cantidad_entradas']

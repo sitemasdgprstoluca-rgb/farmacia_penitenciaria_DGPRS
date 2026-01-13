@@ -59,6 +59,17 @@ const GRUPO_STYLES = {
     label: 'DISPENSACIÓN',
     emoji: '🏥',
   },
+  transferencia_centro: {
+    gradient: 'from-teal-50 via-cyan-100 to-teal-50',
+    border: 'border-l-teal-500',
+    borderConfirmed: 'border-l-emerald-500',
+    headerBg: 'bg-gradient-to-r from-teal-100 to-cyan-100',
+    badge: 'bg-teal-600 text-white',
+    icon: 'text-teal-600',
+    hoverBg: 'hover:from-teal-100 hover:to-cyan-100',
+    label: 'ENVÍO A CENTRO',
+    emoji: '📦',
+  },
 };
 
 // 🦴 Skeleton component para loading elegante
@@ -398,7 +409,7 @@ const Movimientos = () => {
           if (grupoId.startsWith('SAL-')) tipoGrupo = 'salida_masiva';
           else if (grupoId.startsWith('REQ-')) tipoGrupo = 'requisicion';
           else if (grupoId.startsWith('TRANSF-')) tipoGrupo = 'transferencia';
-          else if (grupoId.startsWith('AUTO-')) tipoGrupo = 'salida_centro';
+          else if (grupoId.startsWith('AUTO-')) tipoGrupo = 'transferencia_centro';
           
           grupos.set(grupoId, {
             id: grupoId,
@@ -1804,7 +1815,7 @@ const Movimientos = () => {
                             const esRequisicion = grupo.tipo_grupo === 'requisicion';
                             const esSalidaMasiva = grupo.tipo_grupo === 'salida_masiva';
                             const esTransferencia = grupo.tipo_grupo === 'transferencia';
-                            const esSalidaCentro = grupo.tipo_grupo === 'salida_centro';
+                            const esTransferenciaCentro = grupo.tipo_grupo === 'transferencia_centro';
                             const styles = GRUPO_STYLES[grupo.tipo_grupo] || GRUPO_STYLES.transferencia;
                             
                             // ID formateado elegantemente
@@ -1812,8 +1823,8 @@ const Movimientos = () => {
                               ? grupo.id 
                               : esSalidaMasiva 
                                 ? `${styles.emoji} ${grupo.id.slice(-8).toUpperCase()}` 
-                                : esSalidaCentro
-                                  ? `${styles.emoji} ${grupo.centro_nombre || 'Centro'}`
+                                : esTransferenciaCentro
+                                  ? `${styles.emoji} → ${grupo.centro_nombre || 'Centro'}`
                                   : `${styles.emoji} ${grupo.id.slice(-6).toUpperCase()}`;
                             
                             const isExpanded = gruposExpandidos.has(grupo.id);
