@@ -8819,6 +8819,7 @@ def reporte_movimientos(request):
         movimientos = movimientos.order_by('-fecha')
         
         # Agrupar movimientos por referencia/transacción
+        # ISS-FIX: Agrupar por referencia + tipo para separar salidas y entradas de requisiciones
         transacciones = {}
         
         # ISS-FIX: Contadores globales para el resumen (por movimiento individual, no por transacción)
@@ -8834,6 +8835,11 @@ def reporte_movimientos(request):
             
             # Clasificar tipo: entrada, ajuste_positivo, devolucion = ENTRADA, resto = SALIDA
             es_entrada = tipo_mov in ['entrada', 'ajuste_positivo', 'devolucion']
+            
+            # ISS-FIX: Clave de agrupación incluye tipo para separar entradas y salidas
+            # de la misma requisición/referencia
+            tipo_grupo = 'ENTRADA' if es_entrada else 'SALIDA'
+            grupo_key = f"{ref}|{tipo_grupo}"
             
             # ISS-FIX: Acumular métricas por cada movimiento individual
             if es_entrada:
@@ -8855,13 +8861,13 @@ def reporte_movimientos(request):
                 }
                 subtipo_display = subtipos_label.get(mov.subtipo_salida.lower(), mov.subtipo_salida.title())
             
-            if ref not in transacciones:
+            if grupo_key not in transacciones:
                 # Crear nueva transacción agrupada
-                transacciones[ref] = {
+                transacciones[grupo_key] = {
                     'referencia': ref,
                     'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M'),
                     'fecha_raw': mov.fecha,
-                    'tipo': 'ENTRADA' if es_entrada else 'SALIDA',
+                    'tipo': tipo_grupo,
                     'tipo_original': tipo_mov.upper(),
                     'subtipo_salida': mov.subtipo_salida or '',
                     'subtipo_display': subtipo_display,
@@ -8872,7 +8878,7 @@ def reporte_movimientos(request):
                     'total_cantidad': 0,
                     'observaciones': mov.motivo or '',
                     'detalles': [],
-                    '_tipo_transaccion': 'ENTRADA' if es_entrada else 'SALIDA'
+                    '_tipo_transaccion': tipo_grupo
                 }
             
             # Agregar detalle a la transacción
@@ -8881,16 +8887,16 @@ def reporte_movimientos(request):
                 nombre = mov.lote.producto.nombre or mov.lote.producto.descripcion or mov.lote.producto.clave
                 producto_info = f"{mov.lote.producto.clave} - {nombre[:50]}"
             
-            transacciones[ref]['detalles'].append({
+            transacciones[grupo_key]['detalles'].append({
                 'producto': producto_info,
                 'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                 'cantidad': amount,
                 'subtipo_salida': mov.subtipo_salida or '',
                 'numero_expediente': mov.numero_expediente or '',
-                'tipo_mov': 'ENTRADA' if es_entrada else 'SALIDA',  # ISS-FIX: tipo del movimiento individual
+                'tipo_mov': tipo_grupo,  # ISS-FIX: tipo del movimiento individual
             })
-            transacciones[ref]['total_productos'] += 1
-            transacciones[ref]['total_cantidad'] += amount
+            transacciones[grupo_key]['total_productos'] += 1
+            transacciones[grupo_key]['total_cantidad'] += amount
         
         # Convertir a lista ordenada por fecha
         datos = list(transacciones.values())
