@@ -1737,7 +1737,7 @@ class MovimientoSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['fecha', 'created_at']
         extra_kwargs = {
-            'motivo': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'motivo': {'required': True, 'allow_null': False, 'allow_blank': False},  # ISS-FIX: Observaciones obligatorias
             'referencia': {'required': False, 'allow_null': True, 'allow_blank': True},
             'lote': {'required': False, 'allow_null': True},
             'centro_origen': {'required': False, 'allow_null': True},

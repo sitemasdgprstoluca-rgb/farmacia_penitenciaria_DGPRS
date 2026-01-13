@@ -743,6 +743,12 @@ const Movimientos = () => {
         toast.error("Indique el motivo de la dispensación (mínimo 5 caracteres)");
         return;
       }
+      
+      // ISS-FIX: Validar observaciones obligatorias para TODOS (farmacia/admin también)
+      if (!esMedico && (!formData.observaciones || formData.observaciones.trim().length < 5)) {
+        toast.error("Las observaciones son obligatorias (mínimo 5 caracteres). Ej: 'Transferencia a centro', 'Dispensación por receta'");
+        return;
+      }
     }
     
     // Validaciones específicas para ENTRADA
@@ -1514,7 +1520,7 @@ const Movimientos = () => {
 
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-700">
-                  Observaciones {(formData.tipo === "entrada" || esMedico) && <span className="text-red-500">*</span>}
+                  Observaciones <span className="text-red-500">*</span>
                 </label>
                 <textarea
                   value={formData.observaciones}
@@ -1525,23 +1531,15 @@ const Movimientos = () => {
                       ? "Motivo de la entrada (Ej: Nueva compra, Reabastecimiento, Devolución proveedor)..."
                       : esMedico 
                         ? "Motivo de la dispensación (Ej: Tratamiento dolor, Antibiótico para infección)..."
-                        : "Notas adicionales (opcional)..."
+                        : "Motivo de la transferencia/salida (Ej: Envío a centro, Dispensación por receta)..."
                   }
                   rows={2}
-                  required={formData.tipo === "entrada" || esMedico}
+                  required
                 />
-                {formData.tipo === "entrada" && (
-                  <p className="text-xs text-emerald-600">
-                    <FaInfoCircle className="inline mr-1" />
-                    <strong>Requerido:</strong> Indique el motivo de la entrada para trazabilidad (mín. 5 caracteres).
-                  </p>
-                )}
-                {esMedico && formData.tipo === "salida" && (
-                  <p className="text-xs text-blue-600">
-                    <FaInfoCircle className="inline mr-1" />
-                    <strong>Obligatorio:</strong> Indique el motivo médico de la dispensación (mín. 5 caracteres).
-                  </p>
-                )}
+                <p className="text-xs text-amber-600">
+                  <FaInfoCircle className="inline mr-1" />
+                  <strong>Obligatorio:</strong> Indique el motivo del movimiento para trazabilidad (mín. 5 caracteres).
+                </p>
               </div>
 
               <button
