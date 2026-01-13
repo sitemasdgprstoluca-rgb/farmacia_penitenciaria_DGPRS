@@ -1141,6 +1141,7 @@ const Reportes = () => {
                                   <tr>
                                     <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">#</th>
                                     <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Producto</th>
+                                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Presentación</th>
                                     <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Lote</th>
                                     <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Cantidad</th>
                                   </tr>
@@ -1150,6 +1151,7 @@ const Reportes = () => {
                                     <tr key={detIdx} className="hover:bg-gray-50">
                                       <td className="px-3 py-2 text-gray-500">{detIdx + 1}</td>
                                       <td className="px-3 py-2 text-gray-800 font-medium">{det.producto}</td>
+                                      <td className="px-3 py-2 text-gray-600">{det.presentacion || '-'}</td>
                                       <td className="px-3 py-2 text-gray-600">{det.lote || '-'}</td>
                                       <td className="px-3 py-2 text-gray-800 text-right font-semibold">{det.cantidad}</td>
                                     </tr>
@@ -1157,7 +1159,7 @@ const Reportes = () => {
                                 </tbody>
                                 <tfoot className="bg-gray-50">
                                   <tr>
-                                    <td colSpan="3" className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Total:</td>
+                                    <td colSpan="4" className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Total:</td>
                                     <td className="px-3 py-2 text-right text-sm font-bold text-gray-800">{fila.total_cantidad}</td>
                                   </tr>
                                 </tfoot>

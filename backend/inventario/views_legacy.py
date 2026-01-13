@@ -8883,12 +8883,15 @@ def reporte_movimientos(request):
             
             # Agregar detalle a la transacción
             producto_info = 'N/A'
+            presentacion = ''
             if mov.lote and mov.lote.producto:
                 nombre = mov.lote.producto.nombre or mov.lote.producto.descripcion or mov.lote.producto.clave
                 producto_info = f"{mov.lote.producto.clave} - {nombre[:50]}"
+                presentacion = mov.lote.producto.presentacion or ''
             
             transacciones[grupo_key]['detalles'].append({
                 'producto': producto_info,
+                'presentacion': presentacion,
                 'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                 'cantidad': amount,
                 'subtipo_salida': mov.subtipo_salida or '',
