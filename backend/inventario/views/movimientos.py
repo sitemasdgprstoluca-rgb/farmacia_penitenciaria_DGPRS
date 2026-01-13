@@ -977,16 +977,22 @@ class MovimientoViewSet(
                     grupo['pendiente'] = es_pendiente(mov)
                 
                 # ISS-FIX: Determinar centro del movimiento correctamente
-                # Para SALIDAS: mostrar el centro DESTINO (a dónde van los productos)
-                # Para ENTRADAS: mostrar el centro donde se reciben
+                # Para SALIDAS:
+                #   - Si tiene centro_origen → es salida DESDE ese centro (dispensación)
+                #   - Si tiene centro_destino → es salida HACIA ese centro (desde almacén)
+                # Para ENTRADAS:
+                #   - Siempre mostrar centro_destino (donde se reciben)
                 if mov.tipo == 'salida':
-                    # Salidas: mostrar destino (a dónde van)
-                    if mov.centro_destino:
-                        item_centro = mov.centro_destino.nombre
+                    if mov.centro_origen:
+                        # Salida DESDE un centro específico (dispensación del centro)
+                        item_centro = mov.centro_origen.nombre
+                    elif mov.centro_destino:
+                        # Salida HACIA un centro (desde almacén central)
+                        item_centro = 'Almacén Central'
                     elif mov.lote and mov.lote.centro:
                         item_centro = mov.lote.centro.nombre
                     else:
-                        item_centro = 'Sin destino'
+                        item_centro = 'Almacén Central'
                 else:
                     # Entradas: el centro es donde se recibe
                     if mov.centro_destino:
@@ -1043,6 +1049,22 @@ class MovimientoViewSet(
                         grupo['fecha'] = mov_fecha.isoformat()
             else:
                 # Movimiento individual sin grupo
+                # Determinar centro correctamente
+                if mov.tipo == 'salida':
+                    if mov.centro_origen:
+                        sg_centro = mov.centro_origen.nombre
+                    elif mov.centro_destino:
+                        sg_centro = 'Almacén Central'
+                    elif mov.lote and mov.lote.centro:
+                        sg_centro = mov.lote.centro.nombre
+                    else:
+                        sg_centro = 'Almacén Central'
+                else:
+                    sg_centro = (
+                        mov.centro_destino.nombre if mov.centro_destino 
+                        else (mov.lote.centro.nombre if mov.lote and mov.lote.centro else 'Centro destino')
+                    )
+                
                 sin_grupo.append({
                     'id': mov.id,
                     'tipo': mov.tipo,
@@ -1055,10 +1077,7 @@ class MovimientoViewSet(
                     'lote_numero': mov.lote.numero_lote if mov.lote else None,
                     'producto_clave': mov.lote.producto.clave if mov.lote and mov.lote.producto else None,
                     'producto_nombre': mov.lote.producto.nombre if mov.lote and mov.lote.producto else None,
-                    'centro_nombre': (
-                        mov.centro_destino.nombre if mov.centro_destino 
-                        else (mov.lote.centro.nombre if mov.lote and mov.lote.centro else 'Almacén Central')
-                    ),
+                    'centro_nombre': sg_centro,
                     'usuario_nombre': (mov.usuario.get_full_name() or mov.usuario.username) if mov.usuario else 'Sistema',
                 })
         
