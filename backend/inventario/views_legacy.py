@@ -8233,6 +8233,7 @@ def trazabilidad_lote(request, codigo):
     - fecha_inicio: Fecha inicio (YYYY-MM-DD) para filtrar movimientos
     - fecha_fin: Fecha fin (YYYY-MM-DD) para filtrar movimientos
     - tipo: Tipo de movimiento (entrada, salida, ajuste)
+    - centro: Filtro de centro (central, todos, o ID de centro)
     
     SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
     """
@@ -8244,8 +8245,29 @@ def trazabilidad_lote(request, codigo):
 
         # SEGURIDAD: Determinar filtro de centro
         user = request.user
-        filtrar_por_centro = not is_farmacia_or_admin(user)
+        es_admin_farmacia = is_farmacia_or_admin(user)
+        filtrar_por_centro = not es_admin_farmacia
         user_centro = get_user_centro(user) if filtrar_por_centro else None
+        
+        # ISS-FIX: Variable para indicar filtro solo Almacén Central
+        filtrar_solo_central = False
+        
+        # ISS-FIX: Procesar parámetro centro
+        centro_param = request.query_params.get('centro')
+        if centro_param and es_admin_farmacia:
+            if centro_param.lower() == 'central':
+                # Solo Almacén Central (centro=null)
+                filtrar_solo_central = True
+                filtrar_por_centro = False
+            elif centro_param.lower() == 'todos':
+                # Ver todo, sin filtro
+                filtrar_por_centro = False
+            else:
+                try:
+                    user_centro = Centro.objects.get(pk=centro_param)
+                    filtrar_por_centro = True
+                except Centro.DoesNotExist:
+                    pass
         
         # Obtener parámetros de filtro
         fecha_inicio = request.query_params.get('fecha_inicio')
@@ -8259,15 +8281,39 @@ def trazabilidad_lote(request, codigo):
         if not lotes_con_mismo_numero.exists():
             return Response({'error': 'Lote no encontrado', 'codigo_buscado': codigo}, status=status.HTTP_404_NOT_FOUND)
         
+        # ISS-FIX: Aplicar filtro de centro a los lotes
+        if filtrar_solo_central:
+            # Solo lote de Farmacia Central
+            lotes_filtrados = lotes_con_mismo_numero.filter(centro__isnull=True)
+        elif filtrar_por_centro and user_centro:
+            lotes_filtrados = lotes_con_mismo_numero.filter(centro=user_centro)
+        else:
+            lotes_filtrados = lotes_con_mismo_numero
+        
         # Usar el lote de Farmacia Central como principal (centro=NULL) o el primero disponible
-        lote_principal = lotes_con_mismo_numero.filter(centro__isnull=True).first()
+        lote_principal = lotes_filtrados.filter(centro__isnull=True).first()
         if not lote_principal:
+            lote_principal = lotes_filtrados.first()
+        if not lote_principal:
+            # Fallback: usar cualquier lote con ese número
             lote_principal = lotes_con_mismo_numero.first()
         
-        # Obtener todos los IDs de lotes con el mismo numero_lote
-        lotes_ids = list(lotes_con_mismo_numero.values_list('id', flat=True))
+        # ISS-FIX: IDs para movimientos dependen del filtro
+        # Si está filtrado, solo usamos los lotes filtrados
+        lotes_ids = list(lotes_filtrados.values_list('id', flat=True))
+        if not lotes_ids:
+            # Si no hay lotes filtrados, usar todos para no perder movimientos
+            lotes_ids = list(lotes_con_mismo_numero.values_list('id', flat=True))
         
-        # Calcular cantidad total consolidada (suma de todos los lotes espejo)
+        # ISS-FIX: Cantidad actual según filtro (no consolidado si hay filtro)
+        if filtrar_solo_central or (filtrar_por_centro and user_centro):
+            # Cantidad del lote filtrado
+            cantidad_mostrada = lotes_filtrados.aggregate(total=Sum('cantidad_actual'))['total'] or 0
+        else:
+            # Cantidad consolidada de todos los lotes
+            cantidad_mostrada = lotes_con_mismo_numero.aggregate(total=Sum('cantidad_actual'))['total'] or 0
+        
+        # Calcular cantidad total consolidada (siempre para referencia)
         cantidad_total_consolidada = lotes_con_mismo_numero.aggregate(total=Sum('cantidad_actual'))['total'] or 0
         
         # Obtener centros donde está distribuido el lote
@@ -8368,7 +8414,7 @@ def trazabilidad_lote(request, codigo):
                 'producto': lote.producto.clave,
                 'producto_nombre': lote.producto.nombre,  # Campo para frontend
                 'producto_descripcion': lote.producto.descripcion or lote.producto.nombre,
-                'cantidad_actual': cantidad_total_consolidada,  # Cantidad consolidada de todos los centros
+                'cantidad_actual': cantidad_mostrada,  # ISS-FIX: Cantidad según filtro de centro
                 'cantidad_inicial': lote.cantidad_inicial,
                 'activo': lote.activo,
                 'fecha_caducidad': lote.fecha_caducidad.isoformat() if lote.fecha_caducidad else None,
@@ -8383,15 +8429,18 @@ def trazabilidad_lote(request, codigo):
                 'numero_contrato': lote.numero_contrato if is_farmacia_or_admin(user) else None,
                 # NUEVO: Distribución del lote en centros
                 'distribucion': centros_distribucion,
+                # ISS-FIX: Stock total para referencia
+                'cantidad_total_todos_centros': cantidad_total_consolidada,
             },
             'estadisticas': {
                 'total_entradas': total_entradas,
                 'total_salidas': total_salidas,
                 'diferencia': total_entradas - total_salidas,
-                'cantidad_actual': cantidad_total_consolidada,
+                'cantidad_actual': cantidad_mostrada,  # ISS-FIX: Cantidad según filtro
+                'cantidad_total_consolidada': cantidad_total_consolidada,  # Para referencia
                 'saldo_calculado': saldo,
-                'diferencia_stock': saldo - cantidad_total_consolidada,
-                'consistente': saldo == cantidad_total_consolidada
+                'diferencia_stock': saldo - cantidad_mostrada,
+                'consistente': saldo == cantidad_mostrada
             },
             'movimientos': historial,
             'historial': historial,  # compatibilidad hacia atr?s
