@@ -6951,10 +6951,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         
         # ISS-SURTIR-FIX: Si NO se enviaron items explícitos, autorizar TODOS los detalles
         # con cantidad_autorizada = cantidad_solicitada (aprobación total)
+        # FIX: Solo auto-asignar cuando es NULL, NO cuando es 0 (0 es válido)
         if not items_procesados:
             logger.info(f"autorizar_farmacia: No se enviaron items, autorizando todos los detalles con cantidad solicitada")
             for detalle in requisicion.detalles.all():
-                if detalle.cantidad_autorizada is None or detalle.cantidad_autorizada == 0:
+                if detalle.cantidad_autorizada is None:
                     detalle.cantidad_autorizada = detalle.cantidad_solicitada
                     detalle.save()
                     logger.info(f"  - Detalle {detalle.id}: autorizado {detalle.cantidad_autorizada} unidades de {detalle.producto.clave}")

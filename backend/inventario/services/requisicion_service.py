@@ -1214,9 +1214,10 @@ class RequisicionService:
         # 2.5 ISS-FIX-SURTIR: Auto-asignar cantidad_autorizada si falta
         # Esto permite surtir requisiciones legacy autorizadas antes del fix
         # que tengan cantidad_autorizada = NULL
-        from django.db.models import Q
+        # FIX: Solo auto-asignar cuando es NULL, NO cuando es 0
+        # cantidad_autorizada=0 es un valor válido (farmacia decide no entregar ese producto)
         detalles_sin_autorizar_qs = requisicion_bloqueada.detalles.select_for_update().filter(
-            Q(cantidad_autorizada__isnull=True) | Q(cantidad_autorizada=0)
+            cantidad_autorizada__isnull=True
         )
         if detalles_sin_autorizar_qs.exists():
             logger.info(
@@ -1230,9 +1231,10 @@ class RequisicionService:
         
         # 2.6 ISS-007 FIX (audit6): RE-Validar que TODOS los detalles tengan cantidad_autorizada
         # (Después del auto-asign, esto debería pasar siempre)
+        # FIX: Solo validar NULL, no 0 (0 es válido = farmacia decidió no entregar)
         detalles_sin_autorizar = []
         for detalle in requisicion_bloqueada.detalles.all():
-            if detalle.cantidad_autorizada is None or detalle.cantidad_autorizada == 0:
+            if detalle.cantidad_autorizada is None:
                 detalles_sin_autorizar.append({
                     'producto': detalle.producto.clave or detalle.producto.nombre,
                     'cantidad_solicitada': detalle.cantidad_solicitada
