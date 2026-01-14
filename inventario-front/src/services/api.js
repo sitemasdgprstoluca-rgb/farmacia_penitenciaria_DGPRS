@@ -1635,7 +1635,28 @@ export const comprasCajaChicaAPI = {
   update: (id, data) => apiClient.put(`/compras-caja-chica/${id}/`, data),
   delete: (id) => apiClient.delete(`/compras-caja-chica/${id}/`),
   
-  // Acciones de flujo de trabajo
+  // ========== FLUJO MULTINIVEL ==========
+  // Médico -> Admin -> Director -> Compra -> Recepción
+  
+  // Enviar a Admin (Médico)
+  enviarAdmin: (id) => apiClient.post(`/compras-caja-chica/${id}/enviar-admin/`),
+  
+  // Autorizar como Admin
+  autorizarAdmin: (id, data) => apiClient.post(`/compras-caja-chica/${id}/autorizar-admin/`, data),
+  
+  // Enviar a Director (Admin)
+  enviarDirector: (id) => apiClient.post(`/compras-caja-chica/${id}/enviar-director/`),
+  
+  // Autorizar como Director (autorización final)
+  autorizarDirector: (id, data) => apiClient.post(`/compras-caja-chica/${id}/autorizar-director/`, data),
+  
+  // Rechazar solicitud (Admin o Director)
+  rechazar: (id, data) => apiClient.post(`/compras-caja-chica/${id}/rechazar/`, data),
+  
+  // Devolver para corrección
+  devolver: (id, data) => apiClient.post(`/compras-caja-chica/${id}/devolver/`, data),
+  
+  // ========== ACCIONES LEGACY (compatibilidad) ==========
   autorizar: (id, observaciones) => apiClient.post(`/compras-caja-chica/${id}/autorizar/`, { observaciones }),
   registrarCompra: (id, data) => apiClient.post(`/compras-caja-chica/${id}/registrar_compra/`, data),
   recibir: (id, detalles) => apiClient.post(`/compras-caja-chica/${id}/recibir/`, { detalles }),

@@ -6684,19 +6684,21 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
     """
     ViewSet para gestión de Compras de Caja Chica.
     
-    Este módulo permite al centro penitenciario gestionar compras
-    con recursos propios cuando farmacia central no tiene disponibilidad.
-    
-    FLUJO:
-    1. Centro solicita medicamento → Farmacia no tiene
-    2. Centro crea solicitud de compra con justificación
-    3. Se autoriza internamente (administrador/director del centro)
-    4. Se realiza la compra
-    5. Se reciben los productos y se ingresan al inventario del CENTRO
+    FLUJO MULTINIVEL (similar a Requisiciones):
+    1. Médico crea solicitud con productos (pendiente)
+    2. Médico envía a Admin (enviada_admin)
+    3. Admin revisa y autoriza (autorizada_admin)
+    4. Admin envía a Director (enviada_director)
+    5. Director autoriza (autorizada) - Lista para comprar
+    6. Se realiza la compra (comprada)
+    7. Se reciben productos (recibida)
     
     PERMISOS:
-    - Centro: CRUD completo sobre sus propias compras
-    - Farmacia: Solo lectura (auditoría) para prevenir malas prácticas
+    - Médico: Crear, editar (pendiente), enviar a admin
+    - Admin Centro: Autorizar, enviar a director
+    - Director Centro: Autorización final
+    - Cualquier rol centro: Registrar compra y recepción
+    - Farmacia: Solo lectura (auditoría)
     """
     queryset = CompraCajaChica.objects.all()
     serializer_class = CompraCajaChicaSerializer
@@ -6708,16 +6710,14 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
     ordering = ['-fecha_solicitud']
     
     def get_queryset(self):
-        """Filtra compras según centro del usuario"""
+        """Filtra compras según centro y rol del usuario"""
         queryset = super().get_queryset().select_related(
-            'centro', 'solicitante', 'autorizado_por', 'recibido_por', 'requisicion_origen'
+            'centro', 'solicitante', 'autorizado_por', 'recibido_por', 'requisicion_origen',
+            'administrador_centro', 'director_centro', 'rechazado_por'
         ).prefetch_related('detalles')
         user = self.request.user
         
         # SEGURIDAD: Filtrar por centro del usuario
-        # - Superusuario y farmacia ven todo (auditoría)
-        # - Centro solo ve lo suyo
-        # - Sin centro = sin datos
         if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']:
             # Admin y farmacia pueden ver todo (para auditoría)
             pass
@@ -6728,7 +6728,7 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
             # Sin centro asignado = no ve nada (seguridad)
             return queryset.none()
         
-        # Filtros opcionales (solo válidos para admin/farmacia)
+        # Filtros opcionales
         centro_id = self.request.query_params.get('centro')
         if centro_id:
             if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']:
@@ -6753,9 +6753,215 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
             return CompraCajaChicaListSerializer
         return CompraCajaChicaSerializer
     
+    # ========== FLUJO MULTINIVEL: ACCIONES ==========
+    
+    @action(detail=True, methods=['post'], url_path='enviar-admin')
+    def enviar_admin(self, request, pk=None):
+        """Médico envía solicitud al Administrador del Centro"""
+        compra = self.get_object()
+        
+        if compra.estado != 'pendiente':
+            return Response(
+                {'error': 'Solo se pueden enviar compras pendientes'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar que tenga al menos un producto
+        if compra.detalles.count() == 0:
+            return Response(
+                {'error': 'Debe agregar al menos un producto antes de enviar'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        compra.estado = 'enviada_admin'
+        compra.fecha_envio_admin = timezone.now()
+        compra.save()
+        
+        # Registrar en historial
+        HistorialCompraCajaChica.objects.create(
+            compra=compra,
+            estado_anterior='pendiente',
+            estado_nuevo='enviada_admin',
+            usuario=request.user,
+            accion='enviar_admin',
+            observaciones='Enviada para autorización del administrador',
+            ip_address=request.META.get('REMOTE_ADDR', '')
+        )
+        
+        return Response(CompraCajaChicaSerializer(compra, context={'request': request}).data)
+    
+    @action(detail=True, methods=['post'], url_path='autorizar-admin')
+    def autorizar_admin(self, request, pk=None):
+        """Administrador del Centro autoriza la solicitud"""
+        compra = self.get_object()
+        
+        if compra.estado != 'enviada_admin':
+            return Response(
+                {'error': 'Esta compra no está en estado de autorización por admin'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar rol del usuario
+        if request.user.rol not in ['administrador_centro', 'admin', 'admin_sistema']:
+            return Response(
+                {'error': 'No tiene permisos para autorizar como administrador'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        compra.estado = 'autorizada_admin'
+        compra.fecha_autorizacion_admin = timezone.now()
+        compra.administrador_centro = request.user
+        compra.save()
+        
+        HistorialCompraCajaChica.objects.create(
+            compra=compra,
+            estado_anterior='enviada_admin',
+            estado_nuevo='autorizada_admin',
+            usuario=request.user,
+            accion='autorizar_admin',
+            observaciones=request.data.get('observaciones', 'Autorizada por administrador'),
+            ip_address=request.META.get('REMOTE_ADDR', '')
+        )
+        
+        return Response(CompraCajaChicaSerializer(compra, context={'request': request}).data)
+    
+    @action(detail=True, methods=['post'], url_path='enviar-director')
+    def enviar_director(self, request, pk=None):
+        """Administrador envía al Director para autorización final"""
+        compra = self.get_object()
+        
+        if compra.estado != 'autorizada_admin':
+            return Response(
+                {'error': 'La compra debe estar autorizada por admin primero'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        compra.estado = 'enviada_director'
+        compra.fecha_envio_director = timezone.now()
+        compra.save()
+        
+        HistorialCompraCajaChica.objects.create(
+            compra=compra,
+            estado_anterior='autorizada_admin',
+            estado_nuevo='enviada_director',
+            usuario=request.user,
+            accion='enviar_director',
+            observaciones='Enviada para autorización del director',
+            ip_address=request.META.get('REMOTE_ADDR', '')
+        )
+        
+        return Response(CompraCajaChicaSerializer(compra, context={'request': request}).data)
+    
+    @action(detail=True, methods=['post'], url_path='autorizar-director')
+    def autorizar_director(self, request, pk=None):
+        """Director del Centro da autorización final"""
+        compra = self.get_object()
+        
+        if compra.estado != 'enviada_director':
+            return Response(
+                {'error': 'Esta compra no está en estado de autorización por director'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar rol del usuario
+        if request.user.rol not in ['director_centro', 'director', 'admin', 'admin_sistema']:
+            return Response(
+                {'error': 'No tiene permisos para autorizar como director'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        compra.estado = 'autorizada'
+        compra.fecha_autorizacion_director = timezone.now()
+        compra.director_centro = request.user
+        compra.autorizado_por = request.user  # Para compatibilidad
+        compra.save()
+        
+        HistorialCompraCajaChica.objects.create(
+            compra=compra,
+            estado_anterior='enviada_director',
+            estado_nuevo='autorizada',
+            usuario=request.user,
+            accion='autorizar_director',
+            observaciones=request.data.get('observaciones', 'Autorizada por director - Lista para compra'),
+            ip_address=request.META.get('REMOTE_ADDR', '')
+        )
+        
+        return Response(CompraCajaChicaSerializer(compra, context={'request': request}).data)
+    
+    @action(detail=True, methods=['post'])
+    def rechazar(self, request, pk=None):
+        """Rechaza una solicitud (Admin o Director)"""
+        compra = self.get_object()
+        
+        if compra.estado not in ['enviada_admin', 'enviada_director']:
+            return Response(
+                {'error': 'Esta compra no puede ser rechazada en su estado actual'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        motivo = request.data.get('motivo')
+        if not motivo:
+            return Response(
+                {'error': 'Debe proporcionar un motivo de rechazo'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        estado_anterior = compra.estado
+        compra.estado = 'rechazada'
+        compra.motivo_rechazo = motivo
+        compra.rechazado_por = request.user
+        compra.save()
+        
+        HistorialCompraCajaChica.objects.create(
+            compra=compra,
+            estado_anterior=estado_anterior,
+            estado_nuevo='rechazada',
+            usuario=request.user,
+            accion='rechazar',
+            observaciones=motivo,
+            ip_address=request.META.get('REMOTE_ADDR', '')
+        )
+        
+        return Response(CompraCajaChicaSerializer(compra, context={'request': request}).data)
+    
+    @action(detail=True, methods=['post'])
+    def devolver(self, request, pk=None):
+        """Devuelve la solicitud al estado anterior para corrección"""
+        compra = self.get_object()
+        
+        estado_anterior = compra.estado
+        
+        if compra.estado == 'enviada_admin':
+            compra.estado = 'pendiente'
+        elif compra.estado == 'enviada_director':
+            compra.estado = 'autorizada_admin'
+        else:
+            return Response(
+                {'error': 'Esta compra no puede ser devuelta en su estado actual'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        observaciones = request.data.get('observaciones', 'Devuelta para corrección')
+        compra.observaciones = observaciones
+        compra.save()
+        
+        HistorialCompraCajaChica.objects.create(
+            compra=compra,
+            estado_anterior=estado_anterior,
+            estado_nuevo=compra.estado,
+            usuario=request.user,
+            accion='devolver',
+            observaciones=observaciones,
+            ip_address=request.META.get('REMOTE_ADDR', '')
+        )
+        
+        return Response(CompraCajaChicaSerializer(compra, context={'request': request}).data)
+    
+    # ========== ACCIONES LEGACY (mantener compatibilidad) ==========
+    
     @action(detail=True, methods=['post'])
     def autorizar(self, request, pk=None):
-        """Autoriza una solicitud de compra de caja chica"""
+        """Autoriza una solicitud de compra de caja chica (legacy - autorización directa)"""
         compra = self.get_object()
         
         if compra.estado != 'pendiente':
@@ -6987,11 +7193,15 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
         resumen = {
             'total_compras': queryset.count(),
             'pendientes': queryset.filter(estado='pendiente').count(),
+            'enviadas_admin': queryset.filter(estado='enviada_admin').count(),
+            'autorizadas_admin': queryset.filter(estado='autorizada_admin').count(),
+            'enviadas_director': queryset.filter(estado='enviada_director').count(),
             'autorizadas': queryset.filter(estado='autorizada').count(),
             'compradas': queryset.filter(estado='comprada').count(),
             'recibidas': queryset.filter(estado='recibida').count(),
             'canceladas': queryset.filter(estado='cancelada').count(),
-            'monto_total': queryset.exclude(estado='cancelada').aggregate(
+            'rechazadas': queryset.filter(estado='rechazada').count(),
+            'monto_total': queryset.exclude(estado__in=['cancelada', 'rechazada']).aggregate(
                 total=Sum('total')
             )['total'] or 0,
         }

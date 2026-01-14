@@ -55,46 +55,62 @@ import { esFarmaciaAdmin, esCentro } from '../utils/roles';
 
 const PAGE_SIZE = 20;
 
+// Estados del flujo multinivel
 const ESTADOS_COMPRA = [
   { value: '', label: 'Todos' },
   { value: 'pendiente', label: 'Pendiente' },
+  { value: 'enviada_admin', label: 'Enviada a Admin' },
+  { value: 'autorizada_admin', label: 'Autorizada Admin' },
+  { value: 'enviada_director', label: 'Enviada a Director' },
   { value: 'autorizada', label: 'Autorizada' },
   { value: 'comprada', label: 'Comprada' },
   { value: 'recibida', label: 'Recibida' },
   { value: 'cancelada', label: 'Cancelada' },
+  { value: 'rechazada', label: 'Rechazada' },
 ];
 
 const ESTADO_COLORS = {
   pendiente: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  enviada_admin: 'bg-orange-100 text-orange-800 border-orange-300',
+  autorizada_admin: 'bg-cyan-100 text-cyan-800 border-cyan-300',
+  enviada_director: 'bg-indigo-100 text-indigo-800 border-indigo-300',
   autorizada: 'bg-blue-100 text-blue-800 border-blue-300',
   comprada: 'bg-purple-100 text-purple-800 border-purple-300',
   recibida: 'bg-green-100 text-green-800 border-green-300',
   cancelada: 'bg-red-100 text-red-800 border-red-300',
+  rechazada: 'bg-red-100 text-red-800 border-red-300',
 };
 
 const ESTADO_ICONS = {
   pendiente: FaClipboardList,
+  enviada_admin: FaClipboardList,
+  autorizada_admin: FaUserCheck,
+  enviada_director: FaClipboardList,
   autorizada: FaUserCheck,
   comprada: FaShoppingCart,
   recibida: FaBoxOpen,
   cancelada: FaBan,
+  rechazada: FaBan,
 };
 
 const ComprasCajaChica = () => {
   const { user, verificarPermiso } = usePermissions();
   
-  // Detectar tipo de usuario
+  // Detectar tipo de usuario y rol
   const esUsuarioFarmacia = esFarmaciaAdmin(user);
   const esUsuarioCentro = esCentro(user);
   const esSoloAuditoria = esUsuarioFarmacia; // Farmacia solo puede ver
+  const rolUsuario = user?.rol?.toLowerCase() || '';
   
   // Centro del usuario (para filtrado automático)
   const centroUsuario = user?.centro?.id || user?.centro_id;
   
-  // Permisos (Centro puede CRUD, Farmacia solo lectura)
+  // Permisos según rol en el flujo multinivel
   const puedeCrear = esUsuarioCentro && !esSoloAuditoria;
   const puedeEditar = esUsuarioCentro && !esSoloAuditoria;
-  const puedeAutorizar = esUsuarioCentro && !esSoloAuditoria;
+  const esMedico = rolUsuario === 'medico' || rolUsuario === 'centro';
+  const esAdmin = rolUsuario === 'administrador_centro' || rolUsuario === 'admin';
+  const esDirector = rolUsuario === 'director_centro' || rolUsuario === 'director';
   const puedeCancelar = esUsuarioCentro && !esSoloAuditoria;
 
   // Estados principales
@@ -415,6 +431,84 @@ const ComprasCajaChica = () => {
     }
   };
 
+  // ========== FLUJO MULTINIVEL: ACCIONES ==========
+  
+  // Enviar a Admin (Médico)
+  const handleEnviarAdmin = async (compra) => {
+    try {
+      await comprasCajaChicaAPI.enviarAdmin(compra.id);
+      toast.success('Solicitud enviada al administrador');
+      fetchCompras();
+      fetchResumen();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al enviar solicitud');
+    }
+  };
+
+  // Autorizar como Admin
+  const handleAutorizarAdmin = async (compra, observaciones = '') => {
+    try {
+      await comprasCajaChicaAPI.autorizarAdmin(compra.id, { observaciones });
+      toast.success('Solicitud autorizada por administrador');
+      fetchCompras();
+      fetchResumen();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al autorizar');
+    }
+  };
+
+  // Enviar a Director (Admin)
+  const handleEnviarDirector = async (compra) => {
+    try {
+      await comprasCajaChicaAPI.enviarDirector(compra.id);
+      toast.success('Solicitud enviada al director');
+      fetchCompras();
+      fetchResumen();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al enviar solicitud');
+    }
+  };
+
+  // Autorizar como Director
+  const handleAutorizarDirector = async (compra, observaciones = '') => {
+    try {
+      await comprasCajaChicaAPI.autorizarDirector(compra.id, { observaciones });
+      toast.success('Solicitud autorizada - Lista para compra');
+      fetchCompras();
+      fetchResumen();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al autorizar');
+    }
+  };
+
+  // Rechazar solicitud
+  const handleRechazar = async (compra, motivo) => {
+    if (!motivo) {
+      toast.error('Debe proporcionar un motivo de rechazo');
+      return;
+    }
+    try {
+      await comprasCajaChicaAPI.rechazar(compra.id, { motivo });
+      toast.success('Solicitud rechazada');
+      fetchCompras();
+      fetchResumen();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al rechazar');
+    }
+  };
+
+  // Devolver para corrección
+  const handleDevolver = async (compra, observaciones) => {
+    try {
+      await comprasCajaChicaAPI.devolver(compra.id, { observaciones });
+      toast.success('Solicitud devuelta para corrección');
+      fetchCompras();
+      fetchResumen();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al devolver');
+    }
+  };
+
   // Cancelar compra
   const handleCancelar = async () => {
     if (!cancelModal.compra || !cancelModal.motivo) {
@@ -728,8 +822,8 @@ const ComprasCajaChica = () => {
                             <FaEye />
                           </button>
                           
-                          {/* Editar (solo pendientes) */}
-                          {puedeEditar && compra.estado === 'pendiente' && (
+                          {/* Editar (solo pendientes o rechazadas) */}
+                          {puedeEditar && ['pendiente', 'rechazada'].includes(compra.estado) && (
                             <button
                               onClick={() => handleEdit(compra)}
                               className="p-2 text-yellow-600 hover:bg-yellow-50 rounded-lg"
@@ -739,19 +833,52 @@ const ComprasCajaChica = () => {
                             </button>
                           )}
                           
-                          {/* Autorizar */}
-                          {puedeAutorizar && compra.estado === 'pendiente' && (
+                          {/* FLUJO MULTINIVEL: Enviar a Admin (Médico) */}
+                          {esMedico && compra.estado === 'pendiente' && compra.detalles?.length > 0 && (
                             <button
-                              onClick={() => setAutorizarModal({ show: true, compra, observaciones: '' })}
-                              className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
-                              title="Autorizar"
+                              onClick={() => handleEnviarAdmin(compra)}
+                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                              title="Enviar a Admin"
                             >
                               <FaCheck />
                             </button>
                           )}
                           
-                          {/* Cancelar */}
-                          {puedeCancelar && !['recibida', 'cancelada'].includes(compra.estado) && (
+                          {/* FLUJO MULTINIVEL: Autorizar como Admin */}
+                          {esAdmin && compra.estado === 'enviada_admin' && (
+                            <button
+                              onClick={() => handleAutorizarAdmin(compra)}
+                              className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                              title="Autorizar como Admin"
+                            >
+                              <FaUserCheck />
+                            </button>
+                          )}
+                          
+                          {/* FLUJO MULTINIVEL: Enviar a Director (Admin) */}
+                          {esAdmin && compra.estado === 'autorizada_admin' && (
+                            <button
+                              onClick={() => handleEnviarDirector(compra)}
+                              className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                              title="Enviar a Director"
+                            >
+                              <FaCheck />
+                            </button>
+                          )}
+                          
+                          {/* FLUJO MULTINIVEL: Autorizar como Director */}
+                          {esDirector && compra.estado === 'enviada_director' && (
+                            <button
+                              onClick={() => handleAutorizarDirector(compra)}
+                              className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                              title="Autorizar (Final)"
+                            >
+                              <FaUserCheck />
+                            </button>
+                          )}
+                          
+                          {/* Cancelar (estados intermedios) */}
+                          {puedeCancelar && !['recibida', 'cancelada', 'rechazada'].includes(compra.estado) && (
                             <button
                               onClick={() => setCancelModal({ show: true, compra, motivo: '' })}
                               className="p-2 text-red-600 hover:bg-red-50 rounded-lg"

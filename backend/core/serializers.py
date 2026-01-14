@@ -2930,39 +2930,62 @@ class DetalleCompraCajaChicaWriteSerializer(serializers.Serializer):
     descripcion_producto = serializers.CharField(max_length=500)
     cantidad = serializers.IntegerField(min_value=1)
     unidad = serializers.CharField(max_length=50, required=False, allow_blank=True)
-    precio_unitario = serializers.DecimalField(max_digits=12, decimal_places=2)
+    precio_unitario = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, default=0)
     numero_lote = serializers.CharField(max_length=100, required=False, allow_blank=True, allow_null=True)
     fecha_caducidad = serializers.DateField(required=False, allow_null=True)
 
 
 class CompraCajaChicaSerializer(serializers.ModelSerializer):
-    """Serializer principal para compras de caja chica"""
+    """
+    Serializer principal para compras de caja chica.
+    
+    FLUJO MULTINIVEL:
+    - Médico crea solicitud con detalles
+    - Admin autoriza
+    - Director autoriza
+    - Centro realiza compra
+    - Centro recibe productos
+    """
     centro_nombre = serializers.SerializerMethodField()
     solicitante_nombre = serializers.SerializerMethodField()
     autorizado_por_nombre = serializers.SerializerMethodField()
     recibido_por_nombre = serializers.SerializerMethodField()
+    # Nuevos campos para flujo multinivel
+    administrador_centro_nombre = serializers.SerializerMethodField()
+    director_centro_nombre = serializers.SerializerMethodField()
+    rechazado_por_nombre = serializers.SerializerMethodField()
     detalles = DetalleCompraCajaChicaSerializer(many=True, read_only=True)
     detalles_write = DetalleCompraCajaChicaWriteSerializer(many=True, write_only=True, required=False)
     estado_display = serializers.SerializerMethodField()
     total_productos = serializers.SerializerMethodField()
     requisicion_origen_numero = serializers.SerializerMethodField()
+    # Acciones disponibles según estado y rol
+    acciones_disponibles = serializers.SerializerMethodField()
     
     class Meta:
         model = CompraCajaChica
         fields = [
             'id', 'folio', 'centro', 'centro_nombre',
             'requisicion_origen', 'requisicion_origen_numero',
-            'proveedor_nombre', 'proveedor_rfc', 'proveedor_direccion', 'proveedor_telefono',
+            'proveedor_nombre', 'proveedor_rfc', 'proveedor_direccion', 'proveedor_telefono', 'proveedor_contacto',
             'fecha_solicitud', 'fecha_compra', 'fecha_recepcion',
+            # Flujo multinivel: fechas
+            'fecha_envio_admin', 'fecha_autorizacion_admin',
+            'fecha_envio_director', 'fecha_autorizacion_director',
             'numero_factura', 'documento_respaldo',
             'subtotal', 'iva', 'total',
             'motivo_compra', 'estado', 'estado_display',
+            # Usuarios del flujo
             'solicitante', 'solicitante_nombre',
+            'administrador_centro', 'administrador_centro_nombre',
+            'director_centro', 'director_centro_nombre',
             'autorizado_por', 'autorizado_por_nombre',
             'recibido_por', 'recibido_por_nombre',
-            'observaciones', 'motivo_cancelacion',
+            'rechazado_por', 'rechazado_por_nombre',
+            'observaciones', 'motivo_cancelacion', 'motivo_rechazo',
             'created_at', 'updated_at',
-            'detalles', 'detalles_write', 'total_productos'
+            'detalles', 'detalles_write', 'total_productos',
+            'acciones_disponibles'
         ]
         read_only_fields = ['id', 'folio', 'subtotal', 'iva', 'total', 'created_at', 'updated_at']
     
@@ -2972,6 +2995,16 @@ class CompraCajaChicaSerializer(serializers.ModelSerializer):
     def get_solicitante_nombre(self, obj):
         if obj.solicitante:
             return f"{obj.solicitante.first_name} {obj.solicitante.last_name}".strip() or obj.solicitante.username
+        return None
+    
+    def get_administrador_centro_nombre(self, obj):
+        if hasattr(obj, 'administrador_centro') and obj.administrador_centro:
+            return f"{obj.administrador_centro.first_name} {obj.administrador_centro.last_name}".strip() or obj.administrador_centro.username
+        return None
+    
+    def get_director_centro_nombre(self, obj):
+        if hasattr(obj, 'director_centro') and obj.director_centro:
+            return f"{obj.director_centro.first_name} {obj.director_centro.last_name}".strip() or obj.director_centro.username
         return None
     
     def get_autorizado_por_nombre(self, obj):
@@ -2984,6 +3017,11 @@ class CompraCajaChicaSerializer(serializers.ModelSerializer):
             return f"{obj.recibido_por.first_name} {obj.recibido_por.last_name}".strip() or obj.recibido_por.username
         return None
     
+    def get_rechazado_por_nombre(self, obj):
+        if hasattr(obj, 'rechazado_por') and obj.rechazado_por:
+            return f"{obj.rechazado_por.first_name} {obj.rechazado_por.last_name}".strip() or obj.rechazado_por.username
+        return None
+    
     def get_estado_display(self, obj):
         return obj.get_estado_display()
     
@@ -2992,6 +3030,72 @@ class CompraCajaChicaSerializer(serializers.ModelSerializer):
     
     def get_requisicion_origen_numero(self, obj):
         return obj.requisicion_origen.numero if obj.requisicion_origen else None
+    
+    def get_acciones_disponibles(self, obj):
+        """Retorna las acciones disponibles según estado actual"""
+        request = self.context.get('request')
+        if not request or not request.user:
+            return []
+        
+        user = request.user
+        rol = getattr(user, 'rol', '').lower()
+        acciones = []
+        
+        # Determinar acciones según rol y estado
+        if obj.estado == 'pendiente':
+            if rol in ['medico', 'centro']:
+                acciones.extend(['editar', 'enviar_admin', 'cancelar'])
+        elif obj.estado == 'enviada_admin':
+            if rol in ['administrador_centro', 'admin']:
+                acciones.extend(['autorizar_admin', 'rechazar', 'devolver'])
+        elif obj.estado == 'autorizada_admin':
+            if rol in ['administrador_centro', 'admin']:
+                acciones.extend(['enviar_director', 'cancelar'])
+        elif obj.estado == 'enviada_director':
+            if rol in ['director_centro', 'director']:
+                acciones.extend(['autorizar_director', 'rechazar', 'devolver'])
+        elif obj.estado == 'autorizada':
+            if rol in ['medico', 'centro', 'administrador_centro', 'director_centro']:
+                acciones.extend(['registrar_compra', 'cancelar'])
+        elif obj.estado == 'comprada':
+            if rol in ['medico', 'centro', 'administrador_centro']:
+                acciones.extend(['registrar_recepcion', 'cancelar'])
+        elif obj.estado == 'rechazada':
+            if rol in ['medico', 'centro']:
+                acciones.extend(['editar', 'reenviar'])
+        
+        # Ver detalle siempre disponible
+        acciones.insert(0, 'ver')
+        
+        return acciones
+    
+    def validate(self, data):
+        """Validaciones del formulario"""
+        # Validar que haya detalles al crear
+        if not self.instance:  # Es creación
+            detalles = data.get('detalles_write', [])
+            if not detalles:
+                raise serializers.ValidationError({
+                    'detalles_write': 'Debe agregar al menos un producto a la solicitud.'
+                })
+            # Validar cada detalle
+            for i, detalle in enumerate(detalles):
+                if not detalle.get('descripcion_producto'):
+                    raise serializers.ValidationError({
+                        'detalles_write': f'El producto {i+1} debe tener una descripción.'
+                    })
+                if not detalle.get('cantidad') or detalle.get('cantidad', 0) < 1:
+                    raise serializers.ValidationError({
+                        'detalles_write': f'El producto {i+1} debe tener una cantidad válida.'
+                    })
+        
+        # Validar motivo de compra
+        if not self.instance and not data.get('motivo_compra'):
+            raise serializers.ValidationError({
+                'motivo_compra': 'Debe especificar el motivo de la compra.'
+            })
+        
+        return data
     
     def create(self, validated_data):
         # Extraer detalles antes de crear la compra

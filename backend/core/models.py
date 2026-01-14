@@ -3484,21 +3484,45 @@ class CompraCajaChica(models.Model):
     """
     Compras realizadas por el centro penitenciario con recursos de caja chica.
     
-    Este módulo se usa cuando:
-    1. El centro solicita un medicamento a farmacia central
-    2. Farmacia informa que NO tiene disponibilidad
-    3. El centro realiza la compra con sus propios recursos
-    4. El inventario resultante pertenece al CENTRO, no a farmacia
+    FLUJO MULTINIVEL (similar a Requisiciones):
+    1. Médico crea solicitud (pendiente)
+    2. Médico envía a Admin (enviada_admin)
+    3. Admin autoriza (autorizada_admin)
+    4. Admin envía a Director (enviada_director)
+    5. Director autoriza (autorizada) - Lista para comprar
+    6. Se realiza la compra (comprada)
+    7. Se reciben productos (recibida)
     
-    Farmacia puede AUDITAR (ver) pero NO modificar estas compras.
+    PERMISOS:
+    - Médico: Crea y envía solicitudes
+    - Admin: Autoriza y envía a Director
+    - Director: Autorización final
+    - Farmacia: Solo lectura (auditoría)
     """
     ESTADOS = [
         ('pendiente', 'Pendiente'),
+        ('enviada_admin', 'Enviada a Admin'),
+        ('autorizada_admin', 'Autorizada por Admin'),
+        ('enviada_director', 'Enviada a Director'),
         ('autorizada', 'Autorizada'),
         ('comprada', 'Comprada'),
         ('recibida', 'Recibida'),
         ('cancelada', 'Cancelada'),
+        ('rechazada', 'Rechazada'),
     ]
+    
+    # Transiciones válidas de estado
+    TRANSICIONES_VALIDAS = {
+        'pendiente': ['enviada_admin', 'cancelada'],
+        'enviada_admin': ['autorizada_admin', 'rechazada', 'pendiente'],  # Admin puede devolver
+        'autorizada_admin': ['enviada_director', 'cancelada'],
+        'enviada_director': ['autorizada', 'rechazada', 'autorizada_admin'],  # Director puede devolver
+        'autorizada': ['comprada', 'cancelada'],
+        'comprada': ['recibida', 'cancelada'],
+        'recibida': [],  # Estado terminal
+        'cancelada': [],  # Estado terminal
+        'rechazada': ['pendiente'],  # Puede volver a iniciar
+    }
     
     folio = models.CharField(max_length=50, unique=True, blank=True)
     
@@ -3524,11 +3548,18 @@ class CompraCajaChica(models.Model):
     proveedor_rfc = models.CharField(max_length=20, blank=True, null=True)
     proveedor_direccion = models.TextField(blank=True, null=True)
     proveedor_telefono = models.CharField(max_length=50, blank=True, null=True)
+    proveedor_contacto = models.CharField(max_length=200, blank=True, null=True)
     
-    # Fechas
+    # Fechas base
     fecha_solicitud = models.DateTimeField(auto_now_add=True)
     fecha_compra = models.DateField(blank=True, null=True)
     fecha_recepcion = models.DateTimeField(blank=True, null=True)
+    
+    # ========== FLUJO MULTINIVEL: FECHAS DE TRAZABILIDAD ==========
+    fecha_envio_admin = models.DateTimeField(blank=True, null=True)
+    fecha_autorizacion_admin = models.DateTimeField(blank=True, null=True)
+    fecha_envio_director = models.DateTimeField(blank=True, null=True)
+    fecha_autorizacion_director = models.DateTimeField(blank=True, null=True)
     
     # Documento de respaldo
     numero_factura = models.CharField(max_length=100, blank=True, null=True)
@@ -3545,7 +3576,7 @@ class CompraCajaChica(models.Model):
     # Estado
     estado = models.CharField(max_length=30, choices=ESTADOS, default='pendiente')
     
-    # Usuarios
+    # ========== USUARIOS DEL FLUJO ==========
     solicitante = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -3553,6 +3584,25 @@ class CompraCajaChica(models.Model):
         related_name='compras_caja_solicitadas',
         db_column='solicitante_id'
     )
+    # Admin que autoriza
+    administrador_centro = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='compras_caja_autorizadas_admin',
+        db_column='administrador_centro_id'
+    )
+    # Director que autoriza
+    director_centro = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='compras_caja_autorizadas_director',
+        db_column='director_centro_id'
+    )
+    # Compatibilidad: autorizado_por apunta al último autorizador
     autorizado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -3569,10 +3619,20 @@ class CompraCajaChica(models.Model):
         related_name='compras_caja_recibidas',
         db_column='recibido_por_id'
     )
+    # Usuario que rechazó
+    rechazado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='compras_caja_rechazadas',
+        db_column='rechazado_por_id'
+    )
     
-    # Observaciones
+    # Observaciones y motivos
     observaciones = models.TextField(blank=True, null=True)
     motivo_cancelacion = models.TextField(blank=True, null=True)
+    motivo_rechazo = models.TextField(blank=True, null=True)
     
     # Auditoría
     created_at = models.DateTimeField(auto_now_add=True)
@@ -3586,7 +3646,23 @@ class CompraCajaChica(models.Model):
         verbose_name_plural = 'Compras de Caja Chica'
 
     def __str__(self):
-        return f"{self.folio} - {self.centro.nombre}"
+        return f"{self.folio} - {self.centro.nombre if self.centro else 'Sin centro'}"
+    
+    def calcular_totales(self):
+        """Recalcula subtotal, IVA y total basado en los detalles"""
+        from decimal import Decimal
+        subtotal = Decimal('0')
+        for detalle in self.detalles.all():
+            subtotal += detalle.precio_unitario * detalle.cantidad_solicitada
+        self.subtotal = subtotal
+        self.iva = subtotal * Decimal('0.16')  # IVA 16%
+        self.total = self.subtotal + self.iva
+        self.save(update_fields=['subtotal', 'iva', 'total'])
+    
+    def puede_transicionar_a(self, nuevo_estado):
+        """Verifica si la transición de estado es válida"""
+        estados_permitidos = self.TRANSICIONES_VALIDAS.get(self.estado, [])
+        return nuevo_estado in estados_permitidos
 
 
 class DetalleCompraCajaChica(models.Model):
