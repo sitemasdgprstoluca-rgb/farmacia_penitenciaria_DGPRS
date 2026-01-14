@@ -271,10 +271,13 @@ function Layout() {
     { path: "/requisiciones", icon: FaClipboardList, label: "Requisiciones", permission: "verRequisiciones" },
     { path: "/donaciones", icon: FaGift, label: "Donaciones", permission: "verDonaciones" },
     { path: "/movimientos", icon: FaExchangeAlt, label: "Movimientos", permission: "verMovimientos" },
+    // Dispensaciones - agrupa pacientes y dispensaciones
     { path: "/pacientes", icon: FaUserInjured, label: "Pacientes", permission: "verDispensaciones" },
     { path: "/dispensaciones", icon: FaPills, label: "Dispensaciones", permission: "verDispensaciones" },
-    { path: "/compras-caja-chica", icon: FaMoneyBillWave, label: "Caja Chica", permission: "verComprasCajaChica" },
-    { path: "/inventario-caja-chica", icon: FaBoxes, label: "Inv. Caja Chica", permission: "verInventarioCajaChica" },
+    // Caja Chica - agrupa compras e inventario
+    { path: "/compras-caja-chica", icon: FaMoneyBillWave, label: "Compras Caja Chica", permission: "verComprasCajaChica" },
+    { path: "/inventario-caja-chica", icon: FaBoxes, label: "Inventario Caja Chica", permission: "verComprasCajaChica" },
+    // Administración
     { path: "/centros", icon: FaBuilding, label: "Centros", permission: "verCentros" },
     { path: "/usuarios", icon: FaUsers, label: "Usuarios", permission: "verUsuarios" },
     { path: "/reportes", icon: FaChartBar, label: "Reportes", permission: "verReportes" },
