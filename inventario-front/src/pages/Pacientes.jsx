@@ -60,7 +60,8 @@ const Pacientes = () => {
   const [centroFiltro, setCentroFiltro] = useState('');
   const [sexoFiltro, setSexoFiltro] = useState('');
   const [activoFiltro, setActivoFiltro] = useState('true');
-  const [showFilters, setShowFilters] = useState(false);
+  // Mostrar filtros expandidos por defecto para Farmacia
+  const [showFilters, setShowFilters] = useState(esUsuarioFarmacia);
   
   // Centros para el filtro
   const [centros, setCentros] = useState([]);

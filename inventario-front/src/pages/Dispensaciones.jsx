@@ -81,7 +81,8 @@ const Dispensaciones = () => {
   const [tipoFiltro, setTipoFiltro] = useState('');
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
+  // Mostrar filtros expandidos por defecto para Farmacia
+  const [showFilters, setShowFilters] = useState(!centroUsuario);
   
   // Listas auxiliares
   const [centros, setCentros] = useState([]);

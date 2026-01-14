@@ -110,7 +110,8 @@ const ComprasCajaChica = () => {
   const [estadoFiltro, setEstadoFiltro] = useState('');
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
+  // Mostrar filtros expandidos por defecto para Farmacia
+  const [showFilters, setShowFilters] = useState(esUsuarioFarmacia);
   
   // Listas auxiliares
   const [centros, setCentros] = useState([]);

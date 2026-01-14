@@ -64,7 +64,8 @@ const InventarioCajaChica = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [centroFiltro, setCentroFiltro] = useState(centroUsuario || '');
   const [conStock, setConStock] = useState(true);
-  const [showFilters, setShowFilters] = useState(false);
+  // Mostrar filtros expandidos por defecto para Farmacia
+  const [showFilters, setShowFilters] = useState(esUsuarioFarmacia);
   
   // Listas auxiliares
   const [centros, setCentros] = useState([]);
