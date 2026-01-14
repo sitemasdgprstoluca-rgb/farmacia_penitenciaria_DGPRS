@@ -34,6 +34,7 @@ import {
   FaPalette,
   FaGift,
   FaChevronRight,
+  FaChevronDown,
   FaShieldAlt,
   FaCrown,
   FaUserTie,
@@ -50,11 +51,131 @@ import {
 
 /**
  * Ítem del menú con animaciones y estados hover
+ * Soporta submenús expandibles
  */
-const MenuItem = ({ item, isActive, onClick }) => {
+const MenuItem = ({ item, isActive, onClick, isExpanded, onToggle, subItems, location }) => {
   const [isHovered, setIsHovered] = useState(false);
   const Icon = item.icon;
+  const hasSubItems = item.subItems && item.subItems.length > 0;
   
+  // Si tiene subItems, es un menú padre
+  if (hasSubItems) {
+    const isSubActive = item.subItems.some(sub => location?.pathname === sub.path);
+    
+    return (
+      <div>
+        {/* Botón padre del submenú */}
+        <button
+          onClick={() => onToggle && onToggle(item.id)}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          className="w-full group relative flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-300"
+          style={{
+            backgroundColor: isSubActive 
+              ? 'rgba(255,255,255,0.18)' 
+              : isHovered 
+                ? 'rgba(255,255,255,0.08)' 
+                : 'transparent',
+          }}
+        >
+          {/* Indicador activo */}
+          <div 
+            className="absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r-full transition-all duration-300"
+            style={{
+              height: isSubActive ? '60%' : '0%',
+              backgroundColor: 'white',
+              opacity: isSubActive ? 1 : 0,
+            }}
+          />
+          
+          {/* Icono */}
+          <div 
+            className="relative flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-300"
+            style={{
+              backgroundColor: isSubActive ? 'rgba(255,255,255,0.2)' : 'transparent',
+            }}
+          >
+            <Icon 
+              size={16} 
+              style={{ color: 'white', opacity: isSubActive ? 1 : 0.85 }}
+            />
+          </div>
+          
+          {/* Label */}
+          <span 
+            className="flex-1 text-sm text-left transition-all duration-300"
+            style={{ 
+              color: 'white',
+              fontWeight: isSubActive ? 600 : 400,
+              opacity: isSubActive ? 1 : 0.9,
+            }}
+          >
+            {item.label}
+          </span>
+          
+          {/* Flecha expandir/colapsar */}
+          <FaChevronDown 
+            size={12} 
+            className="transition-transform duration-300"
+            style={{
+              color: 'white',
+              opacity: 0.7,
+              transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+            }}
+          />
+        </button>
+        
+        {/* Submenú */}
+        <div 
+          className="overflow-hidden transition-all duration-300"
+          style={{
+            maxHeight: isExpanded ? `${item.subItems.length * 44}px` : '0',
+            opacity: isExpanded ? 1 : 0,
+          }}
+        >
+          <div className="ml-4 mt-1 space-y-0.5 border-l border-white/20 pl-2">
+            {item.subItems.map((subItem) => {
+              const SubIcon = subItem.icon;
+              const isSubItemActive = location?.pathname === subItem.path;
+              
+              return (
+                <Link
+                  key={subItem.path}
+                  to={subItem.path}
+                  onClick={onClick}
+                  className="group flex items-center gap-2 px-2 py-2 rounded-lg transition-all duration-300"
+                  style={{
+                    backgroundColor: isSubItemActive 
+                      ? 'rgba(255,255,255,0.15)' 
+                      : 'transparent',
+                  }}
+                  onMouseEnter={(e) => !isSubItemActive && (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)')}
+                  onMouseLeave={(e) => !isSubItemActive && (e.currentTarget.style.backgroundColor = 'transparent')}
+                >
+                  <SubIcon 
+                    size={14} 
+                    style={{ color: 'white', opacity: isSubItemActive ? 1 : 0.7 }}
+                  />
+                  <span 
+                    className="text-sm"
+                    style={{ 
+                      color: 'white',
+                      fontWeight: isSubItemActive ? 500 : 400,
+                      opacity: isSubItemActive ? 1 : 0.85,
+                    }}
+                  >
+                    {subItem.label}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // Item simple sin submenús
   return (
     <Link
       to={item.path}
@@ -208,6 +329,7 @@ function Layout() {
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [expandedMenus, setExpandedMenus] = useState({}); // Para submenús expandidos
   const location = useLocation();
   const navigate = useNavigate();
   const { user, permisos, getRolPrincipal } = usePermissions();
@@ -271,12 +393,28 @@ function Layout() {
     { path: "/requisiciones", icon: FaClipboardList, label: "Requisiciones", permission: "verRequisiciones" },
     { path: "/donaciones", icon: FaGift, label: "Donaciones", permission: "verDonaciones" },
     { path: "/movimientos", icon: FaExchangeAlt, label: "Movimientos", permission: "verMovimientos" },
-    // Dispensaciones - agrupa pacientes y dispensaciones
-    { path: "/pacientes", icon: FaUserInjured, label: "Pacientes", permission: "verDispensaciones" },
-    { path: "/dispensaciones", icon: FaPills, label: "Dispensaciones", permission: "verDispensaciones" },
-    // Caja Chica - agrupa compras e inventario
-    { path: "/compras-caja-chica", icon: FaMoneyBillWave, label: "Compras Caja Chica", permission: "verComprasCajaChica" },
-    { path: "/inventario-caja-chica", icon: FaBoxes, label: "Inventario Caja Chica", permission: "verComprasCajaChica" },
+    // Dispensaciones - con submenú de pacientes
+    { 
+      id: "dispensaciones-group",
+      icon: FaPills, 
+      label: "Dispensaciones", 
+      permission: "verDispensaciones",
+      subItems: [
+        { path: "/pacientes", icon: FaUserInjured, label: "Pacientes" },
+        { path: "/dispensaciones", icon: FaPills, label: "Dispensaciones" },
+      ]
+    },
+    // Caja Chica - con submenú de inventario
+    { 
+      id: "caja-chica-group",
+      icon: FaMoneyBillWave, 
+      label: "Caja Chica", 
+      permission: "verComprasCajaChica",
+      subItems: [
+        { path: "/compras-caja-chica", icon: FaMoneyBillWave, label: "Compras" },
+        { path: "/inventario-caja-chica", icon: FaBoxes, label: "Inventario" },
+      ]
+    },
     // Administración
     { path: "/centros", icon: FaBuilding, label: "Centros", permission: "verCentros" },
     { path: "/usuarios", icon: FaUsers, label: "Usuarios", permission: "verUsuarios" },
@@ -286,6 +424,26 @@ function Layout() {
     { path: "/perfil", icon: FaIdBadge, label: "Perfil", permission: "verPerfil" },
     { path: "/configuracion-tema", icon: FaPalette, label: "Personalizar Tema", permission: "configurarTema" },
   ], [unreadCount]);
+
+  // Toggle para expandir/colapsar submenús
+  const toggleSubmenu = useCallback((menuId) => {
+    setExpandedMenus(prev => ({
+      ...prev,
+      [menuId]: !prev[menuId]
+    }));
+  }, []);
+
+  // Auto-expandir submenú si la ruta actual está dentro
+  useEffect(() => {
+    menuItems.forEach(item => {
+      if (item.subItems) {
+        const isActive = item.subItems.some(sub => location.pathname === sub.path);
+        if (isActive) {
+          setExpandedMenus(prev => ({ ...prev, [item.id]: true }));
+        }
+      }
+    });
+  }, [location.pathname, menuItems]);
 
   const isValidating = permisos?._isValidating || permisos?._source === 'pending_validation';
   
@@ -457,13 +615,16 @@ function Layout() {
         </div>
 
         {/* Navegación - Sin scroll */}
-        <nav className="flex-1 px-2 py-1 overflow-hidden">
+        <nav className="flex-1 px-2 py-1 overflow-y-auto">
           <div className="space-y-0.5">
             {visibleMenuItems.map((item) => (
               <MenuItem
-                key={item.path}
+                key={item.path || item.id}
                 item={item}
                 isActive={location.pathname === item.path}
+                isExpanded={expandedMenus[item.id]}
+                onToggle={toggleSubmenu}
+                location={location}
                 onClick={() => window.innerWidth < 1024 && setSidebarOpen(false)}
               />
             ))}
