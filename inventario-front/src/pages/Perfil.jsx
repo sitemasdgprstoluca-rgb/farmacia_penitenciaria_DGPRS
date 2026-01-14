@@ -58,6 +58,7 @@ const CATEGORIAS_PERMISOS = {
     verPerfil: "Perfil",
     verMovimientos: "Movimientos",
     verDonaciones: "Donaciones",
+    verDispensaciones: "Dispensaciones",
   },
   "Requisiciones": {
     crearRequisicion: "Crear",

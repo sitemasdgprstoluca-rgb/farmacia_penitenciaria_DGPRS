@@ -35,6 +35,8 @@ const RUTAS_CRITICAS = [
   '/requisiciones',
   '/movimientos',
   '/donaciones',
+  '/pacientes',
+  '/dispensaciones',
 ];
 
 // Rutas permitidas aunque el API no esté saludable
@@ -69,6 +71,10 @@ const Notificaciones = lazy(() => import('./pages/Notificaciones'));
 const Perfil = lazy(() => import('./pages/Perfil'));
 const ConfiguracionTema = lazy(() => import('./pages/ConfiguracionTema'));
 const Donaciones = lazy(() => import('./pages/Donaciones'));
+const Pacientes = lazy(() => import('./pages/Pacientes'));
+const Dispensaciones = lazy(() => import('./pages/Dispensaciones'));
+const ComprasCajaChica = lazy(() => import('./pages/ComprasCajaChica'));
+const InventarioCajaChica = lazy(() => import('./pages/InventarioCajaChica'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const ServerError = lazy(() => import('./pages/ServerError'));
 
@@ -711,6 +717,35 @@ function App() {
               <CriticalRouteGuard>
               <PermissionsGuard requiredPermission="verDonaciones">
                 <Donaciones />
+              </PermissionsGuard>
+              </CriticalRouteGuard>
+            } />
+            <Route path="pacientes" element={
+              <CriticalRouteGuard>
+              <PermissionsGuard requiredPermission="verDispensaciones">
+                <Pacientes />
+              </PermissionsGuard>
+              </CriticalRouteGuard>
+            } />
+            <Route path="dispensaciones" element={
+              <CriticalRouteGuard>
+              <PermissionsGuard requiredPermission="verDispensaciones">
+                <Dispensaciones />
+              </PermissionsGuard>
+              </CriticalRouteGuard>
+            } />
+            {/* Módulo Compras Caja Chica del Centro */}
+            <Route path="compras-caja-chica" element={
+              <CriticalRouteGuard>
+              <PermissionsGuard requiredPermission="verComprasCajaChica">
+                <ComprasCajaChica />
+              </PermissionsGuard>
+              </CriticalRouteGuard>
+            } />
+            <Route path="inventario-caja-chica" element={
+              <CriticalRouteGuard>
+              <PermissionsGuard requiredPermission="verComprasCajaChica">
+                <InventarioCajaChica />
               </PermissionsGuard>
               </CriticalRouteGuard>
             } />

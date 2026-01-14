@@ -6,11 +6,8 @@ Test Suite: Integración con Supabase - Movimientos
 Tests de integración que verifican la alineación entre el código 
 y la base de datos real de Supabase.
 
-Estos tests:
-1. Verifican que los campos subtipo_salida y numero_expediente existen en BD
-2. Verifican que el modelo Django puede leer estos campos
-3. Verifican que el serializer expone correctamente los campos
-4. Verifican datos reales de movimientos
+NOTA: Estos tests requieren PostgreSQL/Supabase y no funcionan con SQLite.
+Se saltan automáticamente en entornos de testing con SQLite.
 
 Author: Sistema Farmacia Penitenciaria
 Date: 2026-01-03
@@ -20,6 +17,12 @@ from django.test import TestCase
 from django.db import connection
 from decimal import Decimal
 from datetime import datetime
+
+# Skip todo el módulo si se usa SQLite (tests requieren information_schema)
+pytestmark = pytest.mark.skipif(
+    connection.vendor == 'sqlite',
+    reason="Tests requieren PostgreSQL/Supabase - no compatible con SQLite"
+)
 
 
 class TestSupabaseMovimientosSchema(TestCase):

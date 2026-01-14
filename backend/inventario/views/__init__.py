@@ -43,6 +43,7 @@ from inventario.views.trazabilidad import (
     trazabilidad_producto_exportar,
     trazabilidad_lote_exportar,
     exportar_control_inventarios,
+    exportar_control_mensual,
 )
 
 # Reportes desde módulo dedicado
@@ -94,6 +95,7 @@ __all__ = [
     'trazabilidad_producto_exportar',
     'trazabilidad_lote_exportar',
     'exportar_control_inventarios',
+    'exportar_control_mensual',
     # Reportes
     'reporte_inventario',
     'reporte_movimientos',

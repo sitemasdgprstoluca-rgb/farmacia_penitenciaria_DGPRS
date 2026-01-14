@@ -27,7 +27,10 @@ import requests
 from core.models import (
     User, Centro, Producto, Lote, Requisicion, DetalleRequisicion,
     Movimiento, AuditoriaLog, ImportacionLog, Notificacion, UserProfile,
-    ConfiguracionSistema
+    ConfiguracionSistema,
+    # Módulo Compras Caja Chica
+    CompraCajaChica, DetalleCompraCajaChica, InventarioCajaChica,
+    MovimientoCajaChica, HistorialCompraCajaChica
 )
 from core.utils.pdf_reports import generar_reporte_auditoria, generar_reporte_trazabilidad
 from core.serializers import (
@@ -35,11 +38,16 @@ from core.serializers import (
     ProductoSerializer, LoteSerializer, RequisicionSerializer,
     DetalleRequisicionSerializer, MovimientoSerializer,
     AuditoriaLogSerializer, ImportacionLogSerializer, NotificacionSerializer,
-    ConfiguracionSistemaSerializer
+    ConfiguracionSistemaSerializer,
+    # Módulo Compras Caja Chica
+    CompraCajaChicaSerializer, CompraCajaChicaListSerializer,
+    DetalleCompraCajaChicaSerializer, InventarioCajaChicaSerializer,
+    MovimientoCajaChicaSerializer, HistorialCompraCajaChicaSerializer
 )
 from core.permissions import (
     IsFarmaciaRole, IsCentroUser, CanAuthorizeRequisicion, CanViewNotifications, 
-    CanViewProfile, IsVistaRole, IsSuperuserOnly
+    CanViewProfile, IsVistaRole, IsSuperuserOnly, CanManageDispensaciones,
+    CanManageComprasCajaChica
 )
 from django.conf import settings
 
@@ -5908,3 +5916,1256 @@ class AdminLimpiarDatosView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+
+# =============================================================================
+# MÓDULO DE DISPENSACIÓN A PACIENTES (FORMATO C)
+# =============================================================================
+
+from core.models import Paciente, Dispensacion, DetalleDispensacion, HistorialDispensacion
+from core.serializers import (
+    PacienteSerializer, PacienteSimpleSerializer,
+    DispensacionSerializer, DispensacionListSerializer,
+    DetalleDispensacionSerializer, HistorialDispensacionSerializer
+)
+
+
+class PacienteViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestión de Pacientes/Internos.
+    
+    ISS-DISP: Este módulo es operado por MÉDICO y CENTRO.
+    FARMACIA solo puede auditar (ver) pero NO crear/editar.
+    
+    Proporciona operaciones CRUD completas con filtrado por centro,
+    búsqueda por expediente/nombre y exportación.
+    """
+    queryset = Paciente.objects.all()
+    serializer_class = PacienteSerializer
+    permission_classes = [IsAuthenticated, CanManageDispensaciones]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['numero_expediente', 'nombre', 'apellido_paterno', 'apellido_materno', 'curp']
+    ordering_fields = ['numero_expediente', 'nombre', 'apellido_paterno', 'created_at']
+    ordering = ['-created_at']
+    
+    def get_queryset(self):
+        """Filtra pacientes según centro del usuario y parámetros de búsqueda"""
+        queryset = super().get_queryset().select_related('centro', 'created_by')
+        user = self.request.user
+        
+        # Filtrar por centro del usuario (excepto admin/farmacia)
+        if not user.is_superuser and user.rol not in ['admin', 'admin_sistema', 'farmacia']:
+            if user.centro:
+                queryset = queryset.filter(centro=user.centro)
+        
+        # Filtros opcionales
+        centro_id = self.request.query_params.get('centro')
+        if centro_id:
+            queryset = queryset.filter(centro_id=centro_id)
+        
+        activo = self.request.query_params.get('activo')
+        if activo is not None:
+            queryset = queryset.filter(activo=activo.lower() == 'true')
+        
+        sexo = self.request.query_params.get('sexo')
+        if sexo:
+            queryset = queryset.filter(sexo=sexo.upper())
+        
+        dormitorio = self.request.query_params.get('dormitorio')
+        if dormitorio:
+            queryset = queryset.filter(dormitorio__icontains=dormitorio)
+        
+        return queryset
+    
+    def get_serializer_class(self):
+        if self.action == 'list' and self.request.query_params.get('simple') == 'true':
+            return PacienteSimpleSerializer
+        return PacienteSerializer
+    
+    @action(detail=False, methods=['get'])
+    def autocomplete(self, request):
+        """Endpoint para autocompletado de pacientes"""
+        query = request.query_params.get('q', '')
+        centro_id = request.query_params.get('centro')
+        limit = int(request.query_params.get('limit', 10))
+        
+        queryset = self.get_queryset().filter(activo=True)
+        
+        if query:
+            queryset = queryset.filter(
+                Q(numero_expediente__icontains=query) |
+                Q(nombre__icontains=query) |
+                Q(apellido_paterno__icontains=query) |
+                Q(apellido_materno__icontains=query)
+            )
+        
+        if centro_id:
+            queryset = queryset.filter(centro_id=centro_id)
+        
+        queryset = queryset[:limit]
+        serializer = PacienteSimpleSerializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['get'])
+    def historial_dispensaciones(self, request, pk=None):
+        """Obtiene el historial de dispensaciones de un paciente"""
+        paciente = self.get_object()
+        dispensaciones = paciente.dispensaciones.all().order_by('-fecha_dispensacion')[:50]
+        serializer = DispensacionListSerializer(dispensaciones, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def exportar_excel(self, request):
+        """Exporta la lista de pacientes a Excel"""
+        queryset = self.get_queryset()
+        
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Pacientes"
+        
+        # Encabezados
+        headers = [
+            'No. Expediente', 'Nombre', 'Apellido Paterno', 'Apellido Materno',
+            'CURP', 'Fecha Nacimiento', 'Sexo', 'Centro', 'Dormitorio', 'Celda',
+            'Tipo Sangre', 'Activo', 'Fecha Ingreso'
+        ]
+        ws.append(headers)
+        
+        # Datos
+        for paciente in queryset:
+            ws.append([
+                paciente.numero_expediente,
+                paciente.nombre,
+                paciente.apellido_paterno,
+                paciente.apellido_materno or '',
+                paciente.curp or '',
+                str(paciente.fecha_nacimiento) if paciente.fecha_nacimiento else '',
+                paciente.get_sexo_display() if paciente.sexo else '',
+                paciente.centro.nombre if paciente.centro else '',
+                paciente.dormitorio or '',
+                paciente.celda or '',
+                paciente.tipo_sangre or '',
+                'Sí' if paciente.activo else 'No',
+                str(paciente.fecha_ingreso) if paciente.fecha_ingreso else '',
+            ])
+        
+        # Ajustar ancho de columnas
+        for column in ws.columns:
+            max_length = max(len(str(cell.value or '')) for cell in column)
+            ws.column_dimensions[column[0].column_letter].width = min(max_length + 2, 50)
+        
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename=pacientes_{timezone.now().strftime("%Y%m%d")}.xlsx'
+        return response
+
+    @action(detail=False, methods=['get'])
+    def plantilla_importacion(self, request):
+        """Descarga plantilla Excel para importación de pacientes/PPL"""
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Pacientes"
+        
+        # Encabezados con descripción
+        headers = [
+            'numero_expediente*', 'nombre*', 'apellido_paterno*', 'apellido_materno',
+            'curp', 'fecha_nacimiento', 'sexo', 'centro_clave*', 'dormitorio', 'celda',
+            'tipo_sangre', 'alergias', 'enfermedades_cronicas', 'observaciones_medicas',
+            'fecha_ingreso'
+        ]
+        ws.append(headers)
+        
+        # Fila de ejemplo
+        ws.append([
+            'EXP-001234', 'Juan', 'Pérez', 'López',
+            'PELJ900101HDFRRS09', '1990-01-15', 'M', 'CRS01', 'D-5', 'C-12',
+            'O+', 'Penicilina', 'Diabetes', 'Requiere dieta especial',
+            '2024-06-01'
+        ])
+        
+        # Instrucciones en otra hoja
+        ws_inst = wb.create_sheet("Instrucciones")
+        instrucciones = [
+            ["INSTRUCCIONES PARA IMPORTACIÓN DE PACIENTES/PPL"],
+            [""],
+            ["Campos obligatorios (marcados con *):"],
+            ["- numero_expediente: Identificador único del interno (ej: EXP-001234)"],
+            ["- nombre: Nombre(s) del interno"],
+            ["- apellido_paterno: Primer apellido"],
+            ["- centro_clave: Clave del centro penitenciario (ej: CRS01)"],
+            [""],
+            ["Campos opcionales:"],
+            ["- apellido_materno: Segundo apellido"],
+            ["- curp: CURP a 18 caracteres (se valida formato)"],
+            ["- fecha_nacimiento: Formato YYYY-MM-DD (ej: 1990-01-15)"],
+            ["- sexo: M (Masculino) o F (Femenino)"],
+            ["- dormitorio: Identificador del dormitorio"],
+            ["- celda: Número o identificador de celda"],
+            ["- tipo_sangre: O+, O-, A+, A-, B+, B-, AB+, AB-"],
+            ["- alergias: Texto libre con alergias conocidas"],
+            ["- enfermedades_cronicas: Texto libre"],
+            ["- observaciones_medicas: Notas adicionales"],
+            ["- fecha_ingreso: Fecha de ingreso al centro (YYYY-MM-DD)"],
+            [""],
+            ["NOTAS:"],
+            ["- Si el expediente ya existe, se ACTUALIZAN los datos"],
+            ["- Máximo 1000 registros por archivo"],
+            ["- Solo archivos .xlsx"],
+        ]
+        for row in instrucciones:
+            ws_inst.append(row)
+        ws_inst.column_dimensions['A'].width = 70
+        
+        # Estilo de encabezados
+        from openpyxl.styles import Font, PatternFill
+        header_fill = PatternFill(start_color="9F2241", end_color="9F2241", fill_type="solid")
+        header_font = Font(color="FFFFFF", bold=True)
+        for cell in ws[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+        
+        for column in ws.columns:
+            max_length = max(len(str(cell.value or '')) for cell in column)
+            ws.column_dimensions[column[0].column_letter].width = min(max_length + 2, 30)
+        
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename=plantilla_pacientes_ppl.xlsx'
+        return response
+
+    @action(detail=False, methods=['post'], url_path='importar-excel')
+    def importar_excel(self, request):
+        """
+        Importa pacientes/PPL desde archivo Excel.
+        
+        Columnas esperadas:
+        - numero_expediente* (único)
+        - nombre*
+        - apellido_paterno*
+        - apellido_materno
+        - curp
+        - fecha_nacimiento (YYYY-MM-DD)
+        - sexo (M/F)
+        - centro_clave* (clave del centro)
+        - dormitorio
+        - celda
+        - tipo_sangre
+        - alergias
+        - enfermedades_cronicas
+        - observaciones_medicas
+        - fecha_ingreso (YYYY-MM-DD)
+        
+        Si el expediente ya existe, se actualizan los datos.
+        """
+        import re
+        from datetime import datetime
+        
+        archivo = request.FILES.get('file')
+        if not archivo:
+            return Response({'error': 'No se recibió archivo'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validaciones de archivo
+        MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+        MAX_ROWS = 1000
+        
+        if archivo.size > MAX_FILE_SIZE:
+            return Response(
+                {'error': f'Archivo demasiado grande. Máximo: {MAX_FILE_SIZE // (1024*1024)}MB'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        file_ext = '.' + archivo.name.split('.')[-1].lower() if '.' in archivo.name else ''
+        if file_ext != '.xlsx':
+            return Response(
+                {'error': 'Solo se aceptan archivos .xlsx'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar magic bytes
+        archivo.seek(0)
+        header = archivo.read(4)
+        archivo.seek(0)
+        if header[:4] != b'PK\x03\x04':
+            return Response(
+                {'error': 'El archivo no es un Excel válido'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Patrones de validación
+        CURP_PATTERN = re.compile(r'^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d$')
+        TIPOS_SANGRE = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-']
+        
+        try:
+            wb = openpyxl.load_workbook(archivo)
+            ws = wb.active
+            
+            creados = 0
+            actualizados = 0
+            errores = []
+            user = request.user
+            
+            # Determinar centro del usuario si no es admin/farmacia
+            centro_usuario = None
+            if not user.is_superuser and user.rol not in ['admin', 'admin_sistema', 'farmacia']:
+                centro_usuario = user.centro
+            
+            with transaction.atomic():
+                for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=MAX_ROWS + 1, values_only=True), start=2):
+                    if row_idx > MAX_ROWS + 1:
+                        errores.append(f"Se alcanzó el límite de {MAX_ROWS} registros")
+                        break
+                    
+                    valores = list(row) + [None] * 20
+                    
+                    # Extraer valores
+                    numero_expediente = str(valores[0] or '').strip().upper()
+                    nombre = str(valores[1] or '').strip().title()
+                    apellido_paterno = str(valores[2] or '').strip().title()
+                    apellido_materno = str(valores[3] or '').strip().title() if valores[3] else None
+                    curp = str(valores[4] or '').strip().upper() if valores[4] else None
+                    fecha_nacimiento_str = str(valores[5] or '').strip() if valores[5] else None
+                    sexo = str(valores[6] or '').strip().upper() if valores[6] else None
+                    centro_clave = str(valores[7] or '').strip().upper()
+                    dormitorio = str(valores[8] or '').strip() if valores[8] else None
+                    celda = str(valores[9] or '').strip() if valores[9] else None
+                    tipo_sangre = str(valores[10] or '').strip().upper() if valores[10] else None
+                    alergias = str(valores[11] or '').strip() if valores[11] else None
+                    enfermedades_cronicas = str(valores[12] or '').strip() if valores[12] else None
+                    observaciones_medicas = str(valores[13] or '').strip() if valores[13] else None
+                    fecha_ingreso_str = str(valores[14] or '').strip() if valores[14] else None
+                    
+                    # Saltar filas vacías
+                    if not numero_expediente:
+                        continue
+                    
+                    # Validar campos obligatorios
+                    if not nombre:
+                        errores.append(f"Fila {row_idx}: Falta nombre")
+                        continue
+                    if not apellido_paterno:
+                        errores.append(f"Fila {row_idx}: Falta apellido paterno")
+                        continue
+                    
+                    # Validar/obtener centro
+                    centro = None
+                    if centro_usuario:
+                        # Usuario de centro solo puede importar a su centro
+                        centro = centro_usuario
+                    elif centro_clave:
+                        try:
+                            # Buscar centro por ID (la columna centro_clave contiene el ID del centro)
+                            centro = Centro.objects.get(id=int(centro_clave))
+                        except (Centro.DoesNotExist, ValueError):
+                            errores.append(f"Fila {row_idx}: Centro con ID '{centro_clave}' no encontrado")
+                            continue
+                    else:
+                        errores.append(f"Fila {row_idx}: Falta centro_clave (ID del centro)")
+                        continue
+                    
+                    # Validar CURP si se proporciona
+                    if curp and not CURP_PATTERN.match(curp):
+                        errores.append(f"Fila {row_idx}: CURP inválido '{curp}'")
+                        curp = None  # Continuar sin CURP
+                    
+                    # Parsear fecha de nacimiento
+                    fecha_nacimiento = None
+                    if fecha_nacimiento_str:
+                        try:
+                            # Intentar varios formatos
+                            for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y']:
+                                try:
+                                    fecha_nacimiento = datetime.strptime(fecha_nacimiento_str, fmt).date()
+                                    break
+                                except ValueError:
+                                    continue
+                        except:
+                            pass
+                    
+                    # Parsear fecha de ingreso
+                    fecha_ingreso = None
+                    if fecha_ingreso_str:
+                        try:
+                            for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y']:
+                                try:
+                                    fecha_ingreso = datetime.strptime(fecha_ingreso_str, fmt).date()
+                                    break
+                                except ValueError:
+                                    continue
+                        except:
+                            pass
+                    
+                    # Validar sexo
+                    if sexo and sexo not in ['M', 'F']:
+                        sexo = None
+                    
+                    # Validar tipo de sangre
+                    if tipo_sangre and tipo_sangre not in TIPOS_SANGRE:
+                        tipo_sangre = None
+                    
+                    # Crear o actualizar paciente
+                    try:
+                        # Verificar si ya existe para determinar created_by
+                        existing_paciente = Paciente.objects.filter(numero_expediente=numero_expediente).first()
+                        
+                        paciente, created = Paciente.objects.update_or_create(
+                            numero_expediente=numero_expediente,
+                            defaults={
+                                'nombre': nombre,
+                                'apellido_paterno': apellido_paterno,
+                                'apellido_materno': apellido_materno,
+                                'curp': curp,
+                                'fecha_nacimiento': fecha_nacimiento,
+                                'sexo': sexo,
+                                'centro': centro,
+                                'dormitorio': dormitorio,
+                                'celda': celda,
+                                'tipo_sangre': tipo_sangre,
+                                'alergias': alergias,
+                                'enfermedades_cronicas': enfermedades_cronicas,
+                                'observaciones_medicas': observaciones_medicas,
+                                'fecha_ingreso': fecha_ingreso,
+                                'activo': True,
+                                'created_by': existing_paciente.created_by if existing_paciente else user,
+                            }
+                        )
+                        
+                        if created:
+                            creados += 1
+                        else:
+                            actualizados += 1
+                            
+                    except Exception as e:
+                        errores.append(f"Fila {row_idx}: Error al guardar - {str(e)}")
+                        continue
+            
+            return Response({
+                'mensaje': f'Importación completada: {creados} creados, {actualizados} actualizados',
+                'creados': creados,
+                'actualizados': actualizados,
+                'errores': errores[:50],  # Limitar errores mostrados
+                'total_errores': len(errores)
+            })
+            
+        except Exception as e:
+            logger.error(f"Error en importación de pacientes: {e}", exc_info=True)
+            return Response(
+                {'error': f'Error al procesar archivo: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class DispensacionViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestión de Dispensaciones de medicamentos.
+    
+    ISS-DISP: Este módulo es operado por MÉDICO y CENTRO.
+    FARMACIA solo puede auditar (ver) pero NO crear/editar/dispensar/cancelar.
+    
+    Incluye operaciones CRUD, dispensar, cancelar y generación de PDF Formato C.
+    """
+    queryset = Dispensacion.objects.all()
+    serializer_class = DispensacionSerializer
+    permission_classes = [IsAuthenticated, CanManageDispensaciones]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['folio', 'paciente__numero_expediente', 'paciente__nombre', 'medico_prescriptor']
+    ordering_fields = ['folio', 'fecha_dispensacion', 'created_at']
+    ordering = ['-fecha_dispensacion']
+    
+    def get_queryset(self):
+        """Filtra dispensaciones según centro y parámetros"""
+        queryset = super().get_queryset().select_related(
+            'paciente', 'centro', 'dispensado_por', 'autorizado_por', 'created_by'
+        ).prefetch_related('detalles', 'detalles__producto', 'detalles__lote')
+        
+        user = self.request.user
+        
+        # Filtrar por centro del usuario (excepto admin/farmacia)
+        if not user.is_superuser and user.rol not in ['admin', 'admin_sistema', 'farmacia']:
+            if user.centro:
+                queryset = queryset.filter(centro=user.centro)
+        
+        # Filtros opcionales
+        centro_id = self.request.query_params.get('centro')
+        if centro_id:
+            queryset = queryset.filter(centro_id=centro_id)
+        
+        paciente_id = self.request.query_params.get('paciente')
+        if paciente_id:
+            queryset = queryset.filter(paciente_id=paciente_id)
+        
+        estado = self.request.query_params.get('estado')
+        if estado:
+            queryset = queryset.filter(estado=estado)
+        
+        tipo = self.request.query_params.get('tipo')
+        if tipo:
+            queryset = queryset.filter(tipo_dispensacion=tipo)
+        
+        # Filtro por fecha
+        fecha_desde = self.request.query_params.get('fecha_desde')
+        fecha_hasta = self.request.query_params.get('fecha_hasta')
+        if fecha_desde:
+            queryset = queryset.filter(fecha_dispensacion__date__gte=fecha_desde)
+        if fecha_hasta:
+            queryset = queryset.filter(fecha_dispensacion__date__lte=fecha_hasta)
+        
+        return queryset
+    
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return DispensacionListSerializer
+        return DispensacionSerializer
+    
+    @action(detail=True, methods=['post'])
+    def dispensar(self, request, pk=None):
+        """
+        Procesa la dispensación de medicamentos.
+        Actualiza el estado y descuenta del inventario.
+        """
+        dispensacion = self.get_object()
+        
+        if dispensacion.estado in ['dispensada', 'cancelada']:
+            return Response(
+                {'error': f'La dispensación ya está {dispensacion.estado}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            with transaction.atomic():
+                detalles_data = request.data.get('detalles', [])
+                
+                for detalle_data in detalles_data:
+                    detalle_id = detalle_data.get('id')
+                    cantidad = detalle_data.get('cantidad_dispensada', 0)
+                    lote_id = detalle_data.get('lote_id')
+                    
+                    if not detalle_id:
+                        continue
+                    
+                    try:
+                        detalle = DetalleDispensacion.objects.get(id=detalle_id, dispensacion=dispensacion)
+                    except DetalleDispensacion.DoesNotExist:
+                        continue
+                    
+                    if cantidad > 0:
+                        # Asignar lote si se especifica
+                        if lote_id:
+                            try:
+                                lote = Lote.objects.select_for_update().get(id=lote_id)
+                                if lote.cantidad_actual < cantidad:
+                                    return Response(
+                                        {'error': f'Stock insuficiente en lote {lote.numero_lote}'},
+                                        status=status.HTTP_400_BAD_REQUEST
+                                    )
+                                # Descontar del lote
+                                lote.cantidad_actual -= cantidad
+                                lote.save()
+                                detalle.lote = lote
+                                
+                                # Crear movimiento de salida
+                                Movimiento.objects.create(
+                                    tipo='salida',
+                                    subtipo_salida='dispensacion',
+                                    producto=detalle.producto,
+                                    lote=lote,
+                                    cantidad=cantidad,
+                                    centro_origen=dispensacion.centro,
+                                    usuario=request.user,
+                                    motivo=f'Dispensación {dispensacion.folio} - Paciente: {dispensacion.paciente.numero_expediente}',
+                                    referencia=dispensacion.folio,
+                                    numero_expediente=dispensacion.paciente.numero_expediente,
+                                )
+                            except Lote.DoesNotExist:
+                                pass
+                        
+                        detalle.cantidad_dispensada = cantidad
+                        detalle.estado = 'dispensado' if cantidad >= detalle.cantidad_prescrita else 'pendiente'
+                        detalle.save()
+                
+                # Actualizar estado de la dispensación
+                total_prescrito = dispensacion.get_total_prescrito()
+                total_dispensado = dispensacion.get_total_dispensado()
+                
+                if total_dispensado >= total_prescrito:
+                    dispensacion.estado = 'dispensada'
+                elif total_dispensado > 0:
+                    dispensacion.estado = 'parcial'
+                
+                dispensacion.dispensado_por = request.user
+                dispensacion.save()
+                
+                # Registrar en historial
+                HistorialDispensacion.objects.create(
+                    dispensacion=dispensacion,
+                    accion='dispensar',
+                    estado_anterior='pendiente',
+                    estado_nuevo=dispensacion.estado,
+                    usuario=request.user,
+                    detalles={'total_dispensado': total_dispensado},
+                    ip_address=request.META.get('REMOTE_ADDR', '')
+                )
+                
+                serializer = self.get_serializer(dispensacion)
+                return Response(serializer.data)
+                
+        except Exception as e:
+            logger.error(f"Error al dispensar: {e}", exc_info=True)
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['post'])
+    def cancelar(self, request, pk=None):
+        """Cancela una dispensación pendiente"""
+        dispensacion = self.get_object()
+        
+        if dispensacion.estado == 'dispensada':
+            return Response(
+                {'error': 'No se puede cancelar una dispensación ya completada'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if dispensacion.estado == 'cancelada':
+            return Response(
+                {'error': 'La dispensación ya está cancelada'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        motivo = request.data.get('motivo', '')
+        if not motivo:
+            return Response(
+                {'error': 'Debe proporcionar un motivo de cancelación'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        estado_anterior = dispensacion.estado
+        dispensacion.estado = 'cancelada'
+        dispensacion.motivo_cancelacion = motivo
+        dispensacion.save()
+        
+        # Registrar en historial
+        HistorialDispensacion.objects.create(
+            dispensacion=dispensacion,
+            accion='cancelar',
+            estado_anterior=estado_anterior,
+            estado_nuevo='cancelada',
+            usuario=request.user,
+            detalles={'motivo': motivo},
+            ip_address=request.META.get('REMOTE_ADDR', '')
+        )
+        
+        serializer = self.get_serializer(dispensacion)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['get'])
+    def exportar_pdf(self, request, pk=None):
+        """Genera el PDF Formato C de dispensación"""
+        dispensacion = self.get_object()
+        
+        try:
+            from core.utils.pdf_reports import generar_formato_c_dispensacion
+            
+            pdf_buffer = generar_formato_c_dispensacion(dispensacion)
+            
+            response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="formato_c_{dispensacion.folio}.pdf"'
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error generando PDF Formato C: {e}", exc_info=True)
+            return Response(
+                {'error': f'Error al generar PDF: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['get'])
+    def historial(self, request, pk=None):
+        """Obtiene el historial de cambios de una dispensación"""
+        dispensacion = self.get_object()
+        historial = dispensacion.historial.all().order_by('-created_at')
+        serializer = HistorialDispensacionSerializer(historial, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def agregar_detalle(self, request, pk=None):
+        """Agrega un item a la dispensación"""
+        dispensacion = self.get_object()
+        
+        if dispensacion.estado in ['dispensada', 'cancelada']:
+            return Response(
+                {'error': 'No se pueden agregar items a esta dispensación'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = DetalleDispensacionSerializer(data={
+            **request.data,
+            'dispensacion': dispensacion.id
+        })
+        
+        if serializer.is_valid():
+            serializer.save()
+            
+            # Registrar en historial
+            HistorialDispensacion.objects.create(
+                dispensacion=dispensacion,
+                accion='agregar_item',
+                usuario=request.user,
+                detalles={'producto_id': request.data.get('producto')},
+                ip_address=request.META.get('REMOTE_ADDR', '')
+            )
+            
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class DetalleDispensacionViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para detalles de dispensación.
+    
+    ISS-DISP: Este módulo es operado por MÉDICO y CENTRO.
+    FARMACIA solo puede auditar (ver) pero NO crear/editar.
+    """
+    queryset = DetalleDispensacion.objects.all()
+    serializer_class = DetalleDispensacionSerializer
+    permission_classes = [IsAuthenticated, CanManageDispensaciones]
+    pagination_class = StandardResultsSetPagination
+    
+    def get_queryset(self):
+        queryset = super().get_queryset().select_related('producto', 'lote', 'dispensacion')
+        
+        dispensacion_id = self.request.query_params.get('dispensacion')
+        if dispensacion_id:
+            queryset = queryset.filter(dispensacion_id=dispensacion_id)
+        
+        return queryset
+
+
+# =====================================================
+# MÓDULO: COMPRAS DE CAJA CHICA DEL CENTRO
+# =====================================================
+
+class CompraCajaChicaViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestión de Compras de Caja Chica.
+    
+    Este módulo permite al centro penitenciario gestionar compras
+    con recursos propios cuando farmacia central no tiene disponibilidad.
+    
+    FLUJO:
+    1. Centro solicita medicamento → Farmacia no tiene
+    2. Centro crea solicitud de compra con justificación
+    3. Se autoriza internamente (administrador/director del centro)
+    4. Se realiza la compra
+    5. Se reciben los productos y se ingresan al inventario del CENTRO
+    
+    PERMISOS:
+    - Centro: CRUD completo sobre sus propias compras
+    - Farmacia: Solo lectura (auditoría) para prevenir malas prácticas
+    """
+    queryset = CompraCajaChica.objects.all()
+    serializer_class = CompraCajaChicaSerializer
+    permission_classes = [IsAuthenticated, CanManageComprasCajaChica]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['folio', 'proveedor_nombre', 'motivo_compra']
+    ordering_fields = ['fecha_solicitud', 'fecha_compra', 'total', 'estado']
+    ordering = ['-fecha_solicitud']
+    
+    def get_queryset(self):
+        """Filtra compras según centro del usuario"""
+        queryset = super().get_queryset().select_related(
+            'centro', 'solicitante', 'autorizado_por', 'recibido_por', 'requisicion_origen'
+        ).prefetch_related('detalles')
+        user = self.request.user
+        
+        # Farmacia y admin ven todas las compras (para auditoría)
+        if not user.is_superuser and user.rol not in ['admin', 'admin_sistema', 'farmacia']:
+            # Usuarios de centro solo ven compras de su centro
+            if user.centro:
+                queryset = queryset.filter(centro=user.centro)
+            else:
+                queryset = queryset.none()
+        
+        # Filtros opcionales
+        centro_id = self.request.query_params.get('centro')
+        if centro_id:
+            queryset = queryset.filter(centro_id=centro_id)
+        
+        estado = self.request.query_params.get('estado')
+        if estado:
+            queryset = queryset.filter(estado=estado)
+        
+        fecha_desde = self.request.query_params.get('fecha_desde')
+        if fecha_desde:
+            queryset = queryset.filter(fecha_solicitud__date__gte=fecha_desde)
+        
+        fecha_hasta = self.request.query_params.get('fecha_hasta')
+        if fecha_hasta:
+            queryset = queryset.filter(fecha_solicitud__date__lte=fecha_hasta)
+        
+        return queryset
+    
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return CompraCajaChicaListSerializer
+        return CompraCajaChicaSerializer
+    
+    @action(detail=True, methods=['post'])
+    def autorizar(self, request, pk=None):
+        """Autoriza una solicitud de compra de caja chica"""
+        compra = self.get_object()
+        
+        if compra.estado != 'pendiente':
+            return Response(
+                {'error': 'Solo se pueden autorizar compras pendientes'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        compra.estado = 'autorizada'
+        compra.autorizado_por = request.user
+        compra.save()
+        
+        # Registrar en historial
+        HistorialCompraCajaChica.objects.create(
+            compra=compra,
+            estado_anterior='pendiente',
+            estado_nuevo='autorizada',
+            usuario=request.user,
+            accion='autorizar',
+            observaciones=request.data.get('observaciones', ''),
+            ip_address=request.META.get('REMOTE_ADDR', '')
+        )
+        
+        return Response(CompraCajaChicaSerializer(compra).data)
+    
+    @action(detail=True, methods=['post'])
+    def registrar_compra(self, request, pk=None):
+        """Registra que la compra fue realizada"""
+        compra = self.get_object()
+        
+        if compra.estado not in ['pendiente', 'autorizada']:
+            return Response(
+                {'error': 'Esta compra no puede ser registrada'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        fecha_compra = request.data.get('fecha_compra')
+        numero_factura = request.data.get('numero_factura')
+        
+        if not fecha_compra:
+            return Response(
+                {'error': 'Debe proporcionar la fecha de compra'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        compra.estado = 'comprada'
+        compra.fecha_compra = fecha_compra
+        compra.numero_factura = numero_factura
+        compra.save()
+        
+        # Actualizar cantidades compradas en detalles
+        detalles = request.data.get('detalles', [])
+        for detalle_data in detalles:
+            try:
+                detalle = DetalleCompraCajaChica.objects.get(
+                    id=detalle_data.get('id'),
+                    compra=compra
+                )
+                detalle.cantidad_comprada = detalle_data.get('cantidad_comprada', detalle.cantidad_solicitada)
+                detalle.precio_unitario = detalle_data.get('precio_unitario', detalle.precio_unitario)
+                detalle.numero_lote = detalle_data.get('numero_lote')
+                detalle.fecha_caducidad = detalle_data.get('fecha_caducidad')
+                detalle.importe = detalle.precio_unitario * detalle.cantidad_comprada
+                detalle.save()
+            except DetalleCompraCajaChica.DoesNotExist:
+                pass
+        
+        # Registrar en historial
+        HistorialCompraCajaChica.objects.create(
+            compra=compra,
+            estado_anterior='autorizada',
+            estado_nuevo='comprada',
+            usuario=request.user,
+            accion='registrar_compra',
+            ip_address=request.META.get('REMOTE_ADDR', '')
+        )
+        
+        return Response(CompraCajaChicaSerializer(compra).data)
+    
+    @action(detail=True, methods=['post'])
+    def recibir(self, request, pk=None):
+        """
+        Recibe los productos de la compra y los ingresa al inventario de caja chica.
+        Este inventario es SEPARADO del inventario principal de farmacia.
+        """
+        compra = self.get_object()
+        
+        if compra.estado != 'comprada':
+            return Response(
+                {'error': 'Solo se pueden recibir compras en estado "comprada"'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        with transaction.atomic():
+            # Actualizar compra
+            compra.estado = 'recibida'
+            compra.fecha_recepcion = timezone.now()
+            compra.recibido_por = request.user
+            compra.save()
+            
+            # Procesar cada detalle y crear inventario
+            detalles_recibidos = request.data.get('detalles', [])
+            for detalle_data in detalles_recibidos:
+                try:
+                    detalle = DetalleCompraCajaChica.objects.get(
+                        id=detalle_data.get('id'),
+                        compra=compra
+                    )
+                    cantidad_recibida = detalle_data.get('cantidad_recibida', detalle.cantidad_comprada)
+                    detalle.cantidad_recibida = cantidad_recibida
+                    detalle.save()
+                    
+                    # Crear o actualizar inventario de caja chica
+                    if cantidad_recibida > 0:
+                        inventario, created = InventarioCajaChica.objects.get_or_create(
+                            centro=compra.centro,
+                            producto=detalle.producto,
+                            numero_lote=detalle.numero_lote or f"CC-{compra.folio}",
+                            defaults={
+                                'descripcion_producto': detalle.descripcion_producto,
+                                'fecha_caducidad': detalle.fecha_caducidad,
+                                'cantidad_inicial': cantidad_recibida,
+                                'cantidad_actual': cantidad_recibida,
+                                'compra': compra,
+                                'detalle_compra': detalle,
+                                'precio_unitario': detalle.precio_unitario,
+                            }
+                        )
+                        
+                        if not created:
+                            # Actualizar inventario existente
+                            cantidad_anterior = inventario.cantidad_actual
+                            inventario.cantidad_actual += cantidad_recibida
+                            inventario.cantidad_inicial += cantidad_recibida
+                            inventario.save()
+                        else:
+                            cantidad_anterior = 0
+                        
+                        # Registrar movimiento de entrada
+                        MovimientoCajaChica.objects.create(
+                            inventario=inventario,
+                            tipo='entrada',
+                            cantidad=cantidad_recibida,
+                            cantidad_anterior=cantidad_anterior,
+                            cantidad_nueva=inventario.cantidad_actual,
+                            referencia=compra.folio,
+                            motivo=f"Recepción de compra {compra.folio}",
+                            usuario=request.user
+                        )
+                        
+                except DetalleCompraCajaChica.DoesNotExist:
+                    continue
+            
+            # Registrar en historial
+            HistorialCompraCajaChica.objects.create(
+                compra=compra,
+                estado_anterior='comprada',
+                estado_nuevo='recibida',
+                usuario=request.user,
+                accion='recibir',
+                ip_address=request.META.get('REMOTE_ADDR', '')
+            )
+        
+        return Response(CompraCajaChicaSerializer(compra).data)
+    
+    @action(detail=True, methods=['post'])
+    def cancelar(self, request, pk=None):
+        """Cancela una solicitud de compra"""
+        compra = self.get_object()
+        
+        if compra.estado in ['recibida', 'cancelada']:
+            return Response(
+                {'error': 'Esta compra no puede ser cancelada'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        motivo = request.data.get('motivo')
+        if not motivo:
+            return Response(
+                {'error': 'Debe proporcionar un motivo de cancelación'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        estado_anterior = compra.estado
+        compra.estado = 'cancelada'
+        compra.motivo_cancelacion = motivo
+        compra.save()
+        
+        # Registrar en historial
+        HistorialCompraCajaChica.objects.create(
+            compra=compra,
+            estado_anterior=estado_anterior,
+            estado_nuevo='cancelada',
+            usuario=request.user,
+            accion='cancelar',
+            observaciones=motivo,
+            ip_address=request.META.get('REMOTE_ADDR', '')
+        )
+        
+        return Response(CompraCajaChicaSerializer(compra).data)
+    
+    @action(detail=True, methods=['post'], url_path='agregar-detalle')
+    def agregar_detalle(self, request, pk=None):
+        """Agrega un producto a la compra"""
+        compra = self.get_object()
+        
+        if compra.estado not in ['pendiente', 'autorizada']:
+            return Response(
+                {'error': 'No se pueden agregar productos a esta compra'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = DetalleCompraCajaChicaSerializer(data={
+            **request.data,
+            'compra': compra.id
+        })
+        
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['get'])
+    def resumen(self, request):
+        """Resumen de compras de caja chica por centro"""
+        queryset = self.get_queryset()
+        
+        resumen = {
+            'total_compras': queryset.count(),
+            'pendientes': queryset.filter(estado='pendiente').count(),
+            'autorizadas': queryset.filter(estado='autorizada').count(),
+            'compradas': queryset.filter(estado='comprada').count(),
+            'recibidas': queryset.filter(estado='recibida').count(),
+            'canceladas': queryset.filter(estado='cancelada').count(),
+            'monto_total': queryset.exclude(estado='cancelada').aggregate(
+                total=Sum('total')
+            )['total'] or 0,
+        }
+        
+        return Response(resumen)
+
+
+class DetalleCompraCajaChicaViewSet(viewsets.ModelViewSet):
+    """ViewSet para detalles de compra de caja chica"""
+    queryset = DetalleCompraCajaChica.objects.all()
+    serializer_class = DetalleCompraCajaChicaSerializer
+    permission_classes = [IsAuthenticated, CanManageComprasCajaChica]
+    pagination_class = StandardResultsSetPagination
+    
+    def get_queryset(self):
+        queryset = super().get_queryset().select_related('producto', 'compra')
+        
+        compra_id = self.request.query_params.get('compra')
+        if compra_id:
+            queryset = queryset.filter(compra_id=compra_id)
+        
+        return queryset
+
+
+class InventarioCajaChicaViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para inventario de caja chica del centro.
+    
+    Este inventario es SEPARADO del inventario principal de farmacia.
+    Contiene los productos comprados por el centro con recursos propios.
+    
+    FARMACIA puede VER todo el inventario para auditoría y prevenir malas prácticas.
+    """
+    queryset = InventarioCajaChica.objects.all()
+    serializer_class = InventarioCajaChicaSerializer
+    permission_classes = [IsAuthenticated, CanManageComprasCajaChica]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['descripcion_producto', 'numero_lote']
+    ordering_fields = ['created_at', 'cantidad_actual', 'fecha_caducidad']
+    ordering = ['-created_at']
+    
+    def get_queryset(self):
+        """Filtra inventario según centro del usuario"""
+        queryset = super().get_queryset().select_related('centro', 'producto', 'compra')
+        user = self.request.user
+        
+        # Farmacia y admin ven todo (para auditoría)
+        if not user.is_superuser and user.rol not in ['admin', 'admin_sistema', 'farmacia']:
+            if user.centro:
+                queryset = queryset.filter(centro=user.centro)
+            else:
+                queryset = queryset.none()
+        
+        # Filtros opcionales
+        centro_id = self.request.query_params.get('centro')
+        if centro_id:
+            queryset = queryset.filter(centro_id=centro_id)
+        
+        activo = self.request.query_params.get('activo')
+        if activo is not None:
+            queryset = queryset.filter(activo=activo.lower() == 'true')
+        
+        con_stock = self.request.query_params.get('con_stock')
+        if con_stock and con_stock.lower() == 'true':
+            queryset = queryset.filter(cantidad_actual__gt=0)
+        
+        return queryset
+    
+    @action(detail=True, methods=['post'])
+    def registrar_salida(self, request, pk=None):
+        """Registra una salida del inventario de caja chica"""
+        inventario = self.get_object()
+        
+        cantidad = request.data.get('cantidad')
+        if not cantidad or cantidad <= 0:
+            return Response(
+                {'error': 'Debe proporcionar una cantidad válida'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if cantidad > inventario.cantidad_actual:
+            return Response(
+                {'error': f'Stock insuficiente. Disponible: {inventario.cantidad_actual}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        referencia = request.data.get('referencia', '')  # Expediente del paciente, etc.
+        motivo = request.data.get('motivo', 'Uso/Dispensación')
+        
+        with transaction.atomic():
+            cantidad_anterior = inventario.cantidad_actual
+            inventario.cantidad_actual -= cantidad
+            inventario.save()
+            
+            # Registrar movimiento
+            MovimientoCajaChica.objects.create(
+                inventario=inventario,
+                tipo='salida',
+                cantidad=cantidad,
+                cantidad_anterior=cantidad_anterior,
+                cantidad_nueva=inventario.cantidad_actual,
+                referencia=referencia,
+                motivo=motivo,
+                usuario=request.user
+            )
+        
+        return Response(InventarioCajaChicaSerializer(inventario).data)
+    
+    @action(detail=True, methods=['post'])
+    def ajustar(self, request, pk=None):
+        """Realiza un ajuste de inventario"""
+        inventario = self.get_object()
+        
+        nueva_cantidad = request.data.get('cantidad')
+        motivo = request.data.get('motivo')
+        
+        if nueva_cantidad is None or nueva_cantidad < 0:
+            return Response(
+                {'error': 'Debe proporcionar una cantidad válida'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not motivo:
+            return Response(
+                {'error': 'Debe proporcionar un motivo para el ajuste'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        with transaction.atomic():
+            cantidad_anterior = inventario.cantidad_actual
+            diferencia = nueva_cantidad - cantidad_anterior
+            
+            inventario.cantidad_actual = nueva_cantidad
+            inventario.save()
+            
+            # Determinar tipo de ajuste
+            if diferencia > 0:
+                tipo = 'ajuste_positivo'
+            elif diferencia < 0:
+                tipo = 'ajuste_negativo'
+            else:
+                return Response(
+                    {'error': 'La cantidad nueva es igual a la actual'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Registrar movimiento
+            MovimientoCajaChica.objects.create(
+                inventario=inventario,
+                tipo=tipo,
+                cantidad=abs(diferencia),
+                cantidad_anterior=cantidad_anterior,
+                cantidad_nueva=nueva_cantidad,
+                motivo=motivo,
+                usuario=request.user
+            )
+        
+        return Response(InventarioCajaChicaSerializer(inventario).data)
+    
+    @action(detail=False, methods=['get'])
+    def resumen(self, request):
+        """Resumen del inventario de caja chica"""
+        queryset = self.get_queryset()
+        
+        resumen = {
+            'total_items': queryset.count(),
+            'items_con_stock': queryset.filter(cantidad_actual__gt=0).count(),
+            'items_agotados': queryset.filter(cantidad_actual=0).count(),
+            'items_por_caducar': queryset.filter(
+                fecha_caducidad__lte=timezone.now().date() + timedelta(days=90),
+                fecha_caducidad__gt=timezone.now().date()
+            ).count(),
+            'items_caducados': queryset.filter(
+                fecha_caducidad__lte=timezone.now().date()
+            ).count(),
+            'valor_total': sum(
+                item.precio_unitario * item.cantidad_actual 
+                for item in queryset.filter(cantidad_actual__gt=0)
+            ),
+        }
+        
+        return Response(resumen)
+
+
+class MovimientoCajaChicaViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet de solo lectura para movimientos de inventario de caja chica"""
+    queryset = MovimientoCajaChica.objects.all()
+    serializer_class = MovimientoCajaChicaSerializer
+    permission_classes = [IsAuthenticated, CanManageComprasCajaChica]
+    pagination_class = StandardResultsSetPagination
+    ordering = ['-created_at']
+    
+    def get_queryset(self):
+        queryset = super().get_queryset().select_related('inventario', 'usuario')
+        
+        inventario_id = self.request.query_params.get('inventario')
+        if inventario_id:
+            queryset = queryset.filter(inventario_id=inventario_id)
+        
+        tipo = self.request.query_params.get('tipo')
+        if tipo:
+            queryset = queryset.filter(tipo=tipo)
+        
+        return queryset

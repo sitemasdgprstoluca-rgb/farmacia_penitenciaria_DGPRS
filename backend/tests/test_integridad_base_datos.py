@@ -3,6 +3,9 @@
 Tests de validación de integridad de base de datos.
 Verifica que el esquema de BD cumple con las restricciones definidas.
 
+NOTA: Estos tests requieren PostgreSQL (Supabase) ya que usan information_schema.
+Se saltan automáticamente cuando se ejecutan con SQLite.
+
 Tablas principales:
 - requisiciones, detalles_requisicion, requisicion_historial_estados
 - productos, lotes, movimientos
@@ -14,6 +17,12 @@ from django.db import connection
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
+
+# Skip all tests in this module if using SQLite
+pytestmark = pytest.mark.skipif(
+    connection.vendor == 'sqlite',
+    reason="Tests requieren PostgreSQL (information_schema no existe en SQLite)"
+)
 
 
 class TestEsquemaRequisiciones(TestCase):

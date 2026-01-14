@@ -19,8 +19,7 @@ from decimal import Decimal
 from rest_framework.test import APIClient
 from rest_framework import status
 
-from inventario.models import Producto, Lote, Centro, Movimiento
-from users.models import User
+from core.models import Producto, Lote, Centro, Movimiento, User
 
 
 # ============================================================
@@ -38,23 +37,18 @@ def crear_estructura_completa(db):
     - 12 movimientos variados (entradas, salidas, diferentes centros)
     """
     # ---- CENTROS ----
+    # Nota: 'clave' es una property calculada del id, no un campo
     centro_santiaguito = Centro.objects.create(
         nombre='Centro Penitenciario Santiaguito',
-        clave='CPSANT',
-        direccion='Santiaguito, Estado de México',
-        tipo='penitenciario'
+        direccion='Santiaguito, Estado de México'
     )
     centro_norte = Centro.objects.create(
         nombre='Centro Penitenciario Norte',
-        clave='CPNOR',
-        direccion='Zona Norte',
-        tipo='penitenciario'
+        direccion='Zona Norte'
     )
     centro_sur = Centro.objects.create(
         nombre='Centro Penitenciario Sur',
-        clave='CPSUR',
-        direccion='Zona Sur',
-        tipo='penitenciario'
+        direccion='Zona Sur'
     )
     
     # ---- USUARIOS ----
@@ -62,26 +56,26 @@ def crear_estructura_completa(db):
         username='admin_test',
         email='admin@test.com',
         password='test123',
-        rol='ADMIN'
+        rol='admin'
     )
     farmacia = User.objects.create_user(
         username='farmacia_test',
         email='farmacia@test.com',
         password='test123',
-        rol='FARMACIA'
+        rol='farmacia'
     )
     user_santiaguito = User.objects.create_user(
         username='user_santiaguito',
         email='santiaguito@test.com',
         password='test123',
-        rol='CENTRO',
+        rol='centro',
         centro=centro_santiaguito
     )
     user_norte = User.objects.create_user(
         username='user_norte',
         email='norte@test.com',
         password='test123',
-        rol='CENTRO',
+        rol='centro',
         centro=centro_norte
     )
     
@@ -157,6 +151,7 @@ def crear_estructura_completa(db):
     # ENTRADAS a diferentes centros
     mov_entrada_central = Movimiento.objects.create(
         lote=lote_central,
+        producto=producto1,  # Campo obligatorio
         tipo='entrada',
         cantidad=100,
         fecha=fecha_base - timedelta(days=30),
@@ -168,6 +163,7 @@ def crear_estructura_completa(db):
     
     mov_entrada_santiaguito = Movimiento.objects.create(
         lote=lote_santiaguito,
+        producto=producto1,
         tipo='entrada',
         cantidad=50,
         fecha=fecha_base - timedelta(days=25),
@@ -179,6 +175,7 @@ def crear_estructura_completa(db):
     
     mov_entrada_norte = Movimiento.objects.create(
         lote=lote_norte,
+        producto=producto2,
         tipo='entrada',
         cantidad=200,
         fecha=fecha_base - timedelta(days=20),
@@ -191,6 +188,7 @@ def crear_estructura_completa(db):
     # SALIDAS desde diferentes centros
     mov_salida_central = Movimiento.objects.create(
         lote=lote_central,
+        producto=producto1,
         tipo='salida',
         cantidad=-50,
         fecha=fecha_base - timedelta(days=15),
@@ -203,6 +201,7 @@ def crear_estructura_completa(db):
     
     mov_salida_santiaguito_1 = Movimiento.objects.create(
         lote=lote_santiaguito,
+        producto=producto1,
         tipo='salida',
         cantidad=-20,
         fecha=fecha_base - timedelta(days=10),
@@ -216,6 +215,7 @@ def crear_estructura_completa(db):
     
     mov_salida_santiaguito_2 = Movimiento.objects.create(
         lote=lote_santiaguito,
+        producto=producto1,
         tipo='salida',
         cantidad=-30,
         fecha=fecha_base - timedelta(days=5),
@@ -229,6 +229,7 @@ def crear_estructura_completa(db):
     
     mov_salida_norte = Movimiento.objects.create(
         lote=lote_norte,
+        producto=producto2,
         tipo='salida',
         cantidad=-50,
         fecha=fecha_base - timedelta(days=3),
@@ -242,6 +243,7 @@ def crear_estructura_completa(db):
     # AJUSTES
     mov_ajuste_sur = Movimiento.objects.create(
         lote=lote_sur,
+        producto=producto2,
         tipo='ajuste',
         cantidad=-20,
         fecha=fecha_base - timedelta(days=1),
@@ -266,6 +268,8 @@ def crear_estructura_completa(db):
         'productos': {
             'p1': producto1,
             'p2': producto2,
+            'producto1': producto1,  # Alias para tests masivos
+            'producto2': producto2,  # Alias para tests masivos
         },
         'lotes': {
             'central': lote_central,
@@ -300,7 +304,7 @@ class TestBusquedaLotes:
         client.force_authenticate(user=data['usuarios']['admin'])
         
         # Buscar lote que está en Santiaguito con stock 0
-        response = client.get('/api/inventario/lotes/consolidados/', {
+        response = client.get('/api/lotes/consolidados/', {
             'search': '25072052'
             # Sin filtro de centro = buscar en todos
         })
@@ -318,7 +322,7 @@ class TestBusquedaLotes:
         client = APIClient()
         client.force_authenticate(user=data['usuarios']['admin'])
         
-        response = client.get('/api/inventario/lotes/consolidados/', {
+        response = client.get('/api/lotes/consolidados/', {
             'centro': 'central'
         })
         
@@ -338,7 +342,7 @@ class TestBusquedaLotes:
         client = APIClient()
         client.force_authenticate(user=data['usuarios']['admin'])
         
-        response = client.get('/api/inventario/lotes/consolidados/', {
+        response = client.get('/api/lotes/consolidados/', {
             # Sin parámetro centro = todos
         })
         
@@ -354,7 +358,7 @@ class TestBusquedaLotes:
         client = APIClient()
         client.force_authenticate(user=data['usuarios']['santiaguito'])
         
-        response = client.get('/api/inventario/lotes/')
+        response = client.get('/api/lotes/')
         
         assert response.status_code == 200
         results = response.json().get('results', response.json())
@@ -382,7 +386,7 @@ class TestReporteMovimientos:
         
         centro_sant = data['centros']['santiaguito']
         
-        response = client.get('/api/inventario/reportes/movimientos/', {
+        response = client.get('/api/reportes/movimientos/', {
             'centro': centro_sant.id,
             'tipo': 'salida',
             'formato': 'json'
@@ -405,7 +409,7 @@ class TestReporteMovimientos:
         
         centro_sant = data['centros']['santiaguito']
         
-        response = client.get('/api/inventario/reportes/movimientos/', {
+        response = client.get('/api/reportes/movimientos/', {
             'centro': centro_sant.id,
             'tipo': 'entrada',
             'formato': 'json'
@@ -428,7 +432,7 @@ class TestReporteMovimientos:
         client = APIClient()
         client.force_authenticate(user=data['usuarios']['admin'])
         
-        response = client.get('/api/inventario/reportes/movimientos/', {
+        response = client.get('/api/reportes/movimientos/', {
             'formato': 'json'
         })
         
@@ -449,7 +453,7 @@ class TestReporteMovimientos:
         fecha_inicio = (timezone.now() - timedelta(days=20)).strftime('%Y-%m-%d')
         fecha_fin = (timezone.now() - timedelta(days=10)).strftime('%Y-%m-%d')
         
-        response = client.get('/api/inventario/reportes/movimientos/', {
+        response = client.get('/api/reportes/movimientos/', {
             'fecha_inicio': fecha_inicio,
             'fecha_fin': fecha_fin,
             'formato': 'json'
@@ -474,7 +478,7 @@ class TestTrazabilidadGlobal:
         client = APIClient()
         client.force_authenticate(user=data['usuarios']['admin'])
         
-        response = client.get('/api/inventario/trazabilidad/global/')
+        response = client.get('/api/trazabilidad/global/')
         
         assert response.status_code == 200
         result = response.json()
@@ -492,7 +496,7 @@ class TestTrazabilidadGlobal:
         client = APIClient()
         client.force_authenticate(user=data['usuarios']['admin'])
         
-        response = client.get('/api/inventario/trazabilidad/global/')
+        response = client.get('/api/trazabilidad/global/')
         
         assert response.status_code == 200
         result = response.json()
@@ -511,7 +515,7 @@ class TestTrazabilidadGlobal:
         client = APIClient()
         client.force_authenticate(user=data['usuarios']['admin'])
         
-        response = client.get('/api/inventario/trazabilidad/global/', {
+        response = client.get('/api/trazabilidad/global/', {
             'tipo': 'entrada'
         })
         
@@ -529,7 +533,7 @@ class TestTrazabilidadGlobal:
         client = APIClient()
         client.force_authenticate(user=data['usuarios']['admin'])
         
-        response = client.get('/api/inventario/trazabilidad/global/', {
+        response = client.get('/api/trazabilidad/global/', {
             'tipo': 'salida'
         })
         
@@ -549,7 +553,7 @@ class TestTrazabilidadGlobal:
         
         centro_norte = data['centros']['norte']
         
-        response = client.get('/api/inventario/trazabilidad/global/', {
+        response = client.get('/api/trazabilidad/global/', {
             'centro': centro_norte.id
         })
         
@@ -573,7 +577,7 @@ class TestExports:
         client = APIClient()
         client.force_authenticate(user=data['usuarios']['admin'])
         
-        response = client.get('/api/inventario/reportes/movimientos/', {
+        response = client.get('/api/reportes/movimientos/', {
             'formato': 'excel'
         })
         
@@ -586,7 +590,7 @@ class TestExports:
         client = APIClient()
         client.force_authenticate(user=data['usuarios']['admin'])
         
-        response = client.get('/api/inventario/reportes/movimientos/', {
+        response = client.get('/api/reportes/movimientos/', {
             'formato': 'pdf'
         })
         
@@ -599,7 +603,7 @@ class TestExports:
         client = APIClient()
         client.force_authenticate(user=data['usuarios']['admin'])
         
-        response = client.get('/api/inventario/trazabilidad/global/', {
+        response = client.get('/api/trazabilidad/global/', {
             'formato': 'excel'
         })
         
@@ -612,7 +616,7 @@ class TestExports:
         client = APIClient()
         client.force_authenticate(user=data['usuarios']['admin'])
         
-        response = client.get('/api/inventario/trazabilidad/global/', {
+        response = client.get('/api/trazabilidad/global/', {
             'formato': 'pdf'
         })
         
@@ -634,7 +638,7 @@ class TestTrazabilidadLote:
         client.force_authenticate(user=data['usuarios']['admin'])
         
         # Buscar trazabilidad del lote 25072052 (tiene espejo en Santiaguito)
-        response = client.get('/api/inventario/trazabilidad/lote/25072052/')
+        response = client.get('/api/trazabilidad/lote/25072052/')
         
         assert response.status_code == 200
         result = response.json()
@@ -650,7 +654,7 @@ class TestTrazabilidadLote:
         client = APIClient()
         client.force_authenticate(user=data['usuarios']['admin'])
         
-        response = client.get('/api/inventario/trazabilidad/lote/25072052/exportar/', {
+        response = client.get('/api/trazabilidad/lote/25072052/exportar/', {
             'formato': 'excel'
         })
         
@@ -663,7 +667,7 @@ class TestTrazabilidadLote:
         client = APIClient()
         client.force_authenticate(user=data['usuarios']['admin'])
         
-        response = client.get('/api/inventario/trazabilidad/lote/25072052/exportar/', {
+        response = client.get('/api/trazabilidad/lote/25072052/exportar/', {
             'formato': 'pdf'
         })
         
@@ -684,7 +688,7 @@ class TestPermisos:
         client = APIClient()
         client.force_authenticate(user=data['usuarios']['santiaguito'])
         
-        response = client.get('/api/inventario/trazabilidad/global/')
+        response = client.get('/api/trazabilidad/global/')
         
         # Debe ser 403 Forbidden
         assert response.status_code == 403
@@ -695,7 +699,7 @@ class TestPermisos:
         client = APIClient()
         client.force_authenticate(user=data['usuarios']['admin'])
         
-        response = client.get('/api/inventario/trazabilidad/global/')
+        response = client.get('/api/trazabilidad/global/')
         
         assert response.status_code == 200
     
@@ -705,7 +709,7 @@ class TestPermisos:
         client = APIClient()
         client.force_authenticate(user=data['usuarios']['farmacia'])
         
-        response = client.get('/api/inventario/trazabilidad/global/')
+        response = client.get('/api/trazabilidad/global/')
         
         assert response.status_code == 200
 
@@ -722,11 +726,13 @@ class TestMasivo:
         data = crear_estructura_completa
         centro_sant = data['centros']['santiaguito']
         lote_sant = data['lotes']['santiaguito']
+        producto = data['productos']['producto1']
         
         # Crear 500 salidas de Santiaguito
         for i in range(500):
             Movimiento.objects.create(
                 lote=lote_sant,
+                producto=producto,
                 tipo='salida',
                 cantidad=-1,
                 fecha=timezone.now() - timedelta(minutes=i),
@@ -737,9 +743,11 @@ class TestMasivo:
         # Crear 500 salidas de Norte
         lote_norte = data['lotes']['norte']
         centro_norte = data['centros']['norte']
+        producto2 = data['productos']['producto2']
         for i in range(500):
             Movimiento.objects.create(
                 lote=lote_norte,
+                producto=producto2,
                 tipo='salida',
                 cantidad=-1,
                 fecha=timezone.now() - timedelta(minutes=i+500),
@@ -751,7 +759,7 @@ class TestMasivo:
         client = APIClient()
         client.force_authenticate(user=data['usuarios']['admin'])
         
-        response = client.get('/api/inventario/reportes/movimientos/', {
+        response = client.get('/api/reportes/movimientos/', {
             'centro': centro_sant.id,
             'tipo': 'salida',
             'formato': 'json'

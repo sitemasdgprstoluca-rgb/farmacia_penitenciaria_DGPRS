@@ -65,6 +65,7 @@ const PERMISOS_POR_ROL = {
     verPerfil: true,
     verMovimientos: true,
     verDonaciones: true,  // Admin puede ver y gestionar todas las donaciones
+    verDispensaciones: true,  // Admin puede ver y gestionar dispensaciones
     esSuperusuario: true,
     configurarTema: true, // Permite personalizar tema del sistema
     // Permisos granulares de requisiciones
@@ -94,6 +95,17 @@ const PERMISOS_POR_ROL = {
     // Permisos granulares de movimientos
     crearMovimiento: true,
     exportarMovimientos: true,
+    // Dispensaciones - Admin tiene todos los permisos
+    crearDispensacion: true,
+    editarDispensacion: true,
+    dispensar: true,
+    cancelarDispensacion: true,
+    // Pacientes - Admin tiene todos los permisos (ISS-DISP)
+    verPacientes: true,
+    crearPaciente: true,
+    editarPaciente: true,
+    eliminarPaciente: true,
+    exportarPacientes: true,
     // Permisos granulares de productos
     crearProducto: true,
     editarProducto: true,
@@ -102,6 +114,12 @@ const PERMISOS_POR_ROL = {
     importarProductos: true,
     // Permisos de notificaciones
     gestionarNotificaciones: true,
+    // Compras Caja Chica - Admin puede ver todo (auditoría), pero es responsabilidad del centro
+    verComprasCajaChica: true,
+    crearCompraCajaChica: false,  // Admin no crea compras de caja chica
+    editarCompraCajaChica: false,
+    autorizarCompraCajaChica: false,
+    verInventarioCajaChica: true,  // Admin puede auditar inventario de caja chica
   },
   FARMACIA: {
     verDashboard: true,
@@ -117,6 +135,7 @@ const PERMISOS_POR_ROL = {
     verPerfil: true,
     verMovimientos: true,
     verDonaciones: true,  // Farmacia puede gestionar donaciones
+    verDispensaciones: true,  // Farmacia puede VER dispensaciones para auditar
     esSuperusuario: false,
     configurarTema: false, // ISS-FIX: Solo admin puede personalizar tema
     // Permisos granulares de requisiciones
@@ -146,6 +165,17 @@ const PERMISOS_POR_ROL = {
     // Permisos granulares de movimientos
     crearMovimiento: true,
     exportarMovimientos: true,
+    // Dispensaciones - Farmacia solo AUDITA (ver, no operar)
+    crearDispensacion: false,
+    editarDispensacion: false,
+    dispensar: false,
+    cancelarDispensacion: false,
+    // Pacientes - Farmacia solo AUDITA (ver, no operar) - ISS-DISP
+    verPacientes: true,
+    crearPaciente: false,
+    editarPaciente: false,
+    eliminarPaciente: false,
+    exportarPacientes: true,  // Puede exportar para auditoría
     // Permisos granulares de productos
     crearProducto: true,
     editarProducto: true,
@@ -154,6 +184,12 @@ const PERMISOS_POR_ROL = {
     importarProductos: true,
     // Permisos de notificaciones
     gestionarNotificaciones: true,
+    // Compras Caja Chica - Farmacia SOLO AUDITA (ve todo pero no puede modificar)
+    verComprasCajaChica: true,  // Puede ver todas las compras de todos los centros
+    crearCompraCajaChica: false,
+    editarCompraCajaChica: false,
+    autorizarCompraCajaChica: false,
+    verInventarioCajaChica: true,  // Puede ver inventario de caja chica para auditoría
   },
   CENTRO: {
     verDashboard: true,
@@ -169,6 +205,7 @@ const PERMISOS_POR_ROL = {
     verPerfil: true,
     verMovimientos: true,  // ISS-FIX: Centro puede ver movimientos de SU centro
     verDonaciones: false,  // Centro NO puede ver/gestionar donaciones
+    verDispensaciones: true,  // Centro puede ver dispensaciones de SU centro
     esSuperusuario: false,
     configurarTema: false, // Centro no puede personalizar tema
     // Permisos granulares de requisiciones - Centro solo crea y envía
@@ -198,6 +235,17 @@ const PERMISOS_POR_ROL = {
     // Permisos granulares de movimientos - Centro solo ver
     crearMovimiento: false,
     exportarMovimientos: false,
+    // Dispensaciones - Centro puede operar en su centro
+    crearDispensacion: true,
+    editarDispensacion: true,
+    dispensar: true,
+    cancelarDispensacion: true,
+    // Pacientes - Centro puede operar pacientes de SU centro - ISS-DISP
+    verPacientes: true,
+    crearPaciente: true,
+    editarPaciente: true,
+    eliminarPaciente: true,
+    exportarPacientes: true,
     // Permisos granulares de productos - Centro NO puede crear/editar (solo ver)
     crearProducto: false,
     editarProducto: false,
@@ -207,6 +255,12 @@ const PERMISOS_POR_ROL = {
     // Permisos de notificaciones - CENTRO solo puede ver y marcar SUS propias notificaciones
     // No tiene acceso a gestión masiva ni administrativa de notificaciones
     gestionarNotificaciones: false,
+    // Compras Caja Chica - CENTRO puede crear/editar/gestionar su propia caja chica
+    verComprasCajaChica: true,
+    crearCompraCajaChica: true,  // Centro PUEDE crear compras de caja chica
+    editarCompraCajaChica: true,
+    autorizarCompraCajaChica: true,  // Administrador/Director del centro puede autorizar
+    verInventarioCajaChica: true,  // Ve SU inventario de caja chica
   },
   VISTA: {
     verDashboard: true,
@@ -222,6 +276,7 @@ const PERMISOS_POR_ROL = {
     verPerfil: true,
     verMovimientos: true,
     verDonaciones: true,  // Vista puede consultar donaciones (solo lectura)
+    verDispensaciones: false,  // Vista NO puede ver dispensaciones (datos sensibles)
     esSuperusuario: false,
     configurarTema: false, // Vista no puede personalizar tema
     // Vista no puede modificar requisiciones
@@ -259,13 +314,19 @@ const PERMISOS_POR_ROL = {
     importarProductos: false,
     // Permisos de notificaciones
     gestionarNotificaciones: false,
+    // Compras Caja Chica - Vista NO puede ver (datos internos del centro)
+    verComprasCajaChica: false,
+    crearCompraCajaChica: false,
+    editarCompraCajaChica: false,
+    autorizarCompraCajaChica: false,
+    verInventarioCajaChica: false,
   },
   // ISS-AUDIT FIX: Roles específicos del centro penitenciario (FLUJO V2)
   // Estos roles tienen permisos diferentes entre sí para el flujo jerárquico
   MEDICO: {
     verDashboard: true,
     verProductos: true,  // Ve productos para crear requisiciones
-    verLotes: false,     // Médico no gestiona lotes
+    verLotes: true,      // Médico VE lotes de su centro para dispensar (solo lectura)
     verRequisiciones: true,
     verCentros: false,
     verUsuarios: false,
@@ -276,6 +337,7 @@ const PERMISOS_POR_ROL = {
     verPerfil: true,
     verMovimientos: true,  // ISS-FIX: Médico PUEDE ver movimientos de su centro (salidas/consumos)
     verDonaciones: false,
+    verDispensaciones: true,  // Médico puede gestionar dispensaciones
     esSuperusuario: false,
     configurarTema: false,
     // FLUJO V2: Médico CREA requisiciones y CONFIRMA entrega
@@ -304,6 +366,17 @@ const PERMISOS_POR_ROL = {
     // Movimientos - ISS-FIX: Médico puede crear movimientos de salida en su centro
     crearMovimiento: true,
     exportarMovimientos: false,
+    // Dispensaciones - Médico es el operador principal
+    crearDispensacion: true,
+    editarDispensacion: true,
+    dispensar: true,
+    cancelarDispensacion: true,
+    // Pacientes - Médico es el operador principal de pacientes - ISS-DISP
+    verPacientes: true,
+    crearPaciente: true,
+    editarPaciente: true,
+    eliminarPaciente: true,
+    exportarPacientes: true,
     // Productos - Solo lectura
     crearProducto: false,
     editarProducto: false,
@@ -311,6 +384,12 @@ const PERMISOS_POR_ROL = {
     exportarProductos: false,
     importarProductos: false,
     gestionarNotificaciones: false,
+    // Compras Caja Chica - Médico puede crear solicitudes pero NO autorizar
+    verComprasCajaChica: true,
+    crearCompraCajaChica: true,  // Médico PUEDE crear solicitudes de compra
+    editarCompraCajaChica: true,
+    autorizarCompraCajaChica: false,  // Médico NO puede autorizar (lo hace Admin/Director)
+    verInventarioCajaChica: true,
   },
   ADMINISTRADOR_CENTRO: {
     verDashboard: true,
@@ -326,6 +405,7 @@ const PERMISOS_POR_ROL = {
     verPerfil: true,
     verMovimientos: true,  // ISS-FIX: Admin Centro puede VER movimientos de su centro
     verDonaciones: false,
+    verDispensaciones: true,  // Admin Centro puede ver dispensaciones
     esSuperusuario: false,
     configurarTema: false,
     // FLUJO V2: Administrador AUTORIZA y CONFIRMA
@@ -353,12 +433,29 @@ const PERMISOS_POR_ROL = {
     importarLotes: false,
     crearMovimiento: false,
     exportarMovimientos: false,
+    // Dispensaciones - Admin Centro puede VER y cancelar si es necesario
+    crearDispensacion: false,
+    editarDispensacion: false,
+    dispensar: false,
+    cancelarDispensacion: true,
+    // Pacientes - Admin Centro puede VER y exportar - ISS-DISP
+    verPacientes: true,
+    crearPaciente: false,
+    editarPaciente: false,
+    eliminarPaciente: false,
+    exportarPacientes: true,
     crearProducto: false,
     editarProducto: false,
     eliminarProducto: false,
     exportarProductos: false,
     importarProductos: false,
     gestionarNotificaciones: false,
+    // Compras Caja Chica - Admin Centro puede autorizar compras
+    verComprasCajaChica: true,
+    crearCompraCajaChica: true,  // Puede crear si es necesario
+    editarCompraCajaChica: true,
+    autorizarCompraCajaChica: true,  // Administrador PUEDE autorizar compras
+    verInventarioCajaChica: true,
   },
   DIRECTOR_CENTRO: {
     verDashboard: true,
@@ -374,6 +471,7 @@ const PERMISOS_POR_ROL = {
     verPerfil: true,
     verMovimientos: true,  // ISS-FIX: Director puede VER movimientos de su centro
     verDonaciones: false,
+    verDispensaciones: true,  // Director puede ver dispensaciones
     esSuperusuario: false,
     configurarTema: false,
     // FLUJO V2: Director AUTORIZA final del centro
@@ -401,12 +499,29 @@ const PERMISOS_POR_ROL = {
     importarLotes: false,
     crearMovimiento: false,
     exportarMovimientos: false,
+    // Dispensaciones - Director puede VER y cancelar si es necesario
+    crearDispensacion: false,
+    editarDispensacion: false,
+    dispensar: false,
+    cancelarDispensacion: true,
+    // Pacientes - Director puede VER y exportar - ISS-DISP
+    verPacientes: true,
+    crearPaciente: false,
+    editarPaciente: false,
+    eliminarPaciente: false,
+    exportarPacientes: true,
     crearProducto: false,
     editarProducto: false,
     eliminarProducto: false,
     exportarProductos: false,
     importarProductos: false,
     gestionarNotificaciones: false,
+    // Compras Caja Chica - Director tiene autoridad máxima en el centro
+    verComprasCajaChica: true,
+    crearCompraCajaChica: true,  // Puede crear si es necesario
+    editarCompraCajaChica: true,
+    autorizarCompraCajaChica: true,  // Director PUEDE autorizar compras
+    verInventarioCajaChica: true,
   },
   SIN_ROL: {
     verDashboard: false,
@@ -422,6 +537,7 @@ const PERMISOS_POR_ROL = {
     verPerfil: false,
     verMovimientos: false,
     verDonaciones: false,
+    verDispensaciones: false,
     esSuperusuario: false,
     configurarTema: false,
     crearRequisicion: false,
@@ -457,6 +573,12 @@ const PERMISOS_POR_ROL = {
     importarProductos: false,
     // Permisos de notificaciones
     gestionarNotificaciones: false,
+    // Compras Caja Chica - Sin rol no tiene acceso
+    verComprasCajaChica: false,
+    crearCompraCajaChica: false,
+    editarCompraCajaChica: false,
+    autorizarCompraCajaChica: false,
+    verInventarioCajaChica: false,
   },
 };
 

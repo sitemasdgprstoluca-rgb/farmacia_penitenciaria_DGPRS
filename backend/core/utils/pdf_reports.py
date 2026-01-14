@@ -2446,3 +2446,975 @@ def generar_recibo_salida_donacion(movimiento_data, items_data=None, finalizado=
     buffer.seek(0)
     logger.info(f"Recibo de salida PDF generado - Folio: {folio}")
     return buffer
+
+
+def generar_tarjeta_entradas_salidas_formato_b(lote_info, movimientos_data, es_cprs=False):
+    """
+    Genera PDF con formato oficial "Tarjeta de Entradas/Salidas de Almacén (B)".
+    
+    Este formato es el kardex oficial por producto/lote que registra cada movimiento
+    con detalle. Compatible tanto para CIA (Farmacia Central) como para CPRS (Centros).
+    
+    Args:
+        lote_info: dict con información del lote:
+            - numero_lote: Número del lote
+            - producto_nombre: Nombre del insumo médico
+            - producto_clave: Clave del insumo
+            - presentacion: Presentación farmacéutica
+            - fecha_caducidad: Fecha de vencimiento
+            - centro_nombre: Nombre de la institución (None = CIA)
+            - numero_contrato: Número de contrato
+        movimientos_data: Lista de movimientos con:
+            - fecha: Fecha del movimiento
+            - folio_documento: Folio/documento de entrada
+            - cantidad: Cantidad (positivo entrada, negativo salida)
+            - tipo: ENTRADA, SALIDA
+            - saldo: Saldo acumulado tras el movimiento
+            - usuario: Nombre del personal responsable
+            - observaciones: Observaciones
+        es_cprs: True si es para Centro Penitenciario, False para CIA
+    
+    Returns:
+        BytesIO: Buffer con el PDF generado en formato oficial B
+    """
+    buffer = BytesIO()
+    
+    # Usar orientación vertical para formato tarjeta
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        topMargin=1.8*inch,
+        bottomMargin=1.0*inch,
+        leftMargin=0.5*inch,
+        rightMargin=0.5*inch
+    )
+    
+    elements = []
+    styles = _obtener_estilos_institucionales()
+    colores_tema = _obtener_colores_tema()
+    
+    # Obtener fondo institucional
+    fondo_path = colores_tema.get('fondo_reportes_path')
+    if not fondo_path:
+        fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
+    
+    # ========== TÍTULO ==========
+    tipo_institucion = "Centro Penitenciario y de Reinserción Social" if es_cprs else "Centro de Información y Abastecimiento"
+    titulo = Paragraph(f"<b>Tarjeta de Entradas/Salidas de Almacén (B)</b>", styles['TituloReporte'])
+    elements.append(titulo)
+    elements.append(Spacer(1, 0.15*inch))
+    
+    # ========== ENCABEZADO CON INFO DEL LOTE ==========
+    # Estilo para labels
+    label_style = ParagraphStyle('LabelB', parent=styles['Normal'], fontSize=8, textColor=COLOR_TEXTO)
+    value_style = ParagraphStyle('ValueB', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold')
+    
+    # Nombre de la institución
+    institucion_nombre = lote_info.get('centro_nombre') or 'Farmacia Central (CIA)'
+    
+    # Información del producto en tabla de encabezado
+    header_data = [
+        [Paragraph(f"<b>Institución Penitenciaria:</b>", label_style), 
+         Paragraph(institucion_nombre, value_style), '', ''],
+        [Paragraph(f"<b>Insumo médico:</b>", label_style), 
+         Paragraph(str(lote_info.get('producto_nombre', 'N/A')), value_style),
+         Paragraph(f"<b>Clave:</b>", label_style),
+         Paragraph(str(lote_info.get('producto_clave', 'N/A')), value_style)],
+        [Paragraph(f"<b>Presentación:</b>", label_style), 
+         Paragraph(str(lote_info.get('presentacion', 'N/A')), value_style),
+         Paragraph(f"<b>Fecha de Caducidad:</b>", label_style),
+         Paragraph(str(lote_info.get('fecha_caducidad', 'N/A')), value_style)],
+        [Paragraph(f"<b>No. Lote:</b>", label_style), 
+         Paragraph(str(lote_info.get('numero_lote', 'N/A')), value_style),
+         Paragraph(f"<b>No. Contrato:</b>", label_style),
+         Paragraph(str(lote_info.get('numero_contrato', 'N/A')), value_style)],
+    ]
+    
+    header_table = Table(header_data, colWidths=[1.2*inch, 2.6*inch, 1.2*inch, 2.4*inch])
+    header_table.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#FBF2F5')),
+        ('BACKGROUND', (2, 0), (2, -1), colors.HexColor('#FBF2F5')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 0.2*inch))
+    
+    # ========== TABLA DE MOVIMIENTOS (FORMATO B) ==========
+    # Encabezados según formato oficial
+    mov_header = [
+        Paragraph('<b>Fecha</b>', label_style),
+        Paragraph('<b>Documento<br/>Entrada (Folio)</b>', label_style),
+        Paragraph('<b>Entrada<br/>Piezas</b>', label_style),
+        Paragraph('<b>Salida<br/>Piezas</b>', label_style),
+        Paragraph('<b>Existencia<br/>Piezas</b>', label_style),
+        Paragraph('<b>Nombre y firma<br/>del personal</b>', label_style),
+    ]
+    
+    mov_data = [mov_header]
+    
+    # Estilo para celdas
+    celda_style = ParagraphStyle('CeldaB', parent=styles['Normal'], fontSize=7, leading=9, wordWrap='CJK')
+    
+    for mov in movimientos_data:
+        fecha = mov.get('fecha', '')
+        if hasattr(fecha, 'strftime'):
+            fecha = fecha.strftime('%d/%m/%Y')
+        
+        # Documento de entrada (folio)
+        folio = mov.get('folio_documento', '') or mov.get('observaciones', '') or '-'
+        folio_p = Paragraph(str(folio)[:50], celda_style)
+        
+        # Cantidad: positivo = entrada, negativo = salida
+        cantidad = mov.get('cantidad', 0)
+        tipo = str(mov.get('tipo', '')).upper()
+        
+        if tipo == 'ENTRADA' or cantidad > 0:
+            entrada = str(abs(cantidad))
+            salida = ''
+        else:
+            entrada = ''
+            salida = str(abs(cantidad))
+        
+        # Saldo/existencia
+        saldo = mov.get('saldo', 0)
+        
+        # Personal responsable
+        usuario = mov.get('usuario', '') or mov.get('usuario_nombre', '') or 'Sistema'
+        usuario_p = Paragraph(str(usuario), celda_style)
+        
+        mov_data.append([
+            str(fecha),
+            folio_p,
+            entrada,
+            salida,
+            str(saldo),
+            usuario_p,
+        ])
+    
+    # Anchos de columna para formato B
+    mov_col_widths = [0.8*inch, 1.8*inch, 0.7*inch, 0.7*inch, 0.8*inch, 2.0*inch]
+    
+    mov_table = Table(mov_data, colWidths=mov_col_widths)
+    mov_table.setStyle(TableStyle([
+        # Encabezado
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 7),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+        # Datos
+        ('FONTSIZE', (0, 1), (-1, -1), 7),
+        ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('ALIGN', (2, 1), (4, -1), 'CENTER'),  # Centrar números
+        ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        # Filas alternas
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F9F9F9')]),
+    ]))
+    elements.append(mov_table)
+    
+    # ========== SECCIÓN DE FIRMA ==========
+    elements.append(Spacer(1, 0.4*inch))
+    
+    firma_data = [
+        ['', ''],
+        ['_' * 40, '_' * 40],
+        ['Revisó', 'Elaboró'],
+        ['Nombre y cargo:', 'Nombre y cargo:'],
+    ]
+    
+    firma_table = Table(firma_data, colWidths=[3.5*inch, 3.5*inch])
+    firma_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTNAME', (0, 2), (-1, 2), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, 0), 30),  # Espacio para firma
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(firma_table)
+    
+    # ========== PIE DE PÁGINA ==========
+    elements.append(Spacer(1, 0.3*inch))
+    nota_style = ParagraphStyle('NotaB', parent=styles['Normal'], fontSize=7, textColor=COLOR_GRIS, alignment=TA_CENTER)
+    elements.append(Paragraph(
+        f"Formato B - Tarjeta de Entradas/Salidas de Almacén | {'CPRS' if es_cprs else 'CIA'} | Generado: {timezone.now().strftime('%d/%m/%Y %H:%M')}",
+        nota_style
+    ))
+    
+    # Usar canvas con fondo institucional
+    def make_canvas(*args, **kwargs):
+        return FondoOficialCanvas(*args, fondo_path=fondo_path, titulo_reporte='FORMATO B', **kwargs)
+    
+    doc.build(elements, canvasmaker=make_canvas)
+    
+    buffer.seek(0)
+    logger.info(f"Tarjeta Formato B generada - Lote: {lote_info.get('numero_lote')}, Movimientos: {len(movimientos_data)}")
+    return buffer
+
+
+def generar_recibo_salida_requisicion(requisicion_data, detalles_data):
+    """
+    Genera PDF con formato oficial "Recibo de Salida del Almacén".
+    
+    Este formato acompaña el envío físico de medicamentos del CIA a un CPRS
+    cuando se surte una requisición.
+    
+    Args:
+        requisicion_data: dict con información de la requisición:
+            - folio: Folio de la requisición
+            - numero: Número de requisición
+            - fecha_surtido: Fecha en que se surtió
+            - centro_nombre: Nombre del CPRS destino
+            - centro_direccion: Dirección del centro (opcional)
+            - usuario_surtido: Nombre del usuario que surtió
+            - periodo: Periodo correspondiente (opcional)
+            - observaciones: Observaciones generales
+        detalles_data: Lista de items surtidos con:
+            - producto_clave: Clave del producto
+            - producto_nombre: Nombre del medicamento/material
+            - presentacion: Presentación
+            - lote: Número de lote
+            - fecha_caducidad: Fecha de vencimiento
+            - cantidad_surtida: Cantidad enviada
+            - precio_unitario: Precio por unidad (opcional)
+    
+    Returns:
+        BytesIO: Buffer con el PDF generado en formato Recibo de Salida
+    """
+    buffer = BytesIO()
+    
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        topMargin=1.8*inch,
+        bottomMargin=1.0*inch,
+        leftMargin=0.5*inch,
+        rightMargin=0.5*inch
+    )
+    
+    elements = []
+    styles = _obtener_estilos_institucionales()
+    colores_tema = _obtener_colores_tema()
+    
+    # Obtener fondo institucional
+    fondo_path = colores_tema.get('fondo_reportes_path')
+    if not fondo_path:
+        fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
+    
+    # ========== TÍTULO ==========
+    titulo = Paragraph("<b>RECIBO DE SALIDA DEL ALMACÉN</b>", styles['TituloReporte'])
+    elements.append(titulo)
+    elements.append(Spacer(1, 0.15*inch))
+    
+    # ========== INFORMACIÓN DEL RECIBO ==========
+    label_style = ParagraphStyle('LabelRS', parent=styles['Normal'], fontSize=8, textColor=COLOR_TEXTO)
+    value_style = ParagraphStyle('ValueRS', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold')
+    
+    # Folio y fecha
+    folio = requisicion_data.get('folio') or requisicion_data.get('numero', 'N/A')
+    fecha_surtido = requisicion_data.get('fecha_surtido', timezone.now().strftime('%d/%m/%Y'))
+    if hasattr(fecha_surtido, 'strftime'):
+        fecha_surtido = fecha_surtido.strftime('%d/%m/%Y %H:%M')
+    
+    centro_nombre = requisicion_data.get('centro_nombre', 'No especificado')
+    periodo = requisicion_data.get('periodo', '')
+    
+    # Tabla de encabezado del recibo
+    header_data = [
+        [Paragraph("<b>Folio:</b>", label_style), 
+         Paragraph(str(folio), value_style),
+         Paragraph("<b>Fecha de Elaboración:</b>", label_style),
+         Paragraph(str(fecha_surtido), value_style)],
+        [Paragraph("<b>C.P.R.S. Destino:</b>", label_style), 
+         Paragraph(str(centro_nombre), value_style),
+         Paragraph("<b>Periodo:</b>", label_style),
+         Paragraph(str(periodo) if periodo else 'N/A', value_style)],
+    ]
+    
+    header_table = Table(header_data, colWidths=[1.3*inch, 2.4*inch, 1.4*inch, 2.3*inch])
+    header_table.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#FBF2F5')),
+        ('BACKGROUND', (2, 0), (2, -1), colors.HexColor('#FBF2F5')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 0.2*inch))
+    
+    # ========== TABLA DE PRODUCTOS SURTIDOS ==========
+    # Encabezados
+    detalle_header = [
+        Paragraph('<b>No.</b>', label_style),
+        Paragraph('<b>Clave</b>', label_style),
+        Paragraph('<b>Medicamento/Material</b>', label_style),
+        Paragraph('<b>Presentación</b>', label_style),
+        Paragraph('<b>Lote</b>', label_style),
+        Paragraph('<b>Caducidad</b>', label_style),
+        Paragraph('<b>Cantidad<br/>Surtida</b>', label_style),
+    ]
+    
+    detalle_data = [detalle_header]
+    celda_style = ParagraphStyle('CeldaRS', parent=styles['Normal'], fontSize=7, leading=9, wordWrap='CJK')
+    
+    total_piezas = 0
+    for idx, item in enumerate(detalles_data, 1):
+        cantidad_surtida = item.get('cantidad_surtida', 0)
+        total_piezas += cantidad_surtida
+        
+        # Fecha caducidad
+        fecha_cad = item.get('fecha_caducidad', 'N/A')
+        if hasattr(fecha_cad, 'strftime'):
+            fecha_cad = fecha_cad.strftime('%d/%m/%Y')
+        
+        detalle_data.append([
+            str(idx),
+            Paragraph(str(item.get('producto_clave', '')), celda_style),
+            Paragraph(str(item.get('producto_nombre', ''))[:60], celda_style),
+            Paragraph(str(item.get('presentacion', ''))[:30], celda_style),
+            str(item.get('lote', 'N/A')),
+            str(fecha_cad),
+            str(cantidad_surtida),
+        ])
+    
+    # Fila de totales
+    detalle_data.append([
+        '', '', '', '', '', Paragraph('<b>TOTAL:</b>', celda_style), f'<b>{total_piezas}</b>'
+    ])
+    
+    # Anchos de columna
+    detalle_col_widths = [0.4*inch, 0.8*inch, 2.2*inch, 1.0*inch, 0.8*inch, 0.8*inch, 0.7*inch]
+    
+    detalle_table = Table(detalle_data, colWidths=detalle_col_widths)
+    detalle_table.setStyle(TableStyle([
+        # Encabezado
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 7),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+        # Datos
+        ('FONTSIZE', (0, 1), (-1, -1), 7),
+        ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # Número
+        ('ALIGN', (6, 1), (6, -1), 'CENTER'),  # Cantidad
+        ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        # Filas alternas
+        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#F9F9F9')]),
+        # Fila de totales
+        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#FBF2F5')),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+    ]))
+    elements.append(detalle_table)
+    
+    # ========== OBSERVACIONES ==========
+    observaciones = requisicion_data.get('observaciones', '')
+    if observaciones:
+        elements.append(Spacer(1, 0.15*inch))
+        obs_style = ParagraphStyle('ObsRS', parent=styles['Normal'], fontSize=8)
+        elements.append(Paragraph(f"<b>Observaciones:</b> {observaciones}", obs_style))
+    
+    # ========== SECCIÓN DE FIRMAS ==========
+    elements.append(Spacer(1, 0.4*inch))
+    
+    usuario_surtido = requisicion_data.get('usuario_surtido', '')
+    
+    firma_data = [
+        ['', '', ''],
+        ['_' * 35, '_' * 35, '_' * 35],
+        ['AUTORIZA', 'ENTREGA', 'RECIBE'],
+        [Paragraph(f'<font size="7">{usuario_surtido}</font>', celda_style) if usuario_surtido else '', '', ''],
+        ['Nombre y cargo', 'Nombre y cargo', 'Nombre y cargo'],
+    ]
+    
+    firma_table = Table(firma_data, colWidths=[2.4*inch, 2.4*inch, 2.4*inch])
+    firma_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTNAME', (0, 2), (-1, 2), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('FONTSIZE', (0, 4), (-1, 4), 7),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, 0), 30),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('TEXTCOLOR', (0, 4), (-1, 4), COLOR_GRIS),
+    ]))
+    elements.append(firma_table)
+    
+    # ========== PIE DE PÁGINA ==========
+    elements.append(Spacer(1, 0.3*inch))
+    nota_style = ParagraphStyle('NotaRS', parent=styles['Normal'], fontSize=7, textColor=COLOR_GRIS, alignment=TA_CENTER)
+    elements.append(Paragraph(
+        f"Recibo de Salida de Almacén | Folio: {folio} | Generado: {timezone.now().strftime('%d/%m/%Y %H:%M')}",
+        nota_style
+    ))
+    
+    # Usar canvas con fondo institucional
+    def make_canvas(*args, **kwargs):
+        return FondoOficialCanvas(*args, fondo_path=fondo_path, titulo_reporte='RECIBO SALIDA', **kwargs)
+    
+    doc.build(elements, canvasmaker=make_canvas)
+    
+    buffer.seek(0)
+    logger.info(f"Recibo de Salida PDF generado - Folio: {folio}, Items: {len(detalles_data)}")
+    return buffer
+
+
+def generar_control_mensual_almacen(periodo_data, productos_data, centro_nombre=None):
+    """
+    Genera PDF con formato oficial "Control Mensual de Almacén (Formato A)".
+    
+    Registro mensual consolidado de todos los insumos médicos, mostrando
+    existencias anteriores, entradas, salidas y saldo final.
+    
+    Args:
+        periodo_data: dict con información del periodo:
+            - mes: Número del mes (1-12)
+            - anio: Año
+            - fecha_inicio: Fecha inicio del periodo
+            - fecha_fin: Fecha fin del periodo
+            - fecha_elaboracion: Fecha de elaboración del reporte
+        productos_data: Lista de productos con movimientos:
+            - producto_clave: Clave del insumo
+            - producto_nombre: Nombre del medicamento
+            - presentacion: Forma farmacéutica
+            - lote: Número de lote
+            - fecha_caducidad: Vencimiento
+            - existencia_anterior: Stock al inicio del periodo
+            - documento_entrada: Folio del documento de entrada
+            - entradas: Total de entradas en el periodo
+            - salidas: Total de salidas en el periodo
+            - existencia_final: Saldo al final del periodo
+        centro_nombre: Nombre de la institución (None = CIA/Farmacia Central)
+    
+    Returns:
+        BytesIO: Buffer con el PDF generado en formato Control Mensual A
+    """
+    buffer = BytesIO()
+    
+    # Usar orientación horizontal para más columnas
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(letter),
+        topMargin=1.5*inch,
+        bottomMargin=0.8*inch,
+        leftMargin=0.4*inch,
+        rightMargin=0.4*inch
+    )
+    
+    elements = []
+    styles = _obtener_estilos_institucionales()
+    colores_tema = _obtener_colores_tema()
+    
+    # Obtener fondo institucional
+    fondo_path = colores_tema.get('fondo_reportes_path')
+    if not fondo_path:
+        fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
+    
+    # ========== TÍTULO ==========
+    titulo = Paragraph("<b>CONTROL MENSUAL DE ALMACÉN (A)</b>", styles['TituloReporte'])
+    elements.append(titulo)
+    elements.append(Spacer(1, 0.1*inch))
+    
+    # ========== ENCABEZADO DEL REPORTE ==========
+    label_style = ParagraphStyle('LabelCM', parent=styles['Normal'], fontSize=8, textColor=COLOR_TEXTO)
+    value_style = ParagraphStyle('ValueCM', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold')
+    
+    # Información del periodo
+    mes = periodo_data.get('mes', timezone.now().month)
+    anio = periodo_data.get('anio', timezone.now().year)
+    meses_nombres = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+    periodo_texto = f"{meses_nombres[mes]} {anio}"
+    
+    fecha_elaboracion = periodo_data.get('fecha_elaboracion', timezone.now().strftime('%d/%m/%Y'))
+    if hasattr(fecha_elaboracion, 'strftime'):
+        fecha_elaboracion = fecha_elaboracion.strftime('%d/%m/%Y')
+    
+    institucion = centro_nombre or 'Almacén Central de Medicamentos (CIA)'
+    
+    header_data = [
+        [Paragraph("<b>Institución Penitenciaria:</b>", label_style), 
+         Paragraph(str(institucion), value_style),
+         Paragraph("<b>Fecha de Elaboración:</b>", label_style),
+         Paragraph(str(fecha_elaboracion), value_style)],
+        [Paragraph("<b>Periodo:</b>", label_style), 
+         Paragraph(periodo_texto, value_style),
+         '', ''],
+    ]
+    
+    header_table = Table(header_data, colWidths=[1.5*inch, 4.0*inch, 1.5*inch, 2.5*inch])
+    header_table.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#FBF2F5')),
+        ('BACKGROUND', (2, 0), (2, -1), colors.HexColor('#FBF2F5')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('SPAN', (1, 1), (3, 1)),  # Unir celdas de periodo
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 0.15*inch))
+    
+    # ========== TABLA DE CONTROL MENSUAL ==========
+    # Encabezados según formato oficial A
+    control_header = [
+        Paragraph('<b>Clave</b>', label_style),
+        Paragraph('<b>Insumo Médico</b>', label_style),
+        Paragraph('<b>Presentación</b>', label_style),
+        Paragraph('<b>Lote</b>', label_style),
+        Paragraph('<b>Fecha<br/>Caducidad</b>', label_style),
+        Paragraph('<b>Existencia<br/>Anterior</b>', label_style),
+        Paragraph('<b>Doc. Entrada<br/>(Folio)</b>', label_style),
+        Paragraph('<b>Entrada</b>', label_style),
+        Paragraph('<b>Salida</b>', label_style),
+        Paragraph('<b>Existencia<br/>Final</b>', label_style),
+    ]
+    
+    control_data = [control_header]
+    celda_style = ParagraphStyle('CeldaCM', parent=styles['Normal'], fontSize=6, leading=8, wordWrap='CJK')
+    
+    totales = {'existencia_anterior': 0, 'entradas': 0, 'salidas': 0, 'existencia_final': 0}
+    
+    for item in productos_data:
+        # Fecha caducidad
+        fecha_cad = item.get('fecha_caducidad', 'N/A')
+        if hasattr(fecha_cad, 'strftime'):
+            fecha_cad = fecha_cad.strftime('%d/%m/%Y')
+        
+        existencia_anterior = item.get('existencia_anterior', 0) or 0
+        entradas = item.get('entradas', 0) or 0
+        salidas = item.get('salidas', 0) or 0
+        existencia_final = item.get('existencia_final', 0) or 0
+        
+        totales['existencia_anterior'] += existencia_anterior
+        totales['entradas'] += entradas
+        totales['salidas'] += salidas
+        totales['existencia_final'] += existencia_final
+        
+        control_data.append([
+            Paragraph(str(item.get('producto_clave', ''))[:20], celda_style),
+            Paragraph(str(item.get('producto_nombre', ''))[:50], celda_style),
+            Paragraph(str(item.get('presentacion', ''))[:25], celda_style),
+            str(item.get('lote', 'N/A'))[:15],
+            str(fecha_cad),
+            str(existencia_anterior),
+            Paragraph(str(item.get('documento_entrada', '') or '-')[:20], celda_style),
+            str(entradas),
+            str(salidas),
+            str(existencia_final),
+        ])
+    
+    # Fila de totales
+    control_data.append([
+        '', '', '', '', Paragraph('<b>TOTALES:</b>', celda_style),
+        f"<b>{totales['existencia_anterior']}</b>",
+        '',
+        f"<b>{totales['entradas']}</b>",
+        f"<b>{totales['salidas']}</b>",
+        f"<b>{totales['existencia_final']}</b>",
+    ])
+    
+    # Anchos de columna para landscape
+    control_col_widths = [0.7*inch, 2.5*inch, 1.0*inch, 0.7*inch, 0.7*inch, 0.6*inch, 0.9*inch, 0.55*inch, 0.55*inch, 0.6*inch]
+    
+    control_table = Table(control_data, colWidths=control_col_widths)
+    control_table.setStyle(TableStyle([
+        # Encabezado
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 6),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+        # Datos
+        ('FONTSIZE', (0, 1), (-1, -1), 6),
+        ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('ALIGN', (5, 1), (5, -1), 'CENTER'),  # Existencia anterior
+        ('ALIGN', (7, 1), (9, -1), 'CENTER'),  # Entradas, Salidas, Existencia
+        ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 2),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        # Filas alternas
+        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#F9F9F9')]),
+        # Fila de totales
+        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#FBF2F5')),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+    ]))
+    elements.append(control_table)
+    
+    # ========== SECCIÓN DE FIRMAS ==========
+    elements.append(Spacer(1, 0.3*inch))
+    
+    firma_data = [
+        ['', ''],
+        ['_' * 45, '_' * 45],
+        ['Revisó / Vo. Bo.', 'Elaboró'],
+        ['Nombre y cargo:', 'Nombre y cargo:'],
+    ]
+    
+    firma_table = Table(firma_data, colWidths=[4.5*inch, 4.5*inch])
+    firma_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTNAME', (0, 2), (-1, 2), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('FONTSIZE', (0, 3), (-1, 3), 7),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, 0), 25),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('TEXTCOLOR', (0, 3), (-1, 3), COLOR_GRIS),
+    ]))
+    elements.append(firma_table)
+    
+    # ========== PIE DE PÁGINA ==========
+    elements.append(Spacer(1, 0.2*inch))
+    nota_style = ParagraphStyle('NotaCM', parent=styles['Normal'], fontSize=7, textColor=COLOR_GRIS, alignment=TA_CENTER)
+    elements.append(Paragraph(
+        f"Formato A - Control Mensual de Almacén | {institucion} | Periodo: {periodo_texto} | Generado: {timezone.now().strftime('%d/%m/%Y %H:%M')}",
+        nota_style
+    ))
+    
+    # Usar canvas con fondo institucional para landscape
+    class LandscapeFondoCanvas(canvas.Canvas):
+        def __init__(self, *args, **kwargs):
+            self.fondo_path = fondo_path
+            canvas.Canvas.__init__(self, *args, **kwargs)
+            self._dibujar_fondo()
+        
+        def showPage(self):
+            canvas.Canvas.showPage(self)
+            self._dibujar_fondo()
+        
+        def _dibujar_fondo(self):
+            if self.fondo_path and os.path.exists(self.fondo_path):
+                try:
+                    page_width, page_height = landscape(letter)
+                    self.drawImage(
+                        str(self.fondo_path),
+                        0, 0,
+                        width=page_width,
+                        height=page_height,
+                        preserveAspectRatio=False,
+                        mask='auto'
+                    )
+                except Exception as e:
+                    logger.warning(f"No se pudo cargar imagen de fondo: {e}")
+    
+    doc.build(elements, canvasmaker=LandscapeFondoCanvas)
+    
+    buffer.seek(0)
+    logger.info(f"Control Mensual PDF generado - Periodo: {periodo_texto}, Items: {len(productos_data)}")
+    return buffer
+
+# =============================================================================
+# FORMATO C - DISPENSACIÓN A PACIENTES
+# =============================================================================
+
+def generar_formato_c_dispensacion(dispensacion):
+    """
+    Genera el PDF Formato C de Dispensación a Pacientes.
+    
+    Documento oficial para registro de entrega de medicamentos a internos,
+    con trazabilidad completa de productos y firmas de recepción.
+    
+    Args:
+        dispensacion: Instancia del modelo Dispensacion
+        
+    Returns:
+        BytesIO: Buffer con el PDF generado
+    """
+    from core.models import TemaGlobal
+    
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=0.5*inch,
+        leftMargin=0.5*inch,
+        topMargin=0.8*inch,
+        bottomMargin=0.5*inch
+    )
+    
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Obtener tema activo para colores institucionales
+    try:
+        tema = TemaGlobal.objects.filter(es_activo=True).first()
+        color_primario = tema.color_primario if tema else '#9F2241'
+        institucion = tema.titulo_sistema if tema else 'Sistema de Farmacia Penitenciaria'
+        subtitulo = tema.subtitulo_sistema if tema else 'Gobierno del Estado'
+    except:
+        color_primario = '#9F2241'
+        institucion = 'Sistema de Farmacia Penitenciaria'
+        subtitulo = 'Gobierno del Estado'
+    
+    COLOR_GUINDA = colors.HexColor(color_primario)
+    COLOR_TEXTO = colors.HexColor('#1f2937')
+    COLOR_GRIS = colors.HexColor('#6b7280')
+    
+    # Fondo institucional
+    fondo_path = obtener_fondo_institucional()
+    
+    # ========== ENCABEZADO ==========
+    header_style = ParagraphStyle('HeaderFC', parent=styles['Heading1'], fontSize=14, 
+                                   textColor=COLOR_GUINDA, alignment=TA_CENTER, spaceAfter=6)
+    subheader_style = ParagraphStyle('SubHeaderFC', parent=styles['Normal'], fontSize=10, 
+                                      textColor=COLOR_TEXTO, alignment=TA_CENTER, spaceAfter=3)
+    
+    elements.append(Spacer(1, 0.5*inch))
+    elements.append(Paragraph(institucion, header_style))
+    elements.append(Paragraph(subtitulo, subheader_style))
+    elements.append(Paragraph("<b>FORMATO C - DISPENSACIÓN A PACIENTES</b>", 
+                              ParagraphStyle('TituloFC', parent=header_style, fontSize=12, spaceBefore=8)))
+    elements.append(Spacer(1, 0.2*inch))
+    
+    # ========== DATOS DE LA DISPENSACIÓN ==========
+    fecha_disp = dispensacion.fecha_dispensacion.strftime('%d/%m/%Y %H:%M') if dispensacion.fecha_dispensacion else 'N/A'
+    
+    info_data = [
+        ['Folio:', dispensacion.folio or 'N/A', 'Fecha:', fecha_disp],
+        ['Centro:', dispensacion.centro.nombre if dispensacion.centro else 'N/A', 
+         'Tipo:', dispensacion.get_tipo_dispensacion_display()],
+        ['Estado:', dispensacion.get_estado_display(), '', ''],
+    ]
+    
+    info_table = Table(info_data, colWidths=[1.2*inch, 2.5*inch, 0.8*inch, 2.5*inch])
+    info_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+        ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+        ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(info_table)
+    elements.append(Spacer(1, 0.15*inch))
+    
+    # ========== DATOS DEL PACIENTE ==========
+    seccion_style = ParagraphStyle('SeccionFC', parent=styles['Heading2'], fontSize=10, 
+                                    textColor=colors.white, backColor=COLOR_GUINDA,
+                                    leftIndent=6, spaceBefore=8, spaceAfter=6)
+    
+    elements.append(Paragraph("DATOS DEL PACIENTE", seccion_style))
+    
+    paciente = dispensacion.paciente
+    paciente_data = [
+        ['No. Expediente:', paciente.numero_expediente if paciente else 'N/A', 
+         'Nombre:', paciente.nombre_completo if paciente else 'N/A'],
+        ['Dormitorio:', paciente.dormitorio or 'N/A' if paciente else 'N/A', 
+         'Celda:', paciente.celda or 'N/A' if paciente else 'N/A'],
+        ['Edad:', f"{paciente.edad} años" if paciente and paciente.edad else 'N/A',
+         'Sexo:', paciente.get_sexo_display() if paciente and paciente.sexo else 'N/A'],
+    ]
+    
+    paciente_table = Table(paciente_data, colWidths=[1.2*inch, 2.5*inch, 0.8*inch, 2.5*inch])
+    paciente_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+        ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+        ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#FBF2F5')),
+        ('BOX', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('INNERGRID', (0, 0), (-1, -1), 0.25, colors.HexColor('#E5E7EB')),
+    ]))
+    elements.append(paciente_table)
+    elements.append(Spacer(1, 0.1*inch))
+    
+    # ========== PRESCRIPCIÓN MÉDICA ==========
+    if dispensacion.diagnostico or dispensacion.medico_prescriptor:
+        elements.append(Paragraph("PRESCRIPCIÓN MÉDICA", seccion_style))
+        
+        prescripcion_data = [
+            ['Médico Prescriptor:', dispensacion.medico_prescriptor or 'N/A', 
+             'Cédula:', dispensacion.cedula_medico or 'N/A'],
+            ['Diagnóstico:', dispensacion.diagnostico or 'N/A', '', ''],
+        ]
+        
+        prescripcion_table = Table(prescripcion_data, colWidths=[1.4*inch, 2.3*inch, 0.8*inch, 2.5*inch])
+        prescripcion_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+            ('SPAN', (1, 1), (3, 1)),  # Diagnóstico ocupa toda la fila
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ]))
+        elements.append(prescripcion_table)
+        elements.append(Spacer(1, 0.1*inch))
+    
+    # ========== MEDICAMENTOS DISPENSADOS ==========
+    elements.append(Paragraph("MEDICAMENTOS DISPENSADOS", seccion_style))
+    
+    # Encabezados de la tabla de medicamentos
+    med_headers = ['No.', 'Clave', 'Medicamento', 'Lote', 'Prescrito', 'Dispensado', 'Dosis/Frecuencia']
+    med_data = [med_headers]
+    
+    detalles = dispensacion.detalles.all().select_related('producto', 'lote')
+    
+    for idx, detalle in enumerate(detalles, 1):
+        dosis_freq = []
+        if detalle.dosis:
+            dosis_freq.append(detalle.dosis)
+        if detalle.frecuencia:
+            dosis_freq.append(detalle.frecuencia)
+        
+        med_data.append([
+            str(idx),
+            detalle.producto.clave if detalle.producto else 'N/A',
+            Paragraph(detalle.producto.nombre[:40] if detalle.producto else 'N/A', 
+                      ParagraphStyle('MedNombre', fontSize=7)),
+            detalle.lote.numero_lote[:15] if detalle.lote else 'N/A',
+            str(detalle.cantidad_prescrita),
+            str(detalle.cantidad_dispensada),
+            ' / '.join(dosis_freq) if dosis_freq else '-'
+        ])
+    
+    # Si no hay detalles, agregar fila vacía
+    if len(med_data) == 1:
+        med_data.append(['-', '-', 'Sin medicamentos registrados', '-', '-', '-', '-'])
+    
+    med_table = Table(med_data, colWidths=[0.35*inch, 0.7*inch, 2.3*inch, 1*inch, 0.65*inch, 0.75*inch, 1.25*inch])
+    med_table.setStyle(TableStyle([
+        # Encabezado
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 8),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+        # Datos
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # No.
+        ('ALIGN', (4, 1), (5, -1), 'CENTER'),  # Cantidades
+        ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        # Filas alternas
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F9F9F9')]),
+    ]))
+    elements.append(med_table)
+    elements.append(Spacer(1, 0.15*inch))
+    
+    # ========== INDICACIONES ==========
+    if dispensacion.indicaciones:
+        elements.append(Paragraph("INDICACIONES", seccion_style))
+        elements.append(Paragraph(dispensacion.indicaciones, 
+                                  ParagraphStyle('IndFC', fontSize=9, textColor=COLOR_TEXTO, spaceBefore=4)))
+        elements.append(Spacer(1, 0.1*inch))
+    
+    # ========== OBSERVACIONES ==========
+    if dispensacion.observaciones:
+        elements.append(Paragraph("OBSERVACIONES", seccion_style))
+        elements.append(Paragraph(dispensacion.observaciones,
+                                  ParagraphStyle('ObsFC', fontSize=9, textColor=COLOR_TEXTO, spaceBefore=4)))
+        elements.append(Spacer(1, 0.1*inch))
+    
+    # ========== SECCIÓN DE FIRMAS ==========
+    elements.append(Spacer(1, 0.25*inch))
+    
+    dispensador_nombre = 'N/A'
+    if dispensacion.dispensado_por:
+        dispensador_nombre = f"{dispensacion.dispensado_por.first_name} {dispensacion.dispensado_por.last_name}".strip()
+        if not dispensador_nombre:
+            dispensador_nombre = dispensacion.dispensado_por.username
+    
+    firma_data = [
+        ['', '', ''],
+        ['_' * 35, '_' * 35, '_' * 35],
+        ['PACIENTE / INTERNO', 'DISPENSADOR', 'Vo. Bo. RESPONSABLE'],
+        [paciente.nombre_completo if paciente else 'N/A', dispensador_nombre, ''],
+        [f'Exp: {paciente.numero_expediente}' if paciente else '', '', ''],
+    ]
+    
+    firma_table = Table(firma_data, colWidths=[2.3*inch, 2.3*inch, 2.3*inch])
+    firma_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTNAME', (0, 2), (-1, 2), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('FONTSIZE', (0, 3), (-1, 4), 7),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, 0), 20),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('TEXTCOLOR', (0, 2), (-1, 2), COLOR_GUINDA),
+        ('TEXTCOLOR', (0, 3), (-1, 4), COLOR_GRIS),
+    ]))
+    elements.append(firma_table)
+    
+    # ========== PIE DE PÁGINA ==========
+    elements.append(Spacer(1, 0.2*inch))
+    nota_style = ParagraphStyle('NotaFC', parent=styles['Normal'], fontSize=7, textColor=COLOR_GRIS, alignment=TA_CENTER)
+    elements.append(Paragraph(
+        f"Formato C - Dispensación a Pacientes | {institucion} | Folio: {dispensacion.folio} | Generado: {timezone.now().strftime('%d/%m/%Y %H:%M')}",
+        nota_style
+    ))
+    
+    # Canvas con fondo institucional
+    class FondoCanvas(canvas.Canvas):
+        def __init__(self, *args, **kwargs):
+            self.fondo_path = fondo_path
+            canvas.Canvas.__init__(self, *args, **kwargs)
+            self._dibujar_fondo()
+        
+        def showPage(self):
+            canvas.Canvas.showPage(self)
+            self._dibujar_fondo()
+        
+        def _dibujar_fondo(self):
+            if self.fondo_path and os.path.exists(self.fondo_path):
+                try:
+                    page_width, page_height = letter
+                    self.drawImage(
+                        str(self.fondo_path),
+                        0, 0,
+                        width=page_width,
+                        height=page_height,
+                        preserveAspectRatio=False,
+                        mask='auto'
+                    )
+                except Exception as e:
+                    logger.warning(f"No se pudo cargar imagen de fondo: {e}")
+    
+    doc.build(elements, canvasmaker=FondoCanvas)
+    
+    buffer.seek(0)
+    logger.info(f"Formato C (Dispensación) PDF generado - Folio: {dispensacion.folio}, Items: {dispensacion.detalles.count()}")
+    return buffer

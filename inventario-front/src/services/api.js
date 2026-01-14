@@ -1060,6 +1060,11 @@ export const requisicionesAPI = {
   downloadHojaConsulta: (id) => apiClient.get(`/requisiciones/${id}/hoja-consulta/`, {
     responseType: 'blob'
   }),
+  
+  // Recibo de Salida del Almacén (Formato Oficial al surtir)
+  downloadReciboSalida: (id) => apiClient.get(`/requisiciones/${id}/exportar-recibo-salida/`, {
+    responseType: 'blob'
+  }),
 
   // Compatibilidad hacia atras
   getHojaRecoleccion: (id) => apiClient.get(`/requisiciones/${id}/hoja-recoleccion/`, {
@@ -1306,6 +1311,12 @@ export const reportesAPI = {
     responseType: 'blob'
   }),
 
+  // Control Mensual - Formato Oficial A (PDF apaisado)
+  exportarControlMensualPDF: (params) => apiClient.get('/reportes/control-mensual/', {
+    params,
+    responseType: 'blob'
+  }),
+
   // Precarga de datos
   precarga: () => apiClient.get('/reportes/precarga/'),
 };
@@ -1542,6 +1553,139 @@ export const adminAPI = {
   // Ejecutar limpieza selectiva (requiere {"confirmar": true, "categoria": "productos|lotes|requisiciones|movimientos|todos"})
   limpiarDatos: (confirmar = false, categoria = 'todos') => 
     apiClient.post('/admin/limpiar-datos/', { confirmar, categoria }),
+};
+
+// =============================================================================
+// MÓDULO DISPENSACIÓN A PACIENTES (FORMATO C)
+// =============================================================================
+
+// Pacientes/Internos - Catálogo de pacientes del sistema penitenciario
+export const pacientesAPI = {
+  getAll: (params) => apiClient.get('/pacientes/', { params }),
+  getById: (id) => apiClient.get(`/pacientes/${id}/`),
+  create: (data) => apiClient.post('/pacientes/', data),
+  update: (id, data) => apiClient.put(`/pacientes/${id}/`, data),
+  delete: (id) => apiClient.delete(`/pacientes/${id}/`),
+  // Autocompletado para selects
+  autocomplete: (query, centroId, limit = 10) => apiClient.get('/pacientes/autocomplete/', { 
+    params: { q: query, centro: centroId, limit } 
+  }),
+  // Historial de dispensaciones del paciente
+  historialDispensaciones: (id) => apiClient.get(`/pacientes/${id}/historial_dispensaciones/`),
+  // Exportar a Excel
+  exportarExcel: (params) => apiClient.get('/pacientes/exportar_excel/', { 
+    params, 
+    responseType: 'blob' 
+  }),
+  // Importación masiva de PPL
+  descargarPlantilla: () => apiClient.get('/pacientes/plantilla_importacion/', { 
+    responseType: 'blob' 
+  }),
+  importarExcel: (formData) => apiClient.post('/pacientes/importar-excel/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+};
+
+// Dispensaciones - Entregas de medicamentos a pacientes
+export const dispensacionesAPI = {
+  getAll: (params) => apiClient.get('/dispensaciones/', { params }),
+  getById: (id) => apiClient.get(`/dispensaciones/${id}/`),
+  create: (data) => apiClient.post('/dispensaciones/', data),
+  update: (id, data) => apiClient.put(`/dispensaciones/${id}/`, data),
+  delete: (id) => apiClient.delete(`/dispensaciones/${id}/`),
+  // Procesar dispensación (descontar inventario)
+  dispensar: (id, detalles) => apiClient.post(`/dispensaciones/${id}/dispensar/`, { detalles }),
+  // Cancelar dispensación
+  cancelar: (id, motivo) => apiClient.post(`/dispensaciones/${id}/cancelar/`, { motivo }),
+  // Agregar detalle/item
+  agregarDetalle: (id, data) => apiClient.post(`/dispensaciones/${id}/agregar_detalle/`, data),
+  // Historial de cambios
+  historial: (id) => apiClient.get(`/dispensaciones/${id}/historial/`),
+  // Exportar PDF Formato C
+  exportarPdf: (id) => apiClient.get(`/dispensaciones/${id}/exportar_pdf/`, { 
+    responseType: 'blob' 
+  }),
+};
+
+// Detalles de Dispensación
+export const detallesDispensacionAPI = {
+  getAll: (params) => apiClient.get('/detalle-dispensaciones/', { params }),
+  getById: (id) => apiClient.get(`/detalle-dispensaciones/${id}/`),
+  create: (data) => apiClient.post('/detalle-dispensaciones/', data),
+  update: (id, data) => apiClient.put(`/detalle-dispensaciones/${id}/`, data),
+  delete: (id) => apiClient.delete(`/detalle-dispensaciones/${id}/`),
+  // Por dispensación
+  porDispensacion: (dispensacionId) => apiClient.get('/detalle-dispensaciones/', { 
+    params: { dispensacion: dispensacionId } 
+  }),
+};
+
+// =====================================================
+// MÓDULO: COMPRAS DE CAJA CHICA DEL CENTRO
+// Este inventario es SEPARADO del inventario principal de farmacia
+// Permite al centro gestionar compras con recursos propios
+// =====================================================
+
+// Compras de Caja Chica
+export const comprasCajaChicaAPI = {
+  // CRUD básico
+  getAll: (params) => apiClient.get('/compras-caja-chica/', { params }),
+  getById: (id) => apiClient.get(`/compras-caja-chica/${id}/`),
+  create: (data) => apiClient.post('/compras-caja-chica/', data),
+  update: (id, data) => apiClient.put(`/compras-caja-chica/${id}/`, data),
+  delete: (id) => apiClient.delete(`/compras-caja-chica/${id}/`),
+  
+  // Acciones de flujo de trabajo
+  autorizar: (id, observaciones) => apiClient.post(`/compras-caja-chica/${id}/autorizar/`, { observaciones }),
+  registrarCompra: (id, data) => apiClient.post(`/compras-caja-chica/${id}/registrar_compra/`, data),
+  recibir: (id, detalles) => apiClient.post(`/compras-caja-chica/${id}/recibir/`, { detalles }),
+  cancelar: (id, motivo) => apiClient.post(`/compras-caja-chica/${id}/cancelar/`, { motivo }),
+  
+  // Agregar detalle/producto
+  agregarDetalle: (id, data) => apiClient.post(`/compras-caja-chica/${id}/agregar-detalle/`, data),
+  
+  // Resumen por centro
+  resumen: (params) => apiClient.get('/compras-caja-chica/resumen/', { params }),
+};
+
+// Detalles de Compras de Caja Chica
+export const detallesComprasCajaChicaAPI = {
+  getAll: (params) => apiClient.get('/detalle-compras-caja-chica/', { params }),
+  getById: (id) => apiClient.get(`/detalle-compras-caja-chica/${id}/`),
+  create: (data) => apiClient.post('/detalle-compras-caja-chica/', data),
+  update: (id, data) => apiClient.put(`/detalle-compras-caja-chica/${id}/`, data),
+  delete: (id) => apiClient.delete(`/detalle-compras-caja-chica/${id}/`),
+  // Por compra
+  porCompra: (compraId) => apiClient.get('/detalle-compras-caja-chica/', { 
+    params: { compra: compraId } 
+  }),
+};
+
+// Inventario de Caja Chica del Centro (SEPARADO del inventario principal)
+export const inventarioCajaChicaAPI = {
+  // CRUD
+  getAll: (params) => apiClient.get('/inventario-caja-chica/', { params }),
+  getById: (id) => apiClient.get(`/inventario-caja-chica/${id}/`),
+  create: (data) => apiClient.post('/inventario-caja-chica/', data),
+  update: (id, data) => apiClient.put(`/inventario-caja-chica/${id}/`, data),
+  delete: (id) => apiClient.delete(`/inventario-caja-chica/${id}/`),
+  
+  // Operaciones de inventario
+  registrarSalida: (id, data) => apiClient.post(`/inventario-caja-chica/${id}/registrar_salida/`, data),
+  ajustar: (id, data) => apiClient.post(`/inventario-caja-chica/${id}/ajustar/`, data),
+  
+  // Resumen
+  resumen: (params) => apiClient.get('/inventario-caja-chica/resumen/', { params }),
+};
+
+// Movimientos de Inventario de Caja Chica (solo lectura para historial)
+export const movimientosCajaChicaAPI = {
+  getAll: (params) => apiClient.get('/movimientos-caja-chica/', { params }),
+  getById: (id) => apiClient.get(`/movimientos-caja-chica/${id}/`),
+  // Por inventario
+  porInventario: (inventarioId) => apiClient.get('/movimientos-caja-chica/', { 
+    params: { inventario: inventarioId } 
+  }),
 };
 
 // ISS-001 FIX: Health check API

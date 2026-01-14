@@ -209,6 +209,7 @@ const Movimientos = () => {
     observaciones: "",
     subtipo_salida: esFarmacia ? "transferencia" : (esMedico ? "receta" : "consumo_interno"),
     numero_expediente: "",
+    folio_documento: "",  // FORMATO B: Folio/número de documento oficial
   });
   const [productoFiltro, setProductoFiltro] = useState("");
   const [productoBusqueda, setProductoBusqueda] = useState(""); // Texto de búsqueda del producto
@@ -767,6 +768,7 @@ const Movimientos = () => {
         tipo: formData.tipo, // "entrada" o "salida"
         cantidad: Number(formData.cantidad),
         observaciones: formData.observaciones || '',
+        folio_documento: formData.folio_documento?.trim() || null,  // FORMATO B: Folio documento
       };
       
       // Campos adicionales para SALIDA
@@ -816,6 +818,7 @@ const Movimientos = () => {
         observaciones: "",
         subtipo_salida: puedeHacerEntradas ? "transferencia" : (esMedico ? "receta" : "consumo_interno"),
         numero_expediente: "",
+        folio_documento: "",
       });
       setProductoFiltro("");
       setProductoBusqueda("");
@@ -1516,6 +1519,24 @@ const Movimientos = () => {
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Cantidad"
                 />
+              </div>
+
+              {/* FORMATO B: Folio del documento oficial */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700">
+                  Folio Documento <span className="text-gray-400 text-xs">(opcional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.folio_documento}
+                  onChange={(e) => handleFormChange("folio_documento", e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: FACT-2026-001, REQ-001, DON-2026"
+                  maxLength={100}
+                />
+                <p className="text-xs text-gray-500">
+                  📋 Número de factura, requisición o documento de referencia para trazabilidad oficial.
+                </p>
               </div>
 
               <div className="space-y-2">

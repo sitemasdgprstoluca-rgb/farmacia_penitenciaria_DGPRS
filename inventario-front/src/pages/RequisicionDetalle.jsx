@@ -557,6 +557,27 @@ const RequisicionDetalle = () => {
     }
   };
 
+  // Función para descargar Recibo de Salida (documento oficial de entrega)
+  const handleDescargarReciboSalida = async () => {
+    if (!['surtida', 'parcial', 'entregada'].includes(requisicion?.estado)) {
+      toast.error('El recibo de salida solo está disponible para requisiciones surtidas/entregadas');
+      return;
+    }
+    
+    try {
+      setProcesando(true);
+      const response = await requisicionesAPI.downloadReciboSalida(id);
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      descargarArchivo(blob, `Recibo_Salida_${requisicion.folio}.pdf`);
+      toast.success('Recibo de salida descargado correctamente');
+    } catch (error) {
+      console.error('Error al descargar recibo de salida:', error);
+      toast.error('Error al descargar recibo de salida');
+    } finally {
+      setProcesando(false);
+    }
+  };
+
   // ============ FUNCIONES PARA MODO EDICIÓN DE PRODUCTOS ============
   
   // Buscar lotes en servidor con término de búsqueda
@@ -904,6 +925,10 @@ const RequisicionDetalle = () => {
   const puedeDescargarRechazo = requisicion?.estado === 'rechazada' && 
     permisos?.descargarHojaRecoleccion &&
     tieneAccesoPorCentro; // Usuarios de centro solo descargan rechazos de su centro
+  
+  // Recibo de Salida: disponible para requisiciones surtidas/entregadas
+  const puedeDescargarReciboSalida = ['surtida', 'parcial', 'entregada'].includes(requisicion?.estado) &&
+    (esFarmacia || tieneAccesoPorCentro);
     
   // eslint-disable-next-line no-unused-vars
   const puedeVerificarHoja = esFarmacia && hojaRecoleccion && hojaRecoleccion.estado !== 'verificada';
@@ -1657,6 +1682,18 @@ const RequisicionDetalle = () => {
                   className="flex items-center gap-2 px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
                 >
                   <FaDownload /> PDF de rechazo
+                </button>
+              )}
+              
+              {/* Recibo de Salida: Documento oficial para requisiciones surtidas */}
+              {puedeDescargarReciboSalida && (
+                <button
+                  onClick={handleDescargarReciboSalida}
+                  disabled={procesando}
+                  className="flex items-center gap-2 px-4 py-2 border border-purple-400 text-purple-600 rounded-lg hover:bg-purple-50 disabled:opacity-50 transition-colors"
+                  title="Descargar el Recibo de Salida oficial para el control de entregas"
+                >
+                  <FaDownload /> Recibo de Salida
                 </button>
               )}
             </>

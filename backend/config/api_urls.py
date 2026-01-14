@@ -15,6 +15,11 @@ from core.views import (
     SalidaDonacionViewSet, ProductoDonacionViewSet,  # Catálogo independiente donaciones
     CatalogosView,  # ISS-002 FIX: Endpoint de catálogos
     AdminLimpiarDatosView,  # ADMIN: Limpieza de datos
+    # Módulo Dispensación a Pacientes (Formato C)
+    PacienteViewSet, DispensacionViewSet, DetalleDispensacionViewSet,
+    # Módulo Compras Caja Chica del Centro
+    CompraCajaChicaViewSet, DetalleCompraCajaChicaViewSet,
+    InventarioCajaChicaViewSet, MovimientoCajaChicaViewSet,
 )
 # JWT Views seguros (cookies HttpOnly para refresh token)
 from core.serializers_jwt import (
@@ -34,7 +39,7 @@ from inventario.views import (
     reporte_caducidades, reporte_requisiciones, reportes_precarga,
     reporte_medicamentos_por_caducar, reporte_bajo_stock, reporte_consumo,
     trazabilidad_global, trazabilidad_producto_exportar, trazabilidad_lote_exportar,
-    exportar_control_inventarios
+    exportar_control_inventarios, exportar_control_mensual
 )
 from inventario.views.salida_masiva import salida_masiva, hoja_entrega_pdf, lotes_disponibles_farmacia, confirmar_entrega, estado_entrega, cancelar_salida
 
@@ -63,6 +68,19 @@ router.register(r'donaciones', DonacionViewSet, basename='donacion')
 router.register(r'productos-donacion', ProductoDonacionViewSet, basename='producto-donacion')  # Catálogo independiente
 router.register(r'detalle-donaciones', DetalleDonacionViewSet, basename='detalle-donacion')
 router.register(r'salidas-donaciones', SalidaDonacionViewSet, basename='salida-donacion')
+
+# Módulo Dispensación a Pacientes (Formato C)
+router.register(r'pacientes', PacienteViewSet, basename='paciente')
+router.register(r'dispensaciones', DispensacionViewSet, basename='dispensacion')
+router.register(r'detalle-dispensaciones', DetalleDispensacionViewSet, basename='detalle-dispensacion')
+
+# Módulo Compras Caja Chica del Centro
+# Este inventario es SEPARADO del inventario principal de farmacia
+# Permite al centro gestionar compras con recursos propios
+router.register(r'compras-caja-chica', CompraCajaChicaViewSet, basename='compra-caja-chica')
+router.register(r'detalle-compras-caja-chica', DetalleCompraCajaChicaViewSet, basename='detalle-compra-caja-chica')
+router.register(r'inventario-caja-chica', InventarioCajaChicaViewSet, basename='inventario-caja-chica')
+router.register(r'movimientos-caja-chica', MovimientoCajaChicaViewSet, basename='movimiento-caja-chica')
 
 urlpatterns = [
     # Autenticación segura (refresh token en HttpOnly cookie)
@@ -124,6 +142,7 @@ urlpatterns = [
     path('trazabilidad/producto/<str:clave>/exportar/', trazabilidad_producto_exportar, name='trazabilidad-producto-exportar'),
     path('trazabilidad/lote/<str:codigo>/exportar/', trazabilidad_lote_exportar, name='trazabilidad-lote-exportar'),
     path('trazabilidad/exportar-control-inventarios/', exportar_control_inventarios, name='exportar-control-inventarios'),
+    path('reportes/control-mensual/', exportar_control_mensual, name='exportar-control-mensual'),
     path('reportes/inventario/', reporte_inventario, name='reporte-inventario'),
     path('reportes/movimientos/', reporte_movimientos, name='reporte-movimientos'),
     path('reportes/caducidades/', reporte_caducidades, name='reporte-caducidades'),

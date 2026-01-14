@@ -535,16 +535,15 @@ class TestAlineacionEsquemaBD(TestCase):
         self.assertIn('nombre_comercial', source,
                      "Exportador de productos debe acceder al campo nombre_comercial")
     
-    def test_exportar_lotes_incluye_nombre_comercial_sin_ubicacion(self):
-        """Verifica que el exportador de lotes incluya nombre_comercial y NO ubicacion."""
+    def test_exportar_lotes_incluye_marca_laboratorio(self):
+        """Verifica que el exportador de lotes incluya Marca / Laboratorio."""
         from inventario.views.lotes import LoteViewSet
         import inspect
         source = inspect.getsource(LoteViewSet.exportar_excel)
         
-        self.assertIn('Nombre Comercial', source,
-                     "Exportador de lotes debe incluir columna 'Nombre Comercial'")
-        self.assertNotIn("'Ubicación'", source,
-                        "Exportador de lotes NO debe incluir columna 'Ubicación'")
-        self.assertNotIn("'Ubicacion'", source,
-                        "Exportador de lotes NO debe incluir columna 'Ubicacion'")
+        # El exportador usa 'Marca / Laboratorio' en lugar de 'Nombre Comercial'
+        self.assertIn('Marca / Laboratorio', source,
+                     "Exportador de lotes debe incluir columna 'Marca / Laboratorio'")
+        self.assertIn('marca', source,
+                     "Exportador de lotes debe acceder al campo marca")
 

@@ -56,6 +56,8 @@ const baseFilters = {
   centro: "",
   nivelStock: "",
   tipoMovimiento: "",
+  mesControlMensual: new Date().getMonth() + 1,
+  anioControlMensual: new Date().getFullYear(),
 };
 
 // Configuración de columnas por tipo de reporte
@@ -249,6 +251,13 @@ const Reportes = () => {
   };
 
   const cargarReporte = async () => {
+    // Control Mensual es solo PDF, no tiene vista previa
+    if (filtros.tipo === "control_mensual") {
+      toast('El Control Mensual solo está disponible como PDF. Use el botón "Exportar PDF" para generarlo.', 
+        { icon: '📊', duration: 4000 });
+      return;
+    }
+    
     setLoading(true);
     setError("");
     setDatos([]);
@@ -325,6 +334,12 @@ const Reportes = () => {
   };
 
   const exportarExcel = async () => {
+    // Control Mensual es solo PDF
+    if (filtros.tipo === "control_mensual") {
+      toast.error('El Control Mensual solo está disponible en formato PDF oficial.');
+      return;
+    }
+    
     setExporting(true);
     const toastId = toast.loading("Generando archivo Excel...");
     try {
@@ -379,6 +394,18 @@ const Reportes = () => {
       } else if (filtros.tipo === "movimientos") {
         response = await reportesAPI.exportarMovimientosPDF(params);
         filename = `reporte_movimientos_${new Date().toISOString().split("T")[0]}.pdf`;
+      } else if (filtros.tipo === "control_mensual") {
+        // Control Mensual - Formato Oficial A
+        const controlParams = {
+          mes: filtros.mesControlMensual || new Date().getMonth() + 1,
+          anio: filtros.anioControlMensual || new Date().getFullYear(),
+          centro: filtros.centro || 'central'
+        };
+        response = await reportesAPI.exportarControlMensualPDF(controlParams);
+        const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                       'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        const mesNombre = meses[controlParams.mes - 1] || 'Mes';
+        filename = `Control_Mensual_${mesNombre}_${controlParams.anio}.pdf`;
       } else {
         toast.error("Tipo de reporte no soportado para PDF", { id: toastId });
         return;
@@ -412,6 +439,7 @@ const Reportes = () => {
     if (filtros.tipo === 'caducidades') return <FaClock />;
     if (filtros.tipo === 'requisiciones') return <FaClipboardList />;
     if (filtros.tipo === 'movimientos') return <FaExchangeAlt />;
+    if (filtros.tipo === 'control_mensual') return <FaDatabase />;
     return <FaChartBar />;
   };
 
@@ -702,6 +730,7 @@ const Reportes = () => {
               <option value="caducidades">⏰ Caducidades</option>
               <option value="requisiciones">📋 Requisiciones</option>
               <option value="movimientos">🔄 Movimientos</option>
+              <option value="control_mensual">📊 Control Mensual (Formato A)</option>
             </select>
           </div>
 
@@ -973,6 +1002,77 @@ const Reportes = () => {
                   >
                     🗓️ Todo el historial
                   </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Control Mensual - Formato Oficial A */}
+          {filtros.tipo === "control_mensual" && (
+            <>
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-gray-700">Mes</label>
+                <select
+                  value={filtros.mesControlMensual || new Date().getMonth() + 1}
+                  onChange={(e) => handleFiltro("mesControlMensual", parseInt(e.target.value))}
+                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                >
+                  <option value={1}>Enero</option>
+                  <option value={2}>Febrero</option>
+                  <option value={3}>Marzo</option>
+                  <option value={4}>Abril</option>
+                  <option value={5}>Mayo</option>
+                  <option value={6}>Junio</option>
+                  <option value={7}>Julio</option>
+                  <option value={8}>Agosto</option>
+                  <option value={9}>Septiembre</option>
+                  <option value={10}>Octubre</option>
+                  <option value={11}>Noviembre</option>
+                  <option value={12}>Diciembre</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-gray-700">Año</label>
+                <select
+                  value={filtros.anioControlMensual || new Date().getFullYear()}
+                  onChange={(e) => handleFiltro("anioControlMensual", parseInt(e.target.value))}
+                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                >
+                  {[...Array(5)].map((_, i) => {
+                    const year = new Date().getFullYear() - 2 + i;
+                    return <option key={year} value={year}>{year}</option>;
+                  })}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-gray-700">Centro / Almacén</label>
+                <select
+                  value={!esAdminOFarmacia && userCentroId ? userCentroId : filtros.centro}
+                  onChange={(e) => handleFiltro("centro", e.target.value)}
+                  disabled={!esAdminOFarmacia && userCentroId}
+                  className={`w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors ${!esAdminOFarmacia && userCentroId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                >
+                  {esAdminOFarmacia ? (
+                    <>
+                      <option value="central">🏥 Farmacia Central (CIA)</option>
+                      {centros.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre}
+                        </option>
+                      ))}
+                    </>
+                  ) : (
+                    <option value={userCentroId}>
+                      {centros.find(c => c.id === userCentroId)?.nombre || 'Tu centro'}
+                    </option>
+                  )}
+                </select>
+              </div>
+              <div className="col-span-full">
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                  <strong>📊 Formato A - Control Mensual:</strong> Este reporte genera un PDF oficial apaisado con el control consolidado 
+                  de entradas, salidas y existencias de insumos médicos para el período seleccionado. Incluye movimientos del mes y 
+                  totales acumulados.
                 </div>
               </div>
             </>

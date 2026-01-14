@@ -600,3 +600,105 @@ class CanManageOwnProfile(permissions.BasePermission):
         if _has_role(request.user, ['admin']):
             return True
         return obj == request.user
+
+
+class CanManageDispensaciones(permissions.BasePermission):
+    """
+    ISS-DISP: Permisos para módulo de Dispensaciones a Pacientes.
+    
+    Este módulo es operado por MÉDICO y CENTRO, mientras que FARMACIA 
+    solo puede auditar (ver) pero no crear/editar/dispensar/cancelar.
+    
+    Operaciones de escritura (POST, PUT, PATCH, DELETE):
+    - admin: Permitido
+    - farmacia: DENEGADO (solo auditoría)
+    - centro, medico, administrador_centro, director_centro: Permitido
+    
+    Operaciones de lectura (GET):
+    - Todos los roles pueden leer (incluyendo farmacia para auditoría)
+    """
+    def has_permission(self, request, view):
+        user = request.user
+        
+        # Verificar autenticación
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        
+        # Superusuarios siempre tienen acceso
+        if user.is_superuser:
+            return True
+        
+        # Para operaciones de lectura, permitir a todos los roles autorizados
+        if request.method in permissions.SAFE_METHODS:
+            return _has_role(user, ['admin', 'farmacia', 'centro', 'medico', 'administrador_centro', 'director_centro'])
+        
+        # Para operaciones de escritura, EXCLUIR farmacia (solo auditoría)
+        return _has_role(user, ['admin', 'centro', 'medico', 'administrador_centro', 'director_centro'])
+
+
+class CanManageComprasCajaChica(permissions.BasePermission):
+    """
+    Permisos para módulo de Compras de Caja Chica.
+    
+    Este módulo permite al centro penitenciario gestionar compras
+    con recursos propios cuando farmacia no tiene disponibilidad.
+    
+    CENTRO puede: crear, editar, autorizar, recibir
+    FARMACIA puede: VER todo (auditoría) pero NO modificar
+    
+    Operaciones de escritura (POST, PUT, PATCH, DELETE):
+    - admin: Permitido
+    - farmacia: DENEGADO (solo auditoría para prevenir malas prácticas)
+    - centro, administrador_centro, director_centro: Permitido
+    
+    Operaciones de lectura (GET):
+    - Todos los roles pueden leer (farmacia para auditoría obligatoria)
+    """
+    def has_permission(self, request, view):
+        user = request.user
+        
+        # Verificar autenticación
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        
+        # Superusuarios siempre tienen acceso
+        if user.is_superuser:
+            return True
+        
+        # Para operaciones de lectura, permitir a farmacia y roles de centro
+        if request.method in permissions.SAFE_METHODS:
+            return _has_role(user, [
+                'admin', 'farmacia', 'centro', 
+                'administrador_centro', 'director_centro', 'medico'
+            ])
+        
+        # Para operaciones de escritura, SOLO roles de centro (NO farmacia)
+        return _has_role(user, [
+            'admin', 'centro', 'administrador_centro', 'director_centro'
+        ])
+    
+    def has_object_permission(self, request, view, obj):
+        user = request.user
+        
+        # Superusuarios siempre tienen acceso
+        if user.is_superuser:
+            return True
+        
+        # Admin puede todo
+        if _has_role(user, ['admin']):
+            return True
+        
+        # Para operaciones de lectura, permitir a farmacia y usuarios del centro
+        if request.method in permissions.SAFE_METHODS:
+            if _has_role(user, ['farmacia']):
+                return True
+            # Usuarios de centro solo ven compras de su propio centro
+            if user.centro and hasattr(obj, 'centro'):
+                return obj.centro == user.centro
+            return False
+        
+        # Para escritura, solo usuarios del mismo centro pueden modificar
+        if user.centro and hasattr(obj, 'centro'):
+            return obj.centro == user.centro
+        
+        return False

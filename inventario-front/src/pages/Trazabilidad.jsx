@@ -170,6 +170,7 @@ const Trazabilidad = () => {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
   const [exportingControl, setExportingControl] = useState(false);
+  const [exportingFormatoB, setExportingFormatoB] = useState(false);  // FORMATO OFICIAL B
   const [resultados, setResultados] = useState(null);
   
   // Modo global (reporte de todos los lotes)
@@ -542,6 +543,56 @@ const Trazabilidad = () => {
       }
     } finally {
       setExportingExcel(false);
+    }
+  };
+
+  // ========== FORMATO OFICIAL B: Tarjeta de Entradas/Salidas ==========
+  // Solo disponible cuando se consulta un lote específico
+  const handleExportarFormatoB = async () => {
+    if (tipoBusqueda !== 'lote') {
+      toast.error('El Formato B solo está disponible para consultas de lote específico');
+      return;
+    }
+    
+    if (!resultados || !identificadorResultados) {
+      toast.error('Primero busque un lote para exportar');
+      return;
+    }
+
+    if (!esAdminOFarmacia) {
+      toast.error('No tienes permiso para exportar el Formato B oficial');
+      return;
+    }
+
+    setExportingFormatoB(true);
+    try {
+      const loteId = resultados?.id;
+      
+      // Preparar parámetros: formato_b + filtros
+      const params = { formato: 'formato_b' };
+      if (fechaInicio) params.fecha_inicio = fechaInicio;
+      if (fechaFin) params.fecha_fin = fechaFin;
+      if (centroFiltro) params.centro = centroFiltro;
+      
+      // Usar la misma API pero con parámetro de formato especial
+      const response = await trazabilidadAPI.exportarLotePdf(identificadorResultados, loteId, params);
+      
+      const tipoFormato = centroFiltro && centroFiltro !== 'central' && centroFiltro !== 'todos' ? 'CPRS' : 'CIA';
+      const filename = `FormatoB_${tipoFormato}_Lote_${identificadorResultados}_${new Date().toISOString().split('T')[0]}.pdf`;
+      
+      descargarArchivo(response, filename);
+      toast.success('📋 Formato B (Tarjeta Entradas/Salidas) generado exitosamente');
+    } catch (error) {
+      console.error('Error al exportar Formato B:', error);
+      if (error.response?.status === 403) {
+        toast.error('No tienes permiso para exportar');
+      } else if (error.response?.status === 404) {
+        toast.error('Lote no encontrado');
+      } else {
+        toast.error(error.response?.data?.error || 'Error al generar Formato B');
+      }
+    } finally {
+      setExportingFormatoB(false);
     }
   };
 
@@ -1405,6 +1456,28 @@ const Trazabilidad = () => {
                     </>
                   )}
                 </button>
+                {/* FORMATO OFICIAL B: Solo para lotes */}
+                {tipoBusqueda === 'lote' && esAdminOFarmacia && (
+                  <button
+                    onClick={handleExportarFormatoB}
+                    disabled={exportingFormatoB || !resultados}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                    style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)' }}
+                    title="Formato Oficial B - Tarjeta de Entradas/Salidas"
+                  >
+                    {exportingFormatoB ? (
+                      <>
+                        <FaSpinner className="animate-spin" />
+                        Generando...
+                      </>
+                    ) : (
+                      <>
+                        <FaClipboardList />
+                        Formato B
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
             

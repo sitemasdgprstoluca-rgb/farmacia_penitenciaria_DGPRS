@@ -11,6 +11,7 @@ Funciones de trazabilidad extraídas de views_legacy.py:
 - trazabilidad_producto_exportar: Exportar trazabilidad de producto a Excel/PDF
 - trazabilidad_lote_exportar: Exportar trazabilidad de lote a Excel/PDF
 - exportar_control_inventarios: Exportar control de inventarios completo
+- exportar_control_mensual: Exportar control mensual de almacén (Formato A)
 
 Seguridad:
 - Filtra por centro según permisos del usuario
@@ -28,6 +29,7 @@ from inventario.views_legacy import (
     trazabilidad_producto_exportar,
     trazabilidad_lote_exportar,
     exportar_control_inventarios,
+    exportar_control_mensual,
 )
 
 __all__ = [
@@ -39,4 +41,5 @@ __all__ = [
     'trazabilidad_producto_exportar',
     'trazabilidad_lote_exportar',
     'exportar_control_inventarios',
+    'exportar_control_mensual',
 ]

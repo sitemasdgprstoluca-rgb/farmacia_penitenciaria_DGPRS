@@ -7575,6 +7575,126 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             # traceback removido por seguridad (ISS-008)
             return Response({'error': 'Error al obtener resumen de estados', 'mensaje': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=True, methods=['get'], url_path='exportar-recibo-salida')
+    def exportar_recibo_salida(self, request, pk=None):
+        """
+        Genera PDF con formato oficial "Recibo de Salida del Almacén".
+        
+        Este documento acompaña el envío físico de medicamentos del CIA a un CPRS
+        cuando se surte una requisición.
+        
+        PERMISOS:
+        - Solo requisiciones en estado 'surtida', 'parcial' o 'entregada'
+        - Usuarios de farmacia/admin pueden exportar cualquier recibo
+        - Usuarios de centro solo pueden exportar recibos de su centro
+        
+        Returns:
+            PDF con el Recibo de Salida del Almacén
+        """
+        from core.utils.pdf_reports import generar_recibo_salida_requisicion
+        
+        try:
+            requisicion = self.get_object()
+            estado_actual = (requisicion.estado or '').lower()
+            
+            # Validar estado - solo requisiciones que ya fueron surtidas
+            estados_validos = ['surtida', 'parcial', 'entregada', 'recibida']
+            if estado_actual not in estados_validos:
+                return Response({
+                    'error': f'Solo se puede generar el recibo de salida para requisiciones surtidas/entregadas',
+                    'estado_actual': requisicion.estado,
+                    'estados_validos': estados_validos
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # PERMISOS: Usuarios de centro solo ven sus recibos
+            user = request.user
+            if not user.is_superuser and not is_farmacia_or_admin(user):
+                user_centro = self._user_centro(user)
+                req_centro_id = requisicion.centro_origen_id or requisicion.centro_destino_id
+                if not user_centro or user_centro.id != req_centro_id:
+                    return Response({
+                        'error': 'No tiene permiso para ver este recibo de salida'
+                    }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Preparar datos de la requisición
+            centro_nombre = ''
+            if requisicion.centro_origen:
+                centro_nombre = requisicion.centro_origen.nombre
+            elif requisicion.centro_destino:
+                centro_nombre = requisicion.centro_destino.nombre
+            
+            # Usuario que surtió
+            usuario_surtido = ''
+            if hasattr(requisicion, 'usuario_surtido') and requisicion.usuario_surtido:
+                usuario_surtido = requisicion.usuario_surtido.get_full_name() or requisicion.usuario_surtido.username
+            elif hasattr(requisicion, 'surtidor') and requisicion.surtidor:
+                usuario_surtido = requisicion.surtidor.get_full_name() or requisicion.surtidor.username
+            
+            requisicion_data = {
+                'folio': requisicion.folio or requisicion.numero,
+                'numero': requisicion.numero,
+                'fecha_surtido': requisicion.fecha_surtido or requisicion.updated_at,
+                'centro_nombre': centro_nombre,
+                'periodo': requisicion.periodo or '',
+                'usuario_surtido': usuario_surtido,
+                'observaciones': requisicion.notas or '',
+            }
+            
+            # Preparar detalles surtidos
+            detalles_data = []
+            for detalle in requisicion.detalles.select_related('producto').all():
+                cantidad_surtida = detalle.cantidad_surtida or detalle.cantidad_autorizada or 0
+                if cantidad_surtida <= 0:
+                    continue  # Solo incluir items surtidos
+                
+                # Buscar info del lote surtido si existe
+                lote_info = {'numero': 'N/A', 'fecha_caducidad': 'N/A'}
+                
+                # ISS-FIX: Buscar en movimientos de salida de la requisición para obtener lote
+                movimiento = Movimiento.objects.filter(
+                    requisicion=requisicion,
+                    tipo='salida'
+                ).select_related('lote').filter(
+                    lote__producto=detalle.producto
+                ).first()
+                
+                if movimiento and movimiento.lote:
+                    lote_info['numero'] = movimiento.lote.numero_lote
+                    lote_info['fecha_caducidad'] = movimiento.lote.fecha_caducidad
+                
+                detalles_data.append({
+                    'producto_clave': detalle.producto.clave if detalle.producto else 'N/A',
+                    'producto_nombre': detalle.producto.nombre if detalle.producto else 'N/A',
+                    'presentacion': detalle.producto.presentacion if detalle.producto else 'N/A',
+                    'lote': lote_info['numero'],
+                    'fecha_caducidad': lote_info['fecha_caducidad'],
+                    'cantidad_surtida': cantidad_surtida,
+                })
+            
+            if not detalles_data:
+                return Response({
+                    'error': 'No hay items surtidos para generar el recibo'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Generar PDF
+            pdf_buffer = generar_recibo_salida_requisicion(requisicion_data, detalles_data)
+            
+            response = HttpResponse(
+                pdf_buffer.getvalue(),
+                content_type='application/pdf'
+            )
+            folio_safe = (requisicion.folio or requisicion.numero or 'N').replace('/', '-')
+            response['Content-Disposition'] = f'attachment; filename="ReciboSalida_{folio_safe}_{timezone.now().strftime("%Y%m%d")}.pdf"'
+            return response
+            
+        except Exception as exc:
+            logger.exception(f'Error al exportar recibo de salida: {exc}')
+            return Response({
+                'error': 'Error al generar el recibo de salida',
+                'mensaje': str(exc)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_resumen(request):
@@ -11065,7 +11185,8 @@ def trazabilidad_lote_exportar(request, codigo):
     Parámetros:
     - fecha_inicio: Fecha inicio (YYYY-MM-DD)
     - fecha_fin: Fecha fin (YYYY-MM-DD)
-    - formato: excel o pdf
+    - formato: excel, pdf, o formato_b (Formato Oficial Tarjeta Entradas/Salidas)
+    - centro: ID del centro o 'central' para filtrar por ubicación (opcional para formato_b)
     """
     from datetime import datetime
     from django.utils import timezone
@@ -11147,7 +11268,8 @@ def trazabilidad_lote_exportar(request, codigo):
                 'saldo': saldo,
                 'centro': centro_mov,
                 'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
-                'observaciones': mov.motivo or ''
+                'observaciones': mov.motivo or '',
+                'folio_documento': getattr(mov, 'folio_documento', '') or mov.motivo or '',
             })
         
         # ISS-FIX: Si el lote principal no tiene contrato, buscar en todos los lotes con mismo numero_lote
@@ -11157,6 +11279,18 @@ def trazabilidad_lote_exportar(request, codigo):
                 if l.numero_contrato:
                     numero_contrato = l.numero_contrato
                     break
+        
+        # Detectar si es CPRS (centro específico) o CIA (Farmacia Central)
+        centro_param = request.query_params.get('centro', '')
+        es_cprs = False
+        centro_nombre_filtro = 'Farmacia Central (CIA)'
+        if centro_param and centro_param != 'central' and centro_param != 'todos':
+            try:
+                centro_obj = Centro.objects.get(pk=int(centro_param))
+                es_cprs = True
+                centro_nombre_filtro = centro_obj.nombre
+            except (Centro.DoesNotExist, ValueError):
+                pass
         
         producto_info = {
             'clave': lote.producto.clave if lote.producto else 'N/A',
@@ -11177,6 +11311,33 @@ def trazabilidad_lote_exportar(request, codigo):
         
         if formato == 'excel':
             return _exportar_lote_excel(trazabilidad_data, producto_info)
+        elif formato == 'formato_b':
+            # FORMATO OFICIAL B: Tarjeta de Entradas/Salidas de Almacén
+            from core.utils.pdf_reports import generar_tarjeta_entradas_salidas_formato_b
+            
+            lote_info = {
+                'numero_lote': lote.numero_lote,
+                'producto_nombre': lote.producto.nombre if lote.producto else 'N/A',
+                'producto_clave': lote.producto.clave if lote.producto else 'N/A',
+                'presentacion': lote.producto.presentacion if lote.producto else 'N/A',
+                'fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else 'N/A',
+                'centro_nombre': centro_nombre_filtro,
+                'numero_contrato': numero_contrato or 'N/A',
+            }
+            
+            pdf_buffer = generar_tarjeta_entradas_salidas_formato_b(
+                lote_info=lote_info,
+                movimientos_data=trazabilidad_data,
+                es_cprs=es_cprs
+            )
+            
+            response = HttpResponse(
+                pdf_buffer.getvalue(),
+                content_type='application/pdf'
+            )
+            tipo_formato = 'CPRS' if es_cprs else 'CIA'
+            response['Content-Disposition'] = f'attachment; filename="FormatoB_{tipo_formato}_Lote_{codigo}_{timezone.now().strftime("%Y%m%d")}.pdf"'
+            return response
         else:
             from core.utils.pdf_reports import generar_reporte_trazabilidad
             pdf_buffer = generar_reporte_trazabilidad(trazabilidad_data, producto_info=producto_info)
@@ -11427,6 +11588,185 @@ def exportar_control_inventarios(request):
         logger.exception('Error al exportar control de inventarios')
         return Response({
             'error': 'Error al exportar control de inventarios',
+            'mensaje': str(exc)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def exportar_control_mensual(request):
+    """
+    Genera PDF con formato oficial "Control Mensual de Almacén (Formato A)".
+    
+    Registro mensual consolidado de todos los insumos médicos, mostrando
+    existencias anteriores, entradas, salidas y saldo final por periodo.
+    
+    PARÁMETROS:
+    - mes: Número del mes (1-12). Default: mes actual
+    - anio: Año (YYYY). Default: año actual
+    - centro: ID del centro. Default: Farmacia Central (CIA)
+    
+    PERMISOS:
+    - Admin/Farmacia: pueden exportar cualquier centro
+    - Usuario de centro: solo su centro
+    """
+    from datetime import datetime
+    from dateutil.relativedelta import relativedelta
+    from django.db.models import Sum, Q
+    from django.db.models.functions import Coalesce
+    from core.utils.pdf_reports import generar_control_mensual_almacen
+    
+    user = request.user
+    if not user or not user.is_authenticated:
+        return Response({'error': 'Autenticación requerida'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        # Obtener parámetros
+        mes = int(request.query_params.get('mes', timezone.now().month))
+        anio = int(request.query_params.get('anio', timezone.now().year))
+        centro_id = request.query_params.get('centro', None)
+        
+        # Validar mes
+        if mes < 1 or mes > 12:
+            return Response({'error': 'Mes debe estar entre 1 y 12'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Determinar centro
+        centro_nombre = None
+        centro_filtro = None
+        
+        if centro_id and centro_id not in ['', 'null', 'undefined', 'central']:
+            try:
+                centro_obj = Centro.objects.get(pk=int(centro_id))
+                
+                # Validar permisos para centros específicos
+                if not is_farmacia_or_admin(user):
+                    user_centro = get_user_centro(user)
+                    if not user_centro or user_centro.id != centro_obj.id:
+                        return Response({
+                            'error': 'No tiene permiso para exportar datos de este centro'
+                        }, status=status.HTTP_403_FORBIDDEN)
+                
+                centro_nombre = centro_obj.nombre
+                centro_filtro = centro_obj
+            except Centro.DoesNotExist:
+                return Response({'error': 'Centro no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            # Farmacia Central (CIA)
+            if not is_farmacia_or_admin(user):
+                return Response({
+                    'error': 'Solo admin/farmacia pueden exportar datos de Farmacia Central'
+                }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Calcular fechas del periodo
+        fecha_inicio = datetime(anio, mes, 1)
+        if mes == 12:
+            fecha_fin = datetime(anio + 1, 1, 1) - relativedelta(days=1)
+        else:
+            fecha_fin = datetime(anio, mes + 1, 1) - relativedelta(days=1)
+        
+        # Preparar datos del periodo
+        periodo_data = {
+            'mes': mes,
+            'anio': anio,
+            'fecha_inicio': fecha_inicio,
+            'fecha_fin': fecha_fin,
+            'fecha_elaboracion': timezone.now(),
+        }
+        
+        # Obtener lotes con movimientos en el periodo
+        if centro_filtro:
+            lotes_base = Lote.objects.filter(centro=centro_filtro, activo=True)
+        else:
+            lotes_base = Lote.objects.filter(centro__isnull=True, activo=True)
+        
+        lotes_base = lotes_base.select_related('producto').order_by('producto__clave', 'numero_lote')
+        
+        productos_data = []
+        for lote in lotes_base:
+            # Calcular existencia al inicio del periodo
+            # Sumar todos los movimientos ANTES del inicio del periodo
+            movs_antes = Movimiento.objects.filter(
+                lote=lote,
+                fecha__lt=fecha_inicio
+            ).aggregate(
+                total=Coalesce(Sum('cantidad'), 0)
+            )
+            existencia_anterior = (lote.cantidad_inicial or 0) + (movs_antes['total'] or 0)
+            
+            # Obtener movimientos del periodo
+            movimientos_periodo = Movimiento.objects.filter(
+                lote=lote,
+                fecha__gte=fecha_inicio,
+                fecha__lte=fecha_fin
+            )
+            
+            # Calcular entradas y salidas del periodo
+            entradas = 0
+            salidas = 0
+            doc_entrada = ''
+            
+            for mov in movimientos_periodo:
+                if mov.tipo.lower() == 'entrada':
+                    entradas += mov.cantidad
+                    if not doc_entrada:
+                        doc_entrada = getattr(mov, 'folio_documento', '') or mov.motivo or ''
+                else:
+                    salidas += abs(mov.cantidad)
+            
+            # Calcular existencia final
+            existencia_final = existencia_anterior + entradas - salidas
+            
+            # Solo incluir si hay movimientos o stock
+            if existencia_anterior > 0 or entradas > 0 or salidas > 0 or existencia_final > 0:
+                productos_data.append({
+                    'producto_clave': lote.producto.clave if lote.producto else 'N/A',
+                    'producto_nombre': lote.producto.nombre if lote.producto else 'N/A',
+                    'presentacion': lote.producto.presentacion if lote.producto else 'N/A',
+                    'lote': lote.numero_lote,
+                    'fecha_caducidad': lote.fecha_caducidad,
+                    'existencia_anterior': existencia_anterior,
+                    'documento_entrada': doc_entrada[:50] if doc_entrada else '',
+                    'entradas': entradas,
+                    'salidas': salidas,
+                    'existencia_final': existencia_final,
+                })
+        
+        if not productos_data:
+            return Response({
+                'error': 'No hay datos para el periodo seleccionado',
+                'mes': mes,
+                'anio': anio,
+                'centro': centro_nombre or 'Farmacia Central'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Generar PDF
+        pdf_buffer = generar_control_mensual_almacen(
+            periodo_data=periodo_data,
+            productos_data=productos_data,
+            centro_nombre=centro_nombre
+        )
+        
+        response = HttpResponse(
+            pdf_buffer.getvalue(),
+            content_type='application/pdf'
+        )
+        
+        meses_nombres = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                         'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+        centro_safe = (centro_nombre or 'CIA').replace(' ', '_')[:20]
+        filename = f"ControlMensual_{centro_safe}_{meses_nombres[mes]}_{anio}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+        
+    except ValueError as ve:
+        return Response({
+            'error': 'Parámetros inválidos',
+            'mensaje': str(ve)
+        }, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as exc:
+        logger.exception('Error al exportar control mensual')
+        return Response({
+            'error': 'Error al generar el control mensual',
             'mensaje': str(exc)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

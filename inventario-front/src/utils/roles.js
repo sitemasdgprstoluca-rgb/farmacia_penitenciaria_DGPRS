@@ -186,8 +186,8 @@ export const tieneAccesoModulo = (rolPrincipal, modulo, permisos = null) => {
   // Fallback por rol
   const ACCESO_POR_ROL = {
     ADMIN: true, // Admin ve todo
-    FARMACIA: ['dashboard', 'productos', 'lotes', 'requisiciones', 'centros', 'usuarios', 'reportes', 'trazabilidad', 'movimientos', 'donaciones', 'notificaciones', 'perfil'].includes(modulo.toLowerCase()),
-    CENTRO: ['dashboard', 'productos', 'lotes', 'requisiciones', 'movimientos', 'notificaciones', 'perfil'].includes(modulo.toLowerCase()),
+    FARMACIA: ['dashboard', 'productos', 'lotes', 'requisiciones', 'centros', 'usuarios', 'reportes', 'trazabilidad', 'movimientos', 'donaciones', 'dispensaciones', 'notificaciones', 'perfil'].includes(modulo.toLowerCase()),
+    CENTRO: ['dashboard', 'productos', 'lotes', 'requisiciones', 'movimientos', 'dispensaciones', 'notificaciones', 'perfil'].includes(modulo.toLowerCase()),
     VISTA: ['dashboard', 'productos', 'lotes', 'requisiciones', 'centros', 'usuarios', 'reportes', 'movimientos', 'donaciones', 'notificaciones', 'perfil'].includes(modulo.toLowerCase()),
     SIN_ROL: false,
   };

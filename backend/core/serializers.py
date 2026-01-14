@@ -8,7 +8,12 @@ from .models import (
     TemaGlobal, HojaRecoleccion, DetalleHojaRecoleccion, UserProfile,
     ProductoImagen, LoteDocumento, Donacion, DetalleDonacion, SalidaDonacion,
     ProductoDonacion,  # Catálogo independiente de donaciones
-    RequisicionHistorialEstados  # FLUJO V2
+    RequisicionHistorialEstados,  # FLUJO V2
+    # Módulo de Dispensaciones
+    Paciente, Dispensacion, DetalleDispensacion, HistorialDispensacion,
+    # Módulo de Compras Caja Chica
+    CompraCajaChica, DetalleCompraCajaChica, InventarioCajaChica,
+    MovimientoCajaChica, HistorialCompraCajaChica,
 )
 from .constants import EXTRA_PERMISSIONS
 import logging
@@ -1720,6 +1725,8 @@ class MovimientoSerializer(serializers.ModelSerializer):
     # MEJORA FLUJO 5: Nuevos campos para trazabilidad de pacientes
     subtipo_salida = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=30)
     numero_expediente = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=50)
+    # FORMATO OFICIAL B: Folio/número de documento de entrada/salida
+    folio_documento = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=100)
     
     # ========== FIX: Campos para escritura desde frontend ==========
     # El frontend envía 'centro' y 'observaciones', pero el modelo tiene 'centro_destino' y 'motivo'
@@ -1732,13 +1739,14 @@ class MovimientoSerializer(serializers.ModelSerializer):
             'lote', 'lote_numero', 'numero_lote', 'lote_codigo',
             'centro_origen', 'centro_origen_nombre', 'centro_destino', 'centro_destino_nombre', 'centro_nombre',
             'cantidad', 'usuario', 'usuario_nombre', 'requisicion', 'requisicion_folio',
-            'motivo', 'observaciones', 'referencia', 'subtipo_salida', 'numero_expediente',
+            'motivo', 'observaciones', 'referencia', 'subtipo_salida', 'numero_expediente', 'folio_documento',
             'fecha', 'fecha_movimiento', 'created_at'
         ]
         read_only_fields = ['fecha', 'created_at']
         extra_kwargs = {
             'motivo': {'required': True, 'allow_null': False, 'allow_blank': False},  # ISS-FIX: Observaciones obligatorias
             'referencia': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'folio_documento': {'required': False, 'allow_null': True, 'allow_blank': True},
             'lote': {'required': False, 'allow_null': True},
             'centro_origen': {'required': False, 'allow_null': True},
             'centro_destino': {'required': False, 'allow_null': True},
@@ -2603,3 +2611,506 @@ class SalidaDonacionSerializer(serializers.ModelSerializer):
         # No duplicar el descuento aquí
         
         return super().create(validated_data)
+
+
+# =============================================================================
+# MÓDULO DE DISPENSACIÓN A PACIENTES (FORMATO C)
+# =============================================================================
+
+from .models import Paciente, Dispensacion, DetalleDispensacion, HistorialDispensacion
+
+
+class PacienteSerializer(serializers.ModelSerializer):
+    """
+    Serializer para el catálogo de Pacientes/Internos.
+    """
+    nombre_completo = serializers.CharField(read_only=True)
+    edad = serializers.IntegerField(read_only=True)
+    ubicacion_completa = serializers.CharField(read_only=True)
+    centro_nombre = serializers.SerializerMethodField()
+    created_by_nombre = serializers.SerializerMethodField()
+    total_dispensaciones = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Paciente
+        fields = [
+            'id', 'numero_expediente', 'nombre', 'apellido_paterno', 'apellido_materno',
+            'nombre_completo', 'curp', 'fecha_nacimiento', 'edad', 'sexo',
+            'centro', 'centro_nombre', 'dormitorio', 'celda', 'ubicacion_completa',
+            'tipo_sangre', 'alergias', 'enfermedades_cronicas', 'observaciones_medicas',
+            'activo', 'fecha_ingreso', 'fecha_egreso', 'motivo_egreso',
+            'created_at', 'updated_at', 'created_by', 'created_by_nombre',
+            'total_dispensaciones'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
+    
+    def get_centro_nombre(self, obj):
+        return obj.centro.nombre if obj.centro else None
+    
+    def get_created_by_nombre(self, obj):
+        if obj.created_by:
+            return f"{obj.created_by.first_name} {obj.created_by.last_name}".strip() or obj.created_by.username
+        return None
+    
+    def get_total_dispensaciones(self, obj):
+        return obj.dispensaciones.count()
+    
+    def validate_numero_expediente(self, value):
+        """Validar que el número de expediente sea único"""
+        instance = self.instance
+        if Paciente.objects.exclude(pk=instance.pk if instance else None).filter(numero_expediente=value).exists():
+            raise serializers.ValidationError("Ya existe un paciente con este número de expediente.")
+        return value
+    
+    def validate_curp(self, value):
+        """Validar formato de CURP si se proporciona"""
+        if value:
+            value = value.upper().strip()
+            if len(value) != 18:
+                raise serializers.ValidationError("El CURP debe tener 18 caracteres.")
+            # Validación básica de formato CURP
+            import re
+            patron_curp = r'^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d$'
+            if not re.match(patron_curp, value):
+                raise serializers.ValidationError("Formato de CURP inválido.")
+        return value
+    
+    def create(self, validated_data):
+        request = self.context.get('request')
+        if request and request.user:
+            validated_data['created_by'] = request.user
+        return super().create(validated_data)
+
+
+class PacienteSimpleSerializer(serializers.ModelSerializer):
+    """Serializer simplificado para selects y autocompletado"""
+    nombre_completo = serializers.CharField(read_only=True)
+    ubicacion_completa = serializers.CharField(read_only=True)
+    
+    class Meta:
+        model = Paciente
+        fields = ['id', 'numero_expediente', 'nombre_completo', 'ubicacion_completa', 'centro']
+
+
+class DetalleDispensacionSerializer(serializers.ModelSerializer):
+    """
+    Serializer para detalles de dispensación.
+    """
+    producto_nombre = serializers.SerializerMethodField()
+    producto_clave = serializers.SerializerMethodField()
+    lote_numero = serializers.SerializerMethodField()
+    lote_caducidad = serializers.SerializerMethodField()
+    completo = serializers.BooleanField(read_only=True)
+    producto_sustituto_nombre = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = DetalleDispensacion
+        fields = [
+            'id', 'dispensacion', 'producto', 'producto_nombre', 'producto_clave',
+            'lote', 'lote_numero', 'lote_caducidad',
+            'cantidad_prescrita', 'cantidad_dispensada', 'completo',
+            'dosis', 'frecuencia', 'duracion_tratamiento', 'via_administracion', 'horarios',
+            'estado', 'producto_sustituto', 'producto_sustituto_nombre', 'motivo_sustitucion',
+            'notas', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+    
+    def get_producto_nombre(self, obj):
+        return obj.producto.nombre if obj.producto else None
+    
+    def get_producto_clave(self, obj):
+        return obj.producto.clave if obj.producto else None
+    
+    def get_lote_numero(self, obj):
+        return obj.lote.numero_lote if obj.lote else None
+    
+    def get_lote_caducidad(self, obj):
+        return obj.lote.fecha_caducidad if obj.lote else None
+    
+    def get_producto_sustituto_nombre(self, obj):
+        return obj.producto_sustituto.nombre if obj.producto_sustituto else None
+    
+    def validate_cantidad_prescrita(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("La cantidad prescrita debe ser mayor a 0.")
+        return value
+    
+    def validate_cantidad_dispensada(self, value):
+        if value < 0:
+            raise serializers.ValidationError("La cantidad dispensada no puede ser negativa.")
+        return value
+
+
+class DispensacionSerializer(serializers.ModelSerializer):
+    """
+    Serializer principal para Dispensaciones.
+    """
+    paciente_nombre = serializers.SerializerMethodField()
+    paciente_expediente = serializers.SerializerMethodField()
+    paciente_ubicacion = serializers.SerializerMethodField()
+    centro_nombre = serializers.SerializerMethodField()
+    dispensado_por_nombre = serializers.SerializerMethodField()
+    autorizado_por_nombre = serializers.SerializerMethodField()
+    created_by_nombre = serializers.SerializerMethodField()
+    detalles = DetalleDispensacionSerializer(many=True, read_only=True)
+    total_items = serializers.SerializerMethodField()
+    total_dispensado = serializers.SerializerMethodField()
+    total_prescrito = serializers.SerializerMethodField()
+    porcentaje_completado = serializers.FloatField(read_only=True)
+    tipo_dispensacion_display = serializers.SerializerMethodField()
+    estado_display = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Dispensacion
+        fields = [
+            'id', 'folio', 'paciente', 'paciente_nombre', 'paciente_expediente', 'paciente_ubicacion',
+            'centro', 'centro_nombre', 'fecha_dispensacion',
+            'tipo_dispensacion', 'tipo_dispensacion_display',
+            'diagnostico', 'indicaciones', 'medico_prescriptor', 'cedula_medico',
+            'estado', 'estado_display',
+            'dispensado_por', 'dispensado_por_nombre',
+            'autorizado_por', 'autorizado_por_nombre',
+            'firma_paciente', 'firma_dispensador',
+            'observaciones', 'motivo_cancelacion',
+            'created_at', 'updated_at', 'created_by', 'created_by_nombre',
+            'detalles', 'total_items', 'total_dispensado', 'total_prescrito', 'porcentaje_completado'
+        ]
+        read_only_fields = ['id', 'folio', 'created_at', 'updated_at', 'created_by', 'fecha_dispensacion']
+    
+    def get_paciente_nombre(self, obj):
+        return obj.paciente.nombre_completo if obj.paciente else None
+    
+    def get_paciente_expediente(self, obj):
+        return obj.paciente.numero_expediente if obj.paciente else None
+    
+    def get_paciente_ubicacion(self, obj):
+        return obj.paciente.ubicacion_completa if obj.paciente else None
+    
+    def get_centro_nombre(self, obj):
+        return obj.centro.nombre if obj.centro else None
+    
+    def get_dispensado_por_nombre(self, obj):
+        if obj.dispensado_por:
+            return f"{obj.dispensado_por.first_name} {obj.dispensado_por.last_name}".strip() or obj.dispensado_por.username
+        return None
+    
+    def get_autorizado_por_nombre(self, obj):
+        if obj.autorizado_por:
+            return f"{obj.autorizado_por.first_name} {obj.autorizado_por.last_name}".strip() or obj.autorizado_por.username
+        return None
+    
+    def get_created_by_nombre(self, obj):
+        if obj.created_by:
+            return f"{obj.created_by.first_name} {obj.created_by.last_name}".strip() or obj.created_by.username
+        return None
+    
+    def get_total_items(self, obj):
+        return obj.get_total_items()
+    
+    def get_total_dispensado(self, obj):
+        return obj.get_total_dispensado()
+    
+    def get_total_prescrito(self, obj):
+        return obj.get_total_prescrito()
+    
+    def get_tipo_dispensacion_display(self, obj):
+        return obj.get_tipo_dispensacion_display()
+    
+    def get_estado_display(self, obj):
+        return obj.get_estado_display()
+    
+    def create(self, validated_data):
+        request = self.context.get('request')
+        if request and request.user:
+            validated_data['created_by'] = request.user
+            # Asignar centro del usuario si no se especifica
+            if not validated_data.get('centro') and request.user.centro:
+                validated_data['centro'] = request.user.centro
+        return super().create(validated_data)
+
+
+class DispensacionListSerializer(serializers.ModelSerializer):
+    """Serializer simplificado para listados de dispensaciones"""
+    paciente_nombre = serializers.SerializerMethodField()
+    paciente_expediente = serializers.SerializerMethodField()
+    centro_nombre = serializers.SerializerMethodField()
+    total_items = serializers.SerializerMethodField()
+    tipo_dispensacion_display = serializers.SerializerMethodField()
+    estado_display = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Dispensacion
+        fields = [
+            'id', 'folio', 'paciente', 'paciente_nombre', 'paciente_expediente',
+            'centro', 'centro_nombre', 'fecha_dispensacion',
+            'tipo_dispensacion', 'tipo_dispensacion_display',
+            'estado', 'estado_display', 'total_items'
+        ]
+    
+    def get_paciente_nombre(self, obj):
+        return obj.paciente.nombre_completo if obj.paciente else None
+    
+    def get_paciente_expediente(self, obj):
+        return obj.paciente.numero_expediente if obj.paciente else None
+    
+    def get_centro_nombre(self, obj):
+        return obj.centro.nombre if obj.centro else None
+    
+    def get_total_items(self, obj):
+        return obj.get_total_items()
+    
+    def get_tipo_dispensacion_display(self, obj):
+        return obj.get_tipo_dispensacion_display()
+    
+    def get_estado_display(self, obj):
+        return obj.get_estado_display()
+
+
+class HistorialDispensacionSerializer(serializers.ModelSerializer):
+    """Serializer para historial de dispensaciones"""
+    usuario_nombre = serializers.SerializerMethodField()
+    accion_display = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = HistorialDispensacion
+        fields = [
+            'id', 'dispensacion', 'accion', 'accion_display',
+            'estado_anterior', 'estado_nuevo',
+            'usuario', 'usuario_nombre', 'detalles', 'ip_address', 'created_at'
+        ]
+    
+    def get_usuario_nombre(self, obj):
+        if obj.usuario:
+            return f"{obj.usuario.first_name} {obj.usuario.last_name}".strip() or obj.usuario.username
+        return None
+    
+    def get_accion_display(self, obj):
+        return obj.get_accion_display()
+
+
+# =====================================================
+# SERIALIZERS: COMPRAS DE CAJA CHICA
+# =====================================================
+
+class DetalleCompraCajaChicaSerializer(serializers.ModelSerializer):
+    """Serializer para detalles de compra de caja chica"""
+    producto_nombre = serializers.SerializerMethodField()
+    producto_clave = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = DetalleCompraCajaChica
+        fields = [
+            'id', 'compra', 'producto', 'producto_nombre', 'producto_clave',
+            'descripcion_producto', 'cantidad_solicitada', 'cantidad_comprada',
+            'cantidad_recibida', 'numero_lote', 'fecha_caducidad',
+            'precio_unitario', 'importe', 'unidad_medida', 'notas', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'importe']
+    
+    def get_producto_nombre(self, obj):
+        return obj.producto.nombre if obj.producto else None
+    
+    def get_producto_clave(self, obj):
+        return obj.producto.clave if obj.producto else None
+    
+    def validate_cantidad_solicitada(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("La cantidad solicitada debe ser mayor a 0")
+        return value
+    
+    def validate_precio_unitario(self, value):
+        if value < 0:
+            raise serializers.ValidationError("El precio unitario no puede ser negativo")
+        return value
+
+
+class CompraCajaChicaSerializer(serializers.ModelSerializer):
+    """Serializer principal para compras de caja chica"""
+    centro_nombre = serializers.SerializerMethodField()
+    solicitante_nombre = serializers.SerializerMethodField()
+    autorizado_por_nombre = serializers.SerializerMethodField()
+    recibido_por_nombre = serializers.SerializerMethodField()
+    detalles = DetalleCompraCajaChicaSerializer(many=True, read_only=True)
+    estado_display = serializers.SerializerMethodField()
+    total_productos = serializers.SerializerMethodField()
+    requisicion_origen_numero = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = CompraCajaChica
+        fields = [
+            'id', 'folio', 'centro', 'centro_nombre',
+            'requisicion_origen', 'requisicion_origen_numero',
+            'proveedor_nombre', 'proveedor_rfc', 'proveedor_direccion', 'proveedor_telefono',
+            'fecha_solicitud', 'fecha_compra', 'fecha_recepcion',
+            'numero_factura', 'documento_respaldo',
+            'subtotal', 'iva', 'total',
+            'motivo_compra', 'estado', 'estado_display',
+            'solicitante', 'solicitante_nombre',
+            'autorizado_por', 'autorizado_por_nombre',
+            'recibido_por', 'recibido_por_nombre',
+            'observaciones', 'motivo_cancelacion',
+            'created_at', 'updated_at',
+            'detalles', 'total_productos'
+        ]
+        read_only_fields = ['id', 'folio', 'subtotal', 'iva', 'total', 'created_at', 'updated_at']
+    
+    def get_centro_nombre(self, obj):
+        return obj.centro.nombre if obj.centro else None
+    
+    def get_solicitante_nombre(self, obj):
+        if obj.solicitante:
+            return f"{obj.solicitante.first_name} {obj.solicitante.last_name}".strip() or obj.solicitante.username
+        return None
+    
+    def get_autorizado_por_nombre(self, obj):
+        if obj.autorizado_por:
+            return f"{obj.autorizado_por.first_name} {obj.autorizado_por.last_name}".strip() or obj.autorizado_por.username
+        return None
+    
+    def get_recibido_por_nombre(self, obj):
+        if obj.recibido_por:
+            return f"{obj.recibido_por.first_name} {obj.recibido_por.last_name}".strip() or obj.recibido_por.username
+        return None
+    
+    def get_estado_display(self, obj):
+        return obj.get_estado_display()
+    
+    def get_total_productos(self, obj):
+        return obj.detalles.count()
+    
+    def get_requisicion_origen_numero(self, obj):
+        return obj.requisicion_origen.numero if obj.requisicion_origen else None
+    
+    def create(self, validated_data):
+        request = self.context.get('request')
+        if request and request.user:
+            validated_data['solicitante'] = request.user
+            # Asignar centro del usuario si no se especifica
+            if not validated_data.get('centro') and request.user.centro:
+                validated_data['centro'] = request.user.centro
+        return super().create(validated_data)
+
+
+class CompraCajaChicaListSerializer(serializers.ModelSerializer):
+    """Serializer simplificado para listado de compras"""
+    centro_nombre = serializers.SerializerMethodField()
+    solicitante_nombre = serializers.SerializerMethodField()
+    estado_display = serializers.SerializerMethodField()
+    total_productos = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = CompraCajaChica
+        fields = [
+            'id', 'folio', 'centro', 'centro_nombre',
+            'proveedor_nombre', 'fecha_solicitud', 'fecha_compra',
+            'total', 'estado', 'estado_display', 'motivo_compra',
+            'solicitante', 'solicitante_nombre', 'total_productos'
+        ]
+    
+    def get_centro_nombre(self, obj):
+        return obj.centro.nombre if obj.centro else None
+    
+    def get_solicitante_nombre(self, obj):
+        if obj.solicitante:
+            return f"{obj.solicitante.first_name} {obj.solicitante.last_name}".strip() or obj.solicitante.username
+        return None
+    
+    def get_estado_display(self, obj):
+        return obj.get_estado_display()
+    
+    def get_total_productos(self, obj):
+        return obj.detalles.count()
+
+
+class InventarioCajaChicaSerializer(serializers.ModelSerializer):
+    """Serializer para inventario de caja chica"""
+    centro_nombre = serializers.SerializerMethodField()
+    producto_nombre = serializers.SerializerMethodField()
+    producto_clave = serializers.SerializerMethodField()
+    compra_folio = serializers.SerializerMethodField()
+    estado = serializers.SerializerMethodField()
+    valor_total = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = InventarioCajaChica
+        fields = [
+            'id', 'centro', 'centro_nombre',
+            'producto', 'producto_nombre', 'producto_clave', 'descripcion_producto',
+            'numero_lote', 'fecha_caducidad',
+            'cantidad_inicial', 'cantidad_actual',
+            'compra', 'compra_folio', 'detalle_compra',
+            'precio_unitario', 'valor_total',
+            'ubicacion', 'activo', 'estado',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_centro_nombre(self, obj):
+        return obj.centro.nombre if obj.centro else None
+    
+    def get_producto_nombre(self, obj):
+        return obj.producto.nombre if obj.producto else None
+    
+    def get_producto_clave(self, obj):
+        return obj.producto.clave if obj.producto else None
+    
+    def get_compra_folio(self, obj):
+        return obj.compra.folio if obj.compra else None
+    
+    def get_estado(self, obj):
+        return obj.estado
+    
+    def get_valor_total(self, obj):
+        return obj.precio_unitario * obj.cantidad_actual
+
+
+class MovimientoCajaChicaSerializer(serializers.ModelSerializer):
+    """Serializer para movimientos de inventario de caja chica"""
+    inventario_descripcion = serializers.SerializerMethodField()
+    usuario_nombre = serializers.SerializerMethodField()
+    tipo_display = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = MovimientoCajaChica
+        fields = [
+            'id', 'inventario', 'inventario_descripcion',
+            'tipo', 'tipo_display', 'cantidad',
+            'cantidad_anterior', 'cantidad_nueva',
+            'referencia', 'motivo',
+            'usuario', 'usuario_nombre', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'cantidad_anterior', 'cantidad_nueva']
+    
+    def get_inventario_descripcion(self, obj):
+        return obj.inventario.descripcion_producto if obj.inventario else None
+    
+    def get_usuario_nombre(self, obj):
+        if obj.usuario:
+            return f"{obj.usuario.first_name} {obj.usuario.last_name}".strip() or obj.usuario.username
+        return None
+    
+    def get_tipo_display(self, obj):
+        return obj.get_tipo_display()
+
+
+class HistorialCompraCajaChicaSerializer(serializers.ModelSerializer):
+    """Serializer para historial de compras de caja chica"""
+    compra_folio = serializers.SerializerMethodField()
+    usuario_nombre = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = HistorialCompraCajaChica
+        fields = [
+            'id', 'compra', 'compra_folio',
+            'estado_anterior', 'estado_nuevo',
+            'usuario', 'usuario_nombre',
+            'accion', 'observaciones', 'ip_address', 'created_at'
+        ]
+    
+    def get_compra_folio(self, obj):
+        return obj.compra.folio if obj.compra else None
+    
+    def get_usuario_nombre(self, obj):
+        if obj.usuario:
+            return f"{obj.usuario.first_name} {obj.usuario.last_name}".strip() or obj.usuario.username
+        return None

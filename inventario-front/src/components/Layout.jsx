@@ -38,6 +38,10 @@ import {
   FaCrown,
   FaUserTie,
   FaEye,
+  FaUserInjured,
+  FaPills,
+  FaMoneyBillWave,
+  FaBoxes,
 } from "react-icons/fa";
 
 // ============================================================================
@@ -267,6 +271,10 @@ function Layout() {
     { path: "/requisiciones", icon: FaClipboardList, label: "Requisiciones", permission: "verRequisiciones" },
     { path: "/donaciones", icon: FaGift, label: "Donaciones", permission: "verDonaciones" },
     { path: "/movimientos", icon: FaExchangeAlt, label: "Movimientos", permission: "verMovimientos" },
+    { path: "/pacientes", icon: FaUserInjured, label: "Pacientes", permission: "verDispensaciones" },
+    { path: "/dispensaciones", icon: FaPills, label: "Dispensaciones", permission: "verDispensaciones" },
+    { path: "/compras-caja-chica", icon: FaMoneyBillWave, label: "Caja Chica", permission: "verComprasCajaChica" },
+    { path: "/inventario-caja-chica", icon: FaBoxes, label: "Inv. Caja Chica", permission: "verInventarioCajaChica" },
     { path: "/centros", icon: FaBuilding, label: "Centros", permission: "verCentros" },
     { path: "/usuarios", icon: FaUsers, label: "Usuarios", permission: "verUsuarios" },
     { path: "/reportes", icon: FaChartBar, label: "Reportes", permission: "verReportes" },

@@ -430,19 +430,47 @@ class TestConstantesBackend(TestCase):
         except ImportError:
             self.skipTest("Constantes no disponibles en este contexto")
     
-    def test_transiciones_incluyen_parcial_desde_enviada(self):
-        """Verifica que enviada puede transicionar a parcial."""
+    def test_transiciones_desde_enviada_correctas(self):
+        """
+        Verifica las transiciones correctas desde estado 'enviada'.
+        
+        Según el trigger de Supabase:
+        - enviada -> en_revision (farmacia recibe y revisa)
+        - enviada -> rechazada (farmacia rechaza directamente)
+        - enviada -> cancelada (cancelación)
+        
+        NOTA: parcial NO es transición directa desde enviada,
+        solo se alcanza desde en_surtido después de autorización.
+        """
         try:
             from core.constants import TRANSICIONES_REQUISICION
-            self.assertIn('parcial', TRANSICIONES_REQUISICION.get('enviada', []))
+            transiciones = TRANSICIONES_REQUISICION.get('enviada', [])
+            # Verificar transiciones correctas
+            self.assertIn('en_revision', transiciones)
+            self.assertIn('rechazada', transiciones)
+            self.assertIn('cancelada', transiciones)
+            # Parcial NO debe estar aquí
+            self.assertNotIn('parcial', transiciones)
         except ImportError:
             self.skipTest("Constantes no disponibles en este contexto")
     
-    def test_transiciones_incluyen_parcial_desde_en_revision(self):
-        """Verifica que en_revision puede transicionar a parcial."""
+    def test_transiciones_desde_en_revision_no_incluyen_parcial(self):
+        """
+        Verifica que en_revision NO puede transicionar a parcial directamente.
+        
+        ISS-TRIGGER-FIX: Según el trigger de Supabase, en_revision solo puede ir a:
+        - autorizada, rechazada, devuelta
+        
+        El estado 'parcial' se alcanza desde 'en_surtido', no desde 'en_revision'.
+        """
         try:
             from core.constants import TRANSICIONES_REQUISICION
-            self.assertIn('parcial', TRANSICIONES_REQUISICION.get('en_revision', []))
+            # Verificar que parcial NO está en las transiciones desde en_revision
+            self.assertNotIn('parcial', TRANSICIONES_REQUISICION.get('en_revision', []))
+            # Pero sí que están los estados correctos
+            self.assertIn('autorizada', TRANSICIONES_REQUISICION.get('en_revision', []))
+            self.assertIn('rechazada', TRANSICIONES_REQUISICION.get('en_revision', []))
+            self.assertIn('devuelta', TRANSICIONES_REQUISICION.get('en_revision', []))
         except ImportError:
             self.skipTest("Constantes no disponibles en este contexto")
     

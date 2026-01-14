@@ -83,50 +83,50 @@ def centro_destino(db):
 @pytest.fixture
 def admin_user(db, centro_almacen):
     """Usuario administrador para tests."""
-    user, _ = User.objects.get_or_create(
-        username='admin_test_trazabilidad',
-        defaults={
-            'email': 'admin_traz@test.com',
-            'rol': 'admin',
-            'is_staff': True,
-            'is_superuser': True,
-            'centro': centro_almacen
-        }
-    )
-    user.set_password('testpass123')
-    user.save()
+    try:
+        user = User.objects.get(username='admin_test_trazabilidad')
+    except User.DoesNotExist:
+        user = User.objects.create_user(
+            username='admin_test_trazabilidad',
+            email='admin_traz@test.com',
+            password='testpass123',
+            rol='admin',
+            is_staff=True,
+            is_superuser=True,
+            centro=centro_almacen
+        )
     return user
 
 
 @pytest.fixture
 def farmacia_user(db, centro_almacen):
     """Usuario de farmacia para tests."""
-    user, _ = User.objects.get_or_create(
-        username='farmacia_test_trazabilidad',
-        defaults={
-            'email': 'farmacia_traz@test.com',
-            'rol': 'farmacia',
-            'centro': centro_almacen
-        }
-    )
-    user.set_password('testpass123')
-    user.save()
+    try:
+        user = User.objects.get(username='farmacia_test_trazabilidad')
+    except User.DoesNotExist:
+        user = User.objects.create_user(
+            username='farmacia_test_trazabilidad',
+            email='farmacia_traz@test.com',
+            password='testpass123',
+            rol='farmacia',
+            centro=centro_almacen
+        )
     return user
 
 
 @pytest.fixture
 def centro_user(db, centro_destino):
     """Usuario de centro (rol restringido)."""
-    user, _ = User.objects.get_or_create(
-        username='centro_test_trazabilidad',
-        defaults={
-            'email': 'centro_traz@test.com',
-            'rol': 'administrador_centro',
-            'centro': centro_destino
-        }
-    )
-    user.set_password('testpass123')
-    user.save()
+    try:
+        user = User.objects.get(username='centro_test_trazabilidad')
+    except User.DoesNotExist:
+        user = User.objects.create_user(
+            username='centro_test_trazabilidad',
+            email='centro_traz@test.com',
+            password='testpass123',
+            rol='administrador_centro',
+            centro=centro_destino
+        )
     return user
 
 
@@ -190,6 +190,7 @@ def movimiento_entrada(db, lote_test, admin_user, centro_almacen):
         lote=lote_test,
         tipo='entrada',
         cantidad=100,
+        producto=lote_test.producto,  # Campo requerido
         defaults={
             'usuario': admin_user,
             'centro_destino': None,  # Almacén Central
@@ -208,6 +209,7 @@ def movimiento_salida(db, lote_test, admin_user, centro_destino):
         tipo='salida',
         cantidad=-50,
         subtipo_salida='transferencia',
+        producto=lote_test.producto,  # Campo requerido
         defaults={
             'usuario': admin_user,
             'centro_origen': None,  # Almacén Central
@@ -571,6 +573,7 @@ class TestConfirmarEntregaIndividual:
         # Crear movimiento de entrada
         movimiento_entrada = Movimiento.objects.create(
             lote=lote_test,
+            producto=lote_test.producto,  # Campo requerido
             tipo='entrada',
             cantidad=10,
             motivo='Test entrada',

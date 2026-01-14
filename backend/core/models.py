@@ -1136,6 +1136,8 @@ class Movimiento(models.Model):
     subtipo_salida = models.CharField(max_length=30, blank=True, null=True, db_column='subtipo_salida')
     # MEJORA FLUJO 5: Número de expediente del paciente (obligatorio si subtipo='receta')
     numero_expediente = models.CharField(max_length=50, blank=True, null=True, db_column='numero_expediente')
+    # FORMATO OFICIAL B: Folio/número de documento de entrada/salida para trazabilidad oficial
+    folio_documento = models.CharField(max_length=100, blank=True, null=True, db_column='folio_documento')
     fecha = models.DateTimeField(auto_now_add=True)  # BD default: now()
     created_at = models.DateTimeField(auto_now_add=True)  # BD default: now()
 
@@ -3106,3 +3108,721 @@ class RequisicionAjusteCantidad(models.Model):
     def __str__(self):
         return f"Ajuste {self.detalle_requisicion}: {self.cantidad_original} → {self.cantidad_ajustada}"
 
+
+# =============================================================================
+# MÓDULO DE DISPENSACIÓN A PACIENTES (FORMATO C)
+# =============================================================================
+
+SEXO_CHOICES = [
+    ('M', 'Masculino'),
+    ('F', 'Femenino'),
+]
+
+TIPOS_DISPENSACION = [
+    ('normal', 'Normal'),
+    ('urgente', 'Urgente'),
+    ('tratamiento_cronico', 'Tratamiento Crónico'),
+    ('dosis_unica', 'Dosis Única'),
+]
+
+ESTADOS_DISPENSACION = [
+    ('pendiente', 'Pendiente'),
+    ('dispensada', 'Dispensada'),
+    ('parcial', 'Parcialmente Dispensada'),
+    ('cancelada', 'Cancelada'),
+]
+
+ESTADOS_DETALLE_DISPENSACION = [
+    ('pendiente', 'Pendiente'),
+    ('dispensado', 'Dispensado'),
+    ('sin_stock', 'Sin Stock'),
+    ('sustituido', 'Sustituido'),
+]
+
+
+class Paciente(models.Model):
+    """
+    Catálogo de Pacientes/Internos para el módulo de dispensación.
+    
+    Cada paciente está asociado a un centro penitenciario y tiene
+    un número de expediente único para trazabilidad de dispensaciones.
+    """
+    # Identificación
+    numero_expediente = models.CharField(max_length=50, unique=True)
+    nombre = models.CharField(max_length=100)
+    apellido_paterno = models.CharField(max_length=100)
+    apellido_materno = models.CharField(max_length=100, blank=True, null=True)
+    curp = models.CharField(max_length=18, blank=True, null=True)
+    fecha_nacimiento = models.DateField(blank=True, null=True)
+    sexo = models.CharField(max_length=1, choices=SEXO_CHOICES, blank=True, null=True)
+    
+    # Ubicación en el centro
+    centro = models.ForeignKey(
+        Centro,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pacientes',
+        db_column='centro_id'
+    )
+    dormitorio = models.CharField(max_length=50, blank=True, null=True)
+    celda = models.CharField(max_length=50, blank=True, null=True)
+    
+    # Información médica
+    tipo_sangre = models.CharField(max_length=10, blank=True, null=True)
+    alergias = models.TextField(blank=True, null=True)
+    enfermedades_cronicas = models.TextField(blank=True, null=True)
+    observaciones_medicas = models.TextField(blank=True, null=True)
+    
+    # Control
+    activo = models.BooleanField(default=True)
+    fecha_ingreso = models.DateField(blank=True, null=True)
+    fecha_egreso = models.DateField(blank=True, null=True)
+    motivo_egreso = models.CharField(max_length=100, blank=True, null=True)
+    
+    # Auditoría
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pacientes_creados',
+        db_column='created_by_id'
+    )
+
+    class Meta:
+        db_table = 'pacientes'
+        managed = False  # Tabla en Supabase
+        ordering = ['apellido_paterno', 'apellido_materno', 'nombre']
+        verbose_name = 'Paciente'
+        verbose_name_plural = 'Pacientes'
+
+    def __str__(self):
+        return f"{self.numero_expediente} - {self.nombre_completo}"
+    
+    @property
+    def nombre_completo(self):
+        """Retorna el nombre completo del paciente"""
+        partes = [self.nombre, self.apellido_paterno]
+        if self.apellido_materno:
+            partes.append(self.apellido_materno)
+        return ' '.join(partes)
+    
+    @property
+    def edad(self):
+        """Calcula la edad del paciente"""
+        if not self.fecha_nacimiento:
+            return None
+        from datetime import date
+        hoy = date.today()
+        edad = hoy.year - self.fecha_nacimiento.year
+        if (hoy.month, hoy.day) < (self.fecha_nacimiento.month, self.fecha_nacimiento.day):
+            edad -= 1
+        return edad
+    
+    @property
+    def ubicacion_completa(self):
+        """Retorna la ubicación completa (dormitorio/celda)"""
+        partes = []
+        if self.dormitorio:
+            partes.append(f"Dorm. {self.dormitorio}")
+        if self.celda:
+            partes.append(f"Celda {self.celda}")
+        return ' / '.join(partes) if partes else 'Sin ubicación'
+
+
+class Dispensacion(models.Model):
+    """
+    Registro de dispensación de medicamentos a pacientes (Formato C).
+    
+    Representa una entrega de medicamentos a un paciente interno,
+    con trazabilidad completa y generación de documento oficial.
+    """
+    # Identificación
+    folio = models.CharField(max_length=50, unique=True)
+    
+    # Relaciones principales
+    paciente = models.ForeignKey(
+        Paciente,
+        on_delete=models.PROTECT,
+        related_name='dispensaciones',
+        db_column='paciente_id'
+    )
+    centro = models.ForeignKey(
+        Centro,
+        on_delete=models.PROTECT,
+        related_name='dispensaciones',
+        db_column='centro_id'
+    )
+    
+    # Información de la dispensación
+    fecha_dispensacion = models.DateTimeField(auto_now_add=True)
+    tipo_dispensacion = models.CharField(
+        max_length=30,
+        choices=TIPOS_DISPENSACION,
+        default='normal'
+    )
+    
+    # Prescripción médica
+    diagnostico = models.TextField(blank=True, null=True)
+    indicaciones = models.TextField(blank=True, null=True)
+    medico_prescriptor = models.CharField(max_length=200, blank=True, null=True)
+    cedula_medico = models.CharField(max_length=20, blank=True, null=True)
+    
+    # Estado
+    estado = models.CharField(
+        max_length=20,
+        choices=ESTADOS_DISPENSACION,
+        default='pendiente'
+    )
+    
+    # Responsables
+    dispensado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='dispensaciones_realizadas',
+        db_column='dispensado_por_id'
+    )
+    autorizado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='dispensaciones_autorizadas',
+        db_column='autorizado_por_id'
+    )
+    
+    # Firmas digitales
+    firma_paciente = models.CharField(max_length=255, blank=True, null=True)
+    firma_dispensador = models.CharField(max_length=255, blank=True, null=True)
+    
+    # Observaciones
+    observaciones = models.TextField(blank=True, null=True)
+    motivo_cancelacion = models.TextField(blank=True, null=True)
+    
+    # Auditoría
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='dispensaciones_creadas',
+        db_column='created_by_id'
+    )
+
+    class Meta:
+        db_table = 'dispensaciones'
+        managed = False  # Tabla en Supabase
+        ordering = ['-fecha_dispensacion']
+        verbose_name = 'Dispensación'
+        verbose_name_plural = 'Dispensaciones'
+
+    def __str__(self):
+        return f"{self.folio} - {self.paciente.nombre_completo}"
+    
+    def get_total_items(self):
+        """Retorna el total de items en la dispensación"""
+        return self.detalles.count()
+    
+    def get_total_dispensado(self):
+        """Retorna el total de unidades dispensadas"""
+        from django.db.models import Sum
+        return self.detalles.aggregate(total=Sum('cantidad_dispensada'))['total'] or 0
+    
+    def get_total_prescrito(self):
+        """Retorna el total de unidades prescritas"""
+        from django.db.models import Sum
+        return self.detalles.aggregate(total=Sum('cantidad_prescrita'))['total'] or 0
+    
+    @property
+    def porcentaje_completado(self):
+        """Calcula el porcentaje de dispensación completada"""
+        total_prescrito = self.get_total_prescrito()
+        if total_prescrito == 0:
+            return 0
+        return round((self.get_total_dispensado() / total_prescrito) * 100, 1)
+
+
+class DetalleDispensacion(models.Model):
+    """
+    Detalle de productos dispensados a pacientes.
+    
+    Cada línea representa un medicamento específico con su dosificación
+    y la cantidad realmente entregada.
+    """
+    # Relación con dispensación
+    dispensacion = models.ForeignKey(
+        Dispensacion,
+        on_delete=models.CASCADE,
+        related_name='detalles',
+        db_column='dispensacion_id'
+    )
+    
+    # Producto dispensado
+    producto = models.ForeignKey(
+        Producto,
+        on_delete=models.PROTECT,
+        related_name='dispensaciones',
+        db_column='producto_id'
+    )
+    lote = models.ForeignKey(
+        Lote,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='dispensaciones',
+        db_column='lote_id'
+    )
+    
+    # Cantidades
+    cantidad_prescrita = models.IntegerField()
+    cantidad_dispensada = models.IntegerField(default=0)
+    
+    # Información de dosificación
+    dosis = models.CharField(max_length=100, blank=True, null=True)
+    frecuencia = models.CharField(max_length=100, blank=True, null=True)
+    duracion_tratamiento = models.CharField(max_length=100, blank=True, null=True)
+    via_administracion = models.CharField(max_length=50, blank=True, null=True)
+    horarios = models.TextField(blank=True, null=True)
+    
+    # Estado
+    estado = models.CharField(
+        max_length=20,
+        choices=ESTADOS_DETALLE_DISPENSACION,
+        default='pendiente'
+    )
+    
+    # Sustitución
+    producto_sustituto = models.ForeignKey(
+        Producto,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sustituciones_dispensacion',
+        db_column='producto_sustituto_id'
+    )
+    motivo_sustitucion = models.TextField(blank=True, null=True)
+    
+    # Observaciones
+    notas = models.TextField(blank=True, null=True)
+    
+    # Auditoría
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'detalle_dispensaciones'
+        managed = False  # Tabla en Supabase
+        ordering = ['id']
+        verbose_name = 'Detalle de Dispensación'
+        verbose_name_plural = 'Detalles de Dispensación'
+
+    def __str__(self):
+        return f"{self.dispensacion.folio} - {self.producto.nombre} x {self.cantidad_dispensada}"
+    
+    @property
+    def completo(self):
+        """Indica si se dispensó la cantidad completa"""
+        return self.cantidad_dispensada >= self.cantidad_prescrita
+
+
+class HistorialDispensacion(models.Model):
+    """
+    Historial de cambios en dispensaciones para auditoría.
+    """
+    ACCIONES = [
+        ('crear', 'Creación'),
+        ('agregar_item', 'Agregar Item'),
+        ('dispensar', 'Dispensar'),
+        ('completar', 'Completar'),
+        ('cancelar', 'Cancelar'),
+        ('modificar', 'Modificar'),
+    ]
+    
+    dispensacion = models.ForeignKey(
+        Dispensacion,
+        on_delete=models.CASCADE,
+        related_name='historial',
+        db_column='dispensacion_id'
+    )
+    accion = models.CharField(max_length=50, choices=ACCIONES)
+    estado_anterior = models.CharField(max_length=20, blank=True, null=True)
+    estado_nuevo = models.CharField(max_length=20, blank=True, null=True)
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='historial_dispensaciones',
+        db_column='usuario_id'
+    )
+    detalles = models.JSONField(blank=True, null=True)
+    ip_address = models.CharField(max_length=45, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'historial_dispensaciones'
+        managed = False  # Tabla en Supabase
+        ordering = ['-created_at']
+        verbose_name = 'Historial de Dispensación'
+        verbose_name_plural = 'Historial de Dispensaciones'
+
+    def __str__(self):
+        return f"{self.dispensacion.folio} - {self.get_accion_display()}"
+
+
+# =====================================================
+# MÓDULO: COMPRAS DE CAJA CHICA DEL CENTRO
+# =====================================================
+
+class CompraCajaChica(models.Model):
+    """
+    Compras realizadas por el centro penitenciario con recursos de caja chica.
+    
+    Este módulo se usa cuando:
+    1. El centro solicita un medicamento a farmacia central
+    2. Farmacia informa que NO tiene disponibilidad
+    3. El centro realiza la compra con sus propios recursos
+    4. El inventario resultante pertenece al CENTRO, no a farmacia
+    
+    Farmacia puede AUDITAR (ver) pero NO modificar estas compras.
+    """
+    ESTADOS = [
+        ('pendiente', 'Pendiente'),
+        ('autorizada', 'Autorizada'),
+        ('comprada', 'Comprada'),
+        ('recibida', 'Recibida'),
+        ('cancelada', 'Cancelada'),
+    ]
+    
+    folio = models.CharField(max_length=50, unique=True, blank=True)
+    
+    centro = models.ForeignKey(
+        'Centro',
+        on_delete=models.PROTECT,
+        related_name='compras_caja_chica',
+        db_column='centro_id'
+    )
+    
+    # Requisición de origen (opcional)
+    requisicion_origen = models.ForeignKey(
+        'Requisicion',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='compras_caja_chica',
+        db_column='requisicion_origen_id'
+    )
+    
+    # Datos del proveedor
+    proveedor_nombre = models.CharField(max_length=200)
+    proveedor_rfc = models.CharField(max_length=20, blank=True, null=True)
+    proveedor_direccion = models.TextField(blank=True, null=True)
+    proveedor_telefono = models.CharField(max_length=50, blank=True, null=True)
+    
+    # Fechas
+    fecha_solicitud = models.DateTimeField(auto_now_add=True)
+    fecha_compra = models.DateField(blank=True, null=True)
+    fecha_recepcion = models.DateTimeField(blank=True, null=True)
+    
+    # Documento de respaldo
+    numero_factura = models.CharField(max_length=100, blank=True, null=True)
+    documento_respaldo = models.CharField(max_length=500, blank=True, null=True)
+    
+    # Montos
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    iva = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
+    # Justificación
+    motivo_compra = models.TextField(help_text="Justificación de la compra por caja chica")
+    
+    # Estado
+    estado = models.CharField(max_length=30, choices=ESTADOS, default='pendiente')
+    
+    # Usuarios
+    solicitante = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='compras_caja_solicitadas',
+        db_column='solicitante_id'
+    )
+    autorizado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='compras_caja_autorizadas',
+        db_column='autorizado_por_id'
+    )
+    recibido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='compras_caja_recibidas',
+        db_column='recibido_por_id'
+    )
+    
+    # Observaciones
+    observaciones = models.TextField(blank=True, null=True)
+    motivo_cancelacion = models.TextField(blank=True, null=True)
+    
+    # Auditoría
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'compras_caja_chica'
+        managed = False
+        ordering = ['-fecha_solicitud']
+        verbose_name = 'Compra de Caja Chica'
+        verbose_name_plural = 'Compras de Caja Chica'
+
+    def __str__(self):
+        return f"{self.folio} - {self.centro.nombre}"
+
+
+class DetalleCompraCajaChica(models.Model):
+    """
+    Productos incluidos en cada compra de caja chica.
+    """
+    compra = models.ForeignKey(
+        CompraCajaChica,
+        on_delete=models.CASCADE,
+        related_name='detalles',
+        db_column='compra_id'
+    )
+    
+    # Producto (puede ser del catálogo o descripción libre)
+    producto = models.ForeignKey(
+        'Producto',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='compras_caja_chica',
+        db_column='producto_id'
+    )
+    descripcion_producto = models.CharField(max_length=500)
+    
+    # Cantidades
+    cantidad_solicitada = models.IntegerField()
+    cantidad_comprada = models.IntegerField(default=0)
+    cantidad_recibida = models.IntegerField(default=0)
+    
+    # Datos del lote
+    numero_lote = models.CharField(max_length=100, blank=True, null=True)
+    fecha_caducidad = models.DateField(blank=True, null=True)
+    
+    # Precios
+    precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    importe = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
+    # Unidad
+    unidad_medida = models.CharField(max_length=50, default='PIEZA')
+    
+    # Notas
+    notas = models.TextField(blank=True, null=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'detalle_compras_caja_chica'
+        managed = False
+        ordering = ['id']
+        verbose_name = 'Detalle de Compra Caja Chica'
+        verbose_name_plural = 'Detalles de Compras Caja Chica'
+
+    def __str__(self):
+        return f"{self.compra.folio} - {self.descripcion_producto}"
+    
+    def save(self, *args, **kwargs):
+        # Calcular importe
+        self.importe = self.precio_unitario * self.cantidad_comprada
+        super().save(*args, **kwargs)
+
+
+class InventarioCajaChica(models.Model):
+    """
+    Inventario de productos comprados por caja chica.
+    Este inventario es SEPARADO del inventario principal de farmacia.
+    Pertenece al centro penitenciario.
+    """
+    centro = models.ForeignKey(
+        'Centro',
+        on_delete=models.PROTECT,
+        related_name='inventario_caja_chica',
+        db_column='centro_id'
+    )
+    
+    # Producto
+    producto = models.ForeignKey(
+        'Producto',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='inventario_caja_chica',
+        db_column='producto_id'
+    )
+    descripcion_producto = models.CharField(max_length=500)
+    
+    # Lote
+    numero_lote = models.CharField(max_length=100, blank=True, null=True)
+    fecha_caducidad = models.DateField(blank=True, null=True)
+    
+    # Cantidades
+    cantidad_inicial = models.IntegerField(default=0)
+    cantidad_actual = models.IntegerField(default=0)
+    
+    # Referencias
+    compra = models.ForeignKey(
+        CompraCajaChica,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='items_inventario',
+        db_column='compra_id'
+    )
+    detalle_compra = models.ForeignKey(
+        DetalleCompraCajaChica,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='items_inventario',
+        db_column='detalle_compra_id'
+    )
+    
+    # Precio
+    precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
+    # Ubicación
+    ubicacion = models.CharField(max_length=200, blank=True, null=True)
+    
+    # Estado
+    activo = models.BooleanField(default=True)
+    
+    # Auditoría
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'inventario_caja_chica'
+        managed = False
+        ordering = ['-created_at']
+        verbose_name = 'Inventario Caja Chica'
+        verbose_name_plural = 'Inventario Caja Chica'
+        unique_together = [['centro', 'producto', 'numero_lote']]
+
+    def __str__(self):
+        return f"{self.centro.nombre} - {self.descripcion_producto} ({self.cantidad_actual})"
+    
+    @property
+    def estado(self):
+        """Estado calculado del inventario"""
+        if not self.activo:
+            return 'inactivo'
+        if self.cantidad_actual <= 0:
+            return 'agotado'
+        if self.fecha_caducidad and self.fecha_caducidad <= date.today():
+            return 'caducado'
+        if self.fecha_caducidad and self.fecha_caducidad <= date.today() + timedelta(days=90):
+            return 'por_caducar'
+        return 'disponible'
+
+
+class MovimientoCajaChica(models.Model):
+    """
+    Registro de movimientos del inventario de caja chica.
+    """
+    TIPOS = [
+        ('entrada', 'Entrada'),
+        ('salida', 'Salida'),
+        ('ajuste_positivo', 'Ajuste Positivo'),
+        ('ajuste_negativo', 'Ajuste Negativo'),
+        ('merma', 'Merma'),
+        ('devolucion', 'Devolución'),
+    ]
+    
+    inventario = models.ForeignKey(
+        InventarioCajaChica,
+        on_delete=models.CASCADE,
+        related_name='movimientos',
+        db_column='inventario_id'
+    )
+    
+    tipo = models.CharField(max_length=30, choices=TIPOS)
+    cantidad = models.IntegerField()
+    cantidad_anterior = models.IntegerField()
+    cantidad_nueva = models.IntegerField()
+    
+    # Referencia
+    referencia = models.CharField(max_length=200, blank=True, null=True)
+    motivo = models.TextField(blank=True, null=True)
+    
+    # Usuario
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='movimientos_caja_chica',
+        db_column='usuario_id'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'movimientos_caja_chica'
+        managed = False
+        ordering = ['-created_at']
+        verbose_name = 'Movimiento Caja Chica'
+        verbose_name_plural = 'Movimientos Caja Chica'
+
+    def __str__(self):
+        return f"{self.inventario.descripcion_producto} - {self.get_tipo_display()} x {self.cantidad}"
+
+
+class HistorialCompraCajaChica(models.Model):
+    """
+    Historial de cambios en compras de caja chica para auditoría.
+    """
+    compra = models.ForeignKey(
+        CompraCajaChica,
+        on_delete=models.CASCADE,
+        related_name='historial',
+        db_column='compra_id'
+    )
+    
+    estado_anterior = models.CharField(max_length=30, blank=True, null=True)
+    estado_nuevo = models.CharField(max_length=30)
+    
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='historial_compras_caja',
+        db_column='usuario_id'
+    )
+    
+    accion = models.CharField(max_length=100)
+    observaciones = models.TextField(blank=True, null=True)
+    ip_address = models.CharField(max_length=45, blank=True, null=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'historial_compras_caja_chica'
+        managed = False
+        ordering = ['-created_at']
+        verbose_name = 'Historial Compra Caja Chica'
+        verbose_name_plural = 'Historial Compras Caja Chica'
+
+    def __str__(self):
+        return f"{self.compra.folio} - {self.accion}"
