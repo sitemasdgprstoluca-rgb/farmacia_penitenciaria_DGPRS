@@ -183,28 +183,46 @@ const Dispensaciones = () => {
     fetchDispensaciones();
   }, [fetchDispensaciones]);
 
-  // Buscar pacientes
-  const searchPacientes = useCallback(async (term) => {
-    if (term.length < 2) {
+  // Buscar pacientes (si term está vacío, trae los primeros del centro)
+  const searchPacientes = useCallback(async (term = '') => {
+    if (!formData.centro) {
       setPacientes([]);
       return;
     }
     try {
-      const response = await pacientesAPI.autocomplete({ search: term, centro: formData.centro || undefined });
+      const params = { 
+        centro: formData.centro,
+        page_size: 20 
+      };
+      // Si hay término de búsqueda, filtramos
+      if (term && term.length >= 1) {
+        params.search = term;
+      }
+      const response = await pacientesAPI.autocomplete(params);
       setPacientes(response.data?.results || response.data || []);
     } catch (error) {
       console.error('Error al buscar pacientes:', error);
     }
   }, [formData.centro]);
 
+  // Precargar pacientes cuando se selecciona un centro
+  useEffect(() => {
+    if (formData.centro) {
+      searchPacientes('');
+    } else {
+      setPacientes([]);
+    }
+  }, [formData.centro, searchPacientes]);
+
+  // Buscar pacientes con debounce cuando escribe
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (pacienteSearchTerm) {
+      if (formData.centro) {
         searchPacientes(pacienteSearchTerm);
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [pacienteSearchTerm, searchPacientes]);
+  }, [pacienteSearchTerm, formData.centro, searchPacientes]);
 
   // Cargar lotes cuando se selecciona producto
   const fetchLotes = async (productoId, centroId) => {
@@ -893,22 +911,28 @@ const Dispensaciones = () => {
                     {!formData.centro && (
                       <p className="text-xs text-gray-500 mt-1">Seleccione primero un centro</p>
                     )}
-                    {showPacienteDropdown && pacientes.length > 0 && (
+                    {showPacienteDropdown && formData.centro && (
                       <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                        {pacientes.map(pac => (
-                          <button
-                            type="button"
-                            key={pac.id}
-                            onClick={() => handleSelectPaciente(pac)}
-                            className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center"
-                          >
-                            <FaUserInjured className="mr-2 text-gray-400" />
-                            <div>
-                              <div className="font-medium">{pac.nombre_completo}</div>
-                              <div className="text-xs text-gray-500">Exp: {pac.numero_expediente}</div>
-                            </div>
-                          </button>
-                        ))}
+                        {pacientes.length > 0 ? (
+                          pacientes.map(pac => (
+                            <button
+                              type="button"
+                              key={pac.id}
+                              onClick={() => handleSelectPaciente(pac)}
+                              className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center"
+                            >
+                              <FaUserInjured className="mr-2 text-gray-400" />
+                              <div>
+                                <div className="font-medium">{pac.nombre_completo}</div>
+                                <div className="text-xs text-gray-500">Exp: {pac.numero_expediente}</div>
+                              </div>
+                            </button>
+                          ))
+                        ) : (
+                          <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                            No hay pacientes registrados en este centro
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
