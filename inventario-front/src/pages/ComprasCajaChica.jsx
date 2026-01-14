@@ -5,16 +5,24 @@
  * Permitir al centro penitenciario gestionar compras con recursos propios
  * cuando farmacia central NO tiene disponibilidad de un medicamento.
  * 
- * FLUJO:
- * 1. Centro solicita medicamento → Farmacia NO tiene
- * 2. Centro crea solicitud de compra con justificación
- * 3. Se autoriza internamente (administrador/director)
- * 4. Se realiza la compra
- * 5. Se reciben productos y se ingresan al inventario del CENTRO
+ * FLUJO CON VERIFICACIÓN DE FARMACIA:
+ * 1. Centro crea solicitud de compra con justificación (PENDIENTE)
+ * 2. Centro envía a Farmacia para verificar stock (ENVIADA_FARMACIA)
+ * 3. Farmacia verifica:
+ *    - Si NO tiene stock → SIN_STOCK_FARMACIA (continúa flujo)
+ *    - Si SÍ tiene stock → RECHAZADA_FARMACIA (debe hacer requisición regular)
+ * 4. Centro envía a Admin para autorización (ENVIADA_ADMIN)
+ * 5. Admin autoriza (AUTORIZADA_ADMIN)
+ * 6. Admin envía a Director (ENVIADA_DIRECTOR)
+ * 7. Director autoriza (AUTORIZADA)
+ * 8. Se realiza la compra (COMPRADA)
+ * 9. Se reciben productos (RECIBIDA)
  * 
  * PERMISOS:
- * - Centro: CRUD completo sobre sus propias compras
- * - Farmacia: Solo lectura (auditoría) para prevenir malas prácticas
+ * - Centro (Médico): CRUD completo, enviar a farmacia, enviar a admin
+ * - Farmacia: Verificar stock (confirmar sin stock / rechazar con stock)
+ * - Admin: Autorizar, enviar a director
+ * - Director: Autorizar final
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -46,6 +54,8 @@ import {
   FaCalendarAlt,
   FaUserCheck,
   FaTruck,
+  FaCheckCircle,
+  FaWarehouse,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import Pagination from '../components/Pagination';
@@ -55,10 +65,13 @@ import { esFarmaciaAdmin, esCentro } from '../utils/roles';
 
 const PAGE_SIZE = 20;
 
-// Estados del flujo multinivel
+// Estados del flujo con verificación de farmacia
 const ESTADOS_COMPRA = [
   { value: '', label: 'Todos' },
   { value: 'pendiente', label: 'Pendiente' },
+  { value: 'enviada_farmacia', label: 'En Farmacia' },
+  { value: 'sin_stock_farmacia', label: 'Sin Stock (Farmacia)' },
+  { value: 'rechazada_farmacia', label: 'Hay Stock (Farmacia)' },
   { value: 'enviada_admin', label: 'Enviada a Admin' },
   { value: 'autorizada_admin', label: 'Autorizada Admin' },
   { value: 'enviada_director', label: 'Enviada a Director' },
@@ -71,6 +84,9 @@ const ESTADOS_COMPRA = [
 
 const ESTADO_COLORS = {
   pendiente: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  enviada_farmacia: 'bg-amber-100 text-amber-800 border-amber-300',
+  sin_stock_farmacia: 'bg-teal-100 text-teal-800 border-teal-300',
+  rechazada_farmacia: 'bg-rose-100 text-rose-800 border-rose-300',
   enviada_admin: 'bg-orange-100 text-orange-800 border-orange-300',
   autorizada_admin: 'bg-cyan-100 text-cyan-800 border-cyan-300',
   enviada_director: 'bg-indigo-100 text-indigo-800 border-indigo-300',
@@ -83,6 +99,9 @@ const ESTADO_COLORS = {
 
 const ESTADO_ICONS = {
   pendiente: FaClipboardList,
+  enviada_farmacia: FaSearch,
+  sin_stock_farmacia: FaCheck,
+  rechazada_farmacia: FaExclamationTriangle,
   enviada_admin: FaClipboardList,
   autorizada_admin: FaUserCheck,
   enviada_director: FaClipboardList,
@@ -99,19 +118,20 @@ const ComprasCajaChica = () => {
   // Detectar tipo de usuario y rol
   const esUsuarioFarmacia = esFarmaciaAdmin(user);
   const esUsuarioCentro = esCentro(user);
-  const esSoloAuditoria = esUsuarioFarmacia; // Farmacia solo puede ver
   const rolUsuario = user?.rol?.toLowerCase() || '';
   
   // Centro del usuario (para filtrado automático)
   const centroUsuario = user?.centro?.id || user?.centro_id;
   
-  // Permisos según rol en el flujo multinivel
-  const puedeCrear = esUsuarioCentro && !esSoloAuditoria;
-  const puedeEditar = esUsuarioCentro && !esSoloAuditoria;
+  // Permisos según rol en el flujo con verificación de farmacia
+  const puedeCrear = esUsuarioCentro && !esUsuarioFarmacia;
+  const puedeEditar = esUsuarioCentro && !esUsuarioFarmacia;
   const esMedico = rolUsuario === 'medico' || rolUsuario === 'centro';
   const esAdmin = rolUsuario === 'administrador_centro' || rolUsuario === 'admin';
   const esDirector = rolUsuario === 'director_centro' || rolUsuario === 'director';
-  const puedeCancelar = esUsuarioCentro && !esSoloAuditoria;
+  // Farmacia puede verificar stock (no solo auditar)
+  const puedeVerificarStock = esUsuarioFarmacia || rolUsuario === 'admin_farmacia' || user?.is_superuser;
+  const puedeCancelar = esUsuarioCentro && !esUsuarioFarmacia;
 
   // Estados principales
   const [compras, setCompras] = useState([]);
@@ -164,6 +184,7 @@ const ComprasCajaChica = () => {
   const [autorizarModal, setAutorizarModal] = useState({ show: false, compra: null, observaciones: '' });
   const [registrarCompraModal, setRegistrarCompraModal] = useState({ show: false, compra: null });
   const [recibirModal, setRecibirModal] = useState({ show: false, compra: null, detalles: [] });
+  const [stockRechazoModal, setStockRechazoModal] = useState({ show: false, compra: null, observaciones: '' });
 
   // Expandir filtros automáticamente para farmacia
   useEffect(() => {
@@ -433,6 +454,46 @@ const ComprasCajaChica = () => {
 
   // ========== FLUJO MULTINIVEL: ACCIONES ==========
   
+  // Enviar a Farmacia para verificación de stock (Médico/Centro)
+  const handleEnviarFarmacia = async (compra) => {
+    try {
+      await comprasCajaChicaAPI.enviarFarmacia(compra.id);
+      toast.success('Solicitud enviada a Farmacia para verificación de stock');
+      fetchCompras();
+      fetchResumen();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al enviar a farmacia');
+    }
+  };
+
+  // Confirmar que no hay stock (Farmacia)
+  const handleConfirmarSinStock = async (compra, observaciones = '') => {
+    try {
+      await comprasCajaChicaAPI.confirmarSinStock(compra.id, { observaciones });
+      toast.success('Stock verificado - No disponible. Solicitud enviada a administrador');
+      fetchCompras();
+      fetchResumen();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al confirmar sin stock');
+    }
+  };
+
+  // Rechazar porque sí hay stock (Farmacia)
+  const handleRechazarTieneStock = async (compra, observaciones = '') => {
+    if (!observaciones) {
+      toast.error('Debe indicar el producto disponible en farmacia');
+      return;
+    }
+    try {
+      await comprasCajaChicaAPI.rechazarTieneStock(compra.id, { observaciones });
+      toast.success('Solicitud rechazada - Producto disponible en farmacia');
+      fetchCompras();
+      fetchResumen();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al rechazar');
+    }
+  };
+
   // Enviar a Admin (Médico)
   const handleEnviarAdmin = async (compra) => {
     try {
@@ -569,22 +630,23 @@ const ComprasCajaChica = () => {
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
       <PageHeader 
         title="Compras de Caja Chica" 
-        subtitle={esSoloAuditoria 
-          ? "Auditoría de compras del centro (solo lectura)"
+        subtitle={puedeVerificarStock && !esUsuarioCentro
+          ? "Verificación de stock para compras del centro"
           : "Gestión de compras con recursos propios del centro"
         }
         icon={FaMoneyBillWave}
       />
 
-      {/* Banner informativo para auditoría */}
-      {esSoloAuditoria && (
-        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3">
-          <FaInfoCircle className="text-blue-600 text-xl flex-shrink-0 mt-0.5" />
+      {/* Banner informativo para farmacia */}
+      {puedeVerificarStock && !esUsuarioCentro && (
+        <div className="mb-6 p-4 bg-purple-50 border border-purple-200 rounded-lg flex items-start gap-3">
+          <FaInfoCircle className="text-purple-600 text-xl flex-shrink-0 mt-0.5" />
           <div>
-            <h3 className="font-semibold text-blue-800">Modo Auditoría</h3>
-            <p className="text-blue-700 text-sm">
-              Como usuario de farmacia, puede visualizar todas las compras de caja chica 
-              de los centros para prevenir malas prácticas, pero no puede modificarlas.
+            <h3 className="font-semibold text-purple-800">Verificación de Stock</h3>
+            <p className="text-purple-700 text-sm">
+              Como usuario de farmacia, debe verificar la disponibilidad de productos antes 
+              de que el centro pueda proceder con compras de caja chica. Si hay stock disponible, 
+              rechace la solicitud para que el centro haga una requisición normal.
             </p>
           </div>
         </div>
@@ -833,8 +895,41 @@ const ComprasCajaChica = () => {
                             </button>
                           )}
                           
-                          {/* FLUJO MULTINIVEL: Enviar a Admin (Médico) */}
+                          {/* FLUJO FARMACIA: Enviar a Farmacia para verificar stock (Médico/Centro) */}
                           {esMedico && compra.estado === 'pendiente' && compra.detalles?.length > 0 && (
+                            <button
+                              onClick={() => handleEnviarFarmacia(compra)}
+                              className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg"
+                              title="Enviar a Farmacia (verificar stock)"
+                            >
+                              <FaSearch />
+                            </button>
+                          )}
+                          
+                          {/* FLUJO FARMACIA: Confirmar que no hay stock (Farmacia) */}
+                          {puedeVerificarStock && compra.estado === 'enviada_farmacia' && (
+                            <button
+                              onClick={() => handleConfirmarSinStock(compra, 'Verificado - No hay stock disponible')}
+                              className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                              title="Confirmar: No hay stock disponible"
+                            >
+                              <FaCheckCircle />
+                            </button>
+                          )}
+                          
+                          {/* FLUJO FARMACIA: Rechazar porque sí hay stock (Farmacia) */}
+                          {puedeVerificarStock && compra.estado === 'enviada_farmacia' && (
+                            <button
+                              onClick={() => setStockRechazoModal({ show: true, compra, observaciones: '' })}
+                              className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg"
+                              title="Rechazar: Hay stock disponible"
+                            >
+                              <FaWarehouse />
+                            </button>
+                          )}
+                          
+                          {/* FLUJO MULTINIVEL: Enviar a Admin (tras confirmación de Farmacia) */}
+                          {esMedico && compra.estado === 'sin_stock_farmacia' && (
                             <button
                               onClick={() => handleEnviarAdmin(compra)}
                               className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
@@ -1303,6 +1398,67 @@ const ComprasCajaChica = () => {
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
                 Cancelar Compra
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de rechazo por stock disponible (Farmacia) */}
+      {stockRechazoModal.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="px-6 py-4 border-b">
+              <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                <FaWarehouse className="text-orange-600" />
+                Producto Disponible en Farmacia
+              </h2>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                <p className="text-orange-800">
+                  Al confirmar, se notificará al centro que el producto está disponible en farmacia 
+                  y deberá realizar una requisición regular en lugar de compra de caja chica.
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600 mb-2">
+                  <strong>Solicitud:</strong> {stockRechazoModal.compra?.folio}
+                </p>
+                <p className="text-sm text-gray-600 mb-4">
+                  <strong>Producto solicitado:</strong> {stockRechazoModal.compra?.detalles?.[0]?.producto_nombre || 'Ver detalles'}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Información del producto disponible *
+                </label>
+                <textarea
+                  value={stockRechazoModal.observaciones}
+                  onChange={(e) => setStockRechazoModal(prev => ({ ...prev, observaciones: e.target.value }))}
+                  rows={3}
+                  required
+                  placeholder="Indique el producto disponible, cantidad, lote, ubicación, etc."
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t flex justify-end gap-3">
+              <button
+                onClick={() => setStockRechazoModal({ show: false, compra: null, observaciones: '' })}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
+                  await handleRechazarTieneStock(stockRechazoModal.compra, stockRechazoModal.observaciones);
+                  setStockRechazoModal({ show: false, compra: null, observaciones: '' });
+                }}
+                disabled={!stockRechazoModal.observaciones}
+                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
+              >
+                Confirmar Stock Disponible
               </button>
             </div>
           </div>

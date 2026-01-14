@@ -6684,21 +6684,23 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
     """
     ViewSet para gestión de Compras de Caja Chica.
     
-    FLUJO MULTINIVEL (similar a Requisiciones):
-    1. Médico crea solicitud con productos (pendiente)
-    2. Médico envía a Admin (enviada_admin)
-    3. Admin revisa y autoriza (autorizada_admin)
-    4. Admin envía a Director (enviada_director)
-    5. Director autoriza (autorizada) - Lista para comprar
-    6. Se realiza la compra (comprada)
-    7. Se reciben productos (recibida)
+    FLUJO CON VERIFICACIÓN DE FARMACIA:
+    1. Centro crea solicitud con productos (pendiente)
+    2. Centro envía a Farmacia para verificar stock (enviada_farmacia)
+    3. Farmacia confirma NO disponibilidad (sin_stock_farmacia) o rechaza (rechazada_farmacia)
+    4. Centro envía a Admin (enviada_admin)
+    5. Admin revisa y autoriza (autorizada_admin)
+    6. Admin envía a Director (enviada_director)
+    7. Director autoriza (autorizada) - Lista para comprar
+    8. Se realiza la compra (comprada)
+    9. Se reciben productos (recibida)
     
     PERMISOS:
-    - Médico: Crear, editar (pendiente), enviar a admin
+    - Centro: Crear, editar, enviar a farmacia
+    - Farmacia: Verificar disponibilidad, confirmar o rechazar
     - Admin Centro: Autorizar, enviar a director
     - Director Centro: Autorización final
     - Cualquier rol centro: Registrar compra y recepción
-    - Farmacia: Solo lectura (auditoría)
     """
     queryset = CompraCajaChica.objects.all()
     serializer_class = CompraCajaChicaSerializer
@@ -6713,13 +6715,13 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
         """Filtra compras según centro y rol del usuario"""
         queryset = super().get_queryset().select_related(
             'centro', 'solicitante', 'autorizado_por', 'recibido_por', 'requisicion_origen',
-            'administrador_centro', 'director_centro', 'rechazado_por'
+            'administrador_centro', 'director_centro', 'rechazado_por', 'verificado_por_farmacia'
         ).prefetch_related('detalles')
         user = self.request.user
         
         # SEGURIDAD: Filtrar por centro del usuario
-        if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']:
-            # Admin y farmacia pueden ver todo (para auditoría)
+        if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia', 'admin_farmacia']:
+            # Admin y farmacia pueden ver todo (para auditoría/verificación)
             pass
         elif user.centro:
             # Usuario de centro: SOLO ve compras de su centro
@@ -6731,7 +6733,7 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
         # Filtros opcionales
         centro_id = self.request.query_params.get('centro')
         if centro_id:
-            if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']:
+            if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia', 'admin_farmacia']:
                 queryset = queryset.filter(centro_id=centro_id)
         
         estado = self.request.query_params.get('estado')
@@ -6753,16 +6755,16 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
             return CompraCajaChicaListSerializer
         return CompraCajaChicaSerializer
     
-    # ========== FLUJO MULTINIVEL: ACCIONES ==========
+    # ========== FLUJO FARMACIA: VERIFICACIÓN DE DISPONIBILIDAD ==========
     
-    @action(detail=True, methods=['post'], url_path='enviar-admin')
-    def enviar_admin(self, request, pk=None):
-        """Médico envía solicitud al Administrador del Centro"""
+    @action(detail=True, methods=['post'], url_path='enviar-farmacia')
+    def enviar_farmacia(self, request, pk=None):
+        """Centro envía solicitud a Farmacia para verificar disponibilidad"""
         compra = self.get_object()
         
         if compra.estado != 'pendiente':
             return Response(
-                {'error': 'Solo se pueden enviar compras pendientes'},
+                {'error': 'Solo se pueden enviar compras pendientes a farmacia'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -6770,6 +6772,120 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
         if compra.detalles.count() == 0:
             return Response(
                 {'error': 'Debe agregar al menos un producto antes de enviar'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        compra.estado = 'enviada_farmacia'
+        compra.fecha_envio_farmacia = timezone.now()
+        compra.save()
+        
+        # Registrar en historial
+        HistorialCompraCajaChica.objects.create(
+            compra=compra,
+            estado_anterior='pendiente',
+            estado_nuevo='enviada_farmacia',
+            usuario=request.user,
+            accion='enviar_farmacia',
+            observaciones='Enviada a Farmacia para verificar disponibilidad de productos',
+            ip_address=request.META.get('REMOTE_ADDR', '')
+        )
+        
+        return Response(CompraCajaChicaSerializer(compra, context={'request': request}).data)
+    
+    @action(detail=True, methods=['post'], url_path='confirmar-sin-stock')
+    def confirmar_sin_stock(self, request, pk=None):
+        """Farmacia confirma que NO tiene stock - libera la compra para el centro"""
+        compra = self.get_object()
+        
+        if compra.estado != 'enviada_farmacia':
+            return Response(
+                {'error': 'Esta compra no está pendiente de verificación por farmacia'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar rol de farmacia
+        if not (request.user.is_superuser or request.user.rol in ['farmacia', 'admin_farmacia', 'admin', 'admin_sistema']):
+            return Response(
+                {'error': 'Solo usuarios de farmacia pueden verificar disponibilidad'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Obtener stock verificado si se proporciona
+        stock_verificado = request.data.get('stock_verificado', 0)
+        respuesta = request.data.get('respuesta', 'Verificado: No hay stock disponible en farmacia central')
+        
+        compra.estado = 'sin_stock_farmacia'
+        compra.fecha_respuesta_farmacia = timezone.now()
+        compra.verificado_por_farmacia = request.user
+        compra.respuesta_farmacia = respuesta
+        compra.stock_farmacia_verificado = stock_verificado
+        compra.save()
+        
+        HistorialCompraCajaChica.objects.create(
+            compra=compra,
+            estado_anterior='enviada_farmacia',
+            estado_nuevo='sin_stock_farmacia',
+            usuario=request.user,
+            accion='confirmar_sin_stock',
+            observaciones=f'{respuesta}. Stock verificado: {stock_verificado}',
+            ip_address=request.META.get('REMOTE_ADDR', '')
+        )
+        
+        return Response(CompraCajaChicaSerializer(compra, context={'request': request}).data)
+    
+    @action(detail=True, methods=['post'], url_path='rechazar-tiene-stock')
+    def rechazar_tiene_stock(self, request, pk=None):
+        """Farmacia rechaza indicando que SÍ tiene stock disponible"""
+        compra = self.get_object()
+        
+        if compra.estado != 'enviada_farmacia':
+            return Response(
+                {'error': 'Esta compra no está pendiente de verificación por farmacia'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar rol de farmacia
+        if not (request.user.is_superuser or request.user.rol in ['farmacia', 'admin_farmacia', 'admin', 'admin_sistema']):
+            return Response(
+                {'error': 'Solo usuarios de farmacia pueden verificar disponibilidad'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        stock_disponible = request.data.get('stock_disponible', 0)
+        respuesta = request.data.get('respuesta', '')
+        
+        if not respuesta:
+            respuesta = f'Hay stock disponible en farmacia central ({stock_disponible} unidades). Se recomienda hacer requisición normal.'
+        
+        compra.estado = 'rechazada_farmacia'
+        compra.fecha_respuesta_farmacia = timezone.now()
+        compra.verificado_por_farmacia = request.user
+        compra.respuesta_farmacia = respuesta
+        compra.stock_farmacia_verificado = stock_disponible
+        compra.save()
+        
+        HistorialCompraCajaChica.objects.create(
+            compra=compra,
+            estado_anterior='enviada_farmacia',
+            estado_nuevo='rechazada_farmacia',
+            usuario=request.user,
+            accion='rechazar_tiene_stock',
+            observaciones=respuesta,
+            ip_address=request.META.get('REMOTE_ADDR', '')
+        )
+        
+        return Response(CompraCajaChicaSerializer(compra, context={'request': request}).data)
+    
+    # ========== FLUJO MULTINIVEL: ACCIONES ==========
+    
+    @action(detail=True, methods=['post'], url_path='enviar-admin')
+    def enviar_admin(self, request, pk=None):
+        """Centro envía solicitud al Administrador después de confirmación de farmacia"""
+        compra = self.get_object()
+        
+        if compra.estado != 'sin_stock_farmacia':
+            return Response(
+                {'error': 'La compra debe ser confirmada por farmacia (sin stock) antes de enviar a admin'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -6931,8 +7047,10 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
         
         estado_anterior = compra.estado
         
-        if compra.estado == 'enviada_admin':
+        if compra.estado == 'enviada_farmacia':
             compra.estado = 'pendiente'
+        elif compra.estado == 'enviada_admin':
+            compra.estado = 'sin_stock_farmacia'
         elif compra.estado == 'enviada_director':
             compra.estado = 'autorizada_admin'
         else:

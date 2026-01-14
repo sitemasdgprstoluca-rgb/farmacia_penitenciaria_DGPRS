@@ -2939,18 +2939,23 @@ class CompraCajaChicaSerializer(serializers.ModelSerializer):
     """
     Serializer principal para compras de caja chica.
     
-    FLUJO MULTINIVEL:
-    - Médico crea solicitud con detalles
-    - Admin autoriza
-    - Director autoriza
-    - Centro realiza compra
-    - Centro recibe productos
+    FLUJO CON VERIFICACIÓN DE FARMACIA:
+    1. Centro crea solicitud con detalles
+    2. Centro envía a Farmacia para verificar disponibilidad
+    3. Farmacia confirma que NO tiene stock (o rechaza si tiene)
+    4. Centro envía a Admin para autorización
+    5. Admin autoriza y envía a Director
+    6. Director autoriza
+    7. Centro realiza compra
+    8. Centro recibe productos
     """
     centro_nombre = serializers.SerializerMethodField()
     solicitante_nombre = serializers.SerializerMethodField()
     autorizado_por_nombre = serializers.SerializerMethodField()
     recibido_por_nombre = serializers.SerializerMethodField()
-    # Nuevos campos para flujo multinivel
+    # Campos para flujo farmacia
+    verificado_por_farmacia_nombre = serializers.SerializerMethodField()
+    # Campos para flujo multinivel
     administrador_centro_nombre = serializers.SerializerMethodField()
     director_centro_nombre = serializers.SerializerMethodField()
     rechazado_por_nombre = serializers.SerializerMethodField()
@@ -2969,6 +2974,10 @@ class CompraCajaChicaSerializer(serializers.ModelSerializer):
             'requisicion_origen', 'requisicion_origen_numero',
             'proveedor_nombre', 'proveedor_rfc', 'proveedor_direccion', 'proveedor_telefono', 'proveedor_contacto',
             'fecha_solicitud', 'fecha_compra', 'fecha_recepcion',
+            # Flujo farmacia: fechas y datos
+            'fecha_envio_farmacia', 'fecha_respuesta_farmacia',
+            'verificado_por_farmacia', 'verificado_por_farmacia_nombre',
+            'respuesta_farmacia', 'stock_farmacia_verificado',
             # Flujo multinivel: fechas
             'fecha_envio_admin', 'fecha_autorizacion_admin',
             'fecha_envio_director', 'fecha_autorizacion_director',
@@ -2995,6 +3004,11 @@ class CompraCajaChicaSerializer(serializers.ModelSerializer):
     def get_solicitante_nombre(self, obj):
         if obj.solicitante:
             return f"{obj.solicitante.first_name} {obj.solicitante.last_name}".strip() or obj.solicitante.username
+        return None
+    
+    def get_verificado_por_farmacia_nombre(self, obj):
+        if hasattr(obj, 'verificado_por_farmacia') and obj.verificado_por_farmacia:
+            return f"{obj.verificado_por_farmacia.first_name} {obj.verificado_por_farmacia.last_name}".strip() or obj.verificado_por_farmacia.username
         return None
     
     def get_administrador_centro_nombre(self, obj):
@@ -3032,7 +3046,7 @@ class CompraCajaChicaSerializer(serializers.ModelSerializer):
         return obj.requisicion_origen.numero if obj.requisicion_origen else None
     
     def get_acciones_disponibles(self, obj):
-        """Retorna las acciones disponibles según estado actual"""
+        """Retorna las acciones disponibles según estado actual y rol del usuario"""
         request = self.context.get('request')
         if not request or not request.user:
             return []
@@ -3043,8 +3057,19 @@ class CompraCajaChicaSerializer(serializers.ModelSerializer):
         
         # Determinar acciones según rol y estado
         if obj.estado == 'pendiente':
+            if rol in ['medico', 'centro', 'administrador_centro', 'director_centro']:
+                acciones.extend(['editar', 'enviar_farmacia', 'cancelar'])
+        elif obj.estado == 'enviada_farmacia':
+            if rol in ['farmacia', 'admin_farmacia', 'superuser'] or user.is_superuser:
+                acciones.extend(['confirmar_sin_stock', 'rechazar_tiene_stock'])
             if rol in ['medico', 'centro']:
-                acciones.extend(['editar', 'enviar_admin', 'cancelar'])
+                acciones.append('cancelar')
+        elif obj.estado == 'sin_stock_farmacia':
+            if rol in ['medico', 'centro', 'administrador_centro']:
+                acciones.extend(['enviar_admin', 'cancelar'])
+        elif obj.estado == 'rechazada_farmacia':
+            if rol in ['medico', 'centro']:
+                acciones.extend(['editar', 'cancelar'])
         elif obj.estado == 'enviada_admin':
             if rol in ['administrador_centro', 'admin']:
                 acciones.extend(['autorizar_admin', 'rechazar', 'devolver'])

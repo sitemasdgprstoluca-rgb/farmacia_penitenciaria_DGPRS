@@ -3484,23 +3484,30 @@ class CompraCajaChica(models.Model):
     """
     Compras realizadas por el centro penitenciario con recursos de caja chica.
     
-    FLUJO MULTINIVEL (similar a Requisiciones):
-    1. Médico crea solicitud (pendiente)
-    2. Médico envía a Admin (enviada_admin)
-    3. Admin autoriza (autorizada_admin)
-    4. Admin envía a Director (enviada_director)
-    5. Director autoriza (autorizada) - Lista para comprar
-    6. Se realiza la compra (comprada)
-    7. Se reciben productos (recibida)
+    FLUJO MULTINIVEL CON VERIFICACIÓN DE FARMACIA:
+    1. Centro crea solicitud (pendiente)
+    2. Centro envía a Farmacia para verificación (enviada_farmacia)
+    3. Farmacia confirma NO disponibilidad (sin_stock_farmacia)
+    4. Centro envía a Admin (enviada_admin)
+    5. Admin autoriza (autorizada_admin)
+    6. Admin envía a Director (enviada_director)
+    7. Director autoriza (autorizada) - Lista para comprar
+    8. Se realiza la compra (comprada)
+    9. Se reciben productos (recibida)
+    
+    Si Farmacia tiene stock: rechaza indicando disponibilidad (rechazada_farmacia)
     
     PERMISOS:
-    - Médico: Crea y envía solicitudes
+    - Médico/Centro: Crea y envía solicitudes
+    - Farmacia: Verifica disponibilidad
     - Admin: Autoriza y envía a Director
     - Director: Autorización final
-    - Farmacia: Solo lectura (auditoría)
     """
     ESTADOS = [
         ('pendiente', 'Pendiente'),
+        ('enviada_farmacia', 'Enviada a Farmacia'),
+        ('sin_stock_farmacia', 'Sin Stock en Farmacia'),
+        ('rechazada_farmacia', 'Hay Stock en Farmacia'),
         ('enviada_admin', 'Enviada a Admin'),
         ('autorizada_admin', 'Autorizada por Admin'),
         ('enviada_director', 'Enviada a Director'),
@@ -3513,8 +3520,11 @@ class CompraCajaChica(models.Model):
     
     # Transiciones válidas de estado
     TRANSICIONES_VALIDAS = {
-        'pendiente': ['enviada_admin', 'cancelada'],
-        'enviada_admin': ['autorizada_admin', 'rechazada', 'pendiente'],  # Admin puede devolver
+        'pendiente': ['enviada_farmacia', 'cancelada'],
+        'enviada_farmacia': ['sin_stock_farmacia', 'rechazada_farmacia', 'pendiente'],  # Farmacia verifica
+        'sin_stock_farmacia': ['enviada_admin', 'cancelada'],  # Centro procede con compra
+        'rechazada_farmacia': ['pendiente', 'cancelada'],  # Farmacia tiene stock, no procede compra
+        'enviada_admin': ['autorizada_admin', 'rechazada', 'sin_stock_farmacia'],  # Admin puede devolver
         'autorizada_admin': ['enviada_director', 'cancelada'],
         'enviada_director': ['autorizada', 'rechazada', 'autorizada_admin'],  # Director puede devolver
         'autorizada': ['comprada', 'cancelada'],
@@ -3554,6 +3564,10 @@ class CompraCajaChica(models.Model):
     fecha_solicitud = models.DateTimeField(auto_now_add=True)
     fecha_compra = models.DateField(blank=True, null=True)
     fecha_recepcion = models.DateTimeField(blank=True, null=True)
+    
+    # ========== FLUJO FARMACIA: VERIFICACIÓN DE DISPONIBILIDAD ==========
+    fecha_envio_farmacia = models.DateTimeField(blank=True, null=True)
+    fecha_respuesta_farmacia = models.DateTimeField(blank=True, null=True)
     
     # ========== FLUJO MULTINIVEL: FECHAS DE TRAZABILIDAD ==========
     fecha_envio_admin = models.DateTimeField(blank=True, null=True)
@@ -3628,6 +3642,18 @@ class CompraCajaChica(models.Model):
         related_name='compras_caja_rechazadas',
         db_column='rechazado_por_id'
     )
+    
+    # ========== FLUJO FARMACIA: VERIFICADOR ==========
+    verificado_por_farmacia = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='compras_caja_verificadas',
+        db_column='verificado_por_farmacia_id'
+    )
+    respuesta_farmacia = models.TextField(blank=True, null=True, help_text="Respuesta de farmacia sobre disponibilidad")
+    stock_farmacia_verificado = models.IntegerField(blank=True, null=True, help_text="Stock encontrado en farmacia al momento de verificar")
     
     # Observaciones y motivos
     observaciones = models.TextField(blank=True, null=True)

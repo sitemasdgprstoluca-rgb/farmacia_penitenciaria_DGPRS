@@ -1636,7 +1636,16 @@ export const comprasCajaChicaAPI = {
   delete: (id) => apiClient.delete(`/compras-caja-chica/${id}/`),
   
   // ========== FLUJO MULTINIVEL ==========
-  // Médico -> Admin -> Director -> Compra -> Recepción
+  // Médico -> Farmacia -> Admin -> Director -> Compra -> Recepción
+  
+  // Enviar a Farmacia para verificar stock (Centro/Médico)
+  enviarFarmacia: (id) => apiClient.post(`/compras-caja-chica/${id}/enviar-farmacia/`),
+  
+  // Confirmar que no hay stock (Farmacia)
+  confirmarSinStock: (id, data) => apiClient.post(`/compras-caja-chica/${id}/confirmar-sin-stock/`, data),
+  
+  // Rechazar porque sí hay stock (Farmacia)
+  rechazarTieneStock: (id, data) => apiClient.post(`/compras-caja-chica/${id}/rechazar-tiene-stock/`, data),
   
   // Enviar a Admin (Médico)
   enviarAdmin: (id) => apiClient.post(`/compras-caja-chica/${id}/enviar-admin/`),

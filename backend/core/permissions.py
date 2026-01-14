@@ -644,16 +644,19 @@ class CanManageComprasCajaChica(permissions.BasePermission):
     con recursos propios cuando farmacia no tiene disponibilidad.
     
     CENTRO puede: crear, editar, autorizar, recibir
-    FARMACIA puede: VER todo (auditoría) pero NO modificar
+    FARMACIA puede: VER todo (auditoría) + VERIFICAR STOCK (confirmar/rechazar)
     
     Operaciones de escritura (POST, PUT, PATCH, DELETE):
     - admin: Permitido
-    - farmacia: DENEGADO (solo auditoría para prevenir malas prácticas)
-    - centro, administrador_centro, director_centro: Permitido
+    - farmacia: Permitido SOLO para acciones de verificación de stock
+    - centro, administrador_centro, director_centro, medico: Permitido
     
     Operaciones de lectura (GET):
     - Todos los roles pueden leer (farmacia para auditoría obligatoria)
     """
+    # Acciones que farmacia puede ejecutar
+    ACCIONES_FARMACIA = ['confirmar_sin_stock', 'rechazar_tiene_stock']
+    
     def has_permission(self, request, view):
         user = request.user
         
@@ -672,9 +675,13 @@ class CanManageComprasCajaChica(permissions.BasePermission):
                 'administrador_centro', 'director_centro', 'medico'
             ])
         
-        # Para operaciones de escritura, SOLO roles de centro (NO farmacia)
+        # Para acciones de verificación de stock, permitir a farmacia
+        if hasattr(view, 'action') and view.action in self.ACCIONES_FARMACIA:
+            return _has_role(user, ['admin', 'farmacia', 'admin_farmacia'])
+        
+        # Para operaciones de escritura, roles de centro
         return _has_role(user, [
-            'admin', 'centro', 'administrador_centro', 'director_centro'
+            'admin', 'centro', 'administrador_centro', 'director_centro', 'medico'
         ])
     
     def has_object_permission(self, request, view, obj):
@@ -690,12 +697,16 @@ class CanManageComprasCajaChica(permissions.BasePermission):
         
         # Para operaciones de lectura, permitir a farmacia y usuarios del centro
         if request.method in permissions.SAFE_METHODS:
-            if _has_role(user, ['farmacia']):
+            if _has_role(user, ['farmacia', 'admin_farmacia']):
                 return True
             # Usuarios de centro solo ven compras de su propio centro
             if user.centro and hasattr(obj, 'centro'):
                 return obj.centro == user.centro
             return False
+        
+        # Para acciones de verificación de stock, permitir a farmacia
+        if hasattr(view, 'action') and view.action in self.ACCIONES_FARMACIA:
+            return _has_role(user, ['farmacia', 'admin_farmacia'])
         
         # Para escritura, solo usuarios del mismo centro pueden modificar
         if user.centro and hasattr(obj, 'centro'):
