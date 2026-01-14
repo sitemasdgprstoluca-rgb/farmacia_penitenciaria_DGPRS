@@ -7603,6 +7603,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             requisicion = self.get_object()
             estado_actual = (requisicion.estado or '').lower()
             
+            logger.info(f"exportar_recibo_salida: Requisición {requisicion.pk}, estado={estado_actual}")
+            
             # Validar estado - solo requisiciones que ya fueron surtidas
             estados_validos = ['surtida', 'parcial', 'entregada', 'recibida']
             if estado_actual not in estados_validos:
@@ -7684,8 +7686,15 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                     'error': 'No hay items surtidos para generar el recibo'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Generar PDF
-            pdf_buffer = generar_recibo_salida_requisicion(requisicion_data, detalles_data)
+            # Generar PDF con manejo de errores específico
+            try:
+                pdf_buffer = generar_recibo_salida_requisicion(requisicion_data, detalles_data)
+            except Exception as pdf_error:
+                logger.exception(f'Error específico al generar PDF: {pdf_error}')
+                return Response({
+                    'error': 'Error al generar el PDF',
+                    'detalle': str(pdf_error)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             response = HttpResponse(
                 pdf_buffer.getvalue(),
