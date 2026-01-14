@@ -1337,14 +1337,18 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
     
     def get_stock_centro(self, obj):
         """
-        Calcula el stock del producto/lote en el centro destino de la requisición.
-        """
-        # Obtener el centro destino de la requisición
-        centro_destino = None
-        if hasattr(obj, 'requisicion') and obj.requisicion:
-            centro_destino = obj.requisicion.centro_destino
+        Calcula el stock del producto/lote en el centro ORIGEN de la requisición.
+        Esto permite a Farmacia ver cuánto tiene el centro que hace la solicitud.
         
-        if not centro_destino or not obj.producto:
+        CORREGIDO: Antes usaba centro_destino (que es NULL cuando centro pide a farmacia).
+        Ahora usa centro_origen (el centro que hace la requisición).
+        """
+        # Obtener el centro origen de la requisición (el centro que hace el pedido)
+        centro_origen = None
+        if hasattr(obj, 'requisicion') and obj.requisicion:
+            centro_origen = obj.requisicion.centro_origen
+        
+        if not centro_origen or not obj.producto:
             return 0
         
         from django.db.models import Sum
@@ -1353,16 +1357,16 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
         if obj.lote:
             lote_centro = obj.producto.lotes.filter(
                 numero_lote=obj.lote.numero_lote,
-                centro=centro_destino,
+                centro=centro_origen,
                 activo=True
             ).first()
             return lote_centro.cantidad_actual if lote_centro else 0
         
-        # Si no hay lote, calcular stock total del producto en el centro
+        # Si no hay lote, calcular stock total del producto en el centro origen
         stock_total = obj.producto.lotes.filter(
             activo=True,
             cantidad_actual__gt=0,
-            centro=centro_destino
+            centro=centro_origen
         ).aggregate(total=Sum('cantidad_actual'))['total']
         return stock_total or 0
     
