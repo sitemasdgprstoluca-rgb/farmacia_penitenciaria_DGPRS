@@ -340,15 +340,19 @@ const ComprasCajaChica = () => {
     
     try {
       const dataToSend = {
-        ...formData,
-        total: calcularTotal(),
-        detalles: formData.detalles.map(d => ({
+        centro: formData.centro || undefined,
+        motivo_compra: formData.motivo_compra,
+        proveedor_nombre: formData.proveedor_nombre || undefined,
+        observaciones: formData.observaciones,
+        requisicion_origen: formData.requisicion_origen || undefined,
+        // El backend espera 'detalles_write' para crear detalles anidados
+        detalles_write: formData.detalles.map(d => ({
           producto: d.producto || null,
           descripcion_producto: d.descripcion_producto,
-          cantidad_solicitada: parseInt(d.cantidad_solicitada),
+          cantidad: parseInt(d.cantidad_solicitada) || 1,
+          unidad: d.presentacion || 'PIEZA',
           precio_unitario: parseFloat(d.precio_unitario) || 0,
-          presentacion: d.presentacion,
-          numero_lote: d.numero_lote,
+          numero_lote: d.numero_lote || '',
           fecha_caducidad: d.fecha_caducidad || null,
         })),
       };

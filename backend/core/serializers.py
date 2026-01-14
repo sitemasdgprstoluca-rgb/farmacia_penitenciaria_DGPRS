@@ -2924,6 +2924,17 @@ class DetalleCompraCajaChicaSerializer(serializers.ModelSerializer):
         return value
 
 
+class DetalleCompraCajaChicaWriteSerializer(serializers.Serializer):
+    """Serializer para escribir detalles de compra (creación anidada)"""
+    producto = serializers.IntegerField(required=False, allow_null=True)
+    descripcion_producto = serializers.CharField(max_length=500)
+    cantidad = serializers.IntegerField(min_value=1)
+    unidad = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    precio_unitario = serializers.DecimalField(max_digits=12, decimal_places=2)
+    numero_lote = serializers.CharField(max_length=100, required=False, allow_blank=True, allow_null=True)
+    fecha_caducidad = serializers.DateField(required=False, allow_null=True)
+
+
 class CompraCajaChicaSerializer(serializers.ModelSerializer):
     """Serializer principal para compras de caja chica"""
     centro_nombre = serializers.SerializerMethodField()
@@ -2931,6 +2942,7 @@ class CompraCajaChicaSerializer(serializers.ModelSerializer):
     autorizado_por_nombre = serializers.SerializerMethodField()
     recibido_por_nombre = serializers.SerializerMethodField()
     detalles = DetalleCompraCajaChicaSerializer(many=True, read_only=True)
+    detalles_write = DetalleCompraCajaChicaWriteSerializer(many=True, write_only=True, required=False)
     estado_display = serializers.SerializerMethodField()
     total_productos = serializers.SerializerMethodField()
     requisicion_origen_numero = serializers.SerializerMethodField()
@@ -2950,7 +2962,7 @@ class CompraCajaChicaSerializer(serializers.ModelSerializer):
             'recibido_por', 'recibido_por_nombre',
             'observaciones', 'motivo_cancelacion',
             'created_at', 'updated_at',
-            'detalles', 'total_productos'
+            'detalles', 'detalles_write', 'total_productos'
         ]
         read_only_fields = ['id', 'folio', 'subtotal', 'iva', 'total', 'created_at', 'updated_at']
     
@@ -2982,13 +2994,46 @@ class CompraCajaChicaSerializer(serializers.ModelSerializer):
         return obj.requisicion_origen.numero if obj.requisicion_origen else None
     
     def create(self, validated_data):
+        # Extraer detalles antes de crear la compra
+        detalles_data = validated_data.pop('detalles_write', [])
+        
         request = self.context.get('request')
         if request and request.user:
             validated_data['solicitante'] = request.user
             # Asignar centro del usuario si no se especifica
-            if not validated_data.get('centro') and request.user.centro:
+            if not validated_data.get('centro') and hasattr(request.user, 'centro') and request.user.centro:
                 validated_data['centro'] = request.user.centro
-        return super().create(validated_data)
+        
+        # Crear la compra
+        compra = super().create(validated_data)
+        
+        # Crear los detalles
+        from .models import DetalleCompraCajaChica, Producto
+        for detalle_data in detalles_data:
+            producto_id = detalle_data.pop('producto', None)
+            producto = None
+            if producto_id:
+                try:
+                    producto = Producto.objects.get(id=producto_id)
+                except Producto.DoesNotExist:
+                    pass
+            
+            # Mapear campos del frontend a campos del modelo
+            DetalleCompraCajaChica.objects.create(
+                compra=compra,
+                producto=producto,
+                descripcion_producto=detalle_data.get('descripcion_producto', ''),
+                cantidad_solicitada=detalle_data.get('cantidad', 1),
+                unidad_medida=detalle_data.get('unidad') or 'PIEZA',
+                precio_unitario=detalle_data.get('precio_unitario', 0),
+                numero_lote=detalle_data.get('numero_lote') or None,
+                fecha_caducidad=detalle_data.get('fecha_caducidad') or None,
+            )
+        
+        # Recalcular totales
+        compra.calcular_totales()
+        
+        return compra
 
 
 class CompraCajaChicaListSerializer(serializers.ModelSerializer):

@@ -3519,8 +3519,8 @@ class CompraCajaChica(models.Model):
         db_column='requisicion_origen_id'
     )
     
-    # Datos del proveedor
-    proveedor_nombre = models.CharField(max_length=200)
+    # Datos del proveedor (opcional al crear, se llena cuando se realiza la compra)
+    proveedor_nombre = models.CharField(max_length=200, blank=True, null=True)
     proveedor_rfc = models.CharField(max_length=20, blank=True, null=True)
     proveedor_direccion = models.TextField(blank=True, null=True)
     proveedor_telefono = models.CharField(max_length=50, blank=True, null=True)
