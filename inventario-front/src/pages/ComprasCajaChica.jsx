@@ -464,7 +464,7 @@ const ComprasCajaChica = () => {
           ? "Auditoría de compras del centro (solo lectura)"
           : "Gestión de compras con recursos propios del centro"
         }
-        icon={<FaMoneyBillWave className="text-green-600" />}
+        icon={FaMoneyBillWave}
       />
 
       {/* Banner informativo para auditoría */}

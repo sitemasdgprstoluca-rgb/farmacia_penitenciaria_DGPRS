@@ -244,7 +244,7 @@ const InventarioCajaChica = () => {
           ? "Auditoría del inventario del centro (solo lectura)"
           : "Inventario de productos comprados con recursos propios"
         }
-        icon={<FaWarehouse className="text-purple-600" />}
+        icon={FaWarehouse}
       />
 
       {/* Banner informativo para auditoría */}
