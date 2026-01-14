@@ -879,7 +879,9 @@ class RequisicionService:
         # ISS-001 FIX: Validar cada detalle usando datos pre-calculados
         # ISS-FIX-LOTE: Distinguir entre detalles con lote específico y sin lote
         for detalle in detalles:
-            requerido = (detalle.cantidad_autorizada or detalle.cantidad_solicitada) - (detalle.cantidad_surtida or 0)
+            # FIX: Usar None check para respetar cantidad_autorizada=0
+            cant_autorizada = detalle.cantidad_autorizada if detalle.cantidad_autorizada is not None else detalle.cantidad_solicitada
+            requerido = cant_autorizada - (detalle.cantidad_surtida or 0)
             if requerido <= 0:
                 continue
             
@@ -1273,12 +1275,13 @@ class RequisicionService:
         
         # 4. Procesar cada detalle
         for detalle in detalles_bloqueados:
-            pendiente = (detalle.cantidad_autorizada or detalle.cantidad_solicitada) - (detalle.cantidad_surtida or 0)
+            # FIX: Usar None check para respetar cantidad_autorizada=0
+            cantidad_autorizada = detalle.cantidad_autorizada if detalle.cantidad_autorizada is not None else detalle.cantidad_solicitada
+            pendiente = cantidad_autorizada - (detalle.cantidad_surtida or 0)
             if pendiente <= 0:
                 continue
             
             # ISS-005 FIX: Validar que cantidad a surtir no exceda la autorizada
-            cantidad_autorizada = detalle.cantidad_autorizada or detalle.cantidad_solicitada
             if (detalle.cantidad_surtida or 0) >= cantidad_autorizada:
                 logger.warning(
                     f"Detalle {detalle.pk} ya surtido completamente: "
@@ -1975,8 +1978,9 @@ class RequisicionService:
         # Si todo fue surtido completamente → entregada
         # Si fue parcial y no hay más por surtir → entregada
         detalles = requisicion.detalles.all()
+        # FIX: Usar None check para respetar cantidad_autorizada=0
         todo_surtido = all(
-            (d.cantidad_autorizada or d.cantidad_solicitada) <= (d.cantidad_surtida or 0)
+            (d.cantidad_autorizada if d.cantidad_autorizada is not None else d.cantidad_solicitada) <= (d.cantidad_surtida or 0)
             for d in detalles
         )
         

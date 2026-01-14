@@ -382,7 +382,9 @@ class RequisicionStateMachine:
             return errores
         
         for detalle in self.requisicion.detalles.select_related('producto'):
-            cantidad_requerida = (detalle.cantidad_autorizada or detalle.cantidad_solicitada) - (detalle.cantidad_surtida or 0)
+            # FIX: Usar None check para respetar cantidad_autorizada=0
+            cant_autorizada = detalle.cantidad_autorizada if detalle.cantidad_autorizada is not None else detalle.cantidad_solicitada
+            cantidad_requerida = cant_autorizada - (detalle.cantidad_surtida or 0)
             if cantidad_requerida <= 0:
                 continue
             
@@ -433,11 +435,10 @@ class RequisicionStateMachine:
         
         # Validar stock y lotes para cada producto
         for detalle in self.requisicion.detalles.select_related('producto'):
-            cantidad_requerida = detalle.cantidad_autorizada or detalle.cantidad_solicitada
+            # FIX: Usar None check para respetar cantidad_autorizada=0
+            cantidad_requerida = detalle.cantidad_autorizada if detalle.cantidad_autorizada is not None else detalle.cantidad_solicitada
             if cantidad_requerida <= 0:
-                errores.append(
-                    f"Cantidad inválida para {detalle.producto.clave}: {cantidad_requerida}"
-                )
+                # cantidad_autorizada=0 es válido (farmacia decidió no entregar)
                 continue
             
             # ISS-001 FIX (audit15): Usar LoteQueryHelper - NO usar estado__in

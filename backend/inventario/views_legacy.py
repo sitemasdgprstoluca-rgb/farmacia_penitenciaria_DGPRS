@@ -4939,7 +4939,9 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             if not producto_id:
                 continue
             try:
-                cantidad = int(item_data.get('cantidad_autorizada') or item_data.get('cantidad_solicitada') or 0)
+                # FIX: Usar None check para respetar cantidad_autorizada=0
+                cant_aut = item_data.get('cantidad_autorizada')
+                cantidad = int(cant_aut if cant_aut is not None else item_data.get('cantidad_solicitada') or 0)
             except (TypeError, ValueError):
                 continue
             
@@ -5843,7 +5845,9 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 continue
             
             # Calcular pendiente
-            pendiente = (det.cantidad_autorizada or det.cantidad_solicitada or 0) - (det.cantidad_surtida or 0)
+            # FIX: Usar None check para respetar cantidad_autorizada=0
+            cant_aut = det.cantidad_autorizada if det.cantidad_autorizada is not None else det.cantidad_solicitada
+            pendiente = (cant_aut or 0) - (det.cantidad_surtida or 0)
             detalle_info['pendiente'] = pendiente
             
             if pendiente <= 0:
