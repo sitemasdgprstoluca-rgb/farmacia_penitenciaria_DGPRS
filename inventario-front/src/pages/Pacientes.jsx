@@ -442,22 +442,25 @@ const Pacientes = () => {
         {/* Panel de filtros */}
         {showFilters && (
           <div className="mt-4 pt-4 border-t grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Centro</label>
-              <select
-                value={centroFiltro}
-                onChange={(e) => {
-                  setCentroFiltro(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
-              >
-                <option value="">Todos los centros</option>
-                {centros.map(centro => (
-                  <option key={centro.id} value={centro.id}>{centro.nombre}</option>
-                ))}
-              </select>
-            </div>
+            {/* Centro - solo visible para Farmacia */}
+            {esUsuarioFarmacia && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Centro</label>
+                <select
+                  value={centroFiltro}
+                  onChange={(e) => {
+                    setCentroFiltro(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                >
+                  <option value="">Todos los centros</option>
+                  {centros.map(centro => (
+                    <option key={centro.id} value={centro.id}>{centro.nombre}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Sexo</label>

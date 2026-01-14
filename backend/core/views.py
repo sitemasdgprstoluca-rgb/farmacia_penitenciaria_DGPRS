@@ -5953,15 +5953,26 @@ class PacienteViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset().select_related('centro', 'created_by')
         user = self.request.user
         
-        # Filtrar por centro del usuario (excepto admin/farmacia)
-        if not user.is_superuser and user.rol not in ['admin', 'admin_sistema', 'farmacia']:
-            if user.centro:
-                queryset = queryset.filter(centro=user.centro)
+        # SEGURIDAD: Filtrar por centro del usuario
+        # - Superusuario y farmacia ven todo
+        # - Centro solo ve lo suyo
+        # - Sin centro = sin datos
+        if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']:
+            # Admin y farmacia pueden ver todo (para auditoría)
+            pass
+        elif user.centro:
+            # Usuario de centro: SOLO ve pacientes de su centro
+            queryset = queryset.filter(centro=user.centro)
+        else:
+            # Sin centro asignado = no ve nada (seguridad)
+            return queryset.none()
         
-        # Filtros opcionales
+        # Filtros opcionales (solo si tiene permiso de ver)
         centro_id = self.request.query_params.get('centro')
         if centro_id:
-            queryset = queryset.filter(centro_id=centro_id)
+            # Si es usuario de centro, ignorar este filtro (ya está filtrado)
+            if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']:
+                queryset = queryset.filter(centro_id=centro_id)
         
         activo = self.request.query_params.get('activo')
         if activo is not None:
@@ -6392,15 +6403,25 @@ class DispensacionViewSet(viewsets.ModelViewSet):
         
         user = self.request.user
         
-        # Filtrar por centro del usuario (excepto admin/farmacia)
-        if not user.is_superuser and user.rol not in ['admin', 'admin_sistema', 'farmacia']:
-            if user.centro:
-                queryset = queryset.filter(centro=user.centro)
+        # SEGURIDAD: Filtrar por centro del usuario
+        # - Superusuario y farmacia ven todo
+        # - Centro solo ve lo suyo
+        # - Sin centro = sin datos
+        if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']:
+            # Admin y farmacia pueden ver todo (para auditoría)
+            pass
+        elif user.centro:
+            # Usuario de centro: SOLO ve dispensaciones de su centro
+            queryset = queryset.filter(centro=user.centro)
+        else:
+            # Sin centro asignado = no ve nada (seguridad)
+            return queryset.none()
         
-        # Filtros opcionales
+        # Filtros opcionales (solo válidos para admin/farmacia)
         centro_id = self.request.query_params.get('centro')
         if centro_id:
-            queryset = queryset.filter(centro_id=centro_id)
+            if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']:
+                queryset = queryset.filter(centro_id=centro_id)
         
         paciente_id = self.request.query_params.get('paciente')
         if paciente_id:
@@ -6693,18 +6714,25 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
         ).prefetch_related('detalles')
         user = self.request.user
         
-        # Farmacia y admin ven todas las compras (para auditoría)
-        if not user.is_superuser and user.rol not in ['admin', 'admin_sistema', 'farmacia']:
-            # Usuarios de centro solo ven compras de su centro
-            if user.centro:
-                queryset = queryset.filter(centro=user.centro)
-            else:
-                queryset = queryset.none()
+        # SEGURIDAD: Filtrar por centro del usuario
+        # - Superusuario y farmacia ven todo (auditoría)
+        # - Centro solo ve lo suyo
+        # - Sin centro = sin datos
+        if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']:
+            # Admin y farmacia pueden ver todo (para auditoría)
+            pass
+        elif user.centro:
+            # Usuario de centro: SOLO ve compras de su centro
+            queryset = queryset.filter(centro=user.centro)
+        else:
+            # Sin centro asignado = no ve nada (seguridad)
+            return queryset.none()
         
-        # Filtros opcionales
+        # Filtros opcionales (solo válidos para admin/farmacia)
         centro_id = self.request.query_params.get('centro')
         if centro_id:
-            queryset = queryset.filter(centro_id=centro_id)
+            if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']:
+                queryset = queryset.filter(centro_id=centro_id)
         
         estado = self.request.query_params.get('estado')
         if estado:
@@ -7011,17 +7039,25 @@ class InventarioCajaChicaViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset().select_related('centro', 'producto', 'compra')
         user = self.request.user
         
-        # Farmacia y admin ven todo (para auditoría)
-        if not user.is_superuser and user.rol not in ['admin', 'admin_sistema', 'farmacia']:
-            if user.centro:
-                queryset = queryset.filter(centro=user.centro)
-            else:
-                queryset = queryset.none()
+        # SEGURIDAD: Filtrar por centro del usuario
+        # - Superusuario y farmacia ven todo (auditoría)
+        # - Centro solo ve lo suyo
+        # - Sin centro = sin datos
+        if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']:
+            # Admin y farmacia pueden ver todo (para auditoría)
+            pass
+        elif user.centro:
+            # Usuario de centro: SOLO ve inventario de su centro
+            queryset = queryset.filter(centro=user.centro)
+        else:
+            # Sin centro asignado = no ve nada (seguridad)
+            return queryset.none()
         
-        # Filtros opcionales
+        # Filtros opcionales (solo válidos para admin/farmacia)
         centro_id = self.request.query_params.get('centro')
         if centro_id:
-            queryset = queryset.filter(centro_id=centro_id)
+            if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']:
+                queryset = queryset.filter(centro_id=centro_id)
         
         activo = self.request.query_params.get('activo')
         if activo is not None:
