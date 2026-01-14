@@ -7596,9 +7596,10 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         Returns:
             PDF con el Recibo de Salida del Almacén
         """
-        from core.utils.pdf_reports import generar_recibo_salida_requisicion
-        
         try:
+            # Mover import dentro del try para capturar errores de import
+            from core.utils.pdf_reports import generar_recibo_salida_requisicion
+            
             requisicion = self.get_object()
             estado_actual = (requisicion.estado or '').lower()
             
@@ -7648,9 +7649,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             # Preparar detalles surtidos
             detalles_data = []
             for detalle in requisicion.detalles.select_related('producto').all():
-                cantidad_surtida = detalle.cantidad_surtida or detalle.cantidad_autorizada or 0
+                # FIX: Solo usar cantidad_surtida real, no fallback a cantidad_autorizada
+                # El recibo de salida debe mostrar lo que REALMENTE se surtió
+                cantidad_surtida = detalle.cantidad_surtida or 0
                 if cantidad_surtida <= 0:
-                    continue  # Solo incluir items surtidos
+                    continue  # Solo incluir items que fueron surtidos
                 
                 # Buscar info del lote surtido si existe
                 lote_info = {'numero': 'N/A', 'fecha_caducidad': 'N/A'}
