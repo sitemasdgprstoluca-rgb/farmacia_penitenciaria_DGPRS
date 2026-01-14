@@ -111,7 +111,7 @@ const ComprasCajaChica = () => {
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
   // Mostrar filtros expandidos por defecto para Farmacia
-  const [showFilters, setShowFilters] = useState(esUsuarioFarmacia);
+  const [showFilters, setShowFilters] = useState(false);
   
   // Listas auxiliares
   const [centros, setCentros] = useState([]);
@@ -149,12 +149,22 @@ const ComprasCajaChica = () => {
   const [registrarCompraModal, setRegistrarCompraModal] = useState({ show: false, compra: null });
   const [recibirModal, setRecibirModal] = useState({ show: false, compra: null, detalles: [] });
 
+  // Expandir filtros automáticamente para farmacia
+  useEffect(() => {
+    if (esUsuarioFarmacia) {
+      setShowFilters(true);
+    }
+  }, [esUsuarioFarmacia]);
+
   // Cargar centros
   useEffect(() => {
     const fetchCentros = async () => {
       try {
+        console.log('Cargando centros para usuario farmacia...');
         const response = await centrosAPI.getAll({ activo: true, page_size: 100 });
-        setCentros(response.data?.results || response.data || []);
+        const data = response.data?.results || response.data || [];
+        console.log('Centros cargados:', data.length);
+        setCentros(data);
       } catch (error) {
         console.error('Error al cargar centros:', error);
       }
@@ -462,7 +472,7 @@ const ComprasCajaChica = () => {
   };
 
   return (
-    <div className="container mx-auto px-4 py-6">
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
       <PageHeader 
         title="Compras de Caja Chica" 
         subtitle={esSoloAuditoria 
@@ -512,11 +522,11 @@ const ComprasCajaChica = () => {
         </div>
       )}
 
-      {/* Barra de acciones */}
-      <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
-        {/* Búsqueda */}
-        <div className="flex-1 min-w-[250px] max-w-md">
-          <div className="relative">
+      {/* Barra de acciones y filtros */}
+      <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+        <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+          {/* Búsqueda */}
+          <div className="relative flex-1 w-full sm:max-w-md">
             <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
@@ -526,101 +536,101 @@ const ComprasCajaChica = () => {
               className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
             />
           </div>
-        </div>
-        
-        {/* Botones */}
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${
-              showFilters ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            <FaFilter />
-            Filtros
-          </button>
           
-          {puedeCrear && (
+          {/* Botones */}
+          <div className="flex gap-2 flex-wrap">
             <button
-              onClick={handleNew}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg flex items-center gap-2 hover:bg-green-700 transition-colors"
+              onClick={() => setShowFilters(!showFilters)}
+              className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${
+                showFilters ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
             >
-              <FaPlus />
-              Nueva Compra
+              <FaFilter />
+              Filtros
             </button>
-          )}
+            
+            {puedeCrear && (
+              <button
+                onClick={handleNew}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg flex items-center gap-2 hover:bg-green-700 transition-colors"
+              >
+                <FaPlus />
+                Nueva Compra
+              </button>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Panel de filtros */}
-      {showFilters && (
-        <div className="bg-gray-50 p-4 rounded-lg mb-6 border">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {/* Centro (solo para farmacia) */}
-            {esUsuarioFarmacia && (
+        {/* Panel de filtros */}
+        {showFilters && (
+          <div className="mt-4 pt-4 border-t">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Centro (solo para farmacia) */}
+              {esUsuarioFarmacia && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Centro</label>
+                  <select
+                    value={centroFiltro}
+                    onChange={(e) => setCentroFiltro(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
+                  >
+                    <option value="">Todos los centros</option>
+                    {centros.map(centro => (
+                      <option key={centro.id} value={centro.id}>{centro.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              
+              {/* Estado */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Centro</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
                 <select
-                  value={centroFiltro}
-                  onChange={(e) => setCentroFiltro(e.target.value)}
+                  value={estadoFiltro}
+                  onChange={(e) => setEstadoFiltro(e.target.value)}
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
                 >
-                  <option value="">Todos los centros</option>
-                  {centros.map(centro => (
-                    <option key={centro.id} value={centro.id}>{centro.nombre}</option>
+                  {ESTADOS_COMPRA.map(estado => (
+                    <option key={estado.value} value={estado.value}>{estado.label}</option>
                   ))}
                 </select>
               </div>
-            )}
+              
+              {/* Fecha desde */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Desde</label>
+                <input
+                  type="date"
+                  value={fechaDesde}
+                  onChange={(e) => setFechaDesde(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
+                />
+              </div>
+              
+              {/* Fecha hasta */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Hasta</label>
+                <input
+                  type="date"
+                  value={fechaHasta}
+                  onChange={(e) => setFechaHasta(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
+                />
+              </div>
+            </div>
             
-            {/* Estado */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
-              <select
-                value={estadoFiltro}
-                onChange={(e) => setEstadoFiltro(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={handleClearFilters}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 flex items-center gap-2"
               >
-                {ESTADOS_COMPRA.map(estado => (
-                  <option key={estado.value} value={estado.value}>{estado.label}</option>
-                ))}
-              </select>
-            </div>
-            
-            {/* Fecha desde */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Desde</label>
-              <input
-                type="date"
-                value={fechaDesde}
-                onChange={(e) => setFechaDesde(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
-              />
-            </div>
-            
-            {/* Fecha hasta */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Hasta</label>
-              <input
-                type="date"
-                value={fechaHasta}
-                onChange={(e) => setFechaHasta(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
-              />
+                <FaTimes />
+                Limpiar filtros
+              </button>
             </div>
           </div>
-          
-          <div className="flex justify-end mt-4">
-            <button
-              onClick={handleClearFilters}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800 flex items-center gap-2"
-            >
-              <FaTimes />
-              Limpiar filtros
-            </button>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Tabla de compras */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
