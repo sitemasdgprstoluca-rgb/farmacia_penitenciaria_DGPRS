@@ -7686,6 +7686,14 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                     'error': 'No hay items surtidos para generar el recibo'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
+            # DEBUG: Si se pasa ?debug=1, devolver JSON en lugar de PDF
+            if request.query_params.get('debug') == '1':
+                return Response({
+                    'requisicion_data': requisicion_data,
+                    'detalles_data': detalles_data,
+                    'count': len(detalles_data)
+                })
+            
             # Generar PDF con manejo de errores específico
             try:
                 pdf_buffer = generar_recibo_salida_requisicion(requisicion_data, detalles_data)
