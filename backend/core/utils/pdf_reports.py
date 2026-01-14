@@ -123,6 +123,22 @@ COLOR_GRIS = colors.HexColor('#6b7280')
 # Usar la imagen original sin degradar para que se vea el colibrí y colores
 FONDO_INSTITUCIONAL_PATH = Path(settings.BASE_DIR) / 'static' / 'img' / 'pdf' / 'fondoOficial.png'
 
+
+def _obtener_fondo_seguro(colores_tema=None):
+    """
+    Obtiene la ruta del fondo de forma segura, retornando None si hay cualquier error.
+    Esto previene errores 500 por falta de imagen de fondo.
+    """
+    try:
+        if colores_tema and colores_tema.get('fondo_reportes_path'):
+            return colores_tema['fondo_reportes_path']
+        if FONDO_INSTITUCIONAL_PATH.exists():
+            return str(FONDO_INSTITUCIONAL_PATH)
+    except Exception as e:
+        logger.warning(f"Error obteniendo ruta de fondo: {e}")
+    return None
+
+
 # En producción, si collectstatic está configurado, la imagen estará en staticfiles
 # Intentar primero en static/, luego en staticfiles/
 def obtener_ruta_fondo():
@@ -2709,10 +2725,8 @@ def generar_recibo_salida_requisicion(requisicion_data, detalles_data):
     styles = _obtener_estilos_institucionales()
     colores_tema = _obtener_colores_tema()
     
-    # Obtener fondo institucional
-    fondo_path = colores_tema.get('fondo_reportes_path')
-    if not fondo_path:
-        fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
+    # Obtener fondo institucional de forma segura
+    fondo_path = _obtener_fondo_seguro(colores_tema)
     
     # ========== TÍTULO ==========
     titulo = Paragraph("<b>RECIBO DE SALIDA DEL ALMACÉN</b>", styles['TituloReporte'])
