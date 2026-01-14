@@ -100,7 +100,8 @@ const RequisicionDetalle = () => {
       const detalles = data.detalles || [];
       setDetallesEditables(detalles.map(d => ({
         ...d,
-        cantidad_autorizada: d.cantidad_autorizada || d.cantidad_solicitada,
+        // FIX: Usar ?? en lugar de || para preservar 0 como valor válido
+        cantidad_autorizada: d.cantidad_autorizada ?? d.cantidad_solicitada,
         motivo_ajuste: d.motivo_ajuste || ''  // MEJORA FLUJO 3: Inicializar motivo_ajuste
       })));
       
@@ -217,7 +218,8 @@ const RequisicionDetalle = () => {
     const detalles = requisicion.detalles || [];
     setDetallesEditables(detalles.map(d => ({
       ...d,
-      cantidad_autorizada: d.cantidad_autorizada || d.cantidad_solicitada,
+      // FIX: Usar ?? en lugar de || para preservar 0 como valor válido
+      cantidad_autorizada: d.cantidad_autorizada ?? d.cantidad_solicitada,
       motivo_ajuste: d.motivo_ajuste || ''  // MEJORA FLUJO 3
     })));
   };
@@ -1354,7 +1356,6 @@ const RequisicionDetalle = () => {
                   <th className="px-2 py-2 text-left text-xs font-semibold uppercase text-white w-24">Presentación</th>
                   <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white w-24">Lote</th>
                   <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white w-20">Unidad</th>
-                  <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white w-14">Solic.</th>
                   {/* ISS-UI-FIX: Mostrar Inventario Almacén y Centro para tomar decisiones */}
                   {(modoAutorizar || esFarmacia) && (
                     <>
@@ -1366,6 +1367,7 @@ const RequisicionDetalle = () => {
                       </th>
                     </>
                   )}
+                  <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white w-14">Solic.</th>
                   <th className={`px-2 py-2 text-center text-xs font-semibold uppercase w-16 ${modoAutorizar ? 'bg-green-600 text-white' : 'text-white'}`}>
                     Autoriz.
                   </th>
@@ -1405,9 +1407,6 @@ const RequisicionDetalle = () => {
                     <td className="px-2 py-2 text-xs text-center text-gray-600">
                       {detalle.producto_unidad || detalle.producto?.unidad_medida || '-'}
                     </td>
-                    <td className="px-2 py-2 text-center font-bold text-gray-800">
-                      {detalle.cantidad_solicitada}
-                    </td>
                     {/* ISS-UI-FIX: Inventario Almacén y Centro visible en modo autorización */}
                     {(modoAutorizar || esFarmacia) && (
                       <>
@@ -1431,6 +1430,9 @@ const RequisicionDetalle = () => {
                         </td>
                       </>
                     )}
+                    <td className="px-2 py-2 text-center font-bold text-gray-800">
+                      {detalle.cantidad_solicitada}
+                    </td>
                     <td className={`px-2 py-2 text-center ${modoAutorizar ? 'bg-green-50' : ''}`}>
                       {modoAutorizar ? (
                         <input
