@@ -367,13 +367,14 @@ const InventarioCajaChica = () => {
               <button
                 onClick={handleClearFilters}
                 className="px-4 py-2 text-gray-600 hover:text-gray-800 flex items-center gap-2"
-            >
-              <FaTimes />
-              Limpiar filtros
-            </button>
+              >
+                <FaTimes />
+                Limpiar filtros
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Tabla de inventario */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
