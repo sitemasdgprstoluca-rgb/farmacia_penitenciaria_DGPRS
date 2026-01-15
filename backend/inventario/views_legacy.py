@@ -11774,12 +11774,27 @@ def exportar_control_mensual(request):
                 })
         
         if not productos_data:
-            return Response({
-                'error': 'No hay datos para el periodo seleccionado',
+            # Generar PDF vacío con mensaje informativo en lugar de error 404
+            periodo_data_vacio = {
                 'mes': mes,
                 'anio': anio,
-                'centro': centro_nombre or 'Farmacia Central'
-            }, status=status.HTTP_404_NOT_FOUND)
+                'fecha_inicio': fecha_inicio,
+                'fecha_fin': fecha_fin,
+                'fecha_elaboracion': timezone.now(),
+            }
+            # Agregar un registro placeholder para mostrar el reporte vacío
+            productos_data = [{
+                'producto_clave': '-',
+                'producto_nombre': 'No hay movimientos registrados en este periodo',
+                'presentacion': '-',
+                'lote': '-',
+                'fecha_caducidad': None,
+                'existencia_anterior': 0,
+                'documento_entrada': '',
+                'entradas': 0,
+                'salidas': 0,
+                'existencia_final': 0,
+            }]
         
         # Generar PDF
         pdf_buffer = generar_control_mensual_almacen(
