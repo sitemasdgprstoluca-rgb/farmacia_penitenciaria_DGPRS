@@ -2258,14 +2258,16 @@ const Requisiciones = () => {
                                       <td 
                                         className="px-2 py-2 align-top"
                                         rowSpan={grupo.lotes.length}
+                                        style={{wordBreak: 'break-word', overflowWrap: 'break-word'}}
                                       >
-                                        <span className="text-xs leading-tight block">{grupo.producto_nombre}</span>
+                                        <span className="text-xs leading-snug whitespace-normal">{grupo.producto_nombre}</span>
                                       </td>
                                       <td 
                                         className="px-2 py-2 align-top text-gray-600"
                                         rowSpan={grupo.lotes.length}
+                                        style={{wordBreak: 'break-word', overflowWrap: 'break-word'}}
                                       >
-                                        <span className="text-xs leading-tight block">{grupo.producto_presentacion || '-'}</span>
+                                        <span className="text-xs leading-snug whitespace-normal">{grupo.producto_presentacion || '-'}</span>
                                       </td>
                                     </>
                                   ) : null}
