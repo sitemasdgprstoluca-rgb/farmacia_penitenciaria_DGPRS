@@ -3234,11 +3234,22 @@ def generar_formato_c_dispensacion(dispensacion):
     # ========== DATOS DE LA DISPENSACIÓN ==========
     fecha_disp = dispensacion.fecha_dispensacion.strftime('%d/%m/%Y %H:%M') if dispensacion.fecha_dispensacion else 'N/A'
     
+    # Obtener displays de forma segura
+    try:
+        tipo_display = dispensacion.get_tipo_dispensacion_display()
+    except:
+        tipo_display = dispensacion.tipo_dispensacion or 'Normal'
+    
+    try:
+        estado_display = dispensacion.get_estado_display()
+    except:
+        estado_display = dispensacion.estado or 'Pendiente'
+    
     info_data = [
         ['Folio:', dispensacion.folio or 'N/A', 'Fecha:', fecha_disp],
         ['Centro:', dispensacion.centro.nombre if dispensacion.centro else 'N/A', 
-         'Tipo:', dispensacion.get_tipo_dispensacion_display()],
-        ['Estado:', dispensacion.get_estado_display(), '', ''],
+         'Tipo:', tipo_display],
+        ['Estado:', estado_display, '', ''],
     ]
     
     info_table = Table(info_data, colWidths=[1.2*inch, 2.5*inch, 0.8*inch, 2.5*inch])
@@ -3262,13 +3273,26 @@ def generar_formato_c_dispensacion(dispensacion):
     elements.append(Paragraph("DATOS DEL PACIENTE", seccion_style))
     
     paciente = dispensacion.paciente
+    
+    # Obtener sexo display de forma segura
+    try:
+        sexo_display = paciente.get_sexo_display() if paciente and paciente.sexo else 'N/A'
+    except:
+        sexo_display = paciente.sexo if paciente else 'N/A'
+    
+    # Obtener nombre completo de forma segura
+    try:
+        nombre_paciente = paciente.nombre_completo if paciente else 'N/A'
+    except:
+        nombre_paciente = f"{paciente.nombre} {paciente.apellido_paterno}" if paciente else 'N/A'
+    
     paciente_data = [
         ['No. Expediente:', paciente.numero_expediente if paciente else 'N/A', 
-         'Nombre:', paciente.nombre_completo if paciente else 'N/A'],
-        ['Dormitorio:', paciente.dormitorio or 'N/A' if paciente else 'N/A', 
-         'Celda:', paciente.celda or 'N/A' if paciente else 'N/A'],
+         'Nombre:', nombre_paciente],
+        ['Dormitorio:', (paciente.dormitorio or 'N/A') if paciente else 'N/A', 
+         'Celda:', (paciente.celda or 'N/A') if paciente else 'N/A'],
         ['Edad:', f"{paciente.edad} años" if paciente and paciente.edad else 'N/A',
-         'Sexo:', paciente.get_sexo_display() if paciente and paciente.sexo else 'N/A'],
+         'Sexo:', sexo_display],
     ]
     
     paciente_table = Table(paciente_data, colWidths=[1.2*inch, 2.5*inch, 0.8*inch, 2.5*inch])
