@@ -627,7 +627,7 @@ const ComprasCajaChica = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
+    <div className="p-6 space-y-6">
       <PageHeader 
         title="Compras de Caja Chica" 
         subtitle={puedeVerificarStock && !esUsuarioCentro
@@ -639,7 +639,7 @@ const ComprasCajaChica = () => {
 
       {/* Banner informativo para farmacia */}
       {puedeVerificarStock && !esUsuarioCentro && (
-        <div className="mb-6 p-4 bg-purple-50 border border-purple-200 rounded-lg flex items-start gap-3">
+        <div className="p-4 bg-purple-50 border border-purple-200 rounded-2xl flex items-start gap-3">
           <FaInfoCircle className="text-purple-600 text-xl flex-shrink-0 mt-0.5" />
           <div>
             <h3 className="font-semibold text-purple-800">Verificación de Stock</h3>
@@ -654,24 +654,24 @@ const ComprasCajaChica = () => {
 
       {/* Resumen de compras */}
       {resumen && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-          <div className="bg-white p-4 rounded-lg shadow border-l-4 border-yellow-400">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div className="bg-white p-4 rounded-2xl shadow-sm border-l-4 border-yellow-400 hover:shadow-md transition-shadow">
             <div className="text-2xl font-bold text-yellow-600">{resumen.pendientes || 0}</div>
             <div className="text-sm text-gray-500">Pendientes</div>
           </div>
-          <div className="bg-white p-4 rounded-lg shadow border-l-4 border-blue-400">
+          <div className="bg-white p-4 rounded-2xl shadow-sm border-l-4 border-blue-400 hover:shadow-md transition-shadow">
             <div className="text-2xl font-bold text-blue-600">{resumen.autorizadas || 0}</div>
             <div className="text-sm text-gray-500">Autorizadas</div>
           </div>
-          <div className="bg-white p-4 rounded-lg shadow border-l-4 border-purple-400">
+          <div className="bg-white p-4 rounded-2xl shadow-sm border-l-4 border-purple-400 hover:shadow-md transition-shadow">
             <div className="text-2xl font-bold text-purple-600">{resumen.compradas || 0}</div>
             <div className="text-sm text-gray-500">Compradas</div>
           </div>
-          <div className="bg-white p-4 rounded-lg shadow border-l-4 border-green-400">
+          <div className="bg-white p-4 rounded-2xl shadow-sm border-l-4 border-green-400 hover:shadow-md transition-shadow">
             <div className="text-2xl font-bold text-green-600">{resumen.recibidas || 0}</div>
             <div className="text-sm text-gray-500">Recibidas</div>
           </div>
-          <div className="bg-white p-4 rounded-lg shadow border-l-4 border-gray-400">
+          <div className="bg-white p-4 rounded-2xl shadow-sm border-l-4 border-gray-400 hover:shadow-md transition-shadow">
             <div className="text-2xl font-bold text-gray-600">{formatCurrency(resumen.monto_total)}</div>
             <div className="text-sm text-gray-500">Monto Total</div>
           </div>
@@ -679,7 +679,7 @@ const ComprasCajaChica = () => {
       )}
 
       {/* Barra de acciones y filtros */}
-      <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4">
         <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
           {/* Búsqueda */}
           <div className="relative flex-1 w-full sm:max-w-md">
@@ -789,40 +789,40 @@ const ComprasCajaChica = () => {
       </div>
 
       {/* Tabla de compras */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="w-full overflow-x-auto">
+          <table className="w-full min-w-[900px] divide-y divide-gray-200">
+            <thead className="bg-theme-gradient sticky top-0 z-10">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   Folio
                 </th>
                 {esUsuarioFarmacia && (
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                     Centro
                   </th>
                 )}
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   Fecha Solicitud
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   Proveedor
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   Productos
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   Total
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   Estado
                 </th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   Acciones
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white divide-y divide-gray-100">
               {loading ? (
                 <tr>
                   <td colSpan={esUsuarioFarmacia ? 8 : 7} className="px-4 py-8 text-center">

@@ -6081,12 +6081,12 @@ class PacienteViewSet(viewsets.ModelViewSet):
         """Descarga plantilla Excel para importación de pacientes/PPL"""
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws.title = "Pacientes"
+        ws.title = "PPL"
         
-        # Encabezados con descripción
+        # Encabezados - TODOS obligatorios excepto información médica
         headers = [
-            'numero_expediente*', 'nombre*', 'apellido_paterno*', 'apellido_materno',
-            'curp', 'fecha_nacimiento', 'sexo', 'centro_clave*', 'dormitorio', 'celda',
+            'numero_expediente*', 'curp*', 'nombre*', 'apellido_paterno*', 'apellido_materno*',
+            'fecha_nacimiento*', 'sexo*', 'centro_clave*', 'dormitorio*', 'celda*',
             'tipo_sangre', 'alergias', 'enfermedades_cronicas', 'observaciones_medicas',
             'fecha_ingreso'
         ]
@@ -6094,8 +6094,8 @@ class PacienteViewSet(viewsets.ModelViewSet):
         
         # Fila de ejemplo
         ws.append([
-            'EXP-001234', 'Juan', 'Pérez', 'López',
-            'PELJ900101HDFRRS09', '1990-01-15', 'M', 'CRS01', 'D-5', 'C-12',
+            'EXP-001234', 'PELJ900101HDFRRS09', 'Juan', 'Pérez', 'López',
+            '1990-01-15', 'M', 'CRS01', 'Dorm. 5', 'Celda 12',
             'O+', 'Penicilina', 'Diabetes', 'Requiere dieta especial',
             '2024-06-01'
         ])
@@ -6103,29 +6103,32 @@ class PacienteViewSet(viewsets.ModelViewSet):
         # Instrucciones en otra hoja
         ws_inst = wb.create_sheet("Instrucciones")
         instrucciones = [
-            ["INSTRUCCIONES PARA IMPORTACIÓN DE PACIENTES/PPL"],
+            ["INSTRUCCIONES PARA IMPORTACIÓN DE PPL"],
+            ["(Personas Privadas de la Libertad)"],
             [""],
-            ["Campos obligatorios (marcados con *):"],
-            ["- numero_expediente: Identificador único del interno (ej: EXP-001234)"],
-            ["- nombre: Nombre(s) del interno"],
-            ["- apellido_paterno: Primer apellido"],
-            ["- centro_clave: Clave del centro penitenciario (ej: CRS01)"],
+            ["Campos OBLIGATORIOS (marcados con *):"],
+            ["- numero_expediente*: Identificador único del PPL (ej: EXP-001234)"],
+            ["- curp*: CURP a 18 caracteres exactos"],
+            ["- nombre*: Nombre(s) del PPL"],
+            ["- apellido_paterno*: Primer apellido"],
+            ["- apellido_materno*: Segundo apellido"],
+            ["- fecha_nacimiento*: Formato YYYY-MM-DD (ej: 1990-01-15)"],
+            ["- sexo*: M (Masculino) o F (Femenino)"],
+            ["- centro_clave*: Clave del centro penitenciario (ej: CRS01)"],
+            ["- dormitorio*: Identificador del dormitorio (ej: Dorm. 5)"],
+            ["- celda*: Número o identificador de celda (ej: Celda 12)"],
             [""],
-            ["Campos opcionales:"],
-            ["- apellido_materno: Segundo apellido"],
-            ["- curp: CURP a 18 caracteres (se valida formato)"],
-            ["- fecha_nacimiento: Formato YYYY-MM-DD (ej: 1990-01-15)"],
-            ["- sexo: M (Masculino) o F (Femenino)"],
-            ["- dormitorio: Identificador del dormitorio"],
-            ["- celda: Número o identificador de celda"],
+            ["Campos opcionales (información médica):"],
             ["- tipo_sangre: O+, O-, A+, A-, B+, B-, AB+, AB-"],
             ["- alergias: Texto libre con alergias conocidas"],
             ["- enfermedades_cronicas: Texto libre"],
             ["- observaciones_medicas: Notas adicionales"],
             ["- fecha_ingreso: Fecha de ingreso al centro (YYYY-MM-DD)"],
             [""],
-            ["NOTAS:"],
+            ["NOTAS IMPORTANTES:"],
+            ["- Todos los campos marcados con * son OBLIGATORIOS"],
             ["- Si el expediente ya existe, se ACTUALIZAN los datos"],
+            ["- El CURP debe tener exactamente 18 caracteres"],
             ["- Máximo 1000 registros por archivo"],
             ["- Solo archivos .xlsx"],
         ]
@@ -6240,12 +6243,12 @@ class PacienteViewSet(viewsets.ModelViewSet):
                     
                     valores = list(row) + [None] * 20
                     
-                    # Extraer valores
+                    # Extraer valores - nuevo orden con CURP después de expediente
                     numero_expediente = str(valores[0] or '').strip().upper()
-                    nombre = str(valores[1] or '').strip().title()
-                    apellido_paterno = str(valores[2] or '').strip().title()
-                    apellido_materno = str(valores[3] or '').strip().title() if valores[3] else None
-                    curp = str(valores[4] or '').strip().upper() if valores[4] else None
+                    curp = str(valores[1] or '').strip().upper() if valores[1] else None
+                    nombre = str(valores[2] or '').strip().title()
+                    apellido_paterno = str(valores[3] or '').strip().title()
+                    apellido_materno = str(valores[4] or '').strip().title() if valores[4] else None
                     fecha_nacimiento_str = str(valores[5] or '').strip() if valores[5] else None
                     sexo = str(valores[6] or '').strip().upper() if valores[6] else None
                     centro_clave = str(valores[7] or '').strip().upper()
@@ -6261,12 +6264,30 @@ class PacienteViewSet(viewsets.ModelViewSet):
                     if not numero_expediente:
                         continue
                     
-                    # Validar campos obligatorios
+                    # Validar campos obligatorios (todos son obligatorios ahora)
+                    if not curp or len(curp) != 18:
+                        errores.append(f"Fila {row_idx}: CURP inválido o faltante (debe tener 18 caracteres)")
+                        continue
                     if not nombre:
                         errores.append(f"Fila {row_idx}: Falta nombre")
                         continue
                     if not apellido_paterno:
                         errores.append(f"Fila {row_idx}: Falta apellido paterno")
+                        continue
+                    if not apellido_materno:
+                        errores.append(f"Fila {row_idx}: Falta apellido materno")
+                        continue
+                    if not fecha_nacimiento_str:
+                        errores.append(f"Fila {row_idx}: Falta fecha de nacimiento")
+                        continue
+                    if not sexo or sexo not in ['M', 'F']:
+                        errores.append(f"Fila {row_idx}: Sexo inválido (debe ser M o F)")
+                        continue
+                    if not dormitorio:
+                        errores.append(f"Fila {row_idx}: Falta dormitorio")
+                        continue
+                    if not celda:
+                        errores.append(f"Fila {row_idx}: Falta celda")
                         continue
                     
                     # Validar/obtener centro

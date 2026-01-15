@@ -534,7 +534,7 @@ const Dispensaciones = () => {
   const totalPages = Math.ceil(totalItems / PAGE_SIZE);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
+    <div className="p-6 space-y-6">
       <PageHeader
         title="Dispensación a Pacientes"
         subtitle="Formato C - Gestión de entrega de medicamentos a internos"
@@ -542,7 +542,7 @@ const Dispensaciones = () => {
       />
 
       {/* Barra de acciones */}
-      <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4">
         <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
           {/* Búsqueda */}
           <div className="relative flex-1 max-w-md">
@@ -586,7 +586,7 @@ const Dispensaciones = () => {
 
         {/* Aviso para farmacia (modo auditoría) */}
         {esSoloAuditoria && (
-          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 text-blue-700">
+          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-2xl flex items-center gap-2 text-blue-700">
             <FaInfoCircle />
             <span className="text-sm">
               <strong>Modo Auditoría:</strong> Como personal de Farmacia, puede consultar las dispensaciones realizadas por los centros pero no operarlas.
@@ -679,10 +679,10 @@ const Dispensaciones = () => {
       </div>
 
       {/* Tabla de dispensaciones */}
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         {loading ? (
           <div className="flex justify-center items-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-guinda"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent spinner-institucional"></div>
           </div>
         ) : dispensaciones.length === 0 ? (
           <div className="text-center py-12">
@@ -690,21 +690,21 @@ const Dispensaciones = () => {
             <p className="mt-4 text-gray-500">No se encontraron dispensaciones</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+          <div className="w-full overflow-x-auto">
+            <table className="w-full min-w-[1000px] divide-y divide-gray-200">
+              <thead className="bg-theme-gradient sticky top-0 z-10">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Folio</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Paciente</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Centro</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tipo</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Items</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Folio</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Paciente</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Centro</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Tipo</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Fecha</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Items</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Estado</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-white divide-y divide-gray-100">
                 {dispensaciones.map((disp) => (
                   <tr key={disp.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 whitespace-nowrap">

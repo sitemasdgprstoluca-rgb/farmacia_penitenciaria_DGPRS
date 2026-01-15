@@ -2161,6 +2161,16 @@ const Requisiciones = () => {
               {/* Vista de Catálogo */}
               {!vistaCarrito ? (
                 <div className="flex-1 flex flex-col min-h-0">
+                  {/* Nota informativa para usuarios de Centro */}
+                  {esUsuarioCentro && (
+                    <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2 text-blue-700 text-sm flex-shrink-0">
+                      <FaExclamationTriangle className="text-blue-500 mt-0.5 flex-shrink-0" />
+                      <span>
+                        <strong>Solicite lo que necesita.</strong> Farmacia Central verificará la disponibilidad
+                        y ajustará las cantidades según el inventario disponible.
+                      </span>
+                    </div>
+                  )}
                   {/* Buscador del catálogo - ISS-003: búsqueda en servidor con debounce */}
                   <div className="mb-4 flex-shrink-0">
                     <div className="relative">
@@ -2212,7 +2222,10 @@ const Requisiciones = () => {
                               <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Nombre</th>
                               <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
                               <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Caducidad</th>
-                              <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Inventario</th>
+                              {/* Solo Farmacia/Admin puede ver el inventario disponible */}
+                              {esAdminOFarmacia && (
+                                <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Inventario</th>
+                              )}
                               <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap w-40">Cantidad</th>
                             </tr>
                           </thead>
@@ -2258,14 +2271,17 @@ const Requisiciones = () => {
                                   }`}>
                                     {fechaCad || '-'}
                                   </td>
-                                  <td className="px-4 py-3 text-center">
-                                    <span className={`font-bold ${
-                                      stockDisponible < 10 ? 'text-red-600' : 
-                                      stockDisponible < 50 ? 'text-amber-600' : 'text-green-600'
-                                    }`}>
-                                      {stockDisponible}
-                                    </span>
-                                  </td>
+                                  {/* Solo Farmacia/Admin puede ver el inventario disponible */}
+                                  {esAdminOFarmacia && (
+                                    <td className="px-4 py-3 text-center">
+                                      <span className={`font-bold ${
+                                        stockDisponible < 10 ? 'text-red-600' : 
+                                        stockDisponible < 50 ? 'text-amber-600' : 'text-green-600'
+                                      }`}>
+                                        {stockDisponible}
+                                      </span>
+                                    </td>
+                                  )}
                                   <td className="px-4 py-3 text-center">
                                     {enCarrito ? (
                                       <div className="flex items-center justify-center gap-1">
@@ -2281,7 +2297,7 @@ const Requisiciones = () => {
                                         </span>
                                         <button
                                           onClick={() => incrementarCantidad(lote.id)}
-                                          disabled={isSubmitting || cantidadCarrito >= stockDisponible}
+                                          disabled={isSubmitting || (esAdminOFarmacia && cantidadCarrito >= stockDisponible)}
                                           className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                           <FaPlus className="text-xs" />
@@ -2347,7 +2363,10 @@ const Requisiciones = () => {
                               <th className="text-left px-4 py-3 font-semibold">Producto</th>
                               <th className="text-left px-4 py-3 font-semibold">Lote</th>
                               <th className="text-center px-4 py-3 font-semibold">Caducidad</th>
-                              <th className="text-center px-4 py-3 font-semibold">Inv. Disp.</th>
+                              {/* Solo Farmacia/Admin puede ver el inventario disponible */}
+                              {esAdminOFarmacia && (
+                                <th className="text-center px-4 py-3 font-semibold">Inv. Disp.</th>
+                              )}
                               <th className="text-center px-4 py-3 font-semibold">Cantidad</th>
                               <th className="text-center px-4 py-3 font-semibold w-24">Quitar</th>
                             </tr>
@@ -2371,9 +2390,12 @@ const Requisiciones = () => {
                                 <td className="px-4 py-3 text-center text-xs text-gray-500">
                                   {item.lote_caducidad || '-'}
                                 </td>
-                                <td className="px-4 py-3 text-center font-semibold">
-                                  {item.stock_disponible || '-'}
-                                </td>
+                                {/* Solo Farmacia/Admin puede ver el inventario disponible */}
+                                {esAdminOFarmacia && (
+                                  <td className="px-4 py-3 text-center font-semibold">
+                                    {item.stock_disponible || '-'}
+                                  </td>
+                                )}
                                 <td className="px-4 py-3 text-center">
                                   <div className="flex items-center justify-center gap-1">
                                     <button
@@ -2392,15 +2414,15 @@ const Requisiciones = () => {
                                     <input
                                       type="number"
                                       min="1"
-                                      max={item.stock_disponible || 1}
+                                      max={esAdminOFarmacia ? (item.stock_disponible || 9999) : 9999}
                                       value={item.cantidad_solicitada}
                                       onChange={(e) => actualizarCantidad(idx, e.target.value)}
-                                      disabled={isSubmitting || !item.stock_disponible}
+                                      disabled={isSubmitting}
                                       className="w-16 border rounded px-2 py-1 text-center font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                                     />
                                     <button
                                       onClick={() => actualizarCantidad(idx, item.cantidad_solicitada + 1)}
-                                      disabled={isSubmitting || !item.stock_disponible || item.cantidad_solicitada >= item.stock_disponible}
+                                      disabled={isSubmitting || (esAdminOFarmacia && item.stock_disponible && item.cantidad_solicitada >= item.stock_disponible)}
                                       className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                       <FaPlus className="text-xs" />

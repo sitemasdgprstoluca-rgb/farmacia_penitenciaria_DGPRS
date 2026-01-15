@@ -21,6 +21,8 @@ import {
   FaSpinner,
   FaCheckCircle,
   FaExclamationTriangle,
+  FaExchangeAlt,
+  FaUserShield,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import Pagination from '../components/Pagination';
@@ -93,6 +95,10 @@ const Pacientes = () => {
   
   // Modal de detalle
   const [detailModal, setDetailModal] = useState({ show: false, paciente: null });
+
+  // Modal de traspaso a otra unidad
+  const [traspasoModal, setTraspasoModal] = useState({ show: false, paciente: null });
+  const [traspasoData, setTraspasoData] = useState({ centro_destino: '', motivo: '', fecha_traspaso: '' });
 
   // Modal de importación
   const [importModal, setImportModal] = useState(false);
@@ -205,9 +211,13 @@ const Pacientes = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Validaciones
+    // Validaciones completas para todos los campos obligatorios
     if (!formData.numero_expediente.trim()) {
       toast.error('El número de expediente es requerido');
+      return;
+    }
+    if (!formData.curp || formData.curp.length !== 18) {
+      toast.error('El CURP debe tener exactamente 18 caracteres');
       return;
     }
     if (!formData.nombre.trim()) {
@@ -216,6 +226,30 @@ const Pacientes = () => {
     }
     if (!formData.apellido_paterno.trim()) {
       toast.error('El apellido paterno es requerido');
+      return;
+    }
+    if (!formData.apellido_materno.trim()) {
+      toast.error('El apellido materno es requerido');
+      return;
+    }
+    if (!formData.fecha_nacimiento) {
+      toast.error('La fecha de nacimiento es requerida');
+      return;
+    }
+    if (!formData.sexo) {
+      toast.error('El sexo es requerido');
+      return;
+    }
+    if (!formData.centro) {
+      toast.error('El centro es requerido');
+      return;
+    }
+    if (!formData.dormitorio.trim()) {
+      toast.error('El dormitorio/módulo es requerido');
+      return;
+    }
+    if (!formData.celda.trim()) {
+      toast.error('La celda es requerida');
       return;
     }
     
@@ -252,12 +286,63 @@ const Pacientes = () => {
     
     try {
       await pacientesAPI.delete(deleteModal.paciente.id);
-      toast.success('Paciente eliminado correctamente');
+      toast.success('PPL eliminado correctamente');
       setDeleteModal({ show: false, paciente: null });
       fetchPacientes();
     } catch (error) {
-      console.error('Error al eliminar paciente:', error);
-      toast.error('Error al eliminar paciente');
+      console.error('Error al eliminar PPL:', error);
+      toast.error('Error al eliminar PPL');
+    }
+  };
+
+  // Función para traspasar PPL a otra unidad
+  const handleTraspaso = async () => {
+    if (!traspasoModal.paciente) return;
+    
+    // Validaciones
+    if (!traspasoData.centro_destino) {
+      toast.error('Debe seleccionar el centro de destino');
+      return;
+    }
+    if (traspasoData.centro_destino === String(traspasoModal.paciente.centro)) {
+      toast.error('El centro de destino debe ser diferente al actual');
+      return;
+    }
+    if (!traspasoData.motivo.trim() || traspasoData.motivo.trim().length < 10) {
+      toast.error('Debe indicar el motivo del traspaso (mínimo 10 caracteres)');
+      return;
+    }
+    if (!traspasoData.fecha_traspaso) {
+      toast.error('Debe indicar la fecha del traspaso');
+      return;
+    }
+    
+    try {
+      // Actualizar el centro del paciente y registrar el traspaso en observaciones
+      const centroDestinoNombre = centros.find(c => String(c.id) === traspasoData.centro_destino)?.nombre || 'N/D';
+      const centroOrigenNombre = traspasoModal.paciente.centro_nombre || 'N/D';
+      const observacionTraspaso = `[TRASPASO ${traspasoData.fecha_traspaso}] De ${centroOrigenNombre} a ${centroDestinoNombre}. Motivo: ${traspasoData.motivo}`;
+      
+      const observacionesActuales = traspasoModal.paciente.observaciones_medicas || '';
+      const nuevasObservaciones = observacionesActuales 
+        ? `${observacionesActuales}\n\n${observacionTraspaso}` 
+        : observacionTraspaso;
+      
+      await pacientesAPI.update(traspasoModal.paciente.id, {
+        centro: traspasoData.centro_destino,
+        observaciones_medicas: nuevasObservaciones,
+        // Resetear ubicación ya que cambia de centro
+        dormitorio: '',
+        celda: '',
+      });
+      
+      toast.success(`PPL trasladado correctamente a ${centroDestinoNombre}`);
+      setTraspasoModal({ show: false, paciente: null });
+      setTraspasoData({ centro_destino: '', motivo: '', fecha_traspaso: '' });
+      fetchPacientes();
+    } catch (error) {
+      console.error('Error al traspasar PPL:', error);
+      toast.error('Error al realizar el traspaso');
     }
   };
 
@@ -359,15 +444,15 @@ const Pacientes = () => {
   const totalPages = Math.ceil(totalItems / PAGE_SIZE);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
+    <div className="p-6 space-y-6">
       <PageHeader
-        title="Catálogo de Pacientes"
-        subtitle="Gestión de internos para dispensación de medicamentos"
+        title="Catálogo de PPL"
+        subtitle="Gestión de Personas Privadas de la Libertad"
         icon={FaUserInjured}
       />
 
       {/* Barra de acciones */}
-      <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4">
         <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
           {/* Búsqueda */}
           <div className="relative flex-1 max-w-md">
@@ -422,20 +507,27 @@ const Pacientes = () => {
                   className="flex items-center gap-2 px-4 py-2 bg-guinda text-white rounded-lg hover:bg-guinda-dark transition-colors"
                 >
                   <FaPlus />
-                  Nuevo Paciente
+                  Nuevo PPL
                 </button>
               </>
             )}
           </div>
         </div>
 
-        {/* Aviso para farmacia (modo auditoría) */}
+        {/* Aviso para farmacia (modo auditoría) - Diseño elegante */}
         {esSoloAuditoria && (
-          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 text-blue-700">
-            <FaInfoCircle />
-            <span className="text-sm">
-              <strong>Modo Auditoría:</strong> Como personal de Farmacia, puede consultar el catálogo de pacientes pero no operarlo.
-            </span>
+          <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 rounded-r-xl shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="flex-shrink-0 p-2 bg-blue-100 rounded-full">
+                <FaUserShield className="text-blue-600 text-lg" />
+              </div>
+              <div>
+                <h4 className="font-semibold text-blue-900">Modo Consulta</h4>
+                <p className="text-sm text-blue-700">
+                  Como personal de Farmacia Central, puede consultar el catálogo de PPL para auditoría pero no tiene permisos de edición.
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
@@ -498,10 +590,10 @@ const Pacientes = () => {
       </div>
 
       {/* Tabla de pacientes */}
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         {loading ? (
           <div className="flex justify-center items-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-guinda"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent spinner-institucional"></div>
           </div>
         ) : pacientes.length === 0 ? (
           <div className="text-center py-12">
@@ -509,21 +601,21 @@ const Pacientes = () => {
             <p className="mt-4 text-gray-500">No se encontraron pacientes</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+          <div className="w-full overflow-x-auto">
+            <table className="w-full min-w-[1000px] divide-y divide-gray-200">
+              <thead className="bg-theme-gradient sticky top-0 z-10">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expediente</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">CURP</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Centro</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ubicación</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Sexo</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Expediente</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Nombre</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">CURP</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Centro</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Ubicación</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Sexo</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Estado</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-white divide-y divide-gray-100">
                 {pacientes.map((paciente) => (
                   <tr key={paciente.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 whitespace-nowrap">
@@ -573,13 +665,29 @@ const Pacientes = () => {
                           <FaEye />
                         </button>
                         {puedeEditar && (
-                          <button
-                            onClick={() => handleOpenModal(paciente)}
-                            className="text-blue-600 hover:text-blue-800 p-1"
-                            title="Editar"
-                          >
-                            <FaEdit />
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handleOpenModal(paciente)}
+                              className="text-blue-600 hover:text-blue-800 p-1"
+                              title="Editar"
+                            >
+                              <FaEdit />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setTraspasoModal({ show: true, paciente });
+                                setTraspasoData({ 
+                                  centro_destino: '', 
+                                  motivo: '', 
+                                  fecha_traspaso: new Date().toISOString().split('T')[0] 
+                                });
+                              }}
+                              className="text-orange-600 hover:text-orange-800 p-1"
+                              title="Traspasar a otra unidad"
+                            >
+                              <FaExchangeAlt />
+                            </button>
+                          </>
                         )}
                         {puedeEliminar && (
                           <button
@@ -615,11 +723,19 @@ const Pacientes = () => {
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-4 border-b bg-guinda text-white rounded-t-lg">
-              <h3 className="text-lg font-semibold">
-                {editingPaciente ? 'Editar Paciente' : 'Nuevo Paciente'}
-              </h3>
-              <button onClick={() => setShowModal(false)} className="hover:bg-white/20 p-1 rounded">
+            <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-guinda to-guinda-dark text-white rounded-t-lg">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-lg">
+                  <FaUserInjured className="text-xl" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold">
+                    {editingPaciente ? 'Editar PPL' : 'Nuevo PPL'}
+                  </h3>
+                  <p className="text-xs text-white/70">Persona Privada de la Libertad</p>
+                </div>
+              </div>
+              <button onClick={() => setShowModal(false)} className="hover:bg-white/20 p-2 rounded-lg transition-colors">
                 <FaTimes />
               </button>
             </div>
@@ -645,14 +761,19 @@ const Pacientes = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">CURP</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      CURP <span className="text-red-500">*</span>
+                    </label>
                     <input
                       type="text"
                       name="curp"
                       value={formData.curp}
                       onChange={handleInputChange}
                       maxLength={18}
+                      minLength={18}
                       className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda uppercase"
+                      required
+                      placeholder="18 caracteres"
                     />
                   </div>
                   <div>
@@ -682,32 +803,41 @@ const Pacientes = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Apellido Materno</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Apellido Materno <span className="text-red-500">*</span>
+                    </label>
                     <input
                       type="text"
                       name="apellido_materno"
                       value={formData.apellido_materno}
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                      required
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Nacimiento</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Fecha de Nacimiento <span className="text-red-500">*</span>
+                    </label>
                     <input
                       type="date"
                       name="fecha_nacimiento"
                       value={formData.fecha_nacimiento}
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                      required
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Sexo</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Sexo <span className="text-red-500">*</span>
+                    </label>
                     <select
                       name="sexo"
                       value={formData.sexo}
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                      required
                     >
                       <option value="">Seleccionar</option>
                       <option value="M">Masculino</option>
@@ -743,12 +873,15 @@ const Pacientes = () => {
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Centro</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Centro <span className="text-red-500">*</span>
+                    </label>
                     <select
                       name="centro"
                       value={formData.centro}
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                      required
                     >
                       <option value="">Seleccionar centro</option>
                       {centros.map(centro => (
@@ -757,23 +890,31 @@ const Pacientes = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Dormitorio/Módulo</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Dormitorio/Módulo <span className="text-red-500">*</span>
+                    </label>
                     <input
                       type="text"
                       name="dormitorio"
                       value={formData.dormitorio}
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                      required
+                      placeholder="Ej: Dorm. 1"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Celda</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Celda <span className="text-red-500">*</span>
+                    </label>
                     <input
                       type="text"
                       name="celda"
                       value={formData.celda}
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                      required
+                      placeholder="Ej: 101"
                     />
                   </div>
                 </div>
@@ -1048,6 +1189,124 @@ const Pacientes = () => {
                 className="px-4 py-2 text-gray-700 bg-white border rounded-lg hover:bg-gray-50"
               >
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Traspaso de PPL a otra unidad */}
+      {traspasoModal.show && traspasoModal.paciente && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full">
+            {/* Header elegante */}
+            <div className="p-5 border-b bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-t-xl">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-lg">
+                  <FaExchangeAlt className="text-xl" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold">Traspaso de PPL</h3>
+                  <p className="text-sm text-white/80">Traslado a otra Unidad Penitenciaria</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-6">
+              {/* Información del PPL */}
+              <div className="bg-gray-50 rounded-xl p-4 mb-5 border">
+                <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                  <FaUserInjured className="text-guinda" />
+                  PPL a Trasladar
+                </h4>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <span className="text-gray-500">Expediente:</span>
+                    <span className="ml-2 font-semibold">{traspasoModal.paciente.numero_expediente}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Nombre:</span>
+                    <span className="ml-2 font-semibold">{traspasoModal.paciente.nombre_completo}</span>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-gray-500">Centro Actual:</span>
+                    <span className="ml-2 font-semibold text-guinda">{traspasoModal.paciente.centro_nombre || 'Sin asignar'}</span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Formulario de traspaso */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Centro de Destino <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={traspasoData.centro_destino}
+                    onChange={(e) => setTraspasoData(prev => ({ ...prev, centro_destino: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-orange-400"
+                  >
+                    <option value="">Seleccionar nuevo centro...</option>
+                    {centros
+                      .filter(c => c.id !== traspasoModal.paciente.centro)
+                      .map(centro => (
+                        <option key={centro.id} value={centro.id}>{centro.nombre}</option>
+                      ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Fecha del Traspaso <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={traspasoData.fecha_traspaso}
+                    onChange={(e) => setTraspasoData(prev => ({ ...prev, fecha_traspaso: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-orange-400"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Motivo del Traspaso <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={traspasoData.motivo}
+                    onChange={(e) => setTraspasoData(prev => ({ ...prev, motivo: e.target.value }))}
+                    rows={3}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-orange-400"
+                    placeholder="Indique el motivo del traslado (ej: orden judicial, solicitud de traslado, etc.)"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Mínimo 10 caracteres. Esta información quedará registrada en el historial.</p>
+                </div>
+              </div>
+              
+              {/* Nota informativa */}
+              <div className="mt-4 p-3 bg-amber-50 border-l-4 border-amber-400 rounded-r-lg">
+                <p className="text-sm text-amber-800">
+                  <strong>Nota:</strong> Al trasladar el PPL, la ubicación (dormitorio/celda) se reiniciará y deberá asignarse en el nuevo centro.
+                </p>
+              </div>
+            </div>
+            
+            {/* Footer */}
+            <div className="flex justify-end gap-3 p-4 border-t bg-gray-50 rounded-b-xl">
+              <button
+                onClick={() => {
+                  setTraspasoModal({ show: false, paciente: null });
+                  setTraspasoData({ centro_destino: '', motivo: '', fecha_traspaso: '' });
+                }}
+                className="px-4 py-2 text-gray-700 bg-white border rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleTraspaso}
+                className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-lg hover:from-orange-600 hover:to-amber-600 transition-all flex items-center gap-2 font-medium"
+              >
+                <FaExchangeAlt />
+                Confirmar Traspaso
               </button>
             </div>
           </div>

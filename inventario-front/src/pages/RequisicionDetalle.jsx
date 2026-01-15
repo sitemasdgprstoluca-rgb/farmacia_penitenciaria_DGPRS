@@ -85,6 +85,8 @@ const RequisicionDetalle = () => {
   // Refs para búsqueda con debounce y cancelación
   const searchTimeoutRef = useRef(null);
   const abortControllerRef = useRef(null);
+  // ISS-FIX: Ref para guardar observaciones inmediatamente (evitar problemas de async state)
+  const observacionesParcialRef = useRef('');
 
   // Detectar si viene en modo editar desde URL
   const modoEditarURL = searchParams.get('modo') === 'editar';
@@ -286,7 +288,7 @@ const RequisicionDetalle = () => {
   };
   
   // Ejecutar autorización parcial con observaciones
-  const ejecutarAutorizacionParcial = async () => {
+  const ejecutarAutorizacionParcial = async (observacionesParam) => {
     // MEJORA FLUJO 3: Validar que todos los items con cantidad reducida tengan motivo
     const itemsSinMotivo = detallesEditables.filter(d => 
       d.cantidad_autorizada < d.cantidad_solicitada && (!d.motivo_ajuste || d.motivo_ajuste.trim().length < 10)
@@ -297,6 +299,9 @@ const RequisicionDetalle = () => {
       return;
     }
     
+    // ISS-FIX: Guardar observaciones en ref (inmediato, sin esperar setState)
+    observacionesParcialRef.current = observacionesParam || '';
+    setAutorizarObservaciones(observacionesParam || '');
     setShowAutorizarParcialModal(false);
     setEsParcialPendiente(true);
     // ISS-FIX: Mostrar modal para pedir fecha de recolección
@@ -322,12 +327,18 @@ const RequisicionDetalle = () => {
         motivo_ajuste: d.cantidad_autorizada < d.cantidad_solicitada ? d.motivo_ajuste : null
       }));
       
+      // ISS-FIX: Usar ref para obtener observaciones (más confiable que estado async)
+      const observacionesParaEnviar = observacionesParcialRef.current || autorizarObservaciones || '';
+      
       // Usar endpoint correcto: autorizarFarmacia con fecha
       await requisicionesAPI.autorizarFarmacia(id, { 
         items, 
         fecha_recoleccion_limite: fechaRecoleccion,
-        observaciones: autorizarObservaciones || ''
+        observaciones: observacionesParaEnviar
       });
+      
+      // Limpiar ref después de usar
+      observacionesParcialRef.current = '';
       
       toast.success(esParcialPendiente ? 'Requisición autorizada parcialmente' : 'Requisición autorizada');
       setModoAutorizar(false);
@@ -1046,20 +1057,23 @@ const RequisicionDetalle = () => {
           <div className="mt-4 p-3 bg-gray-50 rounded-lg">
             <div className="flex items-center gap-2 text-gray-600 mb-1">
               <FaInfoCircle />
-              <span className="text-sm font-semibold">Observaciones</span>
+              <span className="text-sm font-semibold">Observaciones del Centro</span>
             </div>
             <p className="text-gray-700">{requisicion.observaciones}</p>
           </div>
         )}
 
-        {/* FLUJO V2: Observaciones de farmacia */}
+        {/* FLUJO V2: Observaciones de farmacia - Prominente cuando hay ajustes */}
         {requisicion.observaciones_farmacia && (
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <div className="flex items-center gap-2 text-blue-600 mb-1">
-              <FaInfoCircle />
-              <span className="text-sm font-semibold">Observaciones de Farmacia</span>
+          <div className="mt-4 p-4 bg-amber-50 rounded-lg border-2 border-amber-400 shadow-md">
+            <div className="flex items-center gap-2 text-amber-700 mb-2">
+              <FaExclamationTriangle className="text-amber-500 text-xl" />
+              <span className="font-bold text-lg">📋 Observaciones de Farmacia Central</span>
             </div>
-            <p className="text-blue-700">{requisicion.observaciones_farmacia}</p>
+            <p className="text-amber-800 font-medium text-base">{requisicion.observaciones_farmacia}</p>
+            <p className="text-amber-600 text-sm mt-2 italic">
+              Revise los motivos de ajuste en cada producto para más detalle.
+            </p>
           </div>
         )}
 
@@ -1371,8 +1385,8 @@ const RequisicionDetalle = () => {
                   <th className={`px-2 py-2 text-center text-xs font-semibold uppercase w-16 ${modoAutorizar ? 'bg-green-600 text-white' : 'text-white'}`}>
                     Autoriz.
                   </th>
-                  {/* MEJORA FLUJO 3: Columna para motivo de ajuste */}
-                  {modoAutorizar && (
+                  {/* MEJORA FLUJO 3: Columna para motivo de ajuste - visible también cuando hay ajustes */}
+                  {(modoAutorizar || detalles.some(d => d.cantidad_autorizada < d.cantidad_solicitada && d.motivo_ajuste)) && (
                     <th className="px-2 py-2 text-left text-xs font-semibold uppercase bg-amber-500 text-white w-36">
                       Motivo Ajuste
                     </th>
@@ -1450,22 +1464,36 @@ const RequisicionDetalle = () => {
                       )}
                     </td>
                     {/* MEJORA FLUJO 3: Input de motivo de ajuste cuando se reduce cantidad */}
-                    {modoAutorizar && (
+                    {(modoAutorizar || detalles.some(d => d.cantidad_autorizada < d.cantidad_solicitada && d.motivo_ajuste)) && (
                       <td className="px-1 py-2 bg-amber-50">
-                        {detalle.cantidad_autorizada < detalle.cantidad_solicitada ? (
-                          <input
-                            type="text"
-                            placeholder="Motivo..."
-                            value={detalle.motivo_ajuste || ''}
-                            onChange={(e) => actualizarMotivoAjuste(idx, e.target.value)}
-                            className={`w-full px-1 py-1 text-xs border rounded focus:outline-none ${
-                              detalle.motivo_ajuste && detalle.motivo_ajuste.length >= 10
-                                ? 'border-green-400 bg-green-50'
-                                : 'border-amber-400'
-                            }`}
-                          />
+                        {modoAutorizar ? (
+                          // Modo edición: input para ingresar motivo
+                          detalle.cantidad_autorizada < detalle.cantidad_solicitada ? (
+                            <input
+                              type="text"
+                              placeholder="Motivo..."
+                              value={detalle.motivo_ajuste || ''}
+                              onChange={(e) => actualizarMotivoAjuste(idx, e.target.value)}
+                              className={`w-full px-1 py-1 text-xs border rounded focus:outline-none ${
+                                detalle.motivo_ajuste && detalle.motivo_ajuste.length >= 10
+                                  ? 'border-green-400 bg-green-50'
+                                  : 'border-amber-400'
+                              }`}
+                            />
+                          ) : (
+                            <span className="text-gray-400 text-xs">-</span>
+                          )
                         ) : (
-                          <span className="text-gray-400 text-xs">-</span>
+                          // Modo lectura: mostrar motivo guardado con mejor formato
+                          detalle.cantidad_autorizada < detalle.cantidad_solicitada && detalle.motivo_ajuste ? (
+                            <div className="max-w-[200px]" title={detalle.motivo_ajuste}>
+                              <span className="text-xs text-amber-700 font-medium truncate block">
+                                ⚠️ {detalle.motivo_ajuste}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 text-xs">-</span>
+                          )
                         )}
                       </td>
                     )}
@@ -1735,13 +1763,15 @@ const RequisicionDetalle = () => {
       />
 
       {/* Modal de confirmación para autorización parcial */}
-      {/* MEJORA FLUJO 3: El motivo ahora se captura por item en la tabla */}
-      <ConfirmModal
+      {/* MEJORA FLUJO 3: Ahora permite agregar observación general además del motivo por item */}
+      <InputModal
         open={showAutorizarParcialModal}
         onCancel={() => setShowAutorizarParcialModal(false)}
-        onConfirm={ejecutarAutorizacionParcial}
+        onConfirm={(observaciones) => ejecutarAutorizacionParcial(observaciones)}
         title="Confirmar autorización parcial"
-        message="Ha reducido las cantidades de algunos productos. Verifique que ha indicado el motivo de cada ajuste en la columna correspondiente."
+        message="Ha reducido las cantidades de algunos productos. Puede agregar una observación general que el Centro verá (opcional). Verifique que indicó el motivo en cada producto."
+        placeholder="Observación general para el Centro (ej: Stock insuficiente, próxima reposición en X días...)"
+        minLength={0}
         confirmText="Confirmar Autorización"
         cancelText="Revisar"
         tone="warning"
