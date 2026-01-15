@@ -1107,8 +1107,9 @@ const Reportes = () => {
           </button>
           <button
             onClick={exportarExcel}
-            disabled={loading || exporting || datos.length === 0}
+            disabled={loading || exporting || datos.length === 0 || filtros.tipo === 'control_mensual'}
             className="flex items-center gap-2 px-3 md:px-4 py-2 md:py-2.5 rounded-lg bg-green-600 text-white font-semibold text-sm md:text-base hover:bg-green-700 transition disabled:opacity-60"
+            title={filtros.tipo === 'control_mensual' ? 'Control Mensual solo disponible en PDF' : ''}
           >
             {exporting ? (
               <>
@@ -1124,7 +1125,7 @@ const Reportes = () => {
           </button>
           <button
             onClick={exportarPDF}
-            disabled={loading || exporting || datos.length === 0}
+            disabled={loading || exporting || (datos.length === 0 && filtros.tipo !== 'control_mensual')}
             className="flex items-center gap-2 px-3 md:px-4 py-2 md:py-2.5 rounded-lg text-white font-semibold text-sm md:text-base hover:opacity-90 transition disabled:opacity-60"
             style={{ background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' }}
           >
