@@ -1284,13 +1284,13 @@ const Dispensaciones = () => {
 
       {/* Modal de confirmar dispensación */}
       <ConfirmModal
-        isOpen={dispensarModal.show}
-        onClose={() => setDispensarModal({ show: false, dispensacion: null })}
+        open={dispensarModal.show}
+        onCancel={() => setDispensarModal({ show: false, dispensacion: null })}
         onConfirm={handleDispensar}
         title="Confirmar Dispensación"
         message={`¿Está seguro de procesar la dispensación ${dispensarModal.dispensacion?.folio}? Esta acción descontará los medicamentos del inventario.`}
         confirmText="Dispensar"
-        confirmStyle="success"
+        tone="info"
       />
 
       {/* Modal de cancelar */}
@@ -1423,13 +1423,13 @@ const Dispensaciones = () => {
 
       {/* Modal de confirmar eliminación */}
       <ConfirmModal
-        isOpen={deleteModal.show}
-        onClose={() => setDeleteModal({ show: false, dispensacion: null })}
+        open={deleteModal.show}
+        onCancel={() => setDeleteModal({ show: false, dispensacion: null })}
         onConfirm={handleDelete}
         title="Eliminar Dispensación"
-        message={`¿Está seguro de eliminar la dispensación ${deleteModal.dispensacion?.folio}?`}
+        message={`¿Está seguro de eliminar la dispensación ${deleteModal.dispensacion?.folio}? Esta acción no se puede deshacer.`}
         confirmText="Eliminar"
-        confirmStyle="danger"
+        tone="danger"
       />
     </div>
   );

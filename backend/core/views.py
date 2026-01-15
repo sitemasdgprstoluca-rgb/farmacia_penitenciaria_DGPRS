@@ -7550,7 +7550,17 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
         compra.estado = 'comprada'
         compra.fecha_compra = fecha_compra
         compra.numero_factura = numero_factura
+        
+        # Actualizar datos del proveedor si se envían
+        if request.data.get('proveedor_nombre'):
+            compra.proveedor_nombre = request.data.get('proveedor_nombre')
+        if request.data.get('proveedor_contacto'):
+            compra.proveedor_contacto = request.data.get('proveedor_contacto')
+        
         compra.save()
+        
+        # Recalcular total basado en los detalles actualizados
+        total_compra = 0
         
         # Actualizar cantidades compradas en detalles
         detalles = request.data.get('detalles', [])
@@ -7566,8 +7576,16 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                 detalle.fecha_caducidad = detalle_data.get('fecha_caducidad')
                 detalle.importe = detalle.precio_unitario * detalle.cantidad_comprada
                 detalle.save()
+                total_compra += detalle.importe
             except DetalleCompraCajaChica.DoesNotExist:
                 pass
+        
+        # Actualizar total de la compra
+        if total_compra > 0:
+            compra.subtotal = total_compra
+            compra.iva = total_compra * 0.16
+            compra.total = compra.subtotal + compra.iva
+            compra.save(update_fields=['subtotal', 'iva', 'total'])
         
         # Registrar en historial
         HistorialCompraCajaChica.objects.create(
@@ -7576,6 +7594,7 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
             estado_nuevo='comprada',
             usuario=request.user,
             accion='registrar_compra',
+            observaciones=f'Factura: {numero_factura or "Sin factura"} - Total: ${compra.total}',
             ip_address=request.META.get('REMOTE_ADDR', '')
         )
         

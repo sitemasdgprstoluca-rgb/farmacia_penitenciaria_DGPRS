@@ -3234,7 +3234,8 @@ class CompraCajaChicaListSerializer(serializers.ModelSerializer):
             'id', 'folio', 'centro', 'centro_nombre',
             'proveedor_nombre', 'fecha_solicitud', 'fecha_compra',
             'total', 'estado', 'estado_display', 'motivo_compra',
-            'solicitante', 'solicitante_nombre', 'total_productos'
+            'solicitante', 'solicitante_nombre', 'total_productos',
+            'created_at'  # Para trazabilidad de captura
         ]
     
     def get_centro_nombre(self, obj):

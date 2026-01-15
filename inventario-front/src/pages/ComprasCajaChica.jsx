@@ -182,7 +182,15 @@ const ComprasCajaChica = () => {
   const [cancelModal, setCancelModal] = useState({ show: false, compra: null, motivo: '' });
   const [detailModal, setDetailModal] = useState({ show: false, compra: null });
   const [autorizarModal, setAutorizarModal] = useState({ show: false, compra: null, observaciones: '' });
-  const [registrarCompraModal, setRegistrarCompraModal] = useState({ show: false, compra: null });
+  const [registrarCompraModal, setRegistrarCompraModal] = useState({ 
+    show: false, 
+    compra: null, 
+    fecha_compra: new Date().toISOString().split('T')[0],
+    numero_factura: '',
+    proveedor_nombre: '',
+    proveedor_contacto: '',
+    detalles: []
+  });
   const [recibirModal, setRecibirModal] = useState({ show: false, compra: null, detalles: [] });
   const [stockRechazoModal, setStockRechazoModal] = useState({ show: false, compra: null, observaciones: '' });
 
@@ -588,6 +596,109 @@ const ComprasCajaChica = () => {
     }
   };
 
+  // ========== REGISTRAR COMPRA REALIZADA ==========
+  const handleOpenRegistrarCompra = async (compra) => {
+    try {
+      const response = await comprasCajaChicaAPI.getById(compra.id);
+      const compraCompleta = response.data;
+      
+      setRegistrarCompraModal({
+        show: true,
+        compra: compraCompleta,
+        fecha_compra: new Date().toISOString().split('T')[0],
+        numero_factura: compraCompleta.numero_factura || '',
+        proveedor_nombre: compraCompleta.proveedor_nombre || '',
+        proveedor_contacto: compraCompleta.proveedor_contacto || '',
+        detalles: (compraCompleta.detalles || []).map(d => ({
+          ...d,
+          cantidad_comprada: d.cantidad_comprada || d.cantidad_solicitada,
+          precio_unitario: d.precio_unitario || 0,
+          numero_lote: d.numero_lote || '',
+          fecha_caducidad: d.fecha_caducidad || '',
+        }))
+      });
+    } catch (error) {
+      toast.error('Error al cargar detalles de la compra');
+    }
+  };
+
+  const handleRegistrarCompra = async () => {
+    if (!registrarCompraModal.compra) return;
+    
+    if (!registrarCompraModal.fecha_compra) {
+      toast.error('Debe proporcionar la fecha de compra');
+      return;
+    }
+    
+    try {
+      await comprasCajaChicaAPI.registrarCompra(registrarCompraModal.compra.id, {
+        fecha_compra: registrarCompraModal.fecha_compra,
+        numero_factura: registrarCompraModal.numero_factura,
+        proveedor_nombre: registrarCompraModal.proveedor_nombre,
+        proveedor_contacto: registrarCompraModal.proveedor_contacto,
+        detalles: registrarCompraModal.detalles.map(d => ({
+          id: d.id,
+          cantidad_comprada: parseInt(d.cantidad_comprada) || 0,
+          precio_unitario: parseFloat(d.precio_unitario) || 0,
+          numero_lote: d.numero_lote,
+          fecha_caducidad: d.fecha_caducidad || null,
+        }))
+      });
+      
+      toast.success('Compra registrada correctamente');
+      setRegistrarCompraModal({ 
+        show: false, 
+        compra: null, 
+        fecha_compra: new Date().toISOString().split('T')[0],
+        numero_factura: '',
+        proveedor_nombre: '',
+        proveedor_contacto: '',
+        detalles: [] 
+      });
+      fetchCompras();
+      fetchResumen();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al registrar la compra');
+    }
+  };
+
+  // ========== REGISTRAR RECEPCIÓN ==========
+  const handleOpenRecibir = async (compra) => {
+    try {
+      const response = await comprasCajaChicaAPI.getById(compra.id);
+      const compraCompleta = response.data;
+      
+      setRecibirModal({
+        show: true,
+        compra: compraCompleta,
+        detalles: (compraCompleta.detalles || []).map(d => ({
+          ...d,
+          cantidad_recibida: d.cantidad_recibida || d.cantidad_comprada || d.cantidad_solicitada,
+        }))
+      });
+    } catch (error) {
+      toast.error('Error al cargar detalles de la compra');
+    }
+  };
+
+  const handleRecibir = async () => {
+    if (!recibirModal.compra) return;
+    
+    try {
+      await comprasCajaChicaAPI.recibir(recibirModal.compra.id, recibirModal.detalles.map(d => ({
+        id: d.id,
+        cantidad_recibida: parseInt(d.cantidad_recibida) || 0,
+      })));
+      
+      toast.success('Productos recibidos correctamente - Agregados al inventario de caja chica');
+      setRecibirModal({ show: false, compra: null, detalles: [] });
+      fetchCompras();
+      fetchResumen();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al registrar la recepción');
+    }
+  };
+
   // Ver detalles
   const handleViewDetails = async (compra) => {
     try {
@@ -790,7 +901,7 @@ const ComprasCajaChica = () => {
       {/* Tabla de compras */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
         <div className="w-full overflow-x-auto">
-          <table className="w-full min-w-[800px] divide-y divide-gray-200 text-sm">
+          <table className="w-full min-w-[900px] divide-y divide-gray-200 text-sm">
             <thead className="bg-theme-gradient sticky top-0 z-10">
               <tr>
                 <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
@@ -802,7 +913,10 @@ const ComprasCajaChica = () => {
                   </th>
                 )}
                 <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
-                  Fecha
+                  Solicitud
+                </th>
+                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
+                  Captura
                 </th>
                 <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   Proveedor
@@ -824,7 +938,7 @@ const ComprasCajaChica = () => {
             <tbody className="bg-white divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan={esUsuarioFarmacia ? 8 : 7} className="px-4 py-8 text-center">
+                  <td colSpan={esUsuarioFarmacia ? 9 : 8} className="px-4 py-8 text-center">
                     <div className="flex items-center justify-center gap-2">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
                       <span className="text-gray-500">Cargando...</span>
@@ -833,7 +947,7 @@ const ComprasCajaChica = () => {
                 </tr>
               ) : compras.length === 0 ? (
                 <tr>
-                  <td colSpan={esUsuarioFarmacia ? 8 : 7} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={esUsuarioFarmacia ? 9 : 8} className="px-4 py-8 text-center text-gray-500">
                     No se encontraron compras de caja chica
                   </td>
                 </tr>
@@ -856,6 +970,17 @@ const ComprasCajaChica = () => {
                       )}
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs text-gray-600">
                         {formatDate(compra.fecha_solicitud)}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className="text-xs text-gray-600" title="Fecha de captura del registro">
+                          {compra.created_at ? new Date(compra.created_at).toLocaleString('es-MX', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          }) : formatDate(compra.fecha_solicitud)}
+                        </span>
                       </td>
                       <td className="px-3 py-2.5 text-xs text-gray-700 max-w-[120px] truncate">
                         {compra.proveedor_nombre || '-'}
@@ -894,7 +1019,28 @@ const ComprasCajaChica = () => {
                             </button>
                           )}
                           
-                          {/* FLUJO FARMACIA: Enviar a Farmacia para verificar stock (Médico/Centro) */}
+                          {/* REGISTRAR COMPRA REALIZADA - cuando está autorizada */}
+                          {esUsuarioCentro && compra.estado === 'autorizada' && (
+                            <button
+                              onClick={() => handleOpenRegistrarCompra(compra)}
+                              className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg"
+                              title="Registrar Compra Realizada"
+                            >
+                              <FaShoppingCart className="text-xs" />
+                            </button>
+                          )}
+                          
+                          {/* REGISTRAR RECEPCIÓN - cuando está comprada */}
+                          {esUsuarioCentro && compra.estado === 'comprada' && (
+                            <button
+                              onClick={() => handleOpenRecibir(compra)}
+                              className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg"
+                              title="Registrar Recepción de Productos"
+                            >
+                              <FaTruck className="text-xs" />
+                            </button>
+                          )}
+                                                    {/* FLUJO FARMACIA: Enviar a Farmacia para verificar stock (Médico/Centro) */}
                           {esMedico && compra.estado === 'pendiente' && compra.detalles?.length > 0 && (
                             <button
                               onClick={() => handleEnviarFarmacia(compra)}
@@ -1310,14 +1456,13 @@ const ComprasCajaChica = () => {
 
       {/* Modal de confirmación de eliminación */}
       <ConfirmModal
-        isOpen={deleteModal.show}
-        onClose={() => setDeleteModal({ show: false, compra: null })}
+        open={deleteModal.show}
+        onCancel={() => setDeleteModal({ show: false, compra: null })}
         onConfirm={handleDelete}
         title="Eliminar Solicitud de Compra"
         message={`¿Está seguro de eliminar la solicitud ${deleteModal.compra?.folio}? Esta acción no se puede deshacer.`}
         confirmText="Eliminar"
-        cancelText="Cancelar"
-        type="danger"
+        tone="danger"
       />
 
       {/* Modal de autorizar */}
@@ -1397,6 +1542,336 @@ const ComprasCajaChica = () => {
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
                 Cancelar Compra
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Registrar Compra Realizada */}
+      {registrarCompraModal.show && registrarCompraModal.compra && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white px-6 py-4 border-b flex justify-between items-center">
+              <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
+                <FaShoppingCart className="text-purple-600" />
+                Registrar Compra Realizada - {registrarCompraModal.compra.folio}
+              </h2>
+              <button
+                onClick={() => setRegistrarCompraModal({ 
+                  show: false, 
+                  compra: null, 
+                  fecha_compra: new Date().toISOString().split('T')[0],
+                  numero_factura: '',
+                  proveedor_nombre: '',
+                  proveedor_contacto: '',
+                  detalles: [] 
+                })}
+                className="p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <FaTimes />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              {/* Info de trazabilidad */}
+              <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                <div className="flex items-center gap-2 text-purple-800">
+                  <FaInfoCircle />
+                  <span className="font-medium">Registro de compra externa</span>
+                </div>
+                <p className="text-purple-700 text-sm mt-1">
+                  Registre los datos de la compra realizada. Esta información quedará guardada para trazabilidad y auditoría.
+                </p>
+                <p className="text-purple-600 text-xs mt-2">
+                  <strong>Fecha de captura:</strong> {new Date().toLocaleString('es-MX')} | 
+                  <strong> Usuario:</strong> {user?.nombre || user?.username || 'N/A'}
+                </p>
+              </div>
+
+              {/* Datos de la compra */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Fecha de Compra *
+                  </label>
+                  <input
+                    type="date"
+                    value={registrarCompraModal.fecha_compra}
+                    onChange={(e) => setRegistrarCompraModal(prev => ({ ...prev, fecha_compra: e.target.value }))}
+                    required
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Número de Factura/Ticket
+                  </label>
+                  <input
+                    type="text"
+                    value={registrarCompraModal.numero_factura}
+                    onChange={(e) => setRegistrarCompraModal(prev => ({ ...prev, numero_factura: e.target.value }))}
+                    placeholder="Ej: FAC-12345"
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Proveedor
+                  </label>
+                  <input
+                    type="text"
+                    value={registrarCompraModal.proveedor_nombre}
+                    onChange={(e) => setRegistrarCompraModal(prev => ({ ...prev, proveedor_nombre: e.target.value }))}
+                    placeholder="Nombre del proveedor"
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Contacto/Teléfono
+                  </label>
+                  <input
+                    type="text"
+                    value={registrarCompraModal.proveedor_contacto}
+                    onChange={(e) => setRegistrarCompraModal(prev => ({ ...prev, proveedor_contacto: e.target.value }))}
+                    placeholder="Contacto del proveedor"
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+              </div>
+              
+              {/* Productos comprados */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-gray-50 px-4 py-2 border-b">
+                  <h3 className="font-medium text-gray-800">Productos Comprados</h3>
+                  <p className="text-xs text-gray-500">Registre las cantidades reales compradas, precios y datos del lote</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Producto</th>
+                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Solicitado</th>
+                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Comprado *</th>
+                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Precio Unit. *</th>
+                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Lote</th>
+                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Caducidad</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Importe</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {registrarCompraModal.detalles.map((detalle, index) => (
+                        <tr key={detalle.id}>
+                          <td className="px-3 py-2 text-sm">{detalle.descripcion_producto}</td>
+                          <td className="px-3 py-2 text-center text-sm text-gray-500">{detalle.cantidad_solicitada}</td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              min="0"
+                              value={detalle.cantidad_comprada}
+                              onChange={(e) => {
+                                const newDetalles = [...registrarCompraModal.detalles];
+                                newDetalles[index].cantidad_comprada = e.target.value;
+                                setRegistrarCompraModal(prev => ({ ...prev, detalles: newDetalles }));
+                              }}
+                              className="w-20 px-2 py-1 border rounded text-center text-sm"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={detalle.precio_unitario}
+                              onChange={(e) => {
+                                const newDetalles = [...registrarCompraModal.detalles];
+                                newDetalles[index].precio_unitario = e.target.value;
+                                setRegistrarCompraModal(prev => ({ ...prev, detalles: newDetalles }));
+                              }}
+                              className="w-24 px-2 py-1 border rounded text-center text-sm"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="text"
+                              value={detalle.numero_lote || ''}
+                              onChange={(e) => {
+                                const newDetalles = [...registrarCompraModal.detalles];
+                                newDetalles[index].numero_lote = e.target.value;
+                                setRegistrarCompraModal(prev => ({ ...prev, detalles: newDetalles }));
+                              }}
+                              placeholder="Lote"
+                              className="w-24 px-2 py-1 border rounded text-sm"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="date"
+                              value={detalle.fecha_caducidad || ''}
+                              onChange={(e) => {
+                                const newDetalles = [...registrarCompraModal.detalles];
+                                newDetalles[index].fecha_caducidad = e.target.value;
+                                setRegistrarCompraModal(prev => ({ ...prev, detalles: newDetalles }));
+                              }}
+                              className="w-32 px-2 py-1 border rounded text-sm"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-right text-sm font-medium">
+                            {formatCurrency((parseFloat(detalle.cantidad_comprada) || 0) * (parseFloat(detalle.precio_unitario) || 0))}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-gray-50">
+                      <tr>
+                        <td colSpan="6" className="px-3 py-2 text-right font-medium">Total:</td>
+                        <td className="px-3 py-2 text-right font-bold text-purple-600">
+                          {formatCurrency(registrarCompraModal.detalles.reduce((sum, d) => 
+                            sum + ((parseFloat(d.cantidad_comprada) || 0) * (parseFloat(d.precio_unitario) || 0)), 0
+                          ))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            </div>
+            
+            <div className="sticky bottom-0 bg-white px-6 py-4 border-t flex justify-end gap-3">
+              <button
+                onClick={() => setRegistrarCompraModal({ 
+                  show: false, 
+                  compra: null, 
+                  fecha_compra: new Date().toISOString().split('T')[0],
+                  numero_factura: '',
+                  proveedor_nombre: '',
+                  proveedor_contacto: '',
+                  detalles: [] 
+                })}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleRegistrarCompra}
+                disabled={!registrarCompraModal.fecha_compra}
+                className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                <FaCheck />
+                Registrar Compra
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Recibir Productos */}
+      {recibirModal.show && recibirModal.compra && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white px-6 py-4 border-b flex justify-between items-center">
+              <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
+                <FaTruck className="text-green-600" />
+                Registrar Recepción - {recibirModal.compra.folio}
+              </h2>
+              <button
+                onClick={() => setRecibirModal({ show: false, compra: null, detalles: [] })}
+                className="p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <FaTimes />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              {/* Info de trazabilidad */}
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center gap-2 text-green-800">
+                  <FaBoxOpen />
+                  <span className="font-medium">Recepción de productos</span>
+                </div>
+                <p className="text-green-700 text-sm mt-1">
+                  Confirme las cantidades recibidas. Los productos se agregarán al inventario de caja chica del centro.
+                </p>
+                <p className="text-green-600 text-xs mt-2">
+                  <strong>Fecha de captura:</strong> {new Date().toLocaleString('es-MX')} | 
+                  <strong> Usuario:</strong> {user?.nombre || user?.username || 'N/A'}
+                </p>
+              </div>
+
+              {/* Info de la compra */}
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-500">Fecha de compra:</span>
+                  <span className="ml-2 font-medium">{formatDate(recibirModal.compra.fecha_compra)}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Factura:</span>
+                  <span className="ml-2 font-medium">{recibirModal.compra.numero_factura || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Proveedor:</span>
+                  <span className="ml-2 font-medium">{recibirModal.compra.proveedor_nombre || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Total:</span>
+                  <span className="ml-2 font-medium">{formatCurrency(recibirModal.compra.total)}</span>
+                </div>
+              </div>
+              
+              {/* Productos a recibir */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-gray-50 px-4 py-2 border-b">
+                  <h3 className="font-medium text-gray-800">Productos a Recibir</h3>
+                </div>
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Producto</th>
+                      <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Lote</th>
+                      <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Comprado</th>
+                      <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Recibido *</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {recibirModal.detalles.map((detalle, index) => (
+                      <tr key={detalle.id}>
+                        <td className="px-4 py-2 text-sm">{detalle.descripcion_producto}</td>
+                        <td className="px-4 py-2 text-center text-sm text-gray-500">{detalle.numero_lote || '-'}</td>
+                        <td className="px-4 py-2 text-center text-sm">{detalle.cantidad_comprada}</td>
+                        <td className="px-4 py-2 text-center">
+                          <input
+                            type="number"
+                            min="0"
+                            value={detalle.cantidad_recibida}
+                            onChange={(e) => {
+                              const newDetalles = [...recibirModal.detalles];
+                              newDetalles[index].cantidad_recibida = e.target.value;
+                              setRecibirModal(prev => ({ ...prev, detalles: newDetalles }));
+                            }}
+                            className="w-20 px-2 py-1 border rounded text-center"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            
+            <div className="sticky bottom-0 bg-white px-6 py-4 border-t flex justify-end gap-3">
+              <button
+                onClick={() => setRecibirModal({ show: false, compra: null, detalles: [] })}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleRecibir}
+                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+              >
+                <FaCheckCircle />
+                Confirmar Recepción
               </button>
             </div>
           </div>
