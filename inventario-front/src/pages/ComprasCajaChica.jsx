@@ -510,8 +510,29 @@ const ComprasCajaChica = () => {
 
   // ========== FLUJO MULTINIVEL: ACCIONES ==========
   
+  // Validar que la compra tenga todos los datos necesarios
+  const validarCompraCompleta = (compra, accion = 'procesar') => {
+    const productosCount = compra.detalles_count || compra.detalles?.length || 0;
+    const total = parseFloat(compra.total) || 0;
+    
+    if (productosCount === 0) {
+      toast.error(`No se puede ${accion}: La compra no tiene productos`);
+      return false;
+    }
+    if (total <= 0) {
+      toast.error(`No se puede ${accion}: La compra no tiene monto total`);
+      return false;
+    }
+    if (!compra.proveedor_nombre || compra.proveedor_nombre.trim() === '' || compra.proveedor_nombre === '-') {
+      toast.error(`No se puede ${accion}: Debe especificar el proveedor`);
+      return false;
+    }
+    return true;
+  };
+  
   // Enviar a Farmacia para verificación de stock (Médico/Centro)
   const handleEnviarFarmacia = async (compra) => {
+    if (!validarCompraCompleta(compra, 'enviar a farmacia')) return;
     try {
       await comprasCajaChicaAPI.enviarFarmacia(compra.id);
       toast.success('Solicitud enviada a Farmacia para verificación de stock');
@@ -552,6 +573,7 @@ const ComprasCajaChica = () => {
 
   // Enviar a Admin (Médico)
   const handleEnviarAdmin = async (compra) => {
+    if (!validarCompraCompleta(compra, 'enviar a administrador')) return;
     try {
       await comprasCajaChicaAPI.enviarAdmin(compra.id);
       toast.success('Solicitud enviada al administrador');
@@ -564,6 +586,7 @@ const ComprasCajaChica = () => {
 
   // Autorizar como Admin
   const handleAutorizarAdmin = async (compra, observaciones = '') => {
+    if (!validarCompraCompleta(compra, 'autorizar')) return;
     try {
       await comprasCajaChicaAPI.autorizarAdmin(compra.id, { observaciones });
       toast.success('Solicitud autorizada por administrador');
@@ -576,6 +599,7 @@ const ComprasCajaChica = () => {
 
   // Enviar a Director (Admin)
   const handleEnviarDirector = async (compra) => {
+    if (!validarCompraCompleta(compra, 'enviar a director')) return;
     try {
       await comprasCajaChicaAPI.enviarDirector(compra.id);
       toast.success('Solicitud enviada al director');
@@ -588,6 +612,7 @@ const ComprasCajaChica = () => {
 
   // Autorizar como Director
   const handleAutorizarDirector = async (compra, observaciones = '') => {
+    if (!validarCompraCompleta(compra, 'autorizar')) return;
     try {
       await comprasCajaChicaAPI.autorizarDirector(compra.id, { observaciones });
       toast.success('Solicitud autorizada - Lista para compra');
