@@ -2413,8 +2413,8 @@ class DetalleDonacionSerializer(serializers.ModelSerializer):
             'producto_donacion': {'required': False, 'allow_null': True},  # Nuevo catálogo
             'producto': {'required': False, 'allow_null': True},  # Legacy, ahora opcional
             'cantidad': {'required': True},
-            'numero_lote': {'required': False, 'allow_null': True, 'allow_blank': True},
-            'fecha_caducidad': {'required': False, 'allow_null': True},
+            'numero_lote': {'required': True, 'allow_blank': False},  # Obligatorio para trazabilidad
+            'fecha_caducidad': {'required': True},  # Obligatorio para control de inventario
             'estado_producto': {'required': False, 'default': 'bueno'},
             'notas': {'required': False, 'allow_null': True, 'allow_blank': True},
         }

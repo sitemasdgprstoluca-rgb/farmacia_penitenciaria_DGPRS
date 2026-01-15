@@ -1178,8 +1178,29 @@ const Donaciones = () => {
 
   // Agregar detalle al formulario - USA CATÁLOGO INDEPENDIENTE
   const handleAgregarDetalle = () => {
-    if (!detalleForm.producto_donacion || !detalleForm.cantidad) {
-      toast.error('Selecciona un producto y cantidad');
+    // Validación de campos obligatorios
+    if (!detalleForm.producto_donacion) {
+      toast.error('Selecciona un producto del catálogo de donaciones');
+      return;
+    }
+    if (!detalleForm.cantidad || parseInt(detalleForm.cantidad) <= 0) {
+      toast.error('La cantidad debe ser mayor a 0');
+      return;
+    }
+    if (!detalleForm.numero_lote || detalleForm.numero_lote.trim() === '') {
+      toast.error('El número de lote es obligatorio');
+      return;
+    }
+    if (!detalleForm.fecha_caducidad) {
+      toast.error('La fecha de caducidad es obligatoria');
+      return;
+    }
+    // Validar que la fecha no sea pasada
+    const fechaCad = new Date(detalleForm.fecha_caducidad);
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    if (fechaCad < hoy) {
+      toast.error('La fecha de caducidad no puede ser una fecha pasada');
       return;
     }
 
@@ -2949,9 +2970,10 @@ const Donaciones = () => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Lote</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Lote *</label>
                       <input
                         type="text"
+                        required
                         value={detalleForm.numero_lote}
                         onChange={(e) => setDetalleForm({ ...detalleForm, numero_lote: e.target.value })}
                         className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary"
@@ -2970,9 +2992,10 @@ const Donaciones = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Caducidad</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Caducidad *</label>
                       <input
                         type="date"
+                        required
                         value={detalleForm.fecha_caducidad}
                         onChange={(e) => setDetalleForm({ ...detalleForm, fecha_caducidad: e.target.value })}
                         className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary"
