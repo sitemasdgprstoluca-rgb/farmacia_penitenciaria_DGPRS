@@ -2216,19 +2216,19 @@ const Requisiciones = () => {
                       </div>
                     ) : (
                       <div className="w-full overflow-x-auto rounded-lg border border-gray-200">
-                        <table className="w-full min-w-[900px] text-sm">
+                        <table className="w-full min-w-[950px] text-sm table-fixed">
                           <thead className="bg-theme-gradient sticky top-0 z-10">
                             <tr>
-                              <th className="text-left px-3 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap w-28">Clave</th>
-                              <th className="text-left px-3 py-3 text-xs font-semibold uppercase tracking-wider text-white w-48">Nombre</th>
-                              <th className="text-left px-3 py-3 text-xs font-semibold uppercase tracking-wider text-white w-36">Presentación</th>
-                              <th className="text-left px-3 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap w-24">Lote</th>
-                              <th className="text-center px-3 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap w-24">Caducidad</th>
+                              <th className="text-left px-2 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap" style={{width: '70px'}}>Clave</th>
+                              <th className="text-left px-2 py-3 text-xs font-semibold uppercase tracking-wider text-white" style={{width: '35%'}}>Nombre</th>
+                              <th className="text-left px-2 py-3 text-xs font-semibold uppercase tracking-wider text-white" style={{width: '18%'}}>Presentación</th>
+                              <th className="text-left px-2 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap" style={{width: '80px'}}>Lote</th>
+                              <th className="text-center px-2 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap" style={{width: '90px'}}>Caducidad</th>
                               {/* Solo Farmacia/Admin puede ver el inventario disponible */}
                               {esAdminOFarmacia && (
-                                <th className="text-center px-3 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap w-20">Inventario</th>
+                                <th className="text-center px-2 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap" style={{width: '70px'}}>Inv.</th>
                               )}
-                              <th className="text-center px-3 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap w-32">Cantidad</th>
+                              <th className="text-center px-2 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap" style={{width: '120px'}}>Cantidad</th>
                             </tr>
                           </thead>
                         <tbody>
@@ -2250,39 +2250,39 @@ const Requisiciones = () => {
                                   {loteIdx === 0 ? (
                                     <>
                                       <td 
-                                        className="px-3 py-3 font-bold align-top text-theme-primary"
+                                        className="px-2 py-2 font-bold align-top text-theme-primary text-xs"
                                         rowSpan={grupo.lotes.length}
                                       >
                                         {grupo.producto_clave}
                                       </td>
                                       <td 
-                                        className="px-3 py-3 align-top"
+                                        className="px-2 py-2 align-top"
                                         rowSpan={grupo.lotes.length}
                                       >
-                                        <span className="line-clamp-2 text-sm">{grupo.producto_nombre}</span>
+                                        <span className="text-xs leading-tight block">{grupo.producto_nombre}</span>
                                       </td>
                                       <td 
-                                        className="px-3 py-3 align-top text-gray-600"
+                                        className="px-2 py-2 align-top text-gray-600"
                                         rowSpan={grupo.lotes.length}
                                       >
-                                        <span className="text-xs">{grupo.producto_presentacion || '-'}</span>
+                                        <span className="text-xs leading-tight block">{grupo.producto_presentacion || '-'}</span>
                                       </td>
                                     </>
                                   ) : null}
-                                  <td className="px-3 py-3">
-                                    <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">
+                                  <td className="px-2 py-2">
+                                    <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">
                                       {lote.numero_lote}
                                     </span>
                                   </td>
-                                  <td className={`px-3 py-3 text-center text-xs ${
+                                  <td className={`px-2 py-2 text-center text-xs ${
                                     esCaducidadProxima ? 'text-amber-600 font-semibold' : 'text-gray-500'
                                   }`}>
                                     {fechaCad || '-'}
                                   </td>
                                   {/* Solo Farmacia/Admin puede ver el inventario disponible */}
                                   {esAdminOFarmacia && (
-                                    <td className="px-3 py-3 text-center">
-                                      <span className={`font-bold ${
+                                    <td className="px-2 py-2 text-center">
+                                      <span className={`font-bold text-sm ${
                                         stockDisponible < 10 ? 'text-red-600' : 
                                         stockDisponible < 50 ? 'text-amber-600' : 'text-green-600'
                                       }`}>
@@ -2290,23 +2290,23 @@ const Requisiciones = () => {
                                       </span>
                                     </td>
                                   )}
-                                  <td className="px-3 py-3 text-center">
+                                  <td className="px-2 py-2 text-center">
                                     {enCarrito ? (
                                       <div className="flex items-center justify-center gap-1">
                                         <button
                                           onClick={() => decrementarCantidad(lote.id)}
                                           disabled={isSubmitting}
-                                          className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="w-7 h-7 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                           <FaMinus className="text-xs" />
                                         </button>
-                                        <span className="w-12 text-center font-bold text-green-700">
+                                        <span className="w-10 text-center font-bold text-green-700 text-sm">
                                           {cantidadCarrito}
                                         </span>
                                         <button
                                           onClick={() => incrementarCantidad(lote.id)}
                                           disabled={isSubmitting || (esAdminOFarmacia && cantidadCarrito >= stockDisponible)}
-                                          className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="w-7 h-7 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                           <FaPlus className="text-xs" />
                                         </button>
