@@ -421,12 +421,17 @@ const Dispensaciones = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    // Validaciones de campos obligatorios
     if (!formData.centro) {
       toast.error('Seleccione un centro');
       return;
     }
     if (!formData.paciente) {
       toast.error('Seleccione un paciente');
+      return;
+    }
+    if (!formData.fecha_prescripcion) {
+      toast.error('Ingrese la fecha de prescripción');
       return;
     }
     if (!formData.medico_prescriptor?.trim()) {
@@ -436,6 +441,23 @@ const Dispensaciones = () => {
     if (formData.detalles.length === 0) {
       toast.error('Agregue al menos un medicamento');
       return;
+    }
+    
+    // Validar que cada detalle tenga producto, lote y cantidad
+    for (let i = 0; i < formData.detalles.length; i++) {
+      const detalle = formData.detalles[i];
+      if (!detalle.producto) {
+        toast.error(`El medicamento ${i + 1} no tiene producto seleccionado`);
+        return;
+      }
+      if (!detalle.lote) {
+        toast.error(`El medicamento ${i + 1} no tiene lote seleccionado`);
+        return;
+      }
+      if (!detalle.cantidad_prescrita || parseInt(detalle.cantidad_prescrita) <= 0) {
+        toast.error(`El medicamento ${i + 1} debe tener una cantidad válida mayor a 0`);
+        return;
+      }
     }
     
     try {
@@ -479,16 +501,29 @@ const Dispensaciones = () => {
   };
 
   const handleDispensar = async () => {
-    if (!dispensarModal.dispensacion) return;
+    if (!dispensarModal.dispensacion) {
+      toast.error('No hay dispensación seleccionada');
+      return;
+    }
     
     try {
-      await dispensacionesAPI.dispensar(dispensarModal.dispensacion.id);
-      toast.success('Dispensación procesada correctamente');
+      const response = await dispensacionesAPI.dispensar(dispensarModal.dispensacion.id);
+      toast.success('Dispensación procesada correctamente. Medicamentos descontados del inventario.');
       setDispensarModal({ show: false, dispensacion: null });
       fetchDispensaciones();
     } catch (error) {
       console.error('Error al dispensar:', error);
-      const errorMsg = error.response?.data?.detail || 'Error al procesar dispensación';
+      // Manejar diferentes tipos de errores
+      let errorMsg = 'Error al procesar dispensación';
+      if (error.response?.data?.error) {
+        errorMsg = error.response.data.error;
+      } else if (error.response?.data?.detail) {
+        errorMsg = error.response.data.detail;
+      } else if (error.response?.data?.message) {
+        errorMsg = error.response.data.message;
+      } else if (error.message) {
+        errorMsg = error.message;
+      }
       toast.error(errorMsg);
     }
   };
@@ -971,13 +1006,16 @@ const Dispensaciones = () => {
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Prescripción</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Fecha de Prescripción <span className="text-red-500">*</span>
+                    </label>
                     <input
                       type="date"
                       name="fecha_prescripcion"
                       value={formData.fecha_prescripcion}
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                      required
                     />
                   </div>
                   <div>
