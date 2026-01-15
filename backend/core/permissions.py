@@ -697,11 +697,14 @@ class CanManageComprasCajaChica(permissions.BasePermission):
         
         # Para operaciones de lectura, permitir a farmacia y usuarios del centro
         if request.method in permissions.SAFE_METHODS:
-            if _has_role(user, ['farmacia', 'admin_farmacia']):
+            if _has_role(user, ['farmacia', 'admin_farmacia', 'admin_sistema']):
                 return True
             # Usuarios de centro solo ven compras de su propio centro
             if user.centro and hasattr(obj, 'centro'):
                 return obj.centro == user.centro
+            # Si no tiene centro pero es admin, permitir
+            if _has_role(user, ['admin']):
+                return True
             return False
         
         # Para acciones de verificación de stock, permitir a farmacia
