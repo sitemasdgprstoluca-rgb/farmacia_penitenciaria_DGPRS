@@ -5352,7 +5352,11 @@ class AdminLimpiarDatosView(APIView):
             Producto, Lote, Movimiento, Requisicion, DetalleRequisicion,
             HojaRecoleccion, DetalleHojaRecoleccion, LoteDocumento,
             ProductoImagen, ImportacionLog, DetalleDonacion, Donacion, SalidaDonacion,
-            Notificacion, ProductoDonacion
+            Notificacion, ProductoDonacion,
+            # Nuevos módulos
+            Paciente, Dispensacion, DetalleDispensacion, HistorialDispensacion,
+            CompraCajaChica, DetalleCompraCajaChica, InventarioCajaChica,
+            MovimientoCajaChica, HistorialCompraCajaChica
         )
         from django.db import connection
         
@@ -5380,6 +5384,19 @@ class AdminLimpiarDatosView(APIView):
         
         # Conteo de notificaciones
         notificaciones_count = Notificacion.objects.count()
+        
+        # Conteos de dispensaciones (Formato C)
+        pacientes_count = Paciente.objects.count()
+        dispensaciones_count = Dispensacion.objects.count()
+        detalle_dispensaciones_count = DetalleDispensacion.objects.count()
+        historial_dispensaciones_count = HistorialDispensacion.objects.count()
+        
+        # Conteos de caja chica
+        compras_caja_chica_count = CompraCajaChica.objects.count()
+        detalle_compras_caja_chica_count = DetalleCompraCajaChica.objects.count()
+        inventario_caja_chica_count = InventarioCajaChica.objects.count()
+        movimientos_caja_chica_count = MovimientoCajaChica.objects.count()
+        historial_compras_caja_chica_count = HistorialCompraCajaChica.objects.count()
         
         # Conteos con raw SQL para tablas sin modelo
         with connection.cursor() as cursor:
@@ -5461,10 +5478,43 @@ class AdminLimpiarDatosView(APIView):
                     },
                     'dependencias': [],
                 },
+                'dispensaciones': {
+                    'nombre': 'Dispensaciones (Formato C)',
+                    'descripcion': 'Elimina dispensaciones a pacientes, sus detalles e historial',
+                    'total': dispensaciones_count + detalle_dispensaciones_count + historial_dispensaciones_count,
+                    'detalle': {
+                        'dispensaciones': dispensaciones_count,
+                        'detalle_dispensaciones': detalle_dispensaciones_count,
+                        'historial_dispensaciones': historial_dispensaciones_count,
+                    },
+                    'dependencias': ['NO elimina pacientes (deben eliminarse por separado)'],
+                },
+                'pacientes': {
+                    'nombre': 'Pacientes/Internos',
+                    'descripcion': 'Elimina el catálogo de pacientes/internos registrados',
+                    'total': pacientes_count,
+                    'detalle': {
+                        'pacientes': pacientes_count,
+                    },
+                    'dependencias': ['También eliminará: todas las dispensaciones vinculadas a pacientes'],
+                },
+                'caja_chica': {
+                    'nombre': 'Caja Chica Farmacia',
+                    'descripcion': 'Elimina compras, detalles, inventario, movimientos e historial de caja chica',
+                    'total': compras_caja_chica_count + detalle_compras_caja_chica_count + inventario_caja_chica_count + movimientos_caja_chica_count + historial_compras_caja_chica_count,
+                    'detalle': {
+                        'compras_caja_chica': compras_caja_chica_count,
+                        'detalle_compras_caja_chica': detalle_compras_caja_chica_count,
+                        'inventario_caja_chica': inventario_caja_chica_count,
+                        'movimientos_caja_chica': movimientos_caja_chica_count,
+                        'historial_compras_caja_chica': historial_compras_caja_chica_count,
+                    },
+                    'dependencias': [],
+                },
                 'todos': {
-                    'nombre': 'Todo el Inventario',
-                    'descripcion': 'Limpieza completa: productos, lotes, requisiciones, movimientos, donaciones y notificaciones',
-                    'total': productos_count + lotes_count + requisiciones_count + movimientos_count + donaciones_count + notificaciones_count,
+                    'nombre': 'Todo el Sistema',
+                    'descripcion': 'Limpieza completa: productos, lotes, requisiciones, movimientos, donaciones, notificaciones, dispensaciones, pacientes y caja chica',
+                    'total': productos_count + lotes_count + requisiciones_count + movimientos_count + donaciones_count + notificaciones_count + dispensaciones_count + pacientes_count + compras_caja_chica_count,
                     'detalle': {
                         'productos': productos_count,
                         'lotes': lotes_count,
@@ -5472,8 +5522,11 @@ class AdminLimpiarDatosView(APIView):
                         'movimientos': movimientos_count,
                         'donaciones': donaciones_count,
                         'notificaciones': notificaciones_count,
+                        'dispensaciones': dispensaciones_count,
+                        'pacientes': pacientes_count,
+                        'caja_chica': compras_caja_chica_count + detalle_compras_caja_chica_count + inventario_caja_chica_count,
                     },
-                    'dependencias': ['Incluye todos los datos asociados, dependencias, donaciones y notificaciones'],
+                    'dependencias': ['Incluye todos los datos asociados, dependencias y todos los módulos del sistema'],
                 },
             },
             'resumen': {
@@ -5483,6 +5536,9 @@ class AdminLimpiarDatosView(APIView):
                 'requisiciones': requisiciones_count,
                 'donaciones': donaciones_count,
                 'notificaciones': notificaciones_count,
+                'dispensaciones': dispensaciones_count,
+                'pacientes': pacientes_count,
+                'caja_chica': compras_caja_chica_count,
             },
             'no_se_eliminara': [
                 'Usuarios y perfiles',
@@ -5508,13 +5564,17 @@ class AdminLimpiarDatosView(APIView):
     def post(self, request):
         """
         Ejecuta la limpieza de datos operativos según la categoría seleccionada.
-        Requiere: {"confirmar": true, "categoria": "productos|lotes|requisiciones|movimientos|todos"}
+        Requiere: {"confirmar": true, "categoria": "productos|lotes|requisiciones|movimientos|dispensaciones|pacientes|caja_chica|todos"}
         """
         from core.models import (
             Producto, Lote, Movimiento, Requisicion, DetalleRequisicion,
             HojaRecoleccion, DetalleHojaRecoleccion, LoteDocumento,
             ProductoImagen, ImportacionLog, AuditoriaLog,
-            Donacion, DetalleDonacion, SalidaDonacion, Notificacion
+            Donacion, DetalleDonacion, SalidaDonacion, Notificacion,
+            # Nuevos módulos
+            Paciente, Dispensacion, DetalleDispensacion, HistorialDispensacion,
+            CompraCajaChica, DetalleCompraCajaChica, InventarioCajaChica,
+            MovimientoCajaChica, HistorialCompraCajaChica
         )
         from django.db import connection
         
@@ -5536,7 +5596,7 @@ class AdminLimpiarDatosView(APIView):
         
         # Obtener categoría
         categoria = request.data.get('categoria', 'todos').lower()
-        categorias_validas = ['productos', 'lotes', 'requisiciones', 'movimientos', 'donaciones', 'notificaciones', 'todos']
+        categorias_validas = ['productos', 'lotes', 'requisiciones', 'movimientos', 'donaciones', 'notificaciones', 'dispensaciones', 'pacientes', 'caja_chica', 'todos']
         
         if categoria not in categorias_validas:
             return Response(
@@ -5595,6 +5655,63 @@ class AdminLimpiarDatosView(APIView):
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM notificaciones")
                         eliminados['notificaciones'] = cursor.rowcount
+                
+                elif categoria == 'dispensaciones':
+                    # Eliminar dispensaciones en orden de dependencias FK
+                    # 1. Historial de dispensaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM historial_dispensaciones")
+                        eliminados['historial_dispensaciones'] = cursor.rowcount
+                    # 2. Detalles de dispensaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalle_dispensaciones")
+                        eliminados['detalle_dispensaciones'] = cursor.rowcount
+                    # 3. Dispensaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM dispensaciones")
+                        eliminados['dispensaciones'] = cursor.rowcount
+                
+                elif categoria == 'pacientes':
+                    # Eliminar pacientes (y sus dispensaciones por cascada FK)
+                    # 1. Primero historial de dispensaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM historial_dispensaciones")
+                        eliminados['historial_dispensaciones'] = cursor.rowcount
+                    # 2. Detalles de dispensaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalle_dispensaciones")
+                        eliminados['detalle_dispensaciones'] = cursor.rowcount
+                    # 3. Dispensaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM dispensaciones")
+                        eliminados['dispensaciones'] = cursor.rowcount
+                    # 4. Pacientes
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM pacientes")
+                        eliminados['pacientes'] = cursor.rowcount
+                
+                elif categoria == 'caja_chica':
+                    # Eliminar caja chica en orden de dependencias FK
+                    # 1. Historial de compras
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM historial_compras_caja_chica")
+                        eliminados['historial_compras_caja_chica'] = cursor.rowcount
+                    # 2. Movimientos de caja chica
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM movimientos_caja_chica")
+                        eliminados['movimientos_caja_chica'] = cursor.rowcount
+                    # 3. Detalles de compras
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalle_compras_caja_chica")
+                        eliminados['detalle_compras_caja_chica'] = cursor.rowcount
+                    # 4. Compras
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM compras_caja_chica")
+                        eliminados['compras_caja_chica'] = cursor.rowcount
+                    # 5. Inventario de caja chica
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM inventario_caja_chica")
+                        eliminados['inventario_caja_chica'] = cursor.rowcount
                 
                 elif categoria == 'requisiciones':
                     # 1. Detalles de hojas de recolección (pueden tener FK a requisiciones)
@@ -5835,6 +5952,53 @@ class AdminLimpiarDatosView(APIView):
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM notificaciones")
                         eliminados['notificaciones'] = cursor.rowcount
+                    
+                    # ==================== DISPENSACIONES (FORMATO C) ====================
+                    # 17. Historial de dispensaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM historial_dispensaciones")
+                        eliminados['historial_dispensaciones'] = cursor.rowcount
+                    
+                    # 18. Detalles de dispensaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalle_dispensaciones")
+                        eliminados['detalle_dispensaciones'] = cursor.rowcount
+                    
+                    # 19. Dispensaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM dispensaciones")
+                        eliminados['dispensaciones'] = cursor.rowcount
+                    
+                    # 20. Pacientes
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM pacientes")
+                        eliminados['pacientes'] = cursor.rowcount
+                    
+                    # ==================== CAJA CHICA FARMACIA ====================
+                    # 21. Historial de compras caja chica
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM historial_compras_caja_chica")
+                        eliminados['historial_compras_caja_chica'] = cursor.rowcount
+                    
+                    # 22. Movimientos de caja chica
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM movimientos_caja_chica")
+                        eliminados['movimientos_caja_chica'] = cursor.rowcount
+                    
+                    # 23. Detalles de compras caja chica
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalle_compras_caja_chica")
+                        eliminados['detalle_compras_caja_chica'] = cursor.rowcount
+                    
+                    # 24. Compras caja chica
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM compras_caja_chica")
+                        eliminados['compras_caja_chica'] = cursor.rowcount
+                    
+                    # 25. Inventario caja chica
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM inventario_caja_chica")
+                        eliminados['inventario_caja_chica'] = cursor.rowcount
                 
                 # Calcular totales
                 total_eliminados = sum(eliminados.values())
@@ -5863,7 +6027,10 @@ class AdminLimpiarDatosView(APIView):
                     'movimientos': 'MOVIMIENTOS',
                     'donaciones': 'DONACIONES',
                     'notificaciones': 'NOTIFICACIONES',
-                    'todos': 'TODO EL INVENTARIO (INCLUYE DONACIONES Y NOTIFICACIONES)',
+                    'dispensaciones': 'DISPENSACIONES (FORMATO C)',
+                    'pacientes': 'PACIENTES/INTERNOS',
+                    'caja_chica': 'CAJA CHICA FARMACIA',
+                    'todos': 'TODO EL SISTEMA (INCLUYE DISPENSACIONES, CAJA CHICA Y DONACIONES)',
                 }
                 
                 # Registrar en auditoría (NO se elimina)
