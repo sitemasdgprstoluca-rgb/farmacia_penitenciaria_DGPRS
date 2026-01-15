@@ -7497,6 +7497,83 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
         
         return Response(CompraCajaChicaSerializer(compra, context={'request': request}).data)
     
+    def destroy(self, request, *args, **kwargs):
+        """
+        Elimina una compra de caja chica.
+        - Compras pendientes: puede eliminar el centro que la creó
+        - Compras en cualquier otro estado (excepto cancelada/rechazada): solo admin de farmacia
+        - Compras canceladas o rechazadas: no se pueden eliminar
+        """
+        compra = self.get_object()
+        user = request.user
+        
+        # Estados que no se pueden eliminar
+        if compra.estado in ['cancelada', 'rechazada', 'rechazada_farmacia']:
+            return Response(
+                {'error': 'No se puede eliminar una compra cancelada o rechazada'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Estados confirmados (ya pasaron del pendiente)
+        estados_confirmados = [
+            'enviada_farmacia', 'sin_stock_farmacia', 'enviada_admin',
+            'autorizada_admin', 'enviada_director', 'autorizada',
+            'comprada', 'recibida'
+        ]
+        
+        # Si está en estado confirmado, solo admin de farmacia o superuser puede eliminar
+        if compra.estado in estados_confirmados:
+            es_admin_farmacia = user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia', 'admin_farmacia']
+            if not es_admin_farmacia:
+                return Response(
+                    {'error': 'Solo el administrador de farmacia puede eliminar compras confirmadas'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        # Si está pendiente, verificar que sea del mismo centro
+        if compra.estado == 'pendiente':
+            if not user.is_superuser and user.rol not in ['admin', 'admin_sistema', 'farmacia', 'admin_farmacia']:
+                if user.centro and user.centro != compra.centro:
+                    return Response(
+                        {'error': 'Solo puede eliminar compras de su propio centro'},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+        
+        try:
+            folio = compra.folio
+            centro_nombre = compra.centro.nombre if compra.centro else 'N/A'
+            
+            # Registrar en historial antes de eliminar
+            try:
+                HistorialCompraCajaChica.objects.create(
+                    compra=compra,
+                    estado_anterior=compra.estado,
+                    estado_nuevo='eliminada',
+                    usuario=user,
+                    accion='eliminar',
+                    observaciones=f'Compra eliminada por {user.username}',
+                    ip_address=request.META.get('REMOTE_ADDR', '')
+                )
+            except Exception as hist_error:
+                logger.warning(f"No se pudo crear historial al eliminar compra: {hist_error}")
+            
+            logger.info(f"Usuario {user} eliminó compra caja chica {folio} (centro: {centro_nombre})")
+            
+            # Eliminar la compra (los detalles se eliminarán en cascada)
+            compra.delete()
+            
+            return Response(
+                {'message': f'Compra {folio} eliminada correctamente'},
+                status=status.HTTP_200_OK
+            )
+            
+        except Exception as e:
+            logger.error(f"Error al eliminar compra caja chica: {e}", exc_info=True)
+            return Response(
+                {'error': f'Error al eliminar la compra: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
     # ========== ACCIONES LEGACY (mantener compatibilidad) ==========
     
     @action(detail=True, methods=['post'])

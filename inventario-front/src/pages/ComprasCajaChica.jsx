@@ -311,8 +311,13 @@ const ComprasCajaChica = () => {
 
   // Agregar detalle a la lista
   const handleAddDetalle = () => {
-    if (!currentDetalle.descripcion_producto || !currentDetalle.cantidad_solicitada) {
-      toast.error('Debe completar al menos la descripción y cantidad');
+    // Validar campos obligatorios del detalle
+    if (!currentDetalle.descripcion_producto?.trim()) {
+      toast.error('Debe ingresar la descripción del producto');
+      return;
+    }
+    if (!currentDetalle.cantidad_solicitada || parseInt(currentDetalle.cantidad_solicitada) <= 0) {
+      toast.error('Debe ingresar una cantidad válida mayor a 0');
       return;
     }
     
@@ -389,8 +394,24 @@ const ComprasCajaChica = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    // Validar motivo de compra (obligatorio)
+    if (!formData.motivo_compra?.trim()) {
+      toast.error('Debe ingresar el motivo de la compra');
+      return;
+    }
+    
+    // Validar que haya al menos un producto
     if (formData.detalles.length === 0) {
       toast.error('Debe agregar al menos un producto');
+      return;
+    }
+    
+    // Validar que todos los detalles tengan descripción y cantidad válida
+    const detallesInvalidos = formData.detalles.filter(
+      d => !d.descripcion_producto?.trim() || !d.cantidad_solicitada || parseInt(d.cantidad_solicitada) <= 0
+    );
+    if (detallesInvalidos.length > 0) {
+      toast.error('Todos los productos deben tener descripción y cantidad válida');
       return;
     }
     
@@ -434,14 +455,41 @@ const ComprasCajaChica = () => {
   const handleDelete = async () => {
     if (!deleteModal.compra) return;
     
+    const compra = deleteModal.compra;
+    const estadoCompra = compra.estado;
+    
+    // Estados que se consideran "confirmados" (ya pasaron del pendiente)
+    const estadosConfirmados = [
+      'enviada_farmacia', 'sin_stock_farmacia', 'enviada_admin', 
+      'autorizada_admin', 'enviada_director', 'autorizada', 
+      'comprada', 'recibida'
+    ];
+    
+    // Si está confirmada, solo admin de farmacia puede eliminar
+    if (estadosConfirmados.includes(estadoCompra)) {
+      if (!esUsuarioFarmacia && !user?.is_superuser) {
+        toast.error('Solo el administrador de farmacia puede eliminar compras confirmadas');
+        setDeleteModal({ show: false, compra: null });
+        return;
+      }
+    }
+    
+    // Si está cancelada o rechazada, no se puede eliminar
+    if (['cancelada', 'rechazada', 'rechazada_farmacia'].includes(estadoCompra)) {
+      toast.error('No se puede eliminar una compra cancelada o rechazada');
+      setDeleteModal({ show: false, compra: null });
+      return;
+    }
+    
     try {
-      await comprasCajaChicaAPI.delete(deleteModal.compra.id);
+      await comprasCajaChicaAPI.delete(compra.id);
       toast.success('Compra eliminada correctamente');
       setDeleteModal({ show: false, compra: null });
       fetchCompras();
       fetchResumen();
     } catch (error) {
-      toast.error('Error al eliminar la compra');
+      const errorMsg = error.response?.data?.error || error.response?.data?.detail || 'Error al eliminar la compra';
+      toast.error(errorMsg);
     }
   };
 
@@ -1128,12 +1176,14 @@ const ComprasCajaChica = () => {
                             </button>
                           )}
                           
-                          {/* Eliminar (solo pendientes) */}
-                          {puedeEditar && compra.estado === 'pendiente' && (
+                          {/* Eliminar: pendientes para todos, otros estados solo admin farmacia */}
+                          {((puedeEditar && compra.estado === 'pendiente') || 
+                            ((esUsuarioFarmacia || user?.is_superuser) && 
+                             !['cancelada', 'rechazada', 'rechazada_farmacia'].includes(compra.estado))) && (
                             <button
                               onClick={() => setDeleteModal({ show: true, compra })}
                               className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
-                              title="Eliminar"
+                              title={compra.estado === 'pendiente' ? 'Eliminar' : 'Eliminar (Admin Farmacia)'}
                             >
                               <FaTrash className="text-xs" />
                             </button>
