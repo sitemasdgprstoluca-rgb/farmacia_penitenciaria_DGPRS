@@ -6751,6 +6751,68 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+    def destroy(self, request, *args, **kwargs):
+        """
+        Elimina una dispensación.
+        Solo se pueden eliminar dispensaciones en estado 'pendiente'.
+        Las dispensaciones ya dispensadas o canceladas no se pueden eliminar.
+        """
+        dispensacion = self.get_object()
+        
+        if dispensacion.estado == 'dispensada':
+            return Response(
+                {'error': 'No se puede eliminar una dispensación ya completada. Use la opción de cancelar si es necesario.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if dispensacion.estado == 'cancelada':
+            return Response(
+                {'error': 'No se puede eliminar una dispensación cancelada.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Solo permitir eliminar dispensaciones pendientes
+        if dispensacion.estado != 'pendiente':
+            return Response(
+                {'error': f'No se puede eliminar una dispensación en estado "{dispensacion.estado}".'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            folio = dispensacion.folio
+            paciente_expediente = dispensacion.paciente.numero_expediente if dispensacion.paciente else 'N/A'
+            
+            # Registrar en historial antes de eliminar (no crítico)
+            try:
+                HistorialDispensacion.objects.create(
+                    dispensacion=dispensacion,
+                    accion='eliminar',
+                    estado_anterior=dispensacion.estado,
+                    estado_nuevo='eliminada',
+                    usuario=request.user,
+                    detalles={'folio': folio, 'paciente': paciente_expediente},
+                    ip_address=request.META.get('REMOTE_ADDR', '')
+                )
+            except Exception as hist_error:
+                logger.warning(f"No se pudo crear historial al eliminar dispensación: {hist_error}")
+            
+            logger.info(f"Usuario {request.user} eliminó dispensación {folio} (paciente: {paciente_expediente})")
+            
+            # Eliminar la dispensación (los detalles se eliminarán en cascada)
+            dispensacion.delete()
+            
+            return Response(
+                {'message': f'Dispensación {folio} eliminada correctamente'},
+                status=status.HTTP_200_OK
+            )
+            
+        except Exception as e:
+            logger.error(f"Error al eliminar dispensación: {e}", exc_info=True)
+            return Response(
+                {'error': f'Error al eliminar la dispensación: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
     @action(detail=True, methods=['post'])
     def dispensar(self, request, pk=None):
         """
