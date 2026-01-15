@@ -6770,16 +6770,26 @@ class DispensacionViewSet(viewsets.ModelViewSet):
         try:
             from core.utils.pdf_reports import generar_formato_c_dispensacion
             
+            logger.info(f"Generando PDF para dispensación {dispensacion.folio}")
             pdf_buffer = generar_formato_c_dispensacion(dispensacion)
+            logger.info(f"PDF generado exitosamente para {dispensacion.folio}")
             
             response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
             response['Content-Disposition'] = f'attachment; filename="formato_c_{dispensacion.folio}.pdf"'
             return response
             
-        except Exception as e:
-            logger.error(f"Error generando PDF Formato C: {e}", exc_info=True)
+        except ImportError as e:
+            logger.error(f"Error de importación generando PDF: {e}", exc_info=True)
             return Response(
-                {'error': f'Error al generar PDF: {str(e)}'},
+                {'error': f'Error de importación: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as e:
+            import traceback
+            error_trace = traceback.format_exc()
+            logger.error(f"Error generando PDF Formato C: {e}\n{error_trace}")
+            return Response(
+                {'error': f'Error al generar PDF: {str(e)}', 'trace': error_trace},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
