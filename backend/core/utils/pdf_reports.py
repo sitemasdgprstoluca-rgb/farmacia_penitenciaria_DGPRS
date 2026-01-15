@@ -2710,47 +2710,70 @@ def generar_recibo_salida_requisicion(requisicion_data, detalles_data):
     Returns:
         BytesIO: Buffer con el PDF generado en formato Recibo de Salida
     """
+    from io import BytesIO
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.units import inch
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER
+    from django.utils import timezone
+    
     buffer = BytesIO()
     
+    # Crear documento simple sin canvas personalizado
     doc = SimpleDocTemplate(
         buffer,
         pagesize=letter,
-        topMargin=1.8*inch,
+        topMargin=1.0*inch,
         bottomMargin=1.0*inch,
         leftMargin=0.5*inch,
         rightMargin=0.5*inch
     )
     
     elements = []
-    styles = _obtener_estilos_institucionales()
-    colores_tema = _obtener_colores_tema()
+    styles = getSampleStyleSheet()
     
-    # Obtener fondo institucional de forma segura
-    fondo_path = _obtener_fondo_seguro(colores_tema)
+    # Colores institucionales
+    color_guinda = colors.HexColor('#6D1A36')
+    color_texto = colors.HexColor('#333333')
+    color_gris = colors.HexColor('#666666')
+    
+    # Estilos personalizados
+    titulo_style = ParagraphStyle(
+        'TituloRecibo',
+        parent=styles['Heading1'],
+        fontSize=16,
+        textColor=color_guinda,
+        alignment=TA_CENTER,
+        spaceAfter=20,
+        fontName='Helvetica-Bold'
+    )
+    
+    label_style = ParagraphStyle('LabelRS', parent=styles['Normal'], fontSize=8, textColor=color_texto)
+    value_style = ParagraphStyle('ValueRS', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold')
+    celda_style = ParagraphStyle('CeldaRS', parent=styles['Normal'], fontSize=7, leading=9)
     
     # ========== TÍTULO ==========
-    titulo = Paragraph("<b>RECIBO DE SALIDA DEL ALMACÉN</b>", styles['TituloReporte'])
-    elements.append(titulo)
+    elements.append(Paragraph("<b>RECIBO DE SALIDA DEL ALMACÉN</b>", titulo_style))
     elements.append(Spacer(1, 0.15*inch))
     
     # ========== INFORMACIÓN DEL RECIBO ==========
-    label_style = ParagraphStyle('LabelRS', parent=styles['Normal'], fontSize=8, textColor=COLOR_TEXTO)
-    value_style = ParagraphStyle('ValueRS', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold')
-    
-    # Folio y fecha
     folio = requisicion_data.get('folio') or requisicion_data.get('numero', 'N/A')
-    fecha_surtido = requisicion_data.get('fecha_surtido', timezone.now().strftime('%d/%m/%Y'))
+    fecha_surtido = requisicion_data.get('fecha_surtido', timezone.now())
     if hasattr(fecha_surtido, 'strftime'):
         fecha_surtido = fecha_surtido.strftime('%d/%m/%Y %H:%M')
+    else:
+        fecha_surtido = str(fecha_surtido) if fecha_surtido else 'N/A'
     
     centro_nombre = requisicion_data.get('centro_nombre', 'No especificado')
     periodo = requisicion_data.get('periodo', '')
     
-    # Tabla de encabezado del recibo
+    # Tabla de encabezado
     header_data = [
         [Paragraph("<b>Folio:</b>", label_style), 
          Paragraph(str(folio), value_style),
-         Paragraph("<b>Fecha de Elaboración:</b>", label_style),
+         Paragraph("<b>Fecha:</b>", label_style),
          Paragraph(str(fecha_surtido), value_style)],
         [Paragraph("<b>C.P.R.S. Destino:</b>", label_style), 
          Paragraph(str(centro_nombre), value_style),
@@ -2758,11 +2781,11 @@ def generar_recibo_salida_requisicion(requisicion_data, detalles_data):
          Paragraph(str(periodo) if periodo else 'N/A', value_style)],
     ]
     
-    header_table = Table(header_data, colWidths=[1.3*inch, 2.4*inch, 1.4*inch, 2.3*inch])
+    header_table = Table(header_data, colWidths=[1.3*inch, 2.4*inch, 1.2*inch, 2.5*inch])
     header_table.setStyle(TableStyle([
         ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
-        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('TEXTCOLOR', (0, 0), (-1, -1), color_texto),
+        ('GRID', (0, 0), (-1, -1), 0.5, color_guinda),
         ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#FBF2F5')),
         ('BACKGROUND', (2, 0), (2, -1), colors.HexColor('#FBF2F5')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -2775,7 +2798,6 @@ def generar_recibo_salida_requisicion(requisicion_data, detalles_data):
     elements.append(Spacer(1, 0.2*inch))
     
     # ========== TABLA DE PRODUCTOS SURTIDOS ==========
-    # Encabezados
     detalle_header = [
         Paragraph('<b>No.</b>', label_style),
         Paragraph('<b>Clave</b>', label_style),
@@ -2783,13 +2805,12 @@ def generar_recibo_salida_requisicion(requisicion_data, detalles_data):
         Paragraph('<b>Presentación</b>', label_style),
         Paragraph('<b>Lote</b>', label_style),
         Paragraph('<b>Caducidad</b>', label_style),
-        Paragraph('<b>Cantidad<br/>Surtida</b>', label_style),
+        Paragraph('<b>Cantidad</b>', label_style),
     ]
     
     detalle_data = [detalle_header]
-    celda_style = ParagraphStyle('CeldaRS', parent=styles['Normal'], fontSize=7, leading=9, wordWrap='CJK')
-    
     total_piezas = 0
+    
     for idx, item in enumerate(detalles_data, 1):
         cantidad_surtida = item.get('cantidad_surtida', 0)
         total_piezas += cantidad_surtida
@@ -2798,12 +2819,14 @@ def generar_recibo_salida_requisicion(requisicion_data, detalles_data):
         fecha_cad = item.get('fecha_caducidad', 'N/A')
         if hasattr(fecha_cad, 'strftime'):
             fecha_cad = fecha_cad.strftime('%d/%m/%Y')
+        else:
+            fecha_cad = str(fecha_cad) if fecha_cad else 'N/A'
         
         detalle_data.append([
             str(idx),
             Paragraph(str(item.get('producto_clave', '')), celda_style),
-            Paragraph(str(item.get('producto_nombre', ''))[:60], celda_style),
-            Paragraph(str(item.get('presentacion', ''))[:30], celda_style),
+            Paragraph(str(item.get('producto_nombre', ''))[:50], celda_style),
+            Paragraph(str(item.get('presentacion', ''))[:25], celda_style),
             str(item.get('lote', 'N/A')),
             str(fecha_cad),
             str(cantidad_surtida),
@@ -2814,13 +2837,12 @@ def generar_recibo_salida_requisicion(requisicion_data, detalles_data):
         '', '', '', '', '', Paragraph('<b>TOTAL:</b>', celda_style), f'<b>{total_piezas}</b>'
     ])
     
-    # Anchos de columna
-    detalle_col_widths = [0.4*inch, 0.8*inch, 2.2*inch, 1.0*inch, 0.8*inch, 0.8*inch, 0.7*inch]
+    detalle_col_widths = [0.4*inch, 0.7*inch, 2.3*inch, 1.0*inch, 0.8*inch, 0.8*inch, 0.6*inch]
     
     detalle_table = Table(detalle_data, colWidths=detalle_col_widths)
     detalle_table.setStyle(TableStyle([
         # Encabezado
-        ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
+        ('BACKGROUND', (0, 0), (-1, 0), color_guinda),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 7),
@@ -2828,10 +2850,10 @@ def generar_recibo_salida_requisicion(requisicion_data, detalles_data):
         ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
         # Datos
         ('FONTSIZE', (0, 1), (-1, -1), 7),
-        ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
-        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
-        ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # Número
-        ('ALIGN', (6, 1), (6, -1), 'CENTER'),  # Cantidad
+        ('TEXTCOLOR', (0, 1), (-1, -1), color_texto),
+        ('GRID', (0, 0), (-1, -1), 0.5, color_guinda),
+        ('ALIGN', (0, 1), (0, -1), 'CENTER'),
+        ('ALIGN', (6, 1), (6, -1), 'CENTER'),
         ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 3),
         ('RIGHTPADDING', (0, 0), (-1, -1), 3),
@@ -2853,13 +2875,13 @@ def generar_recibo_salida_requisicion(requisicion_data, detalles_data):
         elements.append(Paragraph(f"<b>Observaciones:</b> {observaciones}", obs_style))
     
     # ========== SECCIÓN DE FIRMAS ==========
-    elements.append(Spacer(1, 0.4*inch))
+    elements.append(Spacer(1, 0.5*inch))
     
     usuario_surtido = requisicion_data.get('usuario_surtido', '')
     
     firma_data = [
         ['', '', ''],
-        ['_' * 35, '_' * 35, '_' * 35],
+        ['_' * 30, '_' * 30, '_' * 30],
         ['AUTORIZA', 'ENTREGA', 'RECIBE'],
         [Paragraph(f'<font size="7">{usuario_surtido}</font>', celda_style) if usuario_surtido else '', '', ''],
         ['Nombre y cargo', 'Nombre y cargo', 'Nombre y cargo'],
@@ -2874,26 +2896,22 @@ def generar_recibo_salida_requisicion(requisicion_data, detalles_data):
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('TOPPADDING', (0, 0), (-1, 0), 30),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('TEXTCOLOR', (0, 4), (-1, 4), COLOR_GRIS),
+        ('TEXTCOLOR', (0, 4), (-1, 4), color_gris),
     ]))
     elements.append(firma_table)
     
     # ========== PIE DE PÁGINA ==========
     elements.append(Spacer(1, 0.3*inch))
-    nota_style = ParagraphStyle('NotaRS', parent=styles['Normal'], fontSize=7, textColor=COLOR_GRIS, alignment=TA_CENTER)
+    nota_style = ParagraphStyle('NotaRS', parent=styles['Normal'], fontSize=7, textColor=color_gris, alignment=TA_CENTER)
     elements.append(Paragraph(
         f"Recibo de Salida de Almacén | Folio: {folio} | Generado: {timezone.now().strftime('%d/%m/%Y %H:%M')}",
         nota_style
     ))
     
-    # Usar canvas con fondo institucional
-    def make_canvas(*args, **kwargs):
-        return FondoOficialCanvas(*args, fondo_path=fondo_path, titulo_reporte='RECIBO SALIDA', **kwargs)
-    
-    doc.build(elements, canvasmaker=make_canvas)
+    # Construir PDF sin canvas personalizado (más robusto)
+    doc.build(elements)
     
     buffer.seek(0)
-    logger.info(f"Recibo de Salida PDF generado - Folio: {folio}, Items: {len(detalles_data)}")
     return buffer
 
 
