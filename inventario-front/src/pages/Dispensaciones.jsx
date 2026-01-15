@@ -33,23 +33,25 @@ const PAGE_SIZE = 20;
 
 const TIPOS_DISPENSACION = [
   { value: '', label: 'Todos' },
-  { value: 'REGULAR', label: 'Regular' },
-  { value: 'URGENCIA', label: 'Urgencia' },
-  { value: 'CRONICO', label: 'Crónico' },
-  { value: 'PROFILAXIS', label: 'Profilaxis' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'urgente', label: 'Urgente' },
+  { value: 'tratamiento_cronico', label: 'Tratamiento Crónico' },
+  { value: 'dosis_unica', label: 'Dosis Única' },
 ];
 
 const ESTADOS_DISPENSACION = [
   { value: '', label: 'Todos' },
-  { value: 'PENDIENTE', label: 'Pendiente' },
-  { value: 'DISPENSADA', label: 'Dispensada' },
-  { value: 'CANCELADA', label: 'Cancelada' },
+  { value: 'pendiente', label: 'Pendiente' },
+  { value: 'dispensada', label: 'Dispensada' },
+  { value: 'parcial', label: 'Parcialmente Dispensada' },
+  { value: 'cancelada', label: 'Cancelada' },
 ];
 
 const ESTADO_COLORS = {
-  PENDIENTE: 'bg-yellow-100 text-yellow-800',
-  DISPENSADA: 'bg-green-100 text-green-800',
-  CANCELADA: 'bg-red-100 text-red-800',
+  pendiente: 'bg-yellow-100 text-yellow-800',
+  dispensada: 'bg-green-100 text-green-800',
+  parcial: 'bg-blue-100 text-blue-800',
+  cancelada: 'bg-red-100 text-red-800',
 };
 
 const Dispensaciones = () => {
@@ -98,7 +100,7 @@ const Dispensaciones = () => {
   const [formData, setFormData] = useState({
     paciente: '',
     centro: '',
-    tipo_dispensacion: 'REGULAR',
+    tipo_dispensacion: 'normal',
     fecha_prescripcion: '',
     medico_prescriptor: '',
     diagnostico: '',
@@ -227,18 +229,23 @@ const Dispensaciones = () => {
 
   // Cargar lotes cuando se selecciona producto
   const fetchLotes = async (productoId, centroId) => {
-    if (!productoId || !centroId) {
+    if (!productoId) {
       setLotes([]);
       return;
     }
     try {
+      // Buscar lotes con stock disponible
+      // No filtramos por centro porque los lotes están en Farmacia Central
       const response = await lotesAPI.getAll({
         producto: productoId,
-        centro: centroId,
-        cantidad_disponible_gt: 0,
+        con_stock: true,
+        activo: true,
         page_size: 50
       });
-      setLotes(response.data?.results || response.data || []);
+      const lotesData = response.data?.results || response.data || [];
+      // Filtrar solo lotes con cantidad > 0
+      const lotesConStock = lotesData.filter(l => (l.cantidad_actual || 0) > 0);
+      setLotes(lotesConStock);
     } catch (error) {
       console.error('Error al cargar lotes:', error);
       setLotes([]);
@@ -329,7 +336,7 @@ const Dispensaciones = () => {
     setFormData({
       paciente: '',
       centro: user?.centro?.id || '',
-      tipo_dispensacion: 'REGULAR',
+      tipo_dispensacion: 'normal',
       fecha_prescripcion: new Date().toISOString().split('T')[0],
       medico_prescriptor: '',
       diagnostico: '',
@@ -355,7 +362,7 @@ const Dispensaciones = () => {
   const handleOpenModal = (dispensacion = null) => {
     if (dispensacion) {
       // Editar (solo si está pendiente)
-      if (dispensacion.estado !== 'PENDIENTE') {
+      if (dispensacion.estado !== 'pendiente') {
         toast.error('Solo se pueden editar dispensaciones pendientes');
         return;
       }
@@ -399,12 +406,16 @@ const Dispensaciones = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    if (!formData.centro) {
+      toast.error('Seleccione un centro');
+      return;
+    }
     if (!formData.paciente) {
       toast.error('Seleccione un paciente');
       return;
     }
-    if (!formData.centro) {
-      toast.error('Seleccione un centro');
+    if (!formData.medico_prescriptor?.trim()) {
+      toast.error('Ingrese el nombre del médico prescriptor');
       return;
     }
     if (formData.detalles.length === 0) {
@@ -417,7 +428,7 @@ const Dispensaciones = () => {
         paciente: formData.paciente,
         centro: formData.centro,
         tipo_dispensacion: formData.tipo_dispensacion,
-        medico_prescriptor: formData.medico_prescriptor || null,
+        medico_prescriptor: formData.medico_prescriptor.trim(),
         diagnostico: formData.diagnostico || null,
         indicaciones: formData.indicaciones_medicas || null,
         observaciones: formData.observaciones || null,
@@ -955,7 +966,9 @@ const Dispensaciones = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Médico Prescriptor</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Médico Prescriptor <span className="text-red-500">*</span>
+                    </label>
                     <input
                       type="text"
                       name="medico_prescriptor"
@@ -963,6 +976,7 @@ const Dispensaciones = () => {
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
                       placeholder="Nombre del médico"
+                      required
                     />
                   </div>
                   <div>
@@ -1023,7 +1037,7 @@ const Dispensaciones = () => {
                         <option value="">Seleccionar</option>
                         {lotes.map(lote => (
                           <option key={lote.id} value={lote.id}>
-                            {lote.numero_lote} (Disp: {lote.cantidad_disponible})
+                            {lote.numero_lote} (Disp: {lote.cantidad_actual || lote.cantidad_disponible || 0})
                           </option>
                         ))}
                       </select>
