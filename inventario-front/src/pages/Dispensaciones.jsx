@@ -247,14 +247,21 @@ const Dispensaciones = () => {
       return;
     }
     try {
-      // Buscar lotes con stock disponible
-      // No filtramos por centro porque los lotes están en Farmacia Central
-      const response = await lotesAPI.getAll({
+      // Buscar lotes con stock disponible DEL CENTRO SELECCIONADO
+      // IMPORTANTE: Solo mostrar lotes del centro para no afectar inventario de farmacia
+      const params = {
         producto: productoId,
         con_stock: true,
         activo: true,
         page_size: 50
-      });
+      };
+      
+      // Si hay un centro seleccionado, filtrar por ese centro
+      if (formData.centro) {
+        params.centro = formData.centro;
+      }
+      
+      const response = await lotesAPI.getAll(params);
       const lotesData = response.data?.results || response.data || [];
       // Filtrar solo lotes con cantidad > 0
       const lotesConStock = lotesData.filter(l => (l.cantidad_actual || 0) > 0);

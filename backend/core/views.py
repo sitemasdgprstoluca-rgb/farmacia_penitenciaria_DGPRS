@@ -6862,6 +6862,17 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                     errores_stock.append(f'{detalle.producto.nombre}: El lote ya no existe')
                     continue
                 
+                # VALIDACIÓN CRÍTICA: Verificar que el lote pertenezca al centro de la dispensación
+                # Esto asegura que NO se descuente del inventario de farmacia central
+                if lote.centro_id and dispensacion.centro_id:
+                    if lote.centro_id != dispensacion.centro_id:
+                        errores_stock.append(
+                            f'{detalle.producto.nombre} (Lote: {lote.numero_lote}): '
+                            f'El lote no pertenece al centro de esta dispensación. '
+                            f'Seleccione un lote del centro {dispensacion.centro.nombre if dispensacion.centro else "correcto"}'
+                        )
+                        continue
+                
                 stock_disponible = lote.cantidad_actual
                 cantidad_solicitada = detalle.cantidad_prescrita
                 
