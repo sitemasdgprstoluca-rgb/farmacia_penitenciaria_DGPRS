@@ -228,7 +228,7 @@ const Dispensaciones = () => {
   }, [pacienteSearchTerm, formData.centro, searchPacientes]);
 
   // Cargar lotes cuando se selecciona producto
-  const fetchLotes = async (productoId, centroId) => {
+  const fetchLotes = async (productoId) => {
     if (!productoId) {
       setLotes([]);
       return;
@@ -277,7 +277,7 @@ const Dispensaciones = () => {
     
     if (name === 'producto') {
       setCurrentDetalle(prev => ({ ...prev, lote: '' }));
-      fetchLotes(value, formData.centro);
+      fetchLotes(value);
     }
   };
 
@@ -298,8 +298,10 @@ const Dispensaciones = () => {
     const producto = productos.find(p => p.id == currentDetalle.producto);
     const lote = lotes.find(l => l.id == currentDetalle.lote);
     
-    if (parseInt(currentDetalle.cantidad_prescrita) > lote?.cantidad_disponible) {
-      toast.error(`Stock insuficiente. Disponible: ${lote?.cantidad_disponible}`);
+    // Usar cantidad_actual en lugar de cantidad_disponible
+    const stockDisponible = lote?.cantidad_actual || 0;
+    if (parseInt(currentDetalle.cantidad_prescrita) > stockDisponible) {
+      toast.error(`Stock insuficiente. Disponible: ${stockDisponible}`);
       return;
     }
     
@@ -309,7 +311,7 @@ const Dispensaciones = () => {
         ...currentDetalle,
         producto_nombre: producto?.nombre,
         lote_numero: lote?.numero_lote,
-        stock_disponible: lote?.cantidad_disponible,
+        stock_disponible: stockDisponible,
       }]
     }));
     
@@ -763,7 +765,7 @@ const Dispensaciones = () => {
                           <FaEye />
                         </button>
                         
-                        {disp.estado === 'PENDIENTE' && puedeDispensar && (
+                        {disp.estado === 'pendiente' && puedeDispensar && (
                           <button
                             onClick={() => setDispensarModal({ show: true, dispensacion: disp })}
                             className="text-green-600 hover:text-green-800 p-1"
@@ -773,7 +775,7 @@ const Dispensaciones = () => {
                           </button>
                         )}
                         
-                        {disp.estado === 'PENDIENTE' && puedeEditar && (
+                        {disp.estado === 'pendiente' && puedeEditar && (
                           <button
                             onClick={() => handleOpenModal(disp)}
                             className="text-blue-600 hover:text-blue-800 p-1"
@@ -783,7 +785,7 @@ const Dispensaciones = () => {
                           </button>
                         )}
                         
-                        {disp.estado === 'PENDIENTE' && puedeCancelar && (
+                        {disp.estado === 'pendiente' && puedeCancelar && (
                           <button
                             onClick={() => setCancelModal({ show: true, dispensacion: disp, motivo: '' })}
                             className="text-orange-600 hover:text-orange-800 p-1"
@@ -793,7 +795,7 @@ const Dispensaciones = () => {
                           </button>
                         )}
                         
-                        {disp.estado === 'DISPENSADA' && (
+                        {disp.estado === 'dispensada' && (
                           <button
                             onClick={() => handleExportPdf(disp)}
                             className="text-red-600 hover:text-red-800 p-1"
@@ -811,7 +813,7 @@ const Dispensaciones = () => {
                           <FaHistory />
                         </button>
                         
-                        {disp.estado === 'PENDIENTE' && puedeEditar && (
+                        {disp.estado === 'pendiente' && puedeEditar && (
                           <button
                             onClick={() => setDeleteModal({ show: true, dispensacion: disp })}
                             className="text-red-600 hover:text-red-800 p-1"
@@ -1037,7 +1039,7 @@ const Dispensaciones = () => {
                         <option value="">Seleccionar</option>
                         {lotes.map(lote => (
                           <option key={lote.id} value={lote.id}>
-                            {lote.numero_lote} (Disp: {lote.cantidad_actual || lote.cantidad_disponible || 0})
+                            {lote.numero_lote} (Disp: {lote.cantidad_actual || 0})
                           </option>
                         ))}
                       </select>

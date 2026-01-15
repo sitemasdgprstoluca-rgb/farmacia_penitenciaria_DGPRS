@@ -71,6 +71,12 @@ PERMISOS_POR_ROL = {
         'devolverRequisicion': True,
         # Permisos de notificaciones
         'gestionarNotificaciones': True,
+        # PERMISOS DE DISPENSACIONES - Admin tiene todos
+        'verDispensaciones': True,
+        'crearDispensacion': True,
+        'editarDispensacion': True,
+        'dispensar': True,
+        'cancelarDispensacion': True,
     },
     'FARMACIA': {
         'verDashboard': True,
@@ -106,6 +112,12 @@ PERMISOS_POR_ROL = {
         'devolverRequisicion': True,
         # Permisos de notificaciones
         'gestionarNotificaciones': True,
+        # PERMISOS DE DISPENSACIONES - Farmacia solo AUDITA (ver)
+        'verDispensaciones': True,
+        'crearDispensacion': False,
+        'editarDispensacion': False,
+        'dispensar': False,
+        'cancelarDispensacion': False,
     },
     # FLUJO V2: Rol de Médico del Centro (crea requisiciones)
     'MEDICO': {
@@ -142,6 +154,12 @@ PERMISOS_POR_ROL = {
         'devolverRequisicion': False,
         # Permisos de notificaciones
         'gestionarNotificaciones': False,
+        # PERMISOS DE DISPENSACIONES - Médico es el operador principal
+        'verDispensaciones': True,
+        'crearDispensacion': True,
+        'editarDispensacion': True,
+        'dispensar': True,
+        'cancelarDispensacion': True,
     },
     # FLUJO V2: Rol de Administrador del Centro (primera autorización)
     'ADMINISTRADOR_CENTRO': {
@@ -178,6 +196,12 @@ PERMISOS_POR_ROL = {
         'devolverRequisicion': True,
         # Permisos de notificaciones
         'gestionarNotificaciones': False,
+        # PERMISOS DE DISPENSACIONES - Admin Centro solo VE y puede cancelar si es necesario
+        'verDispensaciones': True,
+        'crearDispensacion': False,
+        'editarDispensacion': False,
+        'dispensar': False,
+        'cancelarDispensacion': True,
     },
     # FLUJO V2: Rol de Director del Centro (segunda autorización)
     'DIRECTOR_CENTRO': {
@@ -214,6 +238,12 @@ PERMISOS_POR_ROL = {
         'devolverRequisicion': True,
         # Permisos de notificaciones
         'gestionarNotificaciones': False,
+        # PERMISOS DE DISPENSACIONES - Director solo VE y puede cancelar si es necesario
+        'verDispensaciones': True,
+        'crearDispensacion': False,
+        'editarDispensacion': False,
+        'dispensar': False,
+        'cancelarDispensacion': True,
     },
     'CENTRO': {
         'verDashboard': True,
@@ -249,6 +279,12 @@ PERMISOS_POR_ROL = {
         'devolverRequisicion': False,
         # Permisos de notificaciones
         'gestionarNotificaciones': False,
+        # PERMISOS DE DISPENSACIONES - Centro genérico puede operar
+        'verDispensaciones': True,
+        'crearDispensacion': True,
+        'editarDispensacion': True,
+        'dispensar': True,
+        'cancelarDispensacion': True,
     },
     'VISTA': {
         'verDashboard': True,
@@ -284,6 +320,12 @@ PERMISOS_POR_ROL = {
         'devolverRequisicion': False,
         # Permisos de notificaciones
         'gestionarNotificaciones': False,
+        # PERMISOS DE DISPENSACIONES - Vista NO puede ver (datos sensibles)
+        'verDispensaciones': False,
+        'crearDispensacion': False,
+        'editarDispensacion': False,
+        'dispensar': False,
+        'cancelarDispensacion': False,
     },
     'SIN_ROL': {
         'verDashboard': False,
@@ -319,6 +361,12 @@ PERMISOS_POR_ROL = {
         'devolverRequisicion': False,
         # Permisos de notificaciones
         'gestionarNotificaciones': False,
+        # PERMISOS DE DISPENSACIONES - Sin rol no puede hacer nada
+        'verDispensaciones': False,
+        'crearDispensacion': False,
+        'editarDispensacion': False,
+        'dispensar': False,
+        'cancelarDispensacion': False,
     },
 }
 
@@ -450,6 +498,8 @@ def build_perm_map(user):
             'perm_autorizar_farmacia': 'autorizarFarmacia',
             'perm_surtir': 'surtirRequisicion',
             'perm_confirmar_entrega': 'confirmarRecepcion',
+            # DISPENSACIONES: Permiso personalizado
+            'perm_dispensaciones': 'verDispensaciones',
         }
         for field, perm_key in perm_fields.items():
             custom_value = getattr(user, field, None)
@@ -2763,6 +2813,8 @@ class DispensacionSerializer(serializers.ModelSerializer):
     porcentaje_completado = serializers.FloatField(read_only=True)
     tipo_dispensacion_display = serializers.SerializerMethodField()
     estado_display = serializers.SerializerMethodField()
+    # Validación: médico prescriptor es obligatorio
+    medico_prescriptor = serializers.CharField(required=True, allow_blank=False, max_length=200)
     
     class Meta:
         model = Dispensacion

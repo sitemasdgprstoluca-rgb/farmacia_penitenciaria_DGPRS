@@ -6530,12 +6530,13 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                 dispensacion = serializer.save(created_by=user)
                 
                 # Crear los detalles
+                detalles_creados = []
                 for detalle_data in detalles_data:
                     # Normalizar campo indicaciones del detalle
                     if 'indicaciones' in detalle_data and 'notas' not in detalle_data:
                         detalle_data['notas'] = detalle_data.pop('indicaciones')
                     
-                    DetalleDispensacion.objects.create(
+                    detalle = DetalleDispensacion.objects.create(
                         dispensacion=dispensacion,
                         producto_id=detalle_data.get('producto'),
                         lote_id=detalle_data.get('lote'),
@@ -6545,18 +6546,29 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                         duracion_tratamiento=detalle_data.get('duracion_tratamiento'),
                         notas=detalle_data.get('notas'),
                     )
+                    detalles_creados.append(detalle.id)
                 
-                # Registrar en historial
-                HistorialDispensacion.objects.create(
-                    dispensacion=dispensacion,
-                    accion='crear',
-                    estado_nuevo='pendiente',
-                    usuario=user,
-                    detalles={'total_items': len(detalles_data)},
-                    ip_address=request.META.get('REMOTE_ADDR', '')
-                )
+                logger.info(f"Dispensación {dispensacion.id} creada con {len(detalles_creados)} detalles: {detalles_creados}")
                 
-                # Retornar la dispensación completa
+                # Registrar en historial (no crítico, no debe fallar la creación)
+                try:
+                    HistorialDispensacion.objects.create(
+                        dispensacion=dispensacion,
+                        accion='crear',
+                        estado_nuevo='pendiente',
+                        usuario=user,
+                        detalles={'total_items': len(detalles_data)},
+                        ip_address=request.META.get('REMOTE_ADDR', '')
+                    )
+                except Exception as hist_error:
+                    logger.warning(f"No se pudo crear historial de dispensación: {hist_error}")
+                
+                # Recargar la dispensación con prefetch para incluir los detalles recién creados
+                dispensacion = Dispensacion.objects.prefetch_related(
+                    'detalles', 'detalles__producto', 'detalles__lote'
+                ).get(pk=dispensacion.pk)
+                
+                # Retornar la dispensación completa con detalles
                 result_serializer = self.get_serializer(dispensacion)
                 return Response(result_serializer.data, status=status.HTTP_201_CREATED)
                 
@@ -6572,6 +6584,9 @@ class DispensacionViewSet(viewsets.ModelViewSet):
         """
         Procesa la dispensación de medicamentos.
         Actualiza el estado y descuenta del inventario.
+        
+        Si se envían detalles específicos, usa esas cantidades.
+        Si no se envían detalles, dispensa las cantidades prescritas automáticamente.
         """
         dispensacion = self.get_object()
         
@@ -6585,33 +6600,18 @@ class DispensacionViewSet(viewsets.ModelViewSet):
             with transaction.atomic():
                 detalles_data = request.data.get('detalles', [])
                 
-                for detalle_data in detalles_data:
-                    detalle_id = detalle_data.get('id')
-                    cantidad = detalle_data.get('cantidad_dispensada', 0)
-                    lote_id = detalle_data.get('lote_id')
-                    
-                    if not detalle_id:
-                        continue
-                    
-                    try:
-                        detalle = DetalleDispensacion.objects.get(id=detalle_id, dispensacion=dispensacion)
-                    except DetalleDispensacion.DoesNotExist:
-                        continue
-                    
-                    if cantidad > 0:
-                        # Asignar lote si se especifica
-                        if lote_id:
-                            try:
-                                lote = Lote.objects.select_for_update().get(id=lote_id)
-                                if lote.cantidad_actual < cantidad:
-                                    return Response(
-                                        {'error': f'Stock insuficiente en lote {lote.numero_lote}'},
-                                        status=status.HTTP_400_BAD_REQUEST
-                                    )
+                # Si no se envían detalles específicos, usar los detalles existentes con cantidad prescrita
+                if not detalles_data:
+                    detalles_existentes = dispensacion.detalles.all()
+                    for detalle in detalles_existentes:
+                        if detalle.lote and detalle.cantidad_prescrita > 0:
+                            lote = Lote.objects.select_for_update().get(id=detalle.lote.id)
+                            cantidad = min(detalle.cantidad_prescrita, lote.cantidad_actual)
+                            
+                            if cantidad > 0:
                                 # Descontar del lote
                                 lote.cantidad_actual -= cantidad
                                 lote.save()
-                                detalle.lote = lote
                                 
                                 # Crear movimiento de salida
                                 Movimiento.objects.create(
@@ -6626,12 +6626,59 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                                     referencia=dispensacion.folio,
                                     numero_expediente=dispensacion.paciente.numero_expediente,
                                 )
-                            except Lote.DoesNotExist:
-                                pass
+                                
+                                detalle.cantidad_dispensada = cantidad
+                                detalle.estado = 'dispensado' if cantidad >= detalle.cantidad_prescrita else 'parcial'
+                                detalle.save()
+                else:
+                    # Procesar detalles específicos enviados
+                    for detalle_data in detalles_data:
+                        detalle_id = detalle_data.get('id')
+                        cantidad = detalle_data.get('cantidad_dispensada', 0)
+                        lote_id = detalle_data.get('lote_id')
                         
-                        detalle.cantidad_dispensada = cantidad
-                        detalle.estado = 'dispensado' if cantidad >= detalle.cantidad_prescrita else 'pendiente'
-                        detalle.save()
+                        if not detalle_id:
+                            continue
+                        
+                        try:
+                            detalle = DetalleDispensacion.objects.get(id=detalle_id, dispensacion=dispensacion)
+                        except DetalleDispensacion.DoesNotExist:
+                            continue
+                        
+                        if cantidad > 0:
+                            # Asignar lote si se especifica
+                            if lote_id:
+                                try:
+                                    lote = Lote.objects.select_for_update().get(id=lote_id)
+                                    if lote.cantidad_actual < cantidad:
+                                        return Response(
+                                            {'error': f'Stock insuficiente en lote {lote.numero_lote}'},
+                                            status=status.HTTP_400_BAD_REQUEST
+                                        )
+                                    # Descontar del lote
+                                    lote.cantidad_actual -= cantidad
+                                    lote.save()
+                                    detalle.lote = lote
+                                    
+                                    # Crear movimiento de salida
+                                    Movimiento.objects.create(
+                                        tipo='salida',
+                                        subtipo_salida='dispensacion',
+                                        producto=detalle.producto,
+                                        lote=lote,
+                                        cantidad=cantidad,
+                                        centro_origen=dispensacion.centro,
+                                        usuario=request.user,
+                                        motivo=f'Dispensación {dispensacion.folio} - Paciente: {dispensacion.paciente.numero_expediente}',
+                                        referencia=dispensacion.folio,
+                                        numero_expediente=dispensacion.paciente.numero_expediente,
+                                    )
+                                except Lote.DoesNotExist:
+                                    pass
+                            
+                            detalle.cantidad_dispensada = cantidad
+                            detalle.estado = 'dispensado' if cantidad >= detalle.cantidad_prescrita else 'pendiente'
+                            detalle.save()
                 
                 # Actualizar estado de la dispensación
                 total_prescrito = dispensacion.get_total_prescrito()
@@ -6645,16 +6692,19 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                 dispensacion.dispensado_por = request.user
                 dispensacion.save()
                 
-                # Registrar en historial
-                HistorialDispensacion.objects.create(
-                    dispensacion=dispensacion,
-                    accion='dispensar',
-                    estado_anterior='pendiente',
-                    estado_nuevo=dispensacion.estado,
-                    usuario=request.user,
-                    detalles={'total_dispensado': total_dispensado},
-                    ip_address=request.META.get('REMOTE_ADDR', '')
-                )
+                # Registrar en historial (no crítico)
+                try:
+                    HistorialDispensacion.objects.create(
+                        dispensacion=dispensacion,
+                        accion='dispensar',
+                        estado_anterior='pendiente',
+                        estado_nuevo=dispensacion.estado,
+                        usuario=request.user,
+                        detalles={'total_dispensado': total_dispensado},
+                        ip_address=request.META.get('REMOTE_ADDR', '')
+                    )
+                except Exception as hist_error:
+                    logger.warning(f"No se pudo crear historial al dispensar: {hist_error}")
                 
                 serializer = self.get_serializer(dispensacion)
                 return Response(serializer.data)
@@ -6695,16 +6745,19 @@ class DispensacionViewSet(viewsets.ModelViewSet):
         dispensacion.motivo_cancelacion = motivo
         dispensacion.save()
         
-        # Registrar en historial
-        HistorialDispensacion.objects.create(
-            dispensacion=dispensacion,
-            accion='cancelar',
-            estado_anterior=estado_anterior,
-            estado_nuevo='cancelada',
-            usuario=request.user,
-            detalles={'motivo': motivo},
-            ip_address=request.META.get('REMOTE_ADDR', '')
-        )
+        # Registrar en historial (no crítico)
+        try:
+            HistorialDispensacion.objects.create(
+                dispensacion=dispensacion,
+                accion='cancelar',
+                estado_anterior=estado_anterior,
+                estado_nuevo='cancelada',
+                usuario=request.user,
+                detalles={'motivo': motivo},
+                ip_address=request.META.get('REMOTE_ADDR', '')
+            )
+        except Exception as hist_error:
+            logger.warning(f"No se pudo crear historial al cancelar: {hist_error}")
         
         serializer = self.get_serializer(dispensacion)
         return Response(serializer.data)
@@ -6734,9 +6787,14 @@ class DispensacionViewSet(viewsets.ModelViewSet):
     def historial(self, request, pk=None):
         """Obtiene el historial de cambios de una dispensación"""
         dispensacion = self.get_object()
-        historial = dispensacion.historial.all().order_by('-created_at')
-        serializer = HistorialDispensacionSerializer(historial, many=True)
-        return Response(serializer.data)
+        try:
+            historial = dispensacion.historial.all().order_by('-created_at')
+            serializer = HistorialDispensacionSerializer(historial, many=True)
+            return Response(serializer.data)
+        except Exception as e:
+            logger.warning(f"Error al obtener historial de dispensación {pk}: {e}")
+            # Retornar lista vacía en caso de error (tabla no existe o está vacía)
+            return Response([])
     
     @action(detail=True, methods=['post'])
     def agregar_detalle(self, request, pk=None):
@@ -6757,14 +6815,17 @@ class DispensacionViewSet(viewsets.ModelViewSet):
         if serializer.is_valid():
             serializer.save()
             
-            # Registrar en historial
-            HistorialDispensacion.objects.create(
-                dispensacion=dispensacion,
-                accion='agregar_item',
-                usuario=request.user,
-                detalles={'producto_id': request.data.get('producto')},
-                ip_address=request.META.get('REMOTE_ADDR', '')
-            )
+            # Registrar en historial (no crítico)
+            try:
+                HistorialDispensacion.objects.create(
+                    dispensacion=dispensacion,
+                    accion='agregar_item',
+                    usuario=request.user,
+                    detalles={'producto_id': request.data.get('producto')},
+                    ip_address=request.META.get('REMOTE_ADDR', '')
+                )
+            except Exception as hist_error:
+                logger.warning(f"No se pudo crear historial al agregar detalle: {hist_error}")
             
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         
