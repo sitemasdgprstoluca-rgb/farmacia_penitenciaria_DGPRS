@@ -7584,140 +7584,149 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     def exportar_recibo_salida(self, request, pk=None):
         """
         Genera PDF con formato oficial "Recibo de Salida del Almacén".
-        
-        Este documento acompaña el envío físico de medicamentos del CIA a un CPRS
-        cuando se surte una requisición.
-        
-        PERMISOS:
-        - Solo requisiciones en estado 'surtida', 'parcial' o 'entregada'
-        - Usuarios de farmacia/admin pueden exportar cualquier recibo
-        - Usuarios de centro solo pueden exportar recibos de su centro
-        
-        Returns:
-            PDF con el Recibo de Salida del Almacén
         """
         import traceback
+        from io import BytesIO
         
         try:
-            # Mover import dentro del try para capturar errores de import
-            from core.utils.pdf_reports import generar_recibo_salida_requisicion
-            
             requisicion = self.get_object()
             estado_actual = (requisicion.estado or '').lower()
             
             logger.info(f"exportar_recibo_salida: Requisición {requisicion.pk}, estado={estado_actual}")
             
-            # Validar estado - solo requisiciones que ya fueron surtidas
+            # Validar estado
             estados_validos = ['surtida', 'parcial', 'entregada', 'recibida']
             if estado_actual not in estados_validos:
                 return Response({
-                    'error': f'Solo se puede generar el recibo de salida para requisiciones surtidas/entregadas',
+                    'error': 'Solo se puede generar el recibo de salida para requisiciones surtidas/entregadas',
                     'estado_actual': requisicion.estado,
-                    'estados_validos': estados_validos
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # PERMISOS: Usuarios de centro solo ven sus recibos
+            # PERMISOS
             user = request.user
             if not user.is_superuser and not is_farmacia_or_admin(user):
                 user_centro = self._user_centro(user)
                 req_centro_id = requisicion.centro_origen_id or requisicion.centro_destino_id
                 if not user_centro or user_centro.id != req_centro_id:
-                    return Response({
-                        'error': 'No tiene permiso para ver este recibo de salida'
-                    }, status=status.HTTP_403_FORBIDDEN)
+                    return Response({'error': 'No tiene permiso para ver este recibo'}, status=status.HTTP_403_FORBIDDEN)
             
-            # Preparar datos de la requisición
+            # Preparar datos
             centro_nombre = ''
             if requisicion.centro_origen:
                 centro_nombre = requisicion.centro_origen.nombre
             elif requisicion.centro_destino:
                 centro_nombre = requisicion.centro_destino.nombre
             
-            # Usuario que surtió
-            usuario_surtido = ''
-            if hasattr(requisicion, 'usuario_surtido') and requisicion.usuario_surtido:
-                usuario_surtido = requisicion.usuario_surtido.get_full_name() or requisicion.usuario_surtido.username
-            elif hasattr(requisicion, 'surtidor') and requisicion.surtidor:
-                usuario_surtido = requisicion.surtidor.get_full_name() or requisicion.surtidor.username
-            
-            requisicion_data = {
-                'folio': requisicion.folio or requisicion.numero,
-                'numero': requisicion.numero,
-                'fecha_surtido': requisicion.fecha_surtido or requisicion.updated_at,
-                'centro_nombre': centro_nombre,
-                'periodo': requisicion.periodo or '',
-                'usuario_surtido': usuario_surtido,
-                'observaciones': requisicion.notas or '',
-            }
-            
             # Preparar detalles surtidos
             detalles_data = []
             for detalle in requisicion.detalles.select_related('producto').all():
-                # FIX: Solo usar cantidad_surtida real, no fallback a cantidad_autorizada
-                # El recibo de salida debe mostrar lo que REALMENTE se surtió
                 cantidad_surtida = detalle.cantidad_surtida or 0
                 if cantidad_surtida <= 0:
-                    continue  # Solo incluir items que fueron surtidos
+                    continue
                 
-                # Buscar info del lote surtido si existe
-                lote_info = {'numero': 'N/A', 'fecha_caducidad': 'N/A'}
+                lote_num = 'N/A'
+                fecha_cad = 'N/A'
                 
-                # ISS-FIX: Buscar en movimientos de salida de la requisición para obtener lote
                 movimiento = Movimiento.objects.filter(
                     requisicion=requisicion,
-                    tipo='salida'
-                ).select_related('lote').filter(
+                    tipo='salida',
                     lote__producto=detalle.producto
-                ).first()
+                ).select_related('lote').first()
                 
                 if movimiento and movimiento.lote:
-                    lote_info['numero'] = movimiento.lote.numero_lote
-                    lote_info['fecha_caducidad'] = movimiento.lote.fecha_caducidad
+                    lote_num = movimiento.lote.numero_lote or 'N/A'
+                    if movimiento.lote.fecha_caducidad:
+                        fecha_cad = movimiento.lote.fecha_caducidad.strftime('%d/%m/%Y')
                 
                 detalles_data.append({
-                    'producto_clave': detalle.producto.clave if detalle.producto else 'N/A',
-                    'producto_nombre': detalle.producto.nombre if detalle.producto else 'N/A',
+                    'clave': detalle.producto.clave if detalle.producto else 'N/A',
+                    'nombre': detalle.producto.nombre if detalle.producto else 'N/A',
                     'presentacion': detalle.producto.presentacion if detalle.producto else 'N/A',
-                    'lote': lote_info['numero'],
-                    'fecha_caducidad': lote_info['fecha_caducidad'],
-                    'cantidad_surtida': cantidad_surtida,
+                    'lote': lote_num,
+                    'caducidad': fecha_cad,
+                    'cantidad': cantidad_surtida,
                 })
             
             if not detalles_data:
-                return Response({
-                    'error': 'No hay items surtidos para generar el recibo'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return Response({'error': 'No hay items surtidos'}, status=status.HTTP_400_BAD_REQUEST)
             
-            # DEBUG: Si se pasa ?debug=1, devolver JSON en lugar de PDF
+            # DEBUG mode
             if request.query_params.get('debug') == '1':
-                return Response({
-                    'requisicion_data': requisicion_data,
-                    'detalles_data': detalles_data,
-                    'count': len(detalles_data)
-                })
+                return Response({'detalles': detalles_data, 'count': len(detalles_data)})
             
-            # Generar PDF con manejo de errores específico
-            try:
-                pdf_buffer = generar_recibo_salida_requisicion(requisicion_data, detalles_data)
-            except Exception as pdf_error:
-                tb = traceback.format_exc()
-                logger.exception(f'Error específico al generar PDF: {pdf_error}')
-                return Response({
-                    'error': 'Error al generar el PDF',
-                    'detalle': str(pdf_error),
-                    'tipo': type(pdf_error).__name__,
-                    'traceback': tb
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            # ========== GENERAR PDF SIMPLE INLINE ==========
+            from reportlab.lib.pagesizes import letter
+            from reportlab.lib.units import inch
+            from reportlab.lib import colors
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.enums import TA_CENTER
             
-            response = HttpResponse(
-                pdf_buffer.getvalue(),
-                content_type='application/pdf'
-            )
-            folio_safe = (requisicion.folio or requisicion.numero or 'N').replace('/', '-')
-            response['Content-Disposition'] = f'attachment; filename="ReciboSalida_{folio_safe}_{timezone.now().strftime("%Y%m%d")}.pdf"'
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.75*inch, bottomMargin=0.75*inch, leftMargin=0.5*inch, rightMargin=0.5*inch)
+            elements = []
+            styles = getSampleStyleSheet()
+            
+            # Título
+            titulo_style = ParagraphStyle('Titulo', parent=styles['Heading1'], fontSize=14, alignment=TA_CENTER, textColor=colors.HexColor('#6D1A36'))
+            elements.append(Paragraph("<b>RECIBO DE SALIDA DEL ALMACÉN</b>", titulo_style))
+            elements.append(Spacer(1, 0.2*inch))
+            
+            # Info header
+            folio = requisicion.folio or requisicion.numero or 'N/A'
+            fecha = requisicion.fecha_surtido.strftime('%d/%m/%Y %H:%M') if requisicion.fecha_surtido else timezone.now().strftime('%d/%m/%Y %H:%M')
+            info_style = ParagraphStyle('Info', parent=styles['Normal'], fontSize=9)
+            elements.append(Paragraph(f"<b>Folio:</b> {folio} &nbsp;&nbsp;&nbsp; <b>Fecha:</b> {fecha} &nbsp;&nbsp;&nbsp; <b>Centro:</b> {centro_nombre}", info_style))
+            elements.append(Spacer(1, 0.2*inch))
+            
+            # Tabla de detalles
+            table_data = [['#', 'Clave', 'Producto', 'Presentación', 'Lote', 'Caducidad', 'Cant.']]
+            total = 0
+            for i, d in enumerate(detalles_data, 1):
+                table_data.append([str(i), d['clave'][:10], d['nombre'][:40], d['presentacion'][:20], d['lote'], d['caducidad'], str(d['cantidad'])])
+                total += d['cantidad']
+            table_data.append(['', '', '', '', '', 'TOTAL:', str(total)])
+            
+            col_widths = [0.3*inch, 0.7*inch, 2.5*inch, 1.0*inch, 0.7*inch, 0.8*inch, 0.5*inch]
+            table = Table(table_data, colWidths=col_widths)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#6D1A36')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 7),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#6D1A36')),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#F5F5F5')),
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ]))
+            elements.append(table)
+            
+            # Firmas
+            elements.append(Spacer(1, 0.5*inch))
+            firma_data = [['_'*25, '_'*25, '_'*25], ['AUTORIZA', 'ENTREGA', 'RECIBE']]
+            firma_table = Table(firma_data, colWidths=[2.3*inch, 2.3*inch, 2.3*inch])
+            firma_table.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('FONTSIZE', (0, 0), (-1, -1), 8)]))
+            elements.append(firma_table)
+            
+            # Generar
+            doc.build(elements)
+            buffer.seek(0)
+            
+            response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+            folio_safe = str(folio).replace('/', '-')
+            response['Content-Disposition'] = f'attachment; filename="ReciboSalida_{folio_safe}.pdf"'
             return response
             
         except Exception as exc:
+            tb = traceback.format_exc()
+            logger.exception(f'Error al exportar recibo de salida: {exc}')
+            return Response({
+                'error': 'Error al generar el recibo de salida',
+                'mensaje': str(exc),
+                'tipo': type(exc).__name__,
+                'traceback': tb
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             tb = traceback.format_exc()
             logger.exception(f'Error al exportar recibo de salida: {exc}')
             return Response({
