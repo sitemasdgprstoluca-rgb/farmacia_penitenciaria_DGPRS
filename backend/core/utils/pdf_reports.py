@@ -3025,23 +3025,28 @@ def generar_control_mensual_almacen(periodo_data, productos_data, centro_nombre=
         ['Fecha de elaboración:', fecha_elaboracion, 'Periodo:', periodo_texto],
     ]
     
-    # Crear tabla de información del encabezado
+    # Crear tabla de información del encabezado según formato oficial exacto
+    # Fila 1: Institución Penitenciaria: | [valor]
+    # Fila 2: Fecha de elaboración: | [valor] | Periodo: | [valor]
+    
     info_table = Table([
-        [Paragraph("<b>Institución Penitenciaria:</b>", label_style), Paragraph(institucion, value_style), '', ''],
-        [Paragraph("<b>Fecha de elaboración:</b>", label_style), Paragraph(fecha_elaboracion, value_style), 
-         Paragraph("<b>Periodo:</b>", label_style), Paragraph(periodo_texto, value_style)],
-    ], colWidths=[1.4*inch, 3.0*inch, 0.8*inch, 2.0*inch])
+        [Paragraph("Institución Penitenciaria:", label_style), Paragraph(institucion, value_style)],
+        [Paragraph("Fecha de elaboración:", label_style), Paragraph(fecha_elaboracion, value_style), 
+         Paragraph("Periodo:", label_style), Paragraph(periodo_texto, value_style)],
+    ], colWidths=[1.5*inch, 2.5*inch, 1.0*inch, 2.2*inch])
     
     info_table.setStyle(TableStyle([
         ('FONTSIZE', (0, 0), (-1, -1), 8),
         ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
         ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 4),
         ('RIGHTPADDING', (0, 0), (-1, -1), 4),
         ('TOPPADDING', (0, 0), (-1, -1), 4),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        # Primera fila ocupa 2 columnas para Institución
+        ('SPAN', (1, 0), (3, 0)),
     ]))
     elements.append(info_table)
     elements.append(Spacer(1, 0.15*inch))
