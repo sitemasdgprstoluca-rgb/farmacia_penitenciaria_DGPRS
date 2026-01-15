@@ -196,12 +196,12 @@ PERMISOS_POR_ROL = {
         'devolverRequisicion': True,
         # Permisos de notificaciones
         'gestionarNotificaciones': False,
-        # PERMISOS DE DISPENSACIONES - Admin Centro solo VE y puede cancelar si es necesario
+        # PERMISOS DE DISPENSACIONES - Admin Centro solo VE (auditoría)
         'verDispensaciones': True,
         'crearDispensacion': False,
         'editarDispensacion': False,
         'dispensar': False,
-        'cancelarDispensacion': True,
+        'cancelarDispensacion': False,
     },
     # FLUJO V2: Rol de Director del Centro (segunda autorización)
     'DIRECTOR_CENTRO': {
@@ -238,12 +238,12 @@ PERMISOS_POR_ROL = {
         'devolverRequisicion': True,
         # Permisos de notificaciones
         'gestionarNotificaciones': False,
-        # PERMISOS DE DISPENSACIONES - Director solo VE y puede cancelar si es necesario
+        # PERMISOS DE DISPENSACIONES - Director solo VE (auditoría)
         'verDispensaciones': True,
         'crearDispensacion': False,
         'editarDispensacion': False,
         'dispensar': False,
-        'cancelarDispensacion': True,
+        'cancelarDispensacion': False,
     },
     'CENTRO': {
         'verDashboard': True,
@@ -279,12 +279,12 @@ PERMISOS_POR_ROL = {
         'devolverRequisicion': False,
         # Permisos de notificaciones
         'gestionarNotificaciones': False,
-        # PERMISOS DE DISPENSACIONES - Centro genérico puede operar
+        # PERMISOS DE DISPENSACIONES - Centro genérico solo VE (auditoría)
         'verDispensaciones': True,
-        'crearDispensacion': True,
-        'editarDispensacion': True,
-        'dispensar': True,
-        'cancelarDispensacion': True,
+        'crearDispensacion': False,
+        'editarDispensacion': False,
+        'dispensar': False,
+        'cancelarDispensacion': False,
     },
     'VISTA': {
         'verDashboard': True,
