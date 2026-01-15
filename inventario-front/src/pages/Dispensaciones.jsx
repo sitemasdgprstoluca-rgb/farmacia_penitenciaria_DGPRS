@@ -1341,7 +1341,11 @@ const Dispensaciones = () => {
                           {item.usuario_nombre} - {new Date(item.created_at).toLocaleString()}
                         </div>
                         {item.detalles && (
-                          <div className="text-sm text-gray-600 mt-1">{item.detalles}</div>
+                          <div className="text-sm text-gray-600 mt-1">
+                            {typeof item.detalles === 'object' 
+                              ? JSON.stringify(item.detalles).replace(/[{}"]/g, '').replace(/,/g, ', ').replace(/_/g, ' ')
+                              : item.detalles}
+                          </div>
                         )}
                       </div>
                     </div>
