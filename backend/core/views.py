@@ -6927,12 +6927,17 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                     if cantidad <= 0:
                         continue
                     
+                    # Guardar stock antes de descontar para la validación del movimiento
+                    stock_antes = lote.cantidad_actual
+                    
                     # Descontar del lote
                     lote.cantidad_actual -= cantidad
                     lote.save()
                     
                     # Crear movimiento de salida
-                    Movimiento.objects.create(
+                    # ISS-FIX: Establecer _stock_pre_movimiento para que el validador
+                    # del modelo use el stock correcto (antes del descuento)
+                    movimiento = Movimiento(
                         tipo='salida',
                         subtipo_salida='dispensacion',
                         producto=detalle.producto,
@@ -6944,6 +6949,8 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                         referencia=dispensacion.folio,
                         numero_expediente=dispensacion.paciente.numero_expediente,
                     )
+                    movimiento._stock_pre_movimiento = stock_antes
+                    movimiento.save()
                     
                     # Actualizar detalle
                     detalle.cantidad_dispensada = cantidad
