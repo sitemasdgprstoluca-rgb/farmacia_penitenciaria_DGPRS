@@ -7596,6 +7596,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         Returns:
             PDF con el Recibo de Salida del Almacén
         """
+        import traceback
+        
         try:
             # Mover import dentro del try para capturar errores de import
             from core.utils.pdf_reports import generar_recibo_salida_requisicion
@@ -7698,10 +7700,13 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             try:
                 pdf_buffer = generar_recibo_salida_requisicion(requisicion_data, detalles_data)
             except Exception as pdf_error:
+                tb = traceback.format_exc()
                 logger.exception(f'Error específico al generar PDF: {pdf_error}')
                 return Response({
                     'error': 'Error al generar el PDF',
-                    'detalle': str(pdf_error)
+                    'detalle': str(pdf_error),
+                    'tipo': type(pdf_error).__name__,
+                    'traceback': tb
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             response = HttpResponse(
@@ -7713,10 +7718,13 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             return response
             
         except Exception as exc:
+            tb = traceback.format_exc()
             logger.exception(f'Error al exportar recibo de salida: {exc}')
             return Response({
                 'error': 'Error al generar el recibo de salida',
-                'mensaje': str(exc)
+                'mensaje': str(exc),
+                'tipo': type(exc).__name__,
+                'traceback': tb
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
