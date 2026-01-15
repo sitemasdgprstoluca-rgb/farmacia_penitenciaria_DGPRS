@@ -1594,9 +1594,9 @@ export const dispensacionesAPI = {
   update: (id, data) => apiClient.put(`/dispensaciones/${id}/`, data),
   delete: (id) => apiClient.delete(`/dispensaciones/${id}/`),
   // Procesar dispensación (descontar inventario)
-  dispensar: (id, detalles) => apiClient.post(`/dispensaciones/${id}/dispensar/`, { detalles }),
-  // Cancelar dispensación
-  cancelar: (id, motivo) => apiClient.post(`/dispensaciones/${id}/cancelar/`, { motivo }),
+  dispensar: (id, detalles) => apiClient.post(`/dispensaciones/${id}/dispensar/`, detalles ? { detalles } : {}),
+  // Cancelar dispensación - data debe ser {motivo: '...'}
+  cancelar: (id, data) => apiClient.post(`/dispensaciones/${id}/cancelar/`, data),
   // Agregar detalle/item
   agregarDetalle: (id, data) => apiClient.post(`/dispensaciones/${id}/agregar_detalle/`, data),
   // Historial de cambios

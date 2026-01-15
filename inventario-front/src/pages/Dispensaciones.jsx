@@ -124,8 +124,21 @@ const Dispensaciones = () => {
   const [deleteModal, setDeleteModal] = useState({ show: false, dispensacion: null });
   const [cancelModal, setCancelModal] = useState({ show: false, dispensacion: null, motivo: '' });
   const [dispensarModal, setDispensarModal] = useState({ show: false, dispensacion: null });
-  const [detailModal, setDetailModal] = useState({ show: false, dispensacion: null });
+  const [detailModal, setDetailModal] = useState({ show: false, dispensacion: null, loading: false });
   const [historialModal, setHistorialModal] = useState({ show: false, dispensacion: null, historial: [] });
+
+  // Función para abrir modal de detalle con carga de datos completos
+  const handleOpenDetail = async (disp) => {
+    setDetailModal({ show: true, dispensacion: disp, loading: true });
+    try {
+      const response = await dispensacionesAPI.getById(disp.id);
+      setDetailModal({ show: true, dispensacion: response.data, loading: false });
+    } catch (error) {
+      console.error('Error al cargar detalle:', error);
+      // Mantener datos básicos si falla la carga
+      setDetailModal({ show: true, dispensacion: disp, loading: false });
+    }
+  };
 
   // Cargar centros
   useEffect(() => {
@@ -758,7 +771,7 @@ const Dispensaciones = () => {
                     <td className="px-4 py-3 text-center">
                       <div className="flex justify-center gap-1">
                         <button
-                          onClick={() => setDetailModal({ show: true, dispensacion: disp })}
+                          onClick={() => handleOpenDetail(disp)}
                           className="text-gray-500 hover:text-guinda p-1"
                           title="Ver detalle"
                         >
@@ -1201,7 +1214,7 @@ const Dispensaciones = () => {
               <h3 className="text-lg font-semibold">
                 Detalle - {detailModal.dispensacion.folio}
               </h3>
-              <button onClick={() => setDetailModal({ show: false, dispensacion: null })} className="hover:bg-white/20 p-1 rounded">
+              <button onClick={() => setDetailModal({ show: false, dispensacion: null, loading: false })} className="hover:bg-white/20 p-1 rounded">
                 <FaTimes />
               </button>
             </div>
@@ -1226,32 +1239,44 @@ const Dispensaciones = () => {
               </div>
 
               <h4 className="font-semibold mb-3">Medicamentos</h4>
-              <div className="border rounded-lg overflow-hidden">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Producto</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Lote</th>
-                      <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Prescrita</th>
-                      <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Dispensada</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Dosis</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {(detailModal.dispensacion.detalles || []).map((det, i) => (
-                      <tr key={i}>
-                        <td className="px-3 py-2 text-sm">{det.producto_nombre}</td>
-                        <td className="px-3 py-2 text-sm font-mono">{det.lote_numero}</td>
-                        <td className="px-3 py-2 text-sm text-center">{det.cantidad_prescrita}</td>
-                        <td className="px-3 py-2 text-sm text-center">{det.cantidad_dispensada || 0}</td>
-                        <td className="px-3 py-2 text-sm">
-                          {det.dosis} {det.frecuencia && `- ${det.frecuencia}`}
-                        </td>
+              {detailModal.loading ? (
+                <div className="text-center py-8 text-gray-500">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-guinda mx-auto mb-2"></div>
+                  Cargando medicamentos...
+                </div>
+              ) : (detailModal.dispensacion.detalles || []).length > 0 ? (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Producto</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Lote</th>
+                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Prescrita</th>
+                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Dispensada</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Dosis</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {(detailModal.dispensacion.detalles || []).map((det, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-2 text-sm">{det.producto_nombre}</td>
+                          <td className="px-3 py-2 text-sm font-mono">{det.lote_numero || '-'}</td>
+                          <td className="px-3 py-2 text-sm text-center">{det.cantidad_prescrita}</td>
+                          <td className="px-3 py-2 text-sm text-center">{det.cantidad_dispensada || 0}</td>
+                          <td className="px-3 py-2 text-sm">
+                            {det.dosis} {det.frecuencia && `- ${det.frecuencia}`}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500 border rounded-lg">
+                  <FaBoxOpen className="mx-auto h-8 w-8 mb-2" />
+                  <p>No hay medicamentos registrados</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
