@@ -627,7 +627,7 @@ const ComprasCajaChica = () => {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
       <PageHeader 
         title="Compras de Caja Chica" 
         subtitle={puedeVerificarStock && !esUsuarioCentro
@@ -639,11 +639,11 @@ const ComprasCajaChica = () => {
 
       {/* Banner informativo para farmacia */}
       {puedeVerificarStock && !esUsuarioCentro && (
-        <div className="p-4 bg-purple-50 border border-purple-200 rounded-2xl flex items-start gap-3">
-          <FaInfoCircle className="text-purple-600 text-xl flex-shrink-0 mt-0.5" />
-          <div>
-            <h3 className="font-semibold text-purple-800">Verificación de Stock</h3>
-            <p className="text-purple-700 text-sm">
+        <div className="p-3 md:p-4 bg-purple-50 border border-purple-200 rounded-xl flex items-start gap-3">
+          <FaInfoCircle className="text-purple-600 text-lg md:text-xl flex-shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <h3 className="font-semibold text-purple-800 text-sm md:text-base">Verificación de Stock</h3>
+            <p className="text-purple-700 text-xs md:text-sm leading-relaxed">
               Como usuario de farmacia, debe verificar la disponibilidad de productos antes 
               de que el centro pueda proceder con compras de caja chica. Si hay stock disponible, 
               rechace la solicitud para que el centro haga una requisición normal.
@@ -654,81 +654,80 @@ const ComprasCajaChica = () => {
 
       {/* Resumen de compras */}
       {resumen && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          <div className="bg-white p-4 rounded-2xl shadow-sm border-l-4 border-yellow-400 hover:shadow-md transition-shadow">
-            <div className="text-2xl font-bold text-yellow-600">{resumen.pendientes || 0}</div>
-            <div className="text-sm text-gray-500">Pendientes</div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
+          <div className="bg-white p-3 md:p-4 rounded-xl shadow-sm border-l-4 border-yellow-400 hover:shadow-md transition-shadow">
+            <div className="text-xl md:text-2xl font-bold text-yellow-600">{resumen.pendientes || 0}</div>
+            <div className="text-xs md:text-sm text-gray-500">Pendientes</div>
           </div>
-          <div className="bg-white p-4 rounded-2xl shadow-sm border-l-4 border-blue-400 hover:shadow-md transition-shadow">
-            <div className="text-2xl font-bold text-blue-600">{resumen.autorizadas || 0}</div>
-            <div className="text-sm text-gray-500">Autorizadas</div>
+          <div className="bg-white p-3 md:p-4 rounded-xl shadow-sm border-l-4 border-blue-400 hover:shadow-md transition-shadow">
+            <div className="text-xl md:text-2xl font-bold text-blue-600">{resumen.autorizadas || 0}</div>
+            <div className="text-xs md:text-sm text-gray-500">Autorizadas</div>
           </div>
-          <div className="bg-white p-4 rounded-2xl shadow-sm border-l-4 border-purple-400 hover:shadow-md transition-shadow">
-            <div className="text-2xl font-bold text-purple-600">{resumen.compradas || 0}</div>
-            <div className="text-sm text-gray-500">Compradas</div>
+          <div className="bg-white p-3 md:p-4 rounded-xl shadow-sm border-l-4 border-purple-400 hover:shadow-md transition-shadow">
+            <div className="text-xl md:text-2xl font-bold text-purple-600">{resumen.compradas || 0}</div>
+            <div className="text-xs md:text-sm text-gray-500">Compradas</div>
           </div>
-          <div className="bg-white p-4 rounded-2xl shadow-sm border-l-4 border-green-400 hover:shadow-md transition-shadow">
-            <div className="text-2xl font-bold text-green-600">{resumen.recibidas || 0}</div>
-            <div className="text-sm text-gray-500">Recibidas</div>
+          <div className="bg-white p-3 md:p-4 rounded-xl shadow-sm border-l-4 border-green-400 hover:shadow-md transition-shadow">
+            <div className="text-xl md:text-2xl font-bold text-green-600">{resumen.recibidas || 0}</div>
+            <div className="text-xs md:text-sm text-gray-500">Recibidas</div>
           </div>
-          <div className="bg-white p-4 rounded-2xl shadow-sm border-l-4 border-gray-400 hover:shadow-md transition-shadow">
-            <div className="text-2xl font-bold text-gray-600">{formatCurrency(resumen.monto_total)}</div>
-            <div className="text-sm text-gray-500">Monto Total</div>
+          <div className="bg-white p-3 md:p-4 rounded-xl shadow-sm border-l-4 border-gray-400 hover:shadow-md transition-shadow col-span-2 sm:col-span-1">
+            <div className="text-xl md:text-2xl font-bold text-gray-600">{formatCurrency(resumen.monto_total)}</div>
+            <div className="text-xs md:text-sm text-gray-500">Monto Total</div>
           </div>
         </div>
       )}
 
       {/* Barra de acciones y filtros */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4">
-        <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-          {/* Búsqueda */}
-          <div className="relative flex-1 w-full sm:max-w-md">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 md:p-4">
+        {/* Búsqueda y botones */}
+        <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
+          <div className="relative flex-1 max-w-full sm:max-w-sm">
             <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
               placeholder="Buscar por folio, proveedor..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
             />
           </div>
           
-          {/* Botones */}
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-shrink-0">
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${
+              className={`px-3 py-2 rounded-lg flex items-center gap-2 text-sm transition-colors ${
                 showFilters ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              <FaFilter />
-              Filtros
+              <FaFilter className="text-xs" />
+              <span className="hidden sm:inline">Filtros</span>
             </button>
             
             {puedeCrear && (
               <button
                 onClick={handleNew}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg flex items-center gap-2 hover:bg-green-700 transition-colors"
+                className="px-3 py-2 bg-green-600 text-white rounded-lg flex items-center gap-2 text-sm hover:bg-green-700 transition-colors"
               >
-                <FaPlus />
-                Nueva Compra
+                <FaPlus className="text-xs" />
+                <span className="hidden sm:inline">Nueva Compra</span>
               </button>
             )}
           </div>
         </div>
 
-        {/* Panel de filtros */}
+        {/* Panel de filtros colapsable */}
         {showFilters && (
-          <div className="mt-4 pt-4 border-t">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {/* Centro (solo para farmacia) */}
               {esUsuarioFarmacia && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Centro</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Centro</label>
                   <select
                     value={centroFiltro}
                     onChange={(e) => setCentroFiltro(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
+                    className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500"
                   >
                     <option value="">Todos los centros</option>
                     {centros.map(centro => (
@@ -740,11 +739,11 @@ const ComprasCajaChica = () => {
               
               {/* Estado */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Estado</label>
                 <select
                   value={estadoFiltro}
                   onChange={(e) => setEstadoFiltro(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500"
                 >
                   {ESTADOS_COMPRA.map(estado => (
                     <option key={estado.value} value={estado.value}>{estado.label}</option>
@@ -754,34 +753,34 @@ const ComprasCajaChica = () => {
               
               {/* Fecha desde */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Desde</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Desde</label>
                 <input
                   type="date"
                   value={fechaDesde}
                   onChange={(e) => setFechaDesde(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500"
                 />
               </div>
               
               {/* Fecha hasta */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Hasta</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Hasta</label>
                 <input
                   type="date"
                   value={fechaHasta}
                   onChange={(e) => setFechaHasta(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500"
                 />
               </div>
             </div>
             
-            <div className="flex justify-end mt-4">
+            <div className="flex justify-end mt-3">
               <button
                 onClick={handleClearFilters}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800 flex items-center gap-2"
+                className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 flex items-center gap-2"
               >
-                <FaTimes />
-                Limpiar filtros
+                <FaTimes className="text-xs" />
+                Limpiar
               </button>
             </div>
           </div>
@@ -789,35 +788,35 @@ const ComprasCajaChica = () => {
       </div>
 
       {/* Tabla de compras */}
-      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
         <div className="w-full overflow-x-auto">
-          <table className="w-full min-w-[900px] divide-y divide-gray-200">
+          <table className="w-full min-w-[800px] divide-y divide-gray-200 text-sm">
             <thead className="bg-theme-gradient sticky top-0 z-10">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
+                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   Folio
                 </th>
                 {esUsuarioFarmacia && (
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
+                  <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">
                     Centro
                   </th>
                 )}
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
-                  Fecha Solicitud
+                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
+                  Fecha
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
+                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   Proveedor
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
+                <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   Productos
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
+                <th className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   Total
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
+                <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   Estado
                 </th>
-                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
+                <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   Acciones
                 </th>
               </tr>
@@ -843,55 +842,55 @@ const ComprasCajaChica = () => {
                   const EstadoIcon = ESTADO_ICONS[compra.estado] || FaClipboardList;
                   return (
                     <tr key={compra.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className="font-mono text-sm font-medium text-gray-900">
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className="font-mono text-xs font-medium text-gray-900">
                           {compra.folio || '-'}
                         </span>
                       </td>
                       {esUsuarioFarmacia && (
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="text-sm text-gray-700">
+                        <td className="px-3 py-2.5">
+                          <span className="text-xs text-gray-700 line-clamp-2 max-w-[200px]" title={compra.centro?.nombre || compra.centro_nombre}>
                             {compra.centro?.nombre || compra.centro_nombre || '-'}
                           </span>
                         </td>
                       )}
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs text-gray-600">
                         {formatDate(compra.fecha_solicitud)}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                      <td className="px-3 py-2.5 text-xs text-gray-700 max-w-[120px] truncate">
                         {compra.proveedor_nombre || '-'}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                        {compra.detalles_count || compra.detalles?.length || 0} productos
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs text-gray-600 text-center">
+                        {compra.detalles_count || compra.detalles?.length || 0}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs font-semibold text-gray-900 text-right">
                         {formatCurrency(compra.total)}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${ESTADO_COLORS[compra.estado] || 'bg-gray-100 text-gray-800'}`}>
-                          <EstadoIcon className="text-[10px]" />
-                          {compra.estado?.charAt(0).toUpperCase() + compra.estado?.slice(1)}
+                      <td className="px-3 py-2.5 whitespace-nowrap text-center">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${ESTADO_COLORS[compra.estado] || 'bg-gray-100 text-gray-800'}`}>
+                          <EstadoIcon className="text-[8px]" />
+                          {compra.estado?.replace(/_/g, ' ')?.charAt(0).toUpperCase() + compra.estado?.replace(/_/g, ' ')?.slice(1)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-center">
-                        <div className="flex items-center justify-center gap-1">
+                      <td className="px-3 py-2.5 whitespace-nowrap text-center">
+                        <div className="flex items-center justify-center gap-0.5">
                           {/* Ver detalles */}
                           <button
                             onClick={() => handleViewDetails(compra)}
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
                             title="Ver detalles"
                           >
-                            <FaEye />
+                            <FaEye className="text-xs" />
                           </button>
                           
                           {/* Editar (solo pendientes o rechazadas) */}
                           {puedeEditar && ['pendiente', 'rechazada'].includes(compra.estado) && (
                             <button
                               onClick={() => handleEdit(compra)}
-                              className="p-2 text-yellow-600 hover:bg-yellow-50 rounded-lg"
+                              className="p-1.5 text-yellow-600 hover:bg-yellow-50 rounded-lg"
                               title="Editar"
                             >
-                              <FaEdit />
+                              <FaEdit className="text-xs" />
                             </button>
                           )}
                           
@@ -899,10 +898,10 @@ const ComprasCajaChica = () => {
                           {esMedico && compra.estado === 'pendiente' && compra.detalles?.length > 0 && (
                             <button
                               onClick={() => handleEnviarFarmacia(compra)}
-                              className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg"
+                              className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg"
                               title="Enviar a Farmacia (verificar stock)"
                             >
-                              <FaSearch />
+                              <FaSearch className="text-xs" />
                             </button>
                           )}
                           
@@ -910,10 +909,10 @@ const ComprasCajaChica = () => {
                           {puedeVerificarStock && compra.estado === 'enviada_farmacia' && (
                             <button
                               onClick={() => handleConfirmarSinStock(compra, 'Verificado - No hay stock disponible')}
-                              className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                              className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg"
                               title="Confirmar: No hay stock disponible"
                             >
-                              <FaCheckCircle />
+                              <FaCheckCircle className="text-xs" />
                             </button>
                           )}
                           
@@ -921,10 +920,10 @@ const ComprasCajaChica = () => {
                           {puedeVerificarStock && compra.estado === 'enviada_farmacia' && (
                             <button
                               onClick={() => setStockRechazoModal({ show: true, compra, observaciones: '' })}
-                              className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg"
+                              className="p-1.5 text-orange-600 hover:bg-orange-50 rounded-lg"
                               title="Rechazar: Hay stock disponible"
                             >
-                              <FaWarehouse />
+                              <FaWarehouse className="text-xs" />
                             </button>
                           )}
                           
@@ -932,10 +931,10 @@ const ComprasCajaChica = () => {
                           {esMedico && compra.estado === 'sin_stock_farmacia' && (
                             <button
                               onClick={() => handleEnviarAdmin(compra)}
-                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
                               title="Enviar a Admin"
                             >
-                              <FaCheck />
+                              <FaCheck className="text-xs" />
                             </button>
                           )}
                           
@@ -943,10 +942,10 @@ const ComprasCajaChica = () => {
                           {esAdmin && compra.estado === 'enviada_admin' && (
                             <button
                               onClick={() => handleAutorizarAdmin(compra)}
-                              className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                              className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg"
                               title="Autorizar como Admin"
                             >
-                              <FaUserCheck />
+                              <FaUserCheck className="text-xs" />
                             </button>
                           )}
                           
@@ -954,10 +953,10 @@ const ComprasCajaChica = () => {
                           {esAdmin && compra.estado === 'autorizada_admin' && (
                             <button
                               onClick={() => handleEnviarDirector(compra)}
-                              className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                              className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg"
                               title="Enviar a Director"
                             >
-                              <FaCheck />
+                              <FaCheck className="text-xs" />
                             </button>
                           )}
                           
@@ -965,10 +964,10 @@ const ComprasCajaChica = () => {
                           {esDirector && compra.estado === 'enviada_director' && (
                             <button
                               onClick={() => handleAutorizarDirector(compra)}
-                              className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                              className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg"
                               title="Autorizar (Final)"
                             >
-                              <FaUserCheck />
+                              <FaUserCheck className="text-xs" />
                             </button>
                           )}
                           
@@ -976,10 +975,10 @@ const ComprasCajaChica = () => {
                           {puedeCancelar && !['recibida', 'cancelada', 'rechazada'].includes(compra.estado) && (
                             <button
                               onClick={() => setCancelModal({ show: true, compra, motivo: '' })}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
                               title="Cancelar"
                             >
-                              <FaBan />
+                              <FaBan className="text-xs" />
                             </button>
                           )}
                           
@@ -987,10 +986,10 @@ const ComprasCajaChica = () => {
                           {puedeEditar && compra.estado === 'pendiente' && (
                             <button
                               onClick={() => setDeleteModal({ show: true, compra })}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
                               title="Eliminar"
                             >
-                              <FaTrash />
+                              <FaTrash className="text-xs" />
                             </button>
                           )}
                         </div>
