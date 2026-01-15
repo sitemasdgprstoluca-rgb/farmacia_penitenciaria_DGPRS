@@ -1355,26 +1355,63 @@ const Dispensaciones = () => {
             <div className="p-6">
               {historialModal.historial.length > 0 ? (
                 <div className="space-y-4">
-                  {historialModal.historial.map((item, i) => (
-                    <div key={i} className="flex items-start gap-4 p-3 bg-gray-50 rounded-lg">
-                      <div className="flex-shrink-0 w-8 h-8 bg-guinda text-white rounded-full flex items-center justify-center text-sm">
-                        {i + 1}
-                      </div>
-                      <div>
-                        <div className="font-medium">{item.accion}</div>
-                        <div className="text-sm text-gray-500">
-                          {item.usuario_nombre} - {new Date(item.created_at).toLocaleString()}
+                  {historialModal.historial.map((item, i) => {
+                    // Formatear acción para mostrar texto legible
+                    const accionesLegibles = {
+                      'crear': 'Dispensación creada',
+                      'dispensar': 'Medicamentos dispensados',
+                      'cancelar': 'Dispensación cancelada',
+                      'agregar_item': 'Medicamento agregado',
+                      'editar': 'Dispensación editada',
+                    };
+                    const accionTexto = accionesLegibles[item.accion] || item.accion;
+                    
+                    // Formatear detalles para mostrar texto legible
+                    const formatearDetalles = (detalles) => {
+                      if (!detalles) return null;
+                      if (typeof detalles === 'string') return detalles;
+                      
+                      const partes = [];
+                      if (detalles.total_items !== undefined) {
+                        partes.push(`${detalles.total_items} medicamento(s)`);
+                      }
+                      if (detalles.total_dispensado !== undefined) {
+                        partes.push(`${detalles.total_dispensado} unidad(es) entregada(s)`);
+                      }
+                      if (detalles.motivo) {
+                        partes.push(`Motivo: ${detalles.motivo}`);
+                      }
+                      if (detalles.producto_id) {
+                        partes.push(`Producto agregado`);
+                      }
+                      return partes.length > 0 ? partes.join(' • ') : null;
+                    };
+                    
+                    return (
+                      <div key={i} className="flex items-start gap-4 p-3 bg-gray-50 rounded-lg">
+                        <div className="flex-shrink-0 w-8 h-8 bg-guinda text-white rounded-full flex items-center justify-center text-sm">
+                          {historialModal.historial.length - i}
                         </div>
-                        {item.detalles && (
-                          <div className="text-sm text-gray-600 mt-1">
-                            {typeof item.detalles === 'object' 
-                              ? JSON.stringify(item.detalles).replace(/[{}"]/g, '').replace(/,/g, ', ').replace(/_/g, ' ')
-                              : item.detalles}
+                        <div>
+                          <div className="font-medium text-gray-800">{accionTexto}</div>
+                          <div className="text-sm text-gray-500">
+                            {item.usuario_nombre} • {new Date(item.created_at).toLocaleString('es-MX', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
                           </div>
-                        )}
+                          {formatearDetalles(item.detalles) && (
+                            <div className="text-sm text-gray-600 mt-1 bg-white px-2 py-1 rounded border">
+                              {formatearDetalles(item.detalles)}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="text-center text-gray-500">No hay historial disponible</p>
