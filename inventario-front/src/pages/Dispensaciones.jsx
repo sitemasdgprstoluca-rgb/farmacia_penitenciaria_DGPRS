@@ -417,10 +417,9 @@ const Dispensaciones = () => {
         paciente: formData.paciente,
         centro: formData.centro,
         tipo_dispensacion: formData.tipo_dispensacion,
-        fecha_prescripcion: formData.fecha_prescripcion || null,
         medico_prescriptor: formData.medico_prescriptor || null,
         diagnostico: formData.diagnostico || null,
-        indicaciones_medicas: formData.indicaciones_medicas || null,
+        indicaciones: formData.indicaciones_medicas || null,
         observaciones: formData.observaciones || null,
         detalles: formData.detalles.map(d => ({
           producto: d.producto,
@@ -429,7 +428,7 @@ const Dispensaciones = () => {
           dosis: d.dosis || null,
           frecuencia: d.frecuencia || null,
           duracion_tratamiento: d.duracion_tratamiento || null,
-          indicaciones: d.indicaciones || null,
+          notas: d.indicaciones || null,
         }))
       };
       

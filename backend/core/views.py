@@ -6494,6 +6494,79 @@ class DispensacionViewSet(viewsets.ModelViewSet):
             return DispensacionListSerializer
         return DispensacionSerializer
     
+    def create(self, request, *args, **kwargs):
+        """
+        Crea una dispensación con sus detalles en una sola operación.
+        
+        Recibe:
+        - paciente: ID del paciente
+        - centro: ID del centro (opcional, se toma del usuario)
+        - tipo_dispensacion: 'normal', 'urgente', 'cronica'
+        - medico_prescriptor: Nombre del médico
+        - diagnostico: Diagnóstico del paciente
+        - indicaciones / indicaciones_medicas: Indicaciones médicas
+        - observaciones: Observaciones adicionales
+        - detalles: Lista de productos a dispensar
+        """
+        try:
+            with transaction.atomic():
+                user = request.user
+                data = request.data.copy()
+                
+                # Normalizar campo indicaciones
+                if 'indicaciones_medicas' in data and 'indicaciones' not in data:
+                    data['indicaciones'] = data.pop('indicaciones_medicas')
+                
+                # Extraer detalles para procesarlos después
+                detalles_data = data.pop('detalles', [])
+                
+                # Asignar centro del usuario si no se especifica
+                if not data.get('centro') and user.centro:
+                    data['centro'] = user.centro.id
+                
+                # Crear la dispensación
+                serializer = self.get_serializer(data=data)
+                serializer.is_valid(raise_exception=True)
+                dispensacion = serializer.save(created_by=user)
+                
+                # Crear los detalles
+                for detalle_data in detalles_data:
+                    # Normalizar campo indicaciones del detalle
+                    if 'indicaciones' in detalle_data and 'notas' not in detalle_data:
+                        detalle_data['notas'] = detalle_data.pop('indicaciones')
+                    
+                    DetalleDispensacion.objects.create(
+                        dispensacion=dispensacion,
+                        producto_id=detalle_data.get('producto'),
+                        lote_id=detalle_data.get('lote'),
+                        cantidad_prescrita=detalle_data.get('cantidad_prescrita', 0),
+                        dosis=detalle_data.get('dosis'),
+                        frecuencia=detalle_data.get('frecuencia'),
+                        duracion_tratamiento=detalle_data.get('duracion_tratamiento'),
+                        notas=detalle_data.get('notas'),
+                    )
+                
+                # Registrar en historial
+                HistorialDispensacion.objects.create(
+                    dispensacion=dispensacion,
+                    accion='crear',
+                    estado_nuevo='pendiente',
+                    usuario=user,
+                    detalles={'total_items': len(detalles_data)},
+                    ip_address=request.META.get('REMOTE_ADDR', '')
+                )
+                
+                # Retornar la dispensación completa
+                result_serializer = self.get_serializer(dispensacion)
+                return Response(result_serializer.data, status=status.HTTP_201_CREATED)
+                
+        except Exception as e:
+            logger.error(f"Error al crear dispensación: {e}", exc_info=True)
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
     @action(detail=True, methods=['post'])
     def dispensar(self, request, pk=None):
         """
