@@ -6821,6 +6821,8 @@ class DispensacionViewSet(viewsets.ModelViewSet):
         
         Si se envían detalles específicos, usa esas cantidades.
         Si no se envían detalles, dispensa las cantidades prescritas automáticamente.
+        
+        Parámetro opcional 'forzar_parcial': Si es True, dispensa lo disponible aunque sea menos de lo prescrito.
         """
         dispensacion = self.get_object()
         
@@ -6830,103 +6832,138 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Verificar que tenga detalles
+        detalles_existentes = dispensacion.detalles.all()
+        if not detalles_existentes.exists():
+            return Response(
+                {'error': 'La dispensación no tiene medicamentos registrados'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        forzar_parcial = request.data.get('forzar_parcial', False)
+        
         try:
-            with transaction.atomic():
-                detalles_data = request.data.get('detalles', [])
+            # PASO 1: Validar stock disponible ANTES de procesar
+            errores_stock = []
+            detalles_a_procesar = []
+            
+            for detalle in detalles_existentes:
+                if not detalle.lote:
+                    errores_stock.append(f'{detalle.producto.nombre}: No tiene lote asignado')
+                    continue
                 
-                # Si no se envían detalles específicos, usar los detalles existentes con cantidad prescrita
-                if not detalles_data:
-                    detalles_existentes = dispensacion.detalles.all()
-                    for detalle in detalles_existentes:
-                        if detalle.lote and detalle.cantidad_prescrita > 0:
-                            lote = Lote.objects.select_for_update().get(id=detalle.lote.id)
-                            cantidad = min(detalle.cantidad_prescrita, lote.cantidad_actual)
-                            
-                            if cantidad > 0:
-                                # Descontar del lote
-                                lote.cantidad_actual -= cantidad
-                                lote.save()
-                                
-                                # Crear movimiento de salida
-                                Movimiento.objects.create(
-                                    tipo='salida',
-                                    subtipo_salida='dispensacion',
-                                    producto=detalle.producto,
-                                    lote=lote,
-                                    cantidad=cantidad,
-                                    centro_origen=dispensacion.centro,
-                                    usuario=request.user,
-                                    motivo=f'Dispensación {dispensacion.folio} - Paciente: {dispensacion.paciente.numero_expediente}',
-                                    referencia=dispensacion.folio,
-                                    numero_expediente=dispensacion.paciente.numero_expediente,
-                                )
-                                
-                                detalle.cantidad_dispensada = cantidad
-                                detalle.estado = 'dispensado' if cantidad >= detalle.cantidad_prescrita else 'parcial'
-                                detalle.save()
+                if detalle.cantidad_prescrita <= 0:
+                    continue
+                
+                # Obtener stock actual del lote
+                try:
+                    lote = Lote.objects.get(id=detalle.lote.id)
+                except Lote.DoesNotExist:
+                    errores_stock.append(f'{detalle.producto.nombre}: El lote ya no existe')
+                    continue
+                
+                stock_disponible = lote.cantidad_actual
+                cantidad_solicitada = detalle.cantidad_prescrita
+                
+                if stock_disponible <= 0:
+                    errores_stock.append(
+                        f'{detalle.producto.nombre} (Lote: {lote.numero_lote}): Sin stock disponible'
+                    )
+                elif stock_disponible < cantidad_solicitada:
+                    if not forzar_parcial:
+                        errores_stock.append(
+                            f'{detalle.producto.nombre} (Lote: {lote.numero_lote}): '
+                            f'Stock insuficiente. Disponible: {stock_disponible}, Solicitado: {cantidad_solicitada}'
+                        )
+                    else:
+                        # Si forzar_parcial, agregar con la cantidad disponible
+                        detalles_a_procesar.append({
+                            'detalle': detalle,
+                            'lote': lote,
+                            'cantidad': stock_disponible,
+                            'parcial': True
+                        })
                 else:
-                    # Procesar detalles específicos enviados
-                    for detalle_data in detalles_data:
-                        detalle_id = detalle_data.get('id')
-                        cantidad = detalle_data.get('cantidad_dispensada', 0)
-                        lote_id = detalle_data.get('lote_id')
-                        
-                        if not detalle_id:
-                            continue
-                        
-                        try:
-                            detalle = DetalleDispensacion.objects.get(id=detalle_id, dispensacion=dispensacion)
-                        except DetalleDispensacion.DoesNotExist:
-                            continue
-                        
-                        if cantidad > 0:
-                            # Asignar lote si se especifica
-                            if lote_id:
-                                try:
-                                    lote = Lote.objects.select_for_update().get(id=lote_id)
-                                    if lote.cantidad_actual < cantidad:
-                                        return Response(
-                                            {'error': f'Stock insuficiente en lote {lote.numero_lote}'},
-                                            status=status.HTTP_400_BAD_REQUEST
-                                        )
-                                    # Descontar del lote
-                                    lote.cantidad_actual -= cantidad
-                                    lote.save()
-                                    detalle.lote = lote
-                                    
-                                    # Crear movimiento de salida
-                                    Movimiento.objects.create(
-                                        tipo='salida',
-                                        subtipo_salida='dispensacion',
-                                        producto=detalle.producto,
-                                        lote=lote,
-                                        cantidad=cantidad,
-                                        centro_origen=dispensacion.centro,
-                                        usuario=request.user,
-                                        motivo=f'Dispensación {dispensacion.folio} - Paciente: {dispensacion.paciente.numero_expediente}',
-                                        referencia=dispensacion.folio,
-                                        numero_expediente=dispensacion.paciente.numero_expediente,
-                                    )
-                                except Lote.DoesNotExist:
-                                    pass
-                            
-                            detalle.cantidad_dispensada = cantidad
-                            detalle.estado = 'dispensado' if cantidad >= detalle.cantidad_prescrita else 'pendiente'
-                            detalle.save()
+                    # Stock suficiente
+                    detalles_a_procesar.append({
+                        'detalle': detalle,
+                        'lote': lote,
+                        'cantidad': cantidad_solicitada,
+                        'parcial': False
+                    })
+            
+            # Si hay errores de stock y no se fuerza parcial, devolver error 400
+            if errores_stock and not forzar_parcial:
+                return Response(
+                    {
+                        'error': 'Stock insuficiente para completar la dispensación',
+                        'detalles_error': errores_stock,
+                        'sugerencia': 'Puede editar las cantidades o usar la opción de dispensación parcial'
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Si no hay nada que procesar
+            if not detalles_a_procesar:
+                return Response(
+                    {'error': 'No hay medicamentos con stock disponible para dispensar'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # PASO 2: Procesar la dispensación dentro de una transacción
+            with transaction.atomic():
+                total_dispensado = 0
+                total_prescrito = 0
+                
+                for item in detalles_a_procesar:
+                    detalle = item['detalle']
+                    lote = Lote.objects.select_for_update().get(id=item['lote'].id)
+                    cantidad = item['cantidad']
+                    
+                    # Verificar de nuevo el stock (puede haber cambiado)
+                    if lote.cantidad_actual < cantidad:
+                        cantidad = lote.cantidad_actual
+                    
+                    if cantidad <= 0:
+                        continue
+                    
+                    # Descontar del lote
+                    lote.cantidad_actual -= cantidad
+                    lote.save()
+                    
+                    # Crear movimiento de salida
+                    Movimiento.objects.create(
+                        tipo='salida',
+                        subtipo_salida='dispensacion',
+                        producto=detalle.producto,
+                        lote=lote,
+                        cantidad=cantidad,
+                        centro_origen=dispensacion.centro,
+                        usuario=request.user,
+                        motivo=f'Dispensación {dispensacion.folio} - Paciente: {dispensacion.paciente.numero_expediente}',
+                        referencia=dispensacion.folio,
+                        numero_expediente=dispensacion.paciente.numero_expediente,
+                    )
+                    
+                    # Actualizar detalle
+                    detalle.cantidad_dispensada = cantidad
+                    detalle.estado = 'dispensado' if cantidad >= detalle.cantidad_prescrita else 'parcial'
+                    detalle.save()
+                    
+                    total_dispensado += cantidad
+                    total_prescrito += detalle.cantidad_prescrita
                 
                 # Actualizar estado de la dispensación
-                total_prescrito = dispensacion.get_total_prescrito()
-                total_dispensado = dispensacion.get_total_dispensado()
-                
                 if total_dispensado >= total_prescrito:
                     dispensacion.estado = 'dispensada'
                 elif total_dispensado > 0:
                     dispensacion.estado = 'parcial'
                 
                 dispensacion.dispensado_por = request.user
+                dispensacion.fecha_dispensacion = timezone.now()
                 dispensacion.save()
                 
-                # Registrar en historial (no crítico)
+                # Registrar en historial
                 try:
                     HistorialDispensacion.objects.create(
                         dispensacion=dispensacion,
@@ -6934,20 +6971,30 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                         estado_anterior='pendiente',
                         estado_nuevo=dispensacion.estado,
                         usuario=request.user,
-                        detalles={'total_dispensado': total_dispensado},
+                        detalles={
+                            'total_dispensado': total_dispensado,
+                            'total_prescrito': total_prescrito,
+                            'parcial': dispensacion.estado == 'parcial'
+                        },
                         ip_address=request.META.get('REMOTE_ADDR', '')
                     )
                 except Exception as hist_error:
                     logger.warning(f"No se pudo crear historial al dispensar: {hist_error}")
                 
                 serializer = self.get_serializer(dispensacion)
-                return Response(serializer.data)
+                return Response({
+                    'dispensacion': serializer.data,
+                    'mensaje': f'Dispensación {"completada" if dispensacion.estado == "dispensada" else "parcial"} exitosamente',
+                    'total_dispensado': total_dispensado,
+                    'total_prescrito': total_prescrito
+                })
                 
         except Exception as e:
             logger.error(f"Error al dispensar: {e}", exc_info=True)
             return Response(
-                {'error': str(e)},
+                {'error': f'Error al procesar la dispensación: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
             )
     
     @action(detail=True, methods=['post'])

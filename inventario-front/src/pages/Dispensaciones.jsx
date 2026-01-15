@@ -123,7 +123,7 @@ const Dispensaciones = () => {
   // Modales
   const [deleteModal, setDeleteModal] = useState({ show: false, dispensacion: null });
   const [cancelModal, setCancelModal] = useState({ show: false, dispensacion: null, motivo: '' });
-  const [dispensarModal, setDispensarModal] = useState({ show: false, dispensacion: null });
+  const [dispensarModal, setDispensarModal] = useState({ show: false, dispensacion: null, loading: false });
   const [detailModal, setDetailModal] = useState({ show: false, dispensacion: null, loading: false });
   const [historialModal, setHistorialModal] = useState({ show: false, dispensacion: null, historial: [] });
 
@@ -506,25 +506,72 @@ const Dispensaciones = () => {
       return;
     }
     
+    // Evitar múltiples clics
+    if (dispensarModal.loading) return;
+    setDispensarModal(prev => ({ ...prev, loading: true }));
+    
     try {
       const response = await dispensacionesAPI.dispensar(dispensarModal.dispensacion.id);
-      toast.success('Dispensación procesada correctamente. Medicamentos descontados del inventario.');
-      setDispensarModal({ show: false, dispensacion: null });
+      
+      // Mensaje de éxito según el resultado
+      const mensaje = response.data?.mensaje || 'Dispensación procesada correctamente';
+      const totalDispensado = response.data?.total_dispensado;
+      const totalPrescrito = response.data?.total_prescrito;
+      
+      if (totalDispensado && totalPrescrito) {
+        toast.success(`${mensaje}. Dispensado: ${totalDispensado} de ${totalPrescrito} unidades.`);
+      } else {
+        toast.success(mensaje);
+      }
+      
+      setDispensarModal({ show: false, dispensacion: null, loading: false });
       fetchDispensaciones();
     } catch (error) {
       console.error('Error al dispensar:', error);
+      setDispensarModal(prev => ({ ...prev, loading: false }));
+      
       // Manejar diferentes tipos de errores
-      let errorMsg = 'Error al procesar dispensación';
-      if (error.response?.data?.error) {
-        errorMsg = error.response.data.error;
-      } else if (error.response?.data?.detail) {
-        errorMsg = error.response.data.detail;
-      } else if (error.response?.data?.message) {
-        errorMsg = error.response.data.message;
-      } else if (error.message) {
-        errorMsg = error.message;
+      const responseData = error.response?.data;
+      
+      if (responseData?.detalles_error && Array.isArray(responseData.detalles_error)) {
+        // Mostrar errores de stock detallados
+        const errorPrincipal = responseData.error || 'Stock insuficiente';
+        toast.error(
+          <div>
+            <strong>{errorPrincipal}</strong>
+            <ul className="mt-2 text-sm list-disc list-inside">
+              {responseData.detalles_error.slice(0, 3).map((err, i) => (
+                <li key={i}>{err}</li>
+              ))}
+              {responseData.detalles_error.length > 3 && (
+                <li>...y {responseData.detalles_error.length - 3} más</li>
+              )}
+            </ul>
+            {responseData.sugerencia && (
+              <p className="mt-2 text-xs italic">{responseData.sugerencia}</p>
+            )}
+          </div>,
+          { duration: 8000 }
+        );
+      } else {
+        // Error simple
+        let errorMsg = 'Error al procesar dispensación';
+        if (responseData?.error) {
+          errorMsg = responseData.error;
+        } else if (responseData?.detail) {
+          errorMsg = responseData.detail;
+        } else if (responseData?.message) {
+          errorMsg = responseData.message;
+        } else if (responseData?.cantidad) {
+          // Error de validación de cantidad
+          errorMsg = Array.isArray(responseData.cantidad) 
+            ? responseData.cantidad.join('. ') 
+            : responseData.cantidad;
+        } else if (error.message) {
+          errorMsg = error.message;
+        }
+        toast.error(errorMsg, { duration: 5000 });
       }
-      toast.error(errorMsg);
     }
   };
 
@@ -815,7 +862,7 @@ const Dispensaciones = () => {
                         
                         {disp.estado === 'pendiente' && puedeDispensar && (
                           <button
-                            onClick={() => setDispensarModal({ show: true, dispensacion: disp })}
+                            onClick={() => setDispensarModal({ show: true, dispensacion: disp, loading: false })}
                             className="text-green-600 hover:text-green-800 p-1"
                             title="Dispensar"
                           >
@@ -1323,11 +1370,12 @@ const Dispensaciones = () => {
       {/* Modal de confirmar dispensación */}
       <ConfirmModal
         open={dispensarModal.show}
-        onCancel={() => setDispensarModal({ show: false, dispensacion: null })}
+        onCancel={() => !dispensarModal.loading && setDispensarModal({ show: false, dispensacion: null, loading: false })}
         onConfirm={handleDispensar}
         title="Confirmar Dispensación"
         message={`¿Está seguro de procesar la dispensación ${dispensarModal.dispensacion?.folio}? Esta acción descontará los medicamentos del inventario.`}
-        confirmText="Dispensar"
+        confirmText={dispensarModal.loading ? "Procesando..." : "Dispensar"}
+        loading={dispensarModal.loading}
         tone="info"
       />
 
