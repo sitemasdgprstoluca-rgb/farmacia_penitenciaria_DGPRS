@@ -1068,6 +1068,7 @@ const Requisiciones = () => {
           producto_id: key,
           producto_clave: lote.producto_clave,
           producto_nombre: lote.producto_nombre,
+          producto_presentacion: lote.producto_info?.presentacion || '',
           lotes: [],
         };
       }
@@ -2215,18 +2216,19 @@ const Requisiciones = () => {
                       </div>
                     ) : (
                       <div className="w-full overflow-x-auto rounded-lg border border-gray-200">
-                        <table className="w-full min-w-[800px] text-sm">
+                        <table className="w-full min-w-[900px] text-sm">
                           <thead className="bg-theme-gradient sticky top-0 z-10">
                             <tr>
-                              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Clave</th>
-                              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Nombre</th>
-                              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
-                              <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Caducidad</th>
+                              <th className="text-left px-3 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap w-28">Clave</th>
+                              <th className="text-left px-3 py-3 text-xs font-semibold uppercase tracking-wider text-white w-48">Nombre</th>
+                              <th className="text-left px-3 py-3 text-xs font-semibold uppercase tracking-wider text-white w-36">Presentación</th>
+                              <th className="text-left px-3 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap w-24">Lote</th>
+                              <th className="text-center px-3 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap w-24">Caducidad</th>
                               {/* Solo Farmacia/Admin puede ver el inventario disponible */}
                               {esAdminOFarmacia && (
-                                <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Inventario</th>
+                                <th className="text-center px-3 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap w-20">Inventario</th>
                               )}
-                              <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap w-40">Cantidad</th>
+                              <th className="text-center px-3 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap w-32">Cantidad</th>
                             </tr>
                           </thead>
                         <tbody>
@@ -2248,32 +2250,38 @@ const Requisiciones = () => {
                                   {loteIdx === 0 ? (
                                     <>
                                       <td 
-                                        className="px-4 py-3 font-bold align-top text-theme-primary"
+                                        className="px-3 py-3 font-bold align-top text-theme-primary"
                                         rowSpan={grupo.lotes.length}
                                       >
                                         {grupo.producto_clave}
                                       </td>
                                       <td 
-                                        className="px-4 py-3 align-top"
+                                        className="px-3 py-3 align-top"
                                         rowSpan={grupo.lotes.length}
                                       >
-                                        <span className="line-clamp-2">{grupo.producto_nombre}</span>
+                                        <span className="line-clamp-2 text-sm">{grupo.producto_nombre}</span>
+                                      </td>
+                                      <td 
+                                        className="px-3 py-3 align-top text-gray-600"
+                                        rowSpan={grupo.lotes.length}
+                                      >
+                                        <span className="text-xs">{grupo.producto_presentacion || '-'}</span>
                                       </td>
                                     </>
                                   ) : null}
-                                  <td className="px-4 py-3">
+                                  <td className="px-3 py-3">
                                     <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">
                                       {lote.numero_lote}
                                     </span>
                                   </td>
-                                  <td className={`px-4 py-3 text-center text-xs ${
+                                  <td className={`px-3 py-3 text-center text-xs ${
                                     esCaducidadProxima ? 'text-amber-600 font-semibold' : 'text-gray-500'
                                   }`}>
                                     {fechaCad || '-'}
                                   </td>
                                   {/* Solo Farmacia/Admin puede ver el inventario disponible */}
                                   {esAdminOFarmacia && (
-                                    <td className="px-4 py-3 text-center">
+                                    <td className="px-3 py-3 text-center">
                                       <span className={`font-bold ${
                                         stockDisponible < 10 ? 'text-red-600' : 
                                         stockDisponible < 50 ? 'text-amber-600' : 'text-green-600'
@@ -2282,7 +2290,7 @@ const Requisiciones = () => {
                                       </span>
                                     </td>
                                   )}
-                                  <td className="px-4 py-3 text-center">
+                                  <td className="px-3 py-3 text-center">
                                     {enCarrito ? (
                                       <div className="flex items-center justify-center gap-1">
                                         <button
