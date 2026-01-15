@@ -1,16 +1,28 @@
 /**
  * Componente AdminLimpiarDatos - SOLO PARA SUPERUSUARIOS
+ * Versión: 2.1 - 15/Enero/2026
  * 
- * Permite eliminar datos operativos del sistema de forma SELECTIVA por categoría:
- * - Productos, lotes, requisiciones, movimientos
- * - Donaciones
- * - Notificaciones
- * - Dispensaciones (Formato C)
- * - Pacientes
- * - Caja Chica
- * - Todo el sistema
+ * Permite eliminar datos operativos del sistema de forma SELECTIVA por categoría.
  * 
- * NO ELIMINA: Usuarios, Centros, Configuración, Tema, Auditoría
+ * CATEGORÍAS DISPONIBLES (10 total):
+ * 1. Productos e Inventario - productos, imágenes, lotes, documentos
+ * 2. Solo Lotes - lotes sin eliminar productos
+ * 3. Requisiciones - requisiciones, detalles, historial, ajustes
+ * 4. Movimientos - historial de movimientos
+ * 5. Donaciones - donaciones, detalles, salidas, catálogo donación
+ * 6. Notificaciones - alertas de usuarios
+ * 7. Dispensaciones (Formato C) - dispensaciones a pacientes
+ * 8. Pacientes/Internos - catálogo de pacientes
+ * 9. Caja Chica - compras, inventario y movimientos de caja chica
+ * 10. Todo el Sistema - elimina todo lo anterior
+ * 
+ * NO ELIMINA (siempre se mantienen):
+ * - Usuarios y perfiles
+ * - Centros
+ * - Configuración del sistema
+ * - Tema global (estilos)
+ * - Logs de auditoría
+ * - Permisos y grupos
  * 
  * ADVERTENCIA: Esta acción es IRREVERSIBLE.
  */
