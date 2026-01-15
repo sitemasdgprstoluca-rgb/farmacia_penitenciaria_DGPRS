@@ -270,6 +270,9 @@ const Lotes = () => {
       if (filtroConStock) params.con_stock = filtroConStock;
       if (filtroActivo) params.activo = filtroActivo;
       
+      // DEBUG: Mostrar parámetros de búsqueda
+      console.log('[Lotes] Cargando con params:', JSON.stringify(params), 'puedeVerGlobal:', puedeVerGlobal);
+      
       // TRAZABILIDAD: Admin/Farmacia ven lotes CONSOLIDADOS (únicos, sin duplicados)
       // Usuarios de centro ven solo sus lotes (no consolidados)
       if (puedeVerGlobal) {
@@ -286,6 +289,7 @@ const Lotes = () => {
           params.centro = 'central';
         }
         const response = await lotesAPI.getConsolidados(params);
+        console.log('[Lotes] Respuesta consolidados:', response.data?.count || 0, 'lotes');
         setLotes(response.data.results || response.data);
         setTotalLotes(response.data.count || 0);
         setTotalPages(response.data.total_pages || Math.ceil((response.data.count || 0) / pageSize));
