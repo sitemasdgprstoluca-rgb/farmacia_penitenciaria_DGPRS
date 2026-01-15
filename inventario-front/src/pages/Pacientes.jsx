@@ -495,6 +495,15 @@ const Pacientes = () => {
             {puedeCrear && (
               <>
                 <button
+                  onClick={handleDownloadTemplate}
+                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                  title="Descargar plantilla Excel para importar PPL"
+                >
+                  <FaDownload />
+                  Plantilla
+                </button>
+                
+                <button
                   onClick={() => setImportModal(true)}
                   className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 >
@@ -1052,13 +1061,13 @@ const Pacientes = () => {
 
       {/* Modal de confirmación de eliminación */}
       <ConfirmModal
-        isOpen={deleteModal.show}
-        onClose={() => setDeleteModal({ show: false, paciente: null })}
+        open={deleteModal.show}
+        onCancel={() => setDeleteModal({ show: false, paciente: null })}
         onConfirm={handleDelete}
-        title="Eliminar Paciente"
-        message={`¿Está seguro de eliminar al paciente ${deleteModal.paciente?.nombre_completo}?`}
+        title="Eliminar PPL"
+        message={`¿Está seguro de eliminar al PPL ${deleteModal.paciente?.nombre_completo}? Esta acción no se puede deshacer.`}
         confirmText="Eliminar"
-        confirmStyle="danger"
+        tone="danger"
       />
 
       {/* Modal de Importación de PPL */}
@@ -1248,7 +1257,7 @@ const Pacientes = () => {
                   >
                     <option value="">Seleccionar nuevo centro...</option>
                     {centros
-                      .filter(c => c.id !== traspasoModal.paciente.centro)
+                      .filter(c => String(c.id) !== String(traspasoModal.paciente?.centro))
                       .map(centro => (
                         <option key={centro.id} value={centro.id}>{centro.nombre}</option>
                       ))}

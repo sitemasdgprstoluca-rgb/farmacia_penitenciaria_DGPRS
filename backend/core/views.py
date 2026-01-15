@@ -6086,19 +6086,39 @@ class PacienteViewSet(viewsets.ModelViewSet):
         # Encabezados - TODOS obligatorios excepto información médica
         headers = [
             'numero_expediente*', 'curp*', 'nombre*', 'apellido_paterno*', 'apellido_materno*',
-            'fecha_nacimiento*', 'sexo*', 'centro_clave*', 'dormitorio*', 'celda*',
+            'fecha_nacimiento*', 'sexo*', 'centro*', 'dormitorio*', 'celda*',
             'tipo_sangre', 'alergias', 'enfermedades_cronicas', 'observaciones_medicas',
             'fecha_ingreso'
         ]
         ws.append(headers)
         
+        # Obtener los centros para mostrar ejemplo real
+        centros = Centro.objects.filter(activo=True).order_by('nombre')[:1]
+        centro_ejemplo = centros.first().nombre if centros.exists() else 'CENTRO PENITENCIARIO EJEMPLO'
+        
         # Fila de ejemplo
         ws.append([
             'EXP-001234', 'PELJ900101HDFRRS09', 'Juan', 'Pérez', 'López',
-            '1990-01-15', 'M', 'CRS01', 'Dorm. 5', 'Celda 12',
+            '1990-01-15', 'M', centro_ejemplo, 'Dorm. 5', 'Celda 12',
             'O+', 'Penicilina', 'Diabetes', 'Requiere dieta especial',
             '2024-06-01'
         ])
+        
+        # Hoja de centros disponibles
+        ws_centros = wb.create_sheet("Centros Disponibles")
+        ws_centros.append(['ID', 'Nombre del Centro'])
+        for centro in Centro.objects.filter(activo=True).order_by('nombre'):
+            ws_centros.append([centro.id, centro.nombre])
+        ws_centros.column_dimensions['A'].width = 10
+        ws_centros.column_dimensions['B'].width = 50
+        
+        # Estilo para encabezados de centros
+        from openpyxl.styles import Font, PatternFill
+        header_fill_centros = PatternFill(start_color="235B4E", end_color="235B4E", fill_type="solid")
+        header_font = Font(color="FFFFFF", bold=True)
+        for cell in ws_centros[1]:
+            cell.fill = header_fill_centros
+            cell.font = header_font
         
         # Instrucciones en otra hoja
         ws_inst = wb.create_sheet("Instrucciones")
@@ -6114,7 +6134,7 @@ class PacienteViewSet(viewsets.ModelViewSet):
             ["- apellido_materno*: Segundo apellido"],
             ["- fecha_nacimiento*: Formato YYYY-MM-DD (ej: 1990-01-15)"],
             ["- sexo*: M (Masculino) o F (Femenino)"],
-            ["- centro_clave*: Clave del centro penitenciario (ej: CRS01)"],
+            ["- centro*: Nombre EXACTO del centro (ver hoja 'Centros Disponibles')"],
             ["- dormitorio*: Identificador del dormitorio (ej: Dorm. 5)"],
             ["- celda*: Número o identificador de celda (ej: Celda 12)"],
             [""],
@@ -6127,6 +6147,7 @@ class PacienteViewSet(viewsets.ModelViewSet):
             [""],
             ["NOTAS IMPORTANTES:"],
             ["- Todos los campos marcados con * son OBLIGATORIOS"],
+            ["- El nombre del centro debe coincidir EXACTAMENTE (ver hoja 'Centros Disponibles')"],
             ["- Si el expediente ya existe, se ACTUALIZAN los datos"],
             ["- El CURP debe tener exactamente 18 caracteres"],
             ["- Máximo 1000 registros por archivo"],
@@ -6137,9 +6158,7 @@ class PacienteViewSet(viewsets.ModelViewSet):
         ws_inst.column_dimensions['A'].width = 70
         
         # Estilo de encabezados
-        from openpyxl.styles import Font, PatternFill
         header_fill = PatternFill(start_color="9F2241", end_color="9F2241", fill_type="solid")
-        header_font = Font(color="FFFFFF", bold=True)
         for cell in ws[1]:
             cell.fill = header_fill
             cell.font = header_font
@@ -6251,7 +6270,7 @@ class PacienteViewSet(viewsets.ModelViewSet):
                     apellido_materno = str(valores[4] or '').strip().title() if valores[4] else None
                     fecha_nacimiento_str = str(valores[5] or '').strip() if valores[5] else None
                     sexo = str(valores[6] or '').strip().upper() if valores[6] else None
-                    centro_clave = str(valores[7] or '').strip().upper()
+                    centro_nombre = str(valores[7] or '').strip() if valores[7] else None
                     dormitorio = str(valores[8] or '').strip() if valores[8] else None
                     celda = str(valores[9] or '').strip() if valores[9] else None
                     tipo_sangre = str(valores[10] or '').strip().upper() if valores[10] else None
@@ -6295,15 +6314,19 @@ class PacienteViewSet(viewsets.ModelViewSet):
                     if centro_usuario:
                         # Usuario de centro solo puede importar a su centro
                         centro = centro_usuario
-                    elif centro_clave:
+                    elif centro_nombre:
                         try:
-                            # Buscar centro por ID (la columna centro_clave contiene el ID del centro)
-                            centro = Centro.objects.get(id=int(centro_clave))
-                        except (Centro.DoesNotExist, ValueError):
-                            errores.append(f"Fila {row_idx}: Centro con ID '{centro_clave}' no encontrado")
-                            continue
+                            # Buscar centro por nombre (búsqueda exacta insensible a mayúsculas)
+                            centro = Centro.objects.get(nombre__iexact=centro_nombre)
+                        except Centro.DoesNotExist:
+                            # Intentar búsqueda por ID si es numérico
+                            try:
+                                centro = Centro.objects.get(id=int(centro_nombre))
+                            except (Centro.DoesNotExist, ValueError):
+                                errores.append(f"Fila {row_idx}: Centro '{centro_nombre}' no encontrado (ver hoja 'Centros Disponibles' en la plantilla)")
+                                continue
                     else:
-                        errores.append(f"Fila {row_idx}: Falta centro_clave (ID del centro)")
+                        errores.append(f"Fila {row_idx}: Falta el nombre del centro")
                         continue
                     
                     # Validar CURP si se proporciona
