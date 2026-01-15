@@ -6995,7 +6995,6 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                 {'error': f'Error al procesar la dispensación: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-            )
     
     @action(detail=True, methods=['post'])
     def cancelar(self, request, pk=None):
