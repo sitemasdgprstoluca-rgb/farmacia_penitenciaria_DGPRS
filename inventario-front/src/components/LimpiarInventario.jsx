@@ -1,13 +1,20 @@
 /**
  * Componente LimpiarInventario - SOLO PARA SUPERUSUARIOS
+ * Versión: 2.0 - 15/Enero/2026
  * 
- * Permite eliminar selectivamente datos operativos del inventario:
- * - Productos (incluye lotes, movimientos, requisiciones)
- * - Lotes (mantiene productos)
- * - Requisiciones (mantiene productos y lotes)
- * - Movimientos (solo historial)
- * - Donaciones (donaciones, detalles y salidas)
- * - Todo (incluye donaciones)
+ * Permite eliminar selectivamente datos operativos del inventario.
+ * 
+ * CATEGORÍAS DISPONIBLES (10 total):
+ * 1. Movimientos - historial de movimientos
+ * 2. Requisiciones - requisiciones, detalles, historial, ajustes
+ * 3. Solo Lotes - lotes sin eliminar productos
+ * 4. Productos e Inventario - productos, imágenes, lotes, documentos
+ * 5. Donaciones - donaciones, detalles, salidas, catálogo donación
+ * 6. Notificaciones - alertas de usuarios
+ * 7. Dispensaciones (Formato C) - dispensaciones a pacientes
+ * 8. Pacientes/Internos - catálogo de pacientes
+ * 9. Caja Chica - compras, inventario y movimientos de caja chica
+ * 10. Todo el Sistema - elimina todo lo anterior
  * 
  * NO ELIMINA: Usuarios, Centros, Configuración, Tema, Auditoría
  * 
@@ -34,6 +41,9 @@ import {
   FaExchangeAlt,
   FaBroom,
   FaBell,
+  FaPills,
+  FaUserInjured,
+  FaMoneyBillWave,
 } from 'react-icons/fa';
 import { adminAPI } from '../services/api';
 
@@ -89,6 +99,27 @@ const LimpiarInventario = ({ onLimpiezaCompletada }) => {
       titulo: 'Notificaciones',
       descripcion: 'Elimina todas las notificaciones de usuarios',
       advertencia: 'Se eliminarán todas las notificaciones',
+    },
+    dispensaciones: {
+      icon: FaPills,
+      color: 'teal',
+      titulo: 'Dispensaciones (Formato C)',
+      descripcion: 'Elimina dispensaciones a pacientes, detalles e historial',
+      advertencia: 'NO elimina pacientes',
+    },
+    pacientes: {
+      icon: FaUserInjured,
+      color: 'green',
+      titulo: 'Pacientes/Internos',
+      descripcion: 'Elimina el catálogo de pacientes registrados',
+      advertencia: 'También elimina dispensaciones vinculadas',
+    },
+    caja_chica: {
+      icon: FaMoneyBillWave,
+      color: 'lime',
+      titulo: 'Caja Chica',
+      descripcion: 'Elimina compras, inventario, movimientos e historial',
+      advertencia: 'Módulo de caja chica quedará vacío',
     },
     todos: {
       icon: FaBroom,
@@ -195,6 +226,9 @@ const LimpiarInventario = ({ onLimpiezaCompletada }) => {
       yellow: 'bg-yellow-50 border-yellow-200 hover:bg-yellow-100 hover:border-yellow-300',
       purple: 'bg-purple-50 border-purple-200 hover:bg-purple-100 hover:border-purple-300',
       blue: 'bg-blue-50 border-blue-200 hover:bg-blue-100 hover:border-blue-300',
+      teal: 'bg-teal-50 border-teal-200 hover:bg-teal-100 hover:border-teal-300',
+      green: 'bg-green-50 border-green-200 hover:bg-green-100 hover:border-green-300',
+      lime: 'bg-lime-50 border-lime-200 hover:bg-lime-100 hover:border-lime-300',
     };
     
     const textClasses = {
@@ -204,6 +238,9 @@ const LimpiarInventario = ({ onLimpiezaCompletada }) => {
       yellow: 'text-yellow-700',
       purple: 'text-purple-700',
       blue: 'text-blue-700',
+      teal: 'text-teal-700',
+      green: 'text-green-700',
+      lime: 'text-lime-700',
     };
     
     const iconClasses = {
@@ -213,6 +250,9 @@ const LimpiarInventario = ({ onLimpiezaCompletada }) => {
       yellow: 'text-yellow-500 bg-yellow-100',
       purple: 'text-purple-500 bg-purple-100',
       blue: 'text-blue-500 bg-blue-100',
+      teal: 'text-teal-500 bg-teal-100',
+      green: 'text-green-500 bg-green-100',
+      lime: 'text-lime-500 bg-lime-100',
     };
 
     return (
@@ -309,14 +349,25 @@ const LimpiarInventario = ({ onLimpiezaCompletada }) => {
                     </div>
                   </div>
 
-                  {/* Tarjetas de categorías */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                  {/* Tarjetas de categorías - Fila 1: Inventario */}
+                  <h4 className="font-semibold text-gray-600 text-sm mb-2">📦 Inventario y Operaciones</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
                     {renderCategoriaCard('movimientos')}
                     {renderCategoriaCard('requisiciones')}
                     {renderCategoriaCard('lotes')}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
                     {renderCategoriaCard('productos')}
                     {renderCategoriaCard('donaciones')}
                     {renderCategoriaCard('notificaciones')}
+                  </div>
+
+                  {/* Tarjetas de categorías - Fila 2: Nuevos módulos */}
+                  <h4 className="font-semibold text-gray-600 text-sm mb-2">🏥 Dispensaciones y Caja Chica</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+                    {renderCategoriaCard('dispensaciones')}
+                    {renderCategoriaCard('pacientes')}
+                    {renderCategoriaCard('caja_chica')}
                   </div>
                   
                   {/* Opción TODO */}
