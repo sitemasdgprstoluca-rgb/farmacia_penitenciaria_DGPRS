@@ -3102,7 +3102,7 @@ def generar_control_mensual_almacen(periodo_data, productos_data, centro_nombre=
     # Anchos de columna para portrait - total ~7.4 inches
     control_col_widths = [0.6*inch, 1.8*inch, 0.9*inch, 0.7*inch, 0.65*inch, 0.8*inch, 0.5*inch, 0.5*inch, 0.65*inch]
     
-    control_table = Table(control_data, colWidths=control_col_widths)
+    control_table = Table(control_data, colWidths=control_col_widths, repeatRows=1)
     control_table.setStyle(TableStyle([
         # Encabezado
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E8E8E8')),
