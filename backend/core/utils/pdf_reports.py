@@ -3216,7 +3216,7 @@ def generar_formato_c_dispensacion(dispensacion):
     COLOR_GRIS = colors.HexColor('#6b7280')
     
     # Fondo institucional
-    fondo_path = obtener_fondo_institucional()
+    fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
     
     # ========== ENCABEZADO ==========
     header_style = ParagraphStyle('HeaderFC', parent=styles['Heading1'], fontSize=14, 
