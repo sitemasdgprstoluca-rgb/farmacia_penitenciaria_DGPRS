@@ -5326,7 +5326,11 @@ class AdminLimpiarDatosView(APIView):
     - requisiciones: Elimina requisiciones, detalles, historial, ajustes
     - movimientos: Elimina solo movimientos
     - donaciones: Elimina donaciones, detalles y salidas de donaciones
-    - todos: Elimina todo lo anterior INCLUYENDO donaciones
+    - notificaciones: Elimina notificaciones de usuarios
+    - dispensaciones: Elimina dispensaciones Formato C
+    - pacientes: Elimina pacientes/internos
+    - caja_chica: Elimina módulo de caja chica
+    - todos: Elimina todo lo anterior
     
     NO ELIMINA (configuración del sistema):
     - Usuarios y sus perfiles
@@ -5334,13 +5338,14 @@ class AdminLimpiarDatosView(APIView):
     - Configuración del sistema
     - Tema global (estilos)
     - Logs de auditoría (para mantener trazabilidad)
-    - Notificaciones
     - Permisos de Django
     - Grupos de Django
     
     Endpoints:
     - GET /api/admin/limpiar-datos/ - Obtener estadísticas detalladas
     - POST /api/admin/limpiar-datos/ - Ejecutar limpieza (requiere confirmación y categoría)
+    
+    Versión: 2.0 - Incluye dispensaciones, pacientes y caja chica
     """
     permission_classes = [IsAuthenticated, IsSuperuserOnly]
     
