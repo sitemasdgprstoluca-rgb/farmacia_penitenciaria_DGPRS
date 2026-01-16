@@ -8641,6 +8641,7 @@ def reporte_inventario(request):
         # Usuarios de centro ven solo su centro
         filtrar_por_centro = True  # Siempre filtrar
         user_centro = None  # NULL = Farmacia Central por defecto
+        excluir_farmacia_central = False  # ISS-FIX: Flag para excluir Farmacia Central cuando 'todos'
         
         if not is_farmacia_or_admin(user):
             # Usuario de centro: filtrar por su centro
@@ -8652,9 +8653,12 @@ def reporte_inventario(request):
             if centro_param.lower() == 'central':
                 # Filtrar solo farmacia central (ya es el default)
                 user_centro = None
+                excluir_farmacia_central = False
             elif centro_param.lower() == 'todos':
-                # Ver todo (sin filtro de centro)
+                # ISS-FIX: "Todos los centros" = excluir Farmacia Central
+                # Solo centros penitenciarios, NO farmacia central
                 filtrar_por_centro = False
+                excluir_farmacia_central = True
             else:
                 try:
                     # ISS-FIX: Buscar por ID o nombre
@@ -8688,6 +8692,9 @@ def reporte_inventario(request):
                 else:
                     # centro=NULL significa farmacia central
                     lotes_query = lotes_query.filter(centro__isnull=True)
+            elif excluir_farmacia_central:
+                # ISS-FIX: "Todos los centros" = solo centros (NO farmacia central)
+                lotes_query = lotes_query.filter(centro__isnull=False)
             
             stock_total = lotes_query.aggregate(total=Sum('cantidad_actual'))['total'] or 0
             lotes_activos = lotes_query.filter(cantidad_actual__gt=0).count()
@@ -8779,6 +8786,9 @@ def reporte_inventario(request):
             else:
                 # centro=NULL significa farmacia central (por defecto)
                 lotes_query = lotes_query.filter(centro__isnull=True)
+        elif excluir_farmacia_central:
+            # ISS-FIX: "Todos los centros" = solo centros (NO farmacia central)
+            lotes_query = lotes_query.filter(centro__isnull=False)
         
         lotes_query = lotes_query.order_by('producto__clave', 'numero_lote', 'fecha_caducidad')
         
@@ -8834,7 +8844,12 @@ def reporte_inventario(request):
                 })
         
         # Determinar título según filtro
-        if not filtrar_por_centro or centro_param == 'todos':
+        if excluir_farmacia_central:
+            # ISS-FIX: "Todos los centros" = solo centros penitenciarios (excluye Farmacia Central)
+            titulo_reporte = 'REPORTE DE INVENTARIO - CENTROS PENITENCIARIOS'
+            subtitulo_reporte = f"Generado el {timezone.now().strftime('%d/%m/%Y %H:%M:%S')} - Todos los CPRS (excluye Farmacia Central)"
+            centro_nombre = 'Todos los CPRS'
+        elif not filtrar_por_centro:
             titulo_reporte = 'REPORTE DE INVENTARIO - LOTES CONSOLIDADOS'
             subtitulo_reporte = f"Generado el {timezone.now().strftime('%d/%m/%Y %H:%M:%S')} - Todos los centros"
             centro_nombre = 'Todos los centros'
