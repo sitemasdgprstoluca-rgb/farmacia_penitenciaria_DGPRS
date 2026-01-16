@@ -2499,112 +2499,141 @@ def generar_recibo_salida_donacion(movimiento_data, items_data=None, finalizado=
 def generar_tarjeta_entradas_salidas_formato_b(lote_info, movimientos_data, es_cprs=False):
     """
     Genera PDF con formato oficial "Tarjeta de Entradas/Salidas de Almacén (B)".
-    FORMATO EXACTO 8 COLUMNAS según plantilla oficial del Estado de México.
+    FORMATO EXACTO según plantilla oficial del Estado de México.
     """
-    from pathlib import Path
-    from django.conf import settings
-    
     buffer = BytesIO()
     page_width, page_height = letter
     
-    margin_lr = 0.5*inch
-    margin_top = 1.1*inch
-    content_width = page_width - 2*margin_lr
+    # Márgenes exactos para coincidir con plantilla
+    margin_left = 0.4*inch
+    margin_right = 0.4*inch
+    margin_top = 1.0*inch
+    content_width = page_width - margin_left - margin_right
     
-    # Fondo oficial
     fondo_path = _obtener_fondo_control_mensual()
     
     doc = SimpleDocTemplate(
         buffer, pagesize=letter,
-        topMargin=margin_top, bottomMargin=0.4*inch,
-        leftMargin=margin_lr, rightMargin=margin_lr
+        topMargin=margin_top, bottomMargin=0.5*inch,
+        leftMargin=margin_left, rightMargin=margin_right
     )
     
     elements = []
     styles = getSampleStyleSheet()
     
-    # Estilos
-    titulo_style = ParagraphStyle('TitB', parent=styles['Normal'], fontSize=11, fontName='Helvetica-Bold', alignment=TA_CENTER, textColor=colors.black, spaceAfter=6)
-    label_style = ParagraphStyle('LabB', parent=styles['Normal'], fontSize=9, fontName='Helvetica', textColor=colors.black)
-    header_style = ParagraphStyle('HdrB', parent=styles['Normal'], fontSize=7, fontName='Helvetica-Bold', alignment=TA_CENTER, textColor=colors.black, leading=8)
-    celda_style = ParagraphStyle('CelB', parent=styles['Normal'], fontSize=7, leading=8, alignment=TA_CENTER, textColor=colors.black)
+    # Estilos EXACTOS para plantilla oficial
+    titulo_style = ParagraphStyle(
+        'TitB', parent=styles['Normal'], 
+        fontSize=10, fontName='Helvetica-Bold', 
+        alignment=TA_CENTER, textColor=colors.black, spaceAfter=8
+    )
     
     # Datos del lote
-    institucion = str(lote_info.get('centro_nombre', '')) or 'Farmacia Central'
-    insumo = str(lote_info.get('producto_nombre', '')) or 'N/A'
-    clave = str(lote_info.get('producto_clave', '')) or 'N/A'
-    presentacion = str(lote_info.get('presentacion', '')) or 'N/A'
-    fecha_cad = lote_info.get('fecha_caducidad', 'N/A')
+    institucion = str(lote_info.get('centro_nombre', '')) or ''
+    insumo = str(lote_info.get('producto_nombre', '')) or ''
+    clave = str(lote_info.get('producto_clave', '')) or ''
+    presentacion = str(lote_info.get('presentacion', '')) or ''
+    fecha_cad = lote_info.get('fecha_caducidad', '')
     if hasattr(fecha_cad, 'strftime'):
         fecha_cad = fecha_cad.strftime('%d/%m/%Y')
     
     # TÍTULO
     elements.append(Paragraph("Tarjeta de Entradas/Salidas de almacén (B)", titulo_style))
-    elements.append(Spacer(1, 0.1*inch))
+    elements.append(Spacer(1, 0.05*inch))
     
-    # ENCABEZADO - Fila 1: Institución
-    enc1 = Table([
-        [Paragraph('<b>Institución Penitenciaria:</b>', label_style), institucion]
-    ], colWidths=[1.6*inch, content_width - 1.6*inch], rowHeights=[0.25*inch])
+    # ========== ENCABEZADO EXACTO COMO PLANTILLA ==========
+    # Calcular anchos proporcionales
+    label_w = 1.2*inch
+    clave_label_w = 0.4*inch
+    clave_value_w = 0.6*inch
+    fecha_label_w = 0.55*inch
+    fecha_value_w = 0.7*inch
+    
+    # Fila 1: Institución Penitenciaria
+    enc_data1 = [['Institución\nPenitenciaria:', institucion]]
+    enc1 = Table(enc_data1, colWidths=[label_w, content_width - label_w], rowHeights=[0.35*inch])
     enc1.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
         ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
         ('LINEAFTER', (0, 0), (0, 0), 0.5, colors.black),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
     ]))
     elements.append(enc1)
     
-    # Fila 2: Insumo | Clave
-    enc2 = Table([
-        [Paragraph('<b>Insumo médico:</b>', label_style), insumo, 
-         Paragraph('<b>Clave:</b>', label_style), clave]
-    ], colWidths=[1.0*inch, content_width - 2.5*inch, 0.5*inch, 1.0*inch], rowHeights=[0.25*inch])
+    # Fila 2: Insumo médico | Clave
+    rest_w = content_width - label_w - clave_label_w - clave_value_w
+    enc_data2 = [['Insumo médico:', insumo, 'Clave:', clave]]
+    enc2 = Table(enc_data2, colWidths=[label_w, rest_w, clave_label_w, clave_value_w], rowHeights=[0.28*inch])
     enc2.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (2, 0), (2, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
         ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
         ('LINEAFTER', (0, 0), (0, 0), 0.5, colors.black),
         ('LINEAFTER', (1, 0), (1, 0), 0.5, colors.black),
         ('LINEAFTER', (2, 0), (2, 0), 0.5, colors.black),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 4),
-        ('FONTNAME', (3, 0), (3, 0), 'Helvetica-Bold'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
     ]))
     elements.append(enc2)
     
-    # Fila 3: Presentación | Fecha Caducidad
-    enc3 = Table([
-        [Paragraph('<b>Presentación:</b>', label_style), presentacion,
-         Paragraph('<b>Fecha de<br/>Caducidad:</b>', label_style), fecha_cad]
-    ], colWidths=[1.0*inch, content_width - 2.8*inch, 0.8*inch, 1.0*inch], rowHeights=[0.3*inch])
+    # Fila 3: Presentación | Fecha de Caducidad
+    rest_w3 = content_width - label_w - fecha_label_w - fecha_value_w
+    enc_data3 = [['Presentación:', presentacion, 'Fecha de\nCaducidad:', fecha_cad]]
+    enc3 = Table(enc_data3, colWidths=[label_w, rest_w3, fecha_label_w, fecha_value_w], rowHeights=[0.35*inch])
     enc3.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (2, 0), (2, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
         ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
         ('LINEAFTER', (0, 0), (0, 0), 0.5, colors.black),
         ('LINEAFTER', (1, 0), (1, 0), 0.5, colors.black),
         ('LINEAFTER', (2, 0), (2, 0), 0.5, colors.black),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 4),
-        ('FONTNAME', (3, 0), (3, 0), 'Helvetica-Bold'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
     ]))
     elements.append(enc3)
-    elements.append(Spacer(1, 0.08*inch))
+    elements.append(Spacer(1, 0.1*inch))
     
-    # TABLA DE MOVIMIENTOS - 8 COLUMNAS OFICIAL
-    col_w = [0.65*inch, 1.1*inch, 0.5*inch, 0.5*inch, 0.5*inch, 0.5*inch, 0.5*inch, content_width - 4.25*inch]
+    # ========== TABLA DE MOVIMIENTOS - 8 COLUMNAS EXACTAS ==========
+    # Anchos de columna EXACTOS como plantilla oficial
+    c1 = 0.6*inch   # Fecha de entrada
+    c2 = 0.95*inch  # Documento de entrada
+    c3 = 0.45*inch  # Entrada Cajas
+    c4 = 0.45*inch  # Entrada Piezas
+    c5 = 0.45*inch  # Salida Cajas
+    c6 = 0.45*inch  # Existencia Cajas
+    c7 = 0.45*inch  # Existencia Piezas
+    c8 = content_width - c1 - c2 - c3 - c4 - c5 - c6 - c7  # Nombre y firma
     
-    # Encabezado fila 1
+    col_widths = [c1, c2, c3, c4, c5, c6, c7, c8]
+    
+    # Estilos para celdas pequeñas
+    hdr_style = ParagraphStyle('hdr', fontSize=6, fontName='Helvetica-Bold', alignment=TA_CENTER, leading=7)
+    cell_style = ParagraphStyle('cel', fontSize=7, alignment=TA_CENTER, leading=8)
+    
+    # ENCABEZADO FILA 1 (con spans)
     h1 = [
-        Paragraph('<b>Fecha de<br/>entrada</b>', header_style),
-        Paragraph('<b>Documento de entrada</b>', header_style),
-        Paragraph('<b>Entrada</b>', header_style), '',
-        Paragraph('<b>Salida</b>', header_style),
-        Paragraph('<b>Existencia</b>', header_style), '',
-        Paragraph('<b>Nombre y firma del personal del área médica que<br/>recibe el insumo</b>', header_style),
+        Paragraph('Fecha de\nentrada', hdr_style),
+        Paragraph('Documento de entrada', hdr_style),
+        Paragraph('Entrada', hdr_style), '',
+        Paragraph('Salida', hdr_style),
+        Paragraph('Existencia', hdr_style), '',
+        Paragraph('Nombre y firma del personal del área médica que\nrecibe el insumo', hdr_style),
     ]
-    # Encabezado fila 2
-    h2 = ['', '', 
-          Paragraph('<b>Cajas</b>', header_style), Paragraph('<b>Piezas</b>', header_style),
-          Paragraph('<b>Cajas</b>', header_style), 
-          Paragraph('<b>Cajas</b>', header_style), Paragraph('<b>Piezas</b>', header_style), 
-          '']
+    
+    # ENCABEZADO FILA 2 (sub-columnas)
+    h2 = [
+        '', '',
+        Paragraph('Cajas', hdr_style), Paragraph('Piezas', hdr_style),
+        Paragraph('Cajas', hdr_style),
+        Paragraph('Cajas', hdr_style), Paragraph('Piezas', hdr_style),
+        ''
+    ]
     
     table_data = [h1, h2]
     
@@ -2614,69 +2643,92 @@ def generar_tarjeta_entradas_salidas_formato_b(lote_info, movimientos_data, es_c
         fecha_mov = mov.get('fecha', '')
         if hasattr(fecha_mov, 'strftime'):
             fecha_mov = fecha_mov.strftime('%d/%m/%Y')
+        # Limpiar formato de fecha si tiene hora
+        if isinstance(fecha_mov, str) and ' ' in fecha_mov:
+            fecha_mov = fecha_mov.split(' ')[0]
         
-        documento = str(mov.get('folio_documento', '') or mov.get('observaciones', '') or '')[:20]
+        doc_entrada = str(mov.get('folio_documento', '') or mov.get('observaciones', '') or '')
+        if len(doc_entrada) > 12:
+            doc_entrada = doc_entrada[:12]
+        
         cantidad = mov.get('cantidad', 0)
-        tipo = str(mov.get('tipo', '')).upper()
+        tipo_mov = str(mov.get('tipo', '')).upper()
         
-        if tipo == 'ENTRADA' or cantidad > 0:
-            entrada = str(abs(cantidad))
-            salida = ''
+        if tipo_mov == 'ENTRADA' or cantidad > 0:
+            ent_cajas = str(abs(cantidad))
+            ent_piezas = str(abs(cantidad))
+            sal_cajas = ''
             saldo_actual += abs(cantidad)
         else:
-            entrada = ''
-            salida = str(abs(cantidad))
+            ent_cajas = ''
+            ent_piezas = ''
+            sal_cajas = str(abs(cantidad))
             saldo_actual -= abs(cantidad)
         
         saldo_actual = max(0, saldo_actual)
-        usuario = str(mov.get('usuario', ''))
         
         table_data.append([
-            str(fecha_mov), documento,
-            entrada, entrada,  # Cajas y Piezas entrada
-            salida,            # Salida cajas
-            str(saldo_actual), str(saldo_actual),  # Existencia cajas y piezas
-            usuario,
+            fecha_mov, doc_entrada,
+            ent_cajas, ent_piezas,
+            sal_cajas,
+            str(saldo_actual), str(saldo_actual),
+            ''
         ])
     
-    # Rellenar filas vacías
+    # Rellenar filas vacías hasta completar 20 filas de datos
     while len(table_data) < 22:
         table_data.append(['', '', '', '', '', '', '', ''])
     
-    row_h = [0.32*inch, 0.2*inch] + [0.22*inch] * (len(table_data) - 2)
+    # Alturas de fila
+    row_heights = [0.35*inch, 0.22*inch] + [0.22*inch] * (len(table_data) - 2)
     
-    mov_table = Table(table_data, colWidths=col_w, rowHeights=row_h)
+    mov_table = Table(table_data, colWidths=col_widths, rowHeights=row_heights)
     mov_table.setStyle(TableStyle([
+        # Fuentes
         ('FONTNAME', (0, 0), (-1, 1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 1), 7),
+        ('FONTSIZE', (0, 0), (-1, 1), 6),
+        ('FONTSIZE', (0, 2), (-1, -1), 7),
+        # Alineación
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        # Spans del encabezado
-        ('SPAN', (0, 0), (0, 1)), ('SPAN', (1, 0), (1, 1)),
-        ('SPAN', (2, 0), (3, 0)),  # Entrada
+        # SPANS del encabezado
+        ('SPAN', (0, 0), (0, 1)),  # Fecha entrada
+        ('SPAN', (1, 0), (1, 1)),  # Documento entrada
+        ('SPAN', (2, 0), (3, 0)),  # Entrada (Cajas+Piezas)
         ('SPAN', (4, 0), (4, 1)),  # Salida
-        ('SPAN', (5, 0), (6, 0)),  # Existencia
+        ('SPAN', (5, 0), (6, 0)),  # Existencia (Cajas+Piezas)
         ('SPAN', (7, 0), (7, 1)),  # Nombre y firma
-        ('FONTSIZE', (0, 2), (-1, -1), 7),
+        # Bordes
         ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
         ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
-        ('LEFTPADDING', (0, 0), (-1, -1), 2),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        # Padding mínimo
+        ('LEFTPADDING', (0, 0), (-1, -1), 1),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 1),
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
     ]))
     elements.append(mov_table)
     
-    # FIRMA
-    elements.append(Spacer(1, 0.2*inch))
-    firma_data = [[''], 
-                  [Paragraph('<b>Revisó</b>', ParagraphStyle('fb', fontSize=8, alignment=TA_CENTER))],
-                  [Paragraph('(Nombre y Firma)', ParagraphStyle('fs', fontSize=7, alignment=TA_CENTER, textColor=colors.gray))],
-                  [''], 
-                  [Paragraph('<b>Encargado de los Servicios de Salud</b>', ParagraphStyle('fc', fontSize=8, fontName='Helvetica-Bold', alignment=TA_CENTER))]]
+    # ========== FIRMA ==========
+    elements.append(Spacer(1, 0.3*inch))
     
-    firma_table = Table(firma_data, colWidths=[2.8*inch], rowHeights=[0.5*inch, 0.15*inch, 0.12*inch, 0.05*inch, 0.18*inch])
-    firma_table.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'), ('BOX', (0, 0), (0, 0), 0.5, colors.black)]))
+    firma_style_bold = ParagraphStyle('fb', fontSize=8, fontName='Helvetica-Bold', alignment=TA_CENTER)
+    firma_style_gray = ParagraphStyle('fg', fontSize=7, alignment=TA_CENTER, textColor=colors.gray)
+    
+    firma_data = [
+        [''],
+        [Paragraph('Revisó', firma_style_bold)],
+        [Paragraph('(Nombre y Firma)', firma_style_gray)],
+        [''],
+        [Paragraph('Encargado de los Servicios de Salud', firma_style_bold)]
+    ]
+    
+    firma_table = Table(firma_data, colWidths=[2.5*inch], rowHeights=[0.4*inch, 0.15*inch, 0.12*inch, 0.08*inch, 0.15*inch])
+    firma_table.setStyle(TableStyle([
+        ('BOX', (0, 0), (0, 0), 0.5, colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
     
     firma_container = Table([[firma_table]], colWidths=[content_width])
     firma_container.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER')]))
@@ -2691,14 +2743,9 @@ def generar_tarjeta_entradas_salidas_formato_b(lote_info, movimientos_data, es_c
             self._draw_fondo()
         
         def showPage(self):
-            self._draw_pie()
             canvas.Canvas.showPage(self)
             self._page_num += 1
             self._draw_fondo()
-        
-        def save(self):
-            self._draw_pie()
-            canvas.Canvas.save(self)
         
         def _draw_fondo(self):
             if self._fondo and os.path.exists(self._fondo):
@@ -2706,14 +2753,6 @@ def generar_tarjeta_entradas_salidas_formato_b(lote_info, movimientos_data, es_c
                     self.drawImage(str(self._fondo), 0, 0, width=page_width, height=page_height, preserveAspectRatio=False, mask='auto')
                 except Exception as e:
                     logger.warning(f"Fondo Formato B: {e}")
-        
-        def _draw_pie(self):
-            self.saveState()
-            self.setFont('Helvetica', 7)
-            self.setFillColor(colors.gray)
-            self.drawString(margin_lr, 0.25*inch, f"Generado: {timezone.now().strftime('%d/%m/%Y %H:%M')}")
-            self.drawRightString(page_width - margin_lr, 0.25*inch, f"Página {self._page_num + 1}")
-            self.restoreState()
     
     doc.build(elements, canvasmaker=FormatoBCanvas)
     buffer.seek(0)
@@ -4171,25 +4210,22 @@ def generar_tarjeta_entradas_salidas_formato_b_reporte(productos_data, filtros=N
     """
     Genera PDF con formato oficial exacto "Tarjeta de Entradas/Salidas de almacén (B)".
     Una página por producto mostrando todos sus movimientos.
-    
-    Usada por el endpoint /api/reportes/movimientos/?formato=pdf
+    FORMATO EXACTO igual a la plantilla oficial.
     """
     buffer = BytesIO()
     page_width, page_height = letter
     
-    margin_lr = 0.5*inch
-    margin_top = 1.1*inch
-    content_width = page_width - 2*margin_lr
+    margin_left = 0.4*inch
+    margin_right = 0.4*inch
+    margin_top = 1.0*inch
+    content_width = page_width - margin_left - margin_right
     
     fondo_path = _obtener_fondo_control_mensual()
     
     doc = SimpleDocTemplate(
-        buffer,
-        pagesize=letter,
-        topMargin=margin_top,
-        bottomMargin=0.4*inch,
-        leftMargin=margin_lr,
-        rightMargin=margin_lr
+        buffer, pagesize=letter,
+        topMargin=margin_top, bottomMargin=0.5*inch,
+        leftMargin=margin_left, rightMargin=margin_right
     )
     
     elements = []
@@ -4197,106 +4233,110 @@ def generar_tarjeta_entradas_salidas_formato_b_reporte(productos_data, filtros=N
     
     titulo_style = ParagraphStyle(
         'TitB', parent=styles['Normal'],
-        fontSize=11, fontName='Helvetica-Bold',
-        alignment=TA_CENTER, textColor=colors.black, spaceAfter=6
+        fontSize=10, fontName='Helvetica-Bold',
+        alignment=TA_CENTER, textColor=colors.black, spaceAfter=8
     )
     
-    label_style = ParagraphStyle(
-        'LabB', parent=styles['Normal'],
-        fontSize=9, fontName='Helvetica', textColor=colors.black
-    )
+    nombre_inst = institucion or (filtros.get('centro', '') if filtros else '') or ''
     
-    header_style = ParagraphStyle(
-        'HdrB', parent=styles['Normal'],
-        fontSize=7, fontName='Helvetica-Bold',
-        alignment=TA_CENTER, textColor=colors.black, leading=8
-    )
+    # Anchos de columnas para encabezado
+    label_w = 1.2*inch
+    clave_label_w = 0.4*inch
+    clave_value_w = 0.6*inch
+    fecha_label_w = 0.55*inch
+    fecha_value_w = 0.7*inch
     
-    celda_style = ParagraphStyle(
-        'CelB', parent=styles['Normal'],
-        fontSize=7, leading=8, alignment=TA_CENTER
-    )
+    # Anchos de columnas para tabla de movimientos
+    c1 = 0.6*inch   # Fecha
+    c2 = 0.95*inch  # Documento
+    c3 = 0.45*inch  # Entrada Cajas
+    c4 = 0.45*inch  # Entrada Piezas
+    c5 = 0.45*inch  # Salida Cajas
+    c6 = 0.45*inch  # Existencia Cajas
+    c7 = 0.45*inch  # Existencia Piezas
+    c8 = content_width - c1 - c2 - c3 - c4 - c5 - c6 - c7  # Nombre y firma
+    col_widths = [c1, c2, c3, c4, c5, c6, c7, c8]
     
-    nombre_inst = institucion or (filtros.get('centro', '') if filtros else '') or 'Farmacia Central'
+    hdr_style = ParagraphStyle('hdr', fontSize=6, fontName='Helvetica-Bold', alignment=TA_CENTER, leading=7)
     
-    # Procesar cada producto como una página separada
+    # Procesar cada producto como una página
     for idx, producto in enumerate(productos_data):
         if idx > 0:
             elements.append(PageBreak())
         
-        elements.append(Paragraph("Tarjeta de Entradas/Salidas de almacén (B)", titulo_style))
-        elements.append(Spacer(1, 0.1*inch))
-        
         # Datos del producto
-        insumo_nombre = str(producto.get('producto_nombre', ''))
-        insumo_clave = str(producto.get('producto_clave', ''))
-        presentacion = str(producto.get('presentacion', ''))
+        insumo = str(producto.get('producto_nombre', '')) or ''
+        clave = str(producto.get('producto_clave', '')) or ''
+        presentacion = str(producto.get('presentacion', '')) or ''
         fecha_cad = producto.get('fecha_caducidad', '')
         if hasattr(fecha_cad, 'strftime'):
             fecha_cad = fecha_cad.strftime('%d/%m/%Y')
         elif fecha_cad:
             fecha_cad = str(fecha_cad)
         
-        # Encabezado - Fila 1
-        enc1 = Table([
-            [Paragraph('<b>Institución Penitenciaria:</b>', label_style), nombre_inst]
-        ], colWidths=[1.6*inch, content_width - 1.6*inch], rowHeights=[0.25*inch])
+        # TÍTULO
+        elements.append(Paragraph("Tarjeta de Entradas/Salidas de almacén (B)", titulo_style))
+        elements.append(Spacer(1, 0.05*inch))
+        
+        # ENCABEZADO Fila 1
+        enc1 = Table([['Institución\nPenitenciaria:', nombre_inst]], 
+                     colWidths=[label_w, content_width - label_w], rowHeights=[0.35*inch])
         enc1.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
             ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
             ('LINEAFTER', (0, 0), (0, 0), 0.5, colors.black),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
         ]))
         elements.append(enc1)
         
-        # Fila 2: Insumo médico | Clave
-        enc2 = Table([
-            [Paragraph('<b>Insumo médico:</b>', label_style), insumo_nombre, 
-             Paragraph('<b>Clave:</b>', label_style), insumo_clave]
-        ], colWidths=[1.0*inch, content_width - 2.5*inch, 0.5*inch, 1.0*inch], rowHeights=[0.25*inch])
+        # ENCABEZADO Fila 2
+        rest_w = content_width - label_w - clave_label_w - clave_value_w
+        enc2 = Table([['Insumo médico:', insumo, 'Clave:', clave]], 
+                     colWidths=[label_w, rest_w, clave_label_w, clave_value_w], rowHeights=[0.28*inch])
         enc2.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (2, 0), (2, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
             ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
             ('LINEAFTER', (0, 0), (0, 0), 0.5, colors.black),
             ('LINEAFTER', (1, 0), (1, 0), 0.5, colors.black),
             ('LINEAFTER', (2, 0), (2, 0), 0.5, colors.black),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 4),
-            ('FONTNAME', (3, 0), (3, 0), 'Helvetica-Bold'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
         ]))
         elements.append(enc2)
         
-        # Fila 3: Presentación | Fecha de Caducidad
-        enc3 = Table([
-            [Paragraph('<b>Presentación:</b>', label_style), presentacion,
-             Paragraph('<b>Fecha de<br/>Caducidad:</b>', label_style), fecha_cad]
-        ], colWidths=[1.0*inch, content_width - 2.8*inch, 0.8*inch, 1.0*inch], rowHeights=[0.3*inch])
+        # ENCABEZADO Fila 3
+        rest_w3 = content_width - label_w - fecha_label_w - fecha_value_w
+        enc3 = Table([['Presentación:', presentacion, 'Fecha de\nCaducidad:', fecha_cad]], 
+                     colWidths=[label_w, rest_w3, fecha_label_w, fecha_value_w], rowHeights=[0.35*inch])
         enc3.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (2, 0), (2, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
             ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
             ('LINEAFTER', (0, 0), (0, 0), 0.5, colors.black),
             ('LINEAFTER', (1, 0), (1, 0), 0.5, colors.black),
             ('LINEAFTER', (2, 0), (2, 0), 0.5, colors.black),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 4),
-            ('FONTNAME', (3, 0), (3, 0), 'Helvetica-Bold'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
         ]))
         elements.append(enc3)
-        elements.append(Spacer(1, 0.08*inch))
+        elements.append(Spacer(1, 0.1*inch))
         
-        # Tabla de movimientos - 8 columnas
-        col_w = [0.65*inch, 1.1*inch, 0.5*inch, 0.5*inch, 0.5*inch, 0.5*inch, 0.5*inch, content_width - 4.25*inch]
-        
+        # TABLA DE MOVIMIENTOS
         h1 = [
-            Paragraph('<b>Fecha de<br/>entrada</b>', header_style),
-            Paragraph('<b>Documento de entrada</b>', header_style),
-            Paragraph('<b>Entrada</b>', header_style), '',
-            Paragraph('<b>Salida</b>', header_style),
-            Paragraph('<b>Existencia</b>', header_style), '',
-            Paragraph('<b>Nombre y firma del personal del área médica que<br/>recibe el insumo</b>', header_style),
+            Paragraph('Fecha de\nentrada', hdr_style),
+            Paragraph('Documento de entrada', hdr_style),
+            Paragraph('Entrada', hdr_style), '',
+            Paragraph('Salida', hdr_style),
+            Paragraph('Existencia', hdr_style), '',
+            Paragraph('Nombre y firma del personal del área médica que\nrecibe el insumo', hdr_style),
         ]
-        
-        h2 = ['', '', Paragraph('<b>Cajas</b>', header_style), Paragraph('<b>Piezas</b>', header_style),
-              Paragraph('<b>Cajas</b>', header_style), Paragraph('<b>Cajas</b>', header_style),
-              Paragraph('<b>Piezas</b>', header_style), '']
+        h2 = ['', '', Paragraph('Cajas', hdr_style), Paragraph('Piezas', hdr_style),
+              Paragraph('Cajas', hdr_style), Paragraph('Cajas', hdr_style), Paragraph('Piezas', hdr_style), '']
         
         table_data = [h1, h2]
         
@@ -4307,55 +4347,60 @@ def generar_tarjeta_entradas_salidas_formato_b_reporte(productos_data, filtros=N
             fecha_mov = mov.get('fecha', '')
             if hasattr(fecha_mov, 'strftime'):
                 fecha_mov = fecha_mov.strftime('%d/%m/%Y')
+            if isinstance(fecha_mov, str) and ' ' in fecha_mov:
+                fecha_mov = fecha_mov.split(' ')[0]
             
-            documento = str(mov.get('documento', mov.get('referencia', '')))[:20]
+            doc_entrada = str(mov.get('documento', mov.get('referencia', '')))
+            if len(doc_entrada) > 12:
+                doc_entrada = doc_entrada[:12]
+            
             entrada = mov.get('entrada', 0) or 0
             salida = mov.get('salida', 0) or 0
             existencia_actual = existencia_actual + entrada - salida
+            existencia_actual = max(0, existencia_actual)
             
             table_data.append([
-                str(fecha_mov),
-                documento,
-                str(entrada) if entrada > 0 else '',
-                str(entrada) if entrada > 0 else '',
+                fecha_mov, doc_entrada,
+                str(entrada) if entrada > 0 else '', str(entrada) if entrada > 0 else '',
                 str(salida) if salida > 0 else '',
-                str(max(0, existencia_actual)),
-                str(max(0, existencia_actual)),
-                '',
+                str(existencia_actual), str(existencia_actual), ''
             ])
         
-        while len(table_data) < 24:
+        while len(table_data) < 22:
             table_data.append(['', '', '', '', '', '', '', ''])
         
-        row_h = [0.32*inch, 0.2*inch] + [0.22*inch] * (len(table_data) - 2)
+        row_heights = [0.35*inch, 0.22*inch] + [0.22*inch] * (len(table_data) - 2)
         
-        mov_table = Table(table_data, colWidths=col_w, rowHeights=row_h)
+        mov_table = Table(table_data, colWidths=col_widths, rowHeights=row_heights)
         mov_table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, 1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 1), 7),
+            ('FONTSIZE', (0, 0), (-1, 1), 6),
+            ('FONTSIZE', (0, 2), (-1, -1), 7),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('SPAN', (0, 0), (0, 1)), ('SPAN', (1, 0), (1, 1)),
             ('SPAN', (2, 0), (3, 0)), ('SPAN', (4, 0), (4, 1)),
             ('SPAN', (5, 0), (6, 0)), ('SPAN', (7, 0), (7, 1)),
-            ('FONTSIZE', (0, 2), (-1, -1), 7),
             ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
             ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
-            ('LEFTPADDING', (0, 0), (-1, -1), 2),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 2),
-            ('TOPPADDING', (0, 0), (-1, -1), 2),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LEFTPADDING', (0, 0), (-1, -1), 1),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 1),
+            ('TOPPADDING', (0, 0), (-1, -1), 1),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
         ]))
         elements.append(mov_table)
         
-        # Firma
-        elements.append(Spacer(1, 0.2*inch))
-        firma_data = [[''], [Paragraph('<b>Revisó</b>', ParagraphStyle('fb', fontSize=8, alignment=TA_CENTER))],
-                      [Paragraph('(Nombre y Firma)', ParagraphStyle('fs', fontSize=7, alignment=TA_CENTER, textColor=colors.gray))],
-                      [''], [Paragraph('<b>Encargado de los Servicios de Salud</b>', ParagraphStyle('fc', fontSize=8, fontName='Helvetica-Bold', alignment=TA_CENTER))]]
+        # FIRMA
+        elements.append(Spacer(1, 0.3*inch))
+        firma_style_bold = ParagraphStyle('fb', fontSize=8, fontName='Helvetica-Bold', alignment=TA_CENTER)
+        firma_style_gray = ParagraphStyle('fg', fontSize=7, alignment=TA_CENTER, textColor=colors.gray)
         
-        firma_table = Table(firma_data, colWidths=[2.8*inch], rowHeights=[0.5*inch, 0.15*inch, 0.12*inch, 0.05*inch, 0.18*inch])
-        firma_table.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'), ('BOX', (0, 0), (0, 0), 0.5, colors.black)]))
+        firma_data = [[''], [Paragraph('Revisó', firma_style_bold)],
+                      [Paragraph('(Nombre y Firma)', firma_style_gray)], [''],
+                      [Paragraph('Encargado de los Servicios de Salud', firma_style_bold)]]
+        
+        firma_table = Table(firma_data, colWidths=[2.5*inch], rowHeights=[0.4*inch, 0.15*inch, 0.12*inch, 0.08*inch, 0.15*inch])
+        firma_table.setStyle(TableStyle([('BOX', (0, 0), (0, 0), 0.5, colors.black), ('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('VALIGN', (0, 0), (-1, -1), 'MIDDLE')]))
         
         firma_container = Table([[firma_table]], colWidths=[content_width])
         firma_container.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER')]))
@@ -4369,19 +4414,12 @@ def generar_tarjeta_entradas_salidas_formato_b_reporte(productos_data, filtros=N
     class TarjetaBCanvas(canvas.Canvas):
         def __init__(self, *args, **kwargs):
             self.fondo_path = fondo_path
-            self._page_number = 0
             canvas.Canvas.__init__(self, *args, **kwargs)
             self._dibujar_fondo()
         
         def showPage(self):
-            self._pie()
             canvas.Canvas.showPage(self)
-            self._page_number += 1
             self._dibujar_fondo()
-        
-        def save(self):
-            self._pie()
-            canvas.Canvas.save(self)
         
         def _dibujar_fondo(self):
             if self.fondo_path and os.path.exists(self.fondo_path):
@@ -4389,18 +4427,9 @@ def generar_tarjeta_entradas_salidas_formato_b_reporte(productos_data, filtros=N
                     self.drawImage(str(self.fondo_path), 0, 0, width=page_width, height=page_height, preserveAspectRatio=False, mask='auto')
                 except Exception as e:
                     logger.warning(f"Fondo Tarjeta B: {e}")
-        
-        def _pie(self):
-            self.saveState()
-            self.setFont('Helvetica', 7)
-            self.setFillColor(colors.gray)
-            self.drawString(margin_lr, 0.25*inch, f"Generado: {timezone.now().strftime('%d/%m/%Y %H:%M')}")
-            self.drawRightString(page_width - margin_lr, 0.25*inch, f"Página {self._page_number + 1}")
-            self.restoreState()
     
     doc.build(elements, canvasmaker=TarjetaBCanvas)
     buffer.seek(0)
-    logger.info(f"Tarjeta B PDF - Productos: {len(productos_data)}")
     return buffer
 
 

@@ -9098,12 +9098,21 @@ def reporte_movimientos(request):
         
         # Admin/farmacia puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
-        # Ignorar 'todos' como parámetro de centro
+        
+        # Flags para control de filtros
+        excluir_farmacia_central = False  # Cuando es "todos los centros", excluir Farmacia Central
+        
+        # Ignorar 'todos' como parámetro de centro - pero excluir Farmacia Central
         if centro_param and centro_param.lower() == 'todos':
             centro_param = None
-        # ISS-FIX: También ignorar 'central' ya que es Farmacia Central (sin filtro)
+            excluir_farmacia_central = True  # "Todos" = todos EXCEPTO Farmacia Central
+        
+        # ISS-FIX: 'central' = Farmacia Central específicamente
         if centro_param and centro_param.lower() == 'central':
             centro_param = None
+            filtrar_por_centro = False  # Mostrar solo Farmacia Central
+            excluir_farmacia_central = False
+            
         if centro_param and is_farmacia_or_admin(user):
             try:
                 # ISS-FIX: Buscar por ID numérico o por nombre
@@ -9152,6 +9161,18 @@ def reporte_movimientos(request):
                 movimientos = movimientos.filter(
                     Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
                 )
+        
+        # ISS-FIX: "Todos los centros" = excluir Farmacia Central (movimientos sin centro origen/destino)
+        # Farmacia Central se caracteriza por tener centro_origen=NULL y centro_destino=NULL en entradas iniciales
+        # o ser la fuente de salidas hacia otros centros
+        if excluir_farmacia_central:
+            # Excluir movimientos internos de Farmacia Central:
+            # - Entradas donde destino es NULL (entradas al almacén central)
+            # - Movimientos donde ambos origen y destino son NULL
+            # Solo mostrar movimientos que involucren un centro específico (no NULL)
+            movimientos = movimientos.filter(
+                Q(centro_origen__isnull=False) | Q(centro_destino__isnull=False)
+            )
         
         movimientos = movimientos.order_by('-fecha')
         
