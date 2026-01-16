@@ -234,6 +234,8 @@ const Reportes = () => {
     // Parámetros específicos por tipo de reporte
     if (filtros.tipo === "inventario") {
       if (filtros.nivelStock) params.nivel_stock = filtros.nivelStock;
+      if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
+      if (filtros.fechaFin) params.fecha_fin = filtros.fechaFin;
     } else if (filtros.tipo === "caducidades") {
       params.dias = filtros.dias || 30;
       if (filtros.estado) params.estado = filtros.estado;
@@ -903,6 +905,80 @@ const Reportes = () => {
                   <option value="alto">🟢 Alto</option>
                   <option value="sin_stock">⚪ Sin Inventario</option>
                 </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-gray-700">Desde</label>
+                <input
+                  type="date"
+                  value={filtros.fechaInicio}
+                  onChange={(e) => handleFiltro("fechaInicio", e.target.value)}
+                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-gray-700">Hasta</label>
+                <input
+                  type="date"
+                  value={filtros.fechaFin}
+                  onChange={(e) => handleFiltro("fechaFin", e.target.value)}
+                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                />
+              </div>
+              {/* Botones rápidos de período para inventario */}
+              <div className="space-y-1 col-span-full">
+                <label className="text-sm font-semibold text-gray-700">Período rápido</label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFiltros(prev => ({
+                        ...prev,
+                        fechaInicio: getFirstDayOfMonth(),
+                        fechaFin: getTodayDate()
+                      }));
+                    }}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                      filtros.fechaInicio === getFirstDayOfMonth() && filtros.fechaFin === getTodayDate()
+                        ? 'bg-rose-600 text-white' 
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    📅 Este mes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const now = new Date();
+                      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                      const lastDayLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+                      setFiltros(prev => ({
+                        ...prev,
+                        fechaInicio: `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}-01`,
+                        fechaFin: `${lastDayLastMonth.getFullYear()}-${String(lastDayLastMonth.getMonth() + 1).padStart(2, '0')}-${String(lastDayLastMonth.getDate()).padStart(2, '0')}`
+                      }));
+                    }}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  >
+                    📆 Mes anterior
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFiltros(prev => ({
+                        ...prev,
+                        fechaInicio: "",
+                        fechaFin: ""
+                      }));
+                    }}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                      !filtros.fechaInicio && !filtros.fechaFin 
+                        ? 'bg-rose-600 text-white' 
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    🗓️ Sin filtro de fecha
+                  </button>
+                </div>
               </div>
             </>
           )}

@@ -1158,7 +1158,7 @@ const RequisicionDetalle = () => {
       )}
 
       {/* Tabla de Productos */}
-      <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+      <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-6 overflow-hidden">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-theme-primary">
             Productos Solicitados ({modoEdicionProductos ? productosEditables.length : detalles.length})
@@ -1361,39 +1361,41 @@ const RequisicionDetalle = () => {
         ) : detalles.length === 0 ? (
           <p className="text-center text-gray-500 py-8">No hay productos en esta requisición</p>
         ) : (
-          <div className="w-full rounded-lg border border-gray-200 shadow-md">
-            <table className="w-full border-collapse text-sm">
-              <thead className="bg-theme-gradient">
-                <tr>
-                  <th className="px-2 py-2 text-left text-xs font-semibold uppercase text-white w-16">Clave</th>
-                  <th className="px-2 py-2 text-left text-xs font-semibold uppercase text-white">Producto</th>
-                  <th className="px-2 py-2 text-left text-xs font-semibold uppercase text-white w-24">Presentación</th>
-                  <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white w-24">Lote</th>
-                  <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white w-20">Unidad</th>
-                  {/* ISS-UI-FIX: Mostrar Inventario Almacén y Centro para tomar decisiones */}
-                  {(modoAutorizar || esFarmacia) && (
-                    <>
-                      <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white bg-blue-600 w-16">
-                        Inv. Almacén
+          <div className="w-full overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+            <div className="inline-block min-w-full align-middle">
+              <div className="overflow-hidden rounded-lg border border-gray-200 shadow-md">
+                <table className="min-w-full border-collapse text-xs">
+                  <thead className="bg-theme-gradient">
+                    <tr>
+                      <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase text-white whitespace-nowrap">Clave</th>
+                      <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase text-white">Producto</th>
+                      <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase text-white">Presentación</th>
+                      <th className="px-2 py-2 text-center text-[10px] font-semibold uppercase text-white whitespace-nowrap">Lote</th>
+                      <th className="px-2 py-2 text-center text-[10px] font-semibold uppercase text-white whitespace-nowrap">Unidad</th>
+                      {/* ISS-UI-FIX: Mostrar Inventario Almacén y Centro para tomar decisiones */}
+                      {(modoAutorizar || esFarmacia) && (
+                        <>
+                          <th className="px-1 py-2 text-center text-[10px] font-semibold uppercase text-white bg-blue-600 whitespace-nowrap">
+                            Inv. Alm.
+                          </th>
+                          <th className="px-1 py-2 text-center text-[10px] font-semibold uppercase text-white bg-purple-600 whitespace-nowrap">
+                            Inv. Cen.
+                          </th>
+                        </>
+                      )}
+                      <th className="px-1 py-2 text-center text-[10px] font-semibold uppercase text-white whitespace-nowrap">Solic.</th>
+                      <th className={`px-1 py-2 text-center text-[10px] font-semibold uppercase whitespace-nowrap ${modoAutorizar ? 'bg-green-600 text-white' : 'text-white'}`}>
+                        Autoriz.
                       </th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white bg-purple-600 w-16">
-                        Inv. Centro
-                      </th>
-                    </>
-                  )}
-                  <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white w-14">Solic.</th>
-                  <th className={`px-2 py-2 text-center text-xs font-semibold uppercase w-16 ${modoAutorizar ? 'bg-green-600 text-white' : 'text-white'}`}>
-                    Autoriz.
-                  </th>
-                  {/* MEJORA FLUJO 3: Columna para motivo de ajuste - visible también cuando hay ajustes */}
-                  {(modoAutorizar || detalles.some(d => d.cantidad_autorizada < d.cantidad_solicitada && d.motivo_ajuste)) && (
-                    <th className="px-2 py-2 text-left text-xs font-semibold uppercase bg-amber-500 text-white w-36">
-                      Motivo Ajuste
-                    </th>
-                  )}
-                  <th className="px-2 py-2 text-center text-xs font-semibold uppercase text-white w-14">Surtido</th>
-                </tr>
-              </thead>
+                      {/* MEJORA FLUJO 3: Columna para motivo de ajuste - visible también cuando hay ajustes */}
+                      {(modoAutorizar || detalles.some(d => d.cantidad_autorizada < d.cantidad_solicitada && d.motivo_ajuste)) && (
+                        <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase bg-amber-500 text-white">
+                          Motivo Ajuste
+                        </th>
+                      )}
+                      <th className="px-1 py-2 text-center text-[10px] font-semibold uppercase text-white whitespace-nowrap">Surtido</th>
+                    </tr>
+                  </thead>
               <tbody>
                 {detalles.map((detalle, idx) => (
                   <tr key={detalle.id || idx} className="border-b border-gray-200 hover:bg-gray-50">
@@ -1506,6 +1508,8 @@ const RequisicionDetalle = () => {
                 ))}
               </tbody>
             </table>
+              </div>
+            </div>
           </div>
         )}
 

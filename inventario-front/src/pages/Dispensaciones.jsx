@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { dispensacionesAPI, pacientesAPI, centrosAPI, productosAPI, lotesAPI } from '../services/api';
+import { dispensacionesAPI, pacientesAPI, centrosAPI, productosAPI, lotesAPI, descargarArchivo } from '../services/api';
 import { toast } from 'react-hot-toast';
 import {
   FaPlus,
@@ -22,6 +22,8 @@ import {
   FaBoxOpen,
   FaExclamationTriangle,
   FaInfoCircle,
+  FaFileAlt,
+  FaSpinner,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import Pagination from '../components/Pagination';
@@ -126,6 +128,14 @@ const Dispensaciones = () => {
   const [dispensarModal, setDispensarModal] = useState({ show: false, dispensacion: null, loading: false });
   const [detailModal, setDetailModal] = useState({ show: false, dispensacion: null, loading: false });
   const [historialModal, setHistorialModal] = useState({ show: false, dispensacion: null, historial: [] });
+  
+  // Modal para Control Mensual CPRS
+  const [reporteModal, setReporteModal] = useState({ 
+    show: false, 
+    mes: new Date().getMonth() + 1, 
+    anio: new Date().getFullYear(),
+    loading: false 
+  });
 
   // Función para abrir modal de detalle con carga de datos completos
   const handleOpenDetail = async (disp) => {
@@ -379,6 +389,42 @@ const Dispensaciones = () => {
     setPacienteSearchTerm('');
     setPacientes([]);
     setLotes([]);
+  };
+
+  // Generar reporte Control Mensual CPRS (Formato A oficial)
+  const handleGenerarControlMensual = async () => {
+    setReporteModal(prev => ({ ...prev, loading: true }));
+    const toastId = toast.loading('Generando Control Mensual...');
+    
+    try {
+      const params = {
+        mes: reporteModal.mes,
+        anio: reporteModal.anio,
+      };
+      
+      // Si el usuario tiene centro asignado, usarlo automáticamente
+      if (centroUsuario) {
+        params.centro = centroUsuario;
+      }
+      
+      const response = await dispensacionesAPI.exportarControlMensualCPRS(params);
+      
+      // Obtener nombre del mes para el archivo
+      const meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+      const mesNombre = meses[reporteModal.mes];
+      const filename = `Control_Mensual_${mesNombre}_${reporteModal.anio}.pdf`;
+      
+      descargarArchivo(response, filename);
+      toast.success(`✅ ${filename} descargado`, { id: toastId });
+      setReporteModal(prev => ({ ...prev, show: false }));
+    } catch (error) {
+      console.error('Error al generar Control Mensual:', error);
+      const msg = error.response?.data?.error || error.response?.data?.detail || error.message || 'Error al generar reporte';
+      toast.error(`❌ ${msg}`, { id: toastId });
+    } finally {
+      setReporteModal(prev => ({ ...prev, loading: false }));
+    }
   };
 
   const handleOpenModal = (dispensacion = null) => {
@@ -693,6 +739,17 @@ const Dispensaciones = () => {
               >
                 <FaPlus />
                 Nueva Dispensación
+              </button>
+            )}
+            
+            {/* Botón para generar Control Mensual CPRS */}
+            {puedeCrear && (
+              <button
+                onClick={() => setReporteModal(prev => ({ ...prev, show: true }))}
+                className="flex items-center gap-2 px-4 py-2 bg-white text-guinda border border-guinda rounded-lg hover:bg-guinda hover:text-white transition-colors"
+              >
+                <FaFileAlt />
+                Control Mensual
               </button>
             )}
           </div>
@@ -1509,6 +1566,102 @@ const Dispensaciones = () => {
               ) : (
                 <p className="text-center text-gray-500">No hay historial disponible</p>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Control Mensual CPRS */}
+      {reporteModal.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="flex items-center justify-between p-4 border-b bg-guinda text-white rounded-t-lg">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <FaFileAlt /> Control Mensual de Almacén (A)
+              </h3>
+              <button 
+                onClick={() => setReporteModal(prev => ({ ...prev, show: false }))}
+                className="hover:bg-white/20 p-1 rounded"
+              >
+                <FaTimes />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <p className="text-gray-600 mb-4 text-sm">
+                Generar reporte Control Mensual de Almacén en formato oficial para CPRS.
+              </p>
+              
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Mes <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={reporteModal.mes}
+                    onChange={(e) => setReporteModal(prev => ({ ...prev, mes: parseInt(e.target.value) }))}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                  >
+                    <option value={1}>Enero</option>
+                    <option value={2}>Febrero</option>
+                    <option value={3}>Marzo</option>
+                    <option value={4}>Abril</option>
+                    <option value={5}>Mayo</option>
+                    <option value={6}>Junio</option>
+                    <option value={7}>Julio</option>
+                    <option value={8}>Agosto</option>
+                    <option value={9}>Septiembre</option>
+                    <option value={10}>Octubre</option>
+                    <option value={11}>Noviembre</option>
+                    <option value={12}>Diciembre</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Año <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={reporteModal.anio}
+                    onChange={(e) => setReporteModal(prev => ({ ...prev, anio: parseInt(e.target.value) }))}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                  >
+                    {[...Array(5)].map((_, i) => {
+                      const year = new Date().getFullYear() - 2 + i;
+                      return <option key={year} value={year}>{year}</option>;
+                    })}
+                  </select>
+                </div>
+              </div>
+              
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setReporteModal(prev => ({ ...prev, show: false }))}
+                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  disabled={reporteModal.loading}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGenerarControlMensual}
+                  disabled={reporteModal.loading}
+                  className="flex items-center gap-2 px-4 py-2 bg-guinda text-white rounded-lg hover:bg-guinda-dark disabled:opacity-50"
+                >
+                  {reporteModal.loading ? (
+                    <>
+                      <FaSpinner className="animate-spin" />
+                      Generando...
+                    </>
+                  ) : (
+                    <>
+                      <FaFilePdf />
+                      Generar PDF
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

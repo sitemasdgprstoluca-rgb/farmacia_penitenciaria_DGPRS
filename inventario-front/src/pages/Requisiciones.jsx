@@ -974,6 +974,7 @@ const Requisiciones = () => {
           producto: lote.producto || lote.producto_id,
           producto_clave: lote.producto_clave,
           nombre: lote.producto_nombre,
+          producto_presentacion: lote.producto_info?.presentacion || '',
           lote: lote.id,
           lote_numero: lote.numero_lote,
           lote_caducidad: lote.fecha_caducidad,
@@ -1091,20 +1092,31 @@ const Requisiciones = () => {
     if (isSubmitting) return;
     
     const item = form.items[idx];
-    // ISS-004 FIX (audit28): No usar fallback 9999, usar stock real o bloquear
-    const maxCantidad = item.stock_disponible || 0;
     
-    if (maxCantidad <= 0) {
-      toast.error('Stock no disponible. Recargue el catálogo.');
-      return;
+    // USUARIOS DE CENTRO: Pueden solicitar cualquier cantidad (Farmacia ajustará)
+    // ADMIN/FARMACIA: Limitado al stock disponible
+    if (esAdminOFarmacia) {
+      // ISS-004 FIX: Para admin/farmacia, respetar límite de stock
+      const maxCantidad = item.stock_disponible || 0;
+      if (maxCantidad <= 0) {
+        toast.error('Stock no disponible. Recargue el catálogo.');
+        return;
+      }
+      const cantidad = Math.min(Math.max(1, Number(value) || 1), maxCantidad);
+      setForm((prev) => {
+        const items = [...prev.items];
+        items[idx] = { ...items[idx], cantidad_solicitada: cantidad };
+        return { ...prev, items };
+      });
+    } else {
+      // USUARIOS DE CENTRO: Sin límite, Farmacia verificará disponibilidad
+      const cantidad = Math.max(1, Number(value) || 1);
+      setForm((prev) => {
+        const items = [...prev.items];
+        items[idx] = { ...items[idx], cantidad_solicitada: cantidad };
+        return { ...prev, items };
+      });
     }
-    
-    const cantidad = Math.min(Math.max(1, Number(value) || 1), maxCantidad);
-    setForm((prev) => {
-      const items = [...prev.items];
-      items[idx] = { ...items[idx], cantidad_solicitada: cantidad };
-      return { ...prev, items };
-    });
   };
 
   const eliminarItem = (idx) => {
@@ -2371,6 +2383,7 @@ const Requisiciones = () => {
                           <thead className="bg-gray-100 sticky top-0">
                             <tr>
                               <th className="text-left px-4 py-3 font-semibold">Producto</th>
+                              <th className="text-left px-4 py-3 font-semibold">Presentación</th>
                               <th className="text-left px-4 py-3 font-semibold">Lote</th>
                               <th className="text-center px-4 py-3 font-semibold">Caducidad</th>
                               {/* Solo Farmacia/Admin puede ver el inventario disponible */}
@@ -2391,6 +2404,11 @@ const Requisiciones = () => {
                                     </span>
                                     <p className="text-sm text-gray-600 line-clamp-1">{item.nombre}</p>
                                   </div>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className="text-xs text-gray-600">
+                                    {item.producto_presentacion || '-'}
+                                  </span>
                                 </td>
                                 <td className="px-4 py-3">
                                   <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">
@@ -2424,7 +2442,6 @@ const Requisiciones = () => {
                                     <input
                                       type="number"
                                       min="1"
-                                      max={esAdminOFarmacia ? (item.stock_disponible || 9999) : 9999}
                                       value={item.cantidad_solicitada}
                                       onChange={(e) => actualizarCantidad(idx, e.target.value)}
                                       disabled={isSubmitting}
@@ -2432,7 +2449,7 @@ const Requisiciones = () => {
                                     />
                                     <button
                                       onClick={() => actualizarCantidad(idx, item.cantidad_solicitada + 1)}
-                                      disabled={isSubmitting || (esAdminOFarmacia && item.stock_disponible && item.cantidad_solicitada >= item.stock_disponible)}
+                                      disabled={isSubmitting}
                                       className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                       <FaPlus className="text-xs" />

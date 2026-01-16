@@ -3528,3 +3528,1017 @@ def generar_formato_c_dispensacion(dispensacion):
     buffer.seek(0)
     logger.info(f"Formato C (Dispensación) PDF generado - Folio: {dispensacion.folio}, Items: {dispensacion.detalles.count()}")
     return buffer
+
+
+# =============================================================================
+# REPORTE DE INVENTARIO - FORMATO OFICIAL CONTROL MENSUAL DE ALMACÉN (A)
+# =============================================================================
+
+def generar_reporte_inventario_formato_oficial(productos_data, filtros=None):
+    """
+    Genera reporte PDF de inventario con formato oficial "Control mensual de almacén (A)".
+    
+    Usa el mismo fondo que el Control Mensual y sigue el instructivo oficial:
+    1. Institución Penitenciaria
+    2. Fecha de elaboración (dd/mm/aaaa)
+    3. Periodo (mes de inicio - mes de fin)
+    4. Clave (Insumo)
+    5. Insumo médico
+    6. Presentación
+    7. Fecha de Caducidad
+    8. Existencias Anteriores
+    9. Documento de Entrada (Folio)
+    10. Entrada
+    11. Salida
+    12. Existencia
+    13. Elaboró
+    14. Revisó
+    15. Supervisó
+    
+    Args:
+        productos_data: Lista de productos con datos de inventario
+        filtros: Diccionario con información del filtro:
+            - centro: nombre del centro
+            - fecha_inicio: fecha inicial del periodo
+            - fecha_fin: fecha final del periodo
+            - fecha_elaboracion: fecha de generación del reporte
+    
+    Returns:
+        BytesIO: Buffer con el PDF generado en formato oficial
+    """
+    buffer = BytesIO()
+    
+    # Usar orientación vertical (portrait) según el formato oficial
+    page_width, page_height = letter
+    
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        topMargin=1.2*inch,  # Espacio para encabezado del fondo
+        bottomMargin=1.0*inch,  # Espacio para firmas
+        leftMargin=0.3*inch,
+        rightMargin=0.3*inch
+    )
+    
+    elements = []
+    
+    # Obtener fondo específico para Control Mensual (mismo fondo)
+    fondo_path = str(FONDO_CONTROL_MENSUAL_PATH) if FONDO_CONTROL_MENSUAL_PATH.exists() else None
+    
+    # ========== ESTILOS ==========
+    styles = getSampleStyleSheet()
+    
+    titulo_style = ParagraphStyle(
+        'TituloReporteInv',
+        parent=styles['Normal'],
+        fontSize=11,
+        fontName='Helvetica-Bold',
+        alignment=TA_CENTER,
+        textColor=COLOR_TEXTO,
+        spaceAfter=12
+    )
+    
+    label_style = ParagraphStyle(
+        'LabelInv',
+        parent=styles['Normal'],
+        fontSize=8,
+        fontName='Helvetica',
+        textColor=COLOR_TEXTO
+    )
+    
+    value_style = ParagraphStyle(
+        'ValueInv',
+        parent=styles['Normal'],
+        fontSize=8,
+        fontName='Helvetica'
+    )
+    
+    celda_style = ParagraphStyle(
+        'CeldaInv',
+        parent=styles['Normal'],
+        fontSize=6,
+        leading=7,
+        wordWrap='CJK'
+    )
+    
+    # ========== TÍTULO ==========
+    titulo = Paragraph("Control mensual de almacén (A)", titulo_style)
+    elements.append(titulo)
+    elements.append(Spacer(1, 0.15*inch))
+    
+    # ========== INFORMACIÓN DEL PERIODO ==========
+    filtros = filtros or {}
+    
+    # Fecha de elaboración
+    fecha_elaboracion = filtros.get('fecha_elaboracion', timezone.now().strftime('%d/%m/%Y'))
+    if hasattr(fecha_elaboracion, 'strftime'):
+        fecha_elaboracion = fecha_elaboracion.strftime('%d/%m/%Y')
+    
+    # Calcular período desde las fechas
+    fecha_inicio_str = filtros.get('fecha_inicio', '')
+    fecha_fin_str = filtros.get('fecha_fin', '')
+    
+    if fecha_inicio_str and fecha_fin_str:
+        try:
+            # Formatear las fechas para mostrar el período
+            if isinstance(fecha_inicio_str, str):
+                fi = datetime.strptime(fecha_inicio_str, '%Y-%m-%d')
+            else:
+                fi = fecha_inicio_str
+            if isinstance(fecha_fin_str, str):
+                ff = datetime.strptime(fecha_fin_str, '%Y-%m-%d')
+            else:
+                ff = fecha_fin_str
+            
+            meses_nombres = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                           'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+            
+            if fi.month == ff.month and fi.year == ff.year:
+                periodo_texto = f"{meses_nombres[fi.month]} {fi.year}"
+            else:
+                periodo_texto = f"{meses_nombres[fi.month]} {fi.year} - {meses_nombres[ff.month]} {ff.year}"
+        except Exception:
+            periodo_texto = f"{fecha_inicio_str} - {fecha_fin_str}"
+    else:
+        # Sin filtro de fechas = inventario actual
+        mes_actual = timezone.now().month
+        anio_actual = timezone.now().year
+        meses_nombres = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                       'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+        periodo_texto = f"{meses_nombres[mes_actual]} {anio_actual} (Actual)"
+    
+    # Institución
+    institucion = filtros.get('centro', 'Almacén Central de Medicamentos (CIA)')
+    if not institucion or institucion == 'todos':
+        institucion = 'Almacén Central de Medicamentos (CIA)'
+    
+    # Crear tabla de información del encabezado según formato oficial exacto
+    # (1) Institución Penitenciaria: | [valor]
+    # (2) Fecha de elaboración: | [valor] | (3) Periodo: | [valor]
+    
+    info_table = Table([
+        [Paragraph("<b>(1)</b> Institución Penitenciaria:", label_style), Paragraph(institucion, value_style)],
+        [Paragraph("<b>(2)</b> Fecha de elaboración:", label_style), Paragraph(fecha_elaboracion, value_style), 
+         Paragraph("<b>(3)</b> Periodo:", label_style), Paragraph(periodo_texto, value_style)],
+    ], colWidths=[1.6*inch, 2.4*inch, 1.0*inch, 2.2*inch])
+    
+    info_table.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        # Primera fila: Institución ocupa las columnas 2, 3 y 4
+        ('SPAN', (1, 0), (3, 0)),
+    ]))
+    elements.append(info_table)
+    elements.append(Spacer(1, 0.15*inch))
+    
+    # ========== TABLA DE INVENTARIO ==========
+    # Encabezados según formato oficial (instructivo)
+    header_row = [
+        Paragraph('<b>(4)<br/>Clave<br/>(Insumo)</b>', celda_style),
+        Paragraph('<b>(5)<br/>Insumo médico</b>', celda_style),
+        Paragraph('<b>(6)<br/>Presentación</b>', celda_style),
+        Paragraph('<b>(7)<br/>Fecha de<br/>Caducidad</b>', celda_style),
+        Paragraph('<b>(8)<br/>Existencias<br/>Anteriores</b>', celda_style),
+        Paragraph('<b>(9)<br/>Documento de<br/>Entrada<br/>(Folio)</b>', celda_style),
+        Paragraph('<b>(10)<br/>Entrada</b>', celda_style),
+        Paragraph('<b>(11)<br/>Salida</b>', celda_style),
+        Paragraph('<b>(12)<br/>Existencia</b>', celda_style),
+    ]
+    
+    inventario_data = [header_row]
+    
+    totales = {'existencia_anterior': 0, 'entradas': 0, 'salidas': 0, 'existencia_final': 0}
+    
+    for item in productos_data:
+        # (7) Fecha caducidad
+        fecha_cad = item.get('fecha_caducidad', '')
+        if hasattr(fecha_cad, 'strftime'):
+            fecha_cad = fecha_cad.strftime('%d/%m/%Y')
+        elif fecha_cad:
+            fecha_cad = str(fecha_cad)
+        
+        # (8) Existencias anteriores
+        existencia_anterior = item.get('existencia_anterior', item.get('stock_anterior', 0)) or 0
+        # (10) Entradas
+        entradas = item.get('entradas', 0) or 0
+        # (11) Salidas
+        salidas = item.get('salidas', 0) or 0
+        # (12) Existencia final / stock actual
+        existencia_final = item.get('existencia_final', item.get('stock_actual', item.get('cantidad', 0))) or 0
+        
+        totales['existencia_anterior'] += existencia_anterior
+        totales['entradas'] += entradas
+        totales['salidas'] += salidas
+        totales['existencia_final'] += existencia_final
+        
+        inventario_data.append([
+            Paragraph(str(item.get('clave', item.get('producto_clave', '')))[:15], celda_style),  # (4)
+            Paragraph(str(item.get('producto', item.get('producto_nombre', item.get('descripcion', ''))))[:45], celda_style),  # (5)
+            Paragraph(str(item.get('presentacion', ''))[:25], celda_style),  # (6)
+            str(fecha_cad)[:10] if fecha_cad else '',  # (7)
+            str(existencia_anterior),  # (8)
+            Paragraph(str(item.get('documento_entrada', item.get('folio_entrada', '')) or '')[:15], celda_style),  # (9)
+            str(entradas),  # (10)
+            str(salidas),  # (11)
+            str(existencia_final),  # (12)
+        ])
+    
+    # Agregar filas vacías para completar el formato (mínimo 20 filas visibles)
+    filas_minimas = 20
+    while len(inventario_data) < filas_minimas + 1:  # +1 por el encabezado
+        inventario_data.append(['', '', '', '', '', '', '', '', ''])
+    
+    # Anchos de columna para portrait - total ~7.4 inches
+    inventario_col_widths = [0.6*inch, 1.8*inch, 0.9*inch, 0.7*inch, 0.65*inch, 0.8*inch, 0.5*inch, 0.5*inch, 0.65*inch]
+    
+    inventario_table = Table(inventario_data, colWidths=inventario_col_widths, repeatRows=1)
+    inventario_table.setStyle(TableStyle([
+        # Encabezado
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E8E8E8')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 6),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+        # Datos
+        ('FONTSIZE', (0, 1), (-1, -1), 6),
+        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('ALIGN', (4, 1), (4, -1), 'CENTER'),  # Existencias anteriores
+        ('ALIGN', (6, 1), (8, -1), 'CENTER'),  # Entrada, Salida, Existencia
+        ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 2),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]))
+    elements.append(inventario_table)
+    
+    # ========== SECCIÓN DE FIRMAS (3 columnas según formato oficial) ==========
+    # (13) Elaboró | (14) Revisó | (15) Supervisó
+    elements.append(Spacer(1, 0.3*inch))
+    
+    firma_label_style = ParagraphStyle(
+        'FirmaLabelInv',
+        parent=styles['Normal'],
+        fontSize=7,
+        alignment=TA_CENTER,
+        textColor=colors.black
+    )
+    
+    firma_cargo_style = ParagraphStyle(
+        'FirmaCargoInv',
+        parent=styles['Normal'],
+        fontSize=6,
+        alignment=TA_CENTER,
+        textColor=COLOR_GRIS
+    )
+    
+    # Caja para firmas
+    firma_box_height = 0.6*inch
+    
+    firma_data = [
+        # Fila 1: Cajas para firma
+        [
+            Table([[''], ['']], colWidths=[2.0*inch], rowHeights=[firma_box_height, 0.1*inch]),
+            Table([[''], ['']], colWidths=[2.0*inch], rowHeights=[firma_box_height, 0.1*inch]),
+            Table([[''], ['']], colWidths=[2.0*inch], rowHeights=[firma_box_height, 0.1*inch]),
+        ],
+        # Fila 2: Título de rol
+        [
+            Paragraph('<b>(13) Elaboró</b>', firma_label_style),
+            Paragraph('<b>(14) Revisó</b>', firma_label_style),
+            Paragraph('<b>(15) Supervisó</b>', firma_label_style),
+        ],
+        # Fila 3: Descripción del cargo según instructivo
+        [
+            Paragraph('Nombre y Firma del Servidor Público', firma_cargo_style),
+            Paragraph('Nombre y Firma del Encargado de<br/>los Servicios de Salud', firma_cargo_style),
+            Paragraph('Nombre y Firma del Titular del<br/>C.A. "C.P.R.S."', firma_cargo_style),
+        ],
+    ]
+    
+    # Aplicar estilos a las cajas de firma
+    for i in range(3):
+        firma_data[0][i].setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
+        ]))
+    
+    firma_table = Table(firma_data, colWidths=[2.4*inch, 2.4*inch, 2.4*inch])
+    firma_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
+    elements.append(firma_table)
+    
+    # ========== CANVAS CON FONDO ESPECIAL ==========
+    class InventarioFormatoOficialCanvas(canvas.Canvas):
+        def __init__(self, *args, **kwargs):
+            self.fondo_path = fondo_path
+            canvas.Canvas.__init__(self, *args, **kwargs)
+            self._dibujar_fondo()
+        
+        def showPage(self):
+            canvas.Canvas.showPage(self)
+            self._dibujar_fondo()
+        
+        def _dibujar_fondo(self):
+            if self.fondo_path and os.path.exists(self.fondo_path):
+                try:
+                    pw, ph = letter
+                    self.drawImage(
+                        str(self.fondo_path),
+                        0, 0,
+                        width=pw,
+                        height=ph,
+                        preserveAspectRatio=False,
+                        mask='auto'
+                    )
+                except Exception as e:
+                    logger.warning(f"No se pudo cargar imagen de fondo Inventario Formato Oficial: {e}")
+    
+    doc.build(elements, canvasmaker=InventarioFormatoOficialCanvas)
+    
+    buffer.seek(0)
+    logger.info(f"Reporte Inventario Formato Oficial PDF generado - Items: {len(productos_data)}")
+    return buffer
+
+
+# =============================================================================
+# FORMATO CONTROL MENSUAL DE ALMACÉN (A) - PARA CENTROS PENITENCIARIOS (CPRS)
+# =============================================================================
+
+def generar_control_mensual_cprs(periodo_data, productos_data, centro_nombre=None):
+    """
+    Genera PDF con formato oficial "Control mensual de almacén (A)" para Centros CPRS.
+    
+    Este es el reporte de dispensaciones/movimientos del centro penitenciario,
+    siguiendo el instructivo oficial con los 15 campos.
+    
+    Instructivo:
+    1. Centro Penitenciario y de Reinserción Social - nombre oficial del centro
+    2. Fecha de Elaboración - dd/mm/aaaa
+    3. Periodo - mes de inicio - mes de fin
+    4. Clave (Insumo) - números que identifican el insumo
+    5. Insumo médico - medicamento, material médico u odontológico
+    6. Presentación - presentación del documento de ingreso o envase
+    7. Fecha de Caducidad - fecha de vencimiento
+    8. Existencias Anteriores - cantidad existente antes de nuevo ingreso
+    9. Documento de Entrada (Folio) - identificación del documento de ingreso
+    10. Entrada - cantidad que ingresa
+    11. Salida - cantidad que sale
+    12. Existencia - cantidad después del balance entradas-salidas
+    13. Elaboró - nombre y firma del servidor público
+    14. Revisó - nombre y firma del Encargado de Servicios Médico-Psiquiátricos
+    15. Supervisó - nombre y firma del Titular de la Dirección del Centro Penitenciario
+    
+    Args:
+        periodo_data: dict con información del periodo:
+            - mes: Número del mes (1-12)
+            - anio: Año
+            - fecha_elaboracion: Fecha de elaboración del reporte
+        productos_data: Lista de productos con movimientos del periodo
+        centro_nombre: Nombre del centro penitenciario
+    
+    Returns:
+        BytesIO: Buffer con el PDF generado en formato oficial
+    """
+    buffer = BytesIO()
+    
+    # Usar orientación vertical (portrait) según el formato oficial
+    page_width, page_height = letter
+    
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        topMargin=1.2*inch,  # Espacio para encabezado del fondo
+        bottomMargin=1.0*inch,  # Espacio para firmas
+        leftMargin=0.3*inch,
+        rightMargin=0.3*inch
+    )
+    
+    elements = []
+    
+    # Obtener fondo específico para Control Mensual
+    fondo_path = str(FONDO_CONTROL_MENSUAL_PATH) if FONDO_CONTROL_MENSUAL_PATH.exists() else None
+    
+    # ========== ESTILOS ==========
+    styles = getSampleStyleSheet()
+    
+    titulo_style = ParagraphStyle(
+        'TituloCPRS',
+        parent=styles['Normal'],
+        fontSize=11,
+        fontName='Helvetica-Bold',
+        alignment=TA_CENTER,
+        textColor=COLOR_TEXTO,
+        spaceAfter=12
+    )
+    
+    label_style = ParagraphStyle(
+        'LabelCPRS',
+        parent=styles['Normal'],
+        fontSize=8,
+        fontName='Helvetica',
+        textColor=COLOR_TEXTO
+    )
+    
+    value_style = ParagraphStyle(
+        'ValueCPRS',
+        parent=styles['Normal'],
+        fontSize=8,
+        fontName='Helvetica'
+    )
+    
+    celda_style = ParagraphStyle(
+        'CeldaCPRS',
+        parent=styles['Normal'],
+        fontSize=6,
+        leading=7,
+        wordWrap='CJK'
+    )
+    
+    # ========== TÍTULO ==========
+    titulo = Paragraph("Control mensual de almacén (A)", titulo_style)
+    elements.append(titulo)
+    elements.append(Spacer(1, 0.15*inch))
+    
+    # ========== INFORMACIÓN DEL ENCABEZADO ==========
+    mes = periodo_data.get('mes', timezone.now().month)
+    anio = periodo_data.get('anio', timezone.now().year)
+    meses_nombres = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+    periodo_texto = f"{meses_nombres[mes]} {anio}"
+    
+    fecha_elaboracion = periodo_data.get('fecha_elaboracion', timezone.now().strftime('%d/%m/%Y'))
+    if hasattr(fecha_elaboracion, 'strftime'):
+        fecha_elaboracion = fecha_elaboracion.strftime('%d/%m/%Y')
+    
+    # (1) Centro Penitenciario y de Reinserción Social
+    institucion = centro_nombre or 'Centro Penitenciario y de Reinserción Social'
+    
+    # Crear tabla de información del encabezado según formato oficial
+    # Fila 1: Centro Penitenciario y de Reinserción Social: | [valor] (1)
+    # Fila 2: Fecha de elaboración: | [valor] (2) | Periodo: | [valor] (3)
+    
+    info_table = Table([
+        [Paragraph("Centro Penitenciario y de Reinserción Social:", label_style), 
+         Paragraph(f"<b>{institucion}</b>", value_style)],
+        [Paragraph("Fecha de elaboración:", label_style), 
+         Paragraph(fecha_elaboracion, value_style), 
+         Paragraph("Periodo:", label_style), 
+         Paragraph(periodo_texto, value_style)],
+    ], colWidths=[2.0*inch, 2.6*inch, 0.8*inch, 1.8*inch])
+    
+    info_table.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        # Primera fila: el valor ocupa las columnas restantes
+        ('SPAN', (1, 0), (3, 0)),
+    ]))
+    elements.append(info_table)
+    elements.append(Spacer(1, 0.15*inch))
+    
+    # ========== TABLA DE CONTROL MENSUAL ==========
+    # Encabezados según formato oficial (instructivo)
+    header_row = [
+        Paragraph('<b>Clave<br/>(Insumo)</b>', celda_style),      # (4)
+        Paragraph('<b>Insumo médico</b>', celda_style),            # (5)
+        Paragraph('<b>Presentación</b>', celda_style),             # (6)
+        Paragraph('<b>Fecha de<br/>Caducidad</b>', celda_style),   # (7)
+        Paragraph('<b>Existencias<br/>Anteriores</b>', celda_style), # (8)
+        Paragraph('<b>Documento de<br/>Entrada<br/>(Folio)</b>', celda_style), # (9)
+        Paragraph('<b>Entrada</b>', celda_style),                  # (10)
+        Paragraph('<b>Salida</b>', celda_style),                   # (11)
+        Paragraph('<b>Existencia</b>', celda_style),               # (12)
+    ]
+    
+    control_data = [header_row]
+    
+    totales = {'existencia_anterior': 0, 'entradas': 0, 'salidas': 0, 'existencia_final': 0}
+    
+    for item in productos_data:
+        # (7) Fecha caducidad
+        fecha_cad = item.get('fecha_caducidad', '')
+        if hasattr(fecha_cad, 'strftime'):
+            fecha_cad = fecha_cad.strftime('%d/%m/%Y')
+        elif fecha_cad:
+            fecha_cad = str(fecha_cad)
+        
+        existencia_anterior = item.get('existencia_anterior', 0) or 0
+        entradas = item.get('entradas', 0) or 0
+        salidas = item.get('salidas', 0) or 0
+        existencia_final = item.get('existencia_final', item.get('existencia', 0)) or 0
+        
+        totales['existencia_anterior'] += existencia_anterior
+        totales['entradas'] += entradas
+        totales['salidas'] += salidas
+        totales['existencia_final'] += existencia_final
+        
+        control_data.append([
+            Paragraph(str(item.get('producto_clave', item.get('clave', '')))[:15], celda_style),  # (4)
+            Paragraph(str(item.get('producto_nombre', item.get('insumo', '')))[:45], celda_style),  # (5)
+            Paragraph(str(item.get('presentacion', ''))[:25], celda_style),  # (6)
+            str(fecha_cad)[:10] if fecha_cad else '',  # (7)
+            str(existencia_anterior),  # (8)
+            Paragraph(str(item.get('documento_entrada', item.get('folio', '')) or '')[:15], celda_style),  # (9)
+            str(entradas),  # (10)
+            str(salidas),  # (11)
+            str(existencia_final),  # (12)
+        ])
+    
+    # Agregar filas vacías para completar el formato (mínimo 20 filas visibles)
+    filas_minimas = 20
+    while len(control_data) < filas_minimas + 1:  # +1 por el encabezado
+        control_data.append(['', '', '', '', '', '', '', '', ''])
+    
+    # Anchos de columna para portrait - total ~7.4 inches
+    control_col_widths = [0.6*inch, 1.8*inch, 0.9*inch, 0.7*inch, 0.65*inch, 0.8*inch, 0.5*inch, 0.5*inch, 0.65*inch]
+    
+    control_table = Table(control_data, colWidths=control_col_widths, repeatRows=1)
+    control_table.setStyle(TableStyle([
+        # Encabezado
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E8E8E8')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 6),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+        # Datos
+        ('FONTSIZE', (0, 1), (-1, -1), 6),
+        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('ALIGN', (4, 1), (4, -1), 'CENTER'),  # Existencias anteriores
+        ('ALIGN', (6, 1), (8, -1), 'CENTER'),  # Entrada, Salida, Existencia
+        ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 2),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]))
+    elements.append(control_table)
+    
+    # ========== SECCIÓN DE FIRMAS (3 columnas según formato oficial) ==========
+    # (13) Elaboró | (14) Revisó | (15) Supervisó
+    elements.append(Spacer(1, 0.3*inch))
+    
+    firma_label_style = ParagraphStyle(
+        'FirmaLabelCPRS',
+        parent=styles['Normal'],
+        fontSize=7,
+        alignment=TA_CENTER,
+        textColor=colors.black
+    )
+    
+    firma_cargo_style = ParagraphStyle(
+        'FirmaCargoCPRS',
+        parent=styles['Normal'],
+        fontSize=6,
+        alignment=TA_CENTER,
+        textColor=COLOR_GRIS
+    )
+    
+    # Caja para firmas
+    firma_box_height = 0.6*inch
+    
+    firma_data = [
+        # Fila 1: Cajas para firma
+        [
+            Table([[''], ['']], colWidths=[2.0*inch], rowHeights=[firma_box_height, 0.1*inch]),
+            Table([[''], ['']], colWidths=[2.0*inch], rowHeights=[firma_box_height, 0.1*inch]),
+            Table([[''], ['']], colWidths=[2.0*inch], rowHeights=[firma_box_height, 0.1*inch]),
+        ],
+        # Fila 2: Título de rol
+        [
+            Paragraph('<b>Elaboró</b>', firma_label_style),
+            Paragraph('<b>Revisó</b>', firma_label_style),
+            Paragraph('<b>Supervisó</b>', firma_label_style),
+        ],
+        # Fila 3: Descripción del cargo según instructivo
+        [
+            Paragraph('Nombre y Firma del Servidor Público', firma_cargo_style),
+            Paragraph('Nombre y Firma del Encargado de<br/>los Servicios Médico-Psiquiátricos', firma_cargo_style),
+            Paragraph('Nombre y Firma del Titular de la Dirección<br/>del Centro Penitenciario y<br/>de Reinserción Social', firma_cargo_style),
+        ],
+    ]
+    
+    # Aplicar estilos a las cajas de firma
+    for i in range(3):
+        firma_data[0][i].setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
+        ]))
+    
+    firma_table = Table(firma_data, colWidths=[2.4*inch, 2.4*inch, 2.4*inch])
+    firma_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
+    elements.append(firma_table)
+    
+    # ========== CANVAS CON FONDO ESPECIAL ==========
+    class ControlMensualCPRSCanvas(canvas.Canvas):
+        def __init__(self, *args, **kwargs):
+            self.fondo_path = fondo_path
+            canvas.Canvas.__init__(self, *args, **kwargs)
+            self._dibujar_fondo()
+        
+        def showPage(self):
+            canvas.Canvas.showPage(self)
+            self._dibujar_fondo()
+        
+        def _dibujar_fondo(self):
+            if self.fondo_path and os.path.exists(self.fondo_path):
+                try:
+                    pw, ph = letter
+                    self.drawImage(
+                        str(self.fondo_path),
+                        0, 0,
+                        width=pw,
+                        height=ph,
+                        preserveAspectRatio=False,
+                        mask='auto'
+                    )
+                except Exception as e:
+                    logger.warning(f"No se pudo cargar imagen de fondo Control Mensual CPRS: {e}")
+    
+    doc.build(elements, canvasmaker=ControlMensualCPRSCanvas)
+    
+    buffer.seek(0)
+    logger.info(f"Control Mensual CPRS PDF generado - Centro: {centro_nombre}, Periodo: {periodo_texto}, Items: {len(productos_data)}")
+    return buffer
+
+
+# =============================================================================
+# FORMATO TARJETA DE ENTRADAS/SALIDAS DE ALMACÉN (B) - PARA MOVIMIENTOS
+# =============================================================================
+
+def generar_tarjeta_entradas_salidas_formato_b(movimientos_data, filtros=None, institucion=None):
+    """
+    Genera PDF con formato oficial "Tarjeta de Entradas/Salidas de almacén (B)".
+    
+    Este formato genera UNA PÁGINA POR PRODUCTO, mostrando todos los movimientos
+    de ese producto en el período seleccionado.
+    
+    Instructivo Formato B:
+    1. Institución Penitenciaria - denominación oficial de la institución
+    2. Insumo médico - descripción del medicamento (principio activo)
+    3. Clave - clave del insumo según documento de entrada
+    4. Presentación - descripción del envase del insumo
+    5. Fecha de Caducidad - fecha de vencimiento del insumo
+    6. Fecha - día/mes/año del registro (dd/mm/aaaa)
+    7. Documento de entrada - número o referencia del documento de ingreso
+    8. Entrada (Cajas/Piezas) - cantidad que ingresa
+    9. Salida (Cajas) - cantidad que sale
+    10. Existencias (Cajas/Piezas) - balance de entradas menos salidas
+    11. Nombre y firma del personal del área médica que recibe el insumo
+    12. Revisó - nombre y firma del Encargado de los Servicios de Salud
+    
+    Args:
+        movimientos_data: Lista de diccionarios con movimientos agrupados por producto
+            Cada item tiene: producto_clave, producto_nombre, presentacion, fecha_caducidad,
+            movimientos[] (lista de {fecha, documento, entrada, salida, existencia})
+        filtros: Diccionario con filtros aplicados (fecha_inicio, fecha_fin, etc.)
+        institucion: Nombre de la institución penitenciaria
+    
+    Returns:
+        BytesIO: Buffer con el PDF generado en formato oficial
+    """
+    buffer = BytesIO()
+    
+    # Usar orientación vertical (portrait) según el formato oficial
+    page_width, page_height = letter
+    
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        topMargin=1.2*inch,  # Espacio para encabezado del fondo
+        bottomMargin=1.0*inch,  # Espacio para firmas
+        leftMargin=0.3*inch,
+        rightMargin=0.3*inch
+    )
+    
+    elements = []
+    
+    # Obtener fondo específico para Control Mensual (mismo fondo)
+    fondo_path = str(FONDO_CONTROL_MENSUAL_PATH) if FONDO_CONTROL_MENSUAL_PATH.exists() else None
+    
+    # ========== ESTILOS ==========
+    styles = getSampleStyleSheet()
+    
+    titulo_style = ParagraphStyle(
+        'TituloFormatoB',
+        parent=styles['Normal'],
+        fontSize=11,
+        fontName='Helvetica-Bold',
+        alignment=TA_CENTER,
+        textColor=COLOR_TEXTO,
+        spaceAfter=10
+    )
+    
+    label_style = ParagraphStyle(
+        'LabelFormatoB',
+        parent=styles['Normal'],
+        fontSize=8,
+        fontName='Helvetica',
+        textColor=COLOR_TEXTO
+    )
+    
+    value_style = ParagraphStyle(
+        'ValueFormatoB',
+        parent=styles['Normal'],
+        fontSize=8,
+        fontName='Helvetica'
+    )
+    
+    celda_style = ParagraphStyle(
+        'CeldaFormatoB',
+        parent=styles['Normal'],
+        fontSize=6,
+        leading=7,
+        wordWrap='CJK'
+    )
+    
+    celda_firma_style = ParagraphStyle(
+        'CeldaFirmaB',
+        parent=styles['Normal'],
+        fontSize=5,
+        leading=6,
+        wordWrap='CJK',
+        alignment=TA_CENTER
+    )
+    
+    # Nombre de institución
+    nombre_institucion = institucion or filtros.get('centro', 'Institución Penitenciaria') if filtros else 'Institución Penitenciaria'
+    
+    # Procesar cada producto como una página separada
+    for idx, producto in enumerate(movimientos_data):
+        if idx > 0:
+            elements.append(PageBreak())
+        
+        # ========== TÍTULO ==========
+        titulo = Paragraph("Tarjeta de Entradas/Salidas de almacén (B)", titulo_style)
+        elements.append(titulo)
+        elements.append(Spacer(1, 0.1*inch))
+        
+        # ========== INFORMACIÓN DEL ENCABEZADO ==========
+        # (1) Institución Penitenciaria
+        info_row1 = Table([
+            [Paragraph("Institución Penitenciaria:", label_style), 
+             Paragraph(f"<b>{nombre_institucion}</b>", value_style)],
+        ], colWidths=[1.6*inch, 5.6*inch])
+        info_row1.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ]))
+        elements.append(info_row1)
+        
+        # (2) Insumo médico | (3) Clave
+        insumo_nombre = producto.get('producto_nombre', producto.get('insumo', 'N/A'))
+        insumo_clave = producto.get('producto_clave', producto.get('clave', 'N/A'))
+        
+        info_row2 = Table([
+            [Paragraph("Insumo médico:", label_style), 
+             Paragraph(f"<b>{insumo_nombre}</b>", value_style),
+             Paragraph("Clave:", label_style),
+             Paragraph(f"<b>{insumo_clave}</b>", value_style)],
+        ], colWidths=[1.0*inch, 4.2*inch, 0.6*inch, 1.4*inch])
+        info_row2.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ]))
+        elements.append(info_row2)
+        
+        # (4) Presentación | (5) Fecha de Caducidad
+        presentacion = producto.get('presentacion', '')
+        if not presentacion or presentacion == 'N/A':
+            presentacion = ''
+        
+        fecha_cad = producto.get('fecha_caducidad', '')
+        if hasattr(fecha_cad, 'strftime'):
+            fecha_cad = fecha_cad.strftime('%d/%m/%Y')
+        elif fecha_cad:
+            fecha_cad = str(fecha_cad)
+        else:
+            fecha_cad = ''
+        
+        info_row3 = Table([
+            [Paragraph("Presentación:", label_style), 
+             Paragraph(f"<b>{presentacion}</b>", value_style),
+             Paragraph("Fecha de<br/>Caducidad:", label_style),
+             Paragraph(f"<b>{fecha_cad}</b>", value_style)],
+        ], colWidths=[0.9*inch, 4.35*inch, 0.85*inch, 1.1*inch])
+        info_row3.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ]))
+        elements.append(info_row3)
+        elements.append(Spacer(1, 0.08*inch))
+        
+        # ========== TABLA DE MOVIMIENTOS ==========
+        # Encabezados exactos según formato oficial (imagen)
+        # Columnas: Fecha de entrada | Documento de entrada | Entrada (Cajas|Piezas) | Salida (Cajas) | Existencia (Cajas|Piezas) | Nombre y firma...
+        
+        # Primera fila de encabezado
+        header_row = [
+            Paragraph('<b>Fecha de<br/>entrada</b>', celda_style),          # (6)
+            Paragraph('<b>Documento de entrada</b>', celda_style),           # (7)
+            Paragraph('<b>Entrada</b>', celda_style),                        # (8) - spans 2 cols
+            '',
+            Paragraph('<b>Salida</b>', celda_style),                         # (9)
+            Paragraph('<b>Existencia</b>', celda_style),                     # (10) - spans 2 cols
+            '',
+            Paragraph('<b>Nombre y firma del personal del área médica que recibe el insumo</b>', celda_firma_style),  # (11)
+        ]
+        
+        # Subencabezado para Cajas/Piezas
+        subheader_row = [
+            '', '',
+            Paragraph('<b>Cajas</b>', celda_style),
+            Paragraph('<b>Piezas</b>', celda_style),
+            Paragraph('<b>Cajas</b>', celda_style),
+            Paragraph('<b>Cajas</b>', celda_style),
+            Paragraph('<b>Piezas</b>', celda_style),
+            '',
+        ]
+        
+        mov_data = [header_row, subheader_row]
+        
+        # Agregar movimientos del producto
+        movimientos_lista = producto.get('movimientos', [])
+        existencia_actual = producto.get('existencia_inicial', 0)
+        
+        for mov in movimientos_lista:
+            fecha_mov = mov.get('fecha', '')
+            if hasattr(fecha_mov, 'strftime'):
+                fecha_mov = fecha_mov.strftime('%d/%m/%Y')
+            
+            documento = mov.get('documento', mov.get('referencia', ''))
+            entrada = mov.get('entrada', 0) or 0
+            salida = mov.get('salida', 0) or 0
+            
+            # Calcular existencia después del movimiento
+            existencia_actual = existencia_actual + entrada - salida
+            
+            mov_data.append([
+                str(fecha_mov),
+                Paragraph(str(documento)[:25], celda_style),
+                str(entrada) if entrada > 0 else '',
+                str(entrada) if entrada > 0 else '',  # Piezas = mismo valor
+                str(salida) if salida > 0 else '',
+                str(max(0, existencia_actual)),
+                str(max(0, existencia_actual)),  # Piezas = mismo valor
+                '',  # Firma (vacío para imprimir)
+            ])
+        
+        # Agregar filas vacías para completar el formato (mínimo 25 filas visibles)
+        filas_minimas = 25
+        while len(mov_data) < filas_minimas + 2:  # +2 por encabezados
+            mov_data.append(['', '', '', '', '', '', '', ''])
+        
+        # Anchos de columna exactos según formato B - total ~7.2 inches
+        mov_col_widths = [0.6*inch, 0.95*inch, 0.45*inch, 0.45*inch, 0.45*inch, 0.45*inch, 0.45*inch, 2.4*inch]
+        
+        mov_table = Table(mov_data, colWidths=mov_col_widths, repeatRows=2)
+        mov_table.setStyle(TableStyle([
+            # Encabezados (filas 0 y 1) - sin color de fondo para coincidir con imagen
+            ('TEXTCOLOR', (0, 0), (-1, 1), colors.black),
+            ('FONTNAME', (0, 0), (-1, 1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 1), 6),
+            ('ALIGN', (0, 0), (-1, 1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, 1), 'MIDDLE'),
+            # Span para encabezados combinados
+            ('SPAN', (0, 0), (0, 1)),  # Fecha
+            ('SPAN', (1, 0), (1, 1)),  # Documento
+            ('SPAN', (2, 0), (3, 0)),  # Entrada (Cajas/Piezas)
+            ('SPAN', (4, 0), (4, 1)),  # Salida
+            ('SPAN', (5, 0), (6, 0)),  # Existencia (Cajas/Piezas)
+            ('SPAN', (7, 0), (7, 1)),  # Firma
+            # Datos
+            ('FONTSIZE', (0, 2), (-1, -1), 7),
+            ('TEXTCOLOR', (0, 2), (-1, -1), colors.black),
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('ALIGN', (2, 2), (6, -1), 'CENTER'),  # Centrar números
+            ('VALIGN', (0, 2), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 2),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ]))
+        elements.append(mov_table)
+        
+        # ========== SECCIÓN DE FIRMA (12) Revisó ==========
+        elements.append(Spacer(1, 0.3*inch))
+        
+        firma_label_style = ParagraphStyle(
+            'FirmaLabelB',
+            parent=styles['Normal'],
+            fontSize=8,
+            alignment=TA_CENTER,
+            textColor=colors.black
+        )
+        
+        firma_cargo_style = ParagraphStyle(
+            'FirmaCargoB',
+            parent=styles['Normal'],
+            fontSize=7,
+            alignment=TA_CENTER,
+            textColor=COLOR_GRIS
+        )
+        
+        # Una sola firma centrada: Revisó
+        firma_box_height = 0.6*inch
+        
+        firma_data = [
+            [Table([[''], ['']], colWidths=[3.0*inch], rowHeights=[firma_box_height, 0.1*inch])],
+            [Paragraph('<b>Revisó</b>', firma_label_style)],
+            [Paragraph('(Nombre y Firma)', firma_cargo_style)],
+            [Paragraph('<b>Encargado de los Servicios de Salud</b>', firma_cargo_style)],
+        ]
+        
+        # Aplicar estilos a la caja de firma
+        firma_data[0][0].setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
+        ]))
+        
+        firma_table = Table(firma_data, colWidths=[3.5*inch])
+        firma_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ]))
+        
+        # Centrar la firma
+        firma_container = Table([[firma_table]], colWidths=[7.4*inch])
+        firma_container.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ]))
+        elements.append(firma_container)
+    
+    # ========== CANVAS CON FONDO ESPECIAL ==========
+    class TarjetaFormatoBCanvas(canvas.Canvas):
+        def __init__(self, *args, **kwargs):
+            self.fondo_path = fondo_path
+            canvas.Canvas.__init__(self, *args, **kwargs)
+            self._dibujar_fondo()
+        
+        def showPage(self):
+            canvas.Canvas.showPage(self)
+            self._dibujar_fondo()
+        
+        def _dibujar_fondo(self):
+            if self.fondo_path and os.path.exists(self.fondo_path):
+                try:
+                    pw, ph = letter
+                    self.drawImage(
+                        str(self.fondo_path),
+                        0, 0,
+                        width=pw,
+                        height=ph,
+                        preserveAspectRatio=False,
+                        mask='auto'
+                    )
+                except Exception as e:
+                    logger.warning(f"No se pudo cargar imagen de fondo Tarjeta Formato B: {e}")
+    
+    doc.build(elements, canvasmaker=TarjetaFormatoBCanvas)
+    
+    buffer.seek(0)
+    logger.info(f"Tarjeta Entradas/Salidas Formato B PDF generado - Productos: {len(movimientos_data)}")
+    return buffer

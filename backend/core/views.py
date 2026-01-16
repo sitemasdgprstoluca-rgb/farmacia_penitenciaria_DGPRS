@@ -7139,6 +7139,172 @@ class DispensacionViewSet(viewsets.ModelViewSet):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=False, methods=['get'], url_path='control-mensual-cprs')
+    def control_mensual_cprs(self, request):
+        """
+        Genera reporte PDF "Control mensual de almacén (A)" para el centro CPRS.
+        
+        Parámetros:
+        - mes: Número del mes (1-12). Default: mes actual
+        - anio: Año (YYYY). Default: año actual
+        - centro: ID del centro (automático si usuario tiene centro asignado)
+        
+        Permisos:
+        - Usuario de centro: solo puede generar reporte de su centro
+        - Admin/Farmacia: puede generar de cualquier centro
+        """
+        from datetime import datetime
+        from dateutil.relativedelta import relativedelta
+        from django.db.models import Sum, Q
+        from django.db.models.functions import Coalesce
+        from core.utils.pdf_reports import generar_control_mensual_cprs
+        from core.models import Lote, Movimiento
+        
+        user = request.user
+        
+        try:
+            # Obtener parámetros
+            mes = int(request.query_params.get('mes', timezone.now().month))
+            anio = int(request.query_params.get('anio', timezone.now().year))
+            centro_param = request.query_params.get('centro', None)
+            
+            # Validar mes
+            if mes < 1 or mes > 12:
+                return Response({'error': 'Mes debe estar entre 1 y 12'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Determinar centro
+            centro = None
+            centro_nombre = None
+            
+            # Si el usuario tiene centro asignado, usarlo por defecto
+            if user.centro:
+                centro = user.centro
+                centro_nombre = centro.nombre
+            
+            # Si se especifica centro_param y el usuario tiene permisos globales
+            if centro_param and centro_param not in ['', 'null', 'undefined']:
+                if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']:
+                    try:
+                        centro = Centro.objects.get(pk=int(centro_param))
+                        centro_nombre = centro.nombre
+                    except Centro.DoesNotExist:
+                        return Response({'error': 'Centro no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+                elif user.centro and str(user.centro.id) != centro_param:
+                    return Response({
+                        'error': 'No tiene permiso para generar reporte de otro centro'
+                    }, status=status.HTTP_403_FORBIDDEN)
+            
+            if not centro:
+                return Response({
+                    'error': 'Debe especificar un centro o tener uno asignado'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Calcular fechas del periodo
+            fecha_inicio = datetime(anio, mes, 1)
+            if mes == 12:
+                fecha_fin = datetime(anio + 1, 1, 1) - relativedelta(days=1)
+            else:
+                fecha_fin = datetime(anio, mes + 1, 1) - relativedelta(days=1)
+            
+            # Preparar datos del periodo
+            periodo_data = {
+                'mes': mes,
+                'anio': anio,
+                'fecha_inicio': fecha_inicio,
+                'fecha_fin': fecha_fin,
+                'fecha_elaboracion': timezone.now(),
+            }
+            
+            # Obtener lotes del centro con movimientos en el periodo
+            lotes_base = Lote.objects.filter(centro=centro, activo=True)
+            lotes_base = lotes_base.select_related('producto').order_by('producto__clave', 'numero_lote')
+            
+            productos_data = []
+            for lote in lotes_base:
+                # Calcular existencia al inicio del periodo
+                movs_antes = Movimiento.objects.filter(
+                    lote=lote,
+                    fecha__lt=fecha_inicio
+                ).aggregate(
+                    total=Coalesce(Sum('cantidad'), 0)
+                )
+                existencia_anterior = (lote.cantidad_inicial or 0) + (movs_antes['total'] or 0)
+                
+                # Obtener movimientos del periodo
+                movimientos_periodo = Movimiento.objects.filter(
+                    lote=lote,
+                    fecha__gte=fecha_inicio,
+                    fecha__lte=fecha_fin
+                )
+                
+                # Calcular entradas y salidas del periodo
+                entradas = 0
+                salidas = 0
+                doc_entrada = ''
+                
+                for mov in movimientos_periodo:
+                    if mov.tipo and mov.tipo.lower() == 'entrada':
+                        entradas += mov.cantidad
+                        if not doc_entrada:
+                            doc_entrada = getattr(mov, 'folio_documento', '') or mov.motivo or ''
+                    else:
+                        salidas += abs(mov.cantidad)
+                
+                # Calcular existencia final
+                existencia_final = existencia_anterior + entradas - salidas
+                
+                # Solo incluir si hay movimientos o stock
+                if existencia_anterior > 0 or entradas > 0 or salidas > 0 or existencia_final > 0:
+                    productos_data.append({
+                        'producto_clave': lote.producto.clave if lote.producto else 'N/A',
+                        'producto_nombre': lote.producto.nombre if lote.producto else 'N/A',
+                        'presentacion': lote.producto.presentacion if lote.producto else 'N/A',
+                        'fecha_caducidad': lote.fecha_caducidad,
+                        'existencia_anterior': existencia_anterior,
+                        'documento_entrada': doc_entrada[:50] if doc_entrada else '',
+                        'entradas': entradas,
+                        'salidas': salidas,
+                        'existencia_final': existencia_final,
+                    })
+            
+            # Si no hay datos, generar reporte vacío con mensaje
+            if not productos_data:
+                productos_data = [{
+                    'producto_clave': '-',
+                    'producto_nombre': 'No hay movimientos registrados en este periodo',
+                    'presentacion': '-',
+                    'fecha_caducidad': None,
+                    'existencia_anterior': 0,
+                    'documento_entrada': '',
+                    'entradas': 0,
+                    'salidas': 0,
+                    'existencia_final': 0,
+                }]
+            
+            # Generar PDF
+            pdf_buffer = generar_control_mensual_cprs(
+                periodo_data=periodo_data,
+                productos_data=productos_data,
+                centro_nombre=centro_nombre
+            )
+            
+            # Nombre del archivo
+            meses_nombres = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                           'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+            mes_nombre = meses_nombres[mes]
+            filename = f"Control_Mensual_{centro_nombre.replace(' ', '_')}_{mes_nombre}_{anio}.pdf"
+            
+            response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error generando Control Mensual CPRS: {e}", exc_info=True)
+            return Response(
+                {'error': f'Error al generar reporte: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 class DetalleDispensacionViewSet(viewsets.ModelViewSet):
     """

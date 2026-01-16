@@ -119,8 +119,8 @@ class RequisicionCanvas(canvas.Canvas):
 
 def generar_hoja_recoleccion(requisicion):
     """
-    Genera PDF con hoja de recolección para una requisición autorizada
-    Con fondo oficial del Gobierno del Estado de México
+    Genera PDF con formato oficial "Requisición mensual de Medicamento, Material Médico y Odontológico".
+    Usa el mismo fondo y estilo que el Control Mensual (Formato A).
     
     Args:
         requisicion: Objeto Requisicion
@@ -130,321 +130,305 @@ def generar_hoja_recoleccion(requisicion):
     """
     buffer = BytesIO()
     
-    # Obtener ruta del fondo institucional (compatible con desarrollo y producción)
-    fondo_institucional = get_fondo_institucional_path()
-    fondo_path = str(fondo_institucional) if fondo_institucional else None
+    # Usar el fondo del Control Mensual
+    from pathlib import Path
+    from django.conf import settings
+    
+    fondo_control_mensual = Path(settings.BASE_DIR) / 'static' / 'img' / 'pdf' / 'fondo_control_mensual.png'
+    fondo_path = str(fondo_control_mensual) if fondo_control_mensual.exists() else None
+    
+    # Si no existe el fondo del control mensual, usar el institucional
+    if not fondo_path:
+        fondo_institucional = get_fondo_institucional_path()
+        fondo_path = str(fondo_institucional) if fondo_institucional else None
     
     doc = SimpleDocTemplate(
         buffer, 
         pagesize=letter,
-        topMargin=1*inch,
-        bottomMargin=0.8*inch,
-        leftMargin=0.5*inch,
-        rightMargin=0.5*inch
+        topMargin=1.2*inch,  # Espacio para el encabezado del fondo
+        bottomMargin=1.0*inch,  # Espacio para firmas
+        leftMargin=0.3*inch,
+        rightMargin=0.3*inch
     )
     story = []
     styles = getSampleStyleSheet()
     
-    # Estilo personalizado para título con color guinda institucional
+    # ========== ESTILOS (igual que Control Mensual) ==========
     titulo_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=16,
-        textColor=COLOR_GUINDA,
-        spaceAfter=20,
-        spaceBefore=10,
-        alignment=TA_CENTER,
-        fontName='Helvetica-Bold'
-    )
-    
-    # Estilo para subtítulos
-    subtitulo_style = ParagraphStyle(
-        'CustomSubtitle',
-        parent=styles['Heading2'],
+        'TituloRequisicion',
+        parent=styles['Normal'],
         fontSize=11,
-        textColor=COLOR_GUINDA,
-        spaceAfter=10,
-        fontName='Helvetica-Bold'
+        fontName='Helvetica-Bold',
+        alignment=TA_CENTER,
+        textColor=COLOR_TEXTO,
+        spaceAfter=12
     )
     
-    # Estilo para celdas con texto largo (descripción)
-    celda_texto_style = ParagraphStyle(
-        'CeldaTexto',
+    label_style = ParagraphStyle(
+        'LabelReq',
         parent=styles['Normal'],
         fontSize=8,
-        leading=10,
-        wordWrap='CJK',
-        alignment=TA_LEFT,
+        fontName='Helvetica',
+        textColor=COLOR_TEXTO
     )
     
-    # Estilo para celdas de unidad (texto que puede ser largo como "CAJA CON 20 TABLETAS")
-    celda_unidad_style = ParagraphStyle(
-        'CeldaUnidadRecoleccion',
+    value_style = ParagraphStyle(
+        'ValueReq',
+        parent=styles['Normal'],
+        fontSize=8,
+        fontName='Helvetica'
+    )
+    
+    celda_style = ParagraphStyle(
+        'CeldaReq',
         parent=styles['Normal'],
         fontSize=7,
-        leading=9,
-        wordWrap='CJK',
-        alignment=TA_CENTER,
+        leading=8,
+        wordWrap='CJK'
     )
     
-    # Título principal
-    titulo = Paragraph("HOJA DE RECOLECCIÓN DE MEDICAMENTOS", titulo_style)
+    # ========== TÍTULO ==========
+    titulo = Paragraph("Requisición mensual de Medicamento, Material Médico y Odontológico", titulo_style)
     story.append(titulo)
     story.append(Spacer(1, 0.15*inch))
     
-    # Información de la requisición con colores institucionales
-    # ISS-FIX-CENTRO: Usar centro_origen (el centro que SOLICITA)
-    # FALLBACK: si centro_origen es NULL (datos viejos), usar centro_destino
+    # ========== INFORMACIÓN DEL ENCABEZADO ==========
     centro_obj = requisicion.centro_origen or requisicion.centro_destino
-    centro_nombre = centro_obj.nombre if centro_obj else 'N/A'
-    solicitante_nombre = requisicion.solicitante.get_full_name() if requisicion.solicitante else 'N/A'
-    autorizador_nombre = requisicion.autorizador.get_full_name() if requisicion.autorizador else ''
+    centro_nombre = centro_obj.nombre if centro_obj else 'Centro Penitenciario y de Reinserción Social'
     
-    # ISS-FIX: Obtener fecha límite de recolección
-    fecha_limite_texto = 'N/A'
-    if hasattr(requisicion, 'fecha_recoleccion_limite') and requisicion.fecha_recoleccion_limite:
-        fecha_limite_texto = requisicion.fecha_recoleccion_limite.strftime('%d/%m/%Y %H:%M')
+    fecha_solicitud = requisicion.fecha_solicitud.strftime('%d/%m/%Y') if requisicion.fecha_solicitud else ''
     
-    # ISS-FIX-OVERFLOW: Estilo para celdas con texto que puede ser largo
-    celda_info_style = ParagraphStyle(
-        'CeldaInfo',
-        parent=styles['Normal'],
-        fontSize=9,
-        leading=11,
-        wordWrap='CJK',
-        alignment=TA_LEFT,
-    )
+    # Periodo correspondiente (mes de la solicitud)
+    periodo = ''
+    if requisicion.fecha_solicitud:
+        meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+        periodo = f"{meses[requisicion.fecha_solicitud.month]} {requisicion.fecha_solicitud.year}"
     
-    # ISS-FIX-OVERFLOW: Usar Paragraph para textos largos como nombre de centro
-    centro_paragraph = Paragraph(centro_nombre, celda_info_style)
-    solicitante_paragraph = Paragraph(solicitante_nombre, celda_info_style)
-    autorizador_paragraph = Paragraph(autorizador_nombre, celda_info_style) if autorizador_nombre else ''
-    
-    info_data = [
-        ['Folio:', requisicion.folio or f'REQ-{requisicion.id}', 'Fecha de Solicitud:', requisicion.fecha_solicitud.strftime('%d/%m/%Y') if requisicion.fecha_solicitud else 'N/A'],
-        ['Centro Solicitante:', centro_paragraph, 'Estado:', (requisicion.estado or '').upper()],
-        ['Solicitante:', solicitante_paragraph, 'Fecha de Autorización:', 
-         requisicion.fecha_autorizacion.strftime('%d/%m/%Y %H:%M') if requisicion.fecha_autorizacion else 'N/A'],
-        ['Fecha Límite de Recolección:', fecha_limite_texto, '', ''],
+    # Tabla de encabezado con estilo oficial (igual a la imagen)
+    # Fila 1: Nombre del centro (span completo)
+    # Fila 2: Fecha: | [valor] | Periodo correspondiente: | [valor]
+    encabezado_data = [
+        [Paragraph(f"<b>{centro_nombre}</b>", value_style), '', '', ''],
+        [Paragraph("Fecha:", label_style), fecha_solicitud,
+         Paragraph("Periodo correspondiente:", label_style), periodo],
     ]
     
-    if requisicion.autorizador:
-        info_data.append(['Autorizado por:', autorizador_paragraph, '', ''])
-    
-    # ISS-FIX-OVERFLOW: Ajustar anchos de columna para mejor distribución
-    info_table = Table(info_data, colWidths=[1.6*inch, 2.4*inch, 1.5*inch, 2.0*inch])
+    info_table = Table(encabezado_data, colWidths=[0.8*inch, 1.8*inch, 1.8*inch, 3.0*inch])
     info_table.setStyle(TableStyle([
-        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('SPAN', (0, 0), (3, 0)),  # Primera fila: span completo para nombre del centro
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (-1, 0), 'LEFT'),  # Nombre del centro alineado a la izquierda
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
-    
     story.append(info_table)
-    story.append(Spacer(1, 0.25*inch))
+    story.append(Spacer(1, 0.15*inch))
     
-    # Subtítulo de productos
-    productos_titulo = Paragraph("PRODUCTOS AUTORIZADOS", subtitulo_style)
-    story.append(productos_titulo)
-    story.append(Spacer(1, 0.1*inch))
-    
-    # Tabla de productos con Paragraph para descripción
-    productos_data = [
-        ['#', 'Clave', 'Descripción', 'Lote', 'Caducidad', 'Cant.', 'Unidad']
+    # ========== TABLA DE PRODUCTOS ==========
+    # Encabezados según formato oficial
+    header_row = [
+        Paragraph('<b>Clave</b>', celda_style),
+        Paragraph('<b>Medicamento/Material</b>', celda_style),
+        Paragraph('<b>Presentación</b>', celda_style),
+        Paragraph('<b>Existencia</b>', celda_style),
+        Paragraph('<b>Cantidad<br/>Solicitada</b>', celda_style),
+        Paragraph('<b>Cantidad<br/>Aprobada</b>', celda_style),
     ]
     
-    for idx, detalle in enumerate(requisicion.detalles.all(), start=1):
-        # Buscar lote con stock disponible para este producto
-        lote_asignado = None
+    productos_data = [header_row]
+    
+    for detalle in requisicion.detalles.all():
+        # Obtener datos del producto
+        producto = detalle.producto
+        clave = producto.clave or ''
+        nombre = producto.descripcion or producto.nombre or ''
+        presentacion = getattr(producto, 'presentacion', '') or getattr(producto, 'unidad_medida', '') or ''
+        
+        # Cantidad de existencia (stock del lote asignado o stock general)
+        existencia = ''
         try:
-            lote_asignado = detalle.producto.lotes.filter(
-                activo=True,
-                cantidad_actual__gt=0
-            ).order_by('fecha_caducidad').first()
+            lote_asignado = producto.lotes.filter(activo=True, cantidad_actual__gt=0).order_by('fecha_caducidad').first()
+            if lote_asignado:
+                existencia = str(lote_asignado.cantidad_actual)
         except Exception:
             pass
         
-        # ISS-PDF FIX: Manejar descripcion None
-        descripcion_texto = detalle.producto.descripcion or detalle.producto.nombre or 'N/A'
-        descripcion_paragraph = Paragraph(descripcion_texto, celda_texto_style)
-        
-        # ISS-PDF FIX: Manejar cantidad_autorizada None
-        cantidad = detalle.cantidad_solicitada or 0
-        if detalle.cantidad_autorizada is not None and detalle.cantidad_autorizada > 0:
-            cantidad = detalle.cantidad_autorizada
-        
-        # ISS-PDF FIX: unidad_medida es CharField simple, no tiene choices
-        unidad = getattr(detalle.producto, 'unidad_medida', None) or 'UND'
-        # Usar Paragraph para unidad - permite texto largo como "CAJA CON 20 TABLETAS"
-        unidad_paragraph = Paragraph(unidad, celda_unidad_style)
+        cantidad_solicitada = str(detalle.cantidad_solicitada or 0)
+        cantidad_autorizada = str(detalle.cantidad_autorizada or 0) if detalle.cantidad_autorizada else ''
         
         productos_data.append([
-            str(idx),
-            detalle.producto.clave or 'N/A',
-            descripcion_paragraph,
-            lote_asignado.numero_lote if lote_asignado else 'SIN LOTE',
-            lote_asignado.fecha_caducidad.strftime('%d/%m/%Y') if lote_asignado and lote_asignado.fecha_caducidad else 'N/A',
-            str(cantidad),
-            unidad_paragraph
+            clave,
+            Paragraph(nombre, celda_style),
+            Paragraph(presentacion, celda_style),
+            existencia,
+            cantidad_solicitada,
+            cantidad_autorizada,
         ])
     
-    # Ajustar anchos para mejor distribución (total ~7.5 pulgadas disponibles)
-    # Unidad ampliada de 0.6" a 1.4" para textos largos
-    productos_table = Table(
-        productos_data, 
-        colWidths=[0.3*inch, 0.65*inch, 2.3*inch, 0.85*inch, 0.8*inch, 0.45*inch, 1.4*inch]
-    )
-    productos_table.setStyle(TableStyle([
-        # Header con color guinda institucional
-        ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-        ('TOPPADDING', (0, 0), (-1, 0), 8),
-        
-        # Data rows - transparente
-        ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
-        ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # Número
-        ('ALIGN', (5, 1), (6, -1), 'CENTER'),  # Cantidad y Unidad
-        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
-        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 1), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
-    ]))
+    # Agregar filas vacías para completar el formato (mínimo 15 filas)
+    filas_minimas = 15
+    while len(productos_data) < filas_minimas + 1:
+        productos_data.append(['', '', '', '', '', ''])
     
+    # Anchos de columna para el formato oficial
+    productos_col_widths = [0.6*inch, 2.6*inch, 1.4*inch, 0.7*inch, 0.8*inch, 0.8*inch]
+    
+    productos_table = Table(productos_data, colWidths=productos_col_widths, repeatRows=1)
+    productos_table.setStyle(TableStyle([
+        # Encabezado SIN fondo (transparente, igual a la imagen)
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 7),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+        # Datos
+        ('FONTSIZE', (0, 1), (-1, -1), 7),
+        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # Clave centrada
+        ('ALIGN', (3, 1), (5, -1), 'CENTER'),  # Existencia, Solicitada, Aprobada centradas
+        ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
     story.append(productos_table)
+    
+    # ========== SECCIÓN DE FIRMAS (3 columnas según formato oficial) ==========
     story.append(Spacer(1, 0.3*inch))
     
-    # ==========================================================================
-    # SECCIÓN DE FIRMAS - FLUJO COMPLETO V2
-    # Médico (Solicitante) → Admin Centro → Director Centro → Farmacia
-    # ==========================================================================
+    firma_titulo_style = ParagraphStyle(
+        'FirmaTitulo',
+        parent=styles['Normal'],
+        fontSize=7,
+        fontName='Helvetica-Bold',
+        alignment=TA_CENTER,
+        textColor=colors.black,
+    )
     
-    # Obtener nombres de los participantes del flujo
-    solicitante_nombre = ''
-    if requisicion.solicitante:
-        try:
-            solicitante_nombre = requisicion.solicitante.get_full_name() or requisicion.solicitante.username
-        except Exception:
-            solicitante_nombre = ''
+    firma_desc_style = ParagraphStyle(
+        'FirmaDesc',
+        parent=styles['Normal'],
+        fontSize=5,
+        alignment=TA_CENTER,
+        textColor=colors.black,
+        leading=6,
+    )
     
-    # Admin Centro (campo: administrador_centro)
-    admin_centro_nombre = ''
-    if hasattr(requisicion, 'administrador_centro') and requisicion.administrador_centro:
-        try:
-            admin_centro_nombre = requisicion.administrador_centro.get_full_name() or requisicion.administrador_centro.username
-        except Exception:
-            admin_centro_nombre = ''
-    
-    # Director Centro (campo: director_centro)
-    director_nombre = ''
-    if hasattr(requisicion, 'director_centro') and requisicion.director_centro:
-        try:
-            director_nombre = requisicion.director_centro.get_full_name() or requisicion.director_centro.username
-        except Exception:
-            director_nombre = ''
-    elif requisicion.autorizador:
-        # Fallback: usar autorizador general si no hay director específico
-        try:
-            director_nombre = requisicion.autorizador.get_full_name() or requisicion.autorizador.username
-        except Exception:
-            director_nombre = ''
-    
-    # Farmacia (campo: surtidor o autorizador_farmacia)
-    farmacia_nombre = ''
-    if hasattr(requisicion, 'surtidor') and requisicion.surtidor:
-        try:
-            farmacia_nombre = requisicion.surtidor.get_full_name() or requisicion.surtidor.username
-        except Exception:
-            farmacia_nombre = ''
-    elif hasattr(requisicion, 'autorizador_farmacia') and requisicion.autorizador_farmacia:
-        try:
-            farmacia_nombre = requisicion.autorizador_farmacia.get_full_name() or requisicion.autorizador_farmacia.username
-        except Exception:
-            farmacia_nombre = ''
-    
-    # Primera fila de firmas: Solicitante (Médico) y Admin Centro
-    firmas_parte1 = [
-        ['SOLICITANTE (MÉDICO):', 'ADMINISTRADOR CENTRO:'],
-        ['', ''],
-        ['_' * 35, '_' * 35],
-        [solicitante_nombre, admin_centro_nombre],
-        ['Nombre y Firma', 'Nombre y Firma'],
+    # Firmas en 3 columnas: ELABORÓ | REVISÓ | REVISÓ
+    # Estructura exacta como en la imagen:
+    # Fila 1: Títulos (ELABORÓ, REVISÓ, REVISÓ)
+    # Filas 2-5: Espacio para firma
+    # Fila 6: Línea de firma
+    # Fila 7: Descripción del cargo
+    firmas_data = [
+        [
+            Paragraph('ELABORÓ', firma_titulo_style),
+            Paragraph('REVISÓ', firma_titulo_style),
+            Paragraph('REVISÓ', firma_titulo_style),
+        ],
+        ['', '', ''],  # Espacio para firma
+        ['', '', ''],
+        ['', '', ''],
+        ['', '', ''],
+        ['_' * 28, '_' * 28, '_' * 28],  # Línea de firma
+        [
+            Paragraph('NOMBRE Y FIRMA DEL SERVIDOR  PÚBLICO', firma_desc_style),
+            Paragraph('NOMBRE Y FIRMA DEL ENCARGADO DE<br/>LOS SERVICIOS MÉDICO-PSIQUIÁTRICOS', firma_desc_style),
+            Paragraph('NOMBRE Y FIRMA DEL TITULAR DE LA DIRECCIÓN  DEL<br/>CENTRO PENITENCIARIO  Y DE REINSERCIÓN  SOCIAL', firma_desc_style),
+        ],
     ]
     
-    # Segunda fila de firmas: Director y Farmacia
-    firmas_parte2 = [
-        ['', ''],
-        ['DIRECTOR CENTRO:', 'FARMACIA CENTRAL:'],
-        ['', ''],
-        ['_' * 35, '_' * 35],
-        [director_nombre, farmacia_nombre],
-        ['Nombre y Firma', 'Nombre y Firma'],
-    ]
-    
-    # Tercera fila: Recepción
-    firmas_parte3 = [
-        ['', ''],
-        ['RECIBIDO POR:', 'FECHA Y HORA DE ENTREGA:'],
-        ['', ''],
-        ['_' * 35, '_' * 35],
-        ['', ''],
-        ['Nombre y Firma', ''],
-    ]
-    
-    # Estilo común para tablas de firmas
-    firma_style = TableStyle([
+    firmas_table = Table(firmas_data, colWidths=[2.4*inch, 2.5*inch, 2.5*inch], rowHeights=[0.2*inch, 0.15*inch, 0.15*inch, 0.15*inch, 0.15*inch, 0.15*inch, 0.35*inch])
+    firmas_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('FONTSIZE', (0, 3), (-1, 3), 9),
-        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('VALIGN', (0, -1), (-1, -1), 'TOP'),  # Descripción alineada arriba
+        ('FONTSIZE', (0, 0), (-1, -1), 6),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
         ('TOPPADDING', (0, 0), (-1, -1), 2),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-    ])
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+    ]))
     
-    firmas_table1 = Table(firmas_parte1, colWidths=[3.5*inch, 3.5*inch])
-    firmas_table1.setStyle(firma_style)
-    
-    firmas_table2 = Table(firmas_parte2, colWidths=[3.5*inch, 3.5*inch])
-    firmas_table2.setStyle(firma_style)
-    
-    firmas_table3 = Table(firmas_parte3, colWidths=[3.5*inch, 3.5*inch])
-    firmas_table3.setStyle(firma_style)
-    
-    # ISS-PDF-FIX: Usar KeepTogether para que TODA la sección de firmas
-    # quede en la misma página y no se corte entre páginas
-    seccion_firmas = KeepTogether([
-        Paragraph("<b>FIRMAS DE AUTORIZACIÓN Y RECEPCIÓN</b>", ParagraphStyle(
-            'FirmasTitle', fontSize=10, textColor=COLOR_GUINDA, 
-            alignment=TA_CENTER, spaceAfter=10
-        )),
-        firmas_table1,
-        firmas_table2,
-        firmas_table3,
-        Spacer(1, 0.2*inch)
-    ])
+    # Usar KeepTogether para mantener las firmas en la misma página
+    seccion_firmas = KeepTogether([firmas_table])
     story.append(seccion_firmas)
     
-    # Construir PDF con canvas de fondo oficial
+    # ========== CONSTRUIR PDF CON CANVAS DE FONDO ==========
     def make_canvas(*args, **kwargs):
-        return RequisicionCanvas(*args, fondo_path=fondo_path, **kwargs)
+        return RequisicionCanvasControlMensual(*args, fondo_path=fondo_path, **kwargs)
     
     doc.build(story, canvasmaker=make_canvas)
     
     buffer.seek(0)
-    logger.info(f"Hoja de recolección generada para requisición {requisicion.folio}")
+    logger.info(f"Hoja de recolección (formato oficial) generada para requisición {requisicion.folio}")
     return buffer
+
+
+class RequisicionCanvasControlMensual(canvas.Canvas):
+    """
+    Canvas personalizado que usa el fondo del Control Mensual.
+    """
+    
+    def __init__(self, *args, **kwargs):
+        self.fondo_path = kwargs.pop('fondo_path', None)
+        canvas.Canvas.__init__(self, *args, **kwargs)
+        self.pages = []
+        self._dibujar_fondo()
+    
+    def showPage(self):
+        self.pages.append(dict(self.__dict__))
+        self._startPage()
+        self._dibujar_fondo()
+    
+    def save(self):
+        num_pages = len(self.pages)
+        for page_num, page_state in enumerate(self.pages, 1):
+            self.__dict__.update(page_state)
+            self._dibujar_pie_pagina(page_num, num_pages)
+            canvas.Canvas.showPage(self)
+        canvas.Canvas.save(self)
+    
+    def _dibujar_fondo(self):
+        """Dibuja el fondo del Control Mensual."""
+        if self.fondo_path and os.path.exists(self.fondo_path):
+            try:
+                page_width, page_height = letter
+                self.drawImage(
+                    str(self.fondo_path),
+                    0, 0,
+                    width=page_width,
+                    height=page_height,
+                    preserveAspectRatio=False,
+                    mask='auto'
+                )
+            except Exception as e:
+                logger.warning(f"No se pudo cargar imagen de fondo: {e}")
+    
+    def _dibujar_pie_pagina(self, num_pagina, total_paginas):
+        """Dibuja el pie de página."""
+        self.saveState()
+        page_width = letter[0]
+        
+        self.setFillColor(COLOR_GRIS)
+        self.setFont('Helvetica', 6)
+        self.drawString(0.3*inch, 0.3*inch, 
+                        f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        self.drawRightString(page_width - 0.3*inch, 0.3*inch, 
+                             f"Página {num_pagina} de {total_paginas}")
+        
+        self.restoreState()
 
 
 def generar_pdf_rechazo(requisicion):

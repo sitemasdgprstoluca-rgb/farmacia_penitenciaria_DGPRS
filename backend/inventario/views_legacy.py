@@ -8834,43 +8834,118 @@ def reporte_inventario(request):
         if not filtrar_por_centro or centro_param == 'todos':
             titulo_reporte = 'REPORTE DE INVENTARIO - LOTES CONSOLIDADOS'
             subtitulo_reporte = f"Generado el {timezone.now().strftime('%d/%m/%Y %H:%M:%S')} - Todos los centros"
+            centro_nombre = 'Todos los centros'
         elif user_centro:
             titulo_reporte = f'INVENTARIO DE {user_centro.nombre.upper()}'
             subtitulo_reporte = f"Generado el {timezone.now().strftime('%d/%m/%Y %H:%M:%S')}"
+            centro_nombre = user_centro.nombre
         else:
             titulo_reporte = 'INVENTARIO DE FARMACIA CENTRAL'
             subtitulo_reporte = f"Generado el {timezone.now().strftime('%d/%m/%Y %H:%M:%S')} - Almacén Central"
+            centro_nombre = 'Almacén Central de Medicamentos (CIA)'
         
-        # Formato PDF - LOTES (con o sin consolidación según filtro)
+        # Obtener parámetros de fecha para el formato oficial
+        fecha_inicio = request.query_params.get('fecha_inicio', None)
+        fecha_fin = request.query_params.get('fecha_fin', None)
+        
+        # Formato PDF - NUEVO FORMATO OFICIAL Control Mensual de Almacén (A)
         if formato == 'pdf':
-            from core.utils.pdf_reports import generar_reporte_inventario_lotes
+            from core.utils.pdf_reports import generar_reporte_inventario_formato_oficial
+            from datetime import datetime
+            from dateutil.relativedelta import relativedelta
+            from django.db.models import Sum
+            from django.db.models.functions import Coalesce
             
-            lotes_data = []
+            # Preparar datos con información de movimientos si hay filtro de fechas
+            productos_data = []
+            
+            # Si hay filtro de fechas, calcular entradas/salidas del periodo
+            if fecha_inicio and fecha_fin:
+                try:
+                    fi = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+                    ff = datetime.strptime(fecha_fin, '%Y-%m-%d')
+                    ff = ff.replace(hour=23, minute=59, second=59)
+                except:
+                    fi = None
+                    ff = None
+            else:
+                fi = None
+                ff = None
+            
             for lote_cons in lotes_lista:
                 producto = lote_cons['producto']
-                lotes_data.append({
+                lote_numero = lote_cons['numero_lote']
+                
+                # Valores por defecto
+                existencia_anterior = 0
+                entradas = 0
+                salidas = 0
+                documento_entrada = ''
+                
+                # Si hay filtro de fechas, calcular movimientos del período
+                if fi and ff:
+                    # Buscar el lote real para calcular movimientos
+                    from core.models import Lote
+                    lote_real = Lote.objects.filter(
+                        producto=producto,
+                        numero_lote=lote_numero
+                    ).first()
+                    
+                    if lote_real:
+                        # Existencia al inicio del periodo (cantidad inicial + movimientos antes del periodo)
+                        movs_antes = Movimiento.objects.filter(
+                            lote=lote_real,
+                            fecha__lt=fi
+                        ).aggregate(
+                            total=Coalesce(Sum('cantidad'), 0)
+                        )
+                        existencia_anterior = (lote_real.cantidad_inicial or 0) + (movs_antes['total'] or 0)
+                        
+                        # Movimientos del periodo
+                        movimientos_periodo = Movimiento.objects.filter(
+                            lote=lote_real,
+                            fecha__gte=fi,
+                            fecha__lte=ff
+                        )
+                        
+                        for mov in movimientos_periodo:
+                            if mov.tipo and mov.tipo.lower() == 'entrada':
+                                entradas += mov.cantidad
+                                if not documento_entrada:
+                                    documento_entrada = getattr(mov, 'folio_documento', '') or mov.motivo or ''
+                            else:
+                                salidas += abs(mov.cantidad)
+                else:
+                    # Sin filtro de fechas: usar stock actual como existencia final
+                    existencia_anterior = 0
+                
+                existencia_final = lote_cons['cantidad_total']
+                
+                productos_data.append({
                     'clave': producto.clave,
                     'producto': producto.nombre or producto.descripcion or '',
                     'presentacion': producto.presentacion or '-',
-                    'numero_lote': lote_cons['numero_lote'],
-                    'fecha_caducidad': lote_cons['fecha_caducidad'].strftime('%d/%m/%Y') if lote_cons['fecha_caducidad'] else '-',
-                    'cantidad': lote_cons['cantidad_total'],
-                    'precio_unitario': lote_cons['precio_unitario'],
-                    'ubicacion': ', '.join(lote_cons['centros'][:2]) + ('...' if len(lote_cons['centros']) > 2 else ''),
-                    'marca': lote_cons['marca'],
+                    'fecha_caducidad': lote_cons['fecha_caducidad'],
+                    'existencia_anterior': existencia_anterior,
+                    'documento_entrada': documento_entrada[:50] if documento_entrada else '',
+                    'entradas': entradas,
+                    'salidas': salidas,
+                    'existencia_final': existencia_final,
                 })
             
-            filtros = {
-                'fecha_generacion': timezone.now().strftime('%d/%m/%Y %H:%M'),
-                'total_lotes': len(lotes_data),
+            # Filtros para el PDF
+            filtros_pdf = {
+                'fecha_elaboracion': timezone.now().strftime('%d/%m/%Y'),
+                'centro': centro_nombre,
+                'fecha_inicio': fecha_inicio,
+                'fecha_fin': fecha_fin,
                 'total_productos': resumen['total_productos'],
-                'titulo': titulo_reporte,
             }
             
-            pdf_buffer = generar_reporte_inventario_lotes(lotes_data, filtros=filtros)
+            pdf_buffer = generar_reporte_inventario_formato_oficial(productos_data, filtros=filtros_pdf)
             
             response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
-            response['Content-Disposition'] = f"attachment; filename=Inventario_Lotes_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            response['Content-Disposition'] = f"attachment; filename=Control_Inventario_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
             return response
         
         # Formato Excel - LOTES (con o sin consolidación según filtro)
@@ -9182,28 +9257,101 @@ def reporte_movimientos(request):
                 'resumen': resumen
             })
         
-        # Formato PDF
+        # Formato PDF - Usa formato oficial "Tarjeta de Entradas/Salidas de almacén (B)"
         if formato == 'pdf':
-            from core.utils.pdf_reports import generar_reporte_movimientos
+            from core.utils.pdf_reports import generar_tarjeta_entradas_salidas_formato_b
             
-            # Los datos ya están agrupados por transacción, pasarlos directamente
-            filtros = {
+            # Preparar filtros para el reporte
+            filtros_pdf = {
                 'fecha_generacion': timezone.now().strftime('%d/%m/%Y %H:%M')
             }
             if fecha_inicio:
-                filtros['fecha_inicio'] = fecha_inicio
+                filtros_pdf['fecha_inicio'] = fecha_inicio
             if fecha_fin:
-                filtros['fecha_fin'] = fecha_fin
+                filtros_pdf['fecha_fin'] = fecha_fin
             if tipo:
-                filtros['tipo'] = tipo
+                filtros_pdf['tipo'] = tipo
             if filtrar_por_centro and user_centro:
-                filtros['centro'] = user_centro.nombre
+                filtros_pdf['centro'] = user_centro.nombre
             
-            # Pasar resumen y datos agrupados al generador PDF
-            pdf_buffer = generar_reporte_movimientos(datos, filtros=filtros, resumen=resumen)
+            # Transformar datos: agrupar por PRODUCTO+LOTE (cada lote tiene su fecha de caducidad)
+            # El Formato B requiere una página por producto/lote con todos sus movimientos
+            productos_movimientos = {}
+            
+            for mov in movimientos:
+                if not mov.lote or not mov.lote.producto:
+                    continue
+                
+                producto = mov.lote.producto
+                lote = mov.lote
+                # Clave única por producto+lote para manejar diferentes fechas de caducidad
+                producto_lote_key = f"{producto.id}_{lote.id}"
+                
+                tipo_mov = mov.tipo.lower()
+                es_entrada = tipo_mov in ['entrada', 'ajuste_positivo', 'devolucion']
+                cantidad = abs(mov.cantidad)
+                
+                if producto_lote_key not in productos_movimientos:
+                    # Obtener existencia inicial del lote antes del período
+                    existencia_inicial = 0
+                    if fecha_inicio:
+                        # Calcular existencia sumando movimientos anteriores al período para este lote
+                        movs_anteriores = Movimiento.objects.filter(
+                            lote=lote,
+                            fecha__date__lt=fecha_inicio
+                        )
+                        if filtrar_por_centro and user_centro:
+                            movs_anteriores = movs_anteriores.filter(
+                                Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
+                            )
+                        for m in movs_anteriores:
+                            t = m.tipo.lower()
+                            if t in ['entrada', 'ajuste_positivo', 'devolucion']:
+                                existencia_inicial += abs(m.cantidad)
+                            else:
+                                existencia_inicial -= abs(m.cantidad)
+                    
+                    productos_movimientos[producto_lote_key] = {
+                        'producto_clave': producto.clave or '',
+                        'producto_nombre': producto.nombre or producto.descripcion or 'Sin nombre',
+                        'presentacion': producto.presentacion or '',
+                        'fecha_caducidad': lote.fecha_caducidad,
+                        'numero_lote': lote.numero_lote or '',
+                        'existencia_inicial': max(0, existencia_inicial),
+                        'movimientos': [],
+                        # Para ordenamiento
+                        '_sort_key': f"{producto.clave or 'ZZZ'}_{producto.nombre or ''}"
+                    }
+                
+                productos_movimientos[producto_lote_key]['movimientos'].append({
+                    'fecha': mov.fecha,
+                    'documento': mov.referencia or f"MOV-{mov.id}",
+                    'entrada': cantidad if es_entrada else 0,
+                    'salida': cantidad if not es_entrada else 0,
+                })
+            
+            # Ordenar movimientos por fecha dentro de cada producto (cronológico ascendente)
+            for pk in productos_movimientos:
+                productos_movimientos[pk]['movimientos'].sort(key=lambda x: x['fecha'])
+            
+            # Convertir a lista y ordenar por clave/nombre de producto
+            productos_data = list(productos_movimientos.values())
+            productos_data.sort(key=lambda x: x.get('_sort_key', ''))
+            
+            # Limpiar campo temporal de ordenamiento
+            for p in productos_data:
+                p.pop('_sort_key', None)
+            
+            # Generar PDF con formato oficial B
+            institucion = user_centro.nombre if (filtrar_por_centro and user_centro) else 'Farmacia Central'
+            pdf_buffer = generar_tarjeta_entradas_salidas_formato_b(
+                productos_data, 
+                filtros=filtros_pdf,
+                institucion=institucion
+            )
             
             response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
-            response['Content-Disposition'] = f"attachment; filename=Movimientos_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            response['Content-Disposition'] = f"attachment; filename=Tarjeta_Entradas_Salidas_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
             return response
         
         if formato == 'excel':
