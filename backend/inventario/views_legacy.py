@@ -9322,9 +9322,22 @@ def reporte_movimientos(request):
                     if lote.fecha_caducidad and (not fecha_cad_actual or lote.fecha_caducidad < fecha_cad_actual):
                         productos_movimientos[producto_key]['fecha_caducidad'] = lote.fecha_caducidad
                 
+                # Acortar referencia de requisiciones (formato más compacto)
+                doc_ref = mov.referencia or f"MOV-{mov.id}"
+                # Si es REQ-REQ-XXXXXXXX-XXX, simplificar a REQ-XXX
+                if doc_ref.startswith('REQ-REQ-') and '-' in doc_ref:
+                    partes = doc_ref.split('-')
+                    if len(partes) >= 4:
+                        doc_ref = f"REQ-{partes[-1]}"  # Solo tomar el último número
+                elif doc_ref.startswith('REQ-') and len(doc_ref) > 12:
+                    # Si es muy largo, acortar tomando solo los últimos dígitos
+                    partes = doc_ref.split('-')
+                    if len(partes) >= 2:
+                        doc_ref = f"REQ-{partes[-1][-4:]}"  # Últimos 4 dígitos
+                
                 productos_movimientos[producto_key]['movimientos'].append({
                     'fecha': mov.fecha,
-                    'documento': mov.referencia or f"MOV-{mov.id}",
+                    'documento': doc_ref,
                     'entrada': cantidad if es_entrada else 0,
                     'salida': cantidad if not es_entrada else 0,
                 })
@@ -11870,19 +11883,25 @@ def exportar_control_mensual(request):
         
         lotes_base = lotes_base.select_related('producto').order_by('producto__clave', 'numero_lote')
         
-        productos_data = []
+        # AGRUPAR POR CLAVE DE PRODUCTO (consolidar todos los lotes del mismo producto)
+        productos_agrupados = {}
+        
         for lote in lotes_base:
-            # Calcular existencia al inicio del periodo
-            # Sumar todos los movimientos ANTES del inicio del periodo
+            if not lote.producto:
+                continue
+                
+            clave_producto = lote.producto.clave or f"ID-{lote.producto.id}"
+            
+            # Calcular existencia al inicio del periodo para este lote
             movs_antes = Movimiento.objects.filter(
                 lote=lote,
                 fecha__lt=fecha_inicio
             ).aggregate(
                 total=Coalesce(Sum('cantidad'), 0)
             )
-            existencia_anterior = (lote.cantidad_inicial or 0) + (movs_antes['total'] or 0)
+            existencia_anterior_lote = (lote.cantidad_inicial or 0) + (movs_antes['total'] or 0)
             
-            # Obtener movimientos del periodo
+            # Obtener movimientos del periodo para este lote
             movimientos_periodo = Movimiento.objects.filter(
                 lote=lote,
                 fecha__gte=fecha_inicio,
@@ -11890,35 +11909,55 @@ def exportar_control_mensual(request):
             )
             
             # Calcular entradas y salidas del periodo
-            entradas = 0
-            salidas = 0
+            entradas_lote = 0
+            salidas_lote = 0
             doc_entrada = ''
             
             for mov in movimientos_periodo:
                 if mov.tipo.lower() == 'entrada':
-                    entradas += mov.cantidad
+                    entradas_lote += mov.cantidad
                     if not doc_entrada:
                         doc_entrada = getattr(mov, 'folio_documento', '') or mov.motivo or ''
                 else:
-                    salidas += abs(mov.cantidad)
+                    salidas_lote += abs(mov.cantidad)
             
-            # Calcular existencia final
-            existencia_final = existencia_anterior + entradas - salidas
+            existencia_final_lote = existencia_anterior_lote + entradas_lote - salidas_lote
             
-            # Solo incluir si hay movimientos o stock
-            if existencia_anterior > 0 or entradas > 0 or salidas > 0 or existencia_final > 0:
-                productos_data.append({
+            # Agrupar por clave de producto
+            if clave_producto not in productos_agrupados:
+                productos_agrupados[clave_producto] = {
                     'producto_clave': lote.producto.clave if lote.producto else 'N/A',
                     'producto_nombre': lote.producto.nombre if lote.producto else 'N/A',
                     'presentacion': lote.producto.presentacion if lote.producto else 'N/A',
-                    'lote': lote.numero_lote,
-                    'fecha_caducidad': lote.fecha_caducidad,
-                    'existencia_anterior': existencia_anterior,
-                    'documento_entrada': doc_entrada[:50] if doc_entrada else '',
-                    'entradas': entradas,
-                    'salidas': salidas,
-                    'existencia_final': existencia_final,
-                })
+                    'fecha_caducidad': lote.fecha_caducidad,  # Se actualizará con la más próxima
+                    'existencia_anterior': 0,
+                    'documento_entrada': '',
+                    'entradas': 0,
+                    'salidas': 0,
+                    'existencia_final': 0,
+                }
+            
+            # Sumar valores del lote al producto agrupado
+            productos_agrupados[clave_producto]['existencia_anterior'] += existencia_anterior_lote
+            productos_agrupados[clave_producto]['entradas'] += entradas_lote
+            productos_agrupados[clave_producto]['salidas'] += salidas_lote
+            productos_agrupados[clave_producto]['existencia_final'] += existencia_final_lote
+            
+            # Actualizar documento de entrada si no hay uno
+            if doc_entrada and not productos_agrupados[clave_producto]['documento_entrada']:
+                productos_agrupados[clave_producto]['documento_entrada'] = doc_entrada[:50]
+            
+            # Actualizar fecha de caducidad con la más próxima
+            fecha_actual = productos_agrupados[clave_producto]['fecha_caducidad']
+            if lote.fecha_caducidad:
+                if not fecha_actual or lote.fecha_caducidad < fecha_actual:
+                    productos_agrupados[clave_producto]['fecha_caducidad'] = lote.fecha_caducidad
+        
+        # Convertir a lista y filtrar solo los que tienen datos
+        productos_data = []
+        for clave, datos in sorted(productos_agrupados.items()):
+            if datos['existencia_anterior'] > 0 or datos['entradas'] > 0 or datos['salidas'] > 0 or datos['existencia_final'] > 0:
+                productos_data.append(datos)
         
         if not productos_data:
             # Generar PDF vacío con mensaje informativo en lugar de error 404
