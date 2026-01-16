@@ -9259,8 +9259,8 @@ def reporte_movimientos(request):
             if filtrar_por_centro and user_centro:
                 filtros_pdf['centro'] = user_centro.nombre
             
-            # Transformar datos: agrupar por PRODUCTO+LOTE (cada lote tiene su fecha de caducidad)
-            # El Formato B requiere una página por producto/lote con todos sus movimientos
+            # Transformar datos: agrupar por PRODUCTO (clave) consolidando todos los lotes
+            # El Formato B requiere una página por producto con todos sus movimientos
             productos_movimientos = {}
             
             for mov in movimientos:
@@ -9269,46 +9269,60 @@ def reporte_movimientos(request):
                 
                 producto = mov.lote.producto
                 lote = mov.lote
-                # Clave única por producto+lote para manejar diferentes fechas de caducidad
-                producto_lote_key = f"{producto.id}_{lote.id}"
+                # Clave única por PRODUCTO (no por lote) - consolidar todos los lotes del mismo producto
+                producto_key = str(producto.id)
                 
                 tipo_mov = mov.tipo.lower()
                 es_entrada = tipo_mov in ['entrada', 'ajuste_positivo', 'devolucion']
                 cantidad = abs(mov.cantidad)
                 
-                if producto_lote_key not in productos_movimientos:
-                    # Obtener existencia inicial del lote antes del período
+                if producto_key not in productos_movimientos:
+                    # Obtener existencia inicial consolidada de TODOS los lotes del producto antes del período
                     existencia_inicial = 0
                     if fecha_inicio:
-                        # Calcular existencia sumando movimientos anteriores al período para este lote
-                        movs_anteriores = Movimiento.objects.filter(
-                            lote=lote,
-                            fecha__date__lt=fecha_inicio
-                        )
+                        # Buscar todos los lotes de este producto
+                        from core.models import Lote
+                        lotes_producto = Lote.objects.filter(producto=producto)
                         if filtrar_por_centro and user_centro:
-                            movs_anteriores = movs_anteriores.filter(
-                                Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
+                            lotes_producto = lotes_producto.filter(centro=user_centro)
+                        
+                        # Sumar movimientos anteriores al período de todos los lotes
+                        for lote_p in lotes_producto:
+                            movs_anteriores = Movimiento.objects.filter(
+                                lote=lote_p,
+                                fecha__date__lt=fecha_inicio
                             )
-                        for m in movs_anteriores:
-                            t = m.tipo.lower()
-                            if t in ['entrada', 'ajuste_positivo', 'devolucion']:
-                                existencia_inicial += abs(m.cantidad)
-                            else:
-                                existencia_inicial -= abs(m.cantidad)
+                            if filtrar_por_centro and user_centro:
+                                movs_anteriores = movs_anteriores.filter(
+                                    Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
+                                )
+                            for m in movs_anteriores:
+                                t = m.tipo.lower()
+                                if t in ['entrada', 'ajuste_positivo', 'devolucion']:
+                                    existencia_inicial += abs(m.cantidad)
+                                else:
+                                    existencia_inicial -= abs(m.cantidad)
                     
-                    productos_movimientos[producto_lote_key] = {
+                    # Para fecha de caducidad, usar la del lote más próximo a vencer
+                    fecha_cad = lote.fecha_caducidad
+                    
+                    productos_movimientos[producto_key] = {
                         'producto_clave': producto.clave or '',
                         'producto_nombre': producto.nombre or producto.descripcion or 'Sin nombre',
                         'presentacion': producto.presentacion or '',
-                        'fecha_caducidad': lote.fecha_caducidad,
-                        'numero_lote': lote.numero_lote or '',
+                        'fecha_caducidad': fecha_cad,
                         'existencia_inicial': max(0, existencia_inicial),
                         'movimientos': [],
                         # Para ordenamiento
                         '_sort_key': f"{producto.clave or 'ZZZ'}_{producto.nombre or ''}"
                     }
+                else:
+                    # Actualizar fecha de caducidad si esta es más próxima
+                    fecha_cad_actual = productos_movimientos[producto_key]['fecha_caducidad']
+                    if lote.fecha_caducidad and (not fecha_cad_actual or lote.fecha_caducidad < fecha_cad_actual):
+                        productos_movimientos[producto_key]['fecha_caducidad'] = lote.fecha_caducidad
                 
-                productos_movimientos[producto_lote_key]['movimientos'].append({
+                productos_movimientos[producto_key]['movimientos'].append({
                     'fecha': mov.fecha,
                     'documento': mov.referencia or f"MOV-{mov.id}",
                     'entrada': cantidad if es_entrada else 0,
