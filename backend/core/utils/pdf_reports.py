@@ -3568,298 +3568,218 @@ def generar_reporte_inventario_formato_oficial(productos_data, filtros=None):
     Genera reporte PDF de inventario con formato oficial 
     "Requisición mensual de Medicamento, Material Médico y Odontológico".
     
-    Formato exacto según imagen oficial con:
-    - Encabezado institucional con logos
-    - Título subrayado
-    - Tabla de información (Centro, Fecha, Periodo)
-    - Tabla de productos con columnas: Clave, Medicamento/Material, Presentación, 
-      Existencia, Cantidad Solicitada, Cantidad Aprobada
-    - Sección de firmas: ELABORÓ, REVISÓ, REVISÓ
-    
-    Args:
-        productos_data: Lista de productos con datos de inventario
-        filtros: Diccionario con información del filtro:
-            - centro: nombre del centro
-            - fecha_inicio: fecha inicial del periodo
-            - fecha_fin: fecha final del periodo
-            - fecha_elaboracion: fecha de generación del reporte
-    
-    Returns:
-        BytesIO: Buffer con el PDF generado en formato oficial
+    Formato exacto según imagen oficial.
     """
     buffer = BytesIO()
-    
-    # Usar orientación vertical (portrait) según el formato oficial
     page_width, page_height = letter
     
     doc = SimpleDocTemplate(
         buffer,
         pagesize=letter,
-        topMargin=1.15*inch,  # Espacio para encabezado del fondo
-        bottomMargin=0.5*inch,
-        leftMargin=0.4*inch,
-        rightMargin=0.4*inch
+        topMargin=1.1*inch,
+        bottomMargin=0.4*inch,
+        leftMargin=0.35*inch,
+        rightMargin=0.35*inch
     )
     
     elements = []
-    
-    # Obtener fondo específico para Control Mensual (de forma segura)
     fondo_path = _obtener_fondo_control_mensual()
     
     # ========== ESTILOS ==========
     styles = getSampleStyleSheet()
     
-    # Estilo para título subrayado
     titulo_style = ParagraphStyle(
-        'TituloRequisicion',
-        parent=styles['Normal'],
-        fontSize=10,
-        fontName='Helvetica-Bold',
-        alignment=TA_CENTER,
-        textColor=COLOR_GUINDA,
-        spaceAfter=8
+        'TituloReq', parent=styles['Normal'],
+        fontSize=10, fontName='Helvetica-Bold',
+        alignment=TA_CENTER, textColor=COLOR_GUINDA, spaceAfter=6
     )
     
-    # Estilo para encabezados de tabla
     header_style = ParagraphStyle(
-        'HeaderRequisicion',
-        parent=styles['Normal'],
-        fontSize=7,
-        fontName='Helvetica-Bold',
-        alignment=TA_CENTER,
-        textColor=colors.black
-    )
-    
-    label_style = ParagraphStyle(
-        'LabelRequisicion',
-        parent=styles['Normal'],
-        fontSize=8,
-        fontName='Helvetica',
-        textColor=colors.black
-    )
-    
-    value_style = ParagraphStyle(
-        'ValueRequisicion',
-        parent=styles['Normal'],
-        fontSize=8,
-        fontName='Helvetica-Bold',
-        textColor=colors.black
+        'HeaderReq', parent=styles['Normal'],
+        fontSize=7, fontName='Helvetica-Bold',
+        alignment=TA_CENTER, textColor=colors.black
     )
     
     celda_style = ParagraphStyle(
-        'CeldaRequisicion',
-        parent=styles['Normal'],
-        fontSize=7,
-        leading=8,
-        wordWrap='CJK'
+        'CeldaReq', parent=styles['Normal'],
+        fontSize=7, leading=8, alignment=TA_LEFT
     )
     
-    # ========== TÍTULO CON SUBRAYADO ==========
+    celda_center_style = ParagraphStyle(
+        'CeldaCenterReq', parent=styles['Normal'],
+        fontSize=7, leading=8, alignment=TA_CENTER
+    )
+    
+    # ========== TÍTULO ==========
     titulo = Paragraph("<u>Requisición mensual de Medicamento, Material Médico y Odontológico</u>", titulo_style)
     elements.append(titulo)
-    elements.append(Spacer(1, 0.15*inch))
+    elements.append(Spacer(1, 0.1*inch))
     
-    # ========== INFORMACIÓN DEL ENCABEZADO ==========
+    # ========== ENCABEZADO ==========
     filtros = filtros or {}
-    
-    # Nombre del centro
     centro_nombre = filtros.get('centro', 'Centro Penitenciario y de Reinserción Social')
     if not centro_nombre or centro_nombre == 'todos':
         centro_nombre = 'Centro Penitenciario y de Reinserción Social'
     
-    # Fecha de elaboración
     fecha_elaboracion = filtros.get('fecha_elaboracion', timezone.now().strftime('%d/%m/%Y'))
     if hasattr(fecha_elaboracion, 'strftime'):
         fecha_elaboracion = fecha_elaboracion.strftime('%d/%m/%Y')
     
-    # Calcular período desde las fechas
+    # Periodo
     fecha_inicio_str = filtros.get('fecha_inicio', '')
     fecha_fin_str = filtros.get('fecha_fin', '')
+    meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+             'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
     
     if fecha_inicio_str and fecha_fin_str:
         try:
-            if isinstance(fecha_inicio_str, str):
-                fi = datetime.strptime(fecha_inicio_str, '%Y-%m-%d')
-            else:
-                fi = fecha_inicio_str
-            if isinstance(fecha_fin_str, str):
-                ff = datetime.strptime(fecha_fin_str, '%Y-%m-%d')
-            else:
-                ff = fecha_fin_str
-            
-            meses_nombres = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-                           'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-            
+            fi = datetime.strptime(fecha_inicio_str, '%Y-%m-%d') if isinstance(fecha_inicio_str, str) else fecha_inicio_str
+            ff = datetime.strptime(fecha_fin_str, '%Y-%m-%d') if isinstance(fecha_fin_str, str) else fecha_fin_str
             if fi.month == ff.month and fi.year == ff.year:
-                periodo_texto = f"{meses_nombres[fi.month]} {fi.year}"
+                periodo_texto = f"{meses[fi.month]} {fi.year}"
             else:
-                periodo_texto = f"{meses_nombres[fi.month]} - {meses_nombres[ff.month]} {ff.year}"
-        except Exception:
+                periodo_texto = f"{meses[fi.month]} - {meses[ff.month]} {ff.year}"
+        except:
             periodo_texto = f"{fecha_inicio_str} - {fecha_fin_str}"
     else:
-        mes_actual = timezone.now().month
-        anio_actual = timezone.now().year
-        meses_nombres = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-                       'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-        periodo_texto = f"{meses_nombres[mes_actual]} {anio_actual}"
+        periodo_texto = f"{meses[timezone.now().month]} {timezone.now().year}"
     
-    # Tabla de encabezado con formato exacto de la imagen
-    # Fila 1: Nombre del centro (span completo)
-    # Fila 2: Fecha: | [valor] | Periodo correspondiente: | [valor]
-    available_width = page_width - 0.8*inch  # ~7 inches
+    # Ancho total disponible
+    total_width = page_width - 0.7*inch  # ~7.35 inches
     
-    encabezado_data = [
-        [Paragraph(f"<b>{centro_nombre}</b>", value_style), '', '', ''],
-        [Paragraph("Fecha:", label_style), fecha_elaboracion,
-         Paragraph("Periodo correspondiente:", label_style), periodo_texto],
+    # Tabla de encabezado - 2 filas
+    enc_data = [
+        [centro_nombre, '', ''],
+        ['Fecha:', fecha_elaboracion, f'Periodo correspondiente:              {periodo_texto}'],
     ]
     
-    info_table = Table(encabezado_data, colWidths=[0.6*inch, 1.6*inch, 1.8*inch, 3.0*inch])
-    info_table.setStyle(TableStyle([
-        ('SPAN', (0, 0), (3, 0)),  # Primera fila: span completo para nombre del centro
-        ('BOX', (0, 0), (-1, -1), 0.75, colors.black),
-        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (0, 0), (-1, 0), 'LEFT'),
+    enc_table = Table(enc_data, colWidths=[0.6*inch, 1.2*inch, total_width - 1.8*inch])
+    enc_table.setStyle(TableStyle([
+        ('SPAN', (0, 0), (2, 0)),
+        ('FONTNAME', (0, 0), (2, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('BOX', (0, 0), (-1, -1), 0.75, colors.black),
+        ('LINEBELOW', (0, 0), (-1, 0), 0.5, colors.black),
+        ('LINEAFTER', (0, 1), (0, 1), 0.5, colors.black),
+        ('LINEAFTER', (1, 1), (1, 1), 0.5, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 4),
         ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
-    elements.append(info_table)
-    elements.append(Spacer(1, 0.08*inch))
+    elements.append(enc_table)
+    elements.append(Spacer(1, 0.02*inch))
     
     # ========== TABLA DE PRODUCTOS ==========
-    # Encabezados según formato oficial con subrayado
+    # Anchos exactos para alinear con el encabezado
+    col_widths = [0.5*inch, 2.4*inch, 1.65*inch, 0.7*inch, 0.75*inch, 0.75*inch]
+    
+    # Encabezados con subrayado
     header_row = [
-        Paragraph('<b><u>Clave</u></b>', header_style),
-        Paragraph('<b><u>Medicamento/Material</u></b>', header_style),
-        Paragraph('<b><u>Presentación</u></b>', header_style),
-        Paragraph('<b><u>Existencia</u></b>', header_style),
-        Paragraph('<b><u>Cantidad<br/>Solicitada</u></b>', header_style),
-        Paragraph('<b><u>Cantidad<br/>Aprobada</u></b>', header_style),
+        Paragraph('<u><b>Clave</b></u>', header_style),
+        Paragraph('<u><b>Medicamento/Material</b></u>', header_style),
+        Paragraph('<u><b>Presentación</b></u>', header_style),
+        Paragraph('<u><b>Existencia</b></u>', header_style),
+        Paragraph('<u><b>Cantidad<br/>Solicitada</b></u>', header_style),
+        Paragraph('<u><b>Cantidad<br/>Aprobada</b></u>', header_style),
     ]
     
-    productos_table_data = [header_row]
+    table_data = [header_row]
     
     for item in productos_data:
-        clave = str(item.get('clave', item.get('producto_clave', '')))[:10]
-        nombre = str(item.get('producto', item.get('producto_nombre', item.get('descripcion', ''))))[:60]
-        presentacion = str(item.get('presentacion', ''))[:30]
+        clave = str(item.get('clave', item.get('producto_clave', '')))
+        nombre = str(item.get('producto', item.get('producto_nombre', item.get('descripcion', ''))))
+        presentacion = str(item.get('presentacion', ''))
         existencia = item.get('existencia_final', item.get('stock_actual', item.get('cantidad', '')))
-        cantidad_solicitada = item.get('cantidad_solicitada', '')
-        cantidad_aprobada = item.get('cantidad_aprobada', '')
+        cant_solicitada = item.get('cantidad_solicitada', '')
+        cant_aprobada = item.get('cantidad_aprobada', '')
         
-        productos_table_data.append([
-            clave,
+        table_data.append([
+            Paragraph(clave, celda_center_style),
             Paragraph(nombre, celda_style),
             Paragraph(presentacion, celda_style),
-            str(existencia) if existencia else '',
-            str(cantidad_solicitada) if cantidad_solicitada else '',
-            str(cantidad_aprobada) if cantidad_aprobada else '',
+            Paragraph(str(existencia) if existencia else '', celda_center_style),
+            Paragraph(str(cant_solicitada) if cant_solicitada else '', celda_center_style),
+            Paragraph(str(cant_aprobada) if cant_aprobada else '', celda_center_style),
         ])
     
-    # Agregar filas vacías para completar el formato (mínimo 18 filas de datos)
-    filas_minimas = 18
-    while len(productos_table_data) < filas_minimas + 1:  # +1 por el encabezado
-        productos_table_data.append(['', '', '', '', '', ''])
+    # Filas vacías para completar (mínimo 18)
+    while len(table_data) < 19:
+        table_data.append(['', '', '', '', '', ''])
     
-    # Anchos de columna para el formato exacto
-    productos_col_widths = [0.55*inch, 2.65*inch, 1.45*inch, 0.7*inch, 0.75*inch, 0.75*inch]
+    # Altura de filas
+    row_heights = [0.32*inch] + [0.26*inch] * (len(table_data) - 1)
     
-    # Altura de filas: encabezado más alto, datos con altura fija
-    row_heights = [0.35*inch] + [0.28*inch] * (len(productos_table_data) - 1)
-    
-    productos_table = Table(productos_table_data, colWidths=productos_col_widths, rowHeights=row_heights)
+    productos_table = Table(table_data, colWidths=col_widths, rowHeights=row_heights)
     productos_table.setStyle(TableStyle([
         # Encabezado
-        ('BACKGROUND', (0, 0), (-1, 0), colors.white),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 7),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
         # Datos
         ('FONTSIZE', (0, 1), (-1, -1), 7),
-        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
         ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
-        # Bordes - todas las celdas con líneas
+        # Bordes
         ('BOX', (0, 0), (-1, -1), 0.75, colors.black),
         ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
-        # Alineación de columnas numéricas
-        ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # Clave
-        ('ALIGN', (3, 1), (5, -1), 'CENTER'),  # Existencia, Cant. Solicitada, Cant. Aprobada
-        # Padding
+        # Padding uniforme
         ('LEFTPADDING', (0, 0), (-1, -1), 3),
         ('RIGHTPADDING', (0, 0), (-1, -1), 3),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
     ]))
     elements.append(productos_table)
     
-    # ========== SECCIÓN DE FIRMAS ==========
-    elements.append(Spacer(1, 0.25*inch))
+    # ========== FIRMAS ==========
+    elements.append(Spacer(1, 0.2*inch))
     
-    firma_titulo_style = ParagraphStyle(
-        'FirmaTituloReq',
-        parent=styles['Normal'],
-        fontSize=8,
-        fontName='Helvetica-Bold',
-        alignment=TA_CENTER,
-        textColor=colors.black
+    firma_titulo = ParagraphStyle(
+        'FirmaTit', parent=styles['Normal'],
+        fontSize=8, fontName='Helvetica-Bold', alignment=TA_CENTER
+    )
+    firma_cargo = ParagraphStyle(
+        'FirmaCargo', parent=styles['Normal'],
+        fontSize=6, fontName='Helvetica', alignment=TA_CENTER, leading=7
     )
     
-    firma_cargo_style = ParagraphStyle(
-        'FirmaCargoReq',
-        parent=styles['Normal'],
-        fontSize=6,
-        fontName='Helvetica',
-        alignment=TA_CENTER,
-        textColor=colors.black,
-        leading=7
-    )
-    
-    # Crear las 3 columnas de firmas
-    firma_col_width = 2.2*inch
+    # Ancho de cada columna de firma
+    fw = total_width / 3
     
     firma_data = [
-        # Fila 1: Espacio para firma (caja vacía con línea inferior)
-        ['', '', ''],
-        # Fila 2: Línea de firma
-        ['_' * 28, '_' * 28, '_' * 28],
-        # Fila 3: Títulos de rol
+        ['', '', ''],  # Espacio para firma
         [
-            Paragraph('<b>ELABORÓ</b>', firma_titulo_style),
-            Paragraph('<b>REVISÓ</b>', firma_titulo_style),
-            Paragraph('<b>REVISÓ</b>', firma_titulo_style),
+            Paragraph('<b>ELABORÓ</b>', firma_titulo),
+            Paragraph('<b>REVISÓ</b>', firma_titulo),
+            Paragraph('<b>REVISÓ</b>', firma_titulo),
         ],
-        # Fila 4: Espacio
         ['', '', ''],
-        # Fila 5: Descripción del cargo
         [
-            Paragraph('NOMBRE Y FIRMA DEL SERVIDOR  PÚBLICO', firma_cargo_style),
-            Paragraph('NOMBRE Y FIRMA DEL ENCARGADO DE<br/>LOS SERVICIOS MÉDICO-PSIQUIÁTRICOS', firma_cargo_style),
-            Paragraph('NOMBRE Y FIRMA DEL TITULAR DE LA DIRECCIÓN DEL<br/>CENTRO PENITENCIARIO Y DE REINSERCIÓN SOCIAL', firma_cargo_style),
+            Paragraph('NOMBRE Y FIRMA DEL SERVIDOR PÚBLICO', firma_cargo),
+            Paragraph('NOMBRE Y FIRMA DEL ENCARGADO DE<br/>LOS SERVICIOS MÉDICO-PSIQUIÁTRICOS', firma_cargo),
+            Paragraph('NOMBRE Y FIRMA DEL TITULAR DE LA DIRECCIÓN DEL<br/>CENTRO PENITENCIARIO Y DE REINSERCIÓN SOCIAL', firma_cargo),
         ],
     ]
     
-    firma_table = Table(firma_data, colWidths=[firma_col_width, firma_col_width, firma_col_width],
-                        rowHeights=[0.5*inch, 0.15*inch, 0.2*inch, 0.1*inch, 0.35*inch])
+    firma_table = Table(firma_data, colWidths=[fw, fw, fw],
+                        rowHeights=[0.5*inch, 0.18*inch, 0.08*inch, 0.35*inch])
     firma_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('VALIGN', (0, 4), (-1, 4), 'TOP'),  # Cargos alineados arriba
-        ('FONTSIZE', (0, 1), (-1, 1), 7),  # Líneas de firma
-        ('TEXTCOLOR', (0, 1), (-1, 1), colors.black),
-        # Bordes solo en la zona de firmas
-        ('BOX', (0, 0), (0, 1), 0.5, colors.black),
-        ('BOX', (1, 0), (1, 1), 0.5, colors.black),
-        ('BOX', (2, 0), (2, 1), 0.5, colors.black),
+        ('VALIGN', (0, 3), (-1, 3), 'TOP'),
+        # Cajas de firma con borde
+        ('BOX', (0, 0), (0, 0), 0.5, colors.black),
+        ('BOX', (1, 0), (1, 0), 0.5, colors.black),
+        ('BOX', (2, 0), (2, 0), 0.5, colors.black),
+        # Línea inferior de cada caja
+        ('LINEBELOW', (0, 0), (0, 0), 0.5, colors.black),
+        ('LINEBELOW', (1, 0), (1, 0), 0.5, colors.black),
+        ('LINEBELOW', (2, 0), (2, 0), 0.5, colors.black),
     ]))
     elements.append(firma_table)
     
-    # ========== CANVAS CON FONDO ==========
+    # ========== CANVAS ==========
     class RequisicionCanvas(canvas.Canvas):
         def __init__(self, *args, **kwargs):
             self.fondo_path = fondo_path
@@ -3880,31 +3800,20 @@ def generar_reporte_inventario_formato_oficial(productos_data, filtros=None):
         def _dibujar_fondo(self):
             if self.fondo_path and os.path.exists(self.fondo_path):
                 try:
-                    pw, ph = letter
-                    self.drawImage(
-                        str(self.fondo_path),
-                        0, 0,
-                        width=pw,
-                        height=ph,
-                        preserveAspectRatio=False,
-                        mask='auto'
-                    )
+                    self.drawImage(str(self.fondo_path), 0, 0, width=page_width, height=page_height,
+                                   preserveAspectRatio=False, mask='auto')
                 except Exception as e:
-                    logger.warning(f"No se pudo cargar imagen de fondo Requisición: {e}")
+                    logger.warning(f"No se pudo cargar fondo Requisición: {e}")
         
         def _agregar_pie_pagina(self):
-            pw, ph = letter
             self.saveState()
             self.setFont('Helvetica', 7)
             self.setFillColor(colors.gray)
-            # Fecha de generación a la izquierda
-            self.drawString(0.4*inch, 0.3*inch, f"Generado: {timezone.now().strftime('%d/%m/%Y %H:%M')}")
-            # Número de página a la derecha
-            self.drawRightString(pw - 0.4*inch, 0.3*inch, f"Página {self._page_number + 1}")
+            self.drawString(0.35*inch, 0.25*inch, f"Generado: {timezone.now().strftime('%d/%m/%Y %H:%M')}")
+            self.drawRightString(page_width - 0.35*inch, 0.25*inch, f"Página {self._page_number + 1}")
             self.restoreState()
     
     doc.build(elements, canvasmaker=RequisicionCanvas)
-    
     buffer.seek(0)
     logger.info(f"Reporte Requisición Inventario PDF generado - Items: {len(productos_data)}")
     return buffer
