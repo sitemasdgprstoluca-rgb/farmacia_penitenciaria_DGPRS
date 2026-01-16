@@ -8628,6 +8628,7 @@ def reporte_inventario(request):
     - formato: json (default), excel, pdf
     """
     try:
+        logger.info(f"reporte_inventario: params={dict(request.query_params)}, user={request.user}")
         if not request.user or not request.user.is_authenticated or not is_farmacia_or_admin(request.user):
             return Response({'error': 'Solo usuarios de farmacia o administradores pueden acceder a reportes'}, status=status.HTTP_403_FORBIDDEN)
         # SEGURIDAD: Determinar filtro de centro
@@ -8848,8 +8849,9 @@ def reporte_inventario(request):
         fecha_inicio = request.query_params.get('fecha_inicio', None)
         fecha_fin = request.query_params.get('fecha_fin', None)
         
-        # Formato PDF - NUEVO FORMATO OFICIAL Control Mensual de Almacén (A)
+        # Formato PDF - FORMATO REQUISICIÓN MENSUAL DE MEDICAMENTO
         if formato == 'pdf':
+            logger.info(f"Generando PDF inventario: centro={centro_nombre}, lotes={len(lotes_lista)}")
             from core.utils.pdf_reports import generar_reporte_inventario_formato_oficial
             from datetime import datetime
             from dateutil.relativedelta import relativedelta
@@ -8933,6 +8935,8 @@ def reporte_inventario(request):
                     'existencia_final': existencia_final,
                 })
             
+            logger.info(f"PDF inventario: {len(productos_data)} productos preparados")
+            
             # Filtros para el PDF
             filtros_pdf = {
                 'fecha_elaboracion': timezone.now().strftime('%d/%m/%Y'),
@@ -8942,10 +8946,17 @@ def reporte_inventario(request):
                 'total_productos': resumen['total_productos'],
             }
             
-            pdf_buffer = generar_reporte_inventario_formato_oficial(productos_data, filtros=filtros_pdf)
+            try:
+                pdf_buffer = generar_reporte_inventario_formato_oficial(productos_data, filtros=filtros_pdf)
+                logger.info(f"PDF inventario generado exitosamente: {len(pdf_buffer.getvalue())} bytes")
+            except Exception as pdf_error:
+                import traceback
+                logger.error(f"Error generando PDF inventario: {pdf_error}")
+                logger.error(f"Traceback PDF: {traceback.format_exc()}")
+                raise pdf_error
             
             response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
-            response['Content-Disposition'] = f"attachment; filename=Control_Inventario_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            response['Content-Disposition'] = f"attachment; filename=Requisicion_Inventario_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
             return response
         
         # Formato Excel - LOTES (con o sin consolidación según filtro)
