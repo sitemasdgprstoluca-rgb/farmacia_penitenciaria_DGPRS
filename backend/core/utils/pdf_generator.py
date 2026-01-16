@@ -254,68 +254,42 @@ def generar_hoja_recoleccion(requisicion):
     # El centro que aparece en el encabezado del documento
     centro_documento = requisicion.centro_origen or requisicion.centro_destino
     
-    # Agrupar detalles por producto para evitar duplicados
-    # Si el mismo producto aparece varias veces, sumar cantidades
-    productos_agrupados = {}
-    for detalle in requisicion.detalles.all():
+    # Procesar cada detalle de la requisición directamente
+    # Cada detalle tiene: producto, lote (opcional), cantidad_solicitada, cantidad_autorizada
+    for detalle in requisicion.detalles.all().select_related('producto', 'lote'):
         producto = detalle.producto
-        producto_id = producto.id
-        
-        if producto_id not in productos_agrupados:
-            productos_agrupados[producto_id] = {
-                'producto': producto,
-                'cantidad_solicitada': 0,
-                'cantidad_autorizada': 0,
-            }
-        
-        productos_agrupados[producto_id]['cantidad_solicitada'] += (detalle.cantidad_solicitada or 0)
-        if detalle.cantidad_autorizada:
-            productos_agrupados[producto_id]['cantidad_autorizada'] += detalle.cantidad_autorizada
-    
-    # Procesar productos agrupados
-    for producto_id, datos in productos_agrupados.items():
-        producto = datos['producto']
         clave = str(producto.clave or '')
         nombre = str(producto.descripcion or producto.nombre or '')
         presentacion = str(getattr(producto, 'presentacion', '') or getattr(producto, 'unidad_medida', '') or '')
         
-        # Buscar lotes del CENTRO que aparece en el documento (SANTIAGUITO, etc.)
-        lotes_centro = producto.lotes.filter(activo=True, cantidad_actual__gt=0)
-        if centro_documento:
-            lotes_centro = lotes_centro.filter(centro=centro_documento)
-        lotes_centro = lotes_centro.order_by('fecha_caducidad')
+        # Datos del lote desde el detalle de la requisición
+        lote = detalle.lote
+        lote_numero = ''
+        existencia = ''
         
-        cantidad_solicitada = str(datos['cantidad_solicitada']) if datos['cantidad_solicitada'] else ''
-        cantidad_autorizada = str(datos['cantidad_autorizada']) if datos['cantidad_autorizada'] else ''
+        if lote:
+            lote_numero = str(lote.numero_lote or '')
+            # Existencia actual del lote en el centro del documento
+            if centro_documento and lote.centro_id == centro_documento.id:
+                existencia = str(lote.cantidad_actual) if lote.cantidad_actual else '0'
+            elif not centro_documento:
+                existencia = str(lote.cantidad_actual) if lote.cantidad_actual else '0'
+            else:
+                # El lote no está en este centro, buscar existencia del centro
+                existencia = str(lote.cantidad_actual) if lote.cantidad_actual else '0'
         
-        if lotes_centro.exists():
-            # Mostrar una fila por cada lote del producto
-            first_row = True
-            for lote in lotes_centro:
-                lote_numero = str(lote.numero_lote or '')
-                existencia = str(lote.cantidad_actual)
-                
-                productos_data.append([
-                    Paragraph(clave, celda_center),
-                    Paragraph(nombre, celda_texto),
-                    Paragraph(presentacion, celda_texto),
-                    Paragraph(lote_numero, celda_center),
-                    Paragraph(existencia, celda_center),
-                    Paragraph(cantidad_solicitada if first_row else '', celda_center),
-                    Paragraph(cantidad_autorizada if first_row else '', celda_center),
-                ])
-                first_row = False
-        else:
-            # Sin lotes, mostrar fila vacía para lote/existencia
-            productos_data.append([
-                Paragraph(clave, celda_center),
-                Paragraph(nombre, celda_texto),
-                Paragraph(presentacion, celda_texto),
-                Paragraph('', celda_center),
-                Paragraph('', celda_center),
-                Paragraph(cantidad_solicitada, celda_center),
-                Paragraph(cantidad_autorizada, celda_center),
-            ])
+        cantidad_solicitada = str(detalle.cantidad_solicitada) if detalle.cantidad_solicitada else ''
+        cantidad_autorizada = str(detalle.cantidad_autorizada) if detalle.cantidad_autorizada else ''
+        
+        productos_data.append([
+            Paragraph(clave, celda_center),
+            Paragraph(nombre, celda_texto),
+            Paragraph(presentacion, celda_texto),
+            Paragraph(lote_numero, celda_center),
+            Paragraph(existencia, celda_center),
+            Paragraph(cantidad_solicitada, celda_center),
+            Paragraph(cantidad_autorizada, celda_center),
+        ])
     
     # Filas vacías para completar formato (mínimo 15 filas de datos)
     while len(productos_data) < 16:
