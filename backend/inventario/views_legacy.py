@@ -8627,6 +8627,9 @@ def reporte_inventario(request):
     - nivel_stock: alto, bajo, normal, sin_stock
     - formato: json (default), excel, pdf
     """
+    from django.db.models import Sum, Avg
+    from django.db.models.functions import Coalesce
+    
     try:
         logger.info(f"reporte_inventario: params={dict(request.query_params)}, user={request.user}")
         if not request.user or not request.user.is_authenticated or not is_farmacia_or_admin(request.user):
@@ -8690,7 +8693,6 @@ def reporte_inventario(request):
             lotes_activos = lotes_query.filter(cantidad_actual__gt=0).count()
             
             # Calcular precio promedio desde lotes (precio_unitario está en Lote, no en Producto)
-            from django.db.models import Avg
             precio_promedio = lotes_query.filter(cantidad_actual__gt=0).aggregate(avg=Avg('precio_unitario'))['avg'] or 0.0
 
             nivel = 'alto'
@@ -8855,8 +8857,6 @@ def reporte_inventario(request):
             from core.utils.pdf_reports import generar_reporte_inventario_formato_oficial
             from datetime import datetime
             from dateutil.relativedelta import relativedelta
-            from django.db.models import Sum
-            from django.db.models.functions import Coalesce
             
             # Preparar datos con información de movimientos si hay filtro de fechas
             productos_data = []
