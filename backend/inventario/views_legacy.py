@@ -9480,6 +9480,8 @@ def reporte_movimientos(request):
                 
                 if not detalles:
                     # Transacción sin detalles
+                    # ENTRADA: mostrar destino (donde entra), SALIDA: mostrar origen (de donde sale)
+                    centro = trans['centro_destino'] if trans['tipo'] == 'ENTRADA' else trans['centro_origen']
                     ws.append([
                         global_idx,
                         trans['referencia'],
@@ -9490,7 +9492,7 @@ def reporte_movimientos(request):
                         'Sin productos',
                         '-',
                         0,
-                        trans['centro_destino'] if trans['tipo'] == 'SALIDA' else trans['centro_origen'],
+                        centro,
                         trans.get('numero_expediente', '')
                     ])
                     for cell in ws[row_num]:
@@ -9508,8 +9510,10 @@ def reporte_movimientos(request):
                             clave = 'N/A'
                             nombre = producto_full
                         
-                        # Centro según tipo de movimiento
-                        centro = trans['centro_destino'] if trans['tipo'] == 'SALIDA' else trans['centro_origen']
+                        # Centro según tipo de movimiento:
+                        # ENTRADA: mostrar destino (donde entra el producto)
+                        # SALIDA: mostrar origen (de donde sale el producto)
+                        centro = trans['centro_destino'] if trans['tipo'] == 'ENTRADA' else trans['centro_origen']
                         
                         ws.append([
                             global_idx,
