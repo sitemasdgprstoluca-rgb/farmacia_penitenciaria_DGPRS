@@ -3560,15 +3560,26 @@ def generar_formato_c_dispensacion(dispensacion):
 
 
 # =============================================================================
-# REPORTE DE INVENTARIO - FORMATO REQUISICIÓN MENSUAL DE MEDICAMENTO
+# REPORTE DE INVENTARIO - FORMATO CONTROL MENSUAL DE ALMACÉN (A)
 # =============================================================================
 
 def generar_reporte_inventario_formato_oficial(productos_data, filtros=None):
     """
     Genera reporte PDF de inventario con formato oficial 
-    "Requisición mensual de Medicamento, Material Médico y Odontológico".
+    "Control mensual de almacén (A)" según instructivo oficial.
     
-    Formato exacto según imagen oficial.
+    Columnas:
+    - Clave (Insumo)
+    - Insumo-médico
+    - Presentación
+    - Fecha de Caducidad
+    - Existencias Anteriores
+    - Documento de Entrada (Folio)
+    - Entrada
+    - Salida
+    - Existencia
+    
+    Firmas: Elaboró, Revisó, Supervisó
     """
     buffer = BytesIO()
     page_width, page_height = letter
@@ -3577,9 +3588,9 @@ def generar_reporte_inventario_formato_oficial(productos_data, filtros=None):
         buffer,
         pagesize=letter,
         topMargin=1.1*inch,
-        bottomMargin=0.4*inch,
-        leftMargin=0.35*inch,
-        rightMargin=0.35*inch
+        bottomMargin=0.5*inch,
+        leftMargin=0.3*inch,
+        rightMargin=0.3*inch
     )
     
     elements = []
@@ -3589,37 +3600,42 @@ def generar_reporte_inventario_formato_oficial(productos_data, filtros=None):
     styles = getSampleStyleSheet()
     
     titulo_style = ParagraphStyle(
-        'TituloReq', parent=styles['Normal'],
-        fontSize=10, fontName='Helvetica-Bold',
-        alignment=TA_CENTER, textColor=COLOR_GUINDA, spaceAfter=6
+        'TituloControl', parent=styles['Normal'],
+        fontSize=11, fontName='Helvetica-Bold',
+        alignment=TA_CENTER, textColor=colors.black, spaceAfter=10
     )
     
     header_style = ParagraphStyle(
-        'HeaderReq', parent=styles['Normal'],
-        fontSize=7, fontName='Helvetica-Bold',
-        alignment=TA_CENTER, textColor=colors.black
+        'HeaderControl', parent=styles['Normal'],
+        fontSize=6, fontName='Helvetica-Bold',
+        alignment=TA_CENTER, textColor=colors.black, leading=7
     )
     
     celda_style = ParagraphStyle(
-        'CeldaReq', parent=styles['Normal'],
-        fontSize=7, leading=8, alignment=TA_LEFT
+        'CeldaControl', parent=styles['Normal'],
+        fontSize=6, leading=7, alignment=TA_LEFT
     )
     
     celda_center_style = ParagraphStyle(
-        'CeldaCenterReq', parent=styles['Normal'],
-        fontSize=7, leading=8, alignment=TA_CENTER
+        'CeldaCenterControl', parent=styles['Normal'],
+        fontSize=6, leading=7, alignment=TA_CENTER
+    )
+    
+    label_style = ParagraphStyle(
+        'LabelControl', parent=styles['Normal'],
+        fontSize=8, fontName='Helvetica-Bold', textColor=colors.black
     )
     
     # ========== TÍTULO ==========
-    titulo = Paragraph("<u>Requisición mensual de Medicamento, Material Médico y Odontológico</u>", titulo_style)
+    titulo = Paragraph("Control mensual de almacén (A)", titulo_style)
     elements.append(titulo)
-    elements.append(Spacer(1, 0.1*inch))
+    elements.append(Spacer(1, 0.08*inch))
     
     # ========== ENCABEZADO ==========
     filtros = filtros or {}
-    centro_nombre = filtros.get('centro', 'Centro Penitenciario y de Reinserción Social')
+    centro_nombre = filtros.get('centro', '')
     if not centro_nombre or centro_nombre == 'todos':
-        centro_nombre = 'Centro Penitenciario y de Reinserción Social'
+        centro_nombre = ''
     
     fecha_elaboracion = filtros.get('fecha_elaboracion', timezone.now().strftime('%d/%m/%Y'))
     if hasattr(fecha_elaboracion, 'strftime'):
@@ -3645,23 +3661,25 @@ def generar_reporte_inventario_formato_oficial(productos_data, filtros=None):
         periodo_texto = f"{meses[timezone.now().month]} {timezone.now().year}"
     
     # Ancho total disponible
-    total_width = page_width - 0.7*inch  # ~7.35 inches
+    total_width = page_width - 0.6*inch  # ~7.9 inches
     
-    # Tabla de encabezado - 2 filas
+    # Tabla de encabezado - 2 filas según formato oficial
     enc_data = [
-        [centro_nombre, '', ''],
-        ['Fecha:', fecha_elaboracion, f'Periodo correspondiente:              {periodo_texto}'],
+        [Paragraph('<b>Institución Penitenciaria:</b>', label_style), centro_nombre, '', ''],
+        [Paragraph('<b>Fecha de elaboración:</b>', label_style), fecha_elaboracion,
+         Paragraph('<b>Periodo:</b>', label_style), periodo_texto],
     ]
     
-    enc_table = Table(enc_data, colWidths=[0.6*inch, 1.2*inch, total_width - 1.8*inch])
+    enc_col_widths = [1.5*inch, 2.5*inch, 0.8*inch, total_width - 4.8*inch]
+    enc_table = Table(enc_data, colWidths=enc_col_widths)
     enc_table.setStyle(TableStyle([
-        ('SPAN', (0, 0), (2, 0)),
-        ('FONTNAME', (0, 0), (2, 0), 'Helvetica-Bold'),
+        ('SPAN', (1, 0), (3, 0)),  # Centro span
         ('FONTSIZE', (0, 0), (-1, -1), 8),
         ('BOX', (0, 0), (-1, -1), 0.75, colors.black),
         ('LINEBELOW', (0, 0), (-1, 0), 0.5, colors.black),
-        ('LINEAFTER', (0, 1), (0, 1), 0.5, colors.black),
+        ('LINEAFTER', (0, 0), (0, -1), 0.5, colors.black),
         ('LINEAFTER', (1, 1), (1, 1), 0.5, colors.black),
+        ('LINEAFTER', (2, 1), (2, 1), 0.5, colors.black),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 4),
         ('RIGHTPADDING', (0, 0), (-1, -1), 4),
@@ -3669,20 +3687,33 @@ def generar_reporte_inventario_formato_oficial(productos_data, filtros=None):
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
     elements.append(enc_table)
-    elements.append(Spacer(1, 0.02*inch))
+    elements.append(Spacer(1, 0.05*inch))
     
     # ========== TABLA DE PRODUCTOS ==========
-    # Anchos exactos para alinear con el encabezado
-    col_widths = [0.5*inch, 2.4*inch, 1.65*inch, 0.7*inch, 0.75*inch, 0.75*inch]
+    # 9 columnas según instructivo oficial
+    col_widths = [
+        0.55*inch,   # Clave (Insumo)
+        1.55*inch,   # Insumo-médico
+        1.1*inch,    # Presentación
+        0.65*inch,   # Fecha de Caducidad
+        0.65*inch,   # Existencias Anteriores
+        0.7*inch,    # Documento de Entrada (Folio)
+        0.55*inch,   # Entrada
+        0.55*inch,   # Salida
+        0.6*inch,    # Existencia
+    ]
     
-    # Encabezados con subrayado
+    # Encabezados según formato oficial
     header_row = [
-        Paragraph('<u><b>Clave</b></u>', header_style),
-        Paragraph('<u><b>Medicamento/Material</b></u>', header_style),
-        Paragraph('<u><b>Presentación</b></u>', header_style),
-        Paragraph('<u><b>Existencia</b></u>', header_style),
-        Paragraph('<u><b>Cantidad<br/>Solicitada</b></u>', header_style),
-        Paragraph('<u><b>Cantidad<br/>Aprobada</b></u>', header_style),
+        Paragraph('<b>Clave<br/>(Insumo)</b>', header_style),
+        Paragraph('<b>Insumo-médico</b>', header_style),
+        Paragraph('<b>Presentación</b>', header_style),
+        Paragraph('<b>Fecha de<br/>Caducidad</b>', header_style),
+        Paragraph('<b>Existencias<br/>Anteriores</b>', header_style),
+        Paragraph('<b>Documento de<br/>Entrada<br/>(Folio)</b>', header_style),
+        Paragraph('<b>Entrada</b>', header_style),
+        Paragraph('<b>Salida</b>', header_style),
+        Paragraph('<b>Existencia</b>', header_style),
     ]
     
     table_data = [header_row]
@@ -3691,53 +3722,75 @@ def generar_reporte_inventario_formato_oficial(productos_data, filtros=None):
         clave = str(item.get('clave', item.get('producto_clave', '')))
         nombre = str(item.get('producto', item.get('producto_nombre', item.get('descripcion', ''))))
         presentacion = str(item.get('presentacion', ''))
-        existencia = item.get('existencia_final', item.get('stock_actual', item.get('cantidad', '')))
-        cant_solicitada = item.get('cantidad_solicitada', '')
-        cant_aprobada = item.get('cantidad_aprobada', '')
+        
+        # Fecha de caducidad - buscar en lotes o usar campo directo
+        fecha_cad = item.get('fecha_caducidad', item.get('fecha_vencimiento', ''))
+        if hasattr(fecha_cad, 'strftime'):
+            fecha_cad = fecha_cad.strftime('%d/%m/%Y')
+        elif fecha_cad and isinstance(fecha_cad, str) and '-' in fecha_cad:
+            try:
+                fc = datetime.strptime(fecha_cad[:10], '%Y-%m-%d')
+                fecha_cad = fc.strftime('%d/%m/%Y')
+            except:
+                pass
+        
+        existencias_ant = item.get('existencias_anteriores', item.get('stock_anterior', ''))
+        doc_entrada = item.get('documento_entrada', item.get('folio_entrada', ''))
+        entrada = item.get('entrada', item.get('entradas', ''))
+        salida = item.get('salida', item.get('salidas', ''))
+        existencia = item.get('existencia', item.get('existencia_final', item.get('stock_actual', item.get('cantidad', ''))))
         
         table_data.append([
-            Paragraph(clave, celda_center_style),
+            Paragraph(str(clave), celda_center_style),
             Paragraph(nombre, celda_style),
             Paragraph(presentacion, celda_style),
+            Paragraph(str(fecha_cad) if fecha_cad else '', celda_center_style),
+            Paragraph(str(existencias_ant) if existencias_ant else '', celda_center_style),
+            Paragraph(str(doc_entrada) if doc_entrada else '', celda_center_style),
+            Paragraph(str(entrada) if entrada else '', celda_center_style),
+            Paragraph(str(salida) if salida else '', celda_center_style),
             Paragraph(str(existencia) if existencia else '', celda_center_style),
-            Paragraph(str(cant_solicitada) if cant_solicitada else '', celda_center_style),
-            Paragraph(str(cant_aprobada) if cant_aprobada else '', celda_center_style),
         ])
     
-    # Filas vacías para completar (mínimo 18)
-    while len(table_data) < 19:
-        table_data.append(['', '', '', '', '', ''])
+    # Filas vacías para completar (mínimo 20 filas de datos)
+    while len(table_data) < 21:
+        table_data.append(['', '', '', '', '', '', '', '', ''])
     
     # Altura de filas
-    row_heights = [0.32*inch] + [0.26*inch] * (len(table_data) - 1)
+    row_heights = [0.4*inch] + [0.22*inch] * (len(table_data) - 1)
     
     productos_table = Table(table_data, colWidths=col_widths, rowHeights=row_heights)
     productos_table.setStyle(TableStyle([
         # Encabezado
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 7),
+        ('FONTSIZE', (0, 0), (-1, 0), 6),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.95, 0.95, 0.95)),
         # Datos
-        ('FONTSIZE', (0, 1), (-1, -1), 7),
+        ('FONTSIZE', (0, 1), (-1, -1), 6),
         ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
         # Bordes
         ('BOX', (0, 0), (-1, -1), 0.75, colors.black),
         ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
         # Padding uniforme
-        ('LEFTPADDING', (0, 0), (-1, -1), 3),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ('LEFTPADDING', (0, 0), (-1, -1), 2),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
         ('TOPPADDING', (0, 0), (-1, -1), 1),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
     ]))
     elements.append(productos_table)
     
     # ========== FIRMAS ==========
-    elements.append(Spacer(1, 0.2*inch))
+    elements.append(Spacer(1, 0.15*inch))
     
     firma_titulo = ParagraphStyle(
         'FirmaTit', parent=styles['Normal'],
         fontSize=8, fontName='Helvetica-Bold', alignment=TA_CENTER
+    )
+    firma_subtitulo = ParagraphStyle(
+        'FirmaSub', parent=styles['Normal'],
+        fontSize=7, fontName='Helvetica-Bold', alignment=TA_CENTER
     )
     firma_cargo = ParagraphStyle(
         'FirmaCargo', parent=styles['Normal'],
@@ -3750,29 +3803,30 @@ def generar_reporte_inventario_formato_oficial(productos_data, filtros=None):
     firma_data = [
         ['', '', ''],  # Espacio para firma
         [
-            Paragraph('<b>ELABORÓ</b>', firma_titulo),
-            Paragraph('<b>REVISÓ</b>', firma_titulo),
-            Paragraph('<b>REVISÓ</b>', firma_titulo),
+            Paragraph('<b>Elaboró</b>', firma_titulo),
+            Paragraph('<b>Revisó</b>', firma_titulo),
+            Paragraph('<b>Supervisó</b>', firma_titulo),
+        ],
+        [
+            Paragraph('<b>(13)</b>', firma_subtitulo),
+            Paragraph('<b>(14)</b>', firma_subtitulo),
+            Paragraph('<b>(15)</b>', firma_subtitulo),
         ],
         ['', '', ''],
         [
-            Paragraph('NOMBRE Y FIRMA DEL SERVIDOR PÚBLICO', firma_cargo),
-            Paragraph('NOMBRE Y FIRMA DEL ENCARGADO DE<br/>LOS SERVICIOS MÉDICO-PSIQUIÁTRICOS', firma_cargo),
-            Paragraph('NOMBRE Y FIRMA DEL TITULAR DE LA DIRECCIÓN DEL<br/>CENTRO PENITENCIARIO Y DE REINSERCIÓN SOCIAL', firma_cargo),
+            Paragraph('Nombre y Firma del Servidor Público', firma_cargo),
+            Paragraph('Nombre y Firma del Encargado de<br/>los Servicios de Salud', firma_cargo),
+            Paragraph('Nombre y Firma del Titular del<br/>C.A. "&lt;C.P.R.S&gt;"', firma_cargo),
         ],
     ]
     
     firma_table = Table(firma_data, colWidths=[fw, fw, fw],
-                        rowHeights=[0.5*inch, 0.18*inch, 0.08*inch, 0.35*inch])
+                        rowHeights=[0.45*inch, 0.18*inch, 0.15*inch, 0.05*inch, 0.3*inch])
     firma_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('VALIGN', (0, 3), (-1, 3), 'TOP'),
-        # Cajas de firma con borde
-        ('BOX', (0, 0), (0, 0), 0.5, colors.black),
-        ('BOX', (1, 0), (1, 0), 0.5, colors.black),
-        ('BOX', (2, 0), (2, 0), 0.5, colors.black),
-        # Línea inferior de cada caja
+        ('VALIGN', (0, 4), (-1, 4), 'TOP'),
+        # Líneas de firma (debajo de las cajas)
         ('LINEBELOW', (0, 0), (0, 0), 0.5, colors.black),
         ('LINEBELOW', (1, 0), (1, 0), 0.5, colors.black),
         ('LINEBELOW', (2, 0), (2, 0), 0.5, colors.black),
@@ -3780,7 +3834,7 @@ def generar_reporte_inventario_formato_oficial(productos_data, filtros=None):
     elements.append(firma_table)
     
     # ========== CANVAS ==========
-    class RequisicionCanvas(canvas.Canvas):
+    class ControlAlmacenCanvas(canvas.Canvas):
         def __init__(self, *args, **kwargs):
             self.fondo_path = fondo_path
             self._page_number = 0
@@ -3803,19 +3857,19 @@ def generar_reporte_inventario_formato_oficial(productos_data, filtros=None):
                     self.drawImage(str(self.fondo_path), 0, 0, width=page_width, height=page_height,
                                    preserveAspectRatio=False, mask='auto')
                 except Exception as e:
-                    logger.warning(f"No se pudo cargar fondo Requisición: {e}")
+                    logger.warning(f"No se pudo cargar fondo Control Almacén: {e}")
         
         def _agregar_pie_pagina(self):
             self.saveState()
             self.setFont('Helvetica', 7)
             self.setFillColor(colors.gray)
-            self.drawString(0.35*inch, 0.25*inch, f"Generado: {timezone.now().strftime('%d/%m/%Y %H:%M')}")
-            self.drawRightString(page_width - 0.35*inch, 0.25*inch, f"Página {self._page_number + 1}")
+            self.drawString(0.3*inch, 0.25*inch, f"Generado: {timezone.now().strftime('%d/%m/%Y %H:%M')}")
+            self.drawRightString(page_width - 0.3*inch, 0.25*inch, f"Página {self._page_number + 1}")
             self.restoreState()
     
-    doc.build(elements, canvasmaker=RequisicionCanvas)
+    doc.build(elements, canvasmaker=ControlAlmacenCanvas)
     buffer.seek(0)
-    logger.info(f"Reporte Requisición Inventario PDF generado - Items: {len(productos_data)}")
+    logger.info(f"Reporte Control Almacén PDF generado - Items: {len(productos_data)}")
     return buffer
 
 
@@ -4145,96 +4199,59 @@ def generar_tarjeta_entradas_salidas_formato_b(movimientos_data, filtros=None, i
     Este formato genera UNA PÁGINA POR PRODUCTO, mostrando todos los movimientos
     de ese producto en el período seleccionado.
     
-    Instructivo Formato B:
-    1. Institución Penitenciaria - denominación oficial de la institución
-    2. Insumo médico - descripción del medicamento (principio activo)
-    3. Clave - clave del insumo según documento de entrada
-    4. Presentación - descripción del envase del insumo
-    5. Fecha de Caducidad - fecha de vencimiento del insumo
-    6. Fecha - día/mes/año del registro (dd/mm/aaaa)
-    7. Documento de entrada - número o referencia del documento de ingreso
-    8. Entrada (Cajas/Piezas) - cantidad que ingresa
-    9. Salida (Cajas) - cantidad que sale
-    10. Existencias (Cajas/Piezas) - balance de entradas menos salidas
-    11. Nombre y firma del personal del área médica que recibe el insumo
-    12. Revisó - nombre y firma del Encargado de los Servicios de Salud
-    
-    Args:
-        movimientos_data: Lista de diccionarios con movimientos agrupados por producto
-            Cada item tiene: producto_clave, producto_nombre, presentacion, fecha_caducidad,
-            movimientos[] (lista de {fecha, documento, entrada, salida, existencia})
-        filtros: Diccionario con filtros aplicados (fecha_inicio, fecha_fin, etc.)
-        institucion: Nombre de la institución penitenciaria
-    
-    Returns:
-        BytesIO: Buffer con el PDF generado en formato oficial
+    Formato exacto según instructivo oficial.
     """
     buffer = BytesIO()
-    
-    # Usar orientación vertical (portrait) según el formato oficial
     page_width, page_height = letter
+    
+    # Márgenes simétricos para centrar contenido
+    margin_h = 0.5*inch
+    content_width = page_width - 2*margin_h  # ~7.5 inches
     
     doc = SimpleDocTemplate(
         buffer,
         pagesize=letter,
-        topMargin=1.2*inch,  # Espacio para encabezado del fondo
-        bottomMargin=1.0*inch,  # Espacio para firmas
-        leftMargin=0.3*inch,
-        rightMargin=0.3*inch
+        topMargin=1.15*inch,
+        bottomMargin=0.6*inch,
+        leftMargin=margin_h,
+        rightMargin=margin_h
     )
     
     elements = []
-    
-    # Obtener fondo específico para Control Mensual (de forma segura)
     fondo_path = _obtener_fondo_control_mensual()
     
     # ========== ESTILOS ==========
     styles = getSampleStyleSheet()
     
     titulo_style = ParagraphStyle(
-        'TituloFormatoB',
-        parent=styles['Normal'],
-        fontSize=11,
-        fontName='Helvetica-Bold',
-        alignment=TA_CENTER,
-        textColor=COLOR_TEXTO,
-        spaceAfter=10
+        'TituloB', parent=styles['Normal'],
+        fontSize=11, fontName='Helvetica-Bold',
+        alignment=TA_CENTER, textColor=colors.black, spaceAfter=8
     )
     
     label_style = ParagraphStyle(
-        'LabelFormatoB',
-        parent=styles['Normal'],
-        fontSize=8,
-        fontName='Helvetica',
-        textColor=COLOR_TEXTO
+        'LabelB', parent=styles['Normal'],
+        fontSize=8, fontName='Helvetica-Bold', textColor=colors.black
     )
     
     value_style = ParagraphStyle(
-        'ValueFormatoB',
-        parent=styles['Normal'],
-        fontSize=8,
-        fontName='Helvetica'
+        'ValueB', parent=styles['Normal'],
+        fontSize=8, fontName='Helvetica', textColor=colors.black
+    )
+    
+    header_style = ParagraphStyle(
+        'HeaderB', parent=styles['Normal'],
+        fontSize=6, fontName='Helvetica-Bold',
+        alignment=TA_CENTER, textColor=colors.black, leading=7
     )
     
     celda_style = ParagraphStyle(
-        'CeldaFormatoB',
-        parent=styles['Normal'],
-        fontSize=6,
-        leading=7,
-        wordWrap='CJK'
+        'CeldaB', parent=styles['Normal'],
+        fontSize=6, leading=7, alignment=TA_CENTER
     )
     
-    celda_firma_style = ParagraphStyle(
-        'CeldaFirmaB',
-        parent=styles['Normal'],
-        fontSize=5,
-        leading=6,
-        wordWrap='CJK',
-        alignment=TA_CENTER
-    )
-    
-    # Nombre de institución
-    nombre_institucion = institucion or filtros.get('centro', 'Institución Penitenciaria') if filtros else 'Institución Penitenciaria'
+    # Institución
+    nombre_institucion = institucion or (filtros.get('centro', '') if filtros else '')
     
     # Procesar cada producto como una página separada
     for idx, producto in enumerate(movimientos_data):
@@ -4242,106 +4259,109 @@ def generar_tarjeta_entradas_salidas_formato_b(movimientos_data, filtros=None, i
             elements.append(PageBreak())
         
         # ========== TÍTULO ==========
-        titulo = Paragraph("Tarjeta de Entradas/Salidas de almacén (B)", titulo_style)
+        titulo = Paragraph("<b>Tarjeta de Entradas/Salidas de almacén (B)</b>", titulo_style)
         elements.append(titulo)
-        elements.append(Spacer(1, 0.1*inch))
+        elements.append(Spacer(1, 0.05*inch))
         
-        # ========== INFORMACIÓN DEL ENCABEZADO ==========
-        # (1) Institución Penitenciaria
-        info_row1 = Table([
-            [Paragraph("Institución Penitenciaria:", label_style), 
-             Paragraph(f"<b>{nombre_institucion}</b>", value_style)],
-        ], colWidths=[1.6*inch, 5.6*inch])
-        info_row1.setStyle(TableStyle([
-            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
-            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 4),
-            ('TOPPADDING', (0, 0), (-1, -1), 3),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-        ]))
-        elements.append(info_row1)
-        
-        # (2) Insumo médico | (3) Clave
-        insumo_nombre = producto.get('producto_nombre', producto.get('insumo', 'N/A'))
-        insumo_clave = producto.get('producto_clave', producto.get('clave', 'N/A'))
-        
-        info_row2 = Table([
-            [Paragraph("Insumo médico:", label_style), 
-             Paragraph(f"<b>{insumo_nombre}</b>", value_style),
-             Paragraph("Clave:", label_style),
-             Paragraph(f"<b>{insumo_clave}</b>", value_style)],
-        ], colWidths=[1.0*inch, 4.2*inch, 0.6*inch, 1.4*inch])
-        info_row2.setStyle(TableStyle([
-            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
-            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 4),
-            ('TOPPADDING', (0, 0), (-1, -1), 3),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-        ]))
-        elements.append(info_row2)
-        
-        # (4) Presentación | (5) Fecha de Caducidad
+        # ========== ENCABEZADO - 3 FILAS ==========
+        # Datos del producto
+        insumo_nombre = producto.get('producto_nombre', producto.get('insumo', ''))
+        insumo_clave = producto.get('producto_clave', producto.get('clave', ''))
         presentacion = producto.get('presentacion', '')
-        if not presentacion or presentacion == 'N/A':
-            presentacion = ''
-        
         fecha_cad = producto.get('fecha_caducidad', '')
         if hasattr(fecha_cad, 'strftime'):
             fecha_cad = fecha_cad.strftime('%d/%m/%Y')
-        elif fecha_cad:
-            fecha_cad = str(fecha_cad)
-        else:
-            fecha_cad = ''
         
-        info_row3 = Table([
-            [Paragraph("Presentación:", label_style), 
-             Paragraph(f"<b>{presentacion}</b>", value_style),
-             Paragraph("Fecha de<br/>Caducidad:", label_style),
-             Paragraph(f"<b>{fecha_cad}</b>", value_style)],
-        ], colWidths=[0.9*inch, 4.35*inch, 0.85*inch, 1.1*inch])
-        info_row3.setStyle(TableStyle([
+        # Fila 1: Institución Penitenciaria (ancho completo)
+        row1 = Table([
+            [Paragraph('<b>Institución Penitenciaria:</b>', label_style), nombre_institucion]
+        ], colWidths=[1.5*inch, content_width - 1.5*inch])
+        row1.setStyle(TableStyle([
             ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
-            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('LINEAFTER', (0, 0), (0, 0), 0.5, colors.black),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('LEFTPADDING', (0, 0), (-1, -1), 4),
             ('TOPPADDING', (0, 0), (-1, -1), 3),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
         ]))
-        elements.append(info_row3)
-        elements.append(Spacer(1, 0.08*inch))
+        elements.append(row1)
+        
+        # Fila 2: Insumo médico | Clave
+        row2 = Table([
+            [Paragraph('<b>Insumo médico:</b>', label_style), insumo_nombre,
+             Paragraph('<b>Clave:</b>', label_style), insumo_clave]
+        ], colWidths=[1.0*inch, content_width - 2.3*inch, 0.5*inch, 0.8*inch])
+        row2.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+            ('LINEAFTER', (0, 0), (0, 0), 0.5, colors.black),
+            ('LINEAFTER', (1, 0), (1, 0), 0.5, colors.black),
+            ('LINEAFTER', (2, 0), (2, 0), 0.5, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ]))
+        elements.append(row2)
+        
+        # Fila 3: Presentación | Fecha de Caducidad
+        row3 = Table([
+            [Paragraph('<b>Presentación:</b>', label_style), presentacion,
+             Paragraph('<b>Fecha de<br/>Caducidad:</b>', label_style), fecha_cad]
+        ], colWidths=[1.0*inch, content_width - 2.3*inch, 0.7*inch, 0.6*inch])
+        row3.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+            ('LINEAFTER', (0, 0), (0, 0), 0.5, colors.black),
+            ('LINEAFTER', (1, 0), (1, 0), 0.5, colors.black),
+            ('LINEAFTER', (2, 0), (2, 0), 0.5, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ]))
+        elements.append(row3)
+        elements.append(Spacer(1, 0.05*inch))
         
         # ========== TABLA DE MOVIMIENTOS ==========
-        # Encabezados exactos según formato oficial (imagen)
-        # Columnas: Fecha de entrada | Documento de entrada | Entrada (Cajas|Piezas) | Salida (Cajas) | Existencia (Cajas|Piezas) | Nombre y firma...
-        
-        # Primera fila de encabezado
-        header_row = [
-            Paragraph('<b>Fecha de<br/>entrada</b>', celda_style),          # (6)
-            Paragraph('<b>Documento de entrada</b>', celda_style),           # (7)
-            Paragraph('<b>Entrada</b>', celda_style),                        # (8) - spans 2 cols
-            '',
-            Paragraph('<b>Salida</b>', celda_style),                         # (9)
-            Paragraph('<b>Existencia</b>', celda_style),                     # (10) - spans 2 cols
-            '',
-            Paragraph('<b>Nombre y firma del personal del área médica que recibe el insumo</b>', celda_firma_style),  # (11)
+        # Anchos de columna calculados para usar todo el content_width
+        # Total: 7.5 inches
+        col_widths = [
+            0.6*inch,    # Fecha de entrada
+            0.85*inch,   # Documento de entrada
+            0.45*inch,   # Entrada - Cajas
+            0.45*inch,   # Entrada - Piezas
+            0.5*inch,    # Salida - Cajas
+            0.5*inch,    # Existencia - Cajas
+            0.5*inch,    # Existencia - Piezas
+            content_width - 3.85*inch,  # Nombre y firma (~3.65 inches)
         ]
         
-        # Subencabezado para Cajas/Piezas
-        subheader_row = [
-            '', '',
-            Paragraph('<b>Cajas</b>', celda_style),
-            Paragraph('<b>Piezas</b>', celda_style),
-            Paragraph('<b>Cajas</b>', celda_style),
-            Paragraph('<b>Cajas</b>', celda_style),
-            Paragraph('<b>Piezas</b>', celda_style),
+        # Fila 1: Encabezados principales
+        header1 = [
+            Paragraph('<b>Fecha de<br/>entrada</b>', header_style),
+            Paragraph('<b>Documento de<br/>entrada</b>', header_style),
+            Paragraph('<b>Entrada</b>', header_style),
+            '',
+            Paragraph('<b>Salida</b>', header_style),
+            Paragraph('<b>Existencia</b>', header_style),
+            '',
+            Paragraph('<b>Nombre y firma del personal del área médica que<br/>recibe el insumo</b>', header_style),
+        ]
+        
+        # Fila 2: Subencabezados (Cajas/Piezas)
+        header2 = [
+            '',
+            '',
+            Paragraph('<b>Cajas</b>', header_style),
+            Paragraph('<b>Piezas</b>', header_style),
+            Paragraph('<b>Cajas</b>', header_style),
+            Paragraph('<b>Cajas</b>', header_style),
+            Paragraph('<b>Piezas</b>', header_style),
             '',
         ]
         
-        mov_data = [header_row, subheader_row]
+        table_data = [header1, header2]
         
-        # Agregar movimientos del producto
+        # Agregar movimientos
         movimientos_lista = producto.get('movimientos', [])
         existencia_actual = producto.get('existencia_inicial', 0)
         
@@ -4354,135 +4374,128 @@ def generar_tarjeta_entradas_salidas_formato_b(movimientos_data, filtros=None, i
             entrada = mov.get('entrada', 0) or 0
             salida = mov.get('salida', 0) or 0
             
-            # Calcular existencia después del movimiento
             existencia_actual = existencia_actual + entrada - salida
             
-            mov_data.append([
-                str(fecha_mov),
-                Paragraph(str(documento)[:25], celda_style),
-                str(entrada) if entrada > 0 else '',
-                str(entrada) if entrada > 0 else '',  # Piezas = mismo valor
-                str(salida) if salida > 0 else '',
-                str(max(0, existencia_actual)),
-                str(max(0, existencia_actual)),  # Piezas = mismo valor
-                '',  # Firma (vacío para imprimir)
+            table_data.append([
+                Paragraph(str(fecha_mov), celda_style),
+                Paragraph(str(documento)[:20], celda_style),
+                Paragraph(str(entrada) if entrada > 0 else '', celda_style),
+                Paragraph(str(entrada) if entrada > 0 else '', celda_style),
+                Paragraph(str(salida) if salida > 0 else '', celda_style),
+                Paragraph(str(max(0, existencia_actual)), celda_style),
+                Paragraph(str(max(0, existencia_actual)), celda_style),
+                '',
             ])
         
-        # Agregar filas vacías para completar el formato (mínimo 25 filas visibles)
-        filas_minimas = 25
-        while len(mov_data) < filas_minimas + 2:  # +2 por encabezados
-            mov_data.append(['', '', '', '', '', '', '', ''])
+        # Filas vacías para completar (mínimo 22 filas de datos)
+        while len(table_data) < 24:
+            table_data.append(['', '', '', '', '', '', '', ''])
         
-        # Anchos de columna exactos según formato B - total ~7.2 inches
-        mov_col_widths = [0.6*inch, 0.95*inch, 0.45*inch, 0.45*inch, 0.45*inch, 0.45*inch, 0.45*inch, 2.4*inch]
+        # Alturas de fila
+        row_heights = [0.3*inch, 0.22*inch] + [0.22*inch] * (len(table_data) - 2)
         
-        mov_table = Table(mov_data, colWidths=mov_col_widths, repeatRows=2)
+        mov_table = Table(table_data, colWidths=col_widths, rowHeights=row_heights)
         mov_table.setStyle(TableStyle([
-            # Encabezados (filas 0 y 1) - sin color de fondo para coincidir con imagen
-            ('TEXTCOLOR', (0, 0), (-1, 1), colors.black),
+            # Encabezados
             ('FONTNAME', (0, 0), (-1, 1), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, 1), 6),
             ('ALIGN', (0, 0), (-1, 1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, 1), 'MIDDLE'),
-            # Span para encabezados combinados
-            ('SPAN', (0, 0), (0, 1)),  # Fecha
-            ('SPAN', (1, 0), (1, 1)),  # Documento
-            ('SPAN', (2, 0), (3, 0)),  # Entrada (Cajas/Piezas)
-            ('SPAN', (4, 0), (4, 1)),  # Salida
-            ('SPAN', (5, 0), (6, 0)),  # Existencia (Cajas/Piezas)
-            ('SPAN', (7, 0), (7, 1)),  # Firma
+            # Spans de encabezado
+            ('SPAN', (0, 0), (0, 1)),   # Fecha
+            ('SPAN', (1, 0), (1, 1)),   # Documento
+            ('SPAN', (2, 0), (3, 0)),   # Entrada
+            ('SPAN', (4, 0), (4, 1)),   # Salida
+            ('SPAN', (5, 0), (6, 0)),   # Existencia
+            ('SPAN', (7, 0), (7, 1)),   # Firma
             # Datos
-            ('FONTSIZE', (0, 2), (-1, -1), 7),
-            ('TEXTCOLOR', (0, 2), (-1, -1), colors.black),
-            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-            ('ALIGN', (2, 2), (6, -1), 'CENTER'),  # Centrar números
+            ('FONTSIZE', (0, 2), (-1, -1), 6),
             ('VALIGN', (0, 2), (-1, -1), 'MIDDLE'),
+            # Bordes
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+            # Padding
             ('LEFTPADDING', (0, 0), (-1, -1), 2),
             ('RIGHTPADDING', (0, 0), (-1, -1), 2),
-            ('TOPPADDING', (0, 0), (-1, -1), 2),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('TOPPADDING', (0, 0), (-1, -1), 1),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
         ]))
         elements.append(mov_table)
         
-        # ========== SECCIÓN DE FIRMA (12) Revisó ==========
-        elements.append(Spacer(1, 0.3*inch))
+        # ========== FIRMA ==========
+        elements.append(Spacer(1, 0.2*inch))
         
-        firma_label_style = ParagraphStyle(
-            'FirmaLabelB',
-            parent=styles['Normal'],
-            fontSize=8,
-            alignment=TA_CENTER,
-            textColor=colors.black
+        firma_titulo = ParagraphStyle(
+            'FirmaTitB', parent=styles['Normal'],
+            fontSize=8, fontName='Helvetica-Bold', alignment=TA_CENTER
         )
-        
-        firma_cargo_style = ParagraphStyle(
-            'FirmaCargoB',
-            parent=styles['Normal'],
-            fontSize=7,
-            alignment=TA_CENTER,
-            textColor=COLOR_GRIS
+        firma_sub = ParagraphStyle(
+            'FirmaSubB', parent=styles['Normal'],
+            fontSize=7, fontName='Helvetica', alignment=TA_CENTER, textColor=colors.gray
         )
-        
-        # Una sola firma centrada: Revisó
-        firma_box_height = 0.6*inch
+        firma_cargo = ParagraphStyle(
+            'FirmaCargoB', parent=styles['Normal'],
+            fontSize=7, fontName='Helvetica-Bold', alignment=TA_CENTER
+        )
         
         firma_data = [
-            [Table([[''], ['']], colWidths=[3.0*inch], rowHeights=[firma_box_height, 0.1*inch])],
-            [Paragraph('<b>Revisó</b>', firma_label_style)],
-            [Paragraph('(Nombre y Firma)', firma_cargo_style)],
-            [Paragraph('<b>Encargado de los Servicios de Salud</b>', firma_cargo_style)],
+            [''],  # Espacio para firma
+            [Paragraph('<b>Revisó</b>', firma_titulo)],
+            [Paragraph('(Nombre y Firma)', firma_sub)],
+            [Paragraph('<b>Encargado de los Servicios de Salud</b>', firma_cargo)],
         ]
         
-        # Aplicar estilos a la caja de firma
-        firma_data[0][0].setStyle(TableStyle([
-            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
-            ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
-        ]))
-        
-        firma_table = Table(firma_data, colWidths=[3.5*inch])
+        firma_table = Table(firma_data, colWidths=[2.5*inch],
+                           rowHeights=[0.5*inch, 0.18*inch, 0.15*inch, 0.18*inch])
         firma_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('TOPPADDING', (0, 0), (-1, -1), 3),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BOX', (0, 0), (0, 0), 0.5, colors.black),
+            ('LINEBELOW', (0, 0), (0, 0), 0.5, colors.black),
         ]))
         
-        # Centrar la firma
-        firma_container = Table([[firma_table]], colWidths=[7.4*inch])
+        # Centrar firma en la página
+        firma_container = Table([[firma_table]], colWidths=[content_width])
         firma_container.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ]))
         elements.append(firma_container)
     
-    # ========== CANVAS CON FONDO ESPECIAL ==========
-    class TarjetaFormatoBCanvas(canvas.Canvas):
+    # ========== CANVAS ==========
+    class TarjetaBCanvas(canvas.Canvas):
         def __init__(self, *args, **kwargs):
             self.fondo_path = fondo_path
+            self._page_number = 0
             canvas.Canvas.__init__(self, *args, **kwargs)
             self._dibujar_fondo()
         
         def showPage(self):
+            self._agregar_pie()
             canvas.Canvas.showPage(self)
+            self._page_number += 1
             self._dibujar_fondo()
+        
+        def save(self):
+            self._agregar_pie()
+            canvas.Canvas.save(self)
         
         def _dibujar_fondo(self):
             if self.fondo_path and os.path.exists(self.fondo_path):
                 try:
-                    pw, ph = letter
-                    self.drawImage(
-                        str(self.fondo_path),
-                        0, 0,
-                        width=pw,
-                        height=ph,
-                        preserveAspectRatio=False,
-                        mask='auto'
-                    )
+                    self.drawImage(str(self.fondo_path), 0, 0, width=page_width, height=page_height,
+                                   preserveAspectRatio=False, mask='auto')
                 except Exception as e:
-                    logger.warning(f"No se pudo cargar imagen de fondo Tarjeta Formato B: {e}")
+                    logger.warning(f"No se pudo cargar fondo Tarjeta B: {e}")
+        
+        def _agregar_pie(self):
+            self.saveState()
+            self.setFont('Helvetica', 7)
+            self.setFillColor(colors.gray)
+            self.drawString(margin_h, 0.3*inch, f"Generado: {timezone.now().strftime('%d/%m/%Y %H:%M')}")
+            self.drawRightString(page_width - margin_h, 0.3*inch, f"Página {self._page_number + 1}")
+            self.restoreState()
     
-    doc.build(elements, canvasmaker=TarjetaFormatoBCanvas)
-    
+    doc.build(elements, canvasmaker=TarjetaBCanvas)
     buffer.seek(0)
     logger.info(f"Tarjeta Entradas/Salidas Formato B PDF generado - Productos: {len(movimientos_data)}")
     return buffer
