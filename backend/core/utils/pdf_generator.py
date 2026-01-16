@@ -254,8 +254,27 @@ def generar_hoja_recoleccion(requisicion):
     # El centro que aparece en el encabezado del documento
     centro_documento = requisicion.centro_origen or requisicion.centro_destino
     
+    # Agrupar detalles por producto para evitar duplicados
+    # Si el mismo producto aparece varias veces, sumar cantidades
+    productos_agrupados = {}
     for detalle in requisicion.detalles.all():
         producto = detalle.producto
+        producto_id = producto.id
+        
+        if producto_id not in productos_agrupados:
+            productos_agrupados[producto_id] = {
+                'producto': producto,
+                'cantidad_solicitada': 0,
+                'cantidad_autorizada': 0,
+            }
+        
+        productos_agrupados[producto_id]['cantidad_solicitada'] += (detalle.cantidad_solicitada or 0)
+        if detalle.cantidad_autorizada:
+            productos_agrupados[producto_id]['cantidad_autorizada'] += detalle.cantidad_autorizada
+    
+    # Procesar productos agrupados
+    for producto_id, datos in productos_agrupados.items():
+        producto = datos['producto']
         clave = str(producto.clave or '')
         nombre = str(producto.descripcion or producto.nombre or '')
         presentacion = str(getattr(producto, 'presentacion', '') or getattr(producto, 'unidad_medida', '') or '')
@@ -266,11 +285,12 @@ def generar_hoja_recoleccion(requisicion):
             lotes_centro = lotes_centro.filter(centro=centro_documento)
         lotes_centro = lotes_centro.order_by('fecha_caducidad')
         
-        cantidad_solicitada = str(detalle.cantidad_solicitada or '')
-        cantidad_autorizada = str(detalle.cantidad_autorizada or '') if detalle.cantidad_autorizada else ''
+        cantidad_solicitada = str(datos['cantidad_solicitada']) if datos['cantidad_solicitada'] else ''
+        cantidad_autorizada = str(datos['cantidad_autorizada']) if datos['cantidad_autorizada'] else ''
         
         if lotes_centro.exists():
             # Mostrar una fila por cada lote del producto
+            first_row = True
             for lote in lotes_centro:
                 lote_numero = str(lote.numero_lote or '')
                 existencia = str(lote.cantidad_actual)
@@ -281,12 +301,10 @@ def generar_hoja_recoleccion(requisicion):
                     Paragraph(presentacion, celda_texto),
                     Paragraph(lote_numero, celda_center),
                     Paragraph(existencia, celda_center),
-                    Paragraph(cantidad_solicitada, celda_center),
-                    Paragraph(cantidad_autorizada, celda_center),
+                    Paragraph(cantidad_solicitada if first_row else '', celda_center),
+                    Paragraph(cantidad_autorizada if first_row else '', celda_center),
                 ])
-                # Solo mostrar cantidad solicitada/aprobada en primera fila del producto
-                cantidad_solicitada = ''
-                cantidad_autorizada = ''
+                first_row = False
         else:
             # Sin lotes, mostrar fila vacía para lote/existencia
             productos_data.append([

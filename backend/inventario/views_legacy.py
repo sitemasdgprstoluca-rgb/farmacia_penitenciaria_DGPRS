@@ -11932,7 +11932,19 @@ def exportar_control_mensual(request):
                 if mov.tipo.lower() == 'entrada':
                     entradas_lote += mov.cantidad
                     if not doc_entrada:
-                        doc_entrada = getattr(mov, 'folio_documento', '') or mov.motivo or ''
+                        # Obtener referencia del documento de forma compacta
+                        ref = mov.referencia or getattr(mov, 'folio_documento', '') or mov.motivo or ''
+                        # Acortar si es muy largo (REQ-REQ-XXXXX-XXX -> REQ-XXX)
+                        if ref.startswith('REQ-REQ-') and '-' in ref:
+                            partes = ref.split('-')
+                            if len(partes) >= 4:
+                                ref = f"REQ-{partes[-1]}"
+                        elif ref.startswith('ENTRADA_POR_'):
+                            # ENTRADA_POR_REQUISICION -> REQ
+                            ref = 'REQ'
+                        elif len(ref) > 12:
+                            ref = ref[:12]
+                        doc_entrada = ref
                 else:
                     salidas_lote += abs(mov.cantidad)
             
