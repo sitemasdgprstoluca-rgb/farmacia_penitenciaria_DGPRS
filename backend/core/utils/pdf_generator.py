@@ -226,15 +226,16 @@ def generar_hoja_recoleccion(requisicion):
     story.append(enc2)
     story.append(Spacer(1, 0.08*inch))
     
-    # ========== TABLA DE PRODUCTOS - 6 COLUMNAS ==========
+    # ========== TABLA DE PRODUCTOS - 7 COLUMNAS (con Lote) ==========
     # Proporciones exactas según plantilla oficial
     col_widths = [
-        content_width * 0.07,   # Clave (pequeña)
-        content_width * 0.32,   # Medicamento/Material (más ancha)
-        content_width * 0.22,   # Presentación
-        content_width * 0.11,   # Existencia
-        content_width * 0.14,   # Cantidad Solicitada
-        content_width * 0.14,   # Cantidad Aprobada
+        content_width * 0.06,   # Clave
+        content_width * 0.28,   # Medicamento/Material
+        content_width * 0.18,   # Presentación
+        content_width * 0.12,   # Lote
+        content_width * 0.10,   # Existencia
+        content_width * 0.13,   # Cantidad Solicitada
+        content_width * 0.13,   # Cantidad Aprobada
     ]
     
     # ENCABEZADO de tabla
@@ -242,6 +243,7 @@ def generar_hoja_recoleccion(requisicion):
         Paragraph('<b>Clave</b>', header_cell),
         Paragraph('<b>Medicamento/Material</b>', header_cell),
         Paragraph('<b>Presentación</b>', header_cell),
+        Paragraph('<b>Lote</b>', header_cell),
         Paragraph('<b>Existencia</b>', header_cell),
         Paragraph('<b>Cantidad<br/>Solicitada</b>', header_cell),
         Paragraph('<b>Cantidad<br/>Aprobada</b>', header_cell),
@@ -249,41 +251,57 @@ def generar_hoja_recoleccion(requisicion):
     
     productos_data = [header_row]
     
+    # El centro que aparece en el encabezado del documento
+    centro_documento = requisicion.centro_origen or requisicion.centro_destino
+    
     for detalle in requisicion.detalles.all():
         producto = detalle.producto
         clave = str(producto.clave or '')
         nombre = str(producto.descripcion or producto.nombre or '')
         presentacion = str(getattr(producto, 'presentacion', '') or getattr(producto, 'unidad_medida', '') or '')
         
-        # Existencia del centro destino (suma de todos los lotes)
-        existencia = ''
-        try:
-            centro_destino = requisicion.centro_destino
-            lotes_centro = producto.lotes.filter(activo=True, cantidad_actual__gt=0)
-            if centro_destino:
-                lotes_centro = lotes_centro.filter(centro=centro_destino)
-            total_stock = sum(l.cantidad_actual for l in lotes_centro)
-            if total_stock > 0:
-                existencia = str(total_stock)
-        except Exception:
-            pass
+        # Buscar lotes del CENTRO que aparece en el documento (SANTIAGUITO, etc.)
+        lotes_centro = producto.lotes.filter(activo=True, cantidad_actual__gt=0)
+        if centro_documento:
+            lotes_centro = lotes_centro.filter(centro=centro_documento)
+        lotes_centro = lotes_centro.order_by('fecha_caducidad')
         
         cantidad_solicitada = str(detalle.cantidad_solicitada or '')
         cantidad_autorizada = str(detalle.cantidad_autorizada or '') if detalle.cantidad_autorizada else ''
         
-        # USAR PARAGRAPH para que el texto se ajuste automáticamente
-        productos_data.append([
-            Paragraph(clave, celda_center),
-            Paragraph(nombre, celda_texto),
-            Paragraph(presentacion, celda_texto),
-            Paragraph(existencia, celda_center),
-            Paragraph(cantidad_solicitada, celda_center),
-            Paragraph(cantidad_autorizada, celda_center),
-        ])
+        if lotes_centro.exists():
+            # Mostrar una fila por cada lote del producto
+            for lote in lotes_centro:
+                lote_numero = str(lote.numero_lote or '')
+                existencia = str(lote.cantidad_actual)
+                
+                productos_data.append([
+                    Paragraph(clave, celda_center),
+                    Paragraph(nombre, celda_texto),
+                    Paragraph(presentacion, celda_texto),
+                    Paragraph(lote_numero, celda_center),
+                    Paragraph(existencia, celda_center),
+                    Paragraph(cantidad_solicitada, celda_center),
+                    Paragraph(cantidad_autorizada, celda_center),
+                ])
+                # Solo mostrar cantidad solicitada/aprobada en primera fila del producto
+                cantidad_solicitada = ''
+                cantidad_autorizada = ''
+        else:
+            # Sin lotes, mostrar fila vacía para lote/existencia
+            productos_data.append([
+                Paragraph(clave, celda_center),
+                Paragraph(nombre, celda_texto),
+                Paragraph(presentacion, celda_texto),
+                Paragraph('', celda_center),
+                Paragraph('', celda_center),
+                Paragraph(cantidad_solicitada, celda_center),
+                Paragraph(cantidad_autorizada, celda_center),
+            ])
     
     # Filas vacías para completar formato (mínimo 15 filas de datos)
     while len(productos_data) < 16:
-        productos_data.append(['', '', '', '', '', ''])
+        productos_data.append(['', '', '', '', '', '', ''])
     
     # Altura de filas: None = auto-ajuste según contenido
     productos_table = Table(productos_data, colWidths=col_widths, repeatRows=1)
