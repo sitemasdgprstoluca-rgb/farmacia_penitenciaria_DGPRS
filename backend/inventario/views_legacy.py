@@ -9498,8 +9498,7 @@ def reporte_movimientos(request):
                     row_num += 1
                     global_idx += 1
                 else:
-                    # Una fila por cada producto
-                    first_row = True
+                    # Una fila por cada producto - TODOS LOS DATOS EN CADA FILA
                     for det in detalles:
                         # Extraer clave y nombre del producto (formato: "CLAVE - NOMBRE")
                         producto_full = det.get('producto', 'N/A')
@@ -9509,36 +9508,37 @@ def reporte_movimientos(request):
                             clave = 'N/A'
                             nombre = producto_full
                         
+                        # Centro según tipo de movimiento
+                        centro = trans['centro_destino'] if trans['tipo'] == 'SALIDA' else trans['centro_origen']
+                        
                         ws.append([
-                            global_idx if first_row else '',
-                            trans['referencia'] if first_row else '',
-                            trans['fecha'] if first_row else '',
-                            trans['tipo'] if first_row else '',
-                            trans.get('subtipo_display', '') if first_row else '',
+                            global_idx,
+                            trans['referencia'],
+                            trans['fecha'],
+                            trans['tipo'],
+                            trans.get('subtipo_display', ''),
                             clave,
                             nombre[:40],
                             det.get('lote', 'N/A'),
                             det.get('cantidad', 0),
-                            trans['centro_destino'] if trans['tipo'] == 'SALIDA' else trans['centro_origen'] if first_row else '',
-                            det.get('numero_expediente', '') or (trans.get('numero_expediente', '') if first_row else '')
+                            centro,
+                            det.get('numero_expediente', '') or trans.get('numero_expediente', '')
                         ])
                         
                         # Colorear tipo
-                        if first_row:
-                            tipo_cell = ws.cell(row=row_num, column=4)
-                            if trans['tipo'].upper() == 'ENTRADA':
-                                tipo_cell.fill = PatternFill(start_color='D4EDDA', end_color='D4EDDA', fill_type='solid')
-                                tipo_cell.font = Font(color='155724', bold=True)
-                            else:
-                                tipo_cell.fill = PatternFill(start_color='F8D7DA', end_color='F8D7DA', fill_type='solid')
-                                tipo_cell.font = Font(color='721C24', bold=True)
+                        tipo_cell = ws.cell(row=row_num, column=4)
+                        if trans['tipo'].upper() == 'ENTRADA':
+                            tipo_cell.fill = PatternFill(start_color='D4EDDA', end_color='D4EDDA', fill_type='solid')
+                            tipo_cell.font = Font(color='155724', bold=True)
+                        else:
+                            tipo_cell.fill = PatternFill(start_color='F8D7DA', end_color='F8D7DA', fill_type='solid')
+                            tipo_cell.font = Font(color='721C24', bold=True)
                         
                         for cell in ws[row_num]:
                             cell.border = thin_border
                         
-                        first_row = False
                         row_num += 1
-                    global_idx += 1
+                        global_idx += 1
             
             # Ajustar anchos - 11 columnas
             column_widths = {'A': 5, 'B': 20, 'C': 16, 'D': 10, 'E': 15, 'F': 12, 'G': 35, 'H': 14, 'I': 10, 'J': 22, 'K': 14}
@@ -11935,40 +11935,39 @@ def exportar_control_mensual(request):
                 
             clave_producto = lote.producto.clave or f"ID-{lote.producto.id}"
             
-            # Calcular existencia al inicio del periodo para este lote
-            movs_antes = Movimiento.objects.filter(
-                lote=lote,
-                fecha__lt=fecha_inicio
-            ).aggregate(
-                total=Coalesce(Sum('cantidad'), 0)
-            )
-            existencia_anterior_lote = (lote.cantidad_inicial or 0) + (movs_antes['total'] or 0)
+            # ============================================================
+            # CÁLCULO CORRECTO PARA CONTROL MENSUAL DE ALMACÉN
+            # ============================================================
+            # El reporte muestra el estado del inventario durante UN MES:
+            # - Existencias Anteriores: Stock al INICIO del mes (día 1, 00:00)
+            # - Entradas: Movimientos de entrada DURANTE el mes
+            # - Salidas: Movimientos de salida DURANTE el mes  
+            # - Existencia: Stock al FINAL del mes
+            # ============================================================
             
-            # Obtener movimientos del periodo para este lote
+            # 1. Obtener movimientos del periodo (durante el mes)
             movimientos_periodo = Movimiento.objects.filter(
                 lote=lote,
                 fecha__gte=fecha_inicio,
                 fecha__lte=fecha_fin
             )
             
-            # Calcular entradas y salidas del periodo
+            # 2. Calcular entradas y salidas del MES
             entradas_lote = 0
             salidas_lote = 0
             doc_entrada = ''
             
             for mov in movimientos_periodo:
                 if mov.tipo.lower() == 'entrada':
-                    entradas_lote += mov.cantidad
+                    entradas_lote += abs(mov.cantidad)
                     if not doc_entrada:
                         # Obtener referencia del documento de forma compacta
                         ref = mov.referencia or getattr(mov, 'folio_documento', '') or mov.motivo or ''
-                        # Acortar si es muy largo (REQ-REQ-XXXXX-XXX -> REQ-XXX)
                         if ref.startswith('REQ-REQ-') and '-' in ref:
                             partes = ref.split('-')
                             if len(partes) >= 4:
                                 ref = f"REQ-{partes[-1]}"
                         elif ref.startswith('ENTRADA_POR_'):
-                            # ENTRADA_POR_REQUISICION -> REQ
                             ref = 'REQ'
                         elif len(ref) > 12:
                             ref = ref[:12]
@@ -11976,7 +11975,36 @@ def exportar_control_mensual(request):
                 else:
                     salidas_lote += abs(mov.cantidad)
             
-            existencia_final_lote = existencia_anterior_lote + entradas_lote - salidas_lote
+            # 3. Calcular existencia al FINAL del mes
+            # Si el mes ya terminó, reconstruir desde movimientos posteriores
+            # Si es el mes actual, usar cantidad_actual
+            hoy = timezone.now().date()
+            
+            if fecha_fin.date() < hoy:
+                # Mes pasado: reconstruir existencia al final del mes
+                # existencia_fin_mes = cantidad_actual - movimientos_despues_del_mes
+                movs_despues = Movimiento.objects.filter(
+                    lote=lote,
+                    fecha__gt=fecha_fin
+                )
+                ajuste_posterior = 0
+                for mov in movs_despues:
+                    if mov.tipo.lower() == 'entrada':
+                        ajuste_posterior += abs(mov.cantidad)
+                    else:
+                        ajuste_posterior -= abs(mov.cantidad)
+                existencia_final_lote = (lote.cantidad_actual or 0) - ajuste_posterior
+            else:
+                # Mes actual: cantidad_actual es la existencia final
+                existencia_final_lote = lote.cantidad_actual or 0
+            
+            # 4. Calcular existencia ANTERIOR (al inicio del mes)
+            # Fórmula: Existencia_Anterior = Existencia_Final - Entradas + Salidas
+            existencia_anterior_lote = existencia_final_lote - entradas_lote + salidas_lote
+            
+            # Evitar valores negativos (por datos inconsistentes)
+            existencia_anterior_lote = max(0, existencia_anterior_lote)
+            existencia_final_lote = max(0, existencia_final_lote)
             
             # Agrupar por clave de producto
             if clave_producto not in productos_agrupados:

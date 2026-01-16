@@ -254,29 +254,45 @@ def generar_hoja_recoleccion(requisicion):
     # El centro que aparece en el encabezado del documento
     centro_documento = requisicion.centro_origen or requisicion.centro_destino
     
+    # Pre-calcular existencias por producto en el centro del documento
+    # Suma de todos los lotes activos del producto en ese centro
+    from core.models import Lote
+    from django.db.models import Sum
+    
+    def calcular_existencia_producto_centro(producto_id, centro_id):
+        """Calcula la existencia total de un producto en un centro específico."""
+        if not centro_id:
+            return 0
+        filtros = {
+            'producto_id': producto_id,
+            'centro_id': centro_id,
+            'activo': True,
+            'cantidad_actual__gt': 0
+        }
+        resultado = Lote.objects.filter(**filtros).aggregate(total=Sum('cantidad_actual'))
+        return resultado['total'] or 0
+    
     # Procesar cada detalle de la requisición directamente
     # Cada detalle tiene: producto, lote (opcional), cantidad_solicitada, cantidad_autorizada
     for detalle in requisicion.detalles.all().select_related('producto', 'lote'):
         producto = detalle.producto
         clave = str(producto.clave or '')
-        nombre = str(producto.descripcion or producto.nombre or '')
+        # USAR NOMBRE DEL PRODUCTO, NO DESCRIPCIÓN
+        nombre = str(producto.nombre or '')
         presentacion = str(getattr(producto, 'presentacion', '') or getattr(producto, 'unidad_medida', '') or '')
         
         # Datos del lote desde el detalle de la requisición
         lote = detalle.lote
         lote_numero = ''
-        existencia = ''
         
         if lote:
             lote_numero = str(lote.numero_lote or '')
-            # Existencia actual del lote en el centro del documento
-            if centro_documento and lote.centro_id == centro_documento.id:
-                existencia = str(lote.cantidad_actual) if lote.cantidad_actual else '0'
-            elif not centro_documento:
-                existencia = str(lote.cantidad_actual) if lote.cantidad_actual else '0'
-            else:
-                # El lote no está en este centro, buscar existencia del centro
-                existencia = str(lote.cantidad_actual) if lote.cantidad_actual else '0'
+        
+        # EXISTENCIA: Stock total del PRODUCTO en el CENTRO del documento (no solo del lote)
+        existencia = ''
+        if centro_documento:
+            stock_centro = calcular_existencia_producto_centro(producto.id, centro_documento.id)
+            existencia = str(stock_centro)
         
         cantidad_solicitada = str(detalle.cantidad_solicitada) if detalle.cantidad_solicitada else ''
         cantidad_autorizada = str(detalle.cantidad_autorizada) if detalle.cantidad_autorizada else ''

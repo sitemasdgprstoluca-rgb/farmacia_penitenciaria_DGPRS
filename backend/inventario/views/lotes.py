@@ -800,69 +800,14 @@ class LoteViewSet(viewsets.ModelViewSet):
         para coincidir con la visualización del frontend.
 
         Columnas basadas estrictamente en formulario "Editar Lote" + Cantidad Actual.
+        SIN CONSOLIDACIÓN - Muestra cada lote individualmente.
         """
         try:
-            from collections import defaultdict
-            
             # Reutilizar el queryset que ya aplica todos los filtros
             lotes = self.get_queryset()
             
-            # ISS-FIX: Determinar si debemos consolidar
-            user = request.user
-            es_farmacia_admin = is_farmacia_or_admin(user)
-            
-            # Lógica de consolidación
-            if es_farmacia_admin:
-                lotes_map = defaultdict(lambda: {
-                    'lote_obj': None,            # Objeto lote representativo
-                    'cantidad_inicial': 0,
-                    'cantidad_actual': 0,
-                    'ubicaciones': set(),
-                    'activo': False,
-                    'found_main': False          # Flag para saber si ya encontramos el lote de farmacia central
-                })
-                
-                for lote in lotes:
-                    key = (lote.producto_id, lote.numero_lote)
-                    item = lotes_map[key]
-                    
-                    # LOGICA CORREGIDA: Cantidad Inicial NO se suma.
-                    # Se toma la del lote de Farmacia Central (origen) o el primero que se encuentre.
-                    es_farmacia_central = (lote.centro is None)
-                    
-                    if item['lote_obj'] is None:
-                        # Primer registro encontrado para este lote
-                        item['lote_obj'] = lote
-                        item['cantidad_inicial'] = lote.cantidad_inicial
-                        item['found_main'] = es_farmacia_central
-                    elif es_farmacia_central:
-                        # Encontramos el registro maestro (Farmacia Central), este tiene la verdad histórica
-                        item['lote_obj'] = lote
-                        item['cantidad_inicial'] = lote.cantidad_inicial
-                        item['found_main'] = True
-                    # Si ya tenemos un lote y este no es el principal, ignoramos su cantidad_inicial
-                    # para evitar sumar duplicados (transfrencias, etc).
-                    
-                    # La cantidad actual SI se suma (es el stock disperso total)
-                    item['cantidad_actual'] += lote.cantidad_actual
-                    
-                    item['ubicaciones'].add(lote.ubicacion or '')
-                    if lote.activo:
-                        item['activo'] = True
-                        
-                lista_exportar = []
-                for val in lotes_map.values():
-                    lote_base = val['lote_obj']
-                    lote_base.cantidad_inicial_total = val['cantidad_inicial']
-                    lote_base.cantidad_actual_total = val['cantidad_actual']
-                    lote_base.activo_consolidado = val['activo']
-                    lista_exportar.append(lote_base)
-            else:
-                lista_exportar = list(lotes)
-                for l in lista_exportar:
-                    l.cantidad_inicial_total = l.cantidad_inicial
-                    l.cantidad_actual_total = l.cantidad_actual
-                    l.activo_consolidado = l.activo
+            # SIN CONSOLIDACIÓN - Mostrar cada lote individualmente
+            lista_exportar = list(lotes)
 
             wb = openpyxl.Workbook()
             ws = wb.active
@@ -870,7 +815,7 @@ class LoteViewSet(viewsets.ModelViewSet):
 
             # Headers exactos
             headers = [
-                'Producto', 'Presentación', 'Código de Lote', 'Fecha de Caducidad',
+                'Clave', 'Producto', 'Presentación', 'Código de Lote', 'Fecha de Caducidad',
                 'Cantidad Inicial', 'Cantidad Actual', 'Precio Unitario', 'Fecha de Fabricación',
                 'Ubicación', 'Número de Contrato', 'Marca / Laboratorio', 'Lote activo'
             ]
@@ -885,20 +830,24 @@ class LoteViewSet(viewsets.ModelViewSet):
 
             for idx, lote in enumerate(lista_exportar, 1):
                 if lote.producto:
-                    nom_prod = f"{lote.producto.clave or ''} - {lote.producto.nombre}"
+                    clave = lote.producto.clave or ''
+                    nom_prod = lote.producto.nombre or lote.producto.descripcion or ''
                     presentacion = lote.producto.presentacion or ''
                 else:
+                    clave = ''
                     nom_prod = 'Producto Desconocido'
                     presentacion = ''
 
-                cant_inicial = getattr(lote, 'cantidad_inicial_total', lote.cantidad_inicial)
-                cant_actual = getattr(lote, 'cantidad_actual_total', lote.cantidad_actual)
-                activo_str = 'Sí' if getattr(lote, 'activo_consolidado', lote.activo) else 'No'
+                # Datos directos del lote (sin consolidar)
+                cant_inicial = lote.cantidad_inicial or 0
+                cant_actual = lote.cantidad_actual or 0
+                activo_str = 'Sí' if lote.activo else 'No'
                 
-                # Para reporte consolidado, forzamos Almacén Central
-                ubicacion_str = 'Almacén Central' if es_farmacia_admin else (lote.ubicacion or '')
+                # Ubicación real del lote
+                ubicacion_str = lote.centro.nombre if lote.centro else 'Almacén Central'
 
                 ws.append([
+                    clave,
                     nom_prod,
                     presentacion,
                     lote.numero_lote or '',
@@ -914,8 +863,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                 ])
 
             # Ajustar anchos de columna
-            # Prod(40), Pres(25), Lote(15), Cadu(15), Ini(15), Act(15), Prec(15), Fab(15), Ubi(20), Cont(20), Mar(20), Act(12)
-            column_widths = [40, 25, 15, 15, 15, 15, 15, 15, 20, 20, 20, 12]
+            column_widths = [10, 40, 25, 15, 15, 15, 15, 15, 15, 25, 20, 20, 12]
             for col_idx, width in enumerate(column_widths, 1):
                 ws.column_dimensions[get_column_letter(col_idx)].width = width
 
