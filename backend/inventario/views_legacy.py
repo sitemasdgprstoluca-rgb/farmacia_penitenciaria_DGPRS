@@ -8851,103 +8851,74 @@ def reporte_inventario(request):
         fecha_inicio = request.query_params.get('fecha_inicio', None)
         fecha_fin = request.query_params.get('fecha_fin', None)
         
-        # Formato PDF - FORMATO REQUISICIÓN MENSUAL DE MEDICAMENTO
+        # Formato PDF - REPORTE DE INVENTARIO AGRUPADO POR CLAVE
         if formato == 'pdf':
             logger.info(f"Generando PDF inventario: centro={centro_nombre}, lotes={len(lotes_lista)}")
-            from core.utils.pdf_reports import generar_reporte_inventario_formato_oficial
-            from datetime import datetime
-            from dateutil.relativedelta import relativedelta
+            from core.utils.pdf_reports import generar_reporte_inventario
+            from collections import defaultdict
             
-            # Preparar datos con información de movimientos si hay filtro de fechas
-            productos_data = []
-            
-            # Si hay filtro de fechas, calcular entradas/salidas del periodo
-            if fecha_inicio and fecha_fin:
-                try:
-                    fi = datetime.strptime(fecha_inicio, '%Y-%m-%d')
-                    ff = datetime.strptime(fecha_fin, '%Y-%m-%d')
-                    ff = ff.replace(hour=23, minute=59, second=59)
-                except:
-                    fi = None
-                    ff = None
-            else:
-                fi = None
-                ff = None
+            # =====================================================
+            # AGRUPAR POR CLAVE DE PRODUCTO (sumar todos los lotes)
+            # =====================================================
+            productos_agrupados = defaultdict(lambda: {
+                'clave': '',
+                'descripcion': '',
+                'presentacion': '',
+                'unidad': '',
+                'unidad_medida': '',
+                'stock_actual': 0,
+                'stock_minimo': 0,
+                'lotes_activos': 0,
+                'nivel': 'alto',
+                'nivel_stock': 'alto',
+            })
             
             for lote_cons in lotes_lista:
                 producto = lote_cons['producto']
-                lote_numero = lote_cons['numero_lote']
+                clave = producto.clave
+                stock = lote_cons['cantidad_total']
                 
-                # Valores por defecto
-                existencia_anterior = 0
-                entradas = 0
-                salidas = 0
-                documento_entrada = ''
+                if not productos_agrupados[clave]['clave']:
+                    productos_agrupados[clave]['clave'] = clave
+                    productos_agrupados[clave]['descripcion'] = producto.nombre or producto.descripcion or ''
+                    productos_agrupados[clave]['presentacion'] = producto.presentacion or '-'
+                    productos_agrupados[clave]['unidad'] = producto.unidad_medida or ''
+                    productos_agrupados[clave]['unidad_medida'] = producto.unidad_medida or ''
+                    productos_agrupados[clave]['stock_minimo'] = producto.stock_minimo or 0
                 
-                # Si hay filtro de fechas, calcular movimientos del período
-                if fi and ff:
-                    # Buscar el lote real para calcular movimientos
-                    from core.models import Lote
-                    lote_real = Lote.objects.filter(
-                        producto=producto,
-                        numero_lote=lote_numero
-                    ).first()
-                    
-                    if lote_real:
-                        # Existencia al inicio del periodo (cantidad inicial + movimientos antes del periodo)
-                        movs_antes = Movimiento.objects.filter(
-                            lote=lote_real,
-                            fecha__lt=fi
-                        ).aggregate(
-                            total=Coalesce(Sum('cantidad'), 0)
-                        )
-                        existencia_anterior = (lote_real.cantidad_inicial or 0) + (movs_antes['total'] or 0)
-                        
-                        # Movimientos del periodo
-                        movimientos_periodo = Movimiento.objects.filter(
-                            lote=lote_real,
-                            fecha__gte=fi,
-                            fecha__lte=ff
-                        )
-                        
-                        for mov in movimientos_periodo:
-                            if mov.tipo and mov.tipo.lower() == 'entrada':
-                                entradas += mov.cantidad
-                                if not documento_entrada:
-                                    documento_entrada = getattr(mov, 'folio_documento', '') or mov.motivo or ''
-                            else:
-                                salidas += abs(mov.cantidad)
-                else:
-                    # Sin filtro de fechas: usar stock actual como existencia final
-                    existencia_anterior = 0
-                
-                existencia_final = lote_cons['cantidad_total']
-                
-                productos_data.append({
-                    'clave': producto.clave,
-                    'producto': producto.nombre or producto.descripcion or '',
-                    'presentacion': producto.presentacion or '-',
-                    'fecha_caducidad': lote_cons['fecha_caducidad'],
-                    'existencia_anterior': existencia_anterior,
-                    'documento_entrada': documento_entrada[:50] if documento_entrada else '',
-                    'entradas': entradas,
-                    'salidas': salidas,
-                    'existencia_final': existencia_final,
-                })
+                productos_agrupados[clave]['stock_actual'] += stock
+                productos_agrupados[clave]['lotes_activos'] += 1
             
-            logger.info(f"PDF inventario: {len(productos_data)} productos preparados")
+            # Calcular nivel de stock para cada producto agrupado
+            productos_data = []
+            for clave in sorted(productos_agrupados.keys()):
+                prod = productos_agrupados[clave]
+                stock_total = prod['stock_actual']
+                stock_min = prod['stock_minimo']
+                
+                if stock_total == 0:
+                    nivel = 'sin_stock'
+                elif stock_total < stock_min:
+                    nivel = 'bajo'
+                elif stock_total < stock_min * 1.5:
+                    nivel = 'normal'
+                else:
+                    nivel = 'alto'
+                
+                prod['nivel'] = nivel
+                prod['nivel_stock'] = nivel
+                productos_data.append(prod)
+            
+            logger.info(f"PDF inventario: {len(productos_data)} productos agrupados (de {len(lotes_lista)} lotes)")
             
             # Filtros para el PDF
             filtros_pdf = {
-                'fecha_elaboracion': timezone.now().strftime('%d/%m/%Y'),
                 'centro': centro_nombre,
-                'fecha_inicio': fecha_inicio,
-                'fecha_fin': fecha_fin,
-                'total_productos': resumen['total_productos'],
+                'total_productos': len(productos_data),
             }
             
             try:
-                pdf_buffer = generar_reporte_inventario_formato_oficial(productos_data, filtros=filtros_pdf)
+                pdf_buffer = generar_reporte_inventario(productos_data, filtros=filtros_pdf)
                 logger.info(f"PDF inventario generado exitosamente: {len(pdf_buffer.getvalue())} bytes")
             except Exception as pdf_error:
                 import traceback
@@ -8956,7 +8927,7 @@ def reporte_inventario(request):
                 raise pdf_error
             
             response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
-            response['Content-Disposition'] = f"attachment; filename=Requisicion_Inventario_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            response['Content-Disposition'] = f"attachment; filename=Inventario_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
             return response
         
         # Formato Excel - LOTES (con o sin consolidación según filtro)
