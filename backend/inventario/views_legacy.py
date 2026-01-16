@@ -9058,7 +9058,10 @@ def reporte_inventario(request):
         return response
 
     except Exception as e:
-        # traceback removido por seguridad (ISS-008)
+        # Log detallado del error para diagnóstico
+        import traceback
+        logger.error(f"Error en reporte_inventario: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return Response({'error': 'Error al generar reporte', 'mensaje': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 @api_view(['GET'])
 def reporte_movimientos(request):

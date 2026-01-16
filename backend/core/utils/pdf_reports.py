@@ -142,6 +142,35 @@ def _obtener_fondo_seguro(colores_tema=None):
     return None
 
 
+def _obtener_fondo_control_mensual():
+    """
+    Obtiene la ruta correcta al fondo de Control Mensual de forma segura.
+    Funciona en desarrollo (static/) y producción (staticfiles/).
+    Retorna None si no existe el archivo (el PDF se generará sin fondo).
+    """
+    try:
+        # Rutas posibles para el fondo
+        rutas_posibles = [
+            Path(settings.BASE_DIR) / 'static' / 'img' / 'pdf' / 'fondo_control_mensual.png',
+            Path(settings.BASE_DIR) / 'staticfiles' / 'img' / 'pdf' / 'fondo_control_mensual.png',
+        ]
+        
+        # Añadir STATIC_ROOT si está configurado
+        if hasattr(settings, 'STATIC_ROOT') and settings.STATIC_ROOT:
+            rutas_posibles.append(Path(settings.STATIC_ROOT) / 'img' / 'pdf' / 'fondo_control_mensual.png')
+        
+        for ruta in rutas_posibles:
+            if ruta and ruta.exists():
+                logger.info(f"Fondo Control Mensual encontrado en: {ruta}")
+                return str(ruta)
+        
+        logger.warning(f"Fondo Control Mensual no encontrado. Rutas probadas: {rutas_posibles}")
+        return None
+    except Exception as e:
+        logger.warning(f"Error obteniendo fondo Control Mensual: {e}")
+        return None
+
+
 # En producción, si collectstatic está configurado, la imagen estará en staticfiles
 # Intentar primero en static/, luego en staticfiles/
 def obtener_ruta_fondo():
@@ -2956,8 +2985,8 @@ def generar_control_mensual_almacen(periodo_data, productos_data, centro_nombre=
     
     elements = []
     
-    # Obtener fondo específico para Control Mensual
-    fondo_path = str(FONDO_CONTROL_MENSUAL_PATH) if FONDO_CONTROL_MENSUAL_PATH.exists() else None
+    # Obtener fondo específico para Control Mensual (de forma segura)
+    fondo_path = _obtener_fondo_control_mensual()
     
     # ========== ESTILOS ==========
     styles = getSampleStyleSheet()
@@ -3582,8 +3611,8 @@ def generar_reporte_inventario_formato_oficial(productos_data, filtros=None):
     
     elements = []
     
-    # Obtener fondo específico para Control Mensual (mismo fondo)
-    fondo_path = str(FONDO_CONTROL_MENSUAL_PATH) if FONDO_CONTROL_MENSUAL_PATH.exists() else None
+    # Obtener fondo específico para Control Mensual (de forma segura)
+    fondo_path = _obtener_fondo_control_mensual()
     
     # ========== ESTILOS ==========
     styles = getSampleStyleSheet()
@@ -3930,8 +3959,8 @@ def generar_control_mensual_cprs(periodo_data, productos_data, centro_nombre=Non
     
     elements = []
     
-    # Obtener fondo específico para Control Mensual
-    fondo_path = str(FONDO_CONTROL_MENSUAL_PATH) if FONDO_CONTROL_MENSUAL_PATH.exists() else None
+    # Obtener fondo específico para Control Mensual (de forma segura)
+    fondo_path = _obtener_fondo_control_mensual()
     
     # ========== ESTILOS ==========
     styles = getSampleStyleSheet()
@@ -4241,8 +4270,8 @@ def generar_tarjeta_entradas_salidas_formato_b(movimientos_data, filtros=None, i
     
     elements = []
     
-    # Obtener fondo específico para Control Mensual (mismo fondo)
-    fondo_path = str(FONDO_CONTROL_MENSUAL_PATH) if FONDO_CONTROL_MENSUAL_PATH.exists() else None
+    # Obtener fondo específico para Control Mensual (de forma segura)
+    fondo_path = _obtener_fondo_control_mensual()
     
     # ========== ESTILOS ==========
     styles = getSampleStyleSheet()
