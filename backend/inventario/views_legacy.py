@@ -9313,6 +9313,7 @@ def reporte_movimientos(request):
                         'fecha_caducidad': fecha_cad,
                         'existencia_inicial': max(0, existencia_inicial),
                         'movimientos': [],
+                        'movimientos_temp': {},  # Para agrupar por documento+fecha
                         # Para ordenamiento
                         '_sort_key': f"{producto.clave or 'ZZZ'}_{producto.nombre or ''}"
                     }
@@ -9335,15 +9336,29 @@ def reporte_movimientos(request):
                     if len(partes) >= 2:
                         doc_ref = f"REQ-{partes[-1][-4:]}"  # Últimos 4 dígitos
                 
-                productos_movimientos[producto_key]['movimientos'].append({
-                    'fecha': mov.fecha,
-                    'documento': doc_ref,
-                    'entrada': cantidad if es_entrada else 0,
-                    'salida': cantidad if not es_entrada else 0,
-                })
+                # AGRUPAR movimientos del mismo documento + fecha
+                fecha_str = mov.fecha.strftime('%Y-%m-%d') if hasattr(mov.fecha, 'strftime') else str(mov.fecha)[:10]
+                grupo_key = f"{fecha_str}_{doc_ref}"
+                
+                movs_temp = productos_movimientos[producto_key]['movimientos_temp']
+                if grupo_key not in movs_temp:
+                    movs_temp[grupo_key] = {
+                        'fecha': mov.fecha,
+                        'documento': doc_ref,
+                        'entrada': 0,
+                        'salida': 0,
+                    }
+                
+                # Sumar cantidades al grupo
+                if es_entrada:
+                    movs_temp[grupo_key]['entrada'] += cantidad
+                else:
+                    movs_temp[grupo_key]['salida'] += cantidad
             
-            # Ordenar movimientos por fecha dentro de cada producto (cronológico ascendente)
+            # Convertir movimientos_temp a lista y ordenar por fecha
             for pk in productos_movimientos:
+                movs_temp = productos_movimientos[pk].pop('movimientos_temp', {})
+                productos_movimientos[pk]['movimientos'] = list(movs_temp.values())
                 productos_movimientos[pk]['movimientos'].sort(key=lambda x: x['fecha'])
             
             # Convertir a lista y ordenar por clave/nombre de producto

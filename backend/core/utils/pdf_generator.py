@@ -125,10 +125,10 @@ def generar_hoja_recoleccion(requisicion):
     buffer = BytesIO()
     page_width, page_height = letter
     
-    # Márgenes EXACTOS según plantilla
-    margin_left = 0.4*inch
-    margin_right = 0.4*inch
-    content_width = page_width - margin_left - margin_right  # ~7.7 inches
+    # Márgenes según plantilla oficial
+    margin_left = 0.5*inch
+    margin_right = 0.5*inch
+    content_width = page_width - margin_left - margin_right  # 7.5 inches
     
     from pathlib import Path
     from django.conf import settings
@@ -142,26 +142,26 @@ def generar_hoja_recoleccion(requisicion):
     doc = SimpleDocTemplate(
         buffer, 
         pagesize=letter,
-        topMargin=1.05*inch,
-        bottomMargin=0.3*inch,
+        topMargin=1.1*inch,
+        bottomMargin=0.4*inch,
         leftMargin=margin_left,
         rightMargin=margin_right
     )
     story = []
     styles = getSampleStyleSheet()
     
-    # ========== ESTILOS EXACTOS ==========
+    # ========== ESTILOS EXACTOS A PLANTILLA ==========
     titulo_style = ParagraphStyle(
         'TituloReq', parent=styles['Normal'],
-        fontSize=10, fontName='Helvetica-Bold',
-        alignment=TA_CENTER, textColor=colors.black, spaceAfter=8
+        fontSize=11, fontName='Helvetica-Bold',
+        alignment=TA_CENTER, textColor=colors.black, spaceAfter=10
     )
     
-    # Estilo para celdas - PERMITE AJUSTE DE TEXTO
+    # Estilo para celdas con texto ajustable (wordWrap)
     celda_texto = ParagraphStyle(
         'CeldaTexto', parent=styles['Normal'],
-        fontSize=7, fontName='Helvetica',
-        leading=8, alignment=TA_LEFT,
+        fontSize=6, fontName='Helvetica',
+        leading=7, alignment=TA_LEFT,
         wordWrap='CJK'
     )
     
@@ -180,7 +180,7 @@ def generar_hoja_recoleccion(requisicion):
     # ========== TÍTULO ==========
     titulo = Paragraph("Requisición mensual de Medicamento, Material Médico y Odontológico", titulo_style)
     story.append(titulo)
-    story.append(Spacer(1, 0.08*inch))
+    story.append(Spacer(1, 0.1*inch))
     
     # ========== ENCABEZADO - EXACTO A PLANTILLA ==========
     centro_obj = requisicion.centro_origen or requisicion.centro_destino
@@ -194,23 +194,25 @@ def generar_hoja_recoleccion(requisicion):
                  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
         periodo = f"{meses[requisicion.fecha_solicitud.month]} {requisicion.fecha_solicitud.year}"
     
-    # FILA 1: Centro (ancho completo)
-    enc_style = ParagraphStyle('EncStyle', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold')
-    enc1 = Table([[Paragraph(centro_nombre, enc_style)]], colWidths=[content_width], rowHeights=[0.22*inch])
+    # Estilos de encabezado
+    enc_bold = ParagraphStyle('EncBold', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold')
+    enc_label = ParagraphStyle('EncLabel', parent=styles['Normal'], fontSize=8, fontName='Helvetica')
+    
+    # FILA 1: Centro Penitenciario (ancho completo)
+    enc1 = Table([[Paragraph(centro_nombre, enc_bold)]], colWidths=[content_width], rowHeights=[0.25*inch])
     enc1.setStyle(TableStyle([
         ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
     ]))
     story.append(enc1)
     
-    # FILA 2: Fecha | Periodo correspondiente
-    label_style = ParagraphStyle('LabelStyle', parent=styles['Normal'], fontSize=8, fontName='Helvetica')
-    enc2_data = [
-        [Paragraph('Fecha:', label_style), fecha_solicitud, 
-         Paragraph('Periodo correspondiente:', label_style), periodo]
-    ]
-    enc2 = Table(enc2_data, colWidths=[0.45*inch, 1.0*inch, 1.4*inch, content_width - 2.85*inch], rowHeights=[0.22*inch])
+    # FILA 2: Fecha: | [valor] | Periodo correspondiente: | [valor]
+    enc2 = Table([
+        [Paragraph('Fecha:', enc_label), fecha_solicitud, 
+         Paragraph('Periodo correspondiente:', enc_label), periodo]
+    ], colWidths=[0.5*inch, content_width*0.25, 1.4*inch, content_width - 0.5*inch - content_width*0.25 - 1.4*inch], 
+       rowHeights=[0.22*inch])
     enc2.setStyle(TableStyle([
         ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
         ('LINEAFTER', (0, 0), (0, 0), 0.5, colors.black),
@@ -219,25 +221,21 @@ def generar_hoja_recoleccion(requisicion):
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('FONTSIZE', (1, 0), (1, 0), 8),
         ('FONTSIZE', (3, 0), (3, 0), 8),
-        ('LEFTPADDING', (0, 0), (-1, -1), 3),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
     ]))
     story.append(enc2)
-    story.append(Spacer(1, 0.06*inch))
+    story.append(Spacer(1, 0.08*inch))
     
-    # ========== TABLA DE PRODUCTOS - 6 COLUMNAS EXACTAS ==========
-    # Anchos EXACTOS según plantilla (proporciones visuales)
+    # ========== TABLA DE PRODUCTOS - 6 COLUMNAS ==========
+    # Proporciones exactas según plantilla oficial
     col_widths = [
-        0.45*inch,    # Clave
-        2.35*inch,    # Medicamento/Material
-        1.55*inch,    # Presentación
-        0.65*inch,    # Existencia
-        0.65*inch,    # Cantidad Solicitada
-        0.65*inch,    # Cantidad Aprobada
+        content_width * 0.07,   # Clave (pequeña)
+        content_width * 0.32,   # Medicamento/Material (más ancha)
+        content_width * 0.22,   # Presentación
+        content_width * 0.11,   # Existencia
+        content_width * 0.14,   # Cantidad Solicitada
+        content_width * 0.14,   # Cantidad Aprobada
     ]
-    # Ajustar al content_width
-    total_cols = sum(col_widths)
-    col_widths = [w * (content_width / total_cols) for w in col_widths]
     
     # ENCABEZADO de tabla
     header_row = [
@@ -257,7 +255,7 @@ def generar_hoja_recoleccion(requisicion):
         nombre = str(producto.descripcion or producto.nombre or '')
         presentacion = str(getattr(producto, 'presentacion', '') or getattr(producto, 'unidad_medida', '') or '')
         
-        # Existencia del centro destino
+        # Existencia del centro destino (suma de todos los lotes)
         existencia = ''
         try:
             centro_destino = requisicion.centro_destino
@@ -273,7 +271,7 @@ def generar_hoja_recoleccion(requisicion):
         cantidad_solicitada = str(detalle.cantidad_solicitada or '')
         cantidad_autorizada = str(detalle.cantidad_autorizada or '') if detalle.cantidad_autorizada else ''
         
-        # USAR PARAGRAPH PARA QUE EL TEXTO SE AJUSTE
+        # USAR PARAGRAPH para que el texto se ajuste automáticamente
         productos_data.append([
             Paragraph(clave, celda_center),
             Paragraph(nombre, celda_texto),
@@ -283,78 +281,75 @@ def generar_hoja_recoleccion(requisicion):
             Paragraph(cantidad_autorizada, celda_center),
         ])
     
-    # Filas vacías para completar (mínimo 18 filas de datos)
-    while len(productos_data) < 19:
+    # Filas vacías para completar formato (mínimo 15 filas de datos)
+    while len(productos_data) < 16:
         productos_data.append(['', '', '', '', '', ''])
     
-    # Altura de filas: header más alto, datos fijos
-    row_heights = [0.28*inch] + [0.24*inch] * (len(productos_data) - 1)
-    
-    productos_table = Table(productos_data, colWidths=col_widths, rowHeights=row_heights, repeatRows=1)
+    # Altura de filas: None = auto-ajuste según contenido
+    productos_table = Table(productos_data, colWidths=col_widths, repeatRows=1)
     productos_table.setStyle(TableStyle([
         # Header
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 7),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F5F5F5')),
         # Datos
-        ('FONTSIZE', (0, 1), (-1, -1), 7),
-        ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
+        ('FONTSIZE', (0, 1), (-1, -1), 6),
+        ('VALIGN', (0, 1), (-1, -1), 'TOP'),
         # Bordes
         ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
         ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
-        # Padding
+        # Padding mínimo para más espacio de texto
         ('LEFTPADDING', (0, 0), (-1, -1), 2),
         ('RIGHTPADDING', (0, 0), (-1, -1), 2),
-        ('TOPPADDING', (0, 0), (-1, -1), 1),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
     ]))
     story.append(productos_table)
     
-    # ========== SECCIÓN DE FIRMAS - EXACTA A PLANTILLA ==========
-    story.append(Spacer(1, 0.15*inch))
+    # ========== SECCIÓN DE FIRMAS - 3 CAJAS SEPARADAS ==========
+    story.append(Spacer(1, 0.2*inch))
     
     fw = content_width / 3  # Ancho de cada columna de firma
     
-    firma_titulo_style = ParagraphStyle('FTit', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', alignment=TA_CENTER)
-    firma_cargo_style = ParagraphStyle('FCargo', parent=styles['Normal'], fontSize=6, fontName='Helvetica', alignment=TA_CENTER, leading=7)
+    firma_titulo_style = ParagraphStyle('FTit', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold', alignment=TA_CENTER)
+    firma_cargo_style = ParagraphStyle('FCargo', parent=styles['Normal'], fontSize=6, fontName='Helvetica', alignment=TA_CENTER, leading=7, wordWrap='CJK')
     
-    # Tabla de firmas completa (como en la plantilla)
-    # Estructura: ELABORÓ | REVISÓ | REVISÓ en cajas separadas
-    # Luego espacio para firma
-    # Luego línea
-    # Luego cargo
+    # 3 CAJAS de firma separadas según plantilla oficial
+    # Cada caja: Título arriba, espacio para firma, línea, cargo debajo
     
-    firmas_data = [
-        # Fila 1: Títulos
-        [Paragraph('<b>ELABORÓ</b>', firma_titulo_style),
-         Paragraph('<b>REVISÓ</b>', firma_titulo_style),
-         Paragraph('<b>REVISÓ</b>', firma_titulo_style)],
-        # Fila 2-3: Espacio para firma
-        ['', '', ''],
-        ['', '', ''],
-        # Fila 4: Línea
-        ['_' * 32, '_' * 32, '_' * 32],
-        # Fila 5: Cargos
-        [Paragraph('NOMBRE Y FIRMA DEL SERVIDOR PÚBLICO', firma_cargo_style),
-         Paragraph('NOMBRE Y FIRMA DEL ENCARGADO DE<br/>LOS SERVICIOS MÉDICO-PSIQUIÁTRICOS', firma_cargo_style),
-         Paragraph('NOMBRE Y FIRMA DEL TITULAR DE LA<br/>DIRECCIÓN DEL<br/>CENTRO PENITENCIARIO Y DE REINSERCIÓN<br/>SOCIAL', firma_cargo_style)],
-    ]
+    # Crear las 3 cajas de firma
+    def crear_caja_firma(titulo, cargo_texto):
+        box_data = [
+            [Paragraph(f'<b>{titulo}</b>', firma_titulo_style)],
+            [''],  # Espacio para firma
+            [''],
+            ['_' * 28],
+            [Paragraph(cargo_texto, firma_cargo_style)],
+        ]
+        box_table = Table(box_data, colWidths=[fw - 0.1*inch], 
+                          rowHeights=[0.2*inch, 0.25*inch, 0.2*inch, 0.12*inch, 0.45*inch])
+        box_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+            ('VALIGN', (0, 1), (-1, 3), 'BOTTOM'),
+            ('VALIGN', (0, 4), (-1, 4), 'TOP'),
+            ('BOX', (0, 0), (0, 3), 0.5, colors.black),
+            ('FONTSIZE', (0, 3), (-1, 3), 7),
+        ]))
+        return box_table
     
-    firmas_table = Table(firmas_data, colWidths=[fw, fw, fw], 
-                         rowHeights=[0.2*inch, 0.3*inch, 0.25*inch, 0.12*inch, 0.5*inch])
-    firmas_table.setStyle(TableStyle([
+    firma1 = crear_caja_firma('ELABORÓ', 'NOMBRE Y FIRMA DEL SERVIDOR  PÚBLICO')
+    firma2 = crear_caja_firma('REVISÓ', 'NOMBRE Y FIRMA DEL ENCARGADO DE<br/>LOS SERVICIOS MÉDICO-PSIQUIÁTRICOS')
+    firma3 = crear_caja_firma('REVISÓ', 'NOMBRE Y FIRMA DEL TITULAR DE LA DIRECCIÓN  DEL<br/>CENTRO PENITENCIARIO  Y DE REINSERCIÓN  SOCIAL')
+    
+    firmas_container = Table([[firma1, firma2, firma3]], colWidths=[fw, fw, fw])
+    firmas_container.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
-        ('VALIGN', (0, 1), (-1, 3), 'BOTTOM'),
-        ('VALIGN', (0, 4), (-1, 4), 'TOP'),
-        # Bordes de las cajas - cada columna es una caja separada
-        ('BOX', (0, 0), (0, 3), 0.5, colors.black),
-        ('BOX', (1, 0), (1, 3), 0.5, colors.black),
-        ('BOX', (2, 0), (2, 3), 0.5, colors.black),
-        ('FONTSIZE', (0, 3), (-1, 3), 7),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
     ]))
-    story.append(firmas_table)
+    story.append(firmas_container)
     
     # ========== CONSTRUIR PDF ==========
     def make_canvas(*args, **kwargs):
