@@ -9272,7 +9272,7 @@ def reporte_movimientos(request):
         
         # Formato PDF - Usa formato oficial "Tarjeta de Entradas/Salidas de almacén (B)"
         if formato == 'pdf':
-            from core.utils.pdf_reports import generar_tarjeta_entradas_salidas_formato_b
+            from core.utils.pdf_reports import generar_tarjeta_entradas_salidas_formato_b_reporte
             
             # Preparar filtros para el reporte
             filtros_pdf = {
@@ -9399,7 +9399,7 @@ def reporte_movimientos(request):
             
             # Generar PDF con formato oficial B
             institucion = user_centro.nombre if (filtrar_por_centro and user_centro) else 'Farmacia Central'
-            pdf_buffer = generar_tarjeta_entradas_salidas_formato_b(
+            pdf_buffer = generar_tarjeta_entradas_salidas_formato_b_reporte(
                 productos_data, 
                 filtros=filtros_pdf,
                 institucion=institucion
