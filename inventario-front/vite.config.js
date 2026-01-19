@@ -30,7 +30,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 1200, // Productos.jsx es grande por sus features
     rollupOptions: {
       output: {
         manualChunks: {

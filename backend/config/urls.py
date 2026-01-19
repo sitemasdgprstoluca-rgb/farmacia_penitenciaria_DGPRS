@@ -2,10 +2,30 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import JsonResponse
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from core.health import health_check, readiness_check, liveness_check
 
+
+def api_root(request):
+    """Endpoint raíz con información de la API."""
+    return JsonResponse({
+        'name': 'Farmacia Penitenciaria API',
+        'version': '1.0.0',
+        'status': 'online',
+        'endpoints': {
+            'health': '/health/',
+            'api': '/api/',
+            'docs': '/api/docs/',
+            'schema': '/api/schema/',
+        }
+    })
+
+
 urlpatterns = [
+    # Raíz - Info de la API
+    path('', api_root, name='api-root'),
+    
     # Health checks (sin autenticación para load balancers)
     # Disponible en raíz Y bajo /api/ para compatibilidad con frontend
     path('health/', health_check, name='health'),
