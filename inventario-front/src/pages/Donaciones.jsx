@@ -181,6 +181,8 @@ const Donaciones = () => {
   const [entregasTotalPages, setEntregasTotalPages] = useState(1);
   const [searchEntregas, setSearchEntregas] = useState('');
   const [filtroCentroEntregas, setFiltroCentroEntregas] = useState(''); // Filtro por centro destino
+  const [filtroFechaDesdeEntregas, setFiltroFechaDesdeEntregas] = useState(''); // Filtro fecha desde
+  const [filtroFechaHastaEntregas, setFiltroFechaHastaEntregas] = useState(''); // Filtro fecha hasta
   
   // Vista agrupada de entregas (para salidas masivas)
   const [gruposExpandidos, setGruposExpandidos] = useState(new Set());
@@ -491,6 +493,8 @@ const Donaciones = () => {
       };
       if (searchEntregas) params.destinatario = searchEntregas;
       if (filtroCentroEntregas) params.centro_destino = filtroCentroEntregas;
+      if (filtroFechaDesdeEntregas) params.fecha_desde = filtroFechaDesdeEntregas;
+      if (filtroFechaHastaEntregas) params.fecha_hasta = filtroFechaHastaEntregas;
 
       const response = await salidasDonacionesAPI.getAll(params);
       const data = response.data;
@@ -508,7 +512,7 @@ const Donaciones = () => {
     } finally {
       setLoadingEntregas(false);
     }
-  }, [entregasPage, searchEntregas, filtroCentroEntregas]);
+  }, [entregasPage, searchEntregas, filtroCentroEntregas, filtroFechaDesdeEntregas, filtroFechaHastaEntregas]);
 
   // Exportar entregas a Excel
   const handleExportarEntregas = async () => {
@@ -517,6 +521,8 @@ const Donaciones = () => {
       const params = {};
       if (searchEntregas) params.destinatario = searchEntregas;
       if (filtroCentroEntregas) params.centro_destino = filtroCentroEntregas;
+      if (filtroFechaDesdeEntregas) params.fecha_desde = filtroFechaDesdeEntregas;
+      if (filtroFechaHastaEntregas) params.fecha_hasta = filtroFechaHastaEntregas;
       
       const response = await salidasDonacionesAPI.exportarExcel(params);
       
@@ -2562,16 +2568,18 @@ const Donaciones = () => {
       {/* ========== TAB: HISTORIAL DE ENTREGAS ========== */}
       {activeTab === 'entregas' && (
         <>
-          {/* Barra de búsqueda y acciones entregas */}
+          {/* Barra de filtros y acciones entregas */}
           <div className="bg-white rounded-xl shadow-sm border p-4 mb-6">
-            <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-              <div className="flex flex-col sm:flex-row gap-3 flex-1">
-                {/* Búsqueda */}
-                <div className="relative flex-1 max-w-md">
+            {/* Fila 1: Filtros principales */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
+              {/* Búsqueda */}
+              <div className="relative">
+                <label className="block text-xs font-medium text-gray-500 mb-1">Buscar</label>
+                <div className="relative">
                   <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input
                     type="text"
-                    placeholder="Buscar por destinatario..."
+                    placeholder="Destinatario..."
                     value={searchEntregas}
                     onChange={(e) => {
                       setSearchEntregas(e.target.value);
@@ -2580,26 +2588,76 @@ const Donaciones = () => {
                     className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
                   />
                 </div>
-                {/* Filtro por Centro */}
-                <div className="min-w-[200px]">
-                  <select
-                    value={filtroCentroEntregas}
-                    onChange={(e) => {
-                      setFiltroCentroEntregas(e.target.value);
-                      setEntregasPage(1);
-                    }}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary bg-white"
-                  >
-                    <option value="">Todos los centros</option>
-                    {centros.map(centro => (
-                      <option key={centro.id} value={centro.id}>
-                        {centro.nombre}
-                      </option>
-                    ))}
-                  </select>
-                </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              
+              {/* Filtro por Centro */}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Centro Destino</label>
+                <select
+                  value={filtroCentroEntregas}
+                  onChange={(e) => {
+                    setFiltroCentroEntregas(e.target.value);
+                    setEntregasPage(1);
+                  }}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary bg-white"
+                >
+                  <option value="">Todos los centros</option>
+                  {centros.map(centro => (
+                    <option key={centro.id} value={centro.id}>
+                      {centro.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              {/* Fecha Desde */}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Desde</label>
+                <input
+                  type="date"
+                  value={filtroFechaDesdeEntregas}
+                  onChange={(e) => {
+                    setFiltroFechaDesdeEntregas(e.target.value);
+                    setEntregasPage(1);
+                  }}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary bg-white"
+                />
+              </div>
+              
+              {/* Fecha Hasta */}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Hasta</label>
+                <input
+                  type="date"
+                  value={filtroFechaHastaEntregas}
+                  onChange={(e) => {
+                    setFiltroFechaHastaEntregas(e.target.value);
+                    setEntregasPage(1);
+                  }}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary bg-white"
+                />
+              </div>
+              
+              {/* Botón Limpiar Filtros */}
+              <div className="flex items-end">
+                <button
+                  onClick={() => {
+                    setSearchEntregas('');
+                    setFiltroCentroEntregas('');
+                    setFiltroFechaDesdeEntregas('');
+                    setFiltroFechaHastaEntregas('');
+                    setEntregasPage(1);
+                  }}
+                  className="w-full px-3 py-2 text-gray-600 border rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+                >
+                  <FaTimes className="text-sm" />
+                  Limpiar
+                </button>
+              </div>
+            </div>
+            
+            {/* Fila 2: Botones de acción */}
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t">
                 {/* Botón Actualizar */}
                 <button
                   onClick={() => cargarTodasEntregas()}
@@ -2621,8 +2679,6 @@ const Donaciones = () => {
                   )}
                   Exportar
                 </button>
-                
-                {/* NOTA: Importación de entregas removida - solo exportar para verificar movimientos */}
               </div>
             </div>
           </div>
