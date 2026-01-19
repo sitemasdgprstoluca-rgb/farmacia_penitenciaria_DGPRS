@@ -1712,6 +1712,12 @@ export const inventarioCajaChicaAPI = {
   
   // Resumen
   resumen: (params) => apiClient.get('/inventario-caja-chica/resumen/', { params }),
+  
+  // Exportar a Excel
+  exportar: (params) => apiClient.get('/inventario-caja-chica/exportar/', { 
+    params, 
+    responseType: 'blob' 
+  }),
 };
 
 // Movimientos de Inventario de Caja Chica (solo lectura para historial)

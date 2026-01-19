@@ -4706,7 +4706,7 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
     def exportar_excel(self, request):
         """
         Exporta las entregas de donaciones a Excel con formato profesional.
-        Respeta los filtros aplicados en la consulta.
+        Respeta los filtros aplicados en la consulta (centro_destino, destinatario, fechas).
         """
         import openpyxl
         from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -4716,32 +4716,42 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
         try:
             entregas = self.get_queryset()
             
+            # Obtener el centro filtrado para el título (si aplica)
+            centro_filtro = self.request.query_params.get('centro_destino')
+            centro_nombre = "Todos los Centros"
+            if centro_filtro:
+                try:
+                    centro = Centro.objects.get(pk=centro_filtro)
+                    centro_nombre = centro.nombre
+                except Centro.DoesNotExist:
+                    pass
+            
             # Crear libro de Excel
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = 'Entregas Donaciones'
             
             # Título del reporte
-            ws.merge_cells('A1:H1')
+            ws.merge_cells('A1:J1')
             titulo_cell = ws['A1']
             titulo_cell.value = 'REPORTE DE ENTREGAS DE DONACIONES'
             titulo_cell.font = Font(bold=True, size=14, color='632842')
             titulo_cell.alignment = Alignment(horizontal='center', vertical='center')
             
-            # Fecha de generación
-            ws.merge_cells('A2:H2')
-            fecha_cell = ws['A2']
-            fecha_cell.value = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")}'
-            fecha_cell.font = Font(size=10, italic=True)
-            fecha_cell.alignment = Alignment(horizontal='center')
+            # Centro y fecha de generación
+            ws.merge_cells('A2:J2')
+            subtitulo_cell = ws['A2']
+            subtitulo_cell.value = f'Centro: {centro_nombre} | Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")}'
+            subtitulo_cell.font = Font(size=10, italic=True)
+            subtitulo_cell.alignment = Alignment(horizontal='center')
             
             # Espacio
             ws.append([])
             
-            # Encabezados
+            # Encabezados con Centro Destino
             headers = [
-                '#', 'Fecha Entrega', 'Producto', 'Clave Producto',
-                'Cantidad', 'Destinatario', 'Motivo', 'Entregado Por', 'Donación'
+                '#', 'Fecha Entrega', 'Centro Destino', 'Producto', 'Clave Producto',
+                'Cantidad', 'Destinatario', 'Estado', 'Entregado Por', 'Donación'
             ]
             ws.append(headers)
             
@@ -4776,14 +4786,21 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
                 
                 fecha_str = entrega.fecha_entrega.strftime('%d/%m/%Y %H:%M') if entrega.fecha_entrega else ''
                 
+                # Centro destino
+                centro_destino_nombre = entrega.centro_destino.nombre if entrega.centro_destino else entrega.destinatario or '-'
+                
+                # Estado de entrega
+                estado = 'Entregado' if entrega.finalizado else 'Pendiente'
+                
                 ws.append([
                     idx,
                     fecha_str,
+                    centro_destino_nombre,
                     producto_nombre,
                     producto_clave,
                     entrega.cantidad,
                     entrega.destinatario,
-                    entrega.motivo or '',
+                    estado,
                     entregado_por_nombre,
                     donacion_numero
                 ])
@@ -4796,13 +4813,14 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
             # Ajustar anchos de columna
             ws.column_dimensions['A'].width = 6
             ws.column_dimensions['B'].width = 18
-            ws.column_dimensions['C'].width = 40
-            ws.column_dimensions['D'].width = 15
-            ws.column_dimensions['E'].width = 10
-            ws.column_dimensions['F'].width = 30
+            ws.column_dimensions['C'].width = 35  # Centro Destino
+            ws.column_dimensions['D'].width = 40
+            ws.column_dimensions['E'].width = 15
+            ws.column_dimensions['F'].width = 10
             ws.column_dimensions['G'].width = 30
-            ws.column_dimensions['H'].width = 25
-            ws.column_dimensions['I'].width = 15
+            ws.column_dimensions['H'].width = 12  # Estado
+            ws.column_dimensions['I'].width = 25
+            ws.column_dimensions['J'].width = 15
             
             # Agregar bordes
             thin_border = Border(
@@ -4812,7 +4830,7 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
                 bottom=Side(style='thin')
             )
             
-            for row in ws.iter_rows(min_row=4, max_row=ws.max_row, min_col=1, max_col=9):
+            for row in ws.iter_rows(min_row=4, max_row=ws.max_row, min_col=1, max_col=10):
                 for cell in row:
                     cell.border = thin_border
             
@@ -4820,7 +4838,13 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
             response = HttpResponse(
                 content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             )
-            filename = f'entregas_donaciones_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+            
+            # Nombre del archivo con centro si está filtrado
+            if centro_filtro:
+                centro_slug = centro_nombre[:20].replace(' ', '_')
+                filename = f'entregas_donaciones_{centro_slug}_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+            else:
+                filename = f'entregas_donaciones_todos_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
             response['Content-Disposition'] = f'attachment; filename="{filename}"'
             
             wb.save(response)
@@ -7225,12 +7249,12 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                 # Para calcular existencia_anterior, restamos los movimientos del periodo actual
                 # del stock actual
                 
-                # Obtener movimientos del periodo actual
+                # Obtener movimientos del periodo actual (con requisición relacionada)
                 movimientos_periodo = Movimiento.objects.filter(
                     lote=lote,
                     fecha__gte=fecha_inicio,
                     fecha__lte=fecha_fin
-                )
+                ).select_related('requisicion')
                 
                 # Calcular entradas y salidas del periodo
                 entradas = 0
@@ -7240,8 +7264,23 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                 for mov in movimientos_periodo:
                     if mov.tipo and mov.tipo.lower() == 'entrada':
                         entradas += mov.cantidad
-                        if not doc_entrada:
-                            doc_entrada = getattr(mov, 'folio_documento', '') or mov.motivo or ''
+                        # Obtener número de requisición directamente
+                        if not doc_entrada and mov.requisicion:
+                            # Formato: REQ-20260116-6914 -> abreviar a fecha-num
+                            req_num = mov.requisicion.numero
+                            # Extraer solo la parte de fecha y número (quitar prefijo REQ-)
+                            if req_num.startswith('REQ-'):
+                                doc_entrada = req_num[4:]  # Ej: "20260116-6914"
+                            else:
+                                doc_entrada = req_num
+                        elif not doc_entrada:
+                            # Fallback: extraer de referencia o motivo
+                            ref = mov.referencia or mov.motivo or ''
+                            # Buscar patrón REQ-YYYYMMDD-XXXX
+                            import re
+                            match = re.search(r'REQ-(\d{8}-\d+)', ref)
+                            if match:
+                                doc_entrada = match.group(1)  # Solo la parte numérica
                     else:
                         salidas += abs(mov.cantidad)
                 
@@ -7254,26 +7293,14 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                 
                 # Solo incluir si hay movimientos o stock
                 if existencia_anterior > 0 or entradas > 0 or salidas > 0 or existencia_final > 0:
-                    # Formatear documento de entrada de forma legible
-                    doc_entrada_fmt = doc_entrada
-                    if doc_entrada:
-                        # Abreviar tipos comunes de documentos
-                        doc_entrada_fmt = doc_entrada.replace('ENTRADA_POR_REQUISICION', 'REQ')
-                        doc_entrada_fmt = doc_entrada_fmt.replace('ENTRADA_POR_REQ', 'REQ')
-                        doc_entrada_fmt = doc_entrada_fmt.replace('RECEPCION_REQUISICION', 'REQ')
-                        doc_entrada_fmt = doc_entrada_fmt.replace('_', ' ')
-                        # Limitar a 20 caracteres para que quepa en la celda
-                        if len(doc_entrada_fmt) > 20:
-                            doc_entrada_fmt = doc_entrada_fmt[:18] + '..'
-                    
                     productos_data.append({
                         'producto_clave': lote.producto.clave if lote.producto else 'N/A',
                         'producto_nombre': lote.producto.nombre if lote.producto else 'N/A',
-                        'numero_lote': lote.numero_lote or '',  # Agregar número de lote
+                        'numero_lote': lote.numero_lote or '',
                         'presentacion': lote.producto.presentacion if lote.producto else 'N/A',
                         'fecha_caducidad': lote.fecha_caducidad,
                         'existencia_anterior': existencia_anterior,
-                        'documento_entrada': doc_entrada_fmt,
+                        'documento_entrada': doc_entrada,  # Ahora es el número de requisición limpio
                         'entradas': entradas,
                         'salidas': salidas,
                         'existencia_final': existencia_final,
@@ -8271,6 +8298,114 @@ class InventarioCajaChicaViewSet(viewsets.ModelViewSet):
         }
         
         return Response(resumen)
+    
+    @action(detail=False, methods=['get'])
+    def exportar(self, request):
+        """Exporta el inventario de caja chica a Excel para análisis y comparaciones"""
+        import openpyxl
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from openpyxl.utils import get_column_letter
+        from io import BytesIO
+        
+        queryset = self.get_queryset().select_related('centro', 'producto', 'compra')
+        
+        # Crear workbook
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Inventario Caja Chica"
+        
+        # Estilos
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="722F37", end_color="722F37", fill_type="solid")
+        header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # Encabezados
+        headers = [
+            "Centro", "Producto", "Descripción", "Lote", "Caducidad",
+            "Stock Inicial", "Stock Actual", "Precio Unit.", "Valor Total",
+            "Folio Compra", "Fecha Compra", "Estado"
+        ]
+        
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = thin_border
+        
+        # Datos
+        for row, item in enumerate(queryset, 2):
+            # Determinar estado
+            if item.cantidad_actual == 0:
+                estado = "Agotado"
+            elif item.fecha_caducidad and item.fecha_caducidad <= timezone.now().date():
+                estado = "Caducado"
+            elif item.fecha_caducidad and item.fecha_caducidad <= timezone.now().date() + timedelta(days=90):
+                estado = "Por caducar"
+            else:
+                estado = "Activo"
+            
+            valores = [
+                item.centro.nombre if item.centro else 'N/A',
+                item.producto.nombre if item.producto else item.descripcion_producto or 'N/A',
+                item.descripcion_producto or (item.producto.descripcion if item.producto else 'N/A'),
+                item.numero_lote or 'N/A',
+                item.fecha_caducidad.strftime('%d/%m/%Y') if item.fecha_caducidad else 'N/A',
+                item.cantidad_inicial or 0,
+                item.cantidad_actual or 0,
+                float(item.precio_unitario) if item.precio_unitario else 0,
+                float(item.precio_unitario or 0) * (item.cantidad_actual or 0),
+                item.compra.folio if item.compra else 'N/A',
+                item.compra.fecha_compra.strftime('%d/%m/%Y') if item.compra and item.compra.fecha_compra else 'N/A',
+                estado,
+            ]
+            
+            for col, value in enumerate(valores, 1):
+                cell = ws.cell(row=row, column=col, value=value)
+                cell.border = thin_border
+                if col in [6, 7]:  # Stock
+                    cell.alignment = Alignment(horizontal="center")
+                elif col in [8, 9]:  # Precios
+                    cell.alignment = Alignment(horizontal="right")
+                    cell.number_format = '#,##0.00'
+        
+        # Ajustar anchos de columna
+        anchos = [30, 30, 40, 15, 12, 12, 12, 12, 15, 20, 12, 12]
+        for col, ancho in enumerate(anchos, 1):
+            ws.column_dimensions[get_column_letter(col)].width = ancho
+        
+        # Congelar primera fila
+        ws.freeze_panes = 'A2'
+        
+        # Guardar en buffer
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        
+        # Generar nombre de archivo
+        centro_nombre = request.query_params.get('centro', 'todos')
+        if centro_nombre != 'todos':
+            try:
+                centro = Centro.objects.get(pk=centro_nombre)
+                centro_nombre = centro.nombre[:20].replace(' ', '_')
+            except:
+                centro_nombre = 'centro'
+        
+        fecha = timezone.now().strftime('%Y%m%d')
+        filename = f"inventario_caja_chica_{centro_nombre}_{fecha}.xlsx"
+        
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
 
 
 class MovimientoCajaChicaViewSet(viewsets.ReadOnlyModelViewSet):

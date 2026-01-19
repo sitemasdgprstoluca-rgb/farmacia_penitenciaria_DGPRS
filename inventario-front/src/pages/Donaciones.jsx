@@ -180,6 +180,7 @@ const Donaciones = () => {
   const [entregasPage, setEntregasPage] = useState(1);
   const [entregasTotalPages, setEntregasTotalPages] = useState(1);
   const [searchEntregas, setSearchEntregas] = useState('');
+  const [filtroCentroEntregas, setFiltroCentroEntregas] = useState(''); // Filtro por centro destino
   
   // Vista agrupada de entregas (para salidas masivas)
   const [gruposExpandidos, setGruposExpandidos] = useState(new Set());
@@ -489,6 +490,7 @@ const Donaciones = () => {
         ordering: '-fecha_entrega',
       };
       if (searchEntregas) params.destinatario = searchEntregas;
+      if (filtroCentroEntregas) params.centro_destino = filtroCentroEntregas;
 
       const response = await salidasDonacionesAPI.getAll(params);
       const data = response.data;
@@ -506,7 +508,7 @@ const Donaciones = () => {
     } finally {
       setLoadingEntregas(false);
     }
-  }, [entregasPage, searchEntregas]);
+  }, [entregasPage, searchEntregas, filtroCentroEntregas]);
 
   // Exportar entregas a Excel
   const handleExportarEntregas = async () => {
@@ -514,6 +516,7 @@ const Donaciones = () => {
     try {
       const params = {};
       if (searchEntregas) params.destinatario = searchEntregas;
+      if (filtroCentroEntregas) params.centro_destino = filtroCentroEntregas;
       
       const response = await salidasDonacionesAPI.exportarExcel(params);
       
@@ -524,7 +527,12 @@ const Donaciones = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `entregas_donaciones_${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      // Nombre con centro si se filtró
+      const centroNombre = filtroCentroEntregas 
+        ? centros.find(c => c.id == filtroCentroEntregas)?.nombre?.substring(0, 20).replace(/\s+/g, '_') || 'centro'
+        : 'todos';
+      link.download = `entregas_donaciones_${centroNombre}_${new Date().toISOString().split('T')[0]}.xlsx`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -2557,18 +2565,39 @@ const Donaciones = () => {
           {/* Barra de búsqueda y acciones entregas */}
           <div className="bg-white rounded-xl shadow-sm border p-4 mb-6">
             <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-              <div className="relative flex-1 max-w-md">
-                <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar por destinatario..."
-                  value={searchEntregas}
-                  onChange={(e) => {
-                    setSearchEntregas(e.target.value);
-                    setEntregasPage(1);
-                  }}
-                  className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
-                />
+              <div className="flex flex-col sm:flex-row gap-3 flex-1">
+                {/* Búsqueda */}
+                <div className="relative flex-1 max-w-md">
+                  <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por destinatario..."
+                    value={searchEntregas}
+                    onChange={(e) => {
+                      setSearchEntregas(e.target.value);
+                      setEntregasPage(1);
+                    }}
+                    className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                  />
+                </div>
+                {/* Filtro por Centro */}
+                <div className="min-w-[200px]">
+                  <select
+                    value={filtroCentroEntregas}
+                    onChange={(e) => {
+                      setFiltroCentroEntregas(e.target.value);
+                      setEntregasPage(1);
+                    }}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary bg-white"
+                  >
+                    <option value="">Todos los centros</option>
+                    {centros.map(centro => (
+                      <option key={centro.id} value={centro.id}>
+                        {centro.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {/* Botón Actualizar */}

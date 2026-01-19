@@ -30,6 +30,8 @@ import {
   FaMinusCircle,
   FaExchangeAlt,
   FaCalendarAlt,
+  FaFileExcel,
+  FaDownload,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import Pagination from '../components/Pagination';
@@ -211,6 +213,50 @@ const InventarioCajaChica = () => {
     setCurrentPage(1);
   };
 
+  // Exportar a Excel
+  const handleExportar = async () => {
+    try {
+      toast.loading('Generando archivo Excel...', { id: 'exportar' });
+      
+      const params = {
+        centro: centroFiltro || undefined,
+        con_stock: conStock || undefined,
+        search: searchTerm || undefined,
+      };
+      
+      const response = await inventarioCajaChicaAPI.exportar(params);
+      
+      // Crear blob y descargar
+      const blob = new Blob([response.data], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Extraer nombre del archivo del header o usar default
+      const contentDisposition = response.headers['content-disposition'];
+      let filename = 'inventario_caja_chica.xlsx';
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+      
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Archivo descargado correctamente', { id: 'exportar' });
+    } catch (error) {
+      console.error('Error al exportar:', error);
+      toast.error('Error al exportar inventario', { id: 'exportar' });
+    }
+  };
+
   // Formatear moneda
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('es-MX', {
@@ -316,6 +362,14 @@ const InventarioCajaChica = () => {
           
           {/* Botones */}
           <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={handleExportar}
+              className="px-4 py-2 rounded-lg flex items-center gap-2 bg-green-600 text-white hover:bg-green-700 transition-colors"
+              title="Descargar inventario en Excel"
+            >
+              <FaFileExcel />
+              Exportar
+            </button>
             <button
               onClick={() => setShowFilters(!showFilters)}
               className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${
