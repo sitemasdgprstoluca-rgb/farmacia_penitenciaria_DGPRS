@@ -688,7 +688,7 @@ def invalidar_cache_dashboard(centro_id=None):
         logger.warning(f'Error al invalidar caché del dashboard: {e}')
 
 
-def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=None, requisicion=None, observaciones='', skip_centro_check=False, subtipo_salida=None, numero_expediente=None):
+def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=None, requisicion=None, observaciones='', skip_centro_check=False, subtipo_salida=None, numero_expediente=None, folio_documento=None):
     """
     Helper central para registrar un movimiento y actualizar cantidad_actual del lote.
     
@@ -831,7 +831,9 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
             motivo=observaciones or '',
             # MEJORA FLUJO 5: Campos de trazabilidad para pacientes
             subtipo_salida=subtipo_salida if tipo_normalizado == 'salida' else None,
-            numero_expediente=numero_expediente if tipo_normalizado == 'salida' and subtipo_salida == 'receta' else None
+            numero_expediente=numero_expediente if tipo_normalizado == 'salida' and subtipo_salida == 'receta' else None,
+            # MEJORA CONTROL MENSUAL: Folio documento para trazabilidad de entradas
+            folio_documento=folio_documento if tipo_normalizado == 'entrada' else None
         )
         # Guardar stock previo para evitar fallos de validacion al crear el movimiento
         movimiento._stock_pre_movimiento = stock_disponible
@@ -3694,6 +3696,8 @@ class LoteViewSet(viewsets.ModelViewSet):
         tipo = request.data.get('tipo', 'ajuste')
         cantidad = request.data.get('cantidad')
         observaciones = request.data.get('observaciones', '')
+        # MEJORA CONTROL MENSUAL: Folio de documento de entrada
+        folio_documento = request.data.get('folio_documento')
 
         try:
             movimiento, lote_actualizado = registrar_movimiento_stock(
@@ -3703,7 +3707,8 @@ class LoteViewSet(viewsets.ModelViewSet):
                 usuario=request.user if request.user.is_authenticated else None,
                 centro=None,
                 requisicion=None,
-                observaciones=observaciones
+                observaciones=observaciones,
+                folio_documento=folio_documento
             )
             return Response({
                 'mensaje': 'Stock ajustado correctamente',
@@ -4237,6 +4242,8 @@ class MovimientoViewSet(
         # MEJORA FLUJO 5: Extraer campos de trazabilidad
         subtipo_salida = serializer.validated_data.get('subtipo_salida')
         numero_expediente = serializer.validated_data.get('numero_expediente')
+        # MEJORA CONTROL MENSUAL: Folio de documento de entrada
+        folio_documento = serializer.validated_data.get('folio_documento')
         
         # ISS-FIX-500: Convertir centro_id a objeto Centro si se pasa un ID
         centro_destino_raw = serializer.validated_data.get('centro')
@@ -4268,6 +4275,8 @@ class MovimientoViewSet(
             observaciones=serializer.validated_data.get('motivo', ''),
             subtipo_salida=subtipo_salida,
             numero_expediente=numero_expediente,
+            # MEJORA CONTROL MENSUAL: Folio de documento de entrada
+            folio_documento=folio_documento,
             # ISS-FIX: Saltear validación de centro para transferencias del Almacén Central
             skip_centro_check=es_transferencia_almacen
         )
@@ -8873,73 +8882,170 @@ def reporte_inventario(request):
             from collections import defaultdict
             
             # =====================================================
-            # AGRUPAR POR CLAVE DE PRODUCTO (sumar todos los lotes)
+            # AGRUPAR POR CENTRO Y LUEGO POR CLAVE DE PRODUCTO
+            # Para reporte "Todos los CPRS" - dividido por centros
             # =====================================================
-            productos_agrupados = defaultdict(lambda: {
-                'clave': '',
-                'descripcion': '',
-                'presentacion': '',
-                'unidad': '',
-                'unidad_medida': '',
-                'stock_actual': 0,
-                'stock_minimo': 0,
-                'lotes_activos': 0,
-                'nivel': 'alto',
-                'nivel_stock': 'alto',
-            })
+            es_reporte_todos_cprs = excluir_farmacia_central or (not filtrar_por_centro and centro_param == 'todos')
             
-            for lote_cons in lotes_lista:
-                producto = lote_cons['producto']
-                clave = producto.clave
-                stock = lote_cons['cantidad_total']
+            if es_reporte_todos_cprs:
+                # Agrupar por centro y luego por producto
+                datos_por_centro = defaultdict(lambda: defaultdict(lambda: {
+                    'clave': '',
+                    'descripcion': '',
+                    'presentacion': '',
+                    'unidad': '',
+                    'unidad_medida': '',
+                    'stock_actual': 0,
+                    'stock_minimo': 0,
+                    'lotes_activos': 0,
+                    'nivel': 'alto',
+                    'nivel_stock': 'alto',
+                    'precio_unitario': 0,
+                    'marca': '-',
+                }))
                 
-                if not productos_agrupados[clave]['clave']:
-                    productos_agrupados[clave]['clave'] = clave
-                    productos_agrupados[clave]['descripcion'] = producto.nombre or producto.descripcion or ''
-                    productos_agrupados[clave]['presentacion'] = producto.presentacion or '-'
-                    productos_agrupados[clave]['unidad'] = producto.unidad_medida or ''
-                    productos_agrupados[clave]['unidad_medida'] = producto.unidad_medida or ''
-                    productos_agrupados[clave]['stock_minimo'] = producto.stock_minimo or 0
+                for lote_cons in lotes_lista:
+                    producto = lote_cons['producto']
+                    clave = producto.clave
+                    stock = lote_cons['cantidad_total']
+                    
+                    # Para cada centro donde está el lote
+                    for centro_nom in lote_cons.get('centros', ['Sin Centro']):
+                        prod_centro = datos_por_centro[centro_nom][clave]
+                        
+                        if not prod_centro['clave']:
+                            prod_centro['clave'] = clave
+                            prod_centro['descripcion'] = producto.nombre or producto.descripcion or ''
+                            prod_centro['presentacion'] = producto.presentacion or '-'
+                            prod_centro['unidad'] = producto.unidad_medida or ''
+                            prod_centro['unidad_medida'] = producto.unidad_medida or ''
+                            prod_centro['stock_minimo'] = producto.stock_minimo or 0
+                            prod_centro['precio_unitario'] = lote_cons.get('precio_unitario', 0)
+                            prod_centro['marca'] = lote_cons.get('marca', '-')
+                        
+                        prod_centro['stock_actual'] += stock
+                        prod_centro['lotes_activos'] += 1
                 
-                productos_agrupados[clave]['stock_actual'] += stock
-                productos_agrupados[clave]['lotes_activos'] += 1
-            
-            # Calcular nivel de stock para cada producto agrupado
-            productos_data = []
-            for clave in sorted(productos_agrupados.keys()):
-                prod = productos_agrupados[clave]
-                stock_total = prod['stock_actual']
-                stock_min = prod['stock_minimo']
+                # Convertir a estructura para el PDF
+                centros_data = {}
+                total_general = 0
+                total_claves = set()
                 
-                if stock_total == 0:
-                    nivel = 'sin_stock'
-                elif stock_total < stock_min:
-                    nivel = 'bajo'
-                elif stock_total < stock_min * 1.5:
-                    nivel = 'normal'
-                else:
-                    nivel = 'alto'
+                for centro_nom in sorted(datos_por_centro.keys()):
+                    productos_centro = []
+                    for clave in sorted(datos_por_centro[centro_nom].keys()):
+                        prod = datos_por_centro[centro_nom][clave]
+                        stock_total = prod['stock_actual']
+                        stock_min = prod['stock_minimo']
+                        
+                        if stock_total == 0:
+                            nivel = 'sin_stock'
+                        elif stock_total < stock_min:
+                            nivel = 'bajo'
+                        elif stock_total < stock_min * 1.5:
+                            nivel = 'normal'
+                        else:
+                            nivel = 'alto'
+                        
+                        prod['nivel'] = nivel
+                        prod['nivel_stock'] = nivel
+                        productos_centro.append(prod)
+                        total_general += stock_total
+                        total_claves.add(clave)
+                    
+                    centros_data[centro_nom] = productos_centro
                 
-                prod['nivel'] = nivel
-                prod['nivel_stock'] = nivel
-                productos_data.append(prod)
-            
-            logger.info(f"PDF inventario: {len(productos_data)} productos agrupados (de {len(lotes_lista)} lotes)")
-            
-            # Filtros para el PDF
-            filtros_pdf = {
-                'centro': centro_nombre,
-                'total_productos': len(productos_data),
-            }
-            
-            try:
-                pdf_buffer = generar_reporte_inventario(productos_data, filtros=filtros_pdf)
-                logger.info(f"PDF inventario generado exitosamente: {len(pdf_buffer.getvalue())} bytes")
-            except Exception as pdf_error:
-                import traceback
-                logger.error(f"Error generando PDF inventario: {pdf_error}")
-                logger.error(f"Traceback PDF: {traceback.format_exc()}")
-                raise pdf_error
+                logger.info(f"PDF inventario por centros: {len(centros_data)} centros, {len(total_claves)} claves únicas")
+                
+                # Filtros para el PDF
+                filtros_pdf = {
+                    'centro': centro_nombre,
+                    'total_productos': len(total_claves),
+                    'total_centros': len(centros_data),
+                    'total_stock_general': total_general,
+                    'es_reporte_por_centros': True,
+                }
+                
+                try:
+                    pdf_buffer = generar_reporte_inventario(centros_data, filtros=filtros_pdf)
+                    logger.info(f"PDF inventario por centros generado exitosamente: {len(pdf_buffer.getvalue())} bytes")
+                except Exception as pdf_error:
+                    import traceback
+                    logger.error(f"Error generando PDF inventario por centros: {pdf_error}")
+                    logger.error(f"Traceback PDF: {traceback.format_exc()}")
+                    raise pdf_error
+            else:
+                # Reporte simple (un solo centro o Farmacia Central)
+                productos_agrupados = defaultdict(lambda: {
+                    'clave': '',
+                    'descripcion': '',
+                    'presentacion': '',
+                    'unidad': '',
+                    'unidad_medida': '',
+                    'stock_actual': 0,
+                    'stock_minimo': 0,
+                    'lotes_activos': 0,
+                    'nivel': 'alto',
+                    'nivel_stock': 'alto',
+                    'precio_unitario': 0,
+                    'marca': '-',
+                })
+                
+                for lote_cons in lotes_lista:
+                    producto = lote_cons['producto']
+                    clave = producto.clave
+                    stock = lote_cons['cantidad_total']
+                    
+                    if not productos_agrupados[clave]['clave']:
+                        productos_agrupados[clave]['clave'] = clave
+                        productos_agrupados[clave]['descripcion'] = producto.nombre or producto.descripcion or ''
+                        productos_agrupados[clave]['presentacion'] = producto.presentacion or '-'
+                        productos_agrupados[clave]['unidad'] = producto.unidad_medida or ''
+                        productos_agrupados[clave]['unidad_medida'] = producto.unidad_medida or ''
+                        productos_agrupados[clave]['stock_minimo'] = producto.stock_minimo or 0
+                        productos_agrupados[clave]['precio_unitario'] = lote_cons.get('precio_unitario', 0)
+                        productos_agrupados[clave]['marca'] = lote_cons.get('marca', '-')
+                    
+                    productos_agrupados[clave]['stock_actual'] += stock
+                    productos_agrupados[clave]['lotes_activos'] += 1
+                
+                # Calcular nivel de stock para cada producto agrupado
+                productos_data = []
+                for clave in sorted(productos_agrupados.keys()):
+                    prod = productos_agrupados[clave]
+                    stock_total = prod['stock_actual']
+                    stock_min = prod['stock_minimo']
+                    
+                    if stock_total == 0:
+                        nivel = 'sin_stock'
+                    elif stock_total < stock_min:
+                        nivel = 'bajo'
+                    elif stock_total < stock_min * 1.5:
+                        nivel = 'normal'
+                    else:
+                        nivel = 'alto'
+                    
+                    prod['nivel'] = nivel
+                    prod['nivel_stock'] = nivel
+                    productos_data.append(prod)
+                
+                logger.info(f"PDF inventario: {len(productos_data)} productos agrupados (de {len(lotes_lista)} lotes)")
+                
+                # Filtros para el PDF
+                filtros_pdf = {
+                    'centro': centro_nombre,
+                    'total_productos': len(productos_data),
+                    'es_reporte_por_centros': False,
+                }
+                
+                try:
+                    pdf_buffer = generar_reporte_inventario(productos_data, filtros=filtros_pdf)
+                    logger.info(f"PDF inventario generado exitosamente: {len(pdf_buffer.getvalue())} bytes")
+                except Exception as pdf_error:
+                    import traceback
+                    logger.error(f"Error generando PDF inventario: {pdf_error}")
+                    logger.error(f"Traceback PDF: {traceback.format_exc()}")
+                    raise pdf_error
             
             response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
             response['Content-Disposition'] = f"attachment; filename=Inventario_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
@@ -9115,30 +9221,32 @@ def reporte_movimientos(request):
         centro_param = request.query_params.get('centro')
         
         # Flags para control de filtros
-        excluir_farmacia_central = False  # Cuando es "todos los centros", excluir Farmacia Central
+        es_filtro_farmacia_central = False  # Solo movimientos de Farmacia Central
+        es_filtro_todos_centros = False     # Solo movimientos de los CPRs (excluir Farmacia Central interna)
+        es_filtro_centro_especifico = False # Un centro específico por ID
         
-        # Ignorar 'todos' como parámetro de centro - pero excluir Farmacia Central
-        if centro_param and centro_param.lower() == 'todos':
-            centro_param = None
-            excluir_farmacia_central = True  # "Todos" = todos EXCEPTO Farmacia Central
-        
-        # ISS-FIX: 'central' = Farmacia Central específicamente
-        if centro_param and centro_param.lower() == 'central':
-            centro_param = None
-            filtrar_por_centro = False  # Mostrar solo Farmacia Central
-            excluir_farmacia_central = False
-            
-        if centro_param and is_farmacia_or_admin(user):
-            try:
-                # ISS-FIX: Buscar por ID numérico o por nombre
-                if centro_param.isdigit():
-                    user_centro = Centro.objects.get(pk=centro_param)
-                else:
-                    user_centro = Centro.objects.get(nombre__iexact=centro_param)
-                filtrar_por_centro = True
-            except Centro.DoesNotExist:
-                # Si no encuentra el centro, no filtrar (mostrar todos)
-                pass
+        # Procesar parámetro de centro para admin/farmacia
+        if is_farmacia_or_admin(user):
+            if centro_param and centro_param.lower() == 'central':
+                # FARMACIA CENTRAL: Solo movimientos internos de Farmacia Central
+                es_filtro_farmacia_central = True
+                filtrar_por_centro = False
+            elif centro_param and centro_param.lower() == 'todos':
+                # TODOS LOS CENTROS: Movimientos de todos los CPRs, excluyendo internos de Farmacia Central
+                es_filtro_todos_centros = True
+                filtrar_por_centro = False
+            elif centro_param:
+                # Centro específico por ID o nombre
+                try:
+                    if centro_param.isdigit():
+                        user_centro = Centro.objects.get(pk=centro_param)
+                    else:
+                        user_centro = Centro.objects.get(nombre__iexact=centro_param)
+                    es_filtro_centro_especifico = True
+                    filtrar_por_centro = True
+                except Centro.DoesNotExist:
+                    # Si no encuentra el centro, no filtrar (mostrar todos)
+                    pass
         
         # Obtener parametros
         fecha_inicio = request.query_params.get('fecha_inicio')
@@ -9157,37 +9265,61 @@ def reporte_movimientos(request):
         if tipo:
             movimientos = movimientos.filter(tipo=tipo.lower())
         
-        # ISS-FIX: Aplicar filtro de centro de forma ESTRICTA según el tipo de movimiento
-        # Cuando admin/farmacia filtra por un centro específico, solo mostrar movimientos
-        # directamente relacionados con ese centro (origen o destino), NO por lote__centro
-        if filtrar_por_centro and user_centro:
+        # =====================================================================
+        # FILTRO DE CENTRO - LÓGICA CORREGIDA
+        # =====================================================================
+        
+        if es_filtro_farmacia_central:
+            # FARMACIA CENTRAL: Solo movimientos internos de Farmacia Central
+            # - Entradas al almacén central: centro_destino=NULL (entran a Farmacia Central)
+            # - Movimientos internos: ambos NULL (dentro de Farmacia Central)
+            # Excluir salidas hacia CPRs (esas pertenecen al reporte de "Todos los centros")
+            tipo_lower = (tipo or '').lower()
+            if tipo_lower == 'entrada':
+                # Entradas A Farmacia Central: destino es NULL
+                movimientos = movimientos.filter(centro_destino__isnull=True)
+            elif tipo_lower == 'salida':
+                # Salidas DESDE Farmacia Central: origen es NULL, destino es un CPR
+                # Pero también internos donde ambos son NULL
+                movimientos = movimientos.filter(centro_origen__isnull=True)
+            else:
+                # Sin tipo: movimientos donde Farmacia Central está involucrada (origen o destino NULL)
+                movimientos = movimientos.filter(
+                    Q(centro_origen__isnull=True) | Q(centro_destino__isnull=True)
+                )
+        
+        elif es_filtro_todos_centros:
+            # TODOS LOS CENTROS: Movimientos de CPRs (excluir internos de Farmacia Central)
+            # Solo mostrar movimientos donde hay un centro específico involucrado
+            # - centro_origen NOT NULL (sale de un CPR)
+            # - centro_destino NOT NULL (entra a un CPR)
+            tipo_lower = (tipo or '').lower()
+            if tipo_lower == 'entrada':
+                # Entradas a CPRs: destino es un centro (NOT NULL)
+                movimientos = movimientos.filter(centro_destino__isnull=False)
+            elif tipo_lower == 'salida':
+                # Salidas desde CPRs: origen es un centro (NOT NULL)
+                movimientos = movimientos.filter(centro_origen__isnull=False)
+            else:
+                # Sin tipo: movimientos donde hay al menos un centro específico
+                movimientos = movimientos.filter(
+                    Q(centro_origen__isnull=False) | Q(centro_destino__isnull=False)
+                )
+        
+        elif filtrar_por_centro and user_centro:
+            # CENTRO ESPECÍFICO: Solo movimientos de ese centro
             tipo_lower = (tipo or '').lower()
             if tipo_lower == 'salida':
                 # Para SALIDAS: solo mostrar donde el centro es ORIGEN (salidas DESDE ese centro)
-                # Excluimos lote__centro para evitar traer movimientos no relacionados
                 movimientos = movimientos.filter(centro_origen=user_centro)
             elif tipo_lower == 'entrada':
                 # Para ENTRADAS: solo mostrar donde el centro es DESTINO (entradas HACIA ese centro)
                 movimientos = movimientos.filter(centro_destino=user_centro)
             else:
                 # Sin tipo especificado: mostrar movimientos donde el centro es origen O destino
-                # Se incluye lote__centro SOLO cuando no hay tipo para que usuarios de centro 
-                # puedan ver sus propios movimientos internos (dispensaciones)
                 movimientos = movimientos.filter(
                     Q(centro_origen=user_centro) | Q(centro_destino=user_centro) | Q(lote__centro=user_centro)
                 )
-        
-        # ISS-FIX: "Todos los centros" = excluir Farmacia Central (movimientos sin centro origen/destino)
-        # Farmacia Central se caracteriza por tener centro_origen=NULL y centro_destino=NULL en entradas iniciales
-        # o ser la fuente de salidas hacia otros centros
-        if excluir_farmacia_central:
-            # Excluir movimientos internos de Farmacia Central:
-            # - Entradas donde destino es NULL (entradas al almacén central)
-            # - Movimientos donde ambos origen y destino son NULL
-            # Solo mostrar movimientos que involucren un centro específico (no NULL)
-            movimientos = movimientos.filter(
-                Q(centro_origen__isnull=False) | Q(centro_destino__isnull=False)
-            )
         
         movimientos = movimientos.order_by('-fecha')
         
@@ -9287,6 +9419,15 @@ def reporte_movimientos(request):
             del item['fecha_raw']
             del item['_tipo_transaccion']
         
+        # Determinar nombre del filtro para el resumen
+        filtro_nombre = 'Todos los movimientos'
+        if es_filtro_farmacia_central:
+            filtro_nombre = 'Farmacia Central'
+        elif es_filtro_todos_centros:
+            filtro_nombre = 'Todos los Centros'
+        elif filtrar_por_centro and user_centro:
+            filtro_nombre = user_centro.nombre
+        
         # ISS-FIX: El resumen usa los contadores calculados por MOVIMIENTO INDIVIDUAL
         # NO por tipo de transacción, para que los totales cuadren con la suma de la tabla
         resumen = {
@@ -9297,6 +9438,7 @@ def reporte_movimientos(request):
             'total_entradas': total_unidades_entrada,  # Unidades de entrada (suma de cantidades)
             'total_salidas': total_unidades_salida,    # Unidades de salida (suma de cantidades)
             'diferencia': total_unidades_entrada - total_unidades_salida,
+            'filtro': filtro_nombre,
         }
         
         # Formato JSON
@@ -9320,8 +9462,8 @@ def reporte_movimientos(request):
                 filtros_pdf['fecha_fin'] = fecha_fin
             if tipo:
                 filtros_pdf['tipo'] = tipo
-            if filtrar_por_centro and user_centro:
-                filtros_pdf['centro'] = user_centro.nombre
+            # Agregar nombre del centro/filtro
+            filtros_pdf['centro'] = filtro_nombre
             
             # Transformar datos: agrupar por PRODUCTO (clave) consolidando todos los lotes
             # El Formato B requiere una página por producto con todos sus movimientos
@@ -9848,18 +9990,49 @@ def reporte_requisiciones(request):
         fecha_fin = request.query_params.get('fecha_fin')
         estado = request.query_params.get('estado')
         centro_param = request.query_params.get('centro') or request.query_params.get('centro_id')
-        # Ignorar 'todos' como parámetro de centro
-        if centro_param and centro_param.lower() == 'todos':
-            centro_param = None
         formato = request.query_params.get('formato', 'json')
         
         requisiciones = Requisicion.objects.select_related('centro_origen', 'centro_destino', 'solicitante').all()
         
+        # Variable para saber cómo presentar los datos (por centro o general)
+        es_filtro_todos_centros = False
+        es_filtro_farmacia_central = False
+        
         # Aplicar filtro de centro obligatorio para usuarios de centro
         if filtrar_por_centro and user_centro:
+            # Usuario de centro: solo ve sus requisiciones
             requisiciones = requisiciones.filter(Q(centro_origen=user_centro) | Q(centro_destino=user_centro))
-        elif centro_param and is_farmacia_or_admin(user):
-            requisiciones = requisiciones.filter(Q(centro_origen_id=centro_param) | Q(centro_destino_id=centro_param))
+        elif is_farmacia_or_admin(user):
+            # Admin/Farmacia: aplicar filtro según parámetro
+            if centro_param and centro_param.lower() == 'central':
+                # FARMACIA CENTRAL: Requisiciones donde Farmacia Central surte hacia CPRs
+                # centro_origen=NULL (Farmacia Central) y centro_destino=CPR
+                # Representa las SALIDAS desde Farmacia Central hacia los CPRs
+                es_filtro_farmacia_central = True
+                requisiciones = requisiciones.filter(
+                    centro_origen__isnull=True,   # Salen de Farmacia Central
+                    centro_destino__isnull=False  # Hacia un CPR específico
+                )
+            elif centro_param and centro_param.lower() == 'todos':
+                # TODOS LOS CENTROS: Mismas requisiciones que Farmacia Central
+                # pero la presentación será agrupada por centro destino (los CPRs que reciben)
+                # MISMO FILTRO para que los datos coincidan al cruzar
+                es_filtro_todos_centros = True
+                requisiciones = requisiciones.filter(
+                    centro_origen__isnull=True,   # Salen de Farmacia Central
+                    centro_destino__isnull=False  # Hacia un CPR específico
+                )
+            elif centro_param:
+                # Centro específico por ID
+                try:
+                    centro_id = int(centro_param)
+                    requisiciones = requisiciones.filter(
+                        Q(centro_origen_id=centro_id) | Q(centro_destino_id=centro_id)
+                    )
+                except (ValueError, TypeError):
+                    # Si no es un ID válido, mostrar todas
+                    pass
+            # Si no hay centro_param, mostrar todas las requisiciones (sin filtro)
         
         if fecha_inicio:
             requisiciones = requisiciones.filter(fecha_solicitud__gte=fecha_inicio)
@@ -9878,12 +10051,22 @@ def reporte_requisiciones(request):
             estado_req = req.estado.upper()
             estados_count[estado_req] = estados_count.get(estado_req, 0) + 1
             
-            # Determinar centro (preferir destino, luego origen)
+            # Determinar centro para mostrar
+            # En requisiciones de Farmacia Central → CPR:
+            # - centro_origen = NULL (Farmacia Central)
+            # - centro_destino = el CPR que recibe
             centro_nombre = 'N/A'
+            centro_destino_nombre = None
+            centro_origen_nombre = None
+            
             if req.centro_destino:
-                centro_nombre = req.centro_destino.nombre
-            elif req.centro_origen:
-                centro_nombre = req.centro_origen.nombre
+                centro_destino_nombre = req.centro_destino.nombre
+                centro_nombre = centro_destino_nombre  # El CPR que solicita/recibe
+            
+            if req.centro_origen:
+                centro_origen_nombre = req.centro_origen.nombre
+            else:
+                centro_origen_nombre = 'Farmacia Central'
             
             # Obtener detalle de productos
             detalles_productos = []
@@ -9899,7 +10082,9 @@ def reporte_requisiciones(request):
             datos.append({
                 'id': req.id,
                 'folio': req.folio or f'REQ-{req.id}',
-                'centro': centro_nombre,
+                'centro': centro_nombre,  # El CPR que solicita (destino)
+                'centro_origen': centro_origen_nombre,  # De donde sale (Farmacia Central normalmente)
+                'centro_destino': centro_destino_nombre or 'N/A',  # Hacia donde va (el CPR)
                 'estado': estado_req,
                 'fecha_solicitud': req.fecha_solicitud.isoformat() if req.fecha_solicitud else None,
                 'total_productos': req.detalles.count(),
@@ -9907,9 +10092,19 @@ def reporte_requisiciones(request):
                 'productos': detalles_productos,  # Agregar detalle de productos
             })
         
+        # Determinar nombre del filtro para el resumen
+        filtro_nombre = 'Todas las requisiciones'
+        if es_filtro_farmacia_central:
+            filtro_nombre = 'Farmacia Central (Salidas)'
+        elif es_filtro_todos_centros:
+            filtro_nombre = 'Todos los Centros'
+        elif filtrar_por_centro and user_centro:
+            filtro_nombre = user_centro.nombre
+        
         resumen = {
             'total': len(datos),
             'por_estado': estados_count,
+            'filtro': filtro_nombre,
         }
         
         # Si formato es JSON, devolver datos
@@ -9929,6 +10124,8 @@ def reporte_requisiciones(request):
                 requisiciones_data.append({
                     'folio': item['folio'],
                     'centro': item['centro'],
+                    'centro_origen': item.get('centro_origen', 'N/A'),
+                    'centro_destino': item.get('centro_destino', 'N/A'),
                     'estado': item['estado'],
                     'fecha_solicitud': item['fecha_solicitud'],
                     'total_productos': item['total_productos'],
@@ -9947,6 +10144,10 @@ def reporte_requisiciones(request):
                 filtros['estado'] = estado
             if filtrar_por_centro and user_centro:
                 filtros['centro'] = user_centro.nombre
+            elif es_filtro_farmacia_central:
+                filtros['centro'] = 'Farmacia Central'
+            elif es_filtro_todos_centros:
+                filtros['centro'] = 'Todos los Centros'
             
             pdf_buffer = generar_reporte_requisiciones(requisiciones_data, filtros=filtros)
             
@@ -9970,7 +10171,13 @@ def reporte_requisiciones(request):
         
         ws.merge_cells('A2:J2')
         fecha_cell = ws['A2']
-        fecha_cell.value = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")}'
+        # Agregar información del filtro aplicado
+        filtro_texto = ''
+        if es_filtro_farmacia_central:
+            filtro_texto = ' | Filtro: Farmacia Central (Salidas)'
+        elif es_filtro_todos_centros:
+            filtro_texto = ' | Filtro: Todos los Centros'
+        fecha_cell.value = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")}{filtro_texto}'
         fecha_cell.font = Font(size=10, italic=True)
         fecha_cell.alignment = Alignment(horizontal='center')
         
@@ -10848,20 +11055,41 @@ def trazabilidad_global(request):
         # Preparar datos de movimientos
         movimientos_data = []
         for mov in movimientos_query:
-            # ISS-FIX: Lógica clara para mostrar el centro relevante
-            # Para SALIDA: mostrar destino (a dónde va)
-            # Para ENTRADA: mostrar origen (de dónde viene)
+            # ISS-FIX: Lógica mejorada para mostrar el centro correcto
+            # Los movimientos pueden tener centro_origen, centro_destino o pertenecer a un lote con centro
             tipo_upper = mov.tipo.upper()
+            
+            # Obtener el centro del lote si existe
+            lote_centro = mov.lote.centro.nombre if mov.lote and mov.lote.centro else None
+            
             if tipo_upper == 'SALIDA':
-                centro_display = mov.centro_destino.nombre if mov.centro_destino else 'Farmacia Central'
+                # SALIDA: mostrar destino (a dónde va el producto)
+                if mov.centro_destino:
+                    centro_display = mov.centro_destino.nombre
+                elif lote_centro:
+                    # Si el lote pertenece a un centro, la salida es de ese centro
+                    centro_display = lote_centro
+                else:
+                    centro_display = 'Farmacia Central'
             elif tipo_upper == 'ENTRADA':
-                centro_display = mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'
+                # ENTRADA: mostrar destino (a dónde llega el producto)
+                if mov.centro_destino:
+                    centro_display = mov.centro_destino.nombre
+                elif lote_centro:
+                    # Si el lote pertenece a un centro, la entrada es hacia ese centro
+                    centro_display = lote_centro
+                else:
+                    centro_display = 'Farmacia Central'
             else:
-                # Ajuste u otro: mostrar cualquiera que tenga
-                centro_display = (
-                    mov.centro_destino.nombre if mov.centro_destino else 
-                    (mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central')
-                )
+                # AJUSTE: mostrar el centro del lote o cualquiera disponible
+                if lote_centro:
+                    centro_display = lote_centro
+                elif mov.centro_destino:
+                    centro_display = mov.centro_destino.nombre
+                elif mov.centro_origen:
+                    centro_display = mov.centro_origen.nombre
+                else:
+                    centro_display = 'Farmacia Central'
             
             # ISS-FIX: Mostrar nombre completo del usuario o username
             if mov.usuario:
@@ -12001,19 +12229,54 @@ def exportar_control_mensual(request):
                 if mov.tipo.lower() == 'entrada':
                     entradas_lote += abs(mov.cantidad)
                     if not doc_entrada:
-                        # Obtener referencia del documento de forma compacta
-                        ref = mov.referencia or getattr(mov, 'folio_documento', '') or mov.motivo or ''
-                        if ref.startswith('REQ-REQ-') and '-' in ref:
-                            partes = ref.split('-')
-                            if len(partes) >= 4:
-                                ref = f"REQ-{partes[-1]}"
-                        elif ref.startswith('ENTRADA_POR_'):
-                            ref = 'REQ'
-                        elif len(ref) > 12:
-                            ref = ref[:12]
+                        # PRIORIDAD para documento de entrada:
+                        # 1. folio_documento del movimiento (entrada manual)
+                        # 2. referencia del movimiento
+                        # 3. número de contrato del lote (importación/carga inicial)
+                        ref = ''
+                        
+                        # Primero intentar folio_documento
+                        if mov.folio_documento:
+                            ref = mov.folio_documento
+                        # Luego referencia del movimiento
+                        elif mov.referencia:
+                            ref = mov.referencia
+                            # Acortar referencias de requisiciones
+                            if ref.startswith('REQ-REQ-') and '-' in ref:
+                                partes = ref.split('-')
+                                if len(partes) >= 4:
+                                    ref = f"REQ-{partes[-1]}"
+                            elif ref.startswith('ENTRADA_POR_'):
+                                ref = 'ENTRADA'
+                        # Luego número de contrato del lote
+                        elif lote.numero_contrato:
+                            ref = lote.numero_contrato
+                        # Motivo como último recurso
+                        elif mov.motivo and len(mov.motivo) < 30:
+                            ref = mov.motivo
+                        
+                        # Truncar si es muy largo
+                        if ref and len(ref) > 20:
+                            ref = ref[:20]
                         doc_entrada = ref
                 else:
                     salidas_lote += abs(mov.cantidad)
+            
+            # Si no hubo entradas en el mes pero el lote tiene número de contrato,
+            # y es la primera vez que aparece (existencia anterior > 0), 
+            # usar el número de contrato
+            if not doc_entrada and entradas_lote == 0 and lote.numero_contrato:
+                # Solo mostrar contrato si el lote ya existía antes del período
+                # (verificar si hay movimientos antes del período)
+                movs_anteriores = Movimiento.objects.filter(
+                    lote=lote,
+                    fecha__lt=fecha_inicio,
+                    tipo__iexact='entrada'
+                ).exists()
+                
+                # Si el lote se creó antes y tiene contrato, mostrarlo
+                if lote.created_at and lote.created_at.date() < fecha_inicio.date():
+                    doc_entrada = lote.numero_contrato[:20] if len(lote.numero_contrato) > 20 else lote.numero_contrato
             
             # 3. Calcular existencia al FINAL del mes
             # Si el mes ya terminó, reconstruir desde movimientos posteriores
@@ -12066,9 +12329,16 @@ def exportar_control_mensual(request):
             productos_agrupados[clave_producto]['salidas'] += salidas_lote
             productos_agrupados[clave_producto]['existencia_final'] += existencia_final_lote
             
-            # Actualizar documento de entrada si no hay uno
-            if doc_entrada and not productos_agrupados[clave_producto]['documento_entrada']:
-                productos_agrupados[clave_producto]['documento_entrada'] = doc_entrada[:50]
+            # Actualizar documento de entrada
+            # Solo actualizar si hubo entradas en este lote durante el período
+            if doc_entrada and entradas_lote > 0:
+                doc_actual = productos_agrupados[clave_producto]['documento_entrada']
+                if not doc_actual:
+                    productos_agrupados[clave_producto]['documento_entrada'] = doc_entrada
+                elif doc_entrada not in doc_actual:
+                    # Agregar documento si es diferente (máximo 2 documentos para no exceder el espacio)
+                    if doc_actual.count(',') < 1:
+                        productos_agrupados[clave_producto]['documento_entrada'] = f"{doc_actual}, {doc_entrada}"[:50]
             
             # Actualizar fecha de caducidad con la más próxima
             fecha_actual = productos_agrupados[clave_producto]['fecha_caducidad']

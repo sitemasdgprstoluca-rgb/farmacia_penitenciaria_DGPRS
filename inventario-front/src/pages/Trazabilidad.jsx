@@ -955,13 +955,14 @@ const Trazabilidad = () => {
             {esAdminOFarmacia && (
               <div className="md:col-span-1">
                 <label className="block text-sm font-medium mb-2">
-                  Filtrar por Centro
-                  <span className="ml-1 text-xs text-gray-400 font-normal">(reportes y exportaciones)</span>
+                  <FaFilter className="inline mr-1 text-purple-500" />
+                  Centro para reportes
+                  <span className="ml-1 text-xs text-gray-400 font-normal">(afecta "Ver Movimientos")</span>
                 </label>
                 <select
                   value={centroFiltro}
                   onChange={(e) => setCentroFiltro(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 border-purple-200"
                   disabled={loading}
                 >
                   <option value="">🏥 Farmacia Central (por defecto)</option>
@@ -1061,7 +1062,7 @@ const Trazabilidad = () => {
               
               {/* Botón Reporte Global - ISS-UX: Mejor etiquetado y tooltip */}
               {esAdminOFarmacia && (
-                <div className="flex-shrink-0">
+                <div className="flex flex-col items-center gap-1">
                   <button
                     type="button"
                     onClick={buscarGlobal}
@@ -1077,10 +1078,18 @@ const Trazabilidad = () => {
                     ) : (
                       <>
                         <FaGlobe />
-                        Ver Todos los Movimientos
+                        Ver Movimientos
                       </>
                     )}
                   </button>
+                  {/* Indicador del centro seleccionado */}
+                  <span className="text-[10px] text-purple-600 font-medium">
+                    {centroFiltro === 'todos' 
+                      ? '🌐 Todos los centros' 
+                      : centroFiltro 
+                        ? `🏢 ${centros.find(c => String(c.id) === String(centroFiltro))?.nombre || 'Centro seleccionado'}`
+                        : '🏥 Farmacia Central'}
+                  </span>
                 </div>
               )}
             </div>
