@@ -1220,9 +1220,10 @@ export const trazabilidadAPI = {
     responseType: 'blob' 
   }),
   
-  // Exportar PDF de lote (con filtros de fecha)
+  // Exportar PDF de lote (con filtros de fecha y soporte para formato_b)
   exportarLotePdf: (numeroLote, loteId = null, params = {}) => {
-    const queryParams = { ...params, formato: 'pdf' };
+    // Si params ya tiene formato (ej: 'formato_b'), NO lo sobrescribimos
+    const queryParams = { formato: 'pdf', ...params };
     if (loteId) queryParams.lote_id = loteId;
     return apiClient.get(`/trazabilidad/lote/${numeroLote}/exportar/`, { 
       params: queryParams, 

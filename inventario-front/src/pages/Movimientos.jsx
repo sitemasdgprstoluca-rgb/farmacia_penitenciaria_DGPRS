@@ -144,9 +144,12 @@ const Movimientos = () => {
   const esFarmacia = rolPrincipal === 'FARMACIA' || rolPrincipal === 'ADMIN';
   
   // ISS-FIX: Permisos diferenciados por rol
-  // - FARMACIA/ADMIN: pueden hacer entradas Y salidas
-  // - MEDICO/CENTRO: pueden hacer SOLO salidas (dispensación/consumo de su inventario)
-  const puedeRegistrarMovimiento = esFarmacia || esMedico || esCentroUser;
+  // - FARMACIA/ADMIN: pueden hacer entradas Y salidas desde este módulo
+  // - MEDICO/CENTRO: NO pueden registrar desde aquí. Usan:
+  //   * Dispensaciones → para salidas por receta/consumo
+  //   * Requisiciones → para solicitar medicamentos
+  // Este módulo es INFORMATIVO para usuarios de centro
+  const puedeRegistrarMovimiento = esFarmacia; // Solo farmacia/admin pueden usar este formulario
   const puedeHacerEntradas = esFarmacia; // Solo farmacia/admin pueden reabastecer
   const puedeExportar = permisos?.exportarMovimientos === true;
   
@@ -1587,9 +1590,28 @@ const Movimientos = () => {
             </div>
           </div>
           ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-xl font-semibold text-gray-500 mb-2">Registro no disponible</h2>
-            <p className="text-gray-400 text-sm">No tienes permisos para registrar movimientos.</p>
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl shadow-sm border border-blue-200 p-6">
+            <div className="flex items-start gap-4">
+              <div className="bg-blue-100 p-3 rounded-xl">
+                <FaInfoCircle className="text-blue-600 text-xl" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-blue-800 mb-2">📋 Módulo Informativo</h2>
+                <p className="text-blue-700 text-sm mb-3">
+                  Este módulo muestra el historial de movimientos de tu centro. Para registrar movimientos usa:
+                </p>
+                <ul className="text-sm text-blue-600 space-y-2">
+                  <li className="flex items-center gap-2">
+                    <span className="w-6 h-6 bg-rose-100 rounded-full flex items-center justify-center text-xs">💊</span>
+                    <strong>Dispensaciones</strong> → Salidas por receta o consumo interno
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center text-xs">📦</span>
+                    <strong>Requisiciones</strong> → Solicitar medicamentos a Farmacia Central
+                  </li>
+                </ul>
+              </div>
+            </div>
           </div>
           )}
 
@@ -1788,20 +1810,20 @@ const Movimientos = () => {
               )}
             </div>
             <div className="overflow-x-auto rounded-b-xl">
-              <table className="w-full text-sm table-fixed">
+              <table className="w-full text-sm">
                 <thead className="bg-theme-gradient sticky top-0 z-10 shadow-md">
                   <tr>
-                    <th className="w-[30%] px-3 py-4 text-left text-xs font-bold uppercase tracking-wider text-white/90">
+                    <th className="min-w-[200px] px-3 py-4 text-left text-xs font-bold uppercase tracking-wider text-white/90">
                       <div className="flex items-center gap-2">
                         <FaBoxes className="text-white/70" />
                         <span>Producto</span>
                       </div>
                     </th>
-                    <th className="w-[15%] px-2 py-4 text-left text-xs font-bold uppercase tracking-wider text-white/90">Tipo</th>
-                    <th className="w-[10%] px-2 py-4 text-right text-xs font-bold uppercase tracking-wider text-white/90">Cant.</th>
-                    <th className="w-[20%] px-2 py-4 text-left text-xs font-bold uppercase tracking-wider text-white/90 hidden sm:table-cell">Centro</th>
-                    <th className="w-[15%] px-2 py-4 text-left text-xs font-bold uppercase tracking-wider text-white/90 hidden md:table-cell">Fecha</th>
-                    <th className="w-[10%] px-2 py-4 text-center text-xs font-bold uppercase tracking-wider text-white/90">Acc.</th>
+                    <th className="w-24 px-2 py-4 text-left text-xs font-bold uppercase tracking-wider text-white/90">Tipo</th>
+                    <th className="w-16 px-2 py-4 text-right text-xs font-bold uppercase tracking-wider text-white/90">Cant.</th>
+                    <th className="w-32 px-2 py-4 text-left text-xs font-bold uppercase tracking-wider text-white/90 hidden sm:table-cell">Centro</th>
+                    <th className="w-24 px-2 py-4 text-left text-xs font-bold uppercase tracking-wider text-white/90 hidden md:table-cell">Fecha</th>
+                    <th className="w-12 px-2 py-4 text-center text-xs font-bold uppercase tracking-wider text-white/90">Acc.</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-50">
@@ -2432,12 +2454,12 @@ const Movimientos = () => {
                           onClick={() => setExpandedId(expandedId === mov.id ? null : mov.id)}
                         >
                           <td className="px-3 py-3.5">
-                            <div className="font-semibold text-gray-800 text-sm">{mov.producto_nombre || mov.producto || ""}</div>
-                            <div className="text-xs text-gray-500 mt-0.5">
-                              <span className="bg-gray-100 px-1.5 py-0.5 rounded">Lote: {mov.lote_codigo || mov.numero_lote || 'N/A'}</span>
+                            <div className="font-semibold text-gray-800 text-sm leading-tight">{mov.producto_nombre || mov.producto || ""}</div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              <span className="bg-gray-100 px-1.5 py-0.5 rounded font-mono">Lote: {mov.lote_codigo || mov.numero_lote || 'N/A'}</span>
                             </div>
                           </td>
-                          <td className="px-2 py-3.5">
+                          <td className="px-2 py-3.5 whitespace-nowrap">
                             <div className="flex flex-col gap-1">
                               <span className={`
                                 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold w-fit
@@ -2462,7 +2484,7 @@ const Movimientos = () => {
                               )}
                             </div>
                           </td>
-                          <td className="px-2 py-3.5 text-right">
+                          <td className="px-2 py-3.5 text-right whitespace-nowrap">
                             <span className={`font-black text-lg tabular-nums ${
                               mov.tipo === 'salida' ? 'text-red-600' : 
                               mov.tipo === 'entrada' ? 'text-emerald-600' : 'text-gray-700'
@@ -2471,9 +2493,9 @@ const Movimientos = () => {
                             </span>
                           </td>
                           <td className="px-2 py-3.5 text-gray-700 text-xs hidden sm:table-cell">
-                            <span className="truncate block max-w-[120px]">{mov.centro_nombre || mov.centro || "Almacén Central"}</span>
+                            <span className="line-clamp-2">{mov.centro_nombre || mov.centro || "Almacén Central"}</span>
                           </td>
-                          <td className="px-2 py-3.5 text-gray-600 text-xs hidden md:table-cell">
+                          <td className="px-2 py-3.5 text-gray-600 text-xs hidden md:table-cell whitespace-nowrap">
                             {mov.fecha_movimiento
                               ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX')
                               : mov.fecha

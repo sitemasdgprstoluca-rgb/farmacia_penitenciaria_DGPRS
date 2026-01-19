@@ -10004,24 +10004,22 @@ def reporte_requisiciones(request):
             requisiciones = requisiciones.filter(Q(centro_origen=user_centro) | Q(centro_destino=user_centro))
         elif is_farmacia_or_admin(user):
             # Admin/Farmacia: aplicar filtro según parámetro
+            # NOTA: Las requisiciones en este sistema tienen:
+            #   - centro_origen = El CPR que solicita (NOT NULL)
+            #   - centro_destino = NULL (porque Farmacia Central surte)
             if centro_param and centro_param.lower() == 'central':
-                # FARMACIA CENTRAL: Requisiciones donde Farmacia Central surte hacia CPRs
-                # centro_origen=NULL (Farmacia Central) y centro_destino=CPR
-                # Representa las SALIDAS desde Farmacia Central hacia los CPRs
+                # FARMACIA CENTRAL: Ver todas las requisiciones que Farmacia Central debe surtir
+                # En la práctica, son requisiciones donde centro_origen es un CPR (NOT NULL)
+                # y centro_destino es NULL (Farmacia Central las surte)
                 es_filtro_farmacia_central = True
                 requisiciones = requisiciones.filter(
-                    centro_origen__isnull=True,   # Salen de Farmacia Central
-                    centro_destino__isnull=False  # Hacia un CPR específico
+                    centro_origen__isnull=False  # El CPR que solicita
+                    # centro_destino puede ser NULL (Farmacia Central surte)
                 )
             elif centro_param and centro_param.lower() == 'todos':
-                # TODOS LOS CENTROS: Mismas requisiciones que Farmacia Central
-                # pero la presentación será agrupada por centro destino (los CPRs que reciben)
-                # MISMO FILTRO para que los datos coincidan al cruzar
+                # TODOS LOS CENTROS: Ver todas las requisiciones
                 es_filtro_todos_centros = True
-                requisiciones = requisiciones.filter(
-                    centro_origen__isnull=True,   # Salen de Farmacia Central
-                    centro_destino__isnull=False  # Hacia un CPR específico
-                )
+                # Sin filtro adicional - mostrar todas
             elif centro_param:
                 # Centro específico por ID
                 try:
@@ -10052,21 +10050,24 @@ def reporte_requisiciones(request):
             estados_count[estado_req] = estados_count.get(estado_req, 0) + 1
             
             # Determinar centro para mostrar
-            # En requisiciones de Farmacia Central → CPR:
-            # - centro_origen = NULL (Farmacia Central)
-            # - centro_destino = el CPR que recibe
+            # CORREGIDO: En este sistema las requisiciones tienen:
+            # - centro_origen = el CPR que SOLICITA (NOT NULL)
+            # - centro_destino = NULL (Farmacia Central surte)
             centro_nombre = 'N/A'
             centro_destino_nombre = None
             centro_origen_nombre = None
             
-            if req.centro_destino:
-                centro_destino_nombre = req.centro_destino.nombre
-                centro_nombre = centro_destino_nombre  # El CPR que solicita/recibe
-            
+            # El CPR solicitante está en centro_origen
             if req.centro_origen:
                 centro_origen_nombre = req.centro_origen.nombre
+                centro_nombre = centro_origen_nombre  # El CPR que solicita
             else:
                 centro_origen_nombre = 'Farmacia Central'
+            
+            if req.centro_destino:
+                centro_destino_nombre = req.centro_destino.nombre
+            else:
+                centro_destino_nombre = 'Farmacia Central'  # Farmacia Central surte
             
             # Obtener detalle de productos
             detalles_productos = []
@@ -10082,9 +10083,9 @@ def reporte_requisiciones(request):
             datos.append({
                 'id': req.id,
                 'folio': req.folio or f'REQ-{req.id}',
-                'centro': centro_nombre,  # El CPR que solicita (destino)
-                'centro_origen': centro_origen_nombre,  # De donde sale (Farmacia Central normalmente)
-                'centro_destino': centro_destino_nombre or 'N/A',  # Hacia donde va (el CPR)
+                'centro': centro_nombre,  # El CPR que solicita (centro_origen)
+                'centro_origen': centro_origen_nombre,  # El CPR solicitante
+                'centro_destino': centro_destino_nombre,  # Farmacia Central (quien surte)
                 'estado': estado_req,
                 'fecha_solicitud': req.fecha_solicitud.isoformat() if req.fecha_solicitud else None,
                 'total_productos': req.detalles.count(),

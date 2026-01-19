@@ -34,6 +34,7 @@ import {
   FaTable,
   FaFilePdf,
   FaFileExcel,
+  FaInfoCircle,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { COLORS } from '../constants/theme';
@@ -195,7 +196,8 @@ const Donaciones = () => {
   const [exportingCatalogo, setExportingCatalogo] = useState(false);
   const [importingCatalogo, setImportingCatalogo] = useState(false);
   const catalogoFileInputRef = useRef(null); // Para catálogo de productos
-  const [importResultModal, setImportResultModal] = useState(null); // Modal de resultados de importación
+  const [importResultModal, setImportResultModal] = useState(null); // Modal de resultados de importación (catálogo y donaciones)
+  const [importDonacionResultModal, setImportDonacionResultModal] = useState(null); // Modal específico para resultados de importación de donaciones
   
   // Exportación del inventario de donaciones
   const [exportingInventario, setExportingInventario] = useState(false);
@@ -618,7 +620,7 @@ const Donaciones = () => {
       
       const { resultados, mensaje } = response.data;
       
-      // ISS-FIX: Siempre mostrar resultado de la importación
+      // ISS-FIX: Usar modal persistente para mostrar resultados
       if (resultados) {
         const { 
           exitosos = 0, 
@@ -633,39 +635,52 @@ const Donaciones = () => {
         
         console.log('[Donaciones] Resultados:', { exitosos, fallidos, donaciones_creadas, detalles_creados, filas_procesadas, filas_vacias, filas_ejemplo });
         
+        // Determinar tipo de resultado y mensaje principal
+        let tipoResultado = 'success';
+        let mensajePrincipal = '';
+        
         if (donaciones_creadas > 0 || detalles_creados > 0) {
-          toast.success(`Importación exitosa: ${donaciones_creadas} donaciones, ${detalles_creados} detalles`);
+          mensajePrincipal = `Importación exitosa: ${donaciones_creadas} donaciones, ${detalles_creados} detalles`;
           cargarDonaciones();
         } else if (exitosos > 0) {
-          toast.success(`${exitosos} registros importados correctamente`);
+          mensajePrincipal = `${exitosos} registros importados correctamente`;
           cargarDonaciones();
         } else if (fallidos === 0 && exitosos === 0) {
-          // No se importó nada - dar información clara del por qué
+          tipoResultado = 'error';
           if (filas_procesadas === 0 && filas_ejemplo > 0) {
-            toast.error(
-              `No se importó nada: ${filas_ejemplo} filas fueron ignoradas porque contienen "[EJEMPLO]" o "ELIMINAR". ` +
-              `Debe eliminar estas palabras de sus datos o eliminar las filas de ejemplo antes de importar.`,
-              { duration: 8000 }
-            );
+            mensajePrincipal = `No se importó nada: ${filas_ejemplo} filas fueron ignoradas porque contienen "[EJEMPLO]" o "ELIMINAR". Debe eliminar estas palabras de sus datos o eliminar las filas de ejemplo antes de importar.`;
           } else if (filas_procesadas === 0 && filas_vacias > 0) {
-            toast.error('El archivo no contiene datos. Solo se encontraron filas vacías después de los encabezados.', { duration: 6000 });
+            mensajePrincipal = 'El archivo no contiene datos. Solo se encontraron filas vacías después de los encabezados.';
           } else if (filas_procesadas === 0) {
-            toast.error('No se encontraron datos para importar. Verifique que el archivo tenga el formato correcto.', { duration: 6000 });
+            mensajePrincipal = 'No se encontraron datos para importar. Verifique que el archivo tenga el formato correcto.';
           } else if (filas_procesadas > 0) {
-            toast.error(
-              `Se procesaron ${filas_procesadas} filas pero ningún producto coincide con el Catálogo de Donaciones. ` +
-              `Verifique que las claves de producto existan en el catálogo.`,
-              { duration: 8000 }
-            );
+            mensajePrincipal = `Se procesaron ${filas_procesadas} filas pero ningún producto coincide con el Catálogo de Donaciones. Verifique que las claves de producto existan en el catálogo.`;
           }
         }
         
         if (fallidos > 0 || errores.length > 0) {
-          toast.error(`${fallidos || errores.length} errores durante la importación`);
-          // Mostrar errores detallados
-          errores.slice(0, 3).forEach((err) => {
-            toast.error(`Fila ${err.fila}: ${err.error}`, { duration: 5000 });
-          });
+          tipoResultado = exitosos > 0 ? 'warning' : 'error';
+        }
+        
+        // Mostrar modal persistente con resultados
+        setImportDonacionResultModal({
+          tipo: tipoResultado,
+          mensaje: mensajePrincipal,
+          donaciones_creadas,
+          detalles_creados,
+          exitosos,
+          fallidos,
+          errores,
+          filas_procesadas,
+          filas_vacias,
+          filas_ejemplo,
+        });
+        
+        // Toast breve de confirmación
+        if (tipoResultado === 'success') {
+          toast.success('Importación completada - ver detalles');
+        } else if (tipoResultado === 'warning') {
+          toast.warning ? toast.warning('Importación parcial - ver errores') : toast.error('Importación parcial - ver errores');
         }
       } else {
         // Respuesta sin estructura esperada
@@ -674,7 +689,17 @@ const Donaciones = () => {
     } catch (err) {
       console.error('Error importando donaciones:', err);
       const errorMsg = err.response?.data?.error || err.response?.data?.mensaje || 'Error al importar donaciones';
-      toast.error(errorMsg);
+      // Mostrar error en modal persistente
+      setImportDonacionResultModal({
+        tipo: 'error',
+        mensaje: errorMsg,
+        donaciones_creadas: 0,
+        detalles_creados: 0,
+        exitosos: 0,
+        fallidos: 1,
+        errores: [{ fila: 0, error: errorMsg }],
+        filas_procesadas: 0,
+      });
     } finally {
       setImportingDonaciones(false);
       // Limpiar input
@@ -4212,6 +4237,134 @@ const Donaciones = () => {
                 style={{ backgroundColor: COLORS.primary }}
               >
                 Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========== MODAL: RESULTADO DE IMPORTACIÓN DE DONACIONES ========== */}
+      {importDonacionResultModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-2xl w-full shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className={`px-6 py-4 ${
+              importDonacionResultModal.tipo === 'success' ? 'bg-green-600' : 
+              importDonacionResultModal.tipo === 'warning' ? 'bg-yellow-500' : 'bg-red-600'
+            } text-white`}>
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  {importDonacionResultModal.tipo === 'success' ? (
+                    <>
+                      <FaCheckCircle /> Importación de Donaciones Exitosa
+                    </>
+                  ) : importDonacionResultModal.tipo === 'warning' ? (
+                    <>
+                      <FaExclamationTriangle /> Importación Parcial
+                    </>
+                  ) : (
+                    <>
+                      <FaExclamationTriangle /> Error en Importación
+                    </>
+                  )}
+                </h2>
+                <button
+                  onClick={() => setImportDonacionResultModal(null)}
+                  className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                  title="Cerrar (X)"
+                >
+                  <FaTimes />
+                </button>
+              </div>
+            </div>
+
+            {/* Contenido */}
+            <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+              {/* Mensaje principal */}
+              <div className={`rounded-lg p-4 ${
+                importDonacionResultModal.tipo === 'success' ? 'bg-green-50 border border-green-200' :
+                importDonacionResultModal.tipo === 'warning' ? 'bg-yellow-50 border border-yellow-200' :
+                'bg-red-50 border border-red-200'
+              }`}>
+                <p className={`font-medium ${
+                  importDonacionResultModal.tipo === 'success' ? 'text-green-800' :
+                  importDonacionResultModal.tipo === 'warning' ? 'text-yellow-800' :
+                  'text-red-800'
+                }`}>
+                  {importDonacionResultModal.mensaje}
+                </p>
+              </div>
+
+              {/* Estadísticas si hubo éxito */}
+              {(importDonacionResultModal.donaciones_creadas > 0 || importDonacionResultModal.detalles_creados > 0) && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+                  <div className="bg-green-50 rounded-lg p-3">
+                    <p className="text-2xl font-bold text-green-600">{importDonacionResultModal.donaciones_creadas || 0}</p>
+                    <p className="text-xs text-green-700">Donaciones</p>
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-3">
+                    <p className="text-2xl font-bold text-blue-600">{importDonacionResultModal.detalles_creados || 0}</p>
+                    <p className="text-xs text-blue-700">Detalles</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-2xl font-bold text-gray-600">{importDonacionResultModal.filas_procesadas || 0}</p>
+                    <p className="text-xs text-gray-700">Filas procesadas</p>
+                  </div>
+                  <div className="bg-red-50 rounded-lg p-3">
+                    <p className="text-2xl font-bold text-red-600">{importDonacionResultModal.fallidos || 0}</p>
+                    <p className="text-xs text-red-700">Errores</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Info adicional sobre filas ignoradas */}
+              {(importDonacionResultModal.filas_vacias > 0 || importDonacionResultModal.filas_ejemplo > 0) && (
+                <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">
+                  <p className="flex items-center gap-2">
+                    <FaInfoCircle className="text-gray-400" />
+                    {importDonacionResultModal.filas_vacias > 0 && `${importDonacionResultModal.filas_vacias} filas vacías ignoradas. `}
+                    {importDonacionResultModal.filas_ejemplo > 0 && `${importDonacionResultModal.filas_ejemplo} filas de ejemplo ignoradas.`}
+                  </p>
+                </div>
+              )}
+
+              {/* Lista de errores detallados */}
+              {importDonacionResultModal.errores?.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <p className="font-semibold text-red-800 mb-3 flex items-center gap-2">
+                    <FaExclamationTriangle className="text-red-600" />
+                    Errores encontrados ({importDonacionResultModal.errores.length}):
+                  </p>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {importDonacionResultModal.errores.slice(0, 20).map((err, idx) => (
+                      <div key={idx} className="bg-white rounded p-2 text-sm border border-red-100">
+                        <span className="font-medium text-red-700">
+                          {err.fila ? `Fila ${err.fila}: ` : ''}
+                        </span>
+                        <span className="text-red-600">{err.error || err}</span>
+                      </div>
+                    ))}
+                    {importDonacionResultModal.errores.length > 20 && (
+                      <p className="text-red-500 text-sm italic text-center py-2">
+                        ... y {importDonacionResultModal.errores.length - 20} errores más
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer con botón de cerrar prominente */}
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-between items-center">
+              <p className="text-xs text-gray-500">
+                Este mensaje permanecerá visible hasta que lo cierre
+              </p>
+              <button
+                onClick={() => setImportDonacionResultModal(null)}
+                className="px-6 py-2.5 bg-primary text-white rounded-lg hover:opacity-90 transition-colors font-semibold flex items-center gap-2"
+                style={{ backgroundColor: COLORS.primary }}
+              >
+                <FaTimes /> Cerrar
               </button>
             </div>
           </div>
