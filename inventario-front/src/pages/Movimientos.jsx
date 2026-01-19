@@ -1589,31 +1589,7 @@ const Movimientos = () => {
               </button>
             </div>
           </div>
-          ) : (
-          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl shadow-sm border border-blue-200 p-6">
-            <div className="flex items-start gap-4">
-              <div className="bg-blue-100 p-3 rounded-xl">
-                <FaInfoCircle className="text-blue-600 text-xl" />
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-blue-800 mb-2">📋 Módulo Informativo</h2>
-                <p className="text-blue-700 text-sm mb-3">
-                  Este módulo muestra el historial de movimientos de tu centro. Para registrar movimientos usa:
-                </p>
-                <ul className="text-sm text-blue-600 space-y-2">
-                  <li className="flex items-center gap-2">
-                    <span className="w-6 h-6 bg-rose-100 rounded-full flex items-center justify-center text-xs">💊</span>
-                    <strong>Dispensaciones</strong> → Salidas por receta o consumo interno
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <span className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center text-xs">📦</span>
-                    <strong>Requisiciones</strong> → Solicitar medicamentos a Farmacia Central
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-          )}
+          ) : null}
 
           <div className={`${puedeRegistrarMovimiento ? 'lg:col-span-2' : 'lg:col-span-3'} bg-white rounded-2xl shadow-sm border border-gray-200`}>
             <div className="px-6 py-4 border-b border-gray-200 flex flex-col gap-3">
