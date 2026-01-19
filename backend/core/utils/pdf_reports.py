@@ -4290,8 +4290,8 @@ def generar_control_mensual_cprs(periodo_data, productos_data, centro_nombre=Non
     header_row = [
         Paragraph('<b>Clave<br/>(Insumo)</b>', celda_style),      # (4)
         Paragraph('<b>Insumo médico</b>', celda_style),            # (5)
-        Paragraph('<b>Lote</b>', celda_style),                     # Número de lote (nuevo)
         Paragraph('<b>Presentación</b>', celda_style),             # (6)
+        Paragraph('<b>Lote</b>', celda_style),                     # Número de lote
         Paragraph('<b>Fecha de<br/>Caducidad</b>', celda_style),   # (7)
         Paragraph('<b>Existencias<br/>Anteriores</b>', celda_style), # (8)
         Paragraph('<b>Doc.<br/>Entrada</b>', celda_style),         # (9) Abreviado
@@ -4328,8 +4328,8 @@ def generar_control_mensual_cprs(periodo_data, productos_data, centro_nombre=Non
         control_data.append([
             Paragraph(str(item.get('producto_clave', item.get('clave', '')))[:10], celda_style),  # (4)
             Paragraph(str(item.get('producto_nombre', item.get('insumo', '')))[:40], celda_style),  # (5)
-            Paragraph(numero_lote, celda_style),  # Lote (nuevo)
-            Paragraph(str(item.get('presentacion', ''))[:20], celda_style),  # (6)
+            Paragraph(str(item.get('presentacion', ''))[:20], celda_style),  # (6) Presentación
+            Paragraph(numero_lote, celda_style),  # Lote
             str(fecha_cad)[:10] if fecha_cad else '',  # (7)
             str(existencia_anterior),  # (8)
             Paragraph(str(item.get('documento_entrada', item.get('folio', '')) or '')[:12], celda_style),  # (9)
