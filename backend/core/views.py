@@ -7221,16 +7221,11 @@ class DispensacionViewSet(viewsets.ModelViewSet):
             
             productos_data = []
             for lote in lotes_base:
-                # Calcular existencia al inicio del periodo
-                movs_antes = Movimiento.objects.filter(
-                    lote=lote,
-                    fecha__lt=fecha_inicio
-                ).aggregate(
-                    total=Coalesce(Sum('cantidad'), 0)
-                )
-                existencia_anterior = (lote.cantidad_inicial or 0) + (movs_antes['total'] or 0)
+                # CORRECCIÓN: El stock actual ya incluye TODOS los movimientos
+                # Para calcular existencia_anterior, restamos los movimientos del periodo actual
+                # del stock actual
                 
-                # Obtener movimientos del periodo
+                # Obtener movimientos del periodo actual
                 movimientos_periodo = Movimiento.objects.filter(
                     lote=lote,
                     fecha__gte=fecha_inicio,
@@ -7250,8 +7245,12 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                     else:
                         salidas += abs(mov.cantidad)
                 
-                # Calcular existencia final
-                existencia_final = existencia_anterior + entradas - salidas
+                # Existencia final = stock actual del lote
+                existencia_final = lote.cantidad_actual or 0
+                
+                # Existencia anterior = existencia_final - entradas + salidas
+                # (invirtiendo la fórmula: existencia_final = existencia_anterior + entradas - salidas)
+                existencia_anterior = existencia_final - entradas + salidas
                 
                 # Solo incluir si hay movimientos o stock
                 if existencia_anterior > 0 or entradas > 0 or salidas > 0 or existencia_final > 0:
