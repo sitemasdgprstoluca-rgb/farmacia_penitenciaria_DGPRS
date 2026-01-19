@@ -2658,28 +2658,27 @@ const Donaciones = () => {
             
             {/* Fila 2: Botones de acción */}
             <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t">
-                {/* Botón Actualizar */}
-                <button
-                  onClick={() => cargarTodasEntregas()}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg border hover:bg-gray-50 transition-colors"
-                >
-                  <FaHistory /> Actualizar
-                </button>
-                
-                {/* Botón Exportar Excel */}
-                <button
-                  onClick={handleExportarEntregas}
-                  disabled={exportingEntregas || todasEntregas.length === 0}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg border text-green-700 border-green-300 hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {exportingEntregas ? (
-                    <FaSpinner className="animate-spin" />
-                  ) : (
-                    <FaFileExport />
-                  )}
-                  Exportar
-                </button>
-              </div>
+              {/* Botón Actualizar */}
+              <button
+                onClick={() => cargarTodasEntregas()}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border hover:bg-gray-50 transition-colors"
+              >
+                <FaHistory /> Actualizar
+              </button>
+              
+              {/* Botón Exportar Excel */}
+              <button
+                onClick={handleExportarEntregas}
+                disabled={exportingEntregas || todasEntregas.length === 0}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border text-green-700 border-green-300 hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {exportingEntregas ? (
+                  <FaSpinner className="animate-spin" />
+                ) : (
+                  <FaFileExport />
+                )}
+                Exportar
+              </button>
             </div>
           </div>
 
