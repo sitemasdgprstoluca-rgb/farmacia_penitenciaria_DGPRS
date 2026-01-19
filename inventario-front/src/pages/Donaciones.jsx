@@ -1804,25 +1804,6 @@ const Donaciones = () => {
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Centro Destino</label>
-              <select
-                value={filtroCentro}
-                onChange={(e) => {
-                  setFiltroCentro(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
-              >
-                <option value="">Todos los centros</option>
-                {centros.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre}
-                  </option>
-                ))}
-              </select>
-            </div>
-
             <div className="flex gap-2">
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Desde</label>
@@ -2700,9 +2681,9 @@ const Donaciones = () => {
                   <thead className="bg-gray-50 border-b">
                     <tr>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Fecha</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Centro Destino</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Productos</th>
                       <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Cantidad</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Destinatario</th>
                       <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Estado</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Entregado por</th>
                       <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Acciones</th>
@@ -2727,6 +2708,12 @@ const Donaciones = () => {
                               })}
                             </td>
                             <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <FaBuilding className="text-theme-primary" />
+                                <span className="font-medium">{grupo.centro_destino_nombre || grupo.destinatario || '-'}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
                               {esGrupo ? (
                                 <button
                                   onClick={() => toggleGrupo(grupo.clave)}
@@ -2743,14 +2730,6 @@ const Donaciones = () => {
                             </td>
                             <td className="px-4 py-3 text-center">
                               <span className="font-bold text-primary">{grupo.totalCantidad}</span>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                {grupo.centro_destino_nombre && (
-                                  <FaBuilding className="text-gray-400" title="Centro destino" />
-                                )}
-                                <span>{grupo.destinatario}</span>
-                              </div>
                             </td>
                             <td className="px-4 py-3 text-center">
                               {grupo.todosFinalizados ? (
@@ -2872,11 +2851,11 @@ const Donaciones = () => {
                                   minute: '2-digit',
                                 })}
                               </td>
+                              <td className="px-4 py-2 text-sm text-gray-500">-</td>
                               <td className="px-4 py-2 font-medium text-sm">{entrega.producto_nombre || '-'}</td>
                               <td className="px-4 py-2 text-center">
                                 <span className="font-bold text-primary text-sm">{entrega.cantidad}</span>
                               </td>
-                              <td className="px-4 py-2 text-sm text-gray-500">-</td>
                               <td className="px-4 py-2 text-center">
                                 {entrega.estado_entrega === 'entregado' || entrega.finalizado ? (
                                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">

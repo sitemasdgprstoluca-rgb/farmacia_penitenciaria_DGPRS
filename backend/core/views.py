@@ -4707,17 +4707,23 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
         """
         Exporta las entregas de donaciones a Excel con formato profesional.
         Respeta los filtros aplicados en la consulta (centro_destino, destinatario, fechas).
+        Incluye resumen y totales por centro.
         """
         import openpyxl
         from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from openpyxl.utils import get_column_letter
         from django.http import HttpResponse
         from django.utils import timezone
+        from collections import defaultdict
         
         try:
-            entregas = self.get_queryset()
+            entregas = list(self.get_queryset())
             
             # Obtener el centro filtrado para el título (si aplica)
             centro_filtro = self.request.query_params.get('centro_destino')
+            fecha_desde = self.request.query_params.get('fecha_desde', '')
+            fecha_hasta = self.request.query_params.get('fecha_hasta', '')
+            
             centro_nombre = "Todos los Centros"
             if centro_filtro:
                 try:
@@ -4731,52 +4737,81 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
             ws = wb.active
             ws.title = 'Entregas Donaciones'
             
-            # Título del reporte
-            ws.merge_cells('A1:J1')
-            titulo_cell = ws['A1']
-            titulo_cell.value = 'REPORTE DE ENTREGAS DE DONACIONES'
-            titulo_cell.font = Font(bold=True, size=14, color='632842')
-            titulo_cell.alignment = Alignment(horizontal='center', vertical='center')
+            # Estilos
+            header_fill = PatternFill(start_color='722F37', end_color='722F37', fill_type='solid')
+            header_font = Font(bold=True, color='FFFFFF', size=11)
+            title_font = Font(bold=True, size=14, color='722F37')
+            subtitle_font = Font(size=10, italic=True, color='666666')
+            total_fill = PatternFill(start_color='E8E8E8', end_color='E8E8E8', fill_type='solid')
+            total_font = Font(bold=True, size=11)
+            thin_border = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
             
-            # Centro y fecha de generación
-            ws.merge_cells('A2:J2')
+            # Título del reporte
+            ws.merge_cells('A1:H1')
+            titulo_cell = ws['A1']
+            titulo_cell.value = 'REPORTE DE ENTREGAS DE DONACIONES A CENTROS'
+            titulo_cell.font = title_font
+            titulo_cell.alignment = Alignment(horizontal='center', vertical='center')
+            ws.row_dimensions[1].height = 25
+            
+            # Subtítulo con filtros
+            periodo = ""
+            if fecha_desde and fecha_hasta:
+                periodo = f" | Periodo: {fecha_desde} a {fecha_hasta}"
+            elif fecha_desde:
+                periodo = f" | Desde: {fecha_desde}"
+            elif fecha_hasta:
+                periodo = f" | Hasta: {fecha_hasta}"
+            
+            ws.merge_cells('A2:H2')
             subtitulo_cell = ws['A2']
-            subtitulo_cell.value = f'Centro: {centro_nombre} | Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")}'
-            subtitulo_cell.font = Font(size=10, italic=True)
+            subtitulo_cell.value = f'Centro: {centro_nombre}{periodo} | Generado: {timezone.now().strftime("%d/%m/%Y %H:%M")}'
+            subtitulo_cell.font = subtitle_font
             subtitulo_cell.alignment = Alignment(horizontal='center')
+            
+            # Resumen rápido
+            ws.merge_cells('A3:H3')
+            total_entregas = len(entregas)
+            total_cantidad = sum(e.cantidad or 0 for e in entregas)
+            resumen_cell = ws['A3']
+            resumen_cell.value = f'Total Entregas: {total_entregas} | Total Unidades: {total_cantidad}'
+            resumen_cell.font = Font(bold=True, size=11, color='722F37')
+            resumen_cell.alignment = Alignment(horizontal='center')
             
             # Espacio
             ws.append([])
             
-            # Encabezados con Centro Destino
+            # Encabezados
             headers = [
-                '#', 'Fecha Entrega', 'Centro Destino', 'Producto', 'Clave Producto',
-                'Cantidad', 'Destinatario', 'Estado', 'Entregado Por', 'Donación'
+                '#', 'Fecha', 'Centro Destino', 'Producto', 'Clave',
+                'Cantidad', 'Estado', 'Entregado Por'
             ]
             ws.append(headers)
+            header_row = 5
             
-            # Estilo de encabezados
-            header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
-            header_font = Font(bold=True, color='FFFFFF', size=11)
-            header_alignment = Alignment(horizontal='center', vertical='center')
-            
-            for col_num, cell in enumerate(ws[4], 1):
+            for col_num, cell in enumerate(ws[header_row], 1):
                 cell.fill = header_fill
                 cell.font = header_font
-                cell.alignment = header_alignment
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+                cell.border = thin_border
+            
+            # Agrupar por centro para subtotales
+            entregas_por_centro = defaultdict(list)
             
             # Datos
+            row_num = header_row + 1
             for idx, entrega in enumerate(entregas, start=1):
                 producto_nombre = ''
                 producto_clave = ''
-                donacion_numero = ''
                 
                 if entrega.detalle_donacion:
-                    # Usar propiedades del modelo que manejan producto_donacion y producto legacy
                     producto_nombre = entrega.detalle_donacion.nombre_producto or ''
                     producto_clave = entrega.detalle_donacion.clave_producto or ''
-                    if entrega.detalle_donacion.donacion:
-                        donacion_numero = entrega.detalle_donacion.donacion.numero
                 
                 entregado_por_nombre = ''
                 if entrega.entregado_por:
@@ -4785,66 +4820,93 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
                         entregado_por_nombre = entrega.entregado_por.username
                 
                 fecha_str = entrega.fecha_entrega.strftime('%d/%m/%Y %H:%M') if entrega.fecha_entrega else ''
-                
-                # Centro destino
                 centro_destino_nombre = entrega.centro_destino.nombre if entrega.centro_destino else entrega.destinatario or '-'
-                
-                # Estado de entrega
                 estado = 'Entregado' if entrega.finalizado else 'Pendiente'
                 
-                ws.append([
+                # Guardar para resumen
+                entregas_por_centro[centro_destino_nombre].append(entrega.cantidad or 0)
+                
+                row_data = [
                     idx,
                     fecha_str,
                     centro_destino_nombre,
                     producto_nombre,
                     producto_clave,
                     entrega.cantidad,
-                    entrega.destinatario,
                     estado,
-                    entregado_por_nombre,
-                    donacion_numero
-                ])
+                    entregado_por_nombre
+                ]
+                ws.append(row_data)
                 
-                # Estilo para filas
-                row_num = idx + 4
-                for cell in ws[row_num]:
+                # Aplicar estilos a la fila
+                for col, cell in enumerate(ws[row_num], 1):
+                    cell.border = thin_border
                     cell.alignment = Alignment(vertical='center')
+                    if col == 6:  # Cantidad
+                        cell.alignment = Alignment(horizontal='center', vertical='center')
+                
+                row_num += 1
+            
+            # Agregar resumen por centro al final
+            ws.append([])
+            ws.append([])
+            row_num += 2
+            
+            ws.merge_cells(f'A{row_num}:H{row_num}')
+            resumen_titulo = ws[f'A{row_num}']
+            resumen_titulo.value = 'RESUMEN POR CENTRO DESTINO'
+            resumen_titulo.font = title_font
+            resumen_titulo.alignment = Alignment(horizontal='center')
+            row_num += 1
+            
+            # Encabezados resumen
+            ws.append(['', '', 'Centro', '', '', 'Entregas', 'Unidades', ''])
+            for col, cell in enumerate(ws[row_num], 1):
+                if col in [3, 6, 7]:
+                    cell.fill = header_fill
+                    cell.font = header_font
+                    cell.border = thin_border
+            row_num += 1
+            
+            # Datos resumen
+            for centro, cantidades in sorted(entregas_por_centro.items()):
+                ws.append(['', '', centro, '', '', len(cantidades), sum(cantidades), ''])
+                for col, cell in enumerate(ws[row_num], 1):
+                    if col in [3, 6, 7]:
+                        cell.border = thin_border
+                        if col in [6, 7]:
+                            cell.alignment = Alignment(horizontal='center')
+                row_num += 1
+            
+            # Total general
+            ws.append(['', '', 'TOTAL GENERAL', '', '', total_entregas, total_cantidad, ''])
+            for col, cell in enumerate(ws[row_num], 1):
+                if col in [3, 6, 7]:
+                    cell.fill = total_fill
+                    cell.font = total_font
+                    cell.border = thin_border
+                    if col in [6, 7]:
+                        cell.alignment = Alignment(horizontal='center')
             
             # Ajustar anchos de columna
-            ws.column_dimensions['A'].width = 6
-            ws.column_dimensions['B'].width = 18
-            ws.column_dimensions['C'].width = 35  # Centro Destino
-            ws.column_dimensions['D'].width = 40
-            ws.column_dimensions['E'].width = 15
-            ws.column_dimensions['F'].width = 10
-            ws.column_dimensions['G'].width = 30
-            ws.column_dimensions['H'].width = 12  # Estado
-            ws.column_dimensions['I'].width = 25
-            ws.column_dimensions['J'].width = 15
+            anchos = [6, 16, 35, 35, 12, 10, 12, 20]
+            for col, ancho in enumerate(anchos, 1):
+                ws.column_dimensions[get_column_letter(col)].width = ancho
             
-            # Agregar bordes
-            thin_border = Border(
-                left=Side(style='thin'),
-                right=Side(style='thin'),
-                top=Side(style='thin'),
-                bottom=Side(style='thin')
-            )
-            
-            for row in ws.iter_rows(min_row=4, max_row=ws.max_row, min_col=1, max_col=10):
-                for cell in row:
-                    cell.border = thin_border
+            # Congelar encabezados
+            ws.freeze_panes = 'A6'
             
             # Preparar respuesta
             response = HttpResponse(
                 content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             )
             
-            # Nombre del archivo con centro si está filtrado
+            # Nombre del archivo
             if centro_filtro:
-                centro_slug = centro_nombre[:20].replace(' ', '_')
-                filename = f'entregas_donaciones_{centro_slug}_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+                centro_slug = centro_nombre[:20].replace(' ', '_').replace('/', '-')
+                filename = f'entregas_{centro_slug}_{timezone.now().strftime("%Y%m%d")}.xlsx'
             else:
-                filename = f'entregas_donaciones_todos_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+                filename = f'entregas_todos_centros_{timezone.now().strftime("%Y%m%d")}.xlsx'
             response['Content-Disposition'] = f'attachment; filename="{filename}"'
             
             wb.save(response)
