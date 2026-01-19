@@ -7255,13 +7255,26 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                 
                 # Solo incluir si hay movimientos o stock
                 if existencia_anterior > 0 or entradas > 0 or salidas > 0 or existencia_final > 0:
+                    # Formatear documento de entrada de forma legible
+                    doc_entrada_fmt = doc_entrada
+                    if doc_entrada:
+                        # Abreviar tipos comunes de documentos
+                        doc_entrada_fmt = doc_entrada.replace('ENTRADA_POR_REQUISICION', 'REQ')
+                        doc_entrada_fmt = doc_entrada_fmt.replace('ENTRADA_POR_REQ', 'REQ')
+                        doc_entrada_fmt = doc_entrada_fmt.replace('RECEPCION_REQUISICION', 'REQ')
+                        doc_entrada_fmt = doc_entrada_fmt.replace('_', ' ')
+                        # Limitar a 20 caracteres para que quepa en la celda
+                        if len(doc_entrada_fmt) > 20:
+                            doc_entrada_fmt = doc_entrada_fmt[:18] + '..'
+                    
                     productos_data.append({
                         'producto_clave': lote.producto.clave if lote.producto else 'N/A',
                         'producto_nombre': lote.producto.nombre if lote.producto else 'N/A',
+                        'numero_lote': lote.numero_lote or '',  # Agregar número de lote
                         'presentacion': lote.producto.presentacion if lote.producto else 'N/A',
                         'fecha_caducidad': lote.fecha_caducidad,
                         'existencia_anterior': existencia_anterior,
-                        'documento_entrada': doc_entrada[:50] if doc_entrada else '',
+                        'documento_entrada': doc_entrada_fmt,
                         'entradas': entradas,
                         'salidas': salidas,
                         'existencia_final': existencia_final,

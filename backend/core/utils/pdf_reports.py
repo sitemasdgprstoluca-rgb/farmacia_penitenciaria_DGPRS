@@ -4286,14 +4286,15 @@ def generar_control_mensual_cprs(periodo_data, productos_data, centro_nombre=Non
     elements.append(Spacer(1, 0.15*inch))
     
     # ========== TABLA DE CONTROL MENSUAL ==========
-    # Encabezados según formato oficial (instructivo)
+    # Encabezados según formato oficial (instructivo) + Número de Lote
     header_row = [
         Paragraph('<b>Clave<br/>(Insumo)</b>', celda_style),      # (4)
         Paragraph('<b>Insumo médico</b>', celda_style),            # (5)
+        Paragraph('<b>Lote</b>', celda_style),                     # Número de lote (nuevo)
         Paragraph('<b>Presentación</b>', celda_style),             # (6)
         Paragraph('<b>Fecha de<br/>Caducidad</b>', celda_style),   # (7)
         Paragraph('<b>Existencias<br/>Anteriores</b>', celda_style), # (8)
-        Paragraph('<b>Documento de<br/>Entrada<br/>(Folio)</b>', celda_style), # (9)
+        Paragraph('<b>Doc.<br/>Entrada</b>', celda_style),         # (9) Abreviado
         Paragraph('<b>Entrada</b>', celda_style),                  # (10)
         Paragraph('<b>Salida</b>', celda_style),                   # (11)
         Paragraph('<b>Existencia</b>', celda_style),               # (12)
@@ -4321,13 +4322,17 @@ def generar_control_mensual_cprs(periodo_data, productos_data, centro_nombre=Non
         totales['salidas'] += salidas
         totales['existencia_final'] += existencia_final
         
+        # Obtener número de lote
+        numero_lote = str(item.get('numero_lote', ''))[:15]
+        
         control_data.append([
-            Paragraph(str(item.get('producto_clave', item.get('clave', '')))[:15], celda_style),  # (4)
-            Paragraph(str(item.get('producto_nombre', item.get('insumo', '')))[:45], celda_style),  # (5)
-            Paragraph(str(item.get('presentacion', ''))[:25], celda_style),  # (6)
+            Paragraph(str(item.get('producto_clave', item.get('clave', '')))[:10], celda_style),  # (4)
+            Paragraph(str(item.get('producto_nombre', item.get('insumo', '')))[:40], celda_style),  # (5)
+            Paragraph(numero_lote, celda_style),  # Lote (nuevo)
+            Paragraph(str(item.get('presentacion', ''))[:20], celda_style),  # (6)
             str(fecha_cad)[:10] if fecha_cad else '',  # (7)
             str(existencia_anterior),  # (8)
-            Paragraph(str(item.get('documento_entrada', item.get('folio', '')) or '')[:15], celda_style),  # (9)
+            Paragraph(str(item.get('documento_entrada', item.get('folio', '')) or '')[:12], celda_style),  # (9)
             str(entradas),  # (10)
             str(salidas),  # (11)
             str(existencia_final),  # (12)
@@ -4336,10 +4341,11 @@ def generar_control_mensual_cprs(periodo_data, productos_data, centro_nombre=Non
     # Agregar filas vacías para completar el formato (mínimo 20 filas visibles)
     filas_minimas = 20
     while len(control_data) < filas_minimas + 1:  # +1 por el encabezado
-        control_data.append(['', '', '', '', '', '', '', '', ''])
+        control_data.append(['', '', '', '', '', '', '', '', '', ''])  # 10 columnas ahora
     
-    # Anchos de columna para portrait - total ~7.4 inches
-    control_col_widths = [0.6*inch, 1.8*inch, 0.9*inch, 0.7*inch, 0.65*inch, 0.8*inch, 0.5*inch, 0.5*inch, 0.65*inch]
+    # Anchos de columna para portrait - total ~7.4 inches (10 columnas)
+    # Clave | Insumo | Lote | Presentación | Caducidad | Exist.Ant | Doc.Entrada | Entrada | Salida | Existencia
+    control_col_widths = [0.5*inch, 1.4*inch, 0.7*inch, 0.75*inch, 0.6*inch, 0.55*inch, 0.7*inch, 0.45*inch, 0.45*inch, 0.55*inch]
     
     control_table = Table(control_data, colWidths=control_col_widths, repeatRows=1)
     control_table.setStyle(TableStyle([
@@ -4355,8 +4361,8 @@ def generar_control_mensual_cprs(periodo_data, productos_data, centro_nombre=Non
         ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
         ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-        ('ALIGN', (4, 1), (4, -1), 'CENTER'),  # Existencias anteriores
-        ('ALIGN', (6, 1), (8, -1), 'CENTER'),  # Entrada, Salida, Existencia
+        ('ALIGN', (5, 1), (5, -1), 'CENTER'),  # Existencias anteriores (col 5)
+        ('ALIGN', (7, 1), (9, -1), 'CENTER'),  # Entrada, Salida, Existencia (col 7-9)
         ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 2),
         ('RIGHTPADDING', (0, 0), (-1, -1), 2),
