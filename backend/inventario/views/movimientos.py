@@ -903,10 +903,21 @@ class MovimientoViewSet(
         queryset = self.get_queryset()
         self._skip_estado_confirmacion = False
         
-        # Obtener TODOS los movimientos (sin paginar) para agrupar correctamente
-        # Limitamos a un máximo razonable para evitar problemas de memoria
-        MAX_MOVIMIENTOS = 5000
-        movimientos = list(queryset.order_by('-fecha')[:MAX_MOVIMIENTOS])
+        # ISS-FIX RENDIMIENTO: Limitar campos y cantidad para evitar lentitud
+        # Solo traemos los campos necesarios para agrupar
+        MAX_MOVIMIENTOS = 2000  # Reducido de 5000 para mejor rendimiento
+        movimientos = list(
+            queryset.select_related(
+                'lote__producto', 'centro_origen', 'centro_destino', 'usuario'
+            ).only(
+                'id', 'tipo', 'subtipo_salida', 'cantidad', 'fecha', 'motivo', 'referencia',
+                'lote__id', 'lote__numero_lote', 'lote__producto__id', 'lote__producto__clave', 'lote__producto__nombre',
+                'lote__centro_id',
+                'centro_origen__id', 'centro_origen__nombre',
+                'centro_destino__id', 'centro_destino__nombre',
+                'usuario__id', 'usuario__first_name', 'usuario__last_name', 'usuario__username'
+            ).order_by('-fecha')[:MAX_MOVIMIENTOS]
+        )
         
         # Agrupar movimientos
         grupos = defaultdict(lambda: {

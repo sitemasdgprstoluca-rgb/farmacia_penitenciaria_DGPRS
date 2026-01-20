@@ -1097,17 +1097,19 @@ def generar_hoja_entrega(datos_entrega, finalizado=False):
     
     # ========== FILA 1: FOLIO Y FECHA (tablas invisibles para posicionar) ==========
     fecha_str = datos_entrega['fecha'].strftime('%d/%m/%Y') if datos_entrega.get('fecha') else ''
+    folio = datos_entrega.get('grupo_salida', '')  # Usar el folio del grupo de salida
     
     # Tabla invisible para FOLIO: (izquierda) y FECHA DE ELABORACIÓN: (derecha)
     encabezado_data = [[
         Paragraph("<b>FOLIO:</b>", estilo_label),
-        '',  # espacio vacío
+        Paragraph(f"<u>&nbsp;&nbsp;{folio}&nbsp;&nbsp;</u>", estilo_value),
         Paragraph("<b>FECHA DE ELABORACIÓN:</b>", estilo_label),
         Paragraph(f"<u>&nbsp;&nbsp;&nbsp;{fecha_str}&nbsp;&nbsp;&nbsp;</u>", estilo_value),
     ]]
-    encabezado_table = Table(encabezado_data, colWidths=[0.5*inch, 3.5*inch, 1.5*inch, 1.0*inch])
+    encabezado_table = Table(encabezado_data, colWidths=[0.5*inch, 2.0*inch, 1.5*inch, 1.0*inch])
     encabezado_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+        ('ALIGN', (1, 0), (1, 0), 'LEFT'),
         ('ALIGN', (2, 0), (2, 0), 'RIGHT'),
         ('ALIGN', (3, 0), (3, 0), 'RIGHT'),
         ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
@@ -1125,9 +1127,9 @@ def generar_hoja_entrega(datos_entrega, finalizado=False):
                  'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
         mes = meses[datos_entrega['fecha'].month]
         anio = datos_entrega['fecha'].year
-        periodo_texto = f"PERIODO:  {mes} {anio}  DONACIÓN ISEM"
+        periodo_texto = f"PERIODO:  {mes} {anio}"
     else:
-        periodo_texto = "PERIODO: ________________  DONACIÓN ISEM"
+        periodo_texto = "PERIODO: ________________"
     
     story.append(Paragraph(periodo_texto, estilo_periodo))
     story.append(Spacer(1, 0.15*inch))
