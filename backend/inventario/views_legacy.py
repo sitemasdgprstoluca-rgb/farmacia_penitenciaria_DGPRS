@@ -8723,9 +8723,9 @@ def reporte_inventario(request):
             if lote_con_marca:
                 marca_lote = lote_con_marca.marca or ''
 
-            # Si hay filtro de centro activo, NO mostrar productos sin stock en ese centro
-            # (evita confusión de ver 76 productos cuando solo 4 tienen stock)
-            if filtrar_por_centro and stock_total == 0:
+            # ISS-FIX: Solo excluir productos sin stock si es un centro específico (no Farmacia Central)
+            # Farmacia Central (user_centro=None) debe mostrar TODOS los productos incluso sin stock
+            if filtrar_por_centro and user_centro is not None and stock_total == 0:
                 continue
             
             # Se incluye 'nivel_stock' para compatibilidad con el frontend
