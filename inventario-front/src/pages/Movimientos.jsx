@@ -766,21 +766,39 @@ const Movimientos = () => {
 
     setSubmitting(true);
     try {
-      const payload = {
-        lote: parseInt(formData.lote),
-        tipo: formData.tipo, // "entrada" o "salida"
-        cantidad: Number(formData.cantidad),
-        observaciones: formData.observaciones || '',
-        folio_documento: formData.folio_documento?.trim() || null,  // FORMATO B: Folio documento
-      };
-      
-      // Campos adicionales para SALIDA
-      if (esSalida) {
-        // FARMACIA/ADMIN: transferencia a centro específico
-        if (puedeHacerEntradas) {
-          payload.centro = parseInt(formData.centro);
-          payload.subtipo_salida = "transferencia";
+      // CASO ESPECIAL: Transferencias a centro (FARMACIA/ADMIN)
+      // Usar API de salida_masiva para seguir flujo PENDIENTE
+      if (esSalida && puedeHacerEntradas && formData.centro) {
+        const payloadMasiva = {
+          centro_destino_id: parseInt(formData.centro),
+          observaciones: formData.observaciones || '',
+          auto_confirmar: false, // PENDIENTE hasta confirmar entrega física
+          items: [{
+            lote_id: parseInt(formData.lote),
+            cantidad: Number(formData.cantidad)
+          }]
+        };
+        
+        const resp = await salidaMasivaAPI.procesar(payloadMasiva);
+        
+        if (resp.data.success) {
+          toast.success(`✅ Transferencia registrada como PENDIENTE. Folio: ${resp.data.grupo_salida}. Confirme la entrega desde la lista de movimientos.`);
         } else {
+          toast.error(resp.data.message || 'Error al procesar transferencia');
+          return;
+        }
+      } else {
+        // CASO NORMAL: Otros movimientos (entradas, dispensaciones, consumos)
+        const payload = {
+          lote: parseInt(formData.lote),
+          tipo: formData.tipo,
+          cantidad: Number(formData.cantidad),
+          observaciones: formData.observaciones || '',
+          folio_documento: formData.folio_documento?.trim() || null,
+        };
+        
+        // Campos adicionales para SALIDA (no transferencias)
+        if (esSalida) {
           // MEDICO/CENTRO: usar su propio centro
           if (centroUsuario) {
             payload.centro = parseInt(centroUsuario);
@@ -794,23 +812,21 @@ const Movimientos = () => {
             payload.numero_expediente = formData.numero_expediente.trim();
           }
         }
+        
+        await movimientosAPI.create(payload);
+        
+        // Mensaje según tipo y rol
+        let mensajeExito = "";
+        if (esEntrada) {
+          mensajeExito = "✅ Entrada registrada exitosamente - Stock incrementado";
+        } else if (esMedico) {
+          mensajeExito = "✅ Dispensación registrada exitosamente";
+        } else {
+          mensajeExito = "✅ Salida registrada exitosamente";
+        }
+        
+        toast.success(mensajeExito);
       }
-      
-      await movimientosAPI.create(payload);
-      
-      // Mensaje según tipo y rol
-      let mensajeExito = "";
-      if (esEntrada) {
-        mensajeExito = "✅ Entrada registrada exitosamente - Stock incrementado";
-      } else if (puedeHacerEntradas) {
-        mensajeExito = "✅ Transferencia registrada exitosamente";
-      } else if (esMedico) {
-        mensajeExito = "✅ Dispensación registrada exitosamente";
-      } else {
-        mensajeExito = "✅ Salida registrada exitosamente";
-      }
-      
-      toast.success(mensajeExito);
       
       // Reset del formulario
       setFormData({
@@ -830,6 +846,7 @@ const Movimientos = () => {
     } catch (err) {
       const errorMsg = err.response?.data?.error || err.response?.data?.mensaje || 
                        err.response?.data?.detail || err.response?.data?.cantidad?.[0] ||
+                       err.response?.data?.message || err.response?.data?.errores?.join(', ') ||
                        "No se pudo registrar el movimiento";
       toast.error(errorMsg);
     } finally {
@@ -951,12 +968,29 @@ const Movimientos = () => {
   const [cancelandoGrupo, setCancelandoGrupo] = useState(null);
   const [confirmCancelarGrupo, setConfirmCancelarGrupo] = useState(null);
   
+  // Estados para confirmación en 2 pasos y modal de éxito
+  const [confirmConfirmarGrupo, setConfirmConfirmarGrupo] = useState(null); // {id, centro_nombre, items, total_cantidad}
+  const [resultadoConfirmacion, setResultadoConfirmacion] = useState(null); // Resultado exitoso para mostrar modal
+  
   const confirmarEntregaGrupo = async (grupoId) => {
     setConfirmandoGrupo(grupoId);
     try {
       toast.loading("Confirmando entrega...", { id: "confirmar-grupo" });
-      await salidaMasivaAPI.confirmarEntrega(grupoId);
-      toast.success("Entrega confirmada exitosamente", { id: "confirmar-grupo" });
+      const response = await salidaMasivaAPI.confirmarEntrega(grupoId);
+      toast.dismiss("confirmar-grupo");
+      
+      // Guardar resultado para mostrar modal de éxito
+      setResultadoConfirmacion({
+        grupoId: grupoId,
+        centroNombre: confirmConfirmarGrupo?.centro_nombre || 'Centro',
+        itemsConfirmados: response.data?.items_confirmados || [],
+        mensaje: response.data?.message || 'Entrega confirmada exitosamente',
+        totalItems: response.data?.items_confirmados?.length || 0
+      });
+      
+      // Cerrar modal de confirmación
+      setConfirmConfirmarGrupo(null);
+      
       // Recargar movimientos para actualizar el estado
       cargarMovimientos();
     } catch (err) {
@@ -1963,13 +1997,33 @@ const Movimientos = () => {
                                         </a>
                                       ) : grupo.pendiente ? (
                                         <div className="flex gap-1">
+                                          {/* Botón Hoja de Recolección (Formato B) */}
                                           <button
                                             onClick={(e) => { e.stopPropagation(); descargarHojaEntregaGrupo(grupo.id); }}
                                             className="p-2 bg-gradient-to-b from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                                            title="Hoja de recolección"
+                                            title="Hoja de Recolección (Formato B)"
                                           >
                                             <FaClipboardCheck className="text-xs" />
                                           </button>
+                                          {/* Botón Confirmar Entrega - Abre modal de confirmación */}
+                                          <button
+                                            onClick={(e) => { 
+                                              e.stopPropagation(); 
+                                              setConfirmConfirmarGrupo({
+                                                id: grupo.id,
+                                                centro_nombre: grupo.centro_nombre,
+                                                items: grupo.items || [],
+                                                total_cantidad: grupo.total_cantidad,
+                                                num_items: (grupo.items || []).length
+                                              });
+                                            }}
+                                            disabled={confirmandoGrupo === grupo.id}
+                                            className="p-2 bg-gradient-to-b from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                                            title="Confirmar Entrega (Descuenta Stock)"
+                                          >
+                                            {confirmandoGrupo === grupo.id ? <FaSpinner className="text-xs animate-spin" /> : <FaCheckCircle className="text-xs" />}
+                                          </button>
+                                          {/* Botón Cancelar */}
                                           <button
                                             onClick={(e) => { e.stopPropagation(); setConfirmCancelarGrupo(grupo.id); }}
                                             disabled={cancelandoGrupo === grupo.id}
@@ -2720,6 +2774,171 @@ const Movimientos = () => {
                     <FaTrash /> Sí, cancelar salida
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Modal Confirmación de Entrega (2 pasos) */}
+      {confirmConfirmarGrupo && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+            <div className="px-6 py-4 border-b bg-gradient-to-r from-green-600 to-emerald-600 rounded-t-xl">
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <FaCheckCircle /> Confirmar Entrega
+              </h2>
+            </div>
+            <div className="p-6">
+              <div className="mb-4">
+                <p className="text-gray-700 font-medium mb-2">
+                  ¿Confirmar la entrega al centro <span className="text-green-700 font-bold">{confirmConfirmarGrupo.centro_nombre}</span>?
+                </p>
+                <p className="text-sm text-gray-600">
+                  Grupo: <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">{confirmConfirmarGrupo.id}</span>
+                </p>
+              </div>
+              
+              {/* Resumen de items */}
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4 mb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-full bg-green-200 flex items-center justify-center">
+                    <span className="text-lg">📦</span>
+                  </div>
+                  <span className="font-semibold text-green-800">Resumen de la Entrega</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="bg-white/70 rounded p-2">
+                    <span className="text-gray-600">Total productos:</span>
+                    <span className="font-bold text-green-700 ml-2">{confirmConfirmarGrupo.num_items}</span>
+                  </div>
+                  <div className="bg-white/70 rounded p-2">
+                    <span className="text-gray-600">Cantidad total:</span>
+                    <span className="font-bold text-green-700 ml-2">{confirmConfirmarGrupo.total_cantidad}</span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Advertencia importante */}
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-sm text-amber-800 flex items-start gap-2">
+                  <FaExclamationTriangle className="mt-0.5 flex-shrink-0" />
+                  <span>
+                    <strong>Importante:</strong> Esta acción descontará el stock del Almacén Central y registrará la entrada en el centro destino. Esta operación no se puede deshacer.
+                  </span>
+                </p>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3 rounded-b-xl">
+              <button
+                onClick={() => setConfirmConfirmarGrupo(null)}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => confirmarEntregaGrupo(confirmConfirmarGrupo.id)}
+                disabled={confirmandoGrupo === confirmConfirmarGrupo.id}
+                className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-colors disabled:opacity-50 flex items-center gap-2 shadow-md"
+              >
+                {confirmandoGrupo === confirmConfirmarGrupo.id ? (
+                  <>
+                    <FaSpinner className="animate-spin" /> Confirmando...
+                  </>
+                ) : (
+                  <>
+                    <FaCheckCircle /> Sí, confirmar entrega
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Modal de Éxito después de Confirmar */}
+      {resultadoConfirmacion && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+            <div className="px-6 py-4 border-b bg-gradient-to-r from-emerald-500 to-green-600 rounded-t-xl">
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <FaCheckCircle /> ¡Entrega Confirmada Exitosamente!
+              </h2>
+            </div>
+            <div className="p-6">
+              {/* Icono de éxito animado */}
+              <div className="flex justify-center mb-4">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shadow-lg animate-pulse">
+                  <FaCheckCircle className="text-white text-3xl" />
+                </div>
+              </div>
+              
+              <p className="text-center text-gray-700 font-medium mb-4">
+                {resultadoConfirmacion.mensaje}
+              </p>
+              
+              {/* Resumen detallado */}
+              <div className="bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-200 rounded-lg p-4 mb-4">
+                <h3 className="font-semibold text-emerald-800 mb-3 flex items-center gap-2">
+                  <span className="text-lg">📋</span> Detalle de la Confirmación
+                </h3>
+                
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between items-center bg-white/70 rounded p-2">
+                    <span className="text-gray-600">Grupo:</span>
+                    <span className="font-mono font-bold text-emerald-700">{resultadoConfirmacion.grupoId}</span>
+                  </div>
+                  <div className="flex justify-between items-center bg-white/70 rounded p-2">
+                    <span className="text-gray-600">Centro destino:</span>
+                    <span className="font-bold text-emerald-700">{resultadoConfirmacion.centroNombre}</span>
+                  </div>
+                  <div className="flex justify-between items-center bg-white/70 rounded p-2">
+                    <span className="text-gray-600">Productos procesados:</span>
+                    <span className="font-bold text-emerald-700">{resultadoConfirmacion.totalItems}</span>
+                  </div>
+                </div>
+                
+                {/* Lista de items confirmados */}
+                {resultadoConfirmacion.itemsConfirmados.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-emerald-200">
+                    <p className="text-xs font-semibold text-emerald-700 mb-2">Productos confirmados:</p>
+                    <div className="max-h-32 overflow-y-auto space-y-1">
+                      {resultadoConfirmacion.itemsConfirmados.map((item, idx) => (
+                        <div key={idx} className="flex justify-between items-center text-xs bg-white/50 rounded px-2 py-1">
+                          <span className="text-gray-700 truncate flex-1">{item.producto || item.numero_lote}</span>
+                          <span className="font-bold text-emerald-600 ml-2">-{item.cantidad}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Nota informativa */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800 flex items-start gap-2">
+                  <FaInfoCircle className="mt-0.5 flex-shrink-0" />
+                  <span>
+                    El stock ha sido descontado del Almacén Central y registrado como entrada en el centro destino. Puedes descargar el comprobante desde la lista de movimientos.
+                  </span>
+                </p>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-center gap-3 rounded-b-xl">
+              <button
+                onClick={() => {
+                  // Descargar comprobante
+                  descargarComprobanteGrupo(resultadoConfirmacion.grupoId);
+                }}
+                className="px-4 py-2 border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-50 transition-colors flex items-center gap-2"
+              >
+                <FaFileDownload /> Descargar Comprobante
+              </button>
+              <button
+                onClick={() => setResultadoConfirmacion(null)}
+                className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-lg hover:from-emerald-600 hover:to-green-700 transition-colors flex items-center gap-2 shadow-md"
+              >
+                <FaCheckCircle /> Aceptar
               </button>
             </div>
           </div>

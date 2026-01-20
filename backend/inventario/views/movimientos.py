@@ -990,8 +990,15 @@ class MovimientoViewSet(
                     grupo['fecha'] = mov.fecha.isoformat() if mov.fecha else None
                     if mov.usuario:
                         grupo['usuario_nombre'] = mov.usuario.get_full_name() or mov.usuario.username
-                    grupo['confirmado'] = es_confirmado(mov)
-                    grupo['pendiente'] = es_pendiente(mov)
+                
+                # ISS-FIX: Actualizar estados pendiente/confirmado con CUALQUIER movimiento del grupo
+                # Un grupo está confirmado si ALGÚN movimiento tiene [CONFIRMADO]
+                # Un grupo está pendiente si ALGÚN movimiento tiene [PENDIENTE] y NINGUNO tiene [CONFIRMADO]
+                if es_confirmado(mov):
+                    grupo['confirmado'] = True
+                    grupo['pendiente'] = False  # Si hay confirmación, ya no está pendiente
+                elif es_pendiente(mov) and not grupo['confirmado']:
+                    grupo['pendiente'] = True
                 
                 # ISS-FIX: Determinar centro del movimiento correctamente
                 # Para SALIDAS:
