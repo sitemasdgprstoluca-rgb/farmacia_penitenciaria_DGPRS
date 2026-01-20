@@ -1846,7 +1846,7 @@ const Movimientos = () => {
                       {(!movimientosAgrupados.grupos || movimientosAgrupados.grupos.length === 0) && 
                        (!movimientosAgrupados.sinGrupo || movimientosAgrupados.sinGrupo.length === 0) ? (
                         <tr>
-                          <td colSpan={6} className="px-4 py-16 text-center">
+                          <td colSpan={esCentroUser ? 5 : esCentroUser ? 5 : 6} className="px-4 py-16 text-center">
                             <div className="flex flex-col items-center justify-center">
                               <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mb-4 shadow-inner">
                                 <FaHistory className="text-3xl text-gray-400" />
@@ -2062,7 +2062,7 @@ const Movimientos = () => {
                                       return (
                                         <>
                                           <tr className="bg-gradient-to-r from-red-50 to-red-100 border-l-4 border-red-400">
-                                            <td colSpan={6} className="px-4 py-2">
+                                            <td colSpan={esCentroUser ? 5 : 6} className="px-4 py-2">
                                               <div className="flex items-center gap-2 text-red-700">
                                                 <div className="w-6 h-6 rounded-full bg-red-200 flex items-center justify-center">
                                                   <span className="text-sm">📤</span>
@@ -2124,7 +2124,7 @@ const Movimientos = () => {
                                       return (
                                         <>
                                           <tr className="bg-gradient-to-r from-emerald-50 to-emerald-100 border-l-4 border-emerald-400">
-                                            <td colSpan={6} className="px-4 py-2">
+                                            <td colSpan={esCentroUser ? 5 : 6} className="px-4 py-2">
                                               <div className="flex items-center gap-2 text-emerald-700">
                                                 <div className="w-6 h-6 rounded-full bg-emerald-200 flex items-center justify-center">
                                                   <span className="text-sm">📥</span>
@@ -2188,7 +2188,7 @@ const Movimientos = () => {
                                       return (
                                         <>
                                           <tr className="bg-gradient-to-r from-orange-50 to-orange-100 border-l-4 border-orange-400">
-                                            <td colSpan={6} className="px-4 py-2">
+                                            <td colSpan={esCentroUser ? 5 : 6} className="px-4 py-2">
                                               <div className="flex items-center gap-2 text-orange-700">
                                                 <div className="w-6 h-6 rounded-full bg-orange-200 flex items-center justify-center">
                                                   <span className="text-sm">💊</span>
@@ -2245,7 +2245,7 @@ const Movimientos = () => {
                                     
                                     {/* Espaciador visual entre grupos */}
                                     <tr className="bg-gray-100/50">
-                                      <td colSpan={6} className="h-2"></td>
+                                      <td colSpan={esCentroUser ? 5 : 6} className="h-2"></td>
                                     </tr>
                                   </>
                                 )}
@@ -2340,7 +2340,7 @@ const Movimientos = () => {
                           {/* 📋 PANEL EXPANDIDO - Detalles del movimiento individual */}
                           {expandedId === mov.id && (
                             <tr className="bg-gradient-to-b from-gray-50 to-white">
-                              <td colSpan={6} className="px-4 py-4">
+                              <td colSpan={esCentroUser ? 5 : 6} className="px-4 py-4">
                                 <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                                   {/* Header del panel */}
                                   <div className="bg-gradient-to-r from-slate-100 to-gray-100 px-4 py-2 border-b border-gray-200">
@@ -2459,7 +2459,7 @@ const Movimientos = () => {
                     /* 📋 VISTA INDIVIDUAL (sin agrupar) */
                     !movimientos.length ? (
                       <tr>
-                        <td colSpan={6} className="px-4 py-16 text-center">
+                        <td colSpan={esCentroUser ? 5 : 6} className="px-4 py-16 text-center">
                           <div className="flex flex-col items-center justify-center">
                             <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mb-4 shadow-inner">
                               <FaHistory className="text-3xl text-gray-400" />
@@ -2551,7 +2551,7 @@ const Movimientos = () => {
                         {/* 📋 PANEL EXPANDIDO Premium */}
                         {expandedId === mov.id && (
                           <tr className="bg-gradient-to-b from-gray-50 to-white">
-                            <td colSpan={6} className="px-4 py-4">
+                            <td colSpan={esCentroUser ? 5 : 6} className="px-4 py-4">
                               <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                                 <div className="bg-gradient-to-r from-slate-100 to-gray-100 px-4 py-2 border-b border-gray-200">
                                   <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">
