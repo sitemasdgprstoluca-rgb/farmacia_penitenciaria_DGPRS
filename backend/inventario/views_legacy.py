@@ -10650,11 +10650,12 @@ def reporte_contratos(request):
             
             wb = Workbook()
             ws = wb.active
-            ws.title = 'Contratos'
+            ws.title = 'Resumen Contratos'
             
             # Estilos
             header_font = Font(bold=True, color='FFFFFF')
             header_fill = PatternFill(start_color='2C3E50', end_color='2C3E50', fill_type='solid')
+            lote_header_fill = PatternFill(start_color='4A5568', end_color='4A5568', fill_type='solid')
             border_thin = Border(
                 left=Side(style='thin'),
                 right=Side(style='thin'),
@@ -10731,6 +10732,62 @@ def reporte_contratos(request):
             column_widths = [5, 25, 8, 10, 12, 12, 12, 10, 10, 10, 14, 14, 15, 15]
             for i, width in enumerate(column_widths, 1):
                 ws.column_dimensions[get_column_letter(i)].width = width
+            
+            # ========== HOJA 2: DETALLE DE LOTES POR CONTRATO ==========
+            ws_lotes = wb.create_sheet(title='Detalle Lotes')
+            
+            # Título hoja lotes
+            ws_lotes.merge_cells('A1:L1')
+            ws_lotes['A1'] = 'DETALLE DE LOTES POR CONTRATO'
+            ws_lotes['A1'].font = Font(bold=True, size=14)
+            ws_lotes['A1'].alignment = Alignment(horizontal='center')
+            
+            ws_lotes.merge_cells('A2:L2')
+            ws_lotes['A2'] = f"Generado el {timezone.now().strftime('%d/%m/%Y %H:%M:%S')}"
+            ws_lotes['A2'].alignment = Alignment(horizontal='center')
+            
+            # Encabezados de lotes
+            lote_headers = [
+                'Contrato', 'Lote', 'Clave Producto', 'Producto',
+                'Presentación', 'Inicial', 'Actual', 'Consumido',
+                'Entradas', 'Salidas', 'Caducidad', 'Centro'
+            ]
+            row_lotes = 4
+            for col_num, header in enumerate(lote_headers, 1):
+                cell = ws_lotes.cell(row=row_lotes, column=col_num, value=header)
+                cell.font = header_font
+                cell.fill = lote_header_fill
+                cell.border = border_thin
+                cell.alignment = Alignment(horizontal='center')
+            
+            # Datos de lotes por contrato
+            for contrato in datos:
+                for lote in contrato.get('lotes', []):
+                    row_lotes += 1
+                    lote_data = [
+                        contrato['numero_contrato'],
+                        lote.get('numero_lote', ''),
+                        lote.get('producto_clave', ''),
+                        lote.get('producto_nombre', ''),
+                        lote.get('presentacion', '-'),
+                        lote.get('cantidad_inicial', 0),
+                        lote.get('cantidad_actual', 0),
+                        lote.get('cantidad_consumida', 0),
+                        lote.get('movimientos_entrada', 0),
+                        lote.get('movimientos_salida', 0),
+                        lote.get('fecha_caducidad', '-'),
+                        lote.get('centro', 'Almacén Central'),
+                    ]
+                    for col_num, value in enumerate(lote_data, 1):
+                        cell = ws_lotes.cell(row=row_lotes, column=col_num, value=value)
+                        cell.border = border_thin
+                        if col_num in [6, 7, 8, 9, 10]:
+                            cell.alignment = Alignment(horizontal='right')
+            
+            # Ajustar anchos de columnas de lotes
+            lote_widths = [18, 15, 12, 35, 20, 10, 10, 10, 10, 10, 12, 20]
+            for i, width in enumerate(lote_widths, 1):
+                ws_lotes.column_dimensions[get_column_letter(i)].width = width
             
             # Generar respuesta
             from io import BytesIO
@@ -10835,6 +10892,63 @@ def reporte_contratos(request):
                 f"Valor Total: ${resumen['valor_total_global']:,.2f}"
             )
             elements.append(Paragraph(resumen_text, subtitle_style))
+            
+            # ========== DETALLE DE LOTES POR CONTRATO ==========
+            elements.append(Spacer(1, 0.4*inch))
+            elements.append(Paragraph('DETALLE DE LOTES POR CONTRATO', title_style))
+            elements.append(Spacer(1, 0.2*inch))
+            
+            # Iterar por cada contrato y mostrar sus lotes
+            for contrato in datos:
+                lotes = contrato.get('lotes', [])
+                if not lotes:
+                    continue
+                    
+                # Subtítulo del contrato
+                contrato_header = ParagraphStyle('ContratoHeader', parent=styles['Heading2'], 
+                                                  fontSize=9, textColor=colors.HexColor('#2C3E50'),
+                                                  spaceAfter=4)
+                elements.append(Paragraph(
+                    f"Contrato: {contrato['numero_contrato']} - {contrato['total_lotes']} lotes | "
+                    f"Consumido: {contrato['cantidad_consumida']:,} ({contrato['porcentaje_uso']}%)",
+                    contrato_header
+                ))
+                
+                # Tabla de lotes del contrato
+                lotes_table_data = [[
+                    'Lote', 'Producto', 'Inicial', 'Actual', 'Consum.', 'Ent.', 'Sal.', 'Caducidad'
+                ]]
+                
+                for lote in lotes:
+                    lotes_table_data.append([
+                        str(lote.get('numero_lote', ''))[:12],
+                        str(lote.get('producto_clave', '') + ' - ' + lote.get('producto_nombre', ''))[:30],
+                        str(lote.get('cantidad_inicial', 0)),
+                        str(lote.get('cantidad_actual', 0)),
+                        str(lote.get('cantidad_consumida', 0)),
+                        str(lote.get('movimientos_entrada', 0)),
+                        str(lote.get('movimientos_salida', 0)),
+                        str(lote.get('fecha_caducidad', '-'))[:10],
+                    ])
+                
+                lotes_col_widths = [0.9*inch, 2.2*inch, 0.55*inch, 0.55*inch, 0.55*inch, 0.4*inch, 0.4*inch, 0.75*inch]
+                lotes_table = Table(lotes_table_data, colWidths=lotes_col_widths)
+                lotes_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4A5568')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 6),
+                    ('FONTSIZE', (0, 1), (-1, -1), 5),
+                    ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                    ('ALIGN', (2, 1), (-1, -1), 'CENTER'),
+                    ('ALIGN', (1, 1), (1, -1), 'LEFT'),
+                    ('GRID', (0, 0), (-1, -1), 0.3, colors.grey),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F9FA')]),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                    ('TOPPADDING', (0, 0), (-1, -1), 2),
+                ]))
+                elements.append(lotes_table)
+                elements.append(Spacer(1, 0.15*inch))
             
             doc.build(elements)
             buffer.seek(0)

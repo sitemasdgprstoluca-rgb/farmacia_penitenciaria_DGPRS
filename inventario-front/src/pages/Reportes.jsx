@@ -60,6 +60,7 @@ const baseFilters = {
   centro: "",
   nivelStock: "",
   tipoMovimiento: "",
+  numeroContrato: "",  // Filtro para reporte de contratos
   mesControlMensual: new Date().getMonth() + 1,
   anioControlMensual: new Date().getFullYear(),
 };
@@ -265,6 +266,8 @@ const Reportes = () => {
       if (filtros.tipoMovimiento) params.tipo = filtros.tipoMovimiento;
       if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
       if (filtros.fechaFin) params.fecha_fin = filtros.fechaFin;
+    } else if (filtros.tipo === "contratos") {
+      if (filtros.numeroContrato) params.numero_contrato = filtros.numeroContrato;
     }
     
     return params;
@@ -1189,6 +1192,35 @@ const Reportes = () => {
                 </div>
               </div>
             </>
+          )}
+
+          {/* Filtros para Contratos */}
+          {filtros.tipo === "contratos" && (
+            <div className="space-y-1 col-span-full">
+              <label className="text-sm font-semibold text-gray-700">Buscar por número de contrato</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={filtros.numeroContrato}
+                  onChange={(e) => handleFiltro("numeroContrato", e.target.value)}
+                  placeholder="Ej: CB/A/37/2025"
+                  className="flex-1 rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                />
+                {filtros.numeroContrato && (
+                  <button
+                    type="button"
+                    onClick={() => handleFiltro("numeroContrato", "")}
+                    className="px-3 py-2 text-sm font-semibold rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                    title="Limpiar filtro"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-gray-500">
+                Deja vacío para ver todos los contratos, o escribe parte del número para filtrar
+              </p>
+            </div>
           )}
 
           {/* Control Mensual - Formato Oficial A */}
