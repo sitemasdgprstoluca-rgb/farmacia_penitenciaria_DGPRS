@@ -9029,12 +9029,19 @@ def reporte_inventario(request):
                     prod['nivel_stock'] = nivel
                     productos_data.append(prod)
                 
-                logger.info(f"PDF inventario: {len(productos_data)} productos agrupados (de {len(lotes_lista)} lotes)")
+                # Contar productos sin stock - todos los productos activos que NO están en los datos
+                total_productos_activos = Producto.objects.filter(activo=True).count()
+                productos_con_stock = len(productos_agrupados)
+                productos_sin_stock = total_productos_activos - productos_con_stock
+                
+                logger.info(f"PDF inventario: {len(productos_data)} productos agrupados (de {len(lotes_lista)} lotes), {productos_sin_stock} sin stock")
                 
                 # Filtros para el PDF
                 filtros_pdf = {
                     'centro': centro_nombre,
-                    'total_productos': len(productos_data),
+                    'total_productos': total_productos_activos,  # Total del catálogo
+                    'productos_con_stock': productos_con_stock,
+                    'productos_sin_stock': productos_sin_stock,
                     'es_reporte_por_centros': False,
                 }
                 
@@ -10802,32 +10809,78 @@ def reporte_contratos(request):
             response['Content-Disposition'] = f'attachment; filename="Reporte_Contratos_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx"'
             return response
         
-        # Formato PDF
+        # Formato PDF con fondo institucional
         if formato == 'pdf':
             from reportlab.lib import colors
             from reportlab.lib.pagesizes import letter, landscape
             from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
             from reportlab.lib.units import inch
-            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+            from reportlab.platypus.doctemplate import BaseDocTemplate, PageTemplate, Frame
+            from reportlab.pdfgen import canvas as pdf_canvas
             from io import BytesIO
+            import os
             
             buffer = BytesIO()
-            doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), topMargin=0.5*inch, bottomMargin=0.5*inch)
+            
+            # Buscar imagen de fondo
+            fondo_path = None
+            rutas_posibles = [
+                Path(settings.BASE_DIR) / 'static' / 'img' / 'pdf' / 'fondoOficial.png',
+                Path(settings.BASE_DIR) / 'backend' / 'static' / 'img' / 'pdf' / 'fondoOficial.png',
+            ]
+            for ruta in rutas_posibles:
+                if ruta.exists():
+                    fondo_path = str(ruta)
+                    break
+            
+            # Clase Canvas con fondo institucional
+            class CanvasConFondoContratos(pdf_canvas.Canvas):
+                def __init__(self, *args, **kwargs):
+                    pdf_canvas.Canvas.__init__(self, *args, **kwargs)
+                    self._draw_background()
+                
+                def showPage(self):
+                    pdf_canvas.Canvas.showPage(self)
+                    self._draw_background()
+                
+                def _draw_background(self):
+                    if fondo_path and os.path.exists(fondo_path):
+                        try:
+                            page_width, page_height = landscape(letter)
+                            self.drawImage(
+                                fondo_path, 0, 0,
+                                width=page_width, height=page_height,
+                                preserveAspectRatio=False, mask='auto'
+                            )
+                        except Exception as e:
+                            logger.warning(f"No se pudo cargar fondo PDF contratos: {e}")
+            
+            # Configurar documento con márgenes ajustados para el fondo
+            doc = SimpleDocTemplate(
+                buffer, 
+                pagesize=landscape(letter), 
+                topMargin=1.0*inch,  # Más margen para el header del fondo
+                bottomMargin=0.6*inch,
+                leftMargin=0.5*inch,
+                rightMargin=0.5*inch
+            )
             elements = []
             styles = getSampleStyleSheet()
             
+            # Estilos con fondo transparente para ver la imagen
+            title_style = ParagraphStyle('Title', parent=styles['Heading1'], alignment=1, fontSize=14, 
+                                          textColor=colors.HexColor('#1a365d'), backColor=None)
+            subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'], alignment=1, fontSize=10,
+                                             textColor=colors.HexColor('#2d3748'))
+            traza_style = ParagraphStyle('Traza', parent=styles['Normal'], alignment=1, fontSize=8, 
+                                          textColor=colors.HexColor('#4a5568'), fontName='Helvetica-Oblique')
+            
             # Título
-            title_style = ParagraphStyle('Title', parent=styles['Heading1'], alignment=1, fontSize=14)
             elements.append(Paragraph('REPORTE DE CONTRATOS - SEGUIMIENTO COMPLETO', title_style))
-            elements.append(Spacer(1, 0.2*inch))
-            
-            # Subtítulo
-            subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'], alignment=1, fontSize=10)
+            elements.append(Spacer(1, 0.15*inch))
             elements.append(Paragraph(f"Generado el {timezone.now().strftime('%d/%m/%Y %H:%M:%S')}", subtitle_style))
-            elements.append(Spacer(1, 0.2*inch))
-            
-            # Información de trazabilidad
-            traza_style = ParagraphStyle('Traza', parent=styles['Normal'], alignment=1, fontSize=8, textColor=colors.HexColor('#666666'))
+            elements.append(Spacer(1, 0.1*inch))
             elements.append(Paragraph('Seguimiento desde entrada a farmacia hasta consumo final', traza_style))
             elements.append(Spacer(1, 0.2*inch))
             
@@ -10862,9 +10915,9 @@ def reporte_contratos(request):
                     estado_display
                 ])
             
-            # Crear tabla con anchos ajustados
+            # Crear tabla con anchos ajustados - con repeatRows para encabezados
             col_widths = [0.35*inch, 1.3*inch, 0.5*inch, 0.5*inch, 0.6*inch, 0.6*inch, 0.65*inch, 0.55*inch, 0.55*inch, 0.55*inch, 0.8*inch, 0.9*inch]
-            table = Table(table_data, colWidths=col_widths)
+            table = Table(table_data, colWidths=col_widths, repeatRows=1)  # repeatRows=1 para repetir encabezado
             table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2C3E50')),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -10872,14 +10925,14 @@ def reporte_contratos(request):
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                 ('FONTSIZE', (0, 0), (-1, 0), 7),
                 ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.Color(1, 1, 1, alpha=0.85)),  # Fondo semi-transparente
                 ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
                 ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
                 ('FONTSIZE', (0, 1), (-1, -1), 6),
                 ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
                 ('ALIGN', (1, 1), (1, -1), 'LEFT'),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F9FA')]),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E0')),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.Color(1, 1, 1, alpha=0.9), colors.Color(0.97, 0.98, 0.99, alpha=0.9)]),
             ]))
             elements.append(table)
             
@@ -10932,7 +10985,7 @@ def reporte_contratos(request):
                     ])
                 
                 lotes_col_widths = [0.9*inch, 2.2*inch, 0.55*inch, 0.55*inch, 0.55*inch, 0.4*inch, 0.4*inch, 0.75*inch]
-                lotes_table = Table(lotes_table_data, colWidths=lotes_col_widths)
+                lotes_table = Table(lotes_table_data, colWidths=lotes_col_widths, repeatRows=1)  # Repetir encabezados
                 lotes_table.setStyle(TableStyle([
                     ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4A5568')),
                     ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -10942,15 +10995,16 @@ def reporte_contratos(request):
                     ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
                     ('ALIGN', (2, 1), (-1, -1), 'CENTER'),
                     ('ALIGN', (1, 1), (1, -1), 'LEFT'),
-                    ('GRID', (0, 0), (-1, -1), 0.3, colors.grey),
-                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F9FA')]),
+                    ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#CBD5E0')),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.Color(1, 1, 1, alpha=0.9), colors.Color(0.97, 0.98, 0.99, alpha=0.9)]),
                     ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
                     ('TOPPADDING', (0, 0), (-1, -1), 2),
                 ]))
                 elements.append(lotes_table)
                 elements.append(Spacer(1, 0.15*inch))
             
-            doc.build(elements)
+            # Construir PDF con canvas de fondo
+            doc.build(elements, canvasmaker=CanvasConFondoContratos)
             buffer.seek(0)
             
             response = HttpResponse(buffer.getvalue(), content_type='application/pdf')

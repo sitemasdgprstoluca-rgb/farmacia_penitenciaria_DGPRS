@@ -795,11 +795,16 @@ def generar_reporte_inventario(productos_data, formato='pdf', filtros=None):
         
     else:
         # Resumen simple para Farmacia Central
+        # Usar productos_sin_stock de filtros si viene (cuenta productos sin lotes)
+        # o usar el conteo local
+        sin_stock_display = filtros.get('productos_sin_stock', productos_sin_stock_total) if filtros else productos_sin_stock_total
+        total_productos_display = filtros.get('total_productos', len(todas_las_claves)) if filtros else len(todas_las_claves)
+        
         resumen_data = [
             ['Concepto', 'Valor'],
-            ['Total de productos (claves)', str(len(todas_las_claves))],
+            ['Total de productos (claves)', str(total_productos_display)],
             ['Total inventario (unidades)', f"{total_stock_general:,}"],
-            ['Productos sin stock', str(productos_sin_stock_total)],
+            ['Productos sin stock', str(sin_stock_display)],
         ]
         
         resumen_table = Table(resumen_data, colWidths=[3.0*inch, 1.5*inch])
