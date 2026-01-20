@@ -1634,7 +1634,7 @@ const RequisicionDetalle = () => {
                 className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity ${requisicion?.estado === 'entregada' ? 'bg-green-600' : 'bg-theme-primary'}`}
               >
                 <FaFileDownload />
-                {requisicion?.estado === 'entregada' ? 'Comprobante de Entrega' : 'Descargar PDF de Recolección'}
+                {requisicion?.estado === 'entregada' ? 'Recibo de Salida' : 'Descargar PDF de Recolección'}
               </button>
             </div>
           )}
