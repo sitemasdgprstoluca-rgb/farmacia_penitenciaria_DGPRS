@@ -1488,6 +1488,7 @@ class RequisicionSerializer(serializers.ModelSerializer):
     centro_origen_nombre = serializers.CharField(source='centro_origen.nombre', read_only=True, allow_null=True)
     centro_destino_nombre = serializers.CharField(source='centro_destino.nombre', read_only=True, allow_null=True)
     solicitante_nombre = serializers.SerializerMethodField()
+    solicitante_id = serializers.IntegerField(read_only=True)  # ISS-FIX: Campo explícito para comparación en frontend
     autorizador_nombre = serializers.SerializerMethodField()
     total_productos = serializers.SerializerMethodField()
     
@@ -1547,7 +1548,7 @@ class RequisicionSerializer(serializers.ModelSerializer):
             'id', 'numero', 'folio', 'centro', 'centro_write', 'comentario', 'comentario_write',
             'centro_origen', 'centro_origen_nombre', 
             'centro_destino', 'centro_destino_nombre', 'centro_nombre',
-            'solicitante', 'solicitante_nombre', 'usuario_solicita_nombre',
+            'solicitante', 'solicitante_id', 'solicitante_nombre', 'usuario_solicita_nombre',
             'autorizador', 'autorizador_nombre', 'usuario_autoriza_nombre',
             'fecha_solicitud', 'fecha_autorizacion', 'fecha_surtido', 'fecha_entrega',
             'estado', 'tipo', 'prioridad', 'notas', 'observaciones', 'motivo_rechazo', 'lugar_entrega',

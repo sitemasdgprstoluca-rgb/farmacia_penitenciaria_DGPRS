@@ -879,12 +879,27 @@ const RequisicionDetalle = () => {
   
   // Editar: SOLO el médico solicitante puede editar/corregir en borrador o devuelta
   // ISS-FIX-PERMISOS: Admin y Director de centro NO pueden editar, solo el médico que creó la requisición
-  // (el solicitante_id puede venir como solicitante_id o solicitante.id)
-  const solicitanteId = requisicion?.solicitante_id || requisicion?.solicitante?.id;
+  // El solicitante puede venir como:
+  // - solicitante_id (número)
+  // - solicitante.id (objeto)
+  // - solicitante (número directamente)
+  const solicitanteId = requisicion?.solicitante_id || 
+                        requisicion?.solicitante?.id || 
+                        (typeof requisicion?.solicitante === 'number' ? requisicion.solicitante : null);
   const esSolicitante = solicitanteId && user?.id && String(solicitanteId) === String(user?.id);
+  
+  // ISS-FIX: Verificar si es médico (rol que puede editar sus propias requisiciones)
+  const esMedico = ['medico', 'centro', 'usuario_centro'].includes(rolUsuario);
+  
+  // Puede editar si:
+  // 1. Estado es borrador o devuelta
+  // 2. Es el solicitante original Y es médico, O es superusuario
+  // 3. Tiene acceso al centro
+  // 4. Tiene permiso de editar requisiciones
   const puedeEditar = ['borrador', 'devuelta'].includes(requisicion?.estado) && 
     tieneAccesoPorCentro &&
-    (esSolicitante || user?.is_superuser);  // Solo el solicitante o superusuario
+    permisos?.editarRequisicion &&
+    ((esSolicitante && esMedico) || user?.is_superuser);
     
   // Validar AMBOS: rol de farmacia Y permiso fino correspondiente
   // ISS-DB-002: Estados alineados con BD Supabase
