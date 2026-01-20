@@ -1228,28 +1228,18 @@ const Requisiciones = () => {
       return;
     }
     
-    // ISS-008: Verificar stock antes de enviar
-    if (enviar) {
+    // ISS-008: Verificar stock antes de enviar - SOLO para Admin/Farmacia
+    // Centro/Médico puede solicitar lo que necesite, Farmacia decide cuánto autorizar
+    if (enviar && esAdminOFarmacia) {
       setIsSubmitting(true);
       const { ok, items: itemsProblema } = await verificarStockActualizado();
       setIsSubmitting(false);
       
       if (!ok) {
-        // ISS-SEGURIDAD: NO revelar stock de Farmacia a usuarios de Centro
-        // Solo admin/farmacia ven las cantidades disponibles
-        let mensajeError;
-        if (esAdminOFarmacia) {
-          // Admin/Farmacia: mostrar detalle completo con stock disponible
-          const mensajes = itemsProblema.map((i) => 
-            `• ${i.producto_clave}: pediste ${i.cantidad_solicitada}, disponible ${i.stock_actual}`
-          );
-          mensajeError = `Stock insuficiente para algunos productos:\n${mensajes.join('\n')}\n\nAjusta las cantidades e intenta de nuevo.`;
-        } else {
-          // Centro/Médico: NO mostrar stock disponible (seguridad)
-          const productosAfectados = itemsProblema.map((i) => `• ${i.producto_clave}`);
-          mensajeError = `Stock insuficiente para algunos productos:\n${productosAfectados.join('\n')}\n\nReduce las cantidades solicitadas e intenta de nuevo.`;
-        }
-        toast.error(mensajeError, { duration: 6000 });
+        const mensajes = itemsProblema.map((i) => 
+          `• ${i.producto_clave}: pediste ${i.cantidad_solicitada}, disponible ${i.stock_actual}`
+        );
+        toast.error(`Stock insuficiente para algunos productos:\n${mensajes.join('\n')}\n\nAjusta las cantidades e intenta de nuevo.`, { duration: 6000 });
         return;
       }
     }
