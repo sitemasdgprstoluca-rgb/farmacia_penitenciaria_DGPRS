@@ -177,12 +177,9 @@ export function RequisicionAcciones({
     const estadoActual = requisicion?.estado?.toLowerCase() || 'desconocido';
     const estadosFinales = ['entregada', 'rechazada', 'cancelada', 'vencida'];
     
+    // ISS-FIX: Para estados finales, no mostrar nada (el badge de estado ya indica que finalizó)
     if (estadosFinales.includes(estadoActual)) {
-      return (
-        <div className="text-sm text-gray-500 italic">
-          Requisición finalizada ({estadoActual})
-        </div>
-      );
+      return null;
     }
     
     // Mensaje específico para estado devuelta
