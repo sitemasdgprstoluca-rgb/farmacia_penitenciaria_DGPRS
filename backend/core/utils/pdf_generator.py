@@ -1035,9 +1035,8 @@ class FormatoBCanvas(canvas.Canvas):
 
 def generar_hoja_entrega(datos_entrega, finalizado=False):
     """
-    Genera PDF "RECIBO DE SALIDA DEL ALMACEN DE MEDICAMENTO" - Formato Oficial EXACTO.
-    SIN imagen de fondo con colibrí. Encabezado institucional dibujado en blanco/negro.
-    Idéntico a la plantilla oficial del Estado de México.
+    Genera PDF "RECIBO DE SALIDA DEL ALMACEN DE MEDICAMENTO" - Formato Oficial.
+    Usa la misma imagen de fondo que el Formato A - Control Mensual (fondo_control_mensual.png).
     
     Args:
         datos_entrega: Dict con datos de la entrega
@@ -1049,11 +1048,18 @@ def generar_hoja_entrega(datos_entrega, finalizado=False):
     buffer = BytesIO()
     page_width, page_height = letter
     
+    # Obtener imagen de fondo - usar fondo_control_mensual.png (igual que Formato A)
+    from pathlib import Path
+    from django.conf import settings
+    
+    fondo_control_mensual = Path(settings.BASE_DIR) / 'static' / 'img' / 'pdf' / 'fondo_control_mensual.png'
+    fondo_path = str(fondo_control_mensual) if fondo_control_mensual.exists() else None
+    
     # Márgenes exactos según plantilla oficial
     margin_left = 0.4*inch
     margin_right = 0.4*inch
-    margin_top = 1.15*inch  # Espacio para encabezado institucional
-    margin_bottom = 0.6*inch
+    margin_top = 1.0*inch  # Espacio para encabezado de la imagen
+    margin_bottom = 0.5*inch
     content_width = page_width - margin_left - margin_right
     
     doc = SimpleDocTemplate(
@@ -1326,8 +1332,11 @@ def generar_hoja_entrega(datos_entrega, finalizado=False):
         firmas_container = KeepTogether([firmas_table])
         story.append(firmas_container)
     
-    # ========== CONSTRUIR PDF SIN IMAGEN DE FONDO ==========
-    doc.build(story, canvasmaker=FormatoBCanvas)
+    # ========== CONSTRUIR PDF CON IMAGEN DE FONDO ==========
+    def make_canvas(*args, **kwargs):
+        return RequisicionCanvas(*args, fondo_path=fondo_path, **kwargs)
+    
+    doc.build(story, canvasmaker=make_canvas)
     
     buffer.seek(0)
     logger.info(f"Recibo de salida generado: {datos_entrega.get('grupo_salida')}")
