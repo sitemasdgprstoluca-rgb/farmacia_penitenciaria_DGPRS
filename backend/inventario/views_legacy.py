@@ -9100,6 +9100,22 @@ def reporte_inventario(request):
                 if centro not in productos_agrupados_excel[clave]['centros']:
                     productos_agrupados_excel[clave]['centros'].append(centro)
         
+        # ISS-FIX: Para Farmacia Central, agregar productos SIN STOCK que no aparecieron en lotes
+        # (productos activos que no tienen lotes con cantidad > 0 en Farmacia Central)
+        es_farmacia_central = filtrar_por_centro and user_centro is None
+        if es_farmacia_central:
+            for producto in Producto.objects.filter(activo=True):
+                clave = producto.clave
+                if clave not in productos_agrupados_excel:
+                    # Este producto no tiene stock en Farmacia Central
+                    productos_agrupados_excel[clave] = {
+                        'producto': producto,
+                        'cantidad_total': 0,
+                        'precio_unitario': 0,
+                        'marca': '-',
+                        'centros': ['Almacén Central'],
+                    }
+        
         # Ordenar por clave
         productos_lista_excel = sorted(
             productos_agrupados_excel.values(),
