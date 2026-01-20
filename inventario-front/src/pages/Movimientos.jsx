@@ -1701,10 +1701,6 @@ const Movimientos = () => {
                       <option value="">Todos</option>
                       <option value="receta">💊 Receta médica</option>
                       <option value="consumo_interno">🏥 Consumo interno</option>
-                      <option value="merma">📉 Merma</option>
-                      <option value="caducidad">⏰ Caducidad</option>
-                      <option value="transferencia">🔄 Transferencia</option>
-                      <option value="otro">Otro</option>
                     </select>
                   </div>
                 )}
@@ -1821,19 +1817,21 @@ const Movimientos = () => {
             </div>
             <div className="overflow-x-auto rounded-b-xl">
               <table className="w-full text-sm">
-                <thead className="bg-theme-gradient sticky top-0 z-10 shadow-md">
+                <thead className={`bg-theme-gradient sticky top-0 z-10 shadow-md ${esCentroUser ? 'text-xs' : ''}`}>
                   <tr>
-                    <th className="min-w-[200px] px-3 py-4 text-left text-xs font-bold uppercase tracking-wider text-white/90">
+                    <th className={`min-w-[120px] ${esCentroUser ? 'px-2 py-2' : 'px-3 py-4'} text-left text-xs font-bold uppercase tracking-wider text-white/90`}>
                       <div className="flex items-center gap-2">
                         <FaBoxes className="text-white/70" />
                         <span>Producto</span>
                       </div>
                     </th>
-                    <th className="w-24 px-2 py-4 text-left text-xs font-bold uppercase tracking-wider text-white/90">Tipo</th>
-                    <th className="w-16 px-2 py-4 text-right text-xs font-bold uppercase tracking-wider text-white/90">Cant.</th>
-                    <th className="w-32 px-2 py-4 text-left text-xs font-bold uppercase tracking-wider text-white/90 hidden sm:table-cell">Centro</th>
-                    <th className="w-24 px-2 py-4 text-left text-xs font-bold uppercase tracking-wider text-white/90 hidden md:table-cell">Fecha</th>
-                    <th className="w-12 px-2 py-4 text-center text-xs font-bold uppercase tracking-wider text-white/90">Acc.</th>
+                    <th className={`w-20 ${esCentroUser ? 'px-1 py-2' : 'px-2 py-4'} text-left text-xs font-bold uppercase tracking-wider text-white/90`}>Tipo</th>
+                    <th className={`w-14 ${esCentroUser ? 'px-1 py-2' : 'px-2 py-4'} text-right text-xs font-bold uppercase tracking-wider text-white/90`}>Cant.</th>
+                    {!esCentroUser && (
+                      <th className="w-32 px-2 py-4 text-left text-xs font-bold uppercase tracking-wider text-white/90 hidden sm:table-cell">Centro</th>
+                    )}
+                    <th className={`w-20 ${esCentroUser ? 'px-1 py-2' : 'px-2 py-4'} text-left text-xs font-bold uppercase tracking-wider text-white/90 hidden md:table-cell`}>Fecha</th>
+                    <th className={`w-10 ${esCentroUser ? 'px-1 py-2' : 'px-2 py-4'} text-center text-xs font-bold uppercase tracking-wider text-white/90`}>Acc.</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-50">
@@ -1953,19 +1951,21 @@ const Movimientos = () => {
                                     </div>
                                   </td>
                                   
-                                  {/* Columna: Centro */}
-                                  <td className="px-2 py-3.5 hidden sm:table-cell">
-                                    <div className="max-w-[150px]">
-                                      <span className="font-semibold text-xs text-gray-700 truncate block" title={grupo.centro_nombre}>
-                                        {grupo.centro_nombre}
-                                      </span>
-                                      {grupo.usuario_nombre && (
-                                        <span className="text-[10px] text-gray-400 truncate block">
-                                          por {grupo.usuario_nombre}
+                                  {/* Columna: Centro (solo para no-centro) */}
+                                  {!esCentroUser && (
+                                    <td className="px-2 py-3.5 hidden sm:table-cell">
+                                      <div className="max-w-[150px]">
+                                        <span className="font-semibold text-xs text-gray-700 truncate block" title={grupo.centro_nombre}>
+                                          {grupo.centro_nombre}
                                         </span>
-                                      )}
-                                    </div>
-                                  </td>
+                                        {grupo.usuario_nombre && (
+                                          <span className="text-[10px] text-gray-400 truncate block">
+                                            por {grupo.usuario_nombre}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+                                  )}
                                   
                                   {/* Columna: Fecha */}
                                   <td className="px-2 py-3.5 hidden md:table-cell">
