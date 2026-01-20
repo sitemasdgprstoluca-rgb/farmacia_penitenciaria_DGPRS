@@ -1599,12 +1599,11 @@ const Requisiciones = () => {
       let nombreArchivo;
 
       if (tipo === 'aceptacion') {
-        // Para estados finales (surtida/entregada) usar hoja-consulta con sello
-        // Para estados intermedios usar hoja-recoleccion
         const estadoNorm = (estado || '').toLowerCase();
-        if (['surtida', 'entregada'].includes(estadoNorm)) {
-          response = await requisicionesAPI.downloadHojaConsulta(id);
-          nombreArchivo = `Consulta_Requisicion_${folio || id}.pdf`;
+        // SIEMPRE usar Recibo de Salida para requisiciones surtidas/entregadas
+        if (['surtida', 'parcial', 'entregada', 'recibida'].includes(estadoNorm)) {
+          response = await requisicionesAPI.downloadReciboSalida(id);
+          nombreArchivo = `Recibo_Salida_${folio || id}.pdf`;
         } else {
           response = await requisicionesAPI.downloadPDFAceptacion(id);
           nombreArchivo = `Hoja_Recoleccion_${folio || id}.pdf`;
