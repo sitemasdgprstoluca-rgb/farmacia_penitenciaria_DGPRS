@@ -10897,124 +10897,153 @@ def reporte_contratos(request):
             elements.append(Paragraph('Seguimiento desde entrada a farmacia hasta consumo final', traza_style))
             elements.append(Spacer(1, 0.2*inch))
             
-            # Tabla de datos mejorada con tracking
-            table_data = [[
-                '#', 'Contrato', 'Lotes', 'Prods', 
-                'Inicial', 'Actual', 'Consumido', '% Uso',
-                'Entradas', 'Salidas',
-                'Valor', 'Estado'
-            ]]
-            
-            for idx, contrato in enumerate(datos, 1):
-                estado_display = {
-                    'disponible': 'Disponible',
-                    'consumo_medio': 'Consumo Medio',
-                    'por_agotar': 'Por Agotar',
-                    'agotado': 'Agotado'
-                }.get(contrato['estado'], contrato['estado'])
-                
-                table_data.append([
-                    str(idx),
-                    contrato['numero_contrato'][:18],
-                    str(contrato['total_lotes']),
-                    str(contrato['total_productos']),
-                    str(contrato['cantidad_inicial']),
-                    str(contrato['cantidad_actual']),
-                    str(contrato['cantidad_consumida']),
-                    f"{contrato['porcentaje_uso']}%",
-                    str(contrato.get('movimientos_entrada', 0)),
-                    str(contrato.get('movimientos_salida', 0)),
-                    f"${contrato['valor_total']:,.0f}",
-                    estado_display
-                ])
-            
-            # Crear tabla con anchos ajustados - con repeatRows para encabezados
-            col_widths = [0.35*inch, 1.3*inch, 0.5*inch, 0.5*inch, 0.6*inch, 0.6*inch, 0.65*inch, 0.55*inch, 0.55*inch, 0.55*inch, 0.8*inch, 0.9*inch]
-            table = Table(table_data, colWidths=col_widths, repeatRows=1)  # repeatRows=1 para repetir encabezado
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2C3E50')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 7),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.Color(1, 1, 1, alpha=0.85)),  # Fondo semi-transparente
-                ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-                ('FONTSIZE', (0, 1), (-1, -1), 6),
-                ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
-                ('ALIGN', (1, 1), (1, -1), 'LEFT'),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E0')),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.Color(1, 1, 1, alpha=0.9), colors.Color(0.97, 0.98, 0.99, alpha=0.9)]),
-            ]))
-            elements.append(table)
-            
-            # Resumen mejorado con tracking
-            elements.append(Spacer(1, 0.25*inch))
-            resumen_text = (
-                f"Total Contratos: {resumen['total_contratos']} | "
-                f"Total Lotes: {resumen['total_lotes']} | "
-                f"Movimientos: {resumen.get('total_movimientos_entrada', 0)} entradas / {resumen.get('total_movimientos_salida', 0)} salidas | "
-                f"Valor Total: ${resumen['valor_total_global']:,.2f}"
-            )
-            elements.append(Paragraph(resumen_text, subtitle_style))
-            
-            # ========== DETALLE DE LOTES POR CONTRATO ==========
-            elements.append(Spacer(1, 0.4*inch))
-            elements.append(Paragraph('DETALLE DE LOTES POR CONTRATO', title_style))
-            elements.append(Spacer(1, 0.2*inch))
-            
-            # Iterar por cada contrato y mostrar sus lotes
-            for contrato in datos:
-                lotes = contrato.get('lotes', [])
-                if not lotes:
-                    continue
-                    
-                # Subtítulo del contrato
-                contrato_header = ParagraphStyle('ContratoHeader', parent=styles['Heading2'], 
-                                                  fontSize=9, textColor=colors.HexColor('#2C3E50'),
-                                                  spaceAfter=4)
-                elements.append(Paragraph(
-                    f"Contrato: {contrato['numero_contrato']} - {contrato['total_lotes']} lotes | "
-                    f"Consumido: {contrato['cantidad_consumida']:,} ({contrato['porcentaje_uso']}%)",
-                    contrato_header
-                ))
-                
-                # Tabla de lotes del contrato
-                lotes_table_data = [[
-                    'Lote', 'Producto', 'Inicial', 'Actual', 'Consum.', 'Ent.', 'Sal.', 'Caducidad'
+            # Verificar si hay datos
+            if not datos:
+                # No hay datos - mostrar mensaje
+                no_data_style = ParagraphStyle('NoData', parent=styles['Normal'], alignment=1, fontSize=11,
+                                                textColor=colors.HexColor('#4a5568'))
+                elements.append(Paragraph('No se encontraron contratos con lotes activos.', no_data_style))
+                elements.append(Spacer(1, 0.3*inch))
+                elements.append(Paragraph('Verifique que existen lotes con número de contrato asignado.', no_data_style))
+            else:
+                # Tabla de datos mejorada con tracking
+                table_data = [[
+                    '#', 'Contrato', 'Lotes', 'Prods', 
+                    'Inicial', 'Actual', 'Consumido', '% Uso',
+                    'Entradas', 'Salidas',
+                    'Valor', 'Estado'
                 ]]
                 
-                for lote in lotes:
-                    lotes_table_data.append([
-                        str(lote.get('numero_lote', ''))[:12],
-                        str(lote.get('producto_clave', '') + ' - ' + lote.get('producto_nombre', ''))[:30],
-                        str(lote.get('cantidad_inicial', 0)),
-                        str(lote.get('cantidad_actual', 0)),
-                        str(lote.get('cantidad_consumida', 0)),
-                        str(lote.get('movimientos_entrada', 0)),
-                        str(lote.get('movimientos_salida', 0)),
-                        str(lote.get('fecha_caducidad', '-'))[:10],
+                for idx, contrato in enumerate(datos, 1):
+                    estado_display = {
+                        'disponible': 'Disponible',
+                        'consumo_medio': 'Consumo Medio',
+                        'por_agotar': 'Por Agotar',
+                        'agotado': 'Agotado'
+                    }.get(contrato['estado'], contrato['estado'])
+                    
+                    table_data.append([
+                        str(idx),
+                        contrato['numero_contrato'][:18],
+                        str(contrato['total_lotes']),
+                        str(contrato['total_productos']),
+                        str(contrato['cantidad_inicial']),
+                        str(contrato['cantidad_actual']),
+                        str(contrato['cantidad_consumida']),
+                        f"{contrato['porcentaje_uso']}%",
+                        str(contrato.get('movimientos_entrada', 0)),
+                        str(contrato.get('movimientos_salida', 0)),
+                        f"${contrato['valor_total']:,.0f}",
+                        estado_display
                     ])
                 
-                lotes_col_widths = [0.9*inch, 2.2*inch, 0.55*inch, 0.55*inch, 0.55*inch, 0.4*inch, 0.4*inch, 0.75*inch]
-                lotes_table = Table(lotes_table_data, colWidths=lotes_col_widths, repeatRows=1)  # Repetir encabezados
-                lotes_table.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4A5568')),
+                # Crear tabla con anchos ajustados - con repeatRows para encabezados
+                col_widths = [0.35*inch, 1.3*inch, 0.5*inch, 0.5*inch, 0.6*inch, 0.6*inch, 0.65*inch, 0.55*inch, 0.55*inch, 0.55*inch, 0.8*inch, 0.9*inch]
+                table = Table(table_data, colWidths=col_widths, repeatRows=1)  # repeatRows=1 para repetir encabezado
+                
+                # Estilos para tabla - usar colores sólidos (sin transparencia que causa errores)
+                table_style_commands = [
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2C3E50')),
                     ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, 0), (-1, 0), 6),
-                    ('FONTSIZE', (0, 1), (-1, -1), 5),
                     ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-                    ('ALIGN', (2, 1), (-1, -1), 'CENTER'),
-                    ('ALIGN', (1, 1), (1, -1), 'LEFT'),
-                    ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#CBD5E0')),
-                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.Color(1, 1, 1, alpha=0.9), colors.Color(0.97, 0.98, 0.99, alpha=0.9)]),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-                    ('TOPPADDING', (0, 0), (-1, -1), 2),
-                ]))
-                elements.append(lotes_table)
-                elements.append(Spacer(1, 0.15*inch))
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 7),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+                    ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+                    ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                    ('FONTSIZE', (0, 1), (-1, -1), 6),
+                    ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E0')),
+                ]
+                
+                # Solo agregar estilos de filas si hay más de una fila (encabezado + datos)
+                if len(table_data) > 1:
+                    table_style_commands.extend([
+                        ('ALIGN', (1, 1), (1, -1), 'LEFT'),
+                        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F7FAFC')]),
+                    ])
+                
+                table.setStyle(TableStyle(table_style_commands))
+                elements.append(table)
+            
+            # Resumen mejorado con tracking (solo si hay datos)
+            if datos:
+                elements.append(Spacer(1, 0.25*inch))
+                resumen_text = (
+                    f"Total Contratos: {resumen['total_contratos']} | "
+                    f"Total Lotes: {resumen['total_lotes']} | "
+                    f"Movimientos: {resumen.get('total_movimientos_entrada', 0)} entradas / {resumen.get('total_movimientos_salida', 0)} salidas | "
+                    f"Valor Total: ${resumen['valor_total_global']:,.2f}"
+                )
+                elements.append(Paragraph(resumen_text, subtitle_style))
+                
+                # ========== DETALLE DE LOTES POR CONTRATO ==========
+                elements.append(Spacer(1, 0.4*inch))
+                elements.append(Paragraph('DETALLE DE LOTES POR CONTRATO', title_style))
+                elements.append(Spacer(1, 0.2*inch))
+                
+                # Estilo para subtítulos de contrato (definido fuera del loop)
+                contrato_header_style = ParagraphStyle('ContratoHeader', parent=styles['Heading2'], 
+                                                      fontSize=9, textColor=colors.HexColor('#2C3E50'),
+                                                      spaceAfter=4)
+                
+                # Iterar por cada contrato y mostrar sus lotes
+                for contrato in datos:
+                    lotes = contrato.get('lotes', [])
+                    if not lotes:
+                        continue
+                        
+                    # Subtítulo del contrato
+                    elements.append(Paragraph(
+                        f"Contrato: {contrato['numero_contrato']} - {contrato['total_lotes']} lotes | "
+                        f"Consumido: {contrato['cantidad_consumida']:,} ({contrato['porcentaje_uso']}%)",
+                        contrato_header_style
+                    ))
+                    
+                    # Tabla de lotes del contrato
+                    lotes_table_data = [[
+                        'Lote', 'Producto', 'Inicial', 'Actual', 'Consum.', 'Ent.', 'Sal.', 'Caducidad'
+                    ]]
+                    
+                    for lote in lotes:
+                        lotes_table_data.append([
+                            str(lote.get('numero_lote', ''))[:12],
+                            str(lote.get('producto_clave', '') + ' - ' + lote.get('producto_nombre', ''))[:30],
+                            str(lote.get('cantidad_inicial', 0)),
+                            str(lote.get('cantidad_actual', 0)),
+                            str(lote.get('cantidad_consumida', 0)),
+                            str(lote.get('movimientos_entrada', 0)),
+                            str(lote.get('movimientos_salida', 0)),
+                            str(lote.get('fecha_caducidad', '-'))[:10],
+                        ])
+                    
+                    lotes_col_widths = [0.9*inch, 2.2*inch, 0.55*inch, 0.55*inch, 0.55*inch, 0.4*inch, 0.4*inch, 0.75*inch]
+                    lotes_table = Table(lotes_table_data, colWidths=lotes_col_widths, repeatRows=1)
+                    
+                    # Estilos para tabla de lotes - colores sólidos
+                    lotes_style_commands = [
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4A5568')),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, 0), 6),
+                        ('FONTSIZE', (0, 1), (-1, -1), 5),
+                        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                        ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#CBD5E0')),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                        ('TOPPADDING', (0, 0), (-1, -1), 2),
+                    ]
+                    
+                    # Solo agregar estilos de filas de datos si hay lotes
+                    if len(lotes_table_data) > 1:
+                        lotes_style_commands.extend([
+                            ('ALIGN', (2, 1), (-1, -1), 'CENTER'),
+                            ('ALIGN', (1, 1), (1, -1), 'LEFT'),
+                            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F7FAFC')]),
+                        ])
+                    
+                    lotes_table.setStyle(TableStyle(lotes_style_commands))
+                    elements.append(lotes_table)
+                    elements.append(Spacer(1, 0.15*inch))
             
             # Construir PDF con canvas de fondo
             doc.build(elements, canvasmaker=CanvasConFondoContratos)

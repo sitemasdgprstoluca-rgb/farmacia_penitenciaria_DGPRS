@@ -8,7 +8,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch, cm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, KeepTogether
 from reportlab.platypus import Image as RLImage
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 from reportlab.pdfgen import canvas
@@ -1294,167 +1294,209 @@ def generar_reporte_requisiciones(requisiciones_data, filtros=None):
     Returns:
         BytesIO con el PDF generado
     """
+    from reportlab.platypus import KeepTogether
+    
     buffer = BytesIO()
     fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
     
+    # Ajustar márgenes para más espacio útil
     doc = SimpleDocTemplate(
         buffer, 
         pagesize=letter, 
-        topMargin=1.8*inch,
-        bottomMargin=1.2*inch,
-        leftMargin=0.6*inch,
-        rightMargin=0.6*inch
+        topMargin=1.5*inch,  # Reducido de 1.8"
+        bottomMargin=0.8*inch,  # Reducido de 1.2"
+        leftMargin=0.5*inch,  # Reducido de 0.6"
+        rightMargin=0.5*inch  # Reducido de 0.6"
     )
     
     elements = []
     styles = _obtener_estilos_institucionales()
     
-    # Título
+    # Título más compacto
     titulo = Paragraph("REPORTE DE REQUISICIONES", styles['TituloReporte'])
     elements.append(titulo)
-    elements.append(Spacer(1, 0.2*inch))
+    elements.append(Spacer(1, 0.1*inch))  # Reducido
     
-    # Información y filtros
-    info_text = "<b>Fecha de generación:</b> " + timezone.now().strftime('%d/%m/%Y %H:%M') + "<br/>"
+    # Información y filtros en formato compacto
+    info_parts = [f"<b>Generado:</b> {timezone.now().strftime('%d/%m/%Y %H:%M')}"]
     if filtros:
         if filtros.get('estado'):
-            info_text += f"<b>Estado:</b> {filtros['estado']}<br/>"
+            info_parts.append(f"<b>Estado:</b> {filtros['estado']}")
         if filtros.get('centro'):
-            info_text += f"<b>Centro:</b> {filtros['centro']}<br/>"
+            info_parts.append(f"<b>Centro:</b> {filtros['centro']}")
         if filtros.get('fecha_inicio'):
-            info_text += f"<b>Desde:</b> {filtros['fecha_inicio']}<br/>"
+            info_parts.append(f"<b>Desde:</b> {filtros['fecha_inicio']}")
         if filtros.get('fecha_fin'):
-            info_text += f"<b>Hasta:</b> {filtros['fecha_fin']}<br/>"
-    info_text += f"<b>Total de requisiciones:</b> {len(requisiciones_data)}"
+            info_parts.append(f"<b>Hasta:</b> {filtros['fecha_fin']}")
+    info_parts.append(f"<b>Total:</b> {len(requisiciones_data)}")
+    
+    # Unir en una o dos líneas
+    info_text = " | ".join(info_parts)
     
     info = Paragraph(info_text, styles['Normal'])
     elements.append(info)
-    elements.append(Spacer(1, 0.2*inch))
+    elements.append(Spacer(1, 0.15*inch))  # Reducido
     
-    # Resumen por estados
+    # Resumen por estados - solo si hay estados
     estados = {}
     for req in requisiciones_data:
         estado = req.get('estado', 'N/A')
         estados[estado] = estados.get(estado, 0) + 1
     
-    resumen_titulo = Paragraph("RESUMEN POR ESTADO", styles['SeccionTitulo'])
-    elements.append(resumen_titulo)
+    if estados:
+        resumen_titulo = Paragraph("RESUMEN POR ESTADO", styles['SeccionTitulo'])
+        elements.append(resumen_titulo)
+        
+        resumen_data = [['Estado', 'Cant.']]  # Encabezados más cortos
+        for estado, count in estados.items():
+            resumen_data.append([estado.upper()[:15], str(count)])  # Limitar estado
+        resumen_data.append(['TOTAL', str(len(requisiciones_data))])
+        
+        resumen_table = Table(resumen_data, colWidths=[1.5*inch, 0.7*inch])  # Más compacto
+        resumen_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),  # Más pequeño
+            ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
+            ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 5),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(resumen_table)
     
-    resumen_data = [['Estado', 'Cantidad']]
-    for estado, count in estados.items():
-        resumen_data.append([estado.upper(), str(count)])
-    resumen_data.append(['TOTAL', str(len(requisiciones_data))])
-    
-    resumen_table = Table(resumen_data, colWidths=[2*inch, 1*inch])
-    resumen_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
-        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 8),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-    ]))
-    elements.append(resumen_table)
-    elements.append(Spacer(1, 0.2*inch))
+    elements.append(Spacer(1, 0.15*inch))  # Reducido
     
     # Tabla de requisiciones
     req_titulo = Paragraph("DETALLE DE REQUISICIONES", styles['SeccionTitulo'])
     elements.append(req_titulo)
     
-    # Estilo para celdas de texto largo
-    estilo_celda = ParagraphStyle(
-        'CeldaTextoReq',
-        parent=styles['Normal'],
-        fontSize=7,
-        leading=9,
-        wordWrap='CJK',
-    )
-    
-    data = [['Folio', 'Centro', 'Estado', 'Fecha', 'Items', 'Solicitante']]
-    
-    for req in requisiciones_data:
-        centro_nombre = str(req.get('centro_nombre', req.get('centro', '')))
-        centro_paragraph = Paragraph(centro_nombre, estilo_celda)
-        solicitante = str(req.get('usuario_solicita', req.get('solicitante', '')))
-        solicitante_paragraph = Paragraph(solicitante, estilo_celda)
+    # Verificar si hay datos
+    if not requisiciones_data:
+        # Mensaje cuando no hay datos
+        no_data_style = ParagraphStyle(
+            'NoDataReq', parent=styles['Normal'], fontSize=10,
+            textColor=colors.HexColor('#666666'), alignment=TA_CENTER, spaceBefore=20
+        )
+        elements.append(Paragraph('No se encontraron requisiciones con los filtros aplicados.', no_data_style))
+        elements.append(Spacer(1, 0.3*inch))
+    else:
+        # Estilo para celdas de texto largo - más compacto
+        estilo_celda = ParagraphStyle(
+            'CeldaTextoReq',
+            parent=styles['Normal'],
+            fontSize=6,  # Más pequeño para mejor ajuste
+            leading=7,
+            wordWrap='CJK',
+        )
         
-        data.append([
-            str(req.get('folio', '')),
-            centro_paragraph,
-            str(req.get('estado', '')).upper(),
-            str(req.get('fecha_solicitud', '')),
-            str(req.get('total_items', req.get('total_productos', 0))),
-            solicitante_paragraph
-        ])
-    
-    col_widths = [1*inch, 1.9*inch, 0.75*inch, 0.8*inch, 0.45*inch, 1.25*inch]
-    table = _crear_tabla_institucional(data, col_widths)
-    elements.append(table)
-    elements.append(Spacer(1, 0.3*inch))
-    
-    # === DETALLE DE PRODUCTOS POR REQUISICIÓN ===
-    detalle_titulo = Paragraph("DETALLE DE PRODUCTOS POR REQUISICIÓN", styles['SeccionTitulo'])
-    elements.append(detalle_titulo)
-    elements.append(Spacer(1, 0.1*inch))
-    
-    # Estilo para el folio de cada requisición
-    estilo_folio = ParagraphStyle(
-        'FolioReq',
-        parent=styles['Normal'],
-        fontSize=9,
-        fontName='Helvetica-Bold',
-        textColor=COLOR_GUINDA,
-        spaceBefore=10,
-        spaceAfter=5,
-    )
-    
-    for req in requisiciones_data:
-        productos = req.get('productos', [])
-        if not productos:
-            continue
+        data = [['Folio', 'Centro', 'Estado', 'Fecha', 'Items', 'Solicitante']]
         
-        # Encabezado de la requisición
-        folio_text = f"📋 {req.get('folio', 'N/A')} - {req.get('centro', 'N/A')} - Estado: {req.get('estado', 'N/A')}"
-        folio_p = Paragraph(folio_text, estilo_folio)
-        elements.append(folio_p)
-        
-        # Tabla de productos de esta requisición
-        productos_data = [['Clave', 'Producto', 'Solicitado', 'Autorizado', 'Surtido']]
-        
-        for prod in productos:
-            # ISS-FIX: Sin truncar - usar Paragraph para wrap automático
-            nombre = str(prod.get('nombre', 'N/A'))
-            productos_data.append([
-                str(prod.get('clave', 'N/A')),
-                Paragraph(nombre, estilo_celda),
-                str(prod.get('cantidad_solicitada', 0)),
-                str(prod.get('cantidad_autorizada', 0)),
-                str(prod.get('cantidad_surtida', 0)),
+        for req in requisiciones_data:
+            centro_nombre = str(req.get('centro_nombre', req.get('centro', '')))[:40]  # Limitar
+            centro_paragraph = Paragraph(centro_nombre, estilo_celda)
+            solicitante = str(req.get('usuario_solicita', req.get('solicitante', '')))[:30]  # Limitar
+            solicitante_paragraph = Paragraph(solicitante, estilo_celda)
+            
+            fecha_str = str(req.get('fecha_solicitud', ''))
+            if fecha_str and len(fecha_str) > 10:
+                fecha_str = fecha_str[:10]  # Solo fecha, sin hora
+            
+            data.append([
+                str(req.get('folio', ''))[:15],  # Limitar folio
+                centro_paragraph,
+                str(req.get('estado', '')).upper()[:10],  # Limitar estado
+                fecha_str,
+                str(req.get('total_items', req.get('total_productos', 0))),
+                solicitante_paragraph
             ])
         
-        prod_col_widths = [0.7*inch, 3.5*inch, 0.7*inch, 0.8*inch, 0.8*inch]
-        prod_table = Table(productos_data, colWidths=prod_col_widths)
-        prod_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 8),
-            ('FONTSIZE', (0, 1), (-1, -1), 7),
-            ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
-            ('GRID', (0, 0), (-1, -1), 0.3, COLOR_GUINDA),
-            ('ALIGN', (2, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 4),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ]))
-        elements.append(prod_table)
-        elements.append(Spacer(1, 0.15*inch))
+        # Anchos ajustados para 7" de ancho disponible (letter - márgenes de 0.5")
+        col_widths = [0.85*inch, 1.7*inch, 0.7*inch, 0.75*inch, 0.45*inch, 1.1*inch]
+        table = _crear_tabla_institucional(data, col_widths)
+        elements.append(table)
+        elements.append(Spacer(1, 0.2*inch))
+    
+    # === DETALLE DE PRODUCTOS POR REQUISICIÓN ===
+    # Solo si hay requisiciones con productos
+    if requisiciones_data:
+        hay_productos = any(req.get('productos', []) for req in requisiciones_data)
+        
+        if hay_productos:
+            detalle_titulo = Paragraph("DETALLE DE PRODUCTOS POR REQUISICIÓN", styles['SeccionTitulo'])
+            elements.append(detalle_titulo)
+            elements.append(Spacer(1, 0.08*inch))  # Menos espacio
+            
+            # Estilo para el folio de cada requisición
+            estilo_folio = ParagraphStyle(
+                'FolioReq',
+                parent=styles['Normal'],
+                fontSize=8,  # Más pequeño
+                fontName='Helvetica-Bold',
+                textColor=COLOR_GUINDA,
+                spaceBefore=6,  # Menos espacio
+                spaceAfter=3,   # Menos espacio
+            )
+            
+            # Estilo para nombre de producto más compacto
+            estilo_prod = ParagraphStyle(
+                'ProductoReq',
+                parent=styles['Normal'],
+                fontSize=6,
+                leading=7,
+                wordWrap='CJK',
+            )
+            
+            for req in requisiciones_data:
+                productos = req.get('productos', [])
+                if not productos:
+                    continue
+                
+                # Encabezado de la requisición (sin emoji para evitar problemas de encoding)
+                folio_text = f"{req.get('folio', 'N/A')} - {str(req.get('centro', 'N/A'))[:30]} - {req.get('estado', 'N/A')}"
+                folio_p = Paragraph(folio_text, estilo_folio)
+                
+                # Tabla de productos de esta requisición
+                productos_data = [['Clave', 'Producto', 'Solic.', 'Autoriz.', 'Surtido']]
+                
+                for prod in productos:
+                    nombre = str(prod.get('nombre', 'N/A'))
+                    # Limitar nombre largo pero usar Paragraph para wrap
+                    if len(nombre) > 60:
+                        nombre = nombre[:57] + '...'
+                    
+                    productos_data.append([
+                        str(prod.get('clave', 'N/A'))[:12],
+                        Paragraph(nombre, estilo_prod),
+                        str(prod.get('cantidad_solicitada', 0)),
+                        str(prod.get('cantidad_autorizada', 0)),
+                        str(prod.get('cantidad_surtida', 0)),
+                    ])
+                
+                # Anchos ajustados para 7" disponible
+                prod_col_widths = [0.65*inch, 3.0*inch, 0.55*inch, 0.6*inch, 0.55*inch]
+                prod_table = Table(productos_data, colWidths=prod_col_widths, repeatRows=1)
+                prod_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 7),
+                    ('FONTSIZE', (0, 1), (-1, -1), 6),  # Más pequeño
+                    ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
+                    ('GRID', (0, 0), (-1, -1), 0.3, COLOR_GUINDA),
+                    ('ALIGN', (0, 0), (0, -1), 'LEFT'),  # Clave a la izquierda
+                    ('ALIGN', (2, 0), (-1, -1), 'CENTER'),  # Cantidades centradas
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 3),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+                    ('TOPPADDING', (0, 0), (-1, -1), 2),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                ]))
+                
+                # Usar KeepTogether para mantener encabezado y tabla juntos si hay espacio
+                elements.append(KeepTogether([folio_p, prod_table, Spacer(1, 0.1*inch)]))
     
     # Usar canvas con fondo institucional
     def make_canvas(*args, **kwargs):
@@ -1577,101 +1619,110 @@ def generar_reporte_movimientos(transacciones_data, filtros=None, resumen=None):
     trans_titulo = Paragraph("DETALLE DE TRANSACCIONES", styles['SeccionTitulo'])
     elements.append(trans_titulo)
     
-    # Encabezado de transacciones
-    data = [['Referencia', 'Fecha', 'Tipo', 'Origen', 'Destino', 'Prods', 'Cant.']]
-    
-    for trans in transacciones_data:
-        tipo = str(trans.get('tipo', '')).upper()
-        # Usar Paragraph para textos largos - SIN TRUNCAR para mejor legibilidad
-        referencia_p = Paragraph(str(trans.get('referencia', '')), estilo_celda)
-        fecha_p = Paragraph(str(trans.get('fecha', '')), estilo_celda)
-        # Centros sin truncar - el Paragraph hará wrap automático
-        origen_texto = str(trans.get('centro_origen', 'Farmacia Central'))
-        destino_texto = str(trans.get('centro_destino', 'Farmacia Central'))
-        origen_p = Paragraph(origen_texto, estilo_celda)
-        destino_p = Paragraph(destino_texto, estilo_celda)
+    # Verificar si hay datos
+    if not transacciones_data:
+        no_data_style = ParagraphStyle(
+            'NoDataMov', parent=styles['Normal'], fontSize=10,
+            textColor=colors.HexColor('#666666'), alignment=TA_CENTER, spaceBefore=20
+        )
+        elements.append(Paragraph('No se encontraron movimientos con los filtros aplicados.', no_data_style))
+        elements.append(Spacer(1, 0.3*inch))
+    else:
+        # Encabezado de transacciones
+        data = [['Referencia', 'Fecha', 'Tipo', 'Origen', 'Destino', 'Prods', 'Cant.']]
         
-        data.append([
-            referencia_p,
-            fecha_p,
-            tipo,
-            origen_p,
-            destino_p,
-            str(trans.get('total_productos', 0)),
-            str(trans.get('total_cantidad', 0))
-        ])
-    
-    # Anchos de columnas - Origen y Destino más anchos para nombres completos
-    col_widths = [1.2*inch, 0.85*inch, 0.55*inch, 1.5*inch, 1.5*inch, 0.45*inch, 0.45*inch]
-    table = _crear_tabla_institucional(data, col_widths)
-    elements.append(table)
-    elements.append(Spacer(1, 0.25*inch))
-    
-    # Detalle de productos por transacción
-    det_titulo = Paragraph("DETALLE DE PRODUCTOS POR TRANSACCIÓN", styles['SeccionTitulo'])
-    elements.append(det_titulo)
-    elements.append(Spacer(1, 0.1*inch))
-    
-    for trans in transacciones_data:
-        detalles = trans.get('detalles', [])
-        if not detalles:
-            continue
+        for trans in transacciones_data:
+            tipo = str(trans.get('tipo', '')).upper()
+            # Usar Paragraph para textos largos - SIN TRUNCAR para mejor legibilidad
+            referencia_p = Paragraph(str(trans.get('referencia', '')), estilo_celda)
+            fecha_p = Paragraph(str(trans.get('fecha', '')), estilo_celda)
+            # Centros sin truncar - el Paragraph hará wrap automático
+            origen_texto = str(trans.get('centro_origen', 'Farmacia Central'))
+            destino_texto = str(trans.get('centro_destino', 'Farmacia Central'))
+            origen_p = Paragraph(origen_texto, estilo_celda)
+            destino_p = Paragraph(destino_texto, estilo_celda)
             
-        # Mini encabezado de la transacción - Mejorado para centros largos
-        origen = trans.get('centro_origen', 'Farmacia Central') or 'Farmacia Central'
-        destino = trans.get('centro_destino', 'Farmacia Central') or 'Farmacia Central'
-        trans_header = f"<b>{trans.get('referencia', 'N/A')}</b> | {trans.get('fecha', '')} | " \
-                       f"<b>{trans.get('tipo', '')}</b><br/>" \
-                       f"<i>Origen:</i> {origen} → <i>Destino:</i> {destino}"
-        trans_header_p = Paragraph(trans_header, ParagraphStyle(
-            'TransHeader',
-            parent=styles['Normal'],
-            fontSize=8,
-            leading=11,
-            spaceAfter=4,
-            textColor=COLOR_GUINDA,
-            wordWrap='CJK',
-        ))
-        elements.append(trans_header_p)
-        
-        # Tabla de productos
-        det_data = [['#', 'Producto', 'Lote', 'Cantidad']]
-        for idx, det in enumerate(detalles, 1):
-            # Usar Paragraph para producto - SIN truncar para mejor legibilidad
-            producto_texto = str(det.get('producto', ''))
-            producto_p = Paragraph(producto_texto, estilo_celda_pequena)
-            lote_p = Paragraph(str(det.get('lote', 'N/A')), estilo_celda_pequena)
-            det_data.append([
-                str(idx),
-                producto_p,
-                lote_p,
-                str(det.get('cantidad', 0))
+            data.append([
+                referencia_p,
+                fecha_p,
+                tipo,
+                origen_p,
+                destino_p,
+                str(trans.get('total_productos', 0)),
+                str(trans.get('total_cantidad', 0))
             ])
         
-        # Fila de total
-        det_data.append(['', '', 'TOTAL:', str(trans.get('total_cantidad', 0))])
+        # Anchos de columnas - Origen y Destino más anchos para nombres completos
+        col_widths = [1.2*inch, 0.85*inch, 0.55*inch, 1.5*inch, 1.5*inch, 0.45*inch, 0.45*inch]
+        table = _crear_tabla_institucional(data, col_widths)
+        elements.append(table)
+        elements.append(Spacer(1, 0.25*inch))
         
-        # Aumentar ancho de columna de producto para mejor ajuste
-        det_col_widths = [0.3*inch, 4.2*inch, 1.0*inch, 0.6*inch]
-        det_table = Table(det_data, colWidths=det_col_widths)
-        det_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E5E7EB')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), COLOR_TEXTO),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 7),
-            ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
-            ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#D1D5DB')),
-            ('LEFTPADDING', (0, 0), (-1, -1), 4),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-            ('TOPPADDING', (0, 0), (-1, -1), 3),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-            ('ALIGN', (0, 0), (0, -1), 'CENTER'),
-            ('ALIGN', (3, 0), (3, -1), 'RIGHT'),
-            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#F3F4F6')),
-        ]))
-        elements.append(det_table)
-        elements.append(Spacer(1, 0.15*inch))
+        # Detalle de productos por transacción
+        det_titulo = Paragraph("DETALLE DE PRODUCTOS POR TRANSACCIÓN", styles['SeccionTitulo'])
+        elements.append(det_titulo)
+        elements.append(Spacer(1, 0.1*inch))
+        
+        for trans in transacciones_data:
+            detalles = trans.get('detalles', [])
+            if not detalles:
+                continue
+                
+            # Mini encabezado de la transacción - Mejorado para centros largos
+            origen = trans.get('centro_origen', 'Farmacia Central') or 'Farmacia Central'
+            destino = trans.get('centro_destino', 'Farmacia Central') or 'Farmacia Central'
+            trans_header = f"<b>{trans.get('referencia', 'N/A')}</b> | {trans.get('fecha', '')} | " \
+                           f"<b>{trans.get('tipo', '')}</b><br/>" \
+                           f"<i>Origen:</i> {origen} → <i>Destino:</i> {destino}"
+            trans_header_p = Paragraph(trans_header, ParagraphStyle(
+                'TransHeader',
+                parent=styles['Normal'],
+                fontSize=8,
+                leading=11,
+                spaceAfter=4,
+                textColor=COLOR_GUINDA,
+                wordWrap='CJK',
+            ))
+            elements.append(trans_header_p)
+            
+            # Tabla de productos
+            det_data = [['#', 'Producto', 'Lote', 'Cantidad']]
+            for idx, det in enumerate(detalles, 1):
+                # Usar Paragraph para producto - SIN truncar para mejor legibilidad
+                producto_texto = str(det.get('producto', ''))
+                producto_p = Paragraph(producto_texto, estilo_celda_pequena)
+                lote_p = Paragraph(str(det.get('lote', 'N/A')), estilo_celda_pequena)
+                det_data.append([
+                    str(idx),
+                    producto_p,
+                    lote_p,
+                    str(det.get('cantidad', 0))
+                ])
+            
+            # Fila de total
+            det_data.append(['', '', 'TOTAL:', str(trans.get('total_cantidad', 0))])
+            
+            # Aumentar ancho de columna de producto para mejor ajuste
+            det_col_widths = [0.3*inch, 4.2*inch, 1.0*inch, 0.6*inch]
+            det_table = Table(det_data, colWidths=det_col_widths)
+            det_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E5E7EB')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), COLOR_TEXTO),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 7),
+                ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
+                ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#D1D5DB')),
+                ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+                ('TOPPADDING', (0, 0), (-1, -1), 3),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+                ('ALIGN', (3, 0), (3, -1), 'RIGHT'),
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#F3F4F6')),
+            ]))
+            elements.append(det_table)
+            elements.append(Spacer(1, 0.15*inch))
     
     # Usar canvas con fondo institucional
     def make_canvas(*args, **kwargs):
