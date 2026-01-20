@@ -523,36 +523,24 @@ const RequisicionDetalle = () => {
       let nombreArchivo;
 
       if (tipo === 'aceptacion') {
-        // ISS-HOJA-V2: Lógica diferenciada según rol y estado
-        const estadoActual = requisicion?.estado?.toLowerCase();
-        // ISS-HOJA-FIX: Solo médico y centro usan hoja de consulta en surtida
-        const rolActual = (user?.rol_efectivo || user?.rol || '').toLowerCase();
-        const esRolMedicoCentro = ['medico', 'centro', 'usuario_centro'].includes(rolActual);
+        const estadoActual = (requisicion?.estado || '').toLowerCase().trim();
         
-        // FLUJO V2: En estado ENTREGADA usar Recibo de Salida como documento oficial
-        if (estadoActual === 'entregada') {
+        // REQUISICIONES SURTIDAS/ENTREGADAS: SIEMPRE usar Recibo de Salida
+        if (['surtida', 'parcial', 'entregada', 'recibida'].includes(estadoActual)) {
           response = await requisicionesAPI.downloadReciboSalida(id);
           nombreArchivo = `Recibo_Salida_${requisicion.folio}.pdf`;
           toast.success('Recibo de Salida descargado');
-        }
-        // Médico/Centro en estado surtida: descargar hoja de CONSULTA con sello SURTIDA
-        else if (esRolMedicoCentro && !esFarmacia && estadoActual === 'surtida') {
-          response = await requisicionesAPI.downloadHojaConsulta(id);
-          nombreArchivo = `Consulta_Requisicion_${requisicion.folio}.pdf`;
-          toast.success('Hoja de consulta descargada');
         } 
-        // Farmacia o Médico/Centro en autorizada: descargar hoja de recolección normal
+        // AUTORIZADAS: usar hoja de recolección
         else if (hojaRecoleccion) {
           response = await hojasRecoleccionAPI.descargarPDF(hojaRecoleccion.id);
           nombreArchivo = `Hoja_Recoleccion_${hojaRecoleccion.folio_hoja}.pdf`;
-          // Registrar impresión
           try {
             await hojasRecoleccionAPI.registrarImpresion(hojaRecoleccion.id);
           } catch (e) {
             console.warn('No se pudo registrar impresión:', e);
           }
         } else {
-          // Fallback a la API antigua
           response = await requisicionesAPI.downloadPDFAceptacion(id);
           nombreArchivo = `Hoja_Recoleccion_${requisicion.folio}.pdf`;
         }
@@ -564,7 +552,6 @@ const RequisicionDetalle = () => {
       const blob = new Blob([response.data], { type: 'application/pdf' });
       descargarArchivo(blob, nombreArchivo);
       
-      // Recargar hoja para actualizar contadores
       if (tipo === 'aceptacion' && hojaRecoleccion) {
         cargarHojaRecoleccion();
       }
