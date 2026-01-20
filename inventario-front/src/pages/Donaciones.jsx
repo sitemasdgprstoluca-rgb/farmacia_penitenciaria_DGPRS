@@ -2863,16 +2863,31 @@ const Donaciones = () => {
                           </tr>
                           
                           {/* Filas expandidas del grupo (productos individuales) */}
-                          {esGrupo && estaExpandido && grupo.entregas.map((entrega) => (
+                          {esGrupo && estaExpandido && grupo.entregas.map((entrega, idx) => (
                             <tr key={entrega.id} className="bg-gray-50/70 border-l-4 border-indigo-300">
                               <td className="px-4 py-2 text-sm text-gray-500 pl-8">
-                                └ {new Date(entrega.fecha_entrega).toLocaleTimeString('es-MX', {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
+                                <div className="flex items-center gap-1">
+                                  <span className="text-gray-400">└</span>
+                                  <span className="bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded text-xs font-mono">
+                                    #{idx + 1}
+                                  </span>
+                                </div>
                               </td>
-                              <td className="px-4 py-2 text-sm text-gray-500">-</td>
-                              <td className="px-4 py-2 font-medium text-sm">{entrega.producto_nombre || '-'}</td>
+                              <td className="px-4 py-2 text-sm text-gray-500">
+                                {entrega.numero_lote ? (
+                                  <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs">
+                                    Lote: {entrega.numero_lote}
+                                  </span>
+                                ) : '-'}
+                              </td>
+                              <td className="px-4 py-2">
+                                <div>
+                                  <span className="font-medium text-sm text-gray-800">{entrega.producto_nombre || '-'}</span>
+                                  {entrega.producto_clave && (
+                                    <span className="ml-2 text-xs text-gray-500">({entrega.producto_clave})</span>
+                                  )}
+                                </div>
+                              </td>
                               <td className="px-4 py-2 text-center">
                                 <span className="font-bold text-primary text-sm">{entrega.cantidad}</span>
                               </td>
@@ -2880,14 +2895,18 @@ const Donaciones = () => {
                                 {entrega.estado_entrega === 'entregado' || entrega.finalizado ? (
                                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                                     <FaCheckCircle className="text-green-600 text-xs" />
+                                    <span>OK</span>
                                   </span>
                                 ) : (
                                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                                     <FaClock className="text-yellow-600 text-xs" />
+                                    <span>Pend.</span>
                                   </span>
                                 )}
                               </td>
-                              <td className="px-4 py-2 text-sm text-gray-500">-</td>
+                              <td className="px-4 py-2 text-sm text-gray-500">
+                                {entrega.entregado_por_nombre || '-'}
+                              </td>
                               <td className="px-4 py-2 text-center">
                                 <div className="flex items-center justify-center gap-1">
                                   <button

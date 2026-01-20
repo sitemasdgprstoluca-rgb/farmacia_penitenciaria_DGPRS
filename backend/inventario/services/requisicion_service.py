@@ -1699,12 +1699,12 @@ class RequisicionService:
         # ISS-008 FIX: Log de auditoría adicional
         logger.info(
             f"ISS-008 MOVIMIENTO: {tipo.upper()} | "
-            f"Producto: {producto_movimiento.clave if producto_movimiento else 'N/A'} | "
-            f"Lote: {lote.numero_lote if lote else 'N/A'} | "
+            f"Producto: {str(producto_movimiento.clave)[:100] if producto_movimiento else 'N/A'} | "
+            f"Lote: {str(lote.numero_lote)[:100] if lote else 'N/A'} | "
             f"Cantidad: {cantidad} | "
-            f"Requisicion: {self.requisicion.folio if self.requisicion else 'N/A'} | "
-            f"Usuario: {self.usuario.username if self.usuario else 'Sistema'} | "
-            f"Rol: {user_rol}"
+            f"Requisicion: {str(self.requisicion.folio)[:100] if self.requisicion else 'N/A'} | "
+            f"Usuario: {str(self.usuario.username)[:100] if self.usuario else 'Sistema'} | "
+            f"Rol: {str(user_rol)[:100]}"
         )
         
         return movimiento

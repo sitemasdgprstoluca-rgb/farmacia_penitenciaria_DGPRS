@@ -91,7 +91,9 @@ class TransferService:
         if cantidad <= 0:
             return TransferenciaResultado(
                 exitoso=False,
-                mensaje="La cantidad debe ser mayor a cero",
+            # Acotar nombre de centro_destino a 100 caracteres
+            centro_destino_nombre = (centro_destino.nombre or '')[:100]
+            motivo_salida = motivo or f"Transferencia a {centro_destino_nombre}"
                 errores=["cantidad <= 0"]
             )
         
@@ -114,7 +116,9 @@ class TransferService:
             lote_bloqueado = Lote.objects.select_for_update(nowait=False).get(pk=lote_origen.pk)
         except Lote.DoesNotExist:
             return TransferenciaResultado(
-                exitoso=False,
+                centro_origen_nombre = (centro_origen.nombre if centro_origen else 'Farmacia Central')
+                centro_origen_nombre = (centro_origen_nombre or '')[:100]
+                motivo_entrada = motivo or f"Transferencia desde {centro_origen_nombre}"
                 mensaje=f"El lote {lote_origen.pk} ya no existe",
                 errores=["lote no encontrado"]
             )
@@ -135,12 +139,12 @@ class TransferService:
                 mensaje=f"El lote {lote_bloqueado.numero_lote} está inactivo",
                 errores=["lote inactivo"]
             )
-        
-        if lote_bloqueado.fecha_caducidad and lote_bloqueado.fecha_caducidad < timezone.now().date():
-            return TransferenciaResultado(
-                exitoso=False,
-                mensaje=f"El lote {lote_bloqueado.numero_lote} está vencido",
-                errores=["lote vencido"]
+            logger.info(
+                f"ISS-004: Transferencia exitosa. "
+                f"Lote {lote_bloqueado.numero_lote}: {cantidad} unidades. "
+                f"Origen: {centro_origen_nombre} -> "
+                f"Destino: {centro_destino_nombre}. "
+                f"Usuario: {(usuario.username if usuario else 'N/A')[:100]}"
             )
         
         if lote_bloqueado.cantidad_actual < cantidad:

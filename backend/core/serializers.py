@@ -2579,6 +2579,8 @@ class SalidaDonacionSerializer(serializers.ModelSerializer):
     detalle_donacion_info = serializers.SerializerMethodField()
     entregado_por_nombre = serializers.SerializerMethodField()
     producto_nombre = serializers.SerializerMethodField()
+    producto_clave = serializers.SerializerMethodField()
+    numero_lote = serializers.SerializerMethodField()
     centro_destino_nombre = serializers.CharField(source='centro_destino.nombre', read_only=True, allow_null=True)
     finalizado_por_nombre = serializers.SerializerMethodField()
     estado_entrega = serializers.CharField(read_only=True)  # Property del modelo
@@ -2589,7 +2591,7 @@ class SalidaDonacionSerializer(serializers.ModelSerializer):
             'id', 'detalle_donacion', 'detalle_donacion_info',
             'cantidad', 'destinatario', 'motivo',
             'entregado_por', 'entregado_por_nombre',
-            'producto_nombre',
+            'producto_nombre', 'producto_clave', 'numero_lote',
             'fecha_entrega', 'notas', 'created_at',
             # ISS-DB-ALIGN: Campos de trazabilidad
             'centro_destino', 'centro_destino_nombre',
@@ -2636,6 +2638,22 @@ class SalidaDonacionSerializer(serializers.ModelSerializer):
         if obj.detalle_donacion:
             # Usar la property nombre_producto que maneja ambos casos
             return obj.detalle_donacion.nombre_producto
+        return None
+    
+    def get_producto_clave(self, obj):
+        """Obtener clave del producto desde detalle_donacion."""
+        if obj.detalle_donacion:
+            # Intentar producto_donacion primero, luego producto legacy
+            if obj.detalle_donacion.producto_donacion:
+                return obj.detalle_donacion.producto_donacion.clave
+            elif obj.detalle_donacion.producto:
+                return obj.detalle_donacion.producto.clave
+        return None
+    
+    def get_numero_lote(self, obj):
+        """Obtener número de lote desde detalle_donacion."""
+        if obj.detalle_donacion and obj.detalle_donacion.numero_lote:
+            return obj.detalle_donacion.numero_lote
         return None
     
     def validate_cantidad(self, value):
