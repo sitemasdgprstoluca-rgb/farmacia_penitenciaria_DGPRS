@@ -1179,24 +1179,30 @@ def generar_hoja_entrega(datos_entrega, finalizado=False, es_donacion=False):
     story.append(Spacer(1, 0.08*inch))
     
     # ========== TABLA DE PRODUCTOS ==========
-    # Anchos exactos: NO.PROG | CLAVE | MEDICAMENTO/MATERIAL/DESCRIPCION | CANTIDAD SURTIDA
-    col_widths = [0.55*inch, 0.55*inch, 5.3*inch, 1.1*inch]
+    # Anchos exactos: NO.PROG | CLAVE | MEDICAMENTO/MATERIAL/DESCRIPCION | PRESENTACIÓN | LOTE | CANTIDAD SURTIDA
+    col_widths = [0.45*inch, 0.5*inch, 3.2*inch, 1.3*inch, 1.0*inch, 1.0*inch]
     
     # Header
     productos_data = [[
         Paragraph("<b>NO. PROG.</b>", estilo_header),
         Paragraph("<b>CLAVE</b>", estilo_header),
         Paragraph("<b>MEDICAMENTO/MATERIAL/DESCRIPCIÓN</b>", estilo_header),
+        Paragraph("<b>PRESENTACIÓN</b>", estilo_header),
+        Paragraph("<b>LOTE</b>", estilo_header),
         Paragraph("<b>CANTIDAD SURTIDA</b>", estilo_header),
     ]]
     
     # Filas de datos
     for idx, item in enumerate(datos_entrega.get('items', []), start=1):
         desc_texto = str(item.get('descripcion', '')).upper()
+        presentacion = str(item.get('presentacion', item.get('unidad_medida', '-'))).upper()
+        lote = str(item.get('lote', item.get('numero_lote', '-'))).upper()
         productos_data.append([
             Paragraph(str(idx), estilo_celda_center),
             Paragraph(str(item.get('clave', '')), estilo_celda_center),
             Paragraph(desc_texto, estilo_celda),
+            Paragraph(presentacion, estilo_celda_center),
+            Paragraph(lote, estilo_celda_center),
             Paragraph(str(item.get('cantidad', 0)), estilo_celda_center),
         ])
     

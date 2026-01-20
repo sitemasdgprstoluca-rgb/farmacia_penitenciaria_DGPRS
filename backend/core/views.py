@@ -5285,6 +5285,18 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
                 from datetime import datetime
                 fecha_obj = datetime.fromisoformat(fecha_obj.replace('Z', '+00:00'))
             
+            # Obtener presentación del producto
+            presentacion = 'N/A'
+            if detalle:
+                if detalle.producto_donacion and detalle.producto_donacion.presentacion:
+                    presentacion = detalle.producto_donacion.presentacion
+                elif detalle.producto_donacion and detalle.producto_donacion.unidad_medida:
+                    presentacion = detalle.producto_donacion.unidad_medida
+                elif detalle.producto and detalle.producto.presentacion:
+                    presentacion = detalle.producto.presentacion
+                elif detalle.producto and detalle.producto.unidad_medida:
+                    presentacion = detalle.producto.unidad_medida
+            
             datos_entrega = {
                 'grupo_salida': f"DON-{salida.id}",  # Folio con prefijo DON
                 'fecha': fecha_obj,
@@ -5292,6 +5304,9 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
                 'items': [{
                     'clave': producto_clave,
                     'nombre': producto_nombre,
+                    'descripcion': producto_nombre,
+                    'presentacion': presentacion,
+                    'lote': numero_lote,
                     'cantidad': salida.cantidad,
                 }],
                 # Datos de firma para el PDF

@@ -19,7 +19,11 @@ import {
   FaChevronRight,
   FaChevronLeft,
   FaAngleDoubleLeft,
-  FaAngleDoubleRight
+  FaAngleDoubleRight,
+  FaFileContract,
+  FaCubes,
+  FaChartLine,
+  FaDollarSign
 } from "react-icons/fa";
 import { reportesAPI, centrosAPI, descargarArchivo } from "../services/api";
 import PageHeader from "../components/PageHeader";
@@ -102,6 +106,20 @@ const COLUMNAS_CONFIG = {
     { key: 'numero_expediente', label: 'No. Exp.', width: '100px' },
     { key: 'total_productos', label: 'Prods.', width: '70px', align: 'center' },
     { key: 'total_cantidad', label: 'Cantidad', width: '80px', align: 'right' },
+  ],
+  contratos: [
+    { key: 'expand', label: '', width: '40px', align: 'center' },
+    { key: 'numero_contrato', label: 'No. Contrato', width: '140px' },
+    { key: 'total_lotes', label: 'Lotes', width: '60px', align: 'center' },
+    { key: 'total_productos', label: 'Prods', width: '60px', align: 'center' },
+    { key: 'cantidad_inicial', label: 'Inicial', width: '80px', align: 'right' },
+    { key: 'cantidad_actual', label: 'Actual', width: '80px', align: 'right' },
+    { key: 'cantidad_consumida', label: 'Consumido', width: '85px', align: 'right' },
+    { key: 'porcentaje_uso', label: '% Uso', width: '65px', align: 'center' },
+    { key: 'movimientos_entrada', label: 'Entradas', width: '75px', align: 'center' },
+    { key: 'movimientos_salida', label: 'Salidas', width: '70px', align: 'center' },
+    { key: 'valor_total', label: 'Valor Total', width: '100px', align: 'right' },
+    { key: 'estado', label: 'Estado', width: '100px', align: 'center' },
   ],
 };
 
@@ -278,6 +296,8 @@ const Reportes = () => {
         response = await reportesAPI.requisiciones(params);
       } else if (filtros.tipo === "movimientos") {
         response = await reportesAPI.movimientos(params);
+      } else if (filtros.tipo === "contratos") {
+        response = await reportesAPI.contratos(params);
       } else {
         throw new Error("Tipo de reporte no soportado");
       }
@@ -361,6 +381,9 @@ const Reportes = () => {
       } else if (filtros.tipo === "movimientos") {
         response = await reportesAPI.exportarMovimientosExcel(params);
         filename = `movimientos_${new Date().toISOString().split("T")[0]}.xlsx`;
+      } else if (filtros.tipo === "contratos") {
+        response = await reportesAPI.exportarContratosExcel(params);
+        filename = `contratos_${new Date().toISOString().split("T")[0]}.xlsx`;
       } else {
         toast.error("Tipo de reporte no soportado", { id: toastId });
         return;
@@ -396,6 +419,9 @@ const Reportes = () => {
       } else if (filtros.tipo === "movimientos") {
         response = await reportesAPI.exportarMovimientosPDF(params);
         filename = `reporte_movimientos_${new Date().toISOString().split("T")[0]}.pdf`;
+      } else if (filtros.tipo === "contratos") {
+        response = await reportesAPI.exportarContratosPDF(params);
+        filename = `reporte_contratos_${new Date().toISOString().split("T")[0]}.pdf`;
       } else if (filtros.tipo === "control_mensual") {
         // Control Mensual - Formato Oficial A
         const controlParams = {
@@ -442,6 +468,7 @@ const Reportes = () => {
     if (filtros.tipo === 'requisiciones') return <FaClipboardList />;
     if (filtros.tipo === 'movimientos') return <FaExchangeAlt />;
     if (filtros.tipo === 'control_mensual') return <FaDatabase />;
+    if (filtros.tipo === 'contratos') return <FaFileContract />;
     return <FaChartBar />;
   };
 
@@ -687,6 +714,63 @@ const Reportes = () => {
       );
     }
 
+    // Resumen para reporte de contratos
+    if (filtros.tipo === 'contratos') {
+      return (
+        <div className="p-3 md:p-4 bg-gradient-to-r from-gray-50 to-white border-t">
+          <div className="text-center mb-3">
+            <span className="px-3 py-1 bg-indigo-100 text-indigo-800 text-xs font-semibold rounded-full">
+              📝 Seguimiento completo de contratos: Entrada → Consumo
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 md:gap-3">
+            <div className="flex items-center gap-2 p-2 md:p-3 bg-indigo-50 rounded-lg">
+              <FaFileContract className="text-lg md:text-2xl text-indigo-600" />
+              <div>
+                <p className="text-[10px] md:text-xs text-indigo-600 font-semibold">Contratos</p>
+                <p className="text-base md:text-xl font-bold text-indigo-800">{resumen.total_contratos || datos.length}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 p-2 md:p-3 bg-blue-50 rounded-lg">
+              <FaCubes className="text-lg md:text-2xl text-blue-600" />
+              <div>
+                <p className="text-[10px] md:text-xs text-blue-600 font-semibold">Total Lotes</p>
+                <p className="text-base md:text-xl font-bold text-blue-800">{resumen.total_lotes || 0}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 p-2 md:p-3 bg-green-50 rounded-lg">
+              <span className="text-lg md:text-2xl">📥</span>
+              <div>
+                <p className="text-[10px] md:text-xs text-green-600 font-semibold">Entradas</p>
+                <p className="text-base md:text-xl font-bold text-green-800">{resumen.total_movimientos_entrada || 0}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 p-2 md:p-3 bg-red-50 rounded-lg">
+              <span className="text-lg md:text-2xl">📤</span>
+              <div>
+                <p className="text-[10px] md:text-xs text-red-600 font-semibold">Salidas</p>
+                <p className="text-base md:text-xl font-bold text-red-800">{resumen.total_movimientos_salida || 0}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 p-2 md:p-3 bg-orange-50 rounded-lg">
+              <FaChartLine className="text-lg md:text-2xl text-orange-600" />
+              <div>
+                <p className="text-[10px] md:text-xs text-orange-600 font-semibold">Consumido</p>
+                <p className="text-base md:text-xl font-bold text-orange-800">{(resumen.cantidad_consumida_global || 0).toLocaleString()}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 p-2 md:p-3 bg-purple-50 rounded-lg">
+              <FaDollarSign className="text-lg md:text-2xl text-purple-600" />
+              <div>
+                <p className="text-[10px] md:text-xs text-purple-600 font-semibold">Valor Total</p>
+                <p className="text-base md:text-xl font-bold text-purple-800">${(resumen.valor_total_global || 0).toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return null;
   };
 
@@ -732,6 +816,7 @@ const Reportes = () => {
               <option value="caducidades">⏰ Caducidades</option>
               <option value="requisiciones">📋 Requisiciones</option>
               <option value="movimientos">🔄 Movimientos</option>
+              <option value="contratos">📝 Contratos (Lotes y Consumo)</option>
               <option value="control_mensual">📊 Control Mensual (Formato A)</option>
             </select>
           </div>

@@ -10456,6 +10456,403 @@ def reporte_consumo(request):
         # traceback removido por seguridad (ISS-008)
         return Response({'error': 'Error al obtener consumo', 'mensaje': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+@api_view(['GET'])
+def reporte_contratos(request):
+    """
+    Genera reporte de lotes agrupados por número de contrato.
+    Muestra el consumo y estado de cada contrato con trazabilidad completa.
+    
+    SEGURIDAD: Solo admin/farmacia pueden acceder.
+    
+    Parámetros:
+    - numero_contrato: Filtrar por contrato específico
+    - formato: json (default), excel, pdf
+    - incluir_movimientos: true/false - incluir detalle de movimientos por lote
+    """
+    from collections import defaultdict
+    from django.db.models import Sum, Count
+    
+    try:
+        logger.info(f"reporte_contratos: params={dict(request.query_params)}, user={request.user}")
+        
+        # SEGURIDAD: Solo admin/farmacia pueden ver reportes de contratos
+        if not request.user or not request.user.is_authenticated or not is_farmacia_or_admin(request.user):
+            return Response({
+                'error': 'Solo usuarios de farmacia o administradores pueden acceder a reportes de contratos'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        formato = request.query_params.get('formato', 'json')
+        numero_contrato_filtro = request.query_params.get('numero_contrato', '').strip()
+        incluir_movimientos = request.query_params.get('incluir_movimientos', 'false').lower() == 'true'
+        
+        # Obtener lotes activos con número de contrato
+        lotes_query = Lote.objects.select_related('producto', 'centro').filter(
+            activo=True
+        ).exclude(
+            numero_contrato__isnull=True
+        ).exclude(
+            numero_contrato=''
+        ).order_by('numero_contrato', 'producto__clave', 'numero_lote')
+        
+        # Filtrar por contrato específico si se proporciona
+        if numero_contrato_filtro:
+            lotes_query = lotes_query.filter(numero_contrato__icontains=numero_contrato_filtro)
+        
+        # Agrupar por número de contrato
+        contratos = defaultdict(lambda: {
+            'numero_contrato': '',
+            'lotes': [],
+            'total_lotes': 0,
+            'productos_unicos': set(),
+            'cantidad_inicial_total': 0,
+            'cantidad_actual_total': 0,
+            'valor_total': 0.0,
+            'movimientos_entrada': 0,
+            'movimientos_salida': 0,
+            'fecha_primera_entrada': None,
+            'fecha_ultima_salida': None,
+        })
+        
+        for lote in lotes_query:
+            contrato_key = lote.numero_contrato.strip().upper()
+            contrato = contratos[contrato_key]
+            
+            if not contrato['numero_contrato']:
+                contrato['numero_contrato'] = lote.numero_contrato
+            
+            # Obtener movimientos del lote para trazabilidad completa
+            movimientos_lote = Movimiento.objects.filter(lote=lote).order_by('fecha')
+            
+            # Calcular estadísticas de movimientos
+            mov_entradas = movimientos_lote.filter(tipo__in=['entrada', 'ajuste_positivo'])
+            mov_salidas = movimientos_lote.filter(tipo__in=['salida', 'ajuste_negativo'])
+            
+            cantidad_entrada_lote = mov_entradas.aggregate(total=Sum('cantidad'))['total'] or 0
+            cantidad_salida_lote = mov_salidas.aggregate(total=Sum('cantidad'))['total'] or 0
+            
+            # Fechas de seguimiento
+            primera_entrada = mov_entradas.first()
+            ultima_salida = mov_salidas.last()
+            
+            # Actualizar fechas del contrato
+            if primera_entrada and primera_entrada.fecha:
+                if contrato['fecha_primera_entrada'] is None or primera_entrada.fecha < contrato['fecha_primera_entrada']:
+                    contrato['fecha_primera_entrada'] = primera_entrada.fecha
+            
+            if ultima_salida and ultima_salida.fecha:
+                if contrato['fecha_ultima_salida'] is None or ultima_salida.fecha > contrato['fecha_ultima_salida']:
+                    contrato['fecha_ultima_salida'] = ultima_salida.fecha
+            
+            # Detalle de movimientos si se solicita
+            movimientos_detalle = []
+            if incluir_movimientos:
+                for mov in movimientos_lote:
+                    movimientos_detalle.append({
+                        'id': mov.id,
+                        'tipo': mov.tipo,
+                        'subtipo': mov.subtipo_salida or '',
+                        'cantidad': mov.cantidad,
+                        'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M') if mov.fecha else '-',
+                        'centro_origen': mov.centro_origen.nombre if mov.centro_origen else 'Almacén Central',
+                        'centro_destino': mov.centro_destino.nombre if mov.centro_destino else 'Almacén Central',
+                        'referencia': mov.referencia or '',
+                        'motivo': mov.motivo or '',
+                    })
+            
+            lote_info = {
+                'id': lote.id,
+                'numero_lote': lote.numero_lote,
+                'producto_clave': lote.producto.clave if lote.producto else 'N/A',
+                'producto_nombre': lote.producto.nombre if lote.producto else 'N/A',
+                'presentacion': lote.producto.presentacion if lote.producto else '',
+                'cantidad_inicial': lote.cantidad_inicial,
+                'cantidad_actual': lote.cantidad_actual,
+                'cantidad_consumida': lote.cantidad_inicial - lote.cantidad_actual,
+                'movimientos_entrada': mov_entradas.count(),
+                'movimientos_salida': mov_salidas.count(),
+                'total_entradas': abs(cantidad_entrada_lote),
+                'total_salidas': abs(cantidad_salida_lote),
+                'fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else '-',
+                'precio_unitario': float(lote.precio_unitario or 0),
+                'centro': lote.centro.nombre if lote.centro else 'Almacén Central',
+                'marca': lote.marca or '-',
+                'movimientos': movimientos_detalle if incluir_movimientos else [],
+            }
+            
+            contrato['lotes'].append(lote_info)
+            contrato['total_lotes'] += 1
+            contrato['productos_unicos'].add(lote.producto_id)
+            contrato['cantidad_inicial_total'] += lote.cantidad_inicial
+            contrato['cantidad_actual_total'] += lote.cantidad_actual
+            contrato['valor_total'] += float(lote.precio_unitario or 0) * lote.cantidad_inicial
+            contrato['movimientos_entrada'] += mov_entradas.count()
+            contrato['movimientos_salida'] += mov_salidas.count()
+        
+        # Preparar datos finales
+        datos = []
+        for contrato_key, contrato_data in sorted(contratos.items()):
+            cantidad_consumida = contrato_data['cantidad_inicial_total'] - contrato_data['cantidad_actual_total']
+            porcentaje_uso = 0
+            if contrato_data['cantidad_inicial_total'] > 0:
+                porcentaje_uso = round((cantidad_consumida / contrato_data['cantidad_inicial_total']) * 100, 2)
+            
+            # Determinar estado del contrato
+            if contrato_data['cantidad_actual_total'] == 0:
+                estado = 'agotado'
+            elif porcentaje_uso >= 80:
+                estado = 'por_agotar'
+            elif porcentaje_uso >= 50:
+                estado = 'consumo_medio'
+            else:
+                estado = 'disponible'
+            
+            datos.append({
+                'numero_contrato': contrato_data['numero_contrato'],
+                'total_lotes': contrato_data['total_lotes'],
+                'total_productos': len(contrato_data['productos_unicos']),
+                'cantidad_inicial': contrato_data['cantidad_inicial_total'],
+                'cantidad_actual': contrato_data['cantidad_actual_total'],
+                'cantidad_consumida': cantidad_consumida,
+                'porcentaje_uso': porcentaje_uso,
+                'valor_total': round(contrato_data['valor_total'], 2),
+                'estado': estado,
+                'movimientos_entrada': contrato_data['movimientos_entrada'],
+                'movimientos_salida': contrato_data['movimientos_salida'],
+                'fecha_primera_entrada': contrato_data['fecha_primera_entrada'].strftime('%d/%m/%Y') if contrato_data['fecha_primera_entrada'] else '-',
+                'fecha_ultima_salida': contrato_data['fecha_ultima_salida'].strftime('%d/%m/%Y') if contrato_data['fecha_ultima_salida'] else '-',
+                'lotes': contrato_data['lotes'],
+            })
+        
+        resumen = {
+            'total_contratos': len(datos),
+            'total_lotes': sum(d['total_lotes'] for d in datos),
+            'cantidad_inicial_global': sum(d['cantidad_inicial'] for d in datos),
+            'cantidad_actual_global': sum(d['cantidad_actual'] for d in datos),
+            'cantidad_consumida_global': sum(d['cantidad_consumida'] for d in datos),
+            'valor_total_global': round(sum(d['valor_total'] for d in datos), 2),
+            'total_movimientos_entrada': sum(d['movimientos_entrada'] for d in datos),
+            'total_movimientos_salida': sum(d['movimientos_salida'] for d in datos),
+        }
+        
+        # Formato JSON
+        if formato == 'json':
+            return Response({
+                'datos': datos,
+                'resumen': resumen
+            })
+        
+        # Formato Excel
+        if formato == 'excel':
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+            from openpyxl.utils import get_column_letter
+            
+            wb = Workbook()
+            ws = wb.active
+            ws.title = 'Contratos'
+            
+            # Estilos
+            header_font = Font(bold=True, color='FFFFFF')
+            header_fill = PatternFill(start_color='2C3E50', end_color='2C3E50', fill_type='solid')
+            border_thin = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
+            
+            # Título
+            ws.merge_cells('A1:N1')
+            ws['A1'] = 'REPORTE DE CONTRATOS - SEGUIMIENTO COMPLETO DE LOTES Y CONSUMO'
+            ws['A1'].font = Font(bold=True, size=14)
+            ws['A1'].alignment = Alignment(horizontal='center')
+            
+            # Fecha
+            ws.merge_cells('A2:N2')
+            ws['A2'] = f"Generado el {timezone.now().strftime('%d/%m/%Y %H:%M:%S')}"
+            ws['A2'].alignment = Alignment(horizontal='center')
+            
+            # Encabezados mejorados con tracking de movimientos
+            headers = [
+                '#', 'Contrato', 'Lotes', 'Productos', 
+                'Cant. Inicial', 'Cant. Actual', 'Consumido', '% Uso',
+                'Entradas', 'Salidas',  # Nuevos campos de movimientos
+                'Primera Entrada', 'Última Salida',  # Nuevos campos de fechas
+                'Valor Total', 'Estado'
+            ]
+            row_num = 4
+            for col_num, header in enumerate(headers, 1):
+                cell = ws.cell(row=row_num, column=col_num, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.border = border_thin
+                cell.alignment = Alignment(horizontal='center')
+            
+            # Datos con tracking completo
+            for idx, contrato in enumerate(datos, 1):
+                row_num += 1
+                estado_display = {
+                    'disponible': 'Disponible',
+                    'consumo_medio': 'Consumo Medio',
+                    'por_agotar': 'Por Agotar',
+                    'agotado': 'Agotado'
+                }.get(contrato['estado'], contrato['estado'])
+                
+                # Formatear fechas si existen
+                fecha_primera_entrada = contrato.get('fecha_primera_entrada', '-')
+                fecha_ultima_salida = contrato.get('fecha_ultima_salida', '-')
+                
+                row_data = [
+                    idx,
+                    contrato['numero_contrato'],
+                    contrato['total_lotes'],
+                    contrato['total_productos'],
+                    contrato['cantidad_inicial'],
+                    contrato['cantidad_actual'],
+                    contrato['cantidad_consumida'],
+                    f"{contrato['porcentaje_uso']}%",
+                    contrato.get('movimientos_entrada', 0),  # Movimientos de entrada
+                    contrato.get('movimientos_salida', 0),   # Movimientos de salida
+                    fecha_primera_entrada or '-',
+                    fecha_ultima_salida or '-',
+                    f"${contrato['valor_total']:,.2f}",
+                    estado_display
+                ]
+                for col_num, value in enumerate(row_data, 1):
+                    cell = ws.cell(row=row_num, column=col_num, value=value)
+                    cell.border = border_thin
+                    if col_num in [3, 4, 5, 6, 7, 9, 10]:  # Columnas numéricas
+                        cell.alignment = Alignment(horizontal='right')
+                    elif col_num in [11, 12]:  # Columnas de fecha
+                        cell.alignment = Alignment(horizontal='center')
+            
+            # Ajustar anchos para nuevas columnas
+            column_widths = [5, 25, 8, 10, 12, 12, 12, 10, 10, 10, 14, 14, 15, 15]
+            for i, width in enumerate(column_widths, 1):
+                ws.column_dimensions[get_column_letter(i)].width = width
+            
+            # Generar respuesta
+            from io import BytesIO
+            buffer = BytesIO()
+            wb.save(buffer)
+            buffer.seek(0)
+            
+            response = HttpResponse(
+                buffer.getvalue(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = f'attachment; filename="Reporte_Contratos_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx"'
+            return response
+        
+        # Formato PDF
+        if formato == 'pdf':
+            from reportlab.lib import colors
+            from reportlab.lib.pagesizes import letter, landscape
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import inch
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+            from io import BytesIO
+            
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), topMargin=0.5*inch, bottomMargin=0.5*inch)
+            elements = []
+            styles = getSampleStyleSheet()
+            
+            # Título
+            title_style = ParagraphStyle('Title', parent=styles['Heading1'], alignment=1, fontSize=14)
+            elements.append(Paragraph('REPORTE DE CONTRATOS - SEGUIMIENTO COMPLETO', title_style))
+            elements.append(Spacer(1, 0.2*inch))
+            
+            # Subtítulo
+            subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'], alignment=1, fontSize=10)
+            elements.append(Paragraph(f"Generado el {timezone.now().strftime('%d/%m/%Y %H:%M:%S')}", subtitle_style))
+            elements.append(Spacer(1, 0.2*inch))
+            
+            # Información de trazabilidad
+            traza_style = ParagraphStyle('Traza', parent=styles['Normal'], alignment=1, fontSize=8, textColor=colors.HexColor('#666666'))
+            elements.append(Paragraph('Seguimiento desde entrada a farmacia hasta consumo final', traza_style))
+            elements.append(Spacer(1, 0.2*inch))
+            
+            # Tabla de datos mejorada con tracking
+            table_data = [[
+                '#', 'Contrato', 'Lotes', 'Prods', 
+                'Inicial', 'Actual', 'Consumido', '% Uso',
+                'Entradas', 'Salidas',
+                'Valor', 'Estado'
+            ]]
+            
+            for idx, contrato in enumerate(datos, 1):
+                estado_display = {
+                    'disponible': 'Disponible',
+                    'consumo_medio': 'Consumo Medio',
+                    'por_agotar': 'Por Agotar',
+                    'agotado': 'Agotado'
+                }.get(contrato['estado'], contrato['estado'])
+                
+                table_data.append([
+                    str(idx),
+                    contrato['numero_contrato'][:18],
+                    str(contrato['total_lotes']),
+                    str(contrato['total_productos']),
+                    str(contrato['cantidad_inicial']),
+                    str(contrato['cantidad_actual']),
+                    str(contrato['cantidad_consumida']),
+                    f"{contrato['porcentaje_uso']}%",
+                    str(contrato.get('movimientos_entrada', 0)),
+                    str(contrato.get('movimientos_salida', 0)),
+                    f"${contrato['valor_total']:,.0f}",
+                    estado_display
+                ])
+            
+            # Crear tabla con anchos ajustados
+            col_widths = [0.35*inch, 1.3*inch, 0.5*inch, 0.5*inch, 0.6*inch, 0.6*inch, 0.65*inch, 0.55*inch, 0.55*inch, 0.55*inch, 0.8*inch, 0.9*inch]
+            table = Table(table_data, colWidths=col_widths)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2C3E50')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 7),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 6),
+                ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
+                ('ALIGN', (1, 1), (1, -1), 'LEFT'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F9FA')]),
+            ]))
+            elements.append(table)
+            
+            # Resumen mejorado con tracking
+            elements.append(Spacer(1, 0.25*inch))
+            resumen_text = (
+                f"Total Contratos: {resumen['total_contratos']} | "
+                f"Total Lotes: {resumen['total_lotes']} | "
+                f"Movimientos: {resumen.get('total_movimientos_entrada', 0)} entradas / {resumen.get('total_movimientos_salida', 0)} salidas | "
+                f"Valor Total: ${resumen['valor_total_global']:,.2f}"
+            )
+            elements.append(Paragraph(resumen_text, subtitle_style))
+            
+            doc.build(elements)
+            buffer.seek(0)
+            
+            response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="Reporte_Contratos_{timezone.now().strftime("%Y%m%d_%H%M%S")}.pdf"'
+            return response
+        
+        return Response({'error': 'Formato no soportado'}, status=status.HTTP_400_BAD_REQUEST)
+        
+    except Exception as exc:
+        logger.error(f"Error en reporte_contratos: {str(exc)}")
+        return Response({
+            'error': 'Error al generar reporte de contratos',
+            'mensaje': str(exc)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['GET'])
 def reportes_precarga(request):
     """

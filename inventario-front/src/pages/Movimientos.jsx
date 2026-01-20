@@ -1817,21 +1817,21 @@ const Movimientos = () => {
             </div>
             <div className="overflow-x-auto rounded-b-xl">
               <table className="w-full text-sm">
-                <thead className={`bg-theme-gradient sticky top-0 z-10 shadow-md ${esCentroUser ? 'text-xs' : ''}`}>
+                <thead className="bg-theme-gradient sticky top-0 z-10 shadow-md">
                   <tr>
-                    <th className={`min-w-[120px] ${esCentroUser ? 'px-2 py-2' : 'px-3 py-4'} text-left text-xs font-bold uppercase tracking-wider text-white/90`}>
+                    <th className="min-w-[280px] px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90">
                       <div className="flex items-center gap-2">
                         <FaBoxes className="text-white/70" />
-                        <span>Producto</span>
+                        <span>Detalle / Productos</span>
                       </div>
                     </th>
-                    <th className={`w-20 ${esCentroUser ? 'px-1 py-2' : 'px-2 py-4'} text-left text-xs font-bold uppercase tracking-wider text-white/90`}>Tipo</th>
-                    <th className={`w-14 ${esCentroUser ? 'px-1 py-2' : 'px-2 py-4'} text-right text-xs font-bold uppercase tracking-wider text-white/90`}>Cant.</th>
+                    <th className="w-24 px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90">Estado</th>
+                    <th className="w-20 px-2 py-3 text-right text-xs font-bold uppercase tracking-wider text-white/90">Items</th>
                     {!esCentroUser && (
-                      <th className="w-32 px-2 py-4 text-left text-xs font-bold uppercase tracking-wider text-white/90 hidden sm:table-cell">Centro</th>
+                      <th className="w-36 px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90 hidden sm:table-cell">Destino</th>
                     )}
-                    <th className={`w-20 ${esCentroUser ? 'px-1 py-2' : 'px-2 py-4'} text-left text-xs font-bold uppercase tracking-wider text-white/90 hidden md:table-cell`}>Fecha</th>
-                    <th className={`w-10 ${esCentroUser ? 'px-1 py-2' : 'px-2 py-4'} text-center text-xs font-bold uppercase tracking-wider text-white/90`}>Acc.</th>
+                    <th className="w-28 px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90">Fecha</th>
+                    <th className="w-24 px-2 py-3 text-center text-xs font-bold uppercase tracking-wider text-white/90">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-50">
@@ -1867,21 +1867,24 @@ const Movimientos = () => {
                             const esTransferenciaCentro = grupo.tipo_grupo === 'transferencia_centro';
                             const styles = GRUPO_STYLES[grupo.tipo_grupo] || GRUPO_STYLES.transferencia;
                             
-                            // ID formateado elegantemente
-                            const idFormateado = esRequisicion 
-                              ? grupo.id 
-                              : esSalidaMasiva 
-                                ? `${styles.emoji} ${grupo.id.slice(-8).toUpperCase()}` 
-                                : esTransferenciaCentro
-                                  ? `${styles.emoji} → ${grupo.centro_nombre || 'Centro'}`
-                                  : `${styles.emoji} ${grupo.id.slice(-6).toUpperCase()}`;
+                            // Obtener lista de productos únicos del grupo
+                            const allItems = grupo.items || [...(grupo.salidas || []), ...(grupo.entradas || [])];
+                            const productosUnicos = [...new Set(allItems.map(m => m.producto_nombre || m.producto?.nombre || 'Producto'))];
+                            const productosDisplay = productosUnicos.slice(0, 3);
+                            const productosRestantes = productosUnicos.length - 3;
+                            
+                            // Tipo de operación legible
+                            const tipoOperacion = esRequisicion ? 'Requisición' 
+                              : esSalidaMasiva ? 'Salida Masiva'
+                              : esTransferenciaCentro ? 'Transferencia a Centro'
+                              : 'Transferencia';
                             
                             const isExpanded = gruposExpandidos.has(grupo.id);
                             
                             return (
                               <React.Fragment key={grupo.id}>
                                 {/* ═══════════════════════════════════════════════════════════════════
-                                    🎯 HEADER DEL GRUPO - Diseño Premium con Gradientes y Animaciones
+                                    🎯 HEADER DEL GRUPO - Diseño Premium con información relevante
                                     ═══════════════════════════════════════════════════════════════════ */}
                                 <tr 
                                   className={`
@@ -1893,70 +1896,79 @@ const Movimientos = () => {
                                   `}
                                   onClick={() => toggleGrupo(grupo.id)}
                                 >
-                                  {/* Columna: Producto/Info */}
-                                  <td className="px-3 py-3.5">
-                                    <div className="flex items-center gap-3">
+                                  {/* Columna: Detalle/Productos */}
+                                  <td className="px-3 py-2.5">
+                                    <div className="flex items-start gap-2">
                                       {/* Chevron con animación */}
                                       <div className={`
-                                        transition-transform duration-300 ease-out ${styles.icon}
+                                        transition-transform duration-300 ease-out ${styles.icon} mt-1
                                         ${isExpanded ? 'rotate-90' : 'rotate-0'}
                                       `}>
-                                        <FaChevronRight className="text-lg" />
+                                        <FaChevronRight className="text-sm" />
                                       </div>
                                       
                                       <div className="min-w-0 flex-1">
-                                        {/* Título y badges */}
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                          <span className="font-bold text-sm text-gray-800 tracking-tight">
-                                            {idFormateado}
+                                        {/* Tipo de operación y folio */}
+                                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${styles.badge}`}>
+                                            {tipoOperacion}
                                           </span>
-                                          <StatusBadge 
-                                            tipo={grupo.tipo_grupo} 
-                                            confirmado={grupo.confirmado} 
-                                            pendiente={grupo.pendiente} 
-                                          />
+                                          <span className="text-xs text-gray-500 font-mono">
+                                            #{grupo.id?.slice(-8) || grupo.id}
+                                          </span>
                                         </div>
                                         
-                                        {/* Contadores */}
-                                        <div className="mt-1.5">
-                                          <MovCounter 
-                                            salidas={grupo.num_salidas} 
-                                            entradas={grupo.num_entradas} 
-                                          />
+                                        {/* Lista de productos */}
+                                        <div className="space-y-0.5">
+                                          {productosDisplay.map((prod, idx) => (
+                                            <div key={idx} className="text-xs text-gray-700 truncate flex items-center gap-1">
+                                              <span className="w-1 h-1 bg-gray-400 rounded-full flex-shrink-0"></span>
+                                              <span className="truncate" title={prod}>{prod}</span>
+                                            </div>
+                                          ))}
+                                          {productosRestantes > 0 && (
+                                            <div className="text-[10px] text-gray-500 italic pl-2">
+                                              +{productosRestantes} producto{productosRestantes > 1 ? 's' : ''} más...
+                                            </div>
+                                          )}
                                         </div>
                                       </div>
                                     </div>
                                   </td>
                                   
-                                  {/* Columna: Tipo Badge */}
-                                  <td className="px-2 py-3.5">
-                                    <span className={`
-                                      inline-flex items-center px-2.5 py-1.5 rounded-lg text-xs font-bold
-                                      ${styles.badge} shadow-sm
-                                      transform transition-transform duration-200 group-hover:scale-105
-                                    `}>
-                                      {styles.label}
-                                    </span>
+                                  {/* Columna: Estado */}
+                                  <td className="px-2 py-2.5">
+                                    <div className="flex flex-col gap-1">
+                                      <StatusBadge 
+                                        tipo={grupo.tipo_grupo} 
+                                        confirmado={grupo.confirmado} 
+                                        pendiente={grupo.pendiente} 
+                                      />
+                                      <MovCounter 
+                                        salidas={grupo.num_salidas} 
+                                        entradas={grupo.num_entradas} 
+                                      />
+                                    </div>
                                   </td>
                                   
-                                  {/* Columna: Cantidad Total */}
-                                  <td className="px-2 py-3.5 text-right">
+                                  {/* Columna: Items/Cantidad */}
+                                  <td className="px-2 py-2.5 text-right">
                                     <div className="flex flex-col items-end">
-                                      <span className="font-black text-xl text-gray-800 tabular-nums">
+                                      <span className="font-bold text-lg text-gray-800 tabular-nums">
                                         {grupo.total_cantidad}
                                       </span>
-                                      <span className="text-[10px] text-gray-500 uppercase tracking-wider">
-                                        unidades
+                                      <span className="text-[10px] text-gray-500">
+                                        {allItems.length} mov.
                                       </span>
                                     </div>
                                   </td>
                                   
-                                  {/* Columna: Centro (solo para no-centro) */}
+                                  {/* Columna: Destino (solo para no-centro) */}
                                   {!esCentroUser && (
-                                    <td className="px-2 py-3.5 hidden sm:table-cell">
-                                      <div className="max-w-[150px]">
+                                    <td className="px-2 py-2.5 hidden sm:table-cell">
+                                      <div className="max-w-[140px]">
                                         <span className="font-semibold text-xs text-gray-700 truncate block" title={grupo.centro_nombre}>
-                                          {grupo.centro_nombre}
+                                          {grupo.centro_nombre || 'Almacén Central'}
                                         </span>
                                         {grupo.usuario_nombre && (
                                           <span className="text-[10px] text-gray-400 truncate block">
@@ -1968,7 +1980,7 @@ const Movimientos = () => {
                                   )}
                                   
                                   {/* Columna: Fecha */}
-                                  <td className="px-2 py-3.5 hidden md:table-cell">
+                                  <td className="px-2 py-2.5">
                                     <div className="text-xs text-gray-600">
                                       <div className="font-medium">
                                         {grupo.fecha ? new Date(grupo.fecha).toLocaleDateString('es-MX', { 
@@ -1984,23 +1996,23 @@ const Movimientos = () => {
                                   </td>
                                   
                                   {/* Columna: Acciones */}
-                                  <td className="px-2 py-3.5">
-                                    <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                  <td className="px-2 py-2.5">
+                                    <div className="flex items-center justify-center gap-1 flex-wrap">
                                       {esRequisicion ? (
                                         <a 
                                           href={`/requisiciones?folio=${grupo.id}`}
                                           onClick={(e) => e.stopPropagation()}
-                                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 hover:text-blue-800 transition-all duration-200 border border-blue-200"
+                                          className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 hover:text-blue-800 transition-all duration-200 border border-blue-200"
                                         >
                                           <FaClipboardCheck className="text-[10px]" />
-                                          <span className="hidden lg:inline">Ver</span>
+                                          Ver Req.
                                         </a>
                                       ) : grupo.pendiente ? (
                                         <div className="flex gap-1">
                                           {/* Botón Hoja de Recolección (Formato B) */}
                                           <button
                                             onClick={(e) => { e.stopPropagation(); descargarHojaEntregaGrupo(grupo.id); }}
-                                            className="p-2 bg-gradient-to-b from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                                            className="p-1.5 bg-gradient-to-b from-blue-500 to-blue-600 text-white rounded hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
                                             title="Hoja de Recolección (Formato B)"
                                           >
                                             <FaClipboardCheck className="text-xs" />
@@ -2018,8 +2030,8 @@ const Movimientos = () => {
                                               });
                                             }}
                                             disabled={confirmandoGrupo === grupo.id}
-                                            className="p-2 bg-gradient-to-b from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-                                            title="Confirmar Entrega (Descuenta Stock)"
+                                            className="p-1.5 bg-gradient-to-b from-green-500 to-green-600 text-white rounded hover:from-green-600 hover:to-green-700 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                                            title="Confirmar Entrega (Descuenta Inventario)"
                                           >
                                             {confirmandoGrupo === grupo.id ? <FaSpinner className="text-xs animate-spin" /> : <FaCheckCircle className="text-xs" />}
                                           </button>
@@ -2027,7 +2039,7 @@ const Movimientos = () => {
                                           <button
                                             onClick={(e) => { e.stopPropagation(); setConfirmCancelarGrupo(grupo.id); }}
                                             disabled={cancelandoGrupo === grupo.id}
-                                            className="p-2 bg-gradient-to-b from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="p-1.5 bg-gradient-to-b from-red-500 to-red-600 text-white rounded hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                                             title="Cancelar salida"
                                           >
                                             {cancelandoGrupo === grupo.id ? <FaSpinner className="text-xs animate-spin" /> : <FaTrash className="text-xs" />}
@@ -2036,13 +2048,13 @@ const Movimientos = () => {
                                       ) : (grupo.confirmado && !esMedico) ? (
                                         <button
                                           onClick={(e) => { e.stopPropagation(); descargarComprobanteGrupo(grupo.id); }}
-                                          className="p-2 bg-gradient-to-b from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                                          className="p-1.5 bg-gradient-to-b from-emerald-500 to-emerald-600 text-white rounded hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 shadow-sm hover:shadow-md"
                                           title="Descargar comprobante"
                                         >
                                           <FaFileDownload className="text-xs" />
                                         </button>
                                       ) : (
-                                        <span className="text-gray-300">—</span>
+                                        <span className="text-[10px] text-gray-400">Sin acciones</span>
                                       )}
                                     </div>
                                   </td>

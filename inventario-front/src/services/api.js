@@ -1275,6 +1275,7 @@ export const reportesAPI = {
   caducidades: (params) => apiClient.get('/reportes/caducidades/', { params }),
   requisiciones: (params) => apiClient.get('/reportes/requisiciones/', { params }),
   movimientos: (params) => apiClient.get('/reportes/movimientos/', { params: { ...params, formato: 'json' } }),
+  contratos: (params) => apiClient.get('/reportes/contratos/', { params }),
 
   // Descargas Excel
   exportarInventarioExcel: (params) => apiClient.get('/reportes/inventario/', {
@@ -1293,6 +1294,10 @@ export const reportesAPI = {
     params: { ...params, formato: 'excel' },
     responseType: 'blob'
   }),
+  exportarContratosExcel: (params) => apiClient.get('/reportes/contratos/', {
+    params: { ...params, formato: 'excel' },
+    responseType: 'blob'
+  }),
 
   // Descargas PDF (con fondo oficial)
   exportarInventarioPDF: (params) => apiClient.get('/reportes/inventario/', {
@@ -1308,6 +1313,10 @@ export const reportesAPI = {
     responseType: 'blob'
   }),
   exportarMovimientosPDF: (params) => apiClient.get('/reportes/movimientos/', {
+    params: { ...params, formato: 'pdf' },
+    responseType: 'blob'
+  }),
+  exportarContratosPDF: (params) => apiClient.get('/reportes/contratos/', {
     params: { ...params, formato: 'pdf' },
     responseType: 'blob'
   }),

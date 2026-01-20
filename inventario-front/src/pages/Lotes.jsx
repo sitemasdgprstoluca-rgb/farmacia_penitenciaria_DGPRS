@@ -1286,14 +1286,17 @@ const handleImportar = async (e) => {
               <div className="p-6 space-y-5">
                 {/* Banner de advertencia si el lote tiene movimientos */}
                 {editingLote?.tiene_movimientos && (
-                  <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-lg">
+                  <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg">
                     <div className="flex items-start">
-                      <span className="text-amber-500 text-xl mr-3">⚠️</span>
+                      <span className="text-red-500 text-xl mr-3">🔒</span>
                       <div>
-                        <p className="text-amber-800 font-semibold">Lote con movimientos registrados</p>
-                        <p className="text-amber-700 text-sm mt-1">
-                          Algunos campos están bloqueados para preservar la trazabilidad del inventario.
-                          Para modificar el stock, use <strong>Movimientos → Entrada/Salida</strong>.
+                        <p className="text-red-800 font-semibold">Lote bloqueado - Movimientos registrados</p>
+                        <p className="text-red-700 text-sm mt-1">
+                          <strong>Este lote no puede ser editado</strong> porque ya tiene movimientos de inventario registrados.
+                          Esto preserva la integridad y trazabilidad del sistema.
+                        </p>
+                        <p className="text-red-600 text-xs mt-2">
+                          Para modificar el inventario, use <strong>Movimientos → Entrada/Salida</strong>.
                         </p>
                       </div>
                     </div>
@@ -1475,7 +1478,7 @@ const handleImportar = async (e) => {
                   {/* Precio Unitario (nombre real en DB) */}
                   <div>
                     <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      PRECIO UNITARIO
+                      PRECIO UNITARIO {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
                     </label>
                     <div className="relative">
                       <span className="absolute left-4 top-3.5 font-bold" style={{ color: '#6B7280' }}>$</span>
@@ -1484,16 +1487,24 @@ const handleImportar = async (e) => {
                         step="0.01"
                         min="0"
                         value={formData.precio_unitario}
-                        onChange={(e) => setFormData({...formData, precio_unitario: e.target.value})}
-                        className="w-full pl-8 pr-4 py-3 border-2 border-gray-200 rounded-xl transition-all focus:outline-none"
+                        onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, precio_unitario: e.target.value})}
+                        className={`w-full pl-8 pr-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
+                          editingLote?.tiene_movimientos 
+                            ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
+                            : 'border-gray-200'
+                        }`}
                         onFocus={(e) => {
-                          e.target.style.borderColor = '#9F2241';
-                          e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                          if (!(editingLote?.tiene_movimientos)) {
+                            e.target.style.borderColor = '#9F2241';
+                            e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                          }
                         }}
                         onBlur={(e) => {
                           e.target.style.borderColor = '#E5E7EB';
                           e.target.style.boxShadow = 'none';
                         }}
+                        disabled={editingLote?.tiene_movimientos}
+                        readOnly={editingLote?.tiene_movimientos}
                         placeholder="0.00"
                       />
                     </div>
@@ -1504,47 +1515,67 @@ const handleImportar = async (e) => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      FECHA DE FABRICACIÓN
+                      FECHA DE FABRICACIÓN {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
                     </label>
                     <input
                       type="date"
                       value={formData.fecha_fabricacion}
-                      onChange={(e) => setFormData({...formData, fecha_fabricacion: e.target.value})}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl transition-all focus:outline-none"
+                      onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, fecha_fabricacion: e.target.value})}
+                      className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
+                        editingLote?.tiene_movimientos 
+                          ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
+                          : 'border-gray-200'
+                      }`}
                       onFocus={(e) => {
-                        e.target.style.borderColor = '#9F2241';
-                        e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                        if (!(editingLote?.tiene_movimientos)) {
+                          e.target.style.borderColor = '#9F2241';
+                          e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                        }
                       }}
                       onBlur={(e) => {
                         e.target.style.borderColor = '#E5E7EB';
                         e.target.style.boxShadow = 'none';
                       }}
+                      disabled={editingLote?.tiene_movimientos}
+                      readOnly={editingLote?.tiene_movimientos}
                       max={new Date().toISOString().split('T')[0]}
                     />
-                    <p className="text-xs text-gray-500 italic mt-1">Opcional - Fecha de manufactura del lote</p>
+                    <p className="text-xs text-gray-500 italic mt-1">
+                      {editingLote?.tiene_movimientos ? '🔒 No editable' : 'Opcional - Fecha de manufactura del lote'}
+                    </p>
                   </div>
                   
                   <div>
                     <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      UBICACIÓN
+                      UBICACIÓN {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
                     </label>
                     <input
                       type="text"
                       value={formData.ubicacion}
-                      onChange={(e) => setFormData({...formData, ubicacion: e.target.value})}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl transition-all focus:outline-none"
+                      onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, ubicacion: e.target.value})}
+                      className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
+                        editingLote?.tiene_movimientos 
+                          ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
+                          : 'border-gray-200'
+                      }`}
                       onFocus={(e) => {
-                        e.target.style.borderColor = '#9F2241';
-                        e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                        if (!(editingLote?.tiene_movimientos)) {
+                          e.target.style.borderColor = '#9F2241';
+                          e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                        }
                       }}
                       onBlur={(e) => {
                         e.target.style.borderColor = '#E5E7EB';
                         e.target.style.boxShadow = 'none';
                       }}
+                      disabled={editingLote?.tiene_movimientos}
+                      readOnly={editingLote?.tiene_movimientos}
                       placeholder="Ej: Estante A, Anaquel 3"
                       maxLength={100}
                     />
-                    <p className="text-xs text-gray-500 italic mt-1">Ubicación física del lote en almacén</p>
+                    <p className="text-xs text-gray-500 italic mt-1">
+                      {editingLote?.tiene_movimientos ? '🔒 No editable' : 'Ubicación física del lote en almacén'}
+                    </p>
                   </div>
                 </div>
 
@@ -1588,25 +1619,35 @@ const handleImportar = async (e) => {
 
                   <div>
                     <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      MARCA / LABORATORIO
+                      MARCA / LABORATORIO {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
                     </label>
                     <input
                       type="text"
                       value={formData.marca}
-                      onChange={(e) => setFormData({...formData, marca: e.target.value})}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl transition-all focus:outline-none"
+                      onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, marca: e.target.value})}
+                      className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
+                        editingLote?.tiene_movimientos 
+                          ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
+                          : 'border-gray-200'
+                      }`}
                       onFocus={(e) => {
-                        e.target.style.borderColor = '#9F2241';
-                        e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                        if (!(editingLote?.tiene_movimientos)) {
+                          e.target.style.borderColor = '#9F2241';
+                          e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                        }
                       }}
                       onBlur={(e) => {
                         e.target.style.borderColor = '#E5E7EB';
                         e.target.style.boxShadow = 'none';
                       }}
+                      disabled={editingLote?.tiene_movimientos}
+                      readOnly={editingLote?.tiene_movimientos}
                       placeholder="Ej: Bayer, Pfizer, Genérico"
                       maxLength={150}
                     />
-                    <p className="text-xs text-gray-400 mt-1">Marca o laboratorio del lote</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {editingLote?.tiene_movimientos ? '🔒 No editable' : 'Marca o laboratorio del lote'}
+                    </p>
                   </div>
                 </div>
                 )}

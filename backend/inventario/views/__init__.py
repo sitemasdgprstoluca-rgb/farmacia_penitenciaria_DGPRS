@@ -56,6 +56,7 @@ from inventario.views.reportes import (
     reporte_medicamentos_por_caducar,
     reporte_bajo_stock,
     reporte_consumo,
+    reporte_contratos,
 )
 
 # Helpers y utilidades desde base.py
@@ -105,6 +106,7 @@ __all__ = [
     'reporte_medicamentos_por_caducar',
     'reporte_bajo_stock',
     'reporte_consumo',
+    'reporte_contratos',
     # Helpers
     'CustomPagination',
     'is_farmacia_or_admin',

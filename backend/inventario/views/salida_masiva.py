@@ -446,13 +446,15 @@ def hoja_entrega_pdf(request, grupo_salida):
         }
         
         for mov in movimientos:
+            producto = mov.lote.producto if mov.lote else None
             datos_entrega['items'].append({
-                'clave': mov.lote.producto.clave if mov.lote and mov.lote.producto else 'N/A',
-                'descripcion': mov.lote.producto.nombre if mov.lote and mov.lote.producto else 'N/A',
+                'clave': producto.clave if producto else 'N/A',
+                'descripcion': producto.nombre if producto else 'N/A',
+                'presentacion': producto.presentacion or producto.unidad_medida if producto else 'N/A',
                 'lote': mov.lote.numero_lote if mov.lote else 'N/A',
                 'caducidad': mov.lote.fecha_caducidad.strftime('%d/%m/%Y') if mov.lote and mov.lote.fecha_caducidad else 'N/A',
                 'cantidad': mov.cantidad,
-                'unidad': mov.lote.producto.unidad_medida if mov.lote and mov.lote.producto else 'UND'
+                'unidad': producto.unidad_medida if producto else 'UND'
             })
         
         # Generar PDF

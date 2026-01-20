@@ -37,7 +37,7 @@ from inventario.views import (
     MovimientoViewSet, HojaRecoleccionViewSet, dashboard_resumen, dashboard_graficas, trazabilidad_producto,
     trazabilidad_lote, trazabilidad_buscar, trazabilidad_autocomplete, reporte_inventario, reporte_movimientos,
     reporte_caducidades, reporte_requisiciones, reportes_precarga,
-    reporte_medicamentos_por_caducar, reporte_bajo_stock, reporte_consumo,
+    reporte_medicamentos_por_caducar, reporte_bajo_stock, reporte_consumo, reporte_contratos,
     trazabilidad_global, trazabilidad_producto_exportar, trazabilidad_lote_exportar,
     exportar_control_inventarios, exportar_control_mensual
 )
@@ -150,6 +150,7 @@ urlpatterns = [
     path('reportes/medicamentos-por-caducar/', reporte_medicamentos_por_caducar, name='reporte-medicamentos-por-caducar'),
     path('reportes/bajo-stock/', reporte_bajo_stock, name='reporte-bajo-stock'),
     path('reportes/consumo/', reporte_consumo, name='reporte-consumo'),
+    path('reportes/contratos/', reporte_contratos, name='reporte-contratos'),
     path('reportes/precarga/', reportes_precarga, name='reportes-precarga'),
     
     # Salida masiva (solo Farmacia)

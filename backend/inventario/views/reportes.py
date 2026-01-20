@@ -10,6 +10,7 @@ Funciones de reportes extraídas de views_legacy.py:
 - reporte_medicamentos_por_caducar: Medicamentos próximos a vencer
 - reporte_bajo_stock: Productos con stock bajo mínimo
 - reporte_consumo: Análisis de consumo por periodo
+- reporte_contratos: Reporte de lotes por contrato con consumo
 - reportes_precarga: Datos de precarga para filtros de reportes
 
 Nota: Por ahora se re-exporta desde views_legacy.py para mantener compatibilidad.
@@ -24,6 +25,7 @@ from inventario.views_legacy import (
     reporte_medicamentos_por_caducar,
     reporte_bajo_stock,
     reporte_consumo,
+    reporte_contratos,
     reportes_precarga,
 )
 
@@ -35,5 +37,6 @@ __all__ = [
     'reporte_medicamentos_por_caducar',
     'reporte_bajo_stock',
     'reporte_consumo',
+    'reporte_contratos',
     'reportes_precarga',
 ]
