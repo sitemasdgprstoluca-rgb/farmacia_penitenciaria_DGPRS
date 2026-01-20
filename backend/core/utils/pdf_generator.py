@@ -938,283 +938,414 @@ def generar_hoja_consulta(requisicion):
 
 def generar_hoja_entrega(datos_entrega, finalizado=False):
     """
-    Genera PDF de hoja de entrega para salida masiva de Farmacia.
-    Con fondo oficial del Gobierno del Estado de México.
+    Genera PDF de Hoja de Entrega de Medicamentos - Formato Oficial.
+    Idéntico al formato institucional del Estado de México.
     
     Args:
-        datos_entrega: Dict con:
-            - grupo_salida: ID del grupo de salida
-            - centro_destino: Nombre del centro
-            - fecha: Fecha de la entrega
-            - usuario: Nombre del usuario que procesa
-            - observaciones: Notas adicionales
-            - items: Lista de productos entregados
-        finalizado: bool - Si es True, muestra sello de ENTREGADO en lugar de firmas
+        datos_entrega: Dict con datos de la entrega
+        finalizado: bool - Si es True, muestra sello de ENTREGADO
     
     Returns:
         BytesIO: Buffer con PDF generado
     """
     buffer = BytesIO()
+    page_width, page_height = letter
     
-    # Obtener ruta del fondo institucional
+    # Obtener fondo institucional
     fondo_institucional = get_fondo_institucional_path()
     fondo_path = str(fondo_institucional) if fondo_institucional else None
+    
+    # Márgenes según formato oficial
+    margin_left = 0.6*inch
+    margin_right = 0.6*inch
+    margin_top = 1.35*inch  # Espacio para encabezado del fondo
+    margin_bottom = 0.7*inch
+    content_width = page_width - margin_left - margin_right  # ~6.3 inches
     
     doc = SimpleDocTemplate(
         buffer, 
         pagesize=letter,
-        topMargin=1*inch,
-        bottomMargin=0.8*inch,
-        leftMargin=0.5*inch,
-        rightMargin=0.5*inch
+        topMargin=margin_top,
+        bottomMargin=margin_bottom,
+        leftMargin=margin_left,
+        rightMargin=margin_right
     )
     story = []
     styles = getSampleStyleSheet()
     
-    # Estilo para título
-    titulo_style = ParagraphStyle(
-        'EntregaTitle',
-        parent=styles['Heading1'],
-        fontSize=16,
-        textColor=COLOR_GUINDA,
-        spaceAfter=20,
-        spaceBefore=10,
+    # ========== ESTILOS EXACTOS AL FORMATO OFICIAL ==========
+    
+    # Estilo para título principal (debajo del encabezado del gobierno)
+    titulo_principal = ParagraphStyle(
+        'TituloPrincipal',
+        parent=styles['Normal'],
+        fontSize=10,
+        fontName='Helvetica-Bold',
         alignment=TA_CENTER,
-        fontName='Helvetica-Bold'
+        textColor=colors.black,
+        spaceAfter=2
     )
     
-    # Estilo para subtítulos
-    subtitulo_style = ParagraphStyle(
-        'EntregaSubtitle',
-        parent=styles['Heading2'],
-        fontSize=11,
-        textColor=COLOR_GUINDA,
-        spaceAfter=10,
-        fontName='Helvetica-Bold'
+    # Estilo para subtítulo institucional
+    subtitulo_inst = ParagraphStyle(
+        'SubtituloInst',
+        parent=styles['Normal'],
+        fontSize=7,
+        fontName='Helvetica',
+        alignment=TA_CENTER,
+        textColor=COLOR_GRIS,
+        spaceAfter=8
     )
     
-    # Estilo para celdas con texto largo (descripción)
-    celda_texto_style = ParagraphStyle(
-        'CeldaTexto',
+    # Estilo para labels en negrita (Folio de Salida:, Fecha:, etc.)
+    label_style = ParagraphStyle(
+        'LabelStyle',
         parent=styles['Normal'],
         fontSize=8,
-        leading=10,
+        fontName='Helvetica-Bold',
+        textColor=colors.black,
+    )
+    
+    # Estilo para valores de campos
+    valor_style = ParagraphStyle(
+        'ValorStyle',
+        parent=styles['Normal'],
+        fontSize=8,
+        fontName='Helvetica',
+        textColor=colors.black,
+    )
+    
+    # Estilo para título de sección (PRODUCTOS ENTREGADOS)
+    seccion_titulo = ParagraphStyle(
+        'SeccionTitulo',
+        parent=styles['Normal'],
+        fontSize=9,
+        fontName='Helvetica-Bold',
+        textColor=COLOR_GUINDA,
+        spaceBefore=10,
+        spaceAfter=6
+    )
+    
+    # Estilo para celdas de texto (descripción - permite wrap)
+    celda_desc = ParagraphStyle(
+        'CeldaDesc',
+        parent=styles['Normal'],
+        fontSize=7,
+        fontName='Helvetica',
+        leading=8,
         wordWrap='CJK',
         alignment=TA_LEFT,
     )
     
-    # Estilo para celdas de unidad (texto que puede ser largo)
-    celda_unidad_style = ParagraphStyle(
-        'CeldaUnidad',
+    # Estilo para celdas centradas
+    celda_center = ParagraphStyle(
+        'CeldaCenter',
         parent=styles['Normal'],
         fontSize=7,
-        leading=9,
-        wordWrap='CJK',
+        fontName='Helvetica',
+        leading=8,
         alignment=TA_CENTER,
     )
     
-    # Título principal
-    titulo = Paragraph("HOJA DE ENTREGA DE MEDICAMENTOS", titulo_style)
+    # ========== TÍTULO PRINCIPAL ==========
+    titulo = Paragraph(
+        '"2026. Año del humanismo mexicano en el Estado de México".',
+        ParagraphStyle('Anio', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Oblique', 
+                       alignment=TA_CENTER, textColor=colors.black, spaceAfter=4)
+    )
     story.append(titulo)
-    story.append(Spacer(1, 0.15*inch))
     
-    # Información de la entrega
-    fecha_str = datos_entrega['fecha'].strftime('%d/%m/%Y %H:%M') if datos_entrega.get('fecha') else 'N/A'
+    titulo_doc = Paragraph("HOJA DE ENTREGA DE MEDICAMENTOS", titulo_principal)
+    story.append(titulo_doc)
     
-    info_data = [
-        ['Folio de Salida:', datos_entrega.get('grupo_salida', 'N/A'), 'Fecha:', fecha_str],
-        ['Centro Destino:', datos_entrega.get('centro_destino', 'N/A'), 'Procesado por:', datos_entrega.get('usuario', 'N/A')],
-        ['Observaciones:', datos_entrega.get('observaciones', '') or 'Sin observaciones', '', ''],
-    ]
-    
-    info_table = Table(info_data, colWidths=[1.3*inch, 2.7*inch, 1.2*inch, 2.3*inch])
-    info_table.setStyle(TableStyle([
-        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
-        ('SPAN', (1, 2), (3, 2)),  # Observaciones span
-    ]))
-    
-    story.append(info_table)
-    story.append(Spacer(1, 0.25*inch))
-    
-    # Subtítulo de productos
-    productos_titulo = Paragraph("PRODUCTOS ENTREGADOS", subtitulo_style)
-    story.append(productos_titulo)
+    subtitulo = Paragraph(
+        "Dirección General de Prevención y Reinserción Social<br/>"
+        "Delegación Administrativa.",
+        subtitulo_inst
+    )
+    story.append(subtitulo)
     story.append(Spacer(1, 0.1*inch))
     
-    # Tabla de productos - Headers
-    productos_data = [
-        ['#', 'Clave', 'Descripción', 'Lote', 'Caducidad', 'Cant.', 'Unidad']
-    ]
+    # ========== INFORMACIÓN DE LA ENTREGA (tabla de 2 filas) ==========
+    fecha_str = datos_entrega['fecha'].strftime('%d/%m/%Y %H:%M') if datos_entrega.get('fecha') else 'N/A'
     
-    total_items = 0
-    for idx, item in enumerate(datos_entrega.get('items', []), start=1):
-        descripcion_paragraph = Paragraph(item.get('descripcion', 'N/A'), celda_texto_style)
-        # Usar Paragraph para unidad también - permite texto largo como "CAJA CON 20 TABLETAS"
-        unidad_paragraph = Paragraph(item.get('unidad', 'UND'), celda_unidad_style)
-        productos_data.append([
-            str(idx),
-            item.get('clave', 'N/A'),
-            descripcion_paragraph,
-            item.get('lote', 'N/A'),
-            item.get('caducidad', 'N/A'),
-            str(item.get('cantidad', 0)),
-            unidad_paragraph
-        ])
-        total_items += item.get('cantidad', 0)
+    # Primera fila: Folio y Fecha
+    info_row1 = Table([
+        [
+            Paragraph("<b>Folio de Salida:</b>", label_style),
+            Paragraph(str(datos_entrega.get('grupo_salida', 'N/A')), valor_style),
+            Paragraph("<b>Fecha:</b>", label_style),
+            Paragraph(fecha_str, valor_style),
+        ]
+    ], colWidths=[1.1*inch, 2.0*inch, 0.7*inch, 2.5*inch])
+    info_row1.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('BOX', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('LINEAFTER', (1, 0), (1, 0), 0.5, COLOR_GUINDA),
+    ]))
+    story.append(info_row1)
     
-    # Fila de total
-    productos_data.append([
-        '', '', '', '', 'TOTAL:', str(total_items), ''
-    ])
+    # Segunda fila: Centro Destino y Procesado por
+    info_row2 = Table([
+        [
+            Paragraph("<b>Centro Destino:</b>", label_style),
+            Paragraph(str(datos_entrega.get('centro_destino', 'N/A')), valor_style),
+            Paragraph("<b>Procesado por:</b>", label_style),
+            Paragraph(str(datos_entrega.get('usuario', 'N/A')), valor_style),
+        ]
+    ], colWidths=[1.1*inch, 2.0*inch, 1.1*inch, 2.1*inch])
+    info_row2.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('BOX', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+        ('LINEAFTER', (1, 0), (1, 0), 0.5, COLOR_GUINDA),
+    ]))
+    story.append(info_row2)
     
-    # Anchos ajustados: Descripción reducida, Unidad aumentada significativamente
-    # Total disponible: ~7.5 inch (letter width - margins)
-    productos_table = Table(
-        productos_data, 
-        colWidths=[0.3*inch, 0.6*inch, 2.0*inch, 0.85*inch, 0.8*inch, 0.45*inch, 1.7*inch]
-    )
-    productos_table.setStyle(TableStyle([
-        # Header
+    # Tercera fila: Observaciones
+    obs_text = datos_entrega.get('observaciones', '') or ''
+    obs_display = f"[PENDIENTE] {obs_text}".strip() if '[PENDIENTE]' in str(obs_text) else obs_text
+    if not obs_display:
+        obs_display = '-'
+    
+    info_row3 = Table([
+        [
+            Paragraph("<b>Observaciones:</b>", label_style),
+            Paragraph(obs_display, valor_style),
+        ]
+    ], colWidths=[1.1*inch, 5.2*inch])
+    info_row3.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('BOX', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+    ]))
+    story.append(info_row3)
+    story.append(Spacer(1, 0.15*inch))
+    
+    # ========== TÍTULO PRODUCTOS ENTREGADOS ==========
+    productos_titulo = Paragraph("PRODUCTOS ENTREGADOS", seccion_titulo)
+    story.append(productos_titulo)
+    
+    # ========== TABLA DE PRODUCTOS - FORMATO OFICIAL ==========
+    # Anchos exactos para que encaje perfectamente
+    col_widths = [0.25*inch, 0.55*inch, 2.4*inch, 0.75*inch, 0.7*inch, 0.45*inch, 1.2*inch]
+    
+    # Header
+    header_data = [['#', 'Clave', 'Descripción', 'Lote', 'Caducidad', 'Cant.', 'Unidad']]
+    
+    header_table = Table(header_data, colWidths=col_widths)
+    header_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-        ('TOPPADDING', (0, 0), (-1, 0), 8),
-        
-        # Data rows
-        ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
-        ('ALIGN', (0, 1), (0, -1), 'CENTER'),
-        ('ALIGN', (5, 1), (6, -1), 'CENTER'),
-        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
-        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 1), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
-        
-        # Fila de total
-        ('FONTNAME', (4, -1), (5, -1), 'Helvetica-Bold'),
-        ('BACKGROUND', (4, -1), (5, -1), colors.HexColor('#f3f4f6')),
+        ('FONTSIZE', (0, 0), (-1, 0), 8),
+        ('TOPPADDING', (0, 0), (-1, 0), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 5),
+        ('BOX', (0, 0), (-1, 0), 0.5, COLOR_GUINDA),
+        ('INNERGRID', (0, 0), (-1, 0), 0.5, COLOR_GUINDA),
     ]))
+    story.append(header_table)
     
-    story.append(productos_table)
-    story.append(Spacer(1, 0.4*inch))
+    # Datos de productos
+    total_items = 0
+    productos_data = []
     
-    # Estilo para notas
-    nota_style = ParagraphStyle(
-        'NotaLegal',
-        parent=styles['Normal'],
-        fontSize=8,
-        textColor=COLOR_GRIS,
-        alignment=TA_CENTER,
-    )
+    for idx, item in enumerate(datos_entrega.get('items', []), start=1):
+        descripcion = Paragraph(str(item.get('descripcion', 'N/A')), celda_desc)
+        unidad = Paragraph(str(item.get('unidad', 'UND')), celda_center)
+        
+        productos_data.append([
+            str(idx),
+            str(item.get('clave', 'N/A')),
+            descripcion,
+            str(item.get('lote', 'N/A')),
+            str(item.get('caducidad', 'N/A')),
+            str(item.get('cantidad', 0)),
+            unidad
+        ])
+        total_items += item.get('cantidad', 0)
     
+    if productos_data:
+        productos_table = Table(productos_data, colWidths=col_widths)
+        productos_table.setStyle(TableStyle([
+            ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+            ('ALIGN', (0, 0), (0, -1), 'CENTER'),   # #
+            ('ALIGN', (1, 0), (1, -1), 'CENTER'),   # Clave
+            ('ALIGN', (2, 0), (2, -1), 'LEFT'),     # Descripción
+            ('ALIGN', (3, 0), (4, -1), 'CENTER'),   # Lote, Caducidad
+            ('ALIGN', (5, 0), (6, -1), 'CENTER'),   # Cant, Unidad
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 7),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('BOX', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+            ('INNERGRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
+            # Filas alternas
+            *[('BACKGROUND', (0, i), (-1, i), colors.HexColor('#faf5f7')) for i in range(0, len(productos_data), 2)],
+        ]))
+        story.append(productos_table)
+    
+    # Fila de TOTAL
+    total_row = Table([
+        ['', '', '', '', 'TOTAL:', str(total_items), '']
+    ], colWidths=col_widths)
+    total_row.setStyle(TableStyle([
+        ('ALIGN', (4, 0), (5, 0), 'CENTER'),
+        ('FONTNAME', (4, 0), (5, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 8),
+        ('BACKGROUND', (4, 0), (5, 0), colors.HexColor('#f3e8ec')),
+        ('TOPPADDING', (0, 0), (-1, 0), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 4),
+        ('BOX', (0, 0), (-1, 0), 0.5, COLOR_GUINDA),
+        ('INNERGRID', (0, 0), (-1, 0), 0.5, COLOR_GUINDA),
+    ]))
+    story.append(total_row)
+    story.append(Spacer(1, 0.25*inch))
+    
+    # ========== SECCIÓN DE FIRMAS - FORMATO OFICIAL ==========
     if finalizado:
-        # Mostrar sello de ENTREGADO en lugar de firmas
-        entregado_style = ParagraphStyle(
-            'EntregadoSello',
-            parent=styles['Heading1'],
-            fontSize=36,
-            textColor=colors.HexColor('#22c55e'),  # Verde
-            alignment=TA_CENTER,
+        # Mostrar sello de ENTREGADO
+        sello_style = ParagraphStyle(
+            'SelloEntregado',
+            parent=styles['Normal'],
+            fontSize=24,
             fontName='Helvetica-Bold',
-            spaceBefore=20,
-            spaceAfter=10,
+            textColor=colors.HexColor('#22c55e'),
+            alignment=TA_CENTER,
         )
         
-        entregado_box_style = ParagraphStyle(
-            'EntregadoBox',
+        info_sello = ParagraphStyle(
+            'InfoSello',
             parent=styles['Normal'],
-            fontSize=11,
+            fontSize=9,
+            fontName='Helvetica',
             textColor=COLOR_TEXTO,
             alignment=TA_CENTER,
         )
         
-        # Sello ENTREGADO
         sello_data = [
-            [Paragraph("✓ ENTREGADO", entregado_style)],
-            [Spacer(1, 0.1*inch)],
-            [Paragraph(f"Entrega confirmada el {datos_entrega['fecha'].strftime('%d/%m/%Y %H:%M') if datos_entrega.get('fecha') else 'N/A'}", entregado_box_style)],
-            [Paragraph(f"Procesado por: {datos_entrega.get('usuario', 'N/A')}", entregado_box_style)],
+            [Paragraph("✓ ENTREGADO", sello_style)],
+            [Paragraph(f"Entrega confirmada el {fecha_str}", info_sello)],
+            [Paragraph(f"Procesado por: {datos_entrega.get('usuario', 'N/A')}", info_sello)],
         ]
         
-        sello_table = Table(sello_data, colWidths=[5*inch])
+        sello_table = Table(sello_data, colWidths=[4*inch])
         sello_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('BOX', (0, 0), (-1, -1), 2, colors.HexColor('#22c55e')),
-            ('TOPPADDING', (0, 0), (-1, -1), 10),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f0fdf4')),
         ]))
         
-        story.append(sello_table)
-        story.append(Spacer(1, 0.3*inch))
-        
-        # Nota de comprobante
-        comprobante_nota = Paragraph(
-            "Este documento es el comprobante oficial de entrega de medicamentos. "
-            "La entrega ha sido registrada en el sistema.",
-            nota_style
-        )
-        story.append(comprobante_nota)
+        # Centrar el sello
+        sello_container = Table([[sello_table]], colWidths=[content_width])
+        sello_container.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER')]))
+        story.append(sello_container)
     else:
-        # Sección de firmas (PDF para firmar) - 3 firmas: APROBÓ, ENTREGÓ, RECIBIÓ
-        firmas_titulo = Paragraph("<b>FIRMAS DE AUTORIZACIÓN, ENTREGA Y RECEPCIÓN</b>", ParagraphStyle(
-            'FirmasTitulo', fontSize=10, textColor=COLOR_GUINDA, 
-            alignment=TA_CENTER, spaceAfter=15
-        ))
+        # Título de firmas
+        firmas_titulo = Paragraph(
+            "<b>FIRMAS DE AUTORIZACIÓN, ENTREGA Y RECEPCIÓN</b>",
+            ParagraphStyle('FirmasTitulo', fontSize=9, fontName='Helvetica-Bold',
+                          textColor=COLOR_GUINDA, alignment=TA_CENTER, spaceBefore=5, spaceAfter=10)
+        )
         story.append(firmas_titulo)
         
-        # Obtener nombre del centro para el apartado de RECIBIÓ
-        centro_nombre = datos_entrega.get('centro_destino', 'CENTRO PENITENCIARIO')
+        # Estilos para las celdas de firma
+        firma_header = ParagraphStyle('FirmaHeader', fontSize=9, fontName='Helvetica-Bold', 
+                                       alignment=TA_CENTER, textColor=COLOR_GUINDA)
+        firma_label = ParagraphStyle('FirmaLabel', fontSize=7, fontName='Helvetica', 
+                                      alignment=TA_CENTER, textColor=COLOR_GRIS)
         
-        # Firmas: APROBÓ, ENTREGÓ y RECIBIÓ - Solo etiquetas, el usuario escribe nombre y cargo
+        # Calcular anchos de columnas para 3 firmas
+        firma_col_width = content_width / 3  # ~2.1 inches cada una
+        
+        # Tabla de firmas - formato exacto
         firmas_data = [
-            ['APROBÓ', 'ENTREGÓ', 'RECIBIÓ'],
+            # Títulos: APROBÓ, ENTREGÓ, RECIBIÓ
+            [
+                Paragraph("APROBÓ", firma_header),
+                Paragraph("ENTREGÓ", firma_header),
+                Paragraph("RECIBIÓ", firma_header)
+            ],
+            # Espacio para firma (altura fija)
             ['', '', ''],
             ['', '', ''],
-            ['_' * 28, '_' * 28, '_' * 28],
-            ['Nombre y Firma', 'Nombre y Firma', 'Nombre y Firma'],
+            # Línea para nombre
+            [
+                Paragraph("_" * 24, celda_center),
+                Paragraph("_" * 24, celda_center),
+                Paragraph("_" * 24, celda_center)
+            ],
+            # Label: Nombre y Firma
+            [
+                Paragraph("Nombre y Firma", firma_label),
+                Paragraph("Nombre y Firma", firma_label),
+                Paragraph("Nombre y Firma", firma_label)
+            ],
+            # Espacio
             ['', '', ''],
-            ['_' * 28, '_' * 28, '_' * 28],
-            ['Cargo', 'Cargo', 'Cargo'],
+            # Línea para cargo
+            [
+                Paragraph("_" * 24, celda_center),
+                Paragraph("_" * 24, celda_center),
+                Paragraph("_" * 24, celda_center)
+            ],
+            # Label: Cargo
+            [
+                Paragraph("Cargo", firma_label),
+                Paragraph("Cargo", firma_label),
+                Paragraph("Cargo", firma_label)
+            ],
+            # Espacio
             ['', '', ''],
-            ['Fecha: ____/____/____', 'Fecha: ____/____/____', 'Fecha: ____/____/____'],
+            # Fecha
+            [
+                Paragraph("Fecha: ____/____/____", firma_label),
+                Paragraph("Fecha: ____/____/____", firma_label),
+                Paragraph("Fecha: ____/____/____", firma_label)
+            ],
         ]
         
-        firmas_table = Table(firmas_data, colWidths=[2.4*inch, 2.4*inch, 2.4*inch])
+        firmas_table = Table(firmas_data, colWidths=[firma_col_width, firma_col_width, firma_col_width])
         firmas_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 10),
-            ('FONTSIZE', (0, 1), (-1, -1), 8),
-            ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('TOPPADDING', (0, 0), (-1, -1), 3),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-            # Labels "Nombre y Firma" y "Cargo"
-            ('FONTSIZE', (0, 4), (-1, 4), 7),
-            ('TEXTCOLOR', (0, 4), (-1, 4), COLOR_GRIS),
-            ('FONTSIZE', (0, 7), (-1, 7), 7),
-            ('TEXTCOLOR', (0, 7), (-1, 7), COLOR_GRIS),
+            # Altura fija para espacio de firma
+            ('TOPPADDING', (0, 1), (-1, 2), 12),
+            ('BOTTOMPADDING', (0, 1), (-1, 2), 12),
         ]))
         
-        # Mantener firmas juntas
-        seccion_firmas = KeepTogether([firmas_table])
-        story.append(seccion_firmas)
-        
-        story.append(Spacer(1, 0.3*inch))
+        firmas_container = KeepTogether([firmas_table])
+        story.append(firmas_container)
+        story.append(Spacer(1, 0.15*inch))
         
         # Nota legal
+        nota_style = ParagraphStyle(
+            'NotaLegal',
+            parent=styles['Normal'],
+            fontSize=7,
+            fontName='Helvetica-Oblique',
+            textColor=COLOR_GRIS,
+            alignment=TA_LEFT,
+        )
+        
         nota = Paragraph(
             "Este documento ampara la entrega de medicamentos de Farmacia Central al Centro Penitenciario. "
             "Ambas partes conservarán una copia firmada.",
@@ -1222,7 +1353,7 @@ def generar_hoja_entrega(datos_entrega, finalizado=False):
         )
         story.append(nota)
     
-    # Construir PDF
+    # ========== CONSTRUIR PDF CON FONDO OFICIAL ==========
     def make_canvas(*args, **kwargs):
         return RequisicionCanvas(*args, fondo_path=fondo_path, **kwargs)
     
