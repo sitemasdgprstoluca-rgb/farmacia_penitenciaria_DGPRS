@@ -12587,13 +12587,28 @@ def exportar_control_inventarios(request):
         partida_actual = 0
         producto_anterior_id = None
         filas_con_iconset = []  # Para aplicar IconSet después
+        suma_cantidad_actual = 0  # Para sumar cantidad por producto
+        fila_inicio_producto = row  # Fila donde inicia el producto actual
         
         for lote in lotes:
             producto = lote.producto
             
-            # Si cambia el producto, agregar fila vacía separadora (excepto el primero)
+            # Si cambia el producto, agregar fila de TOTAL y luego fila vacía separadora
             if producto_anterior_id is not None and producto.id != producto_anterior_id:
+                # Agregar fila con Total de cantidad del producto anterior
+                ws.cell(row=row, column=9, value="Total:").font = Font(size=9, bold=True)
+                ws.cell(row=row, column=9).alignment = Alignment(horizontal='right', vertical='center')
+                ws.cell(row=row, column=9).border = thin_border
+                ws.cell(row=row, column=10, value=suma_cantidad_actual).font = Font(size=9, bold=True)
+                ws.cell(row=row, column=10).alignment = center_align
+                ws.cell(row=row, column=10).border = thin_border
+                row += 1  # Avanzar después del total
+                
                 row += 1  # Fila vacía sin bordes ni nada
+                
+                # Reiniciar suma para el nuevo producto
+                suma_cantidad_actual = 0
+                fila_inicio_producto = row
             
             # Nueva partida si cambia el producto
             if producto.id != producto_anterior_id:
@@ -12625,6 +12640,9 @@ def exportar_control_inventarios(request):
                 fecha_salida_date = ultima_salida.date() if hasattr(ultima_salida, 'date') else ultima_salida
             
             # Datos de la fila (12 columnas, sin evidencia por ahora)
+            cantidad_lote = max(0, lote.cantidad_actual)  # ISS-FIX: Nunca mostrar stock negativo
+            suma_cantidad_actual += cantidad_lote  # Acumular para el total
+            
             data = [
                 partida_actual,  # A
                 producto.clave,  # B
@@ -12635,7 +12653,7 @@ def exportar_control_inventarios(request):
                 producto.presentacion or '',  # G
                 f'=ROUND((I{row}-K{row})/30,0)',  # H - Fórmula MESES (redondeado a entero)
                 lote.fecha_caducidad,  # I - Fecha caducidad
-                max(0, lote.cantidad_actual),  # J - ISS-FIX: Nunca mostrar stock negativo
+                cantidad_lote,  # J
                 fecha_ingreso_date,  # K
                 fecha_salida_date,  # L
             ]
@@ -12661,6 +12679,15 @@ def exportar_control_inventarios(request):
             filas_con_iconset.append(row)
             
             row += 1
+        
+        # Agregar fila de Total para el ÚLTIMO producto (si hubo lotes)
+        if producto_anterior_id is not None:
+            ws.cell(row=row, column=9, value="Total:").font = Font(size=9, bold=True)
+            ws.cell(row=row, column=9).alignment = Alignment(horizontal='right', vertical='center')
+            ws.cell(row=row, column=9).border = thin_border
+            ws.cell(row=row, column=10, value=suma_cantidad_actual).font = Font(size=9, bold=True)
+            ws.cell(row=row, column=10).alignment = center_align
+            ws.cell(row=row, column=10).border = thin_border
         
         # Aplicar IconSet (semáforo con circulitos) SOLO a columna H (MESES)
         # Columna I solo muestra la fecha de caducidad, SIN semáforo
