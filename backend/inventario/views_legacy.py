@@ -688,6 +688,44 @@ def invalidar_cache_dashboard(centro_id=None):
         logger.warning(f'Error al invalidar caché del dashboard: {e}')
 
 
+def _obtener_folio_documento_movimiento(mov):
+    """
+    ISS-FIX: Obtiene el folio de documento para el Formato B de manera inteligente.
+    
+    Prioridad:
+    1. folio_documento explícito
+    2. referencia (si no contiene [PENDIENTE] o códigos internos)
+    3. número de contrato del lote
+    4. ID del movimiento como fallback
+    
+    Returns:
+        String con el folio/documento de entrada legible
+    """
+    # 1. Folio documento explícito
+    folio = getattr(mov, 'folio_documento', None)
+    if folio and folio.strip():
+        return folio.strip()
+    
+    # 2. Referencia (si es legible)
+    ref = getattr(mov, 'referencia', '') or ''
+    if ref and not any(x in ref.upper() for x in ['[PENDIENTE]', '|SAL', 'REQ-', 'SM-']):
+        return ref[:20]
+    
+    # 3. Motivo (si es legible y corto)
+    motivo = getattr(mov, 'motivo', '') or ''
+    if motivo and len(motivo) <= 20 and not any(x in motivo.upper() for x in ['[PENDIENTE]', '|SAL', 'REQ-', 'SM-']):
+        return motivo
+    
+    # 4. Número de contrato del lote
+    if mov.lote and mov.lote.numero_contrato:
+        return mov.lote.numero_contrato[:15]
+    
+    # 5. Fallback: tipo + ID
+    tipo = (mov.tipo or '').upper()
+    tipo_corto = 'ENT' if tipo == 'ENTRADA' else 'SAL' if tipo == 'SALIDA' else tipo[:3]
+    return f"{tipo_corto}-{mov.id}"
+
+
 def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=None, requisicion=None, observaciones='', skip_centro_check=False, subtipo_salida=None, numero_expediente=None, folio_documento=None):
     """
     Helper central para registrar un movimiento y actualizar cantidad_actual del lote.
@@ -9034,6 +9072,30 @@ def reporte_inventario(request):
                 productos_con_stock = len(productos_agrupados)
                 productos_sin_stock = total_productos_activos - productos_con_stock
                 
+                # ISS-FIX: Agregar productos SIN STOCK al listado del PDF
+                # Obtener todos los productos activos que NO tienen lotes con stock
+                claves_con_stock = set(productos_agrupados.keys())
+                productos_sin_lotes = Producto.objects.filter(activo=True).exclude(clave__in=claves_con_stock)
+                
+                for producto in productos_sin_lotes:
+                    productos_data.append({
+                        'clave': producto.clave,
+                        'descripcion': producto.nombre or producto.descripcion or '',
+                        'presentacion': producto.presentacion or '-',
+                        'unidad': producto.unidad_medida or '',
+                        'unidad_medida': producto.unidad_medida or '',
+                        'stock_actual': 0,
+                        'stock_minimo': producto.stock_minimo or 0,
+                        'lotes_activos': 0,
+                        'nivel': 'sin_stock',
+                        'nivel_stock': 'sin_stock',
+                        'precio_unitario': 0,
+                        'marca': '-',
+                    })
+                
+                # Re-ordenar por clave
+                productos_data.sort(key=lambda x: x['clave'])
+                
                 logger.info(f"PDF inventario: {len(productos_data)} productos agrupados (de {len(lotes_lista)} lotes), {productos_sin_stock} sin stock")
                 
                 # Filtros para el PDF
@@ -12348,7 +12410,8 @@ def trazabilidad_lote_exportar(request, codigo):
                 'centro': centro_mov,
                 'usuario': mov.usuario.get_full_name() if mov.usuario else 'Sistema',
                 'observaciones': mov.motivo or '',
-                'folio_documento': getattr(mov, 'folio_documento', '') or mov.motivo or '',
+                # ISS-FIX: Documento de entrada mejorado - NO usar motivo que puede tener [PENDIENTE]|SAL
+                'folio_documento': _obtener_folio_documento_movimiento(mov),
             })
         
         # ISS-FIX: Si el lote principal no tiene contrato, buscar en todos los lotes con mismo numero_lote
