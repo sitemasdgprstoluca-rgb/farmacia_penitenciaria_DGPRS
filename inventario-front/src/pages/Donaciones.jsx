@@ -2762,6 +2762,16 @@ const Donaciones = () => {
                                     >
                                       <FaEye />
                                     </button>
+                                    {/* Botón Hoja de Entrega para grupos pendientes */}
+                                    {!grupo.todosFinalizados && (
+                                      <button
+                                        onClick={() => handleDescargarReciboSalida(grupo.entregas[0], false)}
+                                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                        title="Hoja de Entrega"
+                                      >
+                                        <FaFilePdf />
+                                      </button>
+                                    )}
                                     {/* Botón finalizar grupo completo */}
                                     {!grupo.todosFinalizados && puede.procesar && (
                                       <button
@@ -2775,6 +2785,16 @@ const Donaciones = () => {
                                         ) : (
                                           <FaCheck />
                                         )}
+                                      </button>
+                                    )}
+                                    {/* Botón Eliminar grupo pendiente */}
+                                    {!grupo.todosFinalizados && puede.eliminar && (
+                                      <button
+                                        onClick={() => setConfirmEliminarEntrega(grupo.entregas[0])}
+                                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                        title="Eliminar"
+                                      >
+                                        <FaTrash />
                                       </button>
                                     )}
                                     {/* Comprobante si ya está entregado */}

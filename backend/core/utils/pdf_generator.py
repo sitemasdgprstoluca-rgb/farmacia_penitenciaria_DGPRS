@@ -1033,14 +1033,15 @@ class FormatoBCanvas(canvas.Canvas):
         self.restoreState()
 
 
-def generar_hoja_entrega(datos_entrega, finalizado=False):
+def generar_hoja_entrega(datos_entrega, finalizado=False, es_donacion=False):
     """
-    Genera PDF "RECIBO DE SALIDA DEL ALMACEN DE MEDICAMENTO - DONACIÓN ISEM"
+    Genera PDF "RECIBO DE SALIDA DEL ALMACEN DE MEDICAMENTO"
     Formato Oficial EXACTO según plantilla institucional.
     
     Args:
         datos_entrega: Dict con datos de la entrega
         finalizado: bool - Si es True, muestra sello de ENTREGADO
+        es_donacion: bool - Si es True, agrega "- DONACIÓN" al título
     
     Returns:
         BytesIO: Buffer con PDF generado
@@ -1135,8 +1136,13 @@ def generar_hoja_entrega(datos_entrega, finalizado=False):
     story.append(Spacer(1, 0.15*inch))
     
     # ========== TÍTULO PRINCIPAL ==========
+    # Si es donación, agregar "- DONACIÓN" al título
+    titulo_texto = "RECIBO DE SALIDA DEL ALMACEN DE MEDICAMENTO"
+    if es_donacion:
+        titulo_texto += "  -  DONACIÓN"
+    
     titulo_tabla = Table([
-        [Paragraph("<b>RECIBO DE SALIDA DEL ALMACEN DE MEDICAMENTO  -  DONACIÓN ISEM</b>", estilo_titulo)]
+        [Paragraph(f"<b>{titulo_texto}</b>", estilo_titulo)]
     ], colWidths=[content_width], rowHeights=[0.25*inch])
     titulo_tabla.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),

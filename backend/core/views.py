@@ -5227,6 +5227,7 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
     def recibo_pdf(self, request, pk=None):
         """
         Genera un PDF de recibo para una salida de donación.
+        Usa el formato oficial con "DONACIÓN" en el título.
         
         Parámetros:
         - finalizado: si es 'true', muestra sello de ENTREGADO en lugar de campos de firma
@@ -5235,7 +5236,7 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
         """
         from django.http import HttpResponse
         from django.utils import timezone
-        from core.utils.pdf_reports import generar_recibo_salida_donacion
+        from core.utils.pdf_generator import generar_hoja_entrega
         
         try:
             salida = self.get_object()
@@ -5256,54 +5257,64 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
             # que manejan tanto producto_donacion como producto legacy
             detalle = salida.detalle_donacion
             producto_nombre = 'N/A'
-            producto_presentacion = 'N/A'
+            producto_clave = 'N/A'
             numero_lote = 'N/A'
             
             if detalle:
                 # Usar las propiedades del modelo que manejan ambos casos
-                # nombre_producto puede retornar 'Sin producto' si no hay producto asociado
                 nombre = detalle.nombre_producto
                 if nombre and nombre != 'Sin producto':
                     producto_nombre = nombre
+                
+                # Obtener clave del producto
+                if detalle.producto_donacion:
+                    producto_clave = detalle.producto_donacion.clave or 'N/A'
+                elif detalle.producto:
+                    producto_clave = detalle.producto.clave or 'N/A'
                 
                 # numero_lote es un campo directo del modelo
                 if detalle.numero_lote:
                     numero_lote = detalle.numero_lote
                 
-                # Obtener presentación del producto (donación o legacy)
-                if detalle.producto_donacion:
-                    producto_presentacion = detalle.producto_donacion.presentacion or detalle.producto_donacion.unidad_medida or 'N/A'
-                elif detalle.producto:
-                    producto_presentacion = detalle.producto.presentacion or 'N/A'
-                
                 # DEBUG: Log para diagnóstico
-                logger.debug(f"PDF Donación - Detalle ID: {detalle.id}, Producto: {producto_nombre}, Lote: {numero_lote}, Presentacion: {producto_presentacion}")
+                logger.debug(f"PDF Donación - Detalle ID: {detalle.id}, Producto: {producto_nombre}, Clave: {producto_clave}, Lote: {numero_lote}")
             
-            salida_data = {
-                'folio': salida.id,
-                'fecha': salida.fecha_entrega.strftime('%Y-%m-%d %H:%M') if salida.fecha_entrega else timezone.now().strftime('%Y-%m-%d %H:%M'),
-                'tipo': 'salida',
-                'subtipo_salida': 'donacion',
-                'centro_origen': {'nombre': 'Almacén de Donaciones'},
-                'centro_destino': {'nombre': centro_destino_nombre},
-                'cantidad': salida.cantidad,
-                'observaciones': salida.motivo or '',
-                'producto': producto_nombre,
-                'lote': numero_lote,
-                'presentacion': producto_presentacion,
+            # Preparar datos para generar_hoja_entrega con formato oficial
+            fecha_obj = salida.fecha_entrega or timezone.now()
+            if isinstance(fecha_obj, str):
+                from datetime import datetime
+                fecha_obj = datetime.fromisoformat(fecha_obj.replace('Z', '+00:00'))
+            
+            datos_entrega = {
+                'grupo_salida': f"DON-{salida.id}",  # Folio con prefijo DON
+                'fecha': fecha_obj,
+                'centro_destino': centro_destino_nombre,
+                'items': [{
+                    'clave': producto_clave,
+                    'nombre': producto_nombre,
+                    'cantidad': salida.cantidad,
+                }],
+                # Datos de firma para el PDF
+                'nombre_encargada': 'Q.F.B. MARILENE JUÁREZ DÍAZ',
+                'cargo_encargada': 'ENCARGADA DEL ALMACÉN MÉDICO',
+                'nombre_titular': 'MTRA. ETIENNE JESTHI VELÁZQUEZ BÁEZ',
+                'cargo_titular': 'TITULAR DE LA DIRECCIÓN DE REINSERCIÓN SOCIAL',
             }
             
-            # Si está finalizado, usar fecha de finalización o entrega
+            # Si está finalizado, usar fecha de finalización
             if finalizado:
                 fecha_fin = salida.fecha_finalizado or salida.fecha_entrega
                 if fecha_fin:
-                    salida_data['fecha_entrega'] = fecha_fin.strftime('%Y-%m-%d %H:%M')
+                    if isinstance(fecha_fin, str):
+                        from datetime import datetime
+                        fecha_fin = datetime.fromisoformat(fecha_fin.replace('Z', '+00:00'))
+                    datos_entrega['fecha'] = fecha_fin
             
-            # Generar PDF
-            pdf_buffer = generar_recibo_salida_donacion(
-                salida_data,
-                items_data=None,
-                finalizado=finalizado
+            # Generar PDF con formato oficial y "DONACIÓN" en título
+            pdf_buffer = generar_hoja_entrega(
+                datos_entrega,
+                finalizado=finalizado,
+                es_donacion=True  # Esto agrega "- DONACIÓN" al título
             )
             
             response = HttpResponse(
