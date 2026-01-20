@@ -891,9 +891,13 @@ const RequisicionDetalle = () => {
     tieneAccesoPorCentro;
   
   // Editar: médicos pueden editar en borrador o devuelta
+  // ISS-FIX: Cualquier usuario del mismo centro puede corregir una requisición devuelta
+  // (el solicitante_id puede venir como solicitante_id o solicitante.id)
+  const solicitanteId = requisicion?.solicitante_id || requisicion?.solicitante?.id;
+  const esSolicitante = solicitanteId && user?.id && String(solicitanteId) === String(user?.id);
   const puedeEditar = ['borrador', 'devuelta'].includes(requisicion?.estado) && 
     tieneAccesoPorCentro &&
-    (requisicion?.solicitante_id === user?.id || esFarmacia || user?.is_superuser);
+    (esSolicitante || esMismoCentro || esFarmacia || user?.is_superuser);
     
   // Validar AMBOS: rol de farmacia Y permiso fino correspondiente
   // ISS-DB-002: Estados alineados con BD Supabase
