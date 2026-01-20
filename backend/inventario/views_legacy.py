@@ -7630,10 +7630,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='exportar-recibo-salida')
     def exportar_recibo_salida(self, request, pk=None):
         """
-        Genera PDF con formato oficial "Recibo de Salida del Almacén".
+        Genera PDF con formato oficial "Recibo de Salida del Almacén de Medicamento".
+        Usa el mismo formato que el módulo de Movimientos pero con folio de requisición.
         """
         import traceback
         from io import BytesIO
+        from core.utils.pdf_generator import generar_hoja_entrega
         
         try:
             requisicion = self.get_object()
@@ -7657,23 +7659,23 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 if not user_centro or user_centro.id != req_centro_id:
                     return Response({'error': 'No tiene permiso para ver este recibo'}, status=status.HTTP_403_FORBIDDEN)
             
-            # Preparar datos
+            # Preparar datos del centro
             centro_nombre = ''
             if requisicion.centro_origen:
                 centro_nombre = requisicion.centro_origen.nombre
             elif requisicion.centro_destino:
                 centro_nombre = requisicion.centro_destino.nombre
             
-            # Preparar detalles surtidos
-            detalles_data = []
+            # Preparar items surtidos con formato para generar_hoja_entrega
+            items_data = []
             for detalle in requisicion.detalles.select_related('producto').all():
                 cantidad_surtida = detalle.cantidad_surtida or 0
                 if cantidad_surtida <= 0:
                     continue
                 
                 lote_num = 'N/A'
-                fecha_cad = 'N/A'
                 
+                # Buscar el lote del movimiento de salida
                 movimiento = Movimiento.objects.filter(
                     requisicion=requisicion,
                     tipo='salida',
@@ -7682,98 +7684,47 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 
                 if movimiento and movimiento.lote:
                     lote_num = movimiento.lote.numero_lote or 'N/A'
-                    if movimiento.lote.fecha_caducidad:
-                        fecha_cad = movimiento.lote.fecha_caducidad.strftime('%d/%m/%Y')
                 
-                detalles_data.append({
+                items_data.append({
                     'clave': detalle.producto.clave if detalle.producto else 'N/A',
-                    'nombre': detalle.producto.nombre if detalle.producto else 'N/A',
-                    'presentacion': detalle.producto.presentacion if detalle.producto else 'N/A',
+                    'descripcion': detalle.producto.nombre if detalle.producto else 'N/A',
+                    'presentacion': detalle.producto.presentacion if detalle.producto else '-',
                     'lote': lote_num,
-                    'caducidad': fecha_cad,
                     'cantidad': cantidad_surtida,
                 })
             
-            if not detalles_data:
+            if not items_data:
                 return Response({'error': 'No hay items surtidos'}, status=status.HTTP_400_BAD_REQUEST)
             
             # DEBUG mode
             if request.query_params.get('debug') == '1':
-                return Response({'detalles': detalles_data, 'count': len(detalles_data)})
+                return Response({'items': items_data, 'count': len(items_data)})
             
-            # ========== GENERAR PDF SIMPLE INLINE ==========
-            from reportlab.lib.pagesizes import letter
-            from reportlab.lib.units import inch
-            from reportlab.lib import colors
-            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-            from reportlab.lib.enums import TA_CENTER
+            # Preparar datos para generar_hoja_entrega
+            # Usar el FOLIO de la requisición, no un folio de salida
+            folio_requisicion = requisicion.folio or requisicion.numero or f'REQ-{requisicion.pk}'
+            fecha_surtido = requisicion.fecha_surtido or requisicion.fecha_entrega or timezone.now()
             
-            buffer = BytesIO()
-            doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.75*inch, bottomMargin=0.75*inch, leftMargin=0.5*inch, rightMargin=0.5*inch)
-            elements = []
-            styles = getSampleStyleSheet()
+            datos_entrega = {
+                'grupo_salida': folio_requisicion,  # Este es el FOLIO que se muestra
+                'fecha': fecha_surtido,
+                'centro_destino': centro_nombre,
+                'usuario': 'FARMACIA CENTRAL.',  # Encargado de surtir
+                'items': items_data,
+            }
             
-            # Título
-            titulo_style = ParagraphStyle('Titulo', parent=styles['Heading1'], fontSize=14, alignment=TA_CENTER, textColor=colors.HexColor('#6D1A36'))
-            elements.append(Paragraph("<b>RECIBO DE SALIDA DEL ALMACÉN</b>", titulo_style))
-            elements.append(Spacer(1, 0.2*inch))
+            # Determinar si mostrar sello ENTREGADO
+            finalizado = estado_actual == 'entregada'
             
-            # Info header
-            folio = requisicion.folio or requisicion.numero or 'N/A'
-            fecha = requisicion.fecha_surtido.strftime('%d/%m/%Y %H:%M') if requisicion.fecha_surtido else timezone.now().strftime('%d/%m/%Y %H:%M')
-            info_style = ParagraphStyle('Info', parent=styles['Normal'], fontSize=9)
-            elements.append(Paragraph(f"<b>Folio:</b> {folio} &nbsp;&nbsp;&nbsp; <b>Fecha:</b> {fecha} &nbsp;&nbsp;&nbsp; <b>Centro:</b> {centro_nombre}", info_style))
-            elements.append(Spacer(1, 0.2*inch))
-            
-            # Tabla de detalles
-            table_data = [['#', 'Clave', 'Producto', 'Presentación', 'Lote', 'Caducidad', 'Cant.']]
-            total = 0
-            for i, d in enumerate(detalles_data, 1):
-                table_data.append([str(i), d['clave'][:10], d['nombre'][:40], d['presentacion'][:20], d['lote'], d['caducidad'], str(d['cantidad'])])
-                total += d['cantidad']
-            table_data.append(['', '', '', '', '', 'TOTAL:', str(total)])
-            
-            col_widths = [0.3*inch, 0.7*inch, 2.5*inch, 1.0*inch, 0.7*inch, 0.8*inch, 0.5*inch]
-            table = Table(table_data, colWidths=col_widths)
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#6D1A36')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 7),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#6D1A36')),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#F5F5F5')),
-                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-            ]))
-            elements.append(table)
-            
-            # Firmas
-            elements.append(Spacer(1, 0.5*inch))
-            firma_data = [['_'*25, '_'*25, '_'*25], ['AUTORIZA', 'ENTREGA', 'RECIBE']]
-            firma_table = Table(firma_data, colWidths=[2.3*inch, 2.3*inch, 2.3*inch])
-            firma_table.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('FONTSIZE', (0, 0), (-1, -1), 8)]))
-            elements.append(firma_table)
-            
-            # Generar
-            doc.build(elements)
-            buffer.seek(0)
+            # Generar PDF usando la función oficial
+            buffer = generar_hoja_entrega(datos_entrega, finalizado=finalizado, es_donacion=False)
             
             response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
-            folio_safe = str(folio).replace('/', '-')
+            folio_safe = str(folio_requisicion).replace('/', '-')
             response['Content-Disposition'] = f'attachment; filename="ReciboSalida_{folio_safe}.pdf"'
             return response
             
         except Exception as exc:
-            tb = traceback.format_exc()
-            logger.exception(f'Error al exportar recibo de salida: {exc}')
-            return Response({
-                'error': 'Error al generar el recibo de salida',
-                'mensaje': str(exc),
-                'tipo': type(exc).__name__,
-                'traceback': tb
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             tb = traceback.format_exc()
             logger.exception(f'Error al exportar recibo de salida: {exc}')
             return Response({
