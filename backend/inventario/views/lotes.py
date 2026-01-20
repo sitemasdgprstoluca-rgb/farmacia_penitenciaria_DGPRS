@@ -39,6 +39,7 @@ from .base import (
     CustomPagination,
     # Helpers de seguridad
     is_farmacia_or_admin,
+    has_global_read_access,  # ISS-FIX: Para validar lectura global (incluye vista)
     get_user_centro,
     # Validadores de archivos
     validar_archivo_excel,
@@ -98,18 +99,32 @@ class LoteViewSet(viewsets.ModelViewSet):
         
         # ISS-FIX: Usuarios de centro pueden ver lotes de farmacia central
         # cuando están creando requisiciones (para_requisicion=true)
+        # PERO solo si tienen rol MEDICO (único rol que puede crear requisiciones)
         para_requisicion = self.request.query_params.get('para_requisicion', '').lower() == 'true'
         
-        if not is_farmacia_or_admin(user):
-            # Usuario de centro
+        if not has_global_read_access(user):
+            # Usuario de centro - validar acceso
             user_centro = get_user_centro(user)
             if not user_centro:
                 return Lote.objects.none()
             
-            if para_requisicion:
+            # ISS-FIX: Solo MEDICO puede usar para_requisicion=true
+            rol = (getattr(user, 'rol', '') or '').lower()
+            if para_requisicion and rol == 'medico':
                 # ISS-FIX: Para crear requisiciones, mostrar lotes de FARMACIA CENTRAL
                 # porque las requisiciones se surten desde farmacia central
                 queryset = queryset.filter(centro__isnull=True)
+                logger.debug(
+                    f"ISS-FIX: Médico {user.username} consultando lotes de farmacia central "
+                    f"para requisición"
+                )
+            elif para_requisicion:
+                # Rol no autorizado para para_requisicion
+                logger.warning(
+                    f"ISS-FIX: Usuario {user.username} con rol={rol} intentó usar "
+                    f"para_requisicion=true sin permiso. Denegando acceso."
+                )
+                return Lote.objects.none()
             else:
                 # Por defecto: solo lotes de SU centro
                 queryset = queryset.filter(centro=user_centro)
@@ -224,12 +239,25 @@ class LoteViewSet(viewsets.ModelViewSet):
         ISS-FIX: Usuarios de centro pueden consultar lotes de farmacia central
         cuando están verificando stock para requisiciones (para_requisicion=true).
         Esto es necesario porque las requisiciones se surten desde farmacia central.
+        PERO solo si tienen rol MEDICO (único rol que puede crear requisiciones).
         """
         para_requisicion = request.query_params.get('para_requisicion', '').lower() == 'true'
         user = request.user
         
         # Si es para requisición y el usuario es de centro, buscar el lote sin filtro de centro
-        if para_requisicion and not is_farmacia_or_admin(user):
+        if para_requisicion and not has_global_read_access(user):
+            # ISS-FIX: Solo MEDICO puede usar para_requisicion
+            rol = (getattr(user, 'rol', '') or '').lower()
+            if rol != 'medico':
+                logger.warning(
+                    f"ISS-FIX: Usuario {user.username} con rol={rol} intentó usar "
+                    f"para_requisicion=true en retrieve. Denegando acceso."
+                )
+                return Response(
+                    {'error': 'No tiene permisos para consultar lotes para requisiciones'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
             try:
                 # Buscar el lote directamente (sin filtro de centro)
                 lote = Lote.objects.select_related('producto', 'centro').get(pk=kwargs['pk'])
@@ -401,6 +429,9 @@ class LoteViewSet(viewsets.ModelViewSet):
         - activo: true/false
         - page, page_size: Paginación
         
+        ISS-FIX SEGURIDAD: Usuarios de centro solo ven lotes de su propio centro.
+        Admin/farmacia/vista ven todos los centros.
+        
         Returns:
             Lista de lotes únicos con cantidad_total sumada de todos los centros
             y lista de centros donde está distribuido cada lote.
@@ -420,7 +451,29 @@ class LoteViewSet(viewsets.ModelViewSet):
         
         # Determinar rol del usuario PRIMERO
         user = request.user
-        es_admin_farmacia = is_farmacia_or_admin(user)
+        tiene_acceso_global = has_global_read_access(user)
+        
+        # ISS-FIX SEGURIDAD: Usuarios de centro solo ven SU centro
+        # Esto previene IDOR donde un usuario de centro vería lotes de otros centros
+        if not tiene_acceso_global:
+            user_centro = get_user_centro(user)
+            if not user_centro:
+                logger.warning(
+                    f"ISS-FIX: Usuario {user.username} sin centro intentó acceder a consolidados. Denegando."
+                )
+                return Response({
+                    'count': 0,
+                    'total_pages': 0,
+                    'current_page': 1,
+                    'results': [],
+                    'warning': 'No tiene un centro asignado'
+                })
+            # Filtrar SOLO lotes de su centro
+            queryset = queryset.filter(centro=user_centro)
+            logger.debug(
+                f"ISS-FIX: Usuario {user.username} de centro {user_centro.nombre} "
+                f"accediendo a consolidados filtrados"
+            )
         
         # Verificar si hay búsqueda específica por número de lote
         search = request.query_params.get('search', '').strip()
@@ -436,7 +489,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             elif activo_param.lower() in ['false', '0', 'inactivo']:
                 queryset = queryset.filter(activo=False)
             # Si es vacío o 'todos', no filtrar por activo
-        elif not es_admin_farmacia:
+        elif not tiene_acceso_global:
             # Usuarios de Centro: por defecto solo ver lotes activos
             queryset = queryset.filter(activo=True)
         # Farmacia/Admin sin filtro: ver TODOS los lotes (activos e inactivos) para trazabilidad
@@ -451,14 +504,15 @@ class LoteViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(cantidad_actual__gt=0)
             elif con_stock_param.lower() in ['sin_stock', 'false', '0']:
                 queryset = queryset.filter(cantidad_actual=0)
-        elif not es_admin_farmacia:
+        elif not tiene_acceso_global:
             # Usuarios de Centro: por defecto solo ver lotes con stock
             queryset = queryset.filter(cantidad_actual__gt=0)
         # Farmacia/Admin sin filtro: mostrar todos los lotes
         
-        # Filtrar por centro si se especifica
+        # ISS-FIX: Filtrar por centro SOLO si usuario tiene acceso global
+        # Los usuarios de centro ya están filtrados arriba por su propio centro
         centro_param = request.query_params.get('centro')
-        if centro_param:
+        if centro_param and tiene_acceso_global:
             if centro_param == 'central':
                 # Solo farmacia central (centro=NULL)
                 queryset = queryset.filter(centro__isnull=True)
@@ -1006,6 +1060,9 @@ class LoteViewSet(viewsets.ModelViewSet):
         """
         Obtiene lotes proximos a vencer.
         
+        ISS-FIX SEGURIDAD: Usuarios de centro solo ven lotes de su centro.
+        Admin/farmacia/vista ven todos los centros.
+        
         Parametros:
         - dias: numero de dias (default: 30)
         """
@@ -1013,12 +1070,30 @@ class LoteViewSet(viewsets.ModelViewSet):
             dias = int(request.query_params.get('dias', 30))
             fecha_limite = date.today() + timedelta(days=dias)
             
-            lotes = Lote.objects.select_related('producto').filter(
+            lotes = Lote.objects.select_related('producto', 'centro').filter(
                 activo=True,
                 cantidad_actual__gt=0,
                 fecha_caducidad__lte=fecha_limite
-            ).order_by('fecha_caducidad')
+            )
             
+            # ISS-FIX SEGURIDAD: Filtrar por centro según rol
+            user = request.user
+            if not has_global_read_access(user):
+                user_centro = get_user_centro(user)
+                if not user_centro:
+                    logger.warning(
+                        f"ISS-FIX: Usuario {user.username} sin centro intentó acceder a por_vencer"
+                    )
+                    return Response({
+                        'total': 0,
+                        'dias_configurados': dias,
+                        'fecha_limite': fecha_limite,
+                        'lotes': [],
+                        'warning': 'No tiene un centro asignado'
+                    })
+                lotes = lotes.filter(centro=user_centro)
+            
+            lotes = lotes.order_by('fecha_caducidad')
             serializer = self.get_serializer(lotes, many=True)
             
             return Response({
@@ -1037,16 +1112,34 @@ class LoteViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='por-caducar')
     def por_caducar(self, request):
-        """Alias compatible para el frontend: lotes proximos a vencer."""
+        """
+        Alias compatible para el frontend: lotes proximos a vencer.
+        
+        ISS-FIX SEGURIDAD: Usuarios de centro solo ven lotes de su centro.
+        Admin/farmacia/vista ven todos los centros.
+        """
         try:
             dias = int(request.query_params.get('dias', 90))
             hoy = date.today()
             fecha_limite = hoy + timedelta(days=dias)
-            lotes = Lote.objects.select_related('producto').filter(
+            lotes = Lote.objects.select_related('producto', 'centro').filter(
                 cantidad_actual__gt=0,
                 fecha_caducidad__gt=hoy,
                 fecha_caducidad__lte=fecha_limite
-            ).order_by('fecha_caducidad')
+            )
+            
+            # ISS-FIX SEGURIDAD: Filtrar por centro según rol
+            user = request.user
+            if not has_global_read_access(user):
+                user_centro = get_user_centro(user)
+                if not user_centro:
+                    logger.warning(
+                        f"ISS-FIX: Usuario {user.username} sin centro intentó acceder a por_caducar"
+                    )
+                    return Response([])  # Retornar lista vacía para compatibilidad
+                lotes = lotes.filter(centro=user_centro)
+            
+            lotes = lotes.order_by('fecha_caducidad')
 
             page = self.paginate_queryset(lotes)
             if page is not None:
@@ -1061,13 +1154,31 @@ class LoteViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def vencidos(self, request):
-        """Lotes con caducidad vencida y stock disponible."""
+        """
+        Lotes con caducidad vencida y stock disponible.
+        
+        ISS-FIX SEGURIDAD: Usuarios de centro solo ven lotes de su centro.
+        Admin/farmacia/vista ven todos los centros.
+        """
         try:
             hoy = date.today()
-            lotes = Lote.objects.select_related('producto').filter(
+            lotes = Lote.objects.select_related('producto', 'centro').filter(
                 cantidad_actual__gt=0,
                 fecha_caducidad__lt=hoy
-            ).order_by('fecha_caducidad')
+            )
+            
+            # ISS-FIX SEGURIDAD: Filtrar por centro según rol
+            user = request.user
+            if not has_global_read_access(user):
+                user_centro = get_user_centro(user)
+                if not user_centro:
+                    logger.warning(
+                        f"ISS-FIX: Usuario {user.username} sin centro intentó acceder a vencidos"
+                    )
+                    return Response([])  # Retornar lista vacía para compatibilidad
+                lotes = lotes.filter(centro=user_centro)
+            
+            lotes = lotes.order_by('fecha_caducidad')
 
             page = self.paginate_queryset(lotes)
             if page is not None:

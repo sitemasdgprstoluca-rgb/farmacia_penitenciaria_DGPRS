@@ -3821,7 +3821,17 @@ class LoteViewSet(viewsets.ModelViewSet):
         Obtiene la trazabilidad completa de un lote:
         - Si es lote de farmacia: muestra derivados en centros
         - Si es lote de centro: muestra origen en farmacia
+        
+        ISS-SEC-FIX: Restringido a admin/farmacia solamente.
+        VISTA/CENTRO/MEDICO no deben acceder a trazabilidad.
         """
+        # ISS-SEC-FIX: Solo admin/farmacia pueden acceder a trazabilidad
+        if not is_farmacia_or_admin(request.user):
+            return Response(
+                {'error': 'Solo administradores y farmacia pueden acceder a trazabilidad'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         try:
             lote = self.get_object()
             
@@ -4296,6 +4306,26 @@ class MovimientoViewSet(
                     raise serializers.ValidationError({
                         'centro': f'Centro con ID {centro_destino_raw} no encontrado'
                     })
+        
+        # ISS-FIX SEGURIDAD: Usuarios de centro NO pueden especificar centro_destino arbitrario
+        # Solo admin/farmacia pueden enviar a otros centros (transferencias)
+        if not is_farmacia_or_admin(user):
+            user_centro = get_user_centro(user)
+            
+            # Si el usuario de centro intenta enviar a un centro diferente, denegar
+            if centro_destino and centro_destino != user_centro:
+                logger.warning(
+                    f"ISS-FIX: Usuario {user.username} de centro {user_centro} intentó "
+                    f"crear movimiento con centro_destino={centro_destino}. Denegando."
+                )
+                raise serializers.ValidationError({
+                    'centro': 'No tiene permisos para crear movimientos hacia otros centros. '
+                              'Solo administradores y farmacia pueden realizar transferencias.'
+                })
+            
+            # Forzar centro_destino a su propio centro si no lo especificó
+            if not centro_destino:
+                centro_destino = user_centro
         
         # ISS-FIX: Para transferencias desde Almacén Central a Centro,
         # el lote es del Almacén Central (centro=None) pero el destino es un Centro específico.
@@ -5179,8 +5209,10 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 queryset = queryset.exclude(estado__in=['borrador', 'pendiente_admin'])
                 queryset = queryset.exclude(estado__in=['borrador', 'pendiente_admin'])
             
-            # 3.4 Centro genérico: Ve todo del centro (lectura)
-            # else: ya está filtrado por centro
+            # 3.4 Centro genérico: Solo ve sus propias requisiciones (seguridad RBAC)
+            # ISS-SEC-001: Usuarios de centro sin rol específico solo ven lo que crearon
+            else:
+                queryset = queryset.filter(solicitante=user)
             filter_applied = True
         
         # Aplicar filtros adicionales de query params
@@ -5366,7 +5398,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             return Response({'error': 'Error al crear requisicion', 'mensaje': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def update(self, request, *args, **kwargs):
-        """Solo permite editar si sigue en borrador o está devuelta."""
+        """Solo permite editar si sigue en borrador o está devuelta.
+        
+        ISS-SEC-002: Validación estricta de propietario/rol para edición.
+        Solo el solicitante original o superusuario puede editar.
+        """
         try:
             requisicion = self.get_object()
             estado_actual = (requisicion.estado or '').lower()
@@ -5377,6 +5413,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             centro_user = self._user_centro(request.user)
             if not request.user.is_superuser and centro_user and requisicion.centro_id != centro_user.id:
                 return Response({'error': 'No puedes editar requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
+            
+            # ISS-SEC-002: Validar que es el solicitante original (o superusuario)
+            if not request.user.is_superuser and requisicion.solicitante_id != request.user.id:
+                return Response({
+                    'error': 'Solo el solicitante original puede editar esta requisición'
+                }, status=status.HTTP_403_FORBIDDEN)
 
             # ISS-FIX: Extraer items/detalles ANTES de pasar al serializer
             # para evitar errores de validación del nested serializer
@@ -5435,6 +5477,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             return Response({'error': f'Error interno: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def destroy(self, request, *args, **kwargs):
+        """ISS-SEC-003: Solo el solicitante original o superusuario puede eliminar."""
         requisicion = self.get_object()
         if (requisicion.estado or '').lower() != 'borrador':
             return Response({'error': 'Solo se pueden eliminar requisiciones en estado BORRADOR', 'estado_actual': requisicion.estado}, status=status.HTTP_400_BAD_REQUEST)
@@ -5442,6 +5485,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         if not request.user.is_superuser:
             if not centro_user or requisicion.centro_id != centro_user.id:
                 return Response({'error': 'No puedes eliminar requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
+            # ISS-SEC-003: Validar que es el solicitante original
+            if requisicion.solicitante_id != request.user.id:
+                return Response({
+                    'error': 'Solo el solicitante original puede eliminar esta requisición'
+                }, status=status.HTTP_403_FORBIDDEN)
         folio = requisicion.folio
         requisicion.delete()
         return Response({'mensaje': 'Requisicion eliminada', 'folio_eliminado': folio}, status=status.HTTP_204_NO_CONTENT)
@@ -5692,15 +5740,29 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def rechazar(self, request, pk=None):
+        """ISS-SEC-004: Solo roles autorizados pueden rechazar requisiciones."""
         requisicion = self.get_object()
         # ISS-DB-002: Usar 'enviada' (valor en BD Supabase)
         if (requisicion.estado or '').lower() != 'enviada':
             return Response({'error': 'Solo se pueden rechazar requisiciones en estado ENVIADA', 'estado_actual': requisicion.estado}, status=status.HTTP_400_BAD_REQUEST)
-        centro_user = self._user_centro(request.user)
-        es_privilegiado = is_farmacia_or_admin(request.user)
+        
+        # ISS-SEC-004: Solo farmacia, admin, director_centro o administrador_centro pueden rechazar
+        rol = _get_rol_efectivo(request.user)
+        roles_pueden_rechazar = ['farmacia', 'admin', 'director_centro', 'director', 'administrador_centro', 'admin_centro']
+        es_privilegiado = is_farmacia_or_admin(request.user) or rol in roles_pueden_rechazar
+        
         if not request.user.is_superuser and not es_privilegiado:
+            return Response({
+                'error': 'Solo farmacia, administradores o directores pueden rechazar requisiciones',
+                'rol_actual': rol
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Validar acceso al centro si es rol de centro
+        centro_user = self._user_centro(request.user)
+        if rol in ['director_centro', 'director', 'administrador_centro', 'admin_centro']:
             if not centro_user or requisicion.centro_id != centro_user.id:
                 return Response({'error': 'No puedes rechazar requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
+        
         motivo = request.data.get('observaciones') or request.data.get('comentario') or ''
         if not motivo.strip():
             return Response({'error': 'Debe proporcionar un motivo de rechazo'}, status=status.HTTP_400_BAD_REQUEST)
@@ -5739,6 +5801,17 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                     if not centro_user or requisicion.centro_id != centro_user.id:
                         return Response({
                             'error': 'No puedes cancelar requisiciones de otro centro'
+                        }, status=status.HTTP_403_FORBIDDEN)
+                    
+                    # ISS-SEC-005: Solo el solicitante, farmacia, o roles de autorización pueden cancelar
+                    rol = _get_rol_efectivo(request.user)
+                    roles_pueden_cancelar = ['farmacia', 'admin', 'director_centro', 'director', 'administrador_centro', 'admin_centro']
+                    es_solicitante = requisicion.solicitante_id == request.user.id
+                    es_rol_autorizado = is_farmacia_or_admin(request.user) or rol in roles_pueden_cancelar
+                    
+                    if not es_solicitante and not es_rol_autorizado:
+                        return Response({
+                            'error': 'Solo el solicitante o roles autorizados pueden cancelar esta requisición'
                         }, status=status.HTTP_403_FORBIDDEN)
                 
                 # ISS-RES-002: Usar cambiar_estado para validaciones
@@ -5812,6 +5885,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         """
         ISS-DEBUG: Endpoint de diagnóstico para verificar si una requisición puede ser surtida.
         
+        ISS-SEC-006: Restringido a farmacia/admin para proteger datos de inventario.
+        
         Retorna información detallada sobre:
         - Estado de la requisición
         - Detalles y sus productos
@@ -5822,6 +5897,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         """
         from django.utils import timezone
         from django.db.models import Sum
+        
+        # ISS-SEC-006: Solo farmacia/admin pueden ver diagnóstico con datos sensibles
+        if not is_farmacia_or_admin(request.user) and not request.user.is_superuser:
+            return Response({
+                'error': 'Solo personal de farmacia o administradores pueden acceder al diagnóstico de surtido'
+            }, status=status.HTTP_403_FORBIDDEN)
         
         hoy = timezone.now().date()
         
@@ -8126,9 +8207,12 @@ def trazabilidad_producto(request, clave):
         user = request.user
         if not user or not user.is_authenticated:
             return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_403_FORBIDDEN)
-        rol_usuario = (getattr(user, 'rol', '') or '').lower()
-        if rol_usuario == 'vista':
+        
+        # ISS-SEC-FIX: Trazabilidad solo para admin/farmacia
+        # CENTRO y VISTA no deben acceder (alineado con frontend PermissionsGuard)
+        if not is_farmacia_or_admin(user):
             return Response({'error': 'No tienes permiso para trazabilidad'}, status=status.HTTP_403_FORBIDDEN)
+        
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
@@ -8372,7 +8456,8 @@ def trazabilidad_producto(request, clave):
             },
             'lotes': lotes_data,
             'movimientos': movimientos_data,
-            'total_movimientos': Movimiento.objects.filter(lote__producto=producto).count(),
+            # ISS-SEC-FIX: total_movimientos debe respetar el mismo filtro de centro
+            'total_movimientos': mov_query.count(),
             'alertas': alertas
         })
     except Exception as exc:
@@ -9230,13 +9315,18 @@ def reporte_inventario(request):
         logger.error(f"Error en reporte_inventario: {str(e)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         return Response({'error': 'Error al generar reporte', 'mensaje': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def reporte_movimientos(request):
     """
     Genera reporte de movimientos con filtros.
     
-    SEGURIDAD: Filtra por centro del usuario si no es admin/farmacia.
-    Admin/farmacia puede usar ?centro=ID para filtrar.
+    ISS-FIX SEGURIDAD:
+    - Requiere perm_reportes=True (no solo autenticación)
+    - Si usuario no-admin sin centro, devuelve 403 (no datos globales)
+    - Admin/farmacia puede usar ?centro=ID para filtrar.
     
     Parametros:
     - fecha_inicio: Fecha inicial (YYYY-MM-DD)
@@ -9248,10 +9338,45 @@ def reporte_movimientos(request):
     try:
         logger.info(f"Generando reporte de movimientos. Params: {dict(request.query_params)}")
         
-        # SEGURIDAD: Determinar filtro de centro
+        # ISS-FIX SEGURIDAD: Validar permiso de reportes
         user = request.user
+        
+        # Verificar perm_reportes (admin/farmacia siempre tienen)
+        if not is_farmacia_or_admin(user):
+            # Verificar permiso personalizado
+            perm_reportes = getattr(user, 'perm_reportes', None)
+            if perm_reportes is None:
+                # Usar permisos por rol
+                from core.models import User as UserModel
+                rol = (getattr(user, 'rol', '') or '').lower()
+                permisos_rol = UserModel.PERMISOS_POR_ROL.get(rol, {})
+                perm_reportes = permisos_rol.get('perm_reportes', False)
+            
+            if not perm_reportes:
+                logger.warning(
+                    f"ISS-FIX: Usuario {user.username} con rol={getattr(user, 'rol', 'N/A')} "
+                    f"intentó acceder a reporte_movimientos sin permiso perm_reportes"
+                )
+                return Response(
+                    {'error': 'No tiene permisos para acceder a reportes'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        # SEGURIDAD: Determinar filtro de centro
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
+        
+        # ISS-FIX SEGURIDAD: Si usuario no-admin debe filtrar por centro pero no tiene centro,
+        # devolver 403 en lugar de datos globales
+        if filtrar_por_centro and not user_centro:
+            logger.warning(
+                f"ISS-FIX: Usuario {user.username} sin centro intentó acceder a reporte_movimientos. "
+                f"Denegando para evitar filtro vacío con datos globales."
+            )
+            return Response(
+                {'error': 'Usuario sin centro asignado no puede acceder a reportes de movimientos'},
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         # Admin/farmacia puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
@@ -11274,8 +11399,9 @@ def trazabilidad_buscar(request):
         if not user or not user.is_authenticated:
             return Response({'error': 'Autenticación requerida'}, status=status.HTTP_403_FORBIDDEN)
         
-        rol_usuario = (getattr(user, 'rol', '') or '').lower()
-        if rol_usuario == 'vista':
+        # ISS-SEC-FIX: Trazabilidad solo para admin/farmacia
+        # CENTRO y VISTA no deben acceder (alineado con frontend PermissionsGuard)
+        if not is_farmacia_or_admin(user):
             return Response({'error': 'No tienes permiso para trazabilidad'}, status=status.HTTP_403_FORBIDDEN)
         
         query = request.query_params.get('q', '').strip()
@@ -11420,6 +11546,11 @@ def trazabilidad_autocomplete(request):
         user = request.user
         if not user or not user.is_authenticated:
             return Response({'results': []})
+        
+        # ISS-SEC-FIX: Trazabilidad solo para admin/farmacia
+        # CENTRO y VISTA no deben acceder (alineado con frontend PermissionsGuard)
+        if not is_farmacia_or_admin(user):
+            return Response({'results': [], 'error': 'Sin permiso'})
         
         search = request.query_params.get('search', '').strip()
         if len(search) < 2:
@@ -11988,9 +12119,10 @@ def trazabilidad_producto_exportar(request, clave):
         if not user or not user.is_authenticated:
             return Response({'error': 'Autenticación requerida'}, status=status.HTTP_403_FORBIDDEN)
         
-        rol_usuario = (getattr(user, 'rol', '') or '').lower()
-        if rol_usuario == 'vista':
-            return Response({'error': 'No tienes permiso para exportar'}, status=status.HTTP_403_FORBIDDEN)
+        # ISS-SEC-FIX: Exportación de trazabilidad solo para admin/farmacia
+        # Incluye datos sensibles (contratos, precios) - CENTRO/VISTA no deben acceder
+        if not is_farmacia_or_admin(user):
+            return Response({'error': 'No tienes permiso para exportar trazabilidad'}, status=status.HTTP_403_FORBIDDEN)
         
         # Obtener producto
         producto = Producto.objects.filter(

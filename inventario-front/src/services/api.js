@@ -818,9 +818,10 @@ export const productosAPI = {
   },
   delete: (id) => apiClient.delete(`/productos/${id}/`),
   toggleActivo: (id) => apiClient.post(`/productos/${id}/toggle-activo/`),
-  nuevos: (dias = 7) => apiClient.get(`/productos/nuevos/?dias=${dias}`),
-  bajoStock: () => apiClient.get('/productos/bajo-stock/'),
-  estadisticas: () => apiClient.get('/productos/estadisticas/'),
+  // ISS-SEC: Endpoints removidos - usar filtros en getAll() o reportesAPI en su lugar
+  // nuevos: usar getAll({ ordenar: 'created_at', dias: 7 })
+  // bajoStock: usar getAll({ stock_status: 'bajo' }) o reportesAPI.bajoStock()
+  // estadisticas: usar reportesAPI.inventario()
   exportar: (params) => apiClient.get('/productos/exportar-excel/', { 
     params, 
     responseType: 'blob' 

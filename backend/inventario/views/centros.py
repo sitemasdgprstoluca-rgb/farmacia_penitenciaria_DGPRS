@@ -263,8 +263,12 @@ class CentroViewSet(viewsets.ModelViewSet):
     def inventario(self, request, pk=None):
         """Devuelve inventario resumido del centro a partir de lotes asociados a movimientos del centro."""
         centro = self.get_object()
-        user_centro = self._user_centro(request.user)
-        if not request.user.is_superuser:
+        user = request.user
+        
+        # ISS-SEC-FIX: Admin/farmacia/superuser tienen acceso global a inventarios
+        # Solo usuarios de centro están restringidos a su propio centro
+        if not user.is_superuser and not is_farmacia_or_admin(user):
+            user_centro = self._user_centro(user)
             if not user_centro or user_centro.id != centro.id:
                 return Response({'error': 'Solo puedes ver inventario de tu centro'}, status=status.HTTP_403_FORBIDDEN)
 

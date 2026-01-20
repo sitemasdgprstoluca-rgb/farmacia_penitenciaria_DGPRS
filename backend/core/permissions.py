@@ -343,9 +343,15 @@ class IsAdminRole(permissions.BasePermission):
 
 
 class IsFarmaciaRole(permissions.BasePermission):
-    """Usuarios de farmacia."""
+    """
+    Usuarios de farmacia/admin exclusivamente.
+    
+    ISS-SEC-FIX: NO acepta permisos extras para evitar elevación de privilegios.
+    CAN_VIEW_ALL_REQUISICIONES es para ver requisiciones, NO para gestionar productos.
+    """
     def has_permission(self, request, view):
-        return _has_permission(request.user, ['admin', 'farmacia'], ['CAN_VIEW_ALL_REQUISICIONES'])
+        # ISS-SEC-FIX: Solo roles admin/farmacia, sin permisos extras
+        return _has_role(request.user, ['admin', 'farmacia'])
 
 
 class IsCentroRole(permissions.BasePermission):
@@ -571,14 +577,72 @@ class IsVistaUserOrAdmin(permissions.BasePermission):
 
 
 class CanViewNotifications(permissions.BasePermission):
-    """Permiso para ver notificaciones.
+    """
+    Permiso para ver notificaciones propias.
     
-    ISS-PERMS FIX: Cualquier usuario autenticado puede ver sus notificaciones.
+    ISS-SEC-FIX: Valida perm_notificaciones/verNotificaciones.
     El queryset filtra automáticamente por usuario.
+    
+    Matriz de permisos:
+    - admin, farmacia: verNotificaciones=True
+    - vista, medico, administrador_centro, director_centro, centro: verNotificaciones=True
+    - Por defecto: verificar permiso personalizado o rol
     """
     def has_permission(self, request, view):
-        # Cualquier usuario autenticado puede ver sus propias notificaciones
-        return request.user and request.user.is_authenticated
+        user = request.user
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        
+        # Superusuarios siempre tienen acceso
+        if user.is_superuser:
+            return True
+        
+        # Admin y farmacia siempre pueden ver notificaciones
+        if _has_role(user, ['admin', 'farmacia']):
+            return True
+        
+        # Verificar permiso granular perm_notificaciones
+        perm_user = getattr(user, 'perm_notificaciones', None)
+        if perm_user is not None:
+            return perm_user
+        
+        # Por defecto, usuarios autenticados pueden ver SUS notificaciones
+        # (el queryset filtra por usuario)
+        return True
+
+
+class CanManageNotifications(permissions.BasePermission):
+    """
+    ISS-SEC-FIX: Permiso para gestionar notificaciones (marcar leídas, eliminar).
+    
+    Verifica gestionarNotificaciones/perm_notificaciones_gestion.
+    Alineado con frontend PermissionsGuard.
+    
+    Matriz de permisos:
+    - admin, farmacia: gestionarNotificaciones=True
+    - Otros roles: verificar permiso personalizado
+    """
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        
+        # Superusuarios siempre tienen acceso
+        if user.is_superuser:
+            return True
+        
+        # Admin y farmacia siempre pueden gestionar
+        if _has_role(user, ['admin', 'farmacia']):
+            return True
+        
+        # Verificar permiso granular (si existe en el modelo)
+        perm_gestion = getattr(user, 'perm_notificaciones_gestion', None)
+        if perm_gestion is not None:
+            return perm_gestion
+        
+        # Por defecto, usuarios pueden gestionar SUS PROPIAS notificaciones
+        # (el queryset y get_object filtran por usuario)
+        return True
 
 
 class CanViewProfile(permissions.BasePermission):
@@ -716,3 +780,191 @@ class CanManageComprasCajaChica(permissions.BasePermission):
             return obj.centro == user.centro
         
         return False
+
+
+# =============================================================================
+# ISS-FIX: PERMISOS PARA MÓDULO DE DONACIONES
+# =============================================================================
+
+class HasDonacionesPermission(permissions.BasePermission):
+    """
+    ISS-FIX: Permisos para módulo de Donaciones (almacén separado).
+    
+    Este permiso verifica que el usuario tenga perm_donaciones=True,
+    ya sea por rol (PERMISOS_POR_ROL) o por permiso personalizado.
+    
+    Operaciones de lectura (GET):
+    - Requiere perm_donaciones=True (por rol o personalizado)
+    - Admin/Farmacia siempre tienen acceso
+    
+    Operaciones de escritura (POST, PUT, DELETE):
+    - Solo admin/farmacia pueden modificar
+    """
+    def has_permission(self, request, view):
+        user = request.user
+        
+        # Verificar autenticación
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        
+        # Superusuarios siempre tienen acceso
+        if user.is_superuser:
+            return True
+        
+        # Admin y farmacia siempre tienen acceso a donaciones
+        if _has_role(user, ['admin', 'farmacia']):
+            return True
+        
+        # Verificar permiso granular perm_donaciones
+        # 1. Verificar permiso personalizado del usuario (prioridad)
+        perm_user = getattr(user, 'perm_donaciones', None)
+        if perm_user is not None:
+            return perm_user
+        
+        # 2. Si no hay personalización, usar permisos por rol
+        from core.models import User
+        rol = (getattr(user, 'rol', '') or '').lower()
+        permisos_rol = User.PERMISOS_POR_ROL.get(rol, {})
+        return permisos_rol.get('perm_donaciones', False)
+
+
+class HasDonacionesWritePermission(permissions.BasePermission):
+    """
+    ISS-FIX: Permisos de escritura para módulo de Donaciones.
+    
+    Solo admin/farmacia pueden crear/editar/eliminar donaciones.
+    """
+    def has_permission(self, request, view):
+        user = request.user
+        
+        # Verificar autenticación
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        
+        # Superusuarios siempre tienen acceso
+        if user.is_superuser:
+            return True
+        
+        # Solo admin y farmacia pueden escribir
+        return _has_role(user, ['admin', 'farmacia'])
+
+
+# =============================================================================
+# ISS-FIX: PERMISOS PARA MÓDULO DE REPORTES
+# =============================================================================
+
+class HasReportesPermission(permissions.BasePermission):
+    """
+    ISS-FIX: Permisos para módulo de Reportes.
+    
+    Este permiso verifica que el usuario tenga perm_reportes=True,
+    ya sea por rol (PERMISOS_POR_ROL) o por permiso personalizado.
+    
+    Según el modelo:
+    - admin, admin_sistema, farmacia, vista: perm_reportes=True
+    - medico, administrador_centro, director_centro, centro: perm_reportes=False
+    
+    Los usuarios de centro NO deben poder acceder a reportes (UI lo bloquea,
+    backend debe validarlo también).
+    """
+    def has_permission(self, request, view):
+        user = request.user
+        
+        # Verificar autenticación
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        
+        # Superusuarios siempre tienen acceso
+        if user.is_superuser:
+            return True
+        
+        # Admin y farmacia siempre tienen acceso a reportes
+        if _has_role(user, ['admin', 'farmacia']):
+            return True
+        
+        # Verificar permiso granular perm_reportes
+        # 1. Verificar permiso personalizado del usuario (prioridad)
+        perm_user = getattr(user, 'perm_reportes', None)
+        if perm_user is not None:
+            return perm_user
+        
+        # 2. Si no hay personalización, usar permisos por rol
+        from core.models import User
+        rol = (getattr(user, 'rol', '') or '').lower()
+        permisos_rol = User.PERMISOS_POR_ROL.get(rol, {})
+        return permisos_rol.get('perm_reportes', False)
+
+
+class HasMovimientosPermission(permissions.BasePermission):
+    """
+    ISS-FIX: Permisos para módulo de Movimientos.
+    
+    Verifica perm_movimientos para lectura de movimientos.
+    """
+    def has_permission(self, request, view):
+        user = request.user
+        
+        # Verificar autenticación
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        
+        # Superusuarios siempre tienen acceso
+        if user.is_superuser:
+            return True
+        
+        # Admin y farmacia siempre tienen acceso
+        if _has_role(user, ['admin', 'farmacia']):
+            return True
+        
+        # Verificar permiso granular perm_movimientos
+        perm_user = getattr(user, 'perm_movimientos', None)
+        if perm_user is not None:
+            return perm_user
+        
+        # Usar permisos por rol
+        from core.models import User
+        rol = (getattr(user, 'rol', '') or '').lower()
+        permisos_rol = User.PERMISOS_POR_ROL.get(rol, {})
+        return permisos_rol.get('perm_movimientos', False)
+
+
+class HasProductosPermission(permissions.BasePermission):
+    """
+    ISS-SEC-FIX: Permisos para módulo de Productos.
+    
+    Verifica perm_productos para lectura de productos.
+    El frontend ya bloquea acceso a usuarios sin permiso, pero el backend
+    debe validar también para evitar acceso directo via API.
+    
+    Según PERMISOS_POR_ROL:
+    - admin, admin_sistema, farmacia: perm_productos=True
+    - vista, medico, administrador_centro, director_centro, centro: perm_productos=False (por defecto)
+    
+    Usuarios pueden tener perm_productos personalizado que anula el rol.
+    """
+    def has_permission(self, request, view):
+        user = request.user
+        
+        # Verificar autenticación
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        
+        # Superusuarios siempre tienen acceso
+        if user.is_superuser:
+            return True
+        
+        # Admin y farmacia siempre tienen acceso a productos
+        if _has_role(user, ['admin', 'farmacia']):
+            return True
+        
+        # Verificar permiso granular perm_productos
+        # 1. Verificar permiso personalizado del usuario (prioridad)
+        perm_user = getattr(user, 'perm_productos', None)
+        if perm_user is not None:
+            return perm_user
+        
+        # 2. Si no hay personalización, usar permisos por rol
+        from core.models import User
+        rol = (getattr(user, 'rol', '') or '').lower()
+        permisos_rol = User.PERMISOS_POR_ROL.get(rol, {})
+        return permisos_rol.get('perm_productos', False)

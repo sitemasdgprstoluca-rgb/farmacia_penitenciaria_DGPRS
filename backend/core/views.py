@@ -1401,22 +1401,26 @@ class NotificacionViewSet(
         """
         ISS-DEBUG: Endpoint de diagnóstico para notificaciones.
         
-        Retorna información detallada sobre las notificaciones del usuario
-        para ayudar a identificar problemas.
+        ISS-SEC-FIX: Restringido a admin/farmacia solamente.
+        Retorna estadísticas básicas sin exponer SQL ni datos sensibles.
         """
+        # ISS-SEC-FIX: Solo admin/farmacia pueden acceder a diagnóstico
+        user = request.user
+        if not user.is_superuser and not (getattr(user, 'rol', '') or '').lower() in ['admin', 'admin_sistema', 'farmacia']:
+            return Response({'error': 'No autorizado'}, status=status.HTTP_403_FORBIDDEN)
+        
         try:
             # Obtener todas las notificaciones del usuario (sin filtros)
             todas = Notificacion.objects.filter(usuario=request.user)
             no_leidas = todas.filter(leida=False)
             
-            # Obtener las últimas 10 notificaciones con todos sus campos
+            # Obtener las últimas 10 notificaciones con campos básicos (sin datos sensibles)
             ultimas = todas.order_by('-created_at')[:10]
             
             return Response({
                 'usuario': {
                     'id': request.user.pk,
                     'username': request.user.username,
-                    'email': request.user.email,
                 },
                 'estadisticas': {
                     'total': todas.count(),
@@ -1427,25 +1431,18 @@ class NotificacionViewSet(
                     {
                         'id': n.pk,
                         'titulo': n.titulo,
-                        'mensaje': n.mensaje,
                         'tipo': n.tipo,
                         'leida': n.leida,
-                        'url': n.url,
-                        'datos': n.datos,
                         'created_at': n.created_at.isoformat() if n.created_at else None,
-                        # Verificar si mensaje está vacío
-                        'mensaje_vacio': not bool(n.mensaje),
-                        'titulo_vacio': not bool(n.titulo),
                     }
                     for n in ultimas
                 ],
-                'consulta_sql': str(todas.query),
+                # ISS-SEC-FIX: NO exponer consulta_sql ni datos completos
             })
         except Exception as e:
             logger.exception(f"Error en diagnóstico de notificaciones: {e}")
             return Response({
-                'error': str(e),
-                'tipo_error': type(e).__name__,
+                'error': 'Error interno',
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def destroy(self, request, *args, **kwargs):
@@ -2708,7 +2705,11 @@ class DonacionViewSet(viewsets.ModelViewSet):
     """
     ViewSet para gestionar donaciones de medicamentos.
     Solo ADMIN y FARMACIA pueden crear/editar/procesar.
-    VISTA puede consultar en solo lectura.
+    VISTA puede consultar en solo lectura SI tiene perm_donaciones.
+    
+    ISS-FIX SEGURIDAD:
+    - Lectura requiere perm_donaciones (no solo autenticación)
+    - Scoping por centro: usuarios de centro solo ven donaciones a SU centro
     """
     pagination_class = StandardResultsSetPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -2717,18 +2718,23 @@ class DonacionViewSet(viewsets.ModelViewSet):
     ordering = ['-fecha_recepcion']
     
     def get_permissions(self):
-        """Permisos según la acción:
-        - list, retrieve: IsAuthenticated + tener perm_donaciones
+        """
+        ISS-FIX: Permisos según la acción:
+        - list, retrieve: HasDonacionesPermission (verifica perm_donaciones)
         - create, update, destroy, acciones: IsFarmaciaRole (admin/farmacia)
         """
+        from core.permissions import HasDonacionesPermission, HasDonacionesWritePermission
+        
         if self.action in ['list', 'retrieve']:
-            # Cualquier autenticado con permiso de donaciones puede ver
-            return [IsAuthenticated()]
+            # ISS-FIX: Requiere perm_donaciones, no solo autenticación
+            return [IsAuthenticated(), HasDonacionesPermission()]
         # Crear, editar, eliminar, acciones solo admin/farmacia
-        return [IsAuthenticated(), IsFarmaciaRole()]
+        return [IsAuthenticated(), HasDonacionesWritePermission()]
     
     def get_queryset(self):
         from core.models import Donacion
+        from core.permissions import _has_role
+        
         # ISS-FIX: Incluir producto_donacion del nuevo catálogo
         queryset = Donacion.objects.select_related(
             'centro_destino', 'recibido_por'
@@ -2736,9 +2742,28 @@ class DonacionViewSet(viewsets.ModelViewSet):
             'detalles', 
             'detalles__producto_donacion',  # Nuevo catálogo de donaciones
             'detalles__producto'  # Legacy (compatibilidad)
-        ).all()
+        )
         
-        # Filtros
+        # ISS-FIX SEGURIDAD: Scoping por centro
+        # Admin/farmacia/vista ven todo; usuarios de centro solo su centro
+        user = self.request.user
+        if not _has_role(user, ['admin', 'farmacia', 'vista']):
+            # Usuario de centro: solo donaciones DESTINADAS a su centro
+            user_centro = getattr(user, 'centro', None)
+            if user_centro:
+                queryset = queryset.filter(centro_destino=user_centro)
+                logger.debug(
+                    f"ISS-FIX: Usuario {user.username} de centro {user_centro.nombre} "
+                    f"accediendo a donaciones filtradas"
+                )
+            else:
+                # Usuario sin centro no ve nada
+                logger.warning(
+                    f"ISS-FIX: Usuario {user.username} sin centro intentó acceder a donaciones"
+                )
+                return Donacion.objects.none()
+        
+        # Filtros adicionales por query params
         estado = self.request.query_params.get('estado')
         if estado:
             queryset = queryset.filter(estado=estado)
@@ -3954,6 +3979,10 @@ class DetalleDonacionViewSet(viewsets.ModelViewSet):
     ViewSet para gestionar detalles de donaciones.
     Usa el catálogo independiente de ProductoDonacion.
     Solo ADMIN y FARMACIA pueden modificar.
+    
+    ISS-FIX SEGURIDAD:
+    - Lectura requiere perm_donaciones (no solo autenticación)
+    - Scoping por centro: usuarios de centro solo ven detalles de donaciones a SU centro
     """
     pagination_class = StandardResultsSetPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -3966,21 +3995,44 @@ class DetalleDonacionViewSet(viewsets.ModelViewSet):
     ordering = ['-created_at']
     
     def get_permissions(self):
-        """Permisos según la acción:
-        - list, retrieve: IsAuthenticated
+        """
+        ISS-FIX: Permisos según la acción:
+        - list, retrieve, exportaciones: HasDonacionesPermission (verifica perm_donaciones)
         - create, update, destroy: IsFarmaciaRole
         """
+        from core.permissions import HasDonacionesPermission, HasDonacionesWritePermission
+        
         if self.action in ['list', 'retrieve', 'exportar_excel', 'exportar_pdf']:
-            return [IsAuthenticated()]
-        return [IsAuthenticated(), IsFarmaciaRole()]
+            # ISS-FIX: Requiere perm_donaciones, no solo autenticación
+            return [IsAuthenticated(), HasDonacionesPermission()]
+        return [IsAuthenticated(), HasDonacionesWritePermission()]
     
     def get_queryset(self):
         from core.models import DetalleDonacion
+        from core.permissions import _has_role
         from datetime import date, timedelta
         
         queryset = DetalleDonacion.objects.select_related(
-            'donacion', 'producto', 'producto_donacion'  # Incluir ambos catálogos
-        ).all()
+            'donacion', 'donacion__centro_destino', 'producto', 'producto_donacion'
+        )
+        
+        # ISS-FIX SEGURIDAD: Scoping por centro
+        # Admin/farmacia/vista ven todo; usuarios de centro solo de su centro
+        user = self.request.user
+        if not _has_role(user, ['admin', 'farmacia', 'vista']):
+            # Usuario de centro: solo detalles de donaciones a su centro
+            user_centro = getattr(user, 'centro', None)
+            if user_centro:
+                queryset = queryset.filter(donacion__centro_destino=user_centro)
+                logger.debug(
+                    f"ISS-FIX: Usuario {user.username} de centro {user_centro.nombre} "
+                    f"accediendo a detalles de donaciones filtrados"
+                )
+            else:
+                logger.warning(
+                    f"ISS-FIX: Usuario {user.username} sin centro intentó acceder a detalles donaciones"
+                )
+                return DetalleDonacion.objects.none()
         
         # Filtrar por donacion si se especifica
         donacion_id = self.request.query_params.get('donacion')
@@ -4566,6 +4618,10 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
     Control interno sin afectar movimientos principales.
     Solo ADMIN y FARMACIA pueden registrar entregas.
     
+    ISS-FIX SEGURIDAD:
+    - Lectura requiere perm_donaciones (no solo autenticación)
+    - Scoping por centro: usuarios de centro solo ven entregas a SU centro
+    
     Endpoints adicionales:
     - GET /salidas-donaciones/exportar-excel/ - Exportar entregas a Excel
     - POST /salidas-donaciones/importar-excel/ - Importar entregas desde Excel
@@ -4576,13 +4632,17 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'delete', 'head', 'options']  # Permite eliminar entregas pendientes
     
     def get_permissions(self):
-        """Permisos según la acción:
-        - list, retrieve, exportar_excel, plantilla_excel: IsAuthenticated
+        """
+        ISS-FIX: Permisos según la acción:
+        - list, retrieve, exportaciones: HasDonacionesPermission (verifica perm_donaciones)
         - create, delete, importar_excel: IsFarmaciaRole
         """
+        from core.permissions import HasDonacionesPermission, HasDonacionesWritePermission
+        
         if self.action in ['list', 'retrieve', 'exportar_excel', 'plantilla_excel']:
-            return [IsAuthenticated()]
-        return [IsAuthenticated(), IsFarmaciaRole()]
+            # ISS-FIX: Requiere perm_donaciones, no solo autenticación
+            return [IsAuthenticated(), HasDonacionesPermission()]
+        return [IsAuthenticated(), HasDonacionesWritePermission()]
     
     def destroy(self, request, *args, **kwargs):
         """
@@ -4634,16 +4694,41 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         from core.models import SalidaDonacion
+        from core.permissions import _has_role
+        
         # ISS-DB-ALIGN: Incluir centro_destino, finalizado_por y ambos productos en select_related
         queryset = SalidaDonacion.objects.select_related(
             'detalle_donacion', 
             'detalle_donacion__producto',  # FK legacy
             'detalle_donacion__producto_donacion',  # FK nuevo catálogo donaciones
             'detalle_donacion__donacion', 
+            'detalle_donacion__donacion__centro_destino',  # ISS-FIX: Para scoping
             'entregado_por',
             'centro_destino', 
             'finalizado_por'
-        ).all()
+        )
+        
+        # ISS-FIX SEGURIDAD: Scoping por centro
+        # Admin/farmacia/vista ven todo; usuarios de centro solo de su centro
+        user = self.request.user
+        if not _has_role(user, ['admin', 'farmacia', 'vista']):
+            # Usuario de centro: solo salidas a su centro
+            user_centro = getattr(user, 'centro', None)
+            if user_centro:
+                # Filtrar por centro destino de la salida O centro destino de la donación
+                queryset = queryset.filter(
+                    Q(centro_destino=user_centro) | 
+                    Q(detalle_donacion__donacion__centro_destino=user_centro)
+                )
+                logger.debug(
+                    f"ISS-FIX: Usuario {user.username} de centro {user_centro.nombre} "
+                    f"accediendo a salidas de donaciones filtradas"
+                )
+            else:
+                logger.warning(
+                    f"ISS-FIX: Usuario {user.username} sin centro intentó acceder a salidas donaciones"
+                )
+                return SalidaDonacion.objects.none()
         
         # Filtrar por detalle de donacion
         detalle_id = self.request.query_params.get('detalle_donacion')
@@ -6277,6 +6362,64 @@ class PacienteViewSet(viewsets.ModelViewSet):
             return PacienteSimpleSerializer
         return PacienteSerializer
     
+    def create(self, request, *args, **kwargs):
+        """
+        Crea un paciente con validación de centro.
+        
+        ISS-SEC-FIX: Usuarios de centro SOLO pueden crear pacientes en su propio centro.
+        Admin/farmacia pueden especificar cualquier centro.
+        """
+        user = request.user
+        data = request.data.copy()
+        
+        # ISS-SEC-FIX: Validación estricta de centro
+        if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']:
+            # Admin/farmacia pueden especificar centro libremente
+            pass
+        else:
+            # Usuario de centro: FORZAR su centro (ignorar payload)
+            if user.centro:
+                data['centro'] = user.centro.id
+            else:
+                return Response(
+                    {'detail': 'Usuario sin centro asignado no puede crear pacientes'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(created_by=user)
+        
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    def update(self, request, *args, **kwargs):
+        """
+        Actualiza un paciente con validación de centro.
+        
+        ISS-SEC-FIX: Usuarios de centro SOLO pueden editar pacientes de su propio centro.
+        """
+        user = request.user
+        instance = self.get_object()
+        data = request.data.copy()
+        
+        # ISS-SEC-FIX: Validar permisos sobre el paciente
+        if not (user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']):
+            # Verificar que el paciente sea del centro del usuario
+            if instance.centro_id != user.centro_id:
+                return Response(
+                    {'detail': 'No tiene permisos para editar este paciente'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            # No permitir cambiar el centro
+            if 'centro' in data:
+                data['centro'] = user.centro.id  # Forzar su centro
+        
+        serializer = self.get_serializer(instance, data=data, partial=kwargs.get('partial', False))
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        
+        return Response(serializer.data)
+    
     @action(detail=False, methods=['get'])
     def autocomplete(self, request):
         """Endpoint para autocompletado de pacientes"""
@@ -6804,9 +6947,39 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                 # Extraer detalles para procesarlos después
                 detalles_data = data.pop('detalles', [])
                 
-                # Asignar centro del usuario si no se especifica
-                if not data.get('centro') and user.centro:
-                    data['centro'] = user.centro.id
+                # ISS-SEC-FIX: Validación estricta de centro
+                # Admin/farmacia pueden especificar centro, otros usuarios DEBEN usar su propio centro
+                if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']:
+                    # Admin/farmacia pueden especificar centro libremente
+                    if not data.get('centro') and user.centro:
+                        data['centro'] = user.centro.id
+                else:
+                    # Usuario de centro: FORZAR su centro (ignorar payload)
+                    if user.centro:
+                        data['centro'] = user.centro.id
+                    else:
+                        return Response(
+                            {'detail': 'Usuario sin centro asignado no puede crear dispensaciones'},
+                            status=status.HTTP_403_FORBIDDEN
+                        )
+                
+                # ISS-SEC-FIX: Validar que el paciente pertenezca al centro del usuario
+                paciente_id = data.get('paciente')
+                if paciente_id:
+                    try:
+                        paciente = Paciente.objects.get(pk=paciente_id)
+                        # Si no es admin/farmacia, verificar que el paciente sea de su centro
+                        if not (user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']):
+                            if paciente.centro_id != user.centro_id:
+                                return Response(
+                                    {'detail': 'No puede crear dispensaciones para pacientes de otro centro'},
+                                    status=status.HTTP_403_FORBIDDEN
+                                )
+                    except Paciente.DoesNotExist:
+                        return Response(
+                            {'detail': 'Paciente no encontrado'},
+                            status=status.HTTP_404_NOT_FOUND
+                        )
                 
                 # Crear la dispensación
                 serializer = self.get_serializer(data=data)
@@ -8210,11 +8383,32 @@ class DetalleCompraCajaChicaViewSet(viewsets.ModelViewSet):
     pagination_class = StandardResultsSetPagination
     
     def get_queryset(self):
-        queryset = super().get_queryset().select_related('producto', 'compra')
+        queryset = super().get_queryset().select_related('producto', 'compra', 'compra__centro')
+        user = self.request.user
+        
+        # ISS-SEC-FIX: Filtrar por centro del usuario (IDOR/Tenancy)
+        # - Admin/farmacia pueden ver todo (auditoría)
+        # - Usuarios de centro solo ven detalles de compras de su centro
+        if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']:
+            pass  # Admin y farmacia ven todo
+        elif user.centro:
+            # Usuario de centro: SOLO ve detalles de compras de su centro
+            queryset = queryset.filter(compra__centro=user.centro)
+        else:
+            # Sin centro asignado = no ve nada
+            return queryset.none()
         
         compra_id = self.request.query_params.get('compra')
         if compra_id:
-            queryset = queryset.filter(compra_id=compra_id)
+            # ISS-SEC-FIX: Validar que la compra pertenezca al centro del usuario
+            if not (user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']):
+                if user.centro:
+                    # Verificar que la compra sea del centro del usuario
+                    queryset = queryset.filter(compra_id=compra_id, compra__centro=user.centro)
+                else:
+                    return queryset.none()
+            else:
+                queryset = queryset.filter(compra_id=compra_id)
         
         return queryset
 
@@ -8505,11 +8699,31 @@ class MovimientoCajaChicaViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ['-created_at']
     
     def get_queryset(self):
-        queryset = super().get_queryset().select_related('inventario', 'usuario')
+        queryset = super().get_queryset().select_related('inventario', 'inventario__centro', 'usuario')
+        user = self.request.user
+        
+        # ISS-SEC-FIX: Filtrar por centro del usuario (IDOR/Tenancy)
+        # - Admin/farmacia pueden ver todo (auditoría)
+        # - Usuarios de centro solo ven movimientos de su centro
+        if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']:
+            pass  # Admin y farmacia ven todo
+        elif user.centro:
+            # Usuario de centro: SOLO ve movimientos de inventario de su centro
+            queryset = queryset.filter(inventario__centro=user.centro)
+        else:
+            # Sin centro asignado = no ve nada
+            return queryset.none()
         
         inventario_id = self.request.query_params.get('inventario')
         if inventario_id:
-            queryset = queryset.filter(inventario_id=inventario_id)
+            # ISS-SEC-FIX: Validar que el inventario pertenezca al centro del usuario
+            if not (user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']):
+                if user.centro:
+                    queryset = queryset.filter(inventario_id=inventario_id, inventario__centro=user.centro)
+                else:
+                    return queryset.none()
+            else:
+                queryset = queryset.filter(inventario_id=inventario_id)
         
         tipo = self.request.query_params.get('tipo')
         if tipo:

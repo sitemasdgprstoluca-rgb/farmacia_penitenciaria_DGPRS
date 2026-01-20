@@ -24,9 +24,11 @@ import logging
 from core.models import Producto
 from core.serializers import ProductoSerializer
 from core.constants import UNIDADES_MEDIDA
+from core.permissions import HasProductosPermission, IsFarmaciaRole
 from .base import (
     CustomPagination,
     is_farmacia_or_admin,
+    has_global_read_access,
     get_user_centro,
     validar_archivo_excel,
     cargar_workbook_seguro,
@@ -39,13 +41,13 @@ logger = logging.getLogger(__name__)
 class ProductoViewSet(viewsets.ModelViewSet):
     queryset = Producto.objects.all()
     serializer_class = ProductoSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasProductosPermission]
     pagination_class = CustomPagination
 
     def get_permissions(self):
         """
         Permisos personalizados por acción:
-        - list, retrieve: IsAuthenticated
+        - list, retrieve: IsAuthenticated + HasProductosPermission (validar perm_productos)
         - create, update, destroy, toggle_activo, importar_excel, exportar_excel, auditoria: IsFarmaciaRole
         """
         acciones_farmacia = [
@@ -53,21 +55,23 @@ class ProductoViewSet(viewsets.ModelViewSet):
             'toggle_activo', 'importar_excel', 'exportar_excel', 'auditoria'
         ]
         if self.action in acciones_farmacia:
-            from core.permissions import IsFarmaciaRole
             return [IsAuthenticated(), IsFarmaciaRole()]
-        return [IsAuthenticated()]
+        # ISS-SEC-FIX: list y retrieve requieren HasProductosPermission
+        return [IsAuthenticated(), HasProductosPermission()]
 
     def get_queryset(self):
         queryset = Producto.objects.all()
         user = self.request.user
         
-        # ISS-FIX: Determinar el centro para filtrar stock
+        # ISS-SEC-FIX: Determinar el centro para filtrar stock
         # Usuarios CENTRO solo ven productos con stock en SU centro (lo que farmacia les ha surtido)
         # Admin/Farmacia/Vista ven stock de farmacia central por defecto
         centro_param = self.request.query_params.get('centro')
         
-        # ISS-FIX: Flag para determinar si el usuario es de centro
-        es_usuario_centro = not is_farmacia_or_admin(user) and not user.is_superuser
+        # ISS-SEC-FIX: Flag para determinar si el usuario es de centro
+        # Usar has_global_read_access() para incluir rol VISTA correctamente
+        tiene_acceso_global = has_global_read_access(user)
+        es_usuario_centro = not tiene_acceso_global
         
         if es_usuario_centro:
             # Usuario de centro - filtrar stock solo por su centro
@@ -97,6 +101,11 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 ).filter(stock_calculado__gt=0)  # Filtro imposible = 0 resultados
         else:
             # Admin/Farmacia/Vista - pueden ver stock global o por centro específico
+            # ISS-SEC-FIX: Validar que centro=todos solo lo usen roles con acceso global
+            if centro_param == 'todos' and not tiene_acceso_global:
+                # Usuario sin acceso global intenta ver todos - denegar
+                centro_param = None  # Ignorar parámetro inválido
+            
             if centro_param:
                 if centro_param == 'central':
                     # Solo stock de farmacia central (centro=NULL)
@@ -368,26 +377,56 @@ class ProductoViewSet(viewsets.ModelViewSet):
             # Determinar si consolidar (usado en Trazabilidad)
             centro_param = request.query_params.get('centro')
             consolidar_param = request.query_params.get('consolidar', 'true').lower()
-            es_admin_farmacia = is_farmacia_or_admin(user) or user.is_superuser
+            
+            # ISS-SEC-FIX: Usar has_global_read_access para validar acceso global
+            # Esto incluye admin, farmacia, superuser y rol VISTA
+            tiene_acceso_global = has_global_read_access(user)
             
             # ISS-FIX: Por defecto para admin/farmacia, solo mostrar Almacén Central
             # Para ver todos los centros (Trazabilidad), pasar ?centro=todos o ?consolidar=true
-            todos_centros = request.query_params.get('centro') == 'todos'
+            todos_centros = centro_param == 'todos'
+            
+            # ISS-SEC-FIX: VALIDACIÓN CRÍTICA - Bloquear centro=todos para usuarios sin acceso global
+            # Esto previene IDOR/BOLA donde usuarios de centro ven lotes de otros centros
+            if todos_centros and not tiene_acceso_global:
+                logger.warning(f"ISS-SEC: Usuario {user.username} (rol={getattr(user, 'rol', 'N/A')}) intentó acceder a lotes de todos los centros - DENEGADO")
+                # Forzar filtro por centro del usuario
+                user_centro = get_user_centro(user)
+                if user_centro:
+                    lotes_qs = lotes_qs.filter(centro=user_centro)
+                else:
+                    return Response({'error': 'No tiene acceso a lotes de otros centros'}, status=status.HTTP_403_FORBIDDEN)
+                centro_param = None  # Resetear para evitar bypass
+                todos_centros = False
             
             # TRAZABILIDAD: Consolidar solo cuando se pide explícitamente todos los centros
-            debe_consolidar = es_admin_farmacia and todos_centros and consolidar_param != 'false'
+            debe_consolidar = tiene_acceso_global and todos_centros and consolidar_param != 'false'
             
             # Filtro por centro
             if centro_param:
                 if centro_param == 'central':
                     lotes_qs = lotes_qs.filter(centro__isnull=True)
-                elif centro_param == 'todos':
-                    # Mostrar todos los centros (para Trazabilidad)
+                elif centro_param == 'todos' and tiene_acceso_global:
+                    # ISS-SEC-FIX: Solo con acceso global se permite ver todos
                     pass  # No filtrar
-                else:
-                    lotes_qs = lotes_qs.filter(centro_id=centro_param)
-            elif es_admin_farmacia:
-                # ISS-FIX: Admin/farmacia por defecto solo ve Almacén Central
+                elif centro_param != 'todos':
+                    # Centro específico por ID
+                    # ISS-SEC-FIX: Usuarios sin acceso global solo pueden ver su propio centro
+                    if not tiene_acceso_global:
+                        user_centro = get_user_centro(user)
+                        if user_centro and str(user_centro.id) == str(centro_param):
+                            lotes_qs = lotes_qs.filter(centro_id=centro_param)
+                        else:
+                            # Intentando acceder a centro ajeno - forzar su centro
+                            logger.warning(f"ISS-SEC: Usuario {user.username} intentó acceder a centro {centro_param} - DENEGADO")
+                            if user_centro:
+                                lotes_qs = lotes_qs.filter(centro=user_centro)
+                            else:
+                                return Response({'error': 'No tiene acceso a lotes de otros centros'}, status=status.HTTP_403_FORBIDDEN)
+                    else:
+                        lotes_qs = lotes_qs.filter(centro_id=centro_param)
+            elif tiene_acceso_global:
+                # ISS-SEC-FIX: Admin/farmacia/vista por defecto solo ve Almacén Central
                 # Los lotes de otros centros se ven en Trazabilidad con ?centro=todos
                 lotes_qs = lotes_qs.filter(centro__isnull=True)
             else:
