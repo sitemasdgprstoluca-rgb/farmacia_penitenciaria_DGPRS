@@ -529,11 +529,11 @@ const RequisicionDetalle = () => {
         const rolActual = (user?.rol_efectivo || user?.rol || '').toLowerCase();
         const esRolMedicoCentro = ['medico', 'centro', 'usuario_centro'].includes(rolActual);
         
-        // FLUJO V2: En estado ENTREGADA todos descargan comprobante de entrega
+        // FLUJO V2: En estado ENTREGADA usar Recibo de Salida como documento oficial
         if (estadoActual === 'entregada') {
-          response = await requisicionesAPI.downloadHojaConsulta(id);
-          nombreArchivo = `Comprobante_Entrega_${requisicion.folio}.pdf`;
-          toast.success('Comprobante de entrega descargado');
+          response = await requisicionesAPI.downloadReciboSalida(id);
+          nombreArchivo = `Recibo_Salida_${requisicion.folio}.pdf`;
+          toast.success('Recibo de Salida descargado');
         }
         // Médico/Centro en estado surtida: descargar hoja de CONSULTA con sello SURTIDA
         else if (esRolMedicoCentro && !esFarmacia && estadoActual === 'surtida') {
@@ -1723,7 +1723,7 @@ const RequisicionDetalle = () => {
                   disabled={procesando}
                   className={`flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors ${requisicion?.estado === 'entregada' ? 'border-green-500 text-green-600' : 'border-theme-primary text-theme-primary'}`}
                 >
-                  <FaDownload /> {requisicion?.estado === 'entregada' ? 'Comprobante de entrega' : 'Hoja de recolección'}
+                  <FaDownload /> {requisicion?.estado === 'entregada' ? 'Recibo de Entrega' : 'Hoja de recolección'}
                 </button>
               )}
 
@@ -1737,8 +1737,8 @@ const RequisicionDetalle = () => {
                 </button>
               )}
               
-              {/* Recibo de Salida: Documento oficial para requisiciones surtidas */}
-              {puedeDescargarReciboSalida && (
+              {/* Recibo de Salida: Documento oficial para requisiciones surtidas (NO entregadas, ya que ese usa el botón principal) */}
+              {puedeDescargarReciboSalida && requisicion?.estado !== 'entregada' && (
                 <button
                   onClick={handleDescargarReciboSalida}
                   disabled={procesando}

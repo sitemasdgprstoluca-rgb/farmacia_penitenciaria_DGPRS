@@ -130,6 +130,13 @@ export function RequisicionAcciones({
       );
     }
     
+    // ISS-FIX: Para estado 'devuelta', no mostrar 'reenviar' porque ya hay botón "Corregir"
+    // El usuario debe corregir primero y luego reenviar desde el modo edición
+    const estadoActual = requisicion?.estado?.toLowerCase();
+    if (estadoActual === 'devuelta') {
+      accionesDisponibles = accionesDisponibles.filter(a => a.key !== 'reenviar');
+    }
+    
     return accionesDisponibles;
   }, [requisicion, getAccionesDisponibles, contexto]);
   
