@@ -1035,8 +1035,8 @@ class FormatoBCanvas(canvas.Canvas):
 
 def generar_hoja_entrega(datos_entrega, finalizado=False):
     """
-    Genera PDF "RECIBO DE SALIDA DEL ALMACEN DE MEDICAMENTO" - Formato Oficial EXACTO.
-    Usa la misma imagen de fondo que el Formato A - Control Mensual (fondo_control_mensual.png).
+    Genera PDF "RECIBO DE SALIDA DEL ALMACEN DE MEDICAMENTO - DONACIÓN ISEM"
+    Formato Oficial EXACTO según plantilla institucional.
     
     Args:
         datos_entrega: Dict con datos de la entrega
@@ -1048,19 +1048,19 @@ def generar_hoja_entrega(datos_entrega, finalizado=False):
     buffer = BytesIO()
     page_width, page_height = letter
     
-    # Obtener imagen de fondo - usar fondo_control_mensual.png (igual que Formato A)
+    # Obtener imagen de fondo
     from pathlib import Path
     from django.conf import settings
     
     fondo_control_mensual = Path(settings.BASE_DIR) / 'static' / 'img' / 'pdf' / 'fondo_control_mensual.png'
     fondo_path = str(fondo_control_mensual) if fondo_control_mensual.exists() else None
     
-    # Márgenes según plantilla oficial
-    margin_left = 0.5*inch
-    margin_right = 0.5*inch
-    margin_top = 0.95*inch
+    # Márgenes según plantilla oficial - EXACTOS
+    margin_left = 0.4*inch
+    margin_right = 0.4*inch
+    margin_top = 1.0*inch  # Espacio para logo institucional
     margin_bottom = 0.5*inch
-    content_width = page_width - margin_left - margin_right
+    content_width = page_width - margin_left - margin_right  # ~7.7 inches
     
     doc = SimpleDocTemplate(
         buffer, 
@@ -1073,52 +1073,51 @@ def generar_hoja_entrega(datos_entrega, finalizado=False):
     story = []
     styles = getSampleStyleSheet()
     
-    # ========== ESTILOS ==========
-    estilo_normal = ParagraphStyle('Normal8', fontSize=8, fontName='Helvetica', textColor=colors.black)
-    estilo_bold = ParagraphStyle('Bold8', fontSize=8, fontName='Helvetica-Bold', textColor=colors.black)
-    estilo_bold_center = ParagraphStyle('BoldCenter', fontSize=9, fontName='Helvetica-Bold', 
-                                         alignment=TA_CENTER, textColor=colors.black)
-    estilo_titulo = ParagraphStyle('Titulo', fontSize=10, fontName='Helvetica-Bold', 
-                                    alignment=TA_CENTER, textColor=colors.black, spaceAfter=6)
-    estilo_celda = ParagraphStyle('Celda', fontSize=8, fontName='Helvetica', leading=10, 
-                                   wordWrap='CJK', alignment=TA_LEFT, textColor=colors.black)
-    estilo_celda_center = ParagraphStyle('CeldaC', fontSize=8, fontName='Helvetica', 
-                                          leading=10, alignment=TA_CENTER, textColor=colors.black)
+    # Color institucional azul oscuro
+    AZUL = colors.HexColor('#1a365d')
     
-    # ========== FILA 1: FOLIO (izq) | vacío | FECHA DE ELABORACIÓN (der) ==========
+    # ========== ESTILOS ==========
+    estilo_label = ParagraphStyle('Label', fontSize=8, fontName='Helvetica-Bold', textColor=AZUL)
+    estilo_value = ParagraphStyle('Value', fontSize=8, fontName='Helvetica', textColor=AZUL)
+    estilo_periodo = ParagraphStyle('Periodo', fontSize=9, fontName='Helvetica-Bold', 
+                                     alignment=TA_CENTER, textColor=AZUL)
+    estilo_titulo = ParagraphStyle('Titulo', fontSize=9, fontName='Helvetica-Bold', 
+                                    alignment=TA_CENTER, textColor=AZUL)
+    estilo_campo = ParagraphStyle('Campo', fontSize=8, fontName='Helvetica-Bold', textColor=AZUL)
+    estilo_header = ParagraphStyle('Header', fontSize=7, fontName='Helvetica-Bold', 
+                                    alignment=TA_CENTER, textColor=AZUL, leading=9)
+    estilo_celda = ParagraphStyle('Celda', fontSize=7, fontName='Helvetica-Bold', leading=9, 
+                                   wordWrap='CJK', alignment=TA_LEFT, textColor=AZUL)
+    estilo_celda_center = ParagraphStyle('CeldaC', fontSize=7, fontName='Helvetica-Bold', 
+                                          leading=9, alignment=TA_CENTER, textColor=AZUL)
+    estilo_firma_titulo = ParagraphStyle('FirmaTit', fontSize=7, fontName='Helvetica', 
+                                          alignment=TA_CENTER, textColor=AZUL, leading=9)
+    estilo_firma_nombre = ParagraphStyle('FirmaNom', fontSize=6, fontName='Helvetica', 
+                                          alignment=TA_CENTER, textColor=AZUL, leading=8)
+    
+    # ========== FILA 1: FOLIO Y FECHA (tablas invisibles para posicionar) ==========
     fecha_str = datos_entrega['fecha'].strftime('%d/%m/%Y') if datos_entrega.get('fecha') else ''
     
-    fila_folio = Table([
-        [
-            Paragraph("FOLIO:", estilo_bold),
-            Paragraph("", estilo_normal),  # espacio para escribir
-            Paragraph("FECHA DE", estilo_bold),
-            Paragraph(fecha_str, estilo_normal),
-        ]
-    ], colWidths=[0.5*inch, 2.5*inch, 3.0*inch, 1.5*inch])
-    fila_folio.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (1, 0), 'LEFT'),
+    # Tabla invisible para FOLIO: (izquierda) y FECHA DE ELABORACIÓN: (derecha)
+    encabezado_data = [[
+        Paragraph("<b>FOLIO:</b>", estilo_label),
+        '',  # espacio vacío
+        Paragraph("<b>FECHA DE ELABORACIÓN:</b>", estilo_label),
+        Paragraph(f"<u>&nbsp;&nbsp;&nbsp;{fecha_str}&nbsp;&nbsp;&nbsp;</u>", estilo_value),
+    ]]
+    encabezado_table = Table(encabezado_data, colWidths=[0.5*inch, 3.5*inch, 1.5*inch, 1.0*inch])
+    encabezado_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (0, 0), 'LEFT'),
         ('ALIGN', (2, 0), (2, 0), 'RIGHT'),
-        ('ALIGN', (3, 0), (3, 0), 'LEFT'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (3, 0), (3, 0), 'RIGHT'),
+        ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
     ]))
-    story.append(fila_folio)
-    
-    # Segunda línea de fecha
-    fila_elab = Table([
-        [
-            Paragraph("", estilo_normal),
-            Paragraph("", estilo_normal),
-            Paragraph("ELABORACIÓN:", estilo_bold),
-            Paragraph("", estilo_normal),
-        ]
-    ], colWidths=[0.5*inch, 2.5*inch, 3.0*inch, 1.5*inch])
-    fila_elab.setStyle(TableStyle([
-        ('ALIGN', (2, 0), (2, 0), 'RIGHT'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
-    story.append(fila_elab)
-    story.append(Spacer(1, 0.1*inch))
+    story.append(encabezado_table)
+    story.append(Spacer(1, 0.12*inch))
     
     # ========== PERIODO ==========
     if datos_entrega.get('fecha'):
@@ -1126,37 +1125,61 @@ def generar_hoja_entrega(datos_entrega, finalizado=False):
                  'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
         mes = meses[datos_entrega['fecha'].month]
         anio = datos_entrega['fecha'].year
-        periodo_texto = f"PERIODO: {mes} {anio} DONACIÓN SEDIF"
+        periodo_texto = f"PERIODO:  {mes} {anio}  DONACIÓN ISEM"
     else:
-        periodo_texto = "PERIODO: ________________"
+        periodo_texto = "PERIODO: ________________  DONACIÓN ISEM"
     
-    story.append(Paragraph(f"<b>{periodo_texto}</b>", estilo_bold_center))
-    story.append(Spacer(1, 0.1*inch))
+    story.append(Paragraph(periodo_texto, estilo_periodo))
+    story.append(Spacer(1, 0.15*inch))
     
-    # ========== TÍTULO PRINCIPAL (subrayado) ==========
-    story.append(Paragraph("<b><u>RECIBO DE SALIDA DEL ALMACEN DE MEDICAMENTO</u></b>", estilo_titulo))
-    story.append(Spacer(1, 0.08*inch))
+    # ========== TÍTULO PRINCIPAL ==========
+    titulo_tabla = Table([
+        [Paragraph("<b>RECIBO DE SALIDA DEL ALMACEN DE MEDICAMENTO  -  DONACIÓN ISEM</b>", estilo_titulo)]
+    ], colWidths=[content_width], rowHeights=[0.25*inch])
+    titulo_tabla.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOX', (0, 0), (-1, -1), 1, AZUL),
+    ]))
+    story.append(titulo_tabla)
     
     # ========== C.P.R.S. ==========
     centro_nombre = str(datos_entrega.get('centro_destino', '')).upper()
-    story.append(Paragraph(f"<b>C.P.R.S.: {centro_nombre}</b>", estilo_bold))
+    cprs_tabla = Table([
+        [Paragraph(f"<b>C.P.R.S. : {centro_nombre}</b>", estilo_campo)]
+    ], colWidths=[content_width], rowHeights=[0.22*inch])
+    cprs_tabla.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOX', (0, 0), (-1, -1), 1, AZUL),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    story.append(cprs_tabla)
     
     # ========== ENCARGADO ==========
     usuario = str(datos_entrega.get('usuario', '')).upper()
-    story.append(Paragraph(f"<b>ENCARGADO DE LOS SERVICIOS MEDICO-PSIQUIATRICOS:</b> {usuario}", estilo_normal))
-    story.append(Spacer(1, 0.1*inch))
+    encargado_tabla = Table([
+        [Paragraph(f"<b>ENCARGADO DE LOS SERVICIOS MÉDICO PSIQUIÁTRICOS: {usuario}</b>", estilo_campo)]
+    ], colWidths=[content_width], rowHeights=[0.22*inch])
+    encargado_tabla.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOX', (0, 0), (-1, -1), 1, AZUL),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    story.append(encargado_tabla)
+    story.append(Spacer(1, 0.08*inch))
     
     # ========== TABLA DE PRODUCTOS ==========
-    col_widths = [0.5*inch, 0.55*inch, 5.2*inch, 1.25*inch]
+    # Anchos exactos: NO.PROG | CLAVE | MEDICAMENTO/MATERIAL/DESCRIPCION | CANTIDAD SURTIDA
+    col_widths = [0.55*inch, 0.55*inch, 5.3*inch, 1.1*inch]
     
     # Header
-    header_style = ParagraphStyle('HeaderT', fontSize=8, fontName='Helvetica-Bold', 
-                                   alignment=TA_CENTER, textColor=colors.black)
     productos_data = [[
-        Paragraph("<b>NO<br/>PROG</b>", header_style),
-        Paragraph("<b>CLAVE</b>", header_style),
-        Paragraph("<b>MEDICAMENTO Y/O DESCRIPCION</b>", header_style),
-        Paragraph("<b>CANTIDAD<br/>SURTIDA</b>", header_style),
+        Paragraph("<b>NO. PROG.</b>", estilo_header),
+        Paragraph("<b>CLAVE</b>", estilo_header),
+        Paragraph("<b>MEDICAMENTO/MATERIAL/DESCRIPCIÓN</b>", estilo_header),
+        Paragraph("<b>CANTIDAD SURTIDA</b>", estilo_header),
     ]]
     
     # Filas de datos
@@ -1169,20 +1192,23 @@ def generar_hoja_entrega(datos_entrega, finalizado=False):
             Paragraph(str(item.get('cantidad', 0)), estilo_celda_center),
         ])
     
-    productos_table = Table(productos_data, colWidths=col_widths)
+    # Altura de filas: header más alto, datos ajustados
+    row_heights = [0.35*inch] + [None] * (len(productos_data) - 1)
+    
+    productos_table = Table(productos_data, colWidths=col_widths, rowHeights=row_heights)
     productos_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 3),
         ('RIGHTPADDING', (0, 0), (-1, -1), 3),
         ('TOPPADDING', (0, 0), (-1, -1), 4),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('BOX', (0, 0), (-1, -1), 1, colors.black),
-        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('BOX', (0, 0), (-1, -1), 1, AZUL),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, AZUL),
     ]))
     story.append(productos_table)
-    story.append(Spacer(1, 0.3*inch))
+    story.append(Spacer(1, 0.4*inch))
     
-    # ========== SECCIÓN DE FIRMAS - SIN DIVISIONES INTERNAS ==========
+    # ========== SECCIÓN DE FIRMAS ==========
     if finalizado:
         sello_style = ParagraphStyle('Sello', fontSize=24, fontName='Helvetica-Bold',
                                       textColor=colors.HexColor('#22c55e'), alignment=TA_CENTER)
@@ -1202,64 +1228,113 @@ def generar_hoja_entrega(datos_entrega, finalizado=False):
         container.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER')]))
         story.append(container)
     else:
-        # Estilos para firmas
-        firma_titulo = ParagraphStyle('FT', fontSize=8, fontName='Helvetica-Bold', 
-                                       alignment=TA_CENTER, textColor=colors.black)
-        firma_nombre = ParagraphStyle('FN', fontSize=7, fontName='Helvetica', 
-                                       alignment=TA_CENTER, textColor=colors.black, leading=9)
-        
-        # Anchos de columnas
+        # Anchos de columnas de firma (3 columnas iguales)
         col_firma = content_width / 3
         
-        # Tabla de firmas - SOLO BORDE EXTERIOR, SIN DIVISIONES INTERNAS
+        # Tabla de firmas - FORMATO EXACTO: solo borde exterior y líneas verticales
         firmas_data = [
             # Fila 1: Títulos
             [
-                Paragraph("<b>Vo. Bo.</b>", firma_titulo),
-                Paragraph("<b>SURTIÓ</b>", firma_titulo),
-                Paragraph("<b>RECIBIÓ CONFORME LAS CANTIDADES<br/>SEÑALADAS</b>", firma_titulo),
+                Paragraph("Vo.Bo.", estilo_firma_titulo),
+                Paragraph("SURTIDO", estilo_firma_titulo),
+                Paragraph("RECIBÍ DE CONFORMIDAD LAS CANTIDADES SEÑALADAS", estilo_firma_titulo),
             ],
-            # Fila 2-3: Espacio para firma
+            # Fila 2-4: Espacio para firma
             ['', '', ''],
             ['', '', ''],
-            # Fila 4: Línea de firma
+            ['', '', ''],
+            # Fila 5: Línea de firma (usando caracteres de subrayado)
             [
-                Paragraph("_________________________", estilo_celda_center),
-                Paragraph("_________________________", estilo_celda_center),
-                Paragraph("_________________________", estilo_celda_center),
+                Paragraph("_______________________________", estilo_firma_titulo),
+                Paragraph("_______________________________", estilo_firma_titulo),
+                Paragraph("_______________________________", estilo_firma_titulo),
             ],
-            # Fila 5: Nombres y cargos
+            # Fila 6: Nombres y cargos
             [
-                Paragraph("MTRO. ERICK VALENTIN VELAZQUEZ RICO<br/>TITULAR DE LA UNIDAD DE INTELIGENCIA<br/>PENITENCIARIA", firma_nombre),
-                Paragraph("Q.F.B. MARIA ALBA MERCEDEZ<br/>ENCARGADA DE LA UNIDAD FARMACEUTICA", firma_nombre),
-                Paragraph("NOMBRE, CARGO, FIRMA/SELLO", firma_nombre),
+                Paragraph("MTRA. ETIENNE JESTHI VELÁZQUEZ BÁEZ<br/>TITULAR DE LA DIRECCIÓN DE REINSERCIÓN SOCIAL", estilo_firma_nombre),
+                Paragraph("Q.F.B. MARILENE JUÁREZ DÍAZ<br/>ENCARGADA DEL ALMACÉN MÉDICO", estilo_firma_nombre),
+                Paragraph("NOMBRE, CARGO, FIRMA, FECHA.", estilo_firma_nombre),
             ],
         ]
         
-        firmas_table = Table(firmas_data, colWidths=[col_firma, col_firma, col_firma])
+        firmas_table = Table(firmas_data, colWidths=[col_firma, col_firma, col_firma],
+                             rowHeights=[0.35*inch, 0.2*inch, 0.2*inch, 0.2*inch, 0.18*inch, 0.5*inch])
         firmas_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('TOPPADDING', (0, 0), (-1, 0), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 4),
-            ('TOPPADDING', (0, 1), (-1, 2), 20),
-            ('BOTTOMPADDING', (0, 1), (-1, 2), 20),
-            ('TOPPADDING', (0, 3), (-1, 3), 2),
-            ('BOTTOMPADDING', (0, 3), (-1, 3), 2),
-            ('TOPPADDING', (0, 4), (-1, 4), 4),
-            ('BOTTOMPADDING', (0, 4), (-1, 4), 6),
-            # SOLO BORDE EXTERIOR - SIN INNERGRID
-            ('BOX', (0, 0), (-1, -1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),  # Títulos centrados verticalmente
+            ('VALIGN', (0, 1), (-1, 3), 'MIDDLE'),  # Espacio firma
+            ('VALIGN', (0, 4), (-1, 4), 'BOTTOM'),  # Líneas
+            ('VALIGN', (0, 5), (-1, 5), 'TOP'),     # Nombres
+            # SOLO borde exterior
+            ('BOX', (0, 0), (-1, -1), 1, AZUL),
+            # Líneas verticales internas entre columnas
+            ('LINEAFTER', (0, 0), (0, -1), 0.5, AZUL),
+            ('LINEAFTER', (1, 0), (1, -1), 0.5, AZUL),
+            # Sin líneas horizontales internas
         ]))
         
         story.append(KeepTogether([firmas_table]))
     
     # ========== CONSTRUIR PDF ==========
     def make_canvas(*args, **kwargs):
-        return RequisicionCanvas(*args, fondo_path=fondo_path, **kwargs)
+        return HojaEntregaCanvas(*args, fondo_path=fondo_path, **kwargs)
     
     doc.build(story, canvasmaker=make_canvas)
     
     buffer.seek(0)
     logger.info(f"Recibo de salida generado: {datos_entrega.get('grupo_salida')}")
     return buffer
+
+
+class HojaEntregaCanvas(canvas.Canvas):
+    """
+    Canvas personalizado para Hoja de Entrega con fondo institucional y pie de página.
+    """
+    
+    def __init__(self, *args, **kwargs):
+        self.fondo_path = kwargs.pop('fondo_path', None)
+        canvas.Canvas.__init__(self, *args, **kwargs)
+        self.pages = []
+        self._dibujar_fondo()
+    
+    def showPage(self):
+        self.pages.append(dict(self.__dict__))
+        self._startPage()
+        self._dibujar_fondo()
+    
+    def save(self):
+        num_pages = len(self.pages)
+        for page_num, page_state in enumerate(self.pages, 1):
+            self.__dict__.update(page_state)
+            self._dibujar_pie_pagina(page_num, num_pages)
+            canvas.Canvas.showPage(self)
+        canvas.Canvas.save(self)
+    
+    def _dibujar_fondo(self):
+        """Dibuja el fondo institucional."""
+        if self.fondo_path and os.path.exists(self.fondo_path):
+            try:
+                page_width, page_height = letter
+                self.drawImage(
+                    str(self.fondo_path),
+                    0, 0,
+                    width=page_width,
+                    height=page_height,
+                    preserveAspectRatio=False,
+                    mask='auto'
+                )
+            except Exception as e:
+                logger.warning(f"No se pudo cargar imagen de fondo: {e}")
+    
+    def _dibujar_pie_pagina(self, num_pagina, total_paginas):
+        """Dibuja el pie de página con número de página centrado."""
+        self.saveState()
+        page_width = letter[0]
+        
+        # Texto centrado: PÁGINA X DE Y
+        self.setFillColor(colors.HexColor('#1a365d'))
+        self.setFont('Helvetica-Bold', 9)
+        self.drawCentredString(page_width / 2, 0.4*inch, 
+                               f"PÁGINA {num_pagina} DE {total_paginas}")
+        
+        self.restoreState()
