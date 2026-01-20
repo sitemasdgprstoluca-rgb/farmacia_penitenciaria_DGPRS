@@ -91,6 +91,11 @@ const RequisicionDetalle = () => {
   // Detectar si viene en modo editar desde URL
   const modoEditarURL = searchParams.get('modo') === 'editar';
 
+  // ISS-SEGURIDAD: Determinar si es Admin/Farmacia para mostrar información sensible
+  const rolActualGlobal = (user?.rol_efectivo || user?.rol || '').toLowerCase();
+  const esAdminOFarmacia = user?.is_superuser || 
+    ['admin', 'admin_farmacia', 'admin_sistema', 'superusuario', 'farmacia'].includes(rolActualGlobal);
+
   const cargarRequisicion = useCallback(async () => {
     try {
       setLoading(true);
@@ -1197,7 +1202,10 @@ const RequisicionDetalle = () => {
                     <th className="w-20 px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">Clave</th>
                     <th className="w-auto px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">Producto</th>
                     <th className="w-24 px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white">Lote</th>
-                    <th className="w-16 px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white">Stock</th>
+                    {/* ISS-SEGURIDAD: Solo Admin/Farmacia ve el stock disponible */}
+                    {esAdminOFarmacia && (
+                      <th className="w-16 px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white">Stock</th>
+                    )}
                     <th className="w-28 px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white">Cantidad</th>
                     <th className="w-16 px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white">Acción</th>
                   </tr>
@@ -1215,11 +1223,14 @@ const RequisicionDetalle = () => {
                       <td className="px-2 py-2 text-center text-xs font-mono truncate">
                         {prod.numero_lote || '-'}
                       </td>
-                      <td className="px-2 py-2 text-center">
-                        <span className={`font-semibold text-sm ${prod.stock_disponible < prod.cantidad_solicitada ? 'text-red-600' : 'text-green-600'}`}>
-                          {prod.stock_disponible || 0}
-                        </span>
-                      </td>
+                      {/* ISS-SEGURIDAD: Solo Admin/Farmacia ve el stock disponible */}
+                      {esAdminOFarmacia && (
+                        <td className="px-2 py-2 text-center">
+                          <span className={`font-semibold text-sm ${prod.stock_disponible < prod.cantidad_solicitada ? 'text-red-600' : 'text-green-600'}`}>
+                            {prod.stock_disponible || 0}
+                          </span>
+                        </td>
+                      )}
                       <td className="px-2 py-2 text-center">
                         <div className="flex items-center justify-center gap-0.5">
                           <button
@@ -1315,9 +1326,12 @@ const RequisicionDetalle = () => {
                               <span className="ml-2 text-xs text-gray-500">Lote: {lote.numero_lote}</span>
                             </div>
                             <div className="flex items-center gap-3">
-                              <span className={`text-sm font-semibold ${(lote.cantidad_actual || lote.stock_actual || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                Stock: {lote.cantidad_actual || lote.stock_actual || 0}
-                              </span>
+                              {/* ISS-SEGURIDAD: Solo Admin/Farmacia ve el stock */}
+                              {esAdminOFarmacia && (
+                                <span className={`text-sm font-semibold ${(lote.cantidad_actual || lote.stock_actual || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  Stock: {lote.cantidad_actual || lote.stock_actual || 0}
+                                </span>
+                              )}
                               <FaPlus className="text-green-500" />
                             </div>
                           </div>
@@ -1680,12 +1694,12 @@ const RequisicionDetalle = () => {
               {/* Botón EDITAR prominente para requisiciones devueltas */}
               {puedeEditar && (
                 <button
-                  onClick={() => navigate(`/requisiciones?editar=${requisicion.id}`)}
+                  onClick={() => navigate(`/requisiciones/${requisicion.id}?modo=editar`)}
                   disabled={procesando}
                   className="flex items-center gap-2 px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-lg disabled:opacity-50 transition-colors font-semibold shadow-md"
                 >
                   <FaEdit className="text-lg" /> 
-                  {requisicion?.estado === 'devuelta' ? 'Editar y Corregir' : 'Editar Requisición'}
+                  {requisicion?.estado === 'devuelta' ? 'Corregir' : 'Editar'}
                 </button>
               )}
 
