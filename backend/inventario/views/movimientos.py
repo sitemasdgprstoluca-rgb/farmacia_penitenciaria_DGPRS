@@ -205,7 +205,7 @@ class MovimientoViewSet(
         
         # ISS-FIX: Filtro por estado de confirmación (entrega)
         # - confirmado: salidas con [CONFIRMADO] en el motivo
-        # - pendiente: salidas SIN [CONFIRMADO] en el motivo
+        # - pendiente: salidas con [PENDIENTE] EXPLÍCITO en el motivo
         # NOTA: Este filtro se omite para la vista agrupada (se aplica post-agrupación)
         # El flag _skip_estado_confirmacion se usa internamente
         skip_estado_filter = getattr(self, '_skip_estado_confirmacion', False)
@@ -219,8 +219,12 @@ class MovimientoViewSet(
                     motivo__icontains='[CONFIRMADO]'
                 )
             elif estado_lower == 'pendiente':
-                # Pendientes: solo salidas que NO tienen [CONFIRMADO]
-                queryset = queryset.filter(tipo='salida').exclude(motivo__icontains='[CONFIRMADO]')
+                # ISS-FIX CRÍTICO: Pendientes = salidas con [PENDIENTE] EXPLÍCITO
+                # NO incluir salidas que simplemente no tienen [CONFIRMADO]
+                queryset = queryset.filter(
+                    tipo='salida',
+                    motivo__icontains='[PENDIENTE]'
+                ).exclude(motivo__icontains='[CONFIRMADO]')
         
         return queryset.order_by('-fecha')
 
@@ -1133,15 +1137,17 @@ class MovimientoViewSet(
         # Para grupos: filtrar basándose en si el grupo está confirmado o pendiente
         # Para sin_grupo: filtrar basándose en el estado del movimiento individual (solo salidas)
         if estado_confirmacion == 'confirmado':
-            # Filtrar grupos confirmados
+            # Filtrar grupos confirmados (tienen [CONFIRMADO] en algún movimiento)
             grupos_list = [g for g in grupos_list if g.get('confirmado', False)]
             # Filtrar movimientos individuales: solo salidas confirmadas
             sin_grupo = [m for m in sin_grupo if m.get('tipo') == 'salida' and m.get('confirmado', False)]
         elif estado_confirmacion == 'pendiente':
-            # Filtrar grupos pendientes (no confirmados)
-            grupos_list = [g for g in grupos_list if not g.get('confirmado', False)]
-            # Filtrar movimientos individuales: solo salidas pendientes (no confirmadas)
-            sin_grupo = [m for m in sin_grupo if m.get('tipo') == 'salida' and not m.get('confirmado', False)]
+            # ISS-FIX CRÍTICO: Filtrar SOLO grupos que tienen [PENDIENTE] explícitamente
+            # Un grupo está pendiente si tiene movimientos con [PENDIENTE] en el motivo
+            # NO mostrar grupos que simplemente no están confirmados (como requisiciones ya completadas)
+            grupos_list = [g for g in grupos_list if g.get('pendiente', False) and not g.get('confirmado', False)]
+            # Filtrar movimientos individuales: solo salidas que tienen [PENDIENTE] explícito
+            sin_grupo = [m for m in sin_grupo if m.get('tipo') == 'salida' and m.get('pendiente', False) and not m.get('confirmado', False)]
         
         # Calcular totales (después de filtrar por estado)
         total_grupos = len(grupos_list)
