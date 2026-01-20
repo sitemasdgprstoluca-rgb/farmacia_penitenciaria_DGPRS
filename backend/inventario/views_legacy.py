@@ -10831,6 +10831,7 @@ def reporte_contratos(request):
             from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
             from reportlab.platypus.doctemplate import BaseDocTemplate, PageTemplate, Frame
             from reportlab.pdfgen import canvas as pdf_canvas
+            from pathlib import Path
             from io import BytesIO
             import os
             
