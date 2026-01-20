@@ -197,7 +197,7 @@ const Requisiciones = () => {
         { key: 'proceso', label: 'En Proceso', grupo: 'en_proceso', descripcion: 'Autorizadas, en surtido' },
         { key: 'surtidas', label: 'Para Recolectar', grupo: 'surtidas', descripcion: 'Listas para recoger en farmacia' },
         { key: 'completadas', label: 'Completadas', grupo: 'completadas', descripcion: 'Entregadas' },
-        { key: 'finalizadas', label: 'Finalizadas', grupo: 'rechazadas_canceladas', descripcion: 'Rechazadas, canceladas, vencidas' },
+        { key: 'finalizadas', label: 'Canceladas', grupo: 'rechazadas_canceladas', descripcion: 'Rechazadas, canceladas, vencidas' },
       ];
     }
     
@@ -209,7 +209,7 @@ const Requisiciones = () => {
       { key: 'proceso', label: 'En Proceso', grupo: 'en_proceso', descripcion: 'Autorizado, en surtido' },
       { key: 'surtidas', label: 'Surtidas', grupo: 'surtidas', descripcion: 'Listas para recolección' },
       { key: 'completadas', label: 'Completadas', grupo: 'completadas', descripcion: 'Entregadas' },
-      { key: 'finalizadas', label: 'Finalizadas', grupo: 'rechazadas_canceladas', descripcion: 'Rechazadas, canceladas, vencidas' },
+      { key: 'finalizadas', label: 'Canceladas', grupo: 'rechazadas_canceladas', descripcion: 'Rechazadas, canceladas, vencidas' },
     ];
   }, [esFarmacia, esUsuarioCentro]);
   
