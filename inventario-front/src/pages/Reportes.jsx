@@ -202,7 +202,7 @@ const Reportes = () => {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const [centros, setCentros] = useState([]);
-  const [expandedRows, setExpandedRows] = useState({});  // Para expandir filas de movimientos
+  const [expandedRows, setExpandedRows] = useState({});  // Para expandir filas de movimientos y contratos
   
   // Paginación
   const [paginaActual, setPaginaActual] = useState(1);
@@ -496,6 +496,26 @@ const Reportes = () => {
       );
     }
     
+    // Columna de expansión para contratos (mostrar lotes)
+    if (col.key === 'expand' && filtros.tipo === 'contratos') {
+      const hasLotes = fila.lotes && fila.lotes.length > 0;
+      if (!hasLotes) return null;
+      const isExpanded = expandedRows[fila.numero_contrato];
+      return (
+        <button
+          onClick={() => toggleRowExpansion(fila.numero_contrato)}
+          className="p-1 hover:bg-gray-200 rounded transition-colors"
+          title={isExpanded ? 'Colapsar' : 'Ver lotes del contrato'}
+        >
+          {isExpanded ? (
+            <FaChevronDown className="text-indigo-600" />
+          ) : (
+            <FaChevronRight className="text-indigo-600" />
+          )}
+        </button>
+      );
+    }
+    
     const value = fila[col.key];
     const formatted = formatValue(value, col.key);
     
@@ -767,6 +787,9 @@ const Reportes = () => {
               </div>
             </div>
           </div>
+          <p className="text-[10px] md:text-xs text-gray-500 mt-2 text-center">
+            💡 Haz clic en una fila para ver los lotes de cada contrato con su seguimiento detallado
+          </p>
         </div>
       );
     }
@@ -1364,15 +1387,18 @@ const Reportes = () => {
               <tbody className="divide-y divide-gray-200">
                 {datosPaginados.map((fila, idx) => {
                   const isMovimientos = filtros.tipo === 'movimientos';
-                  const isExpanded = isMovimientos && expandedRows[fila.referencia];
+                  const isContratos = filtros.tipo === 'contratos';
+                  const isExpandable = isMovimientos || isContratos;
+                  const expandKey = isMovimientos ? fila.referencia : (isContratos ? fila.numero_contrato : null);
+                  const isExpanded = isExpandable && expandedRows[expandKey];
                   const globalIdx = indiceInicio + idx;  // Índice global para numeración
                   
                   return (
                     <React.Fragment key={idx}>
                       {/* Fila principal */}
                       <tr 
-                        className={`${isMovimientos ? 'cursor-pointer' : ''} hover:bg-gray-50 transition-colors ${isExpanded ? 'bg-blue-50' : ''}`}
-                        onClick={isMovimientos ? () => toggleRowExpansion(fila.referencia) : undefined}
+                        className={`${isExpandable ? 'cursor-pointer' : ''} hover:bg-gray-50 transition-colors ${isExpanded ? (isContratos ? 'bg-indigo-50' : 'bg-blue-50') : ''}`}
+                        onClick={isExpandable ? () => toggleRowExpansion(expandKey) : undefined}
                       >
                         {columnas.map((col) => (
                           <td 
@@ -1391,7 +1417,7 @@ const Reportes = () => {
                       </tr>
                       
                       {/* Fila de detalles expandida (solo para movimientos) */}
-                      {isExpanded && fila.detalles && fila.detalles.length > 0 && (
+                      {isExpanded && isMovimientos && fila.detalles && fila.detalles.length > 0 && (
                         <tr className="bg-gray-50">
                           <td colSpan={columnas.length} className="px-6 py-3">
                             <div className="bg-white rounded-lg border shadow-sm p-4">
@@ -1426,6 +1452,97 @@ const Reportes = () => {
                                   </tr>
                                 </tfoot>
                               </table>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      
+                      {/* Fila de detalles expandida (para contratos - muestra lotes) */}
+                      {isExpanded && isContratos && fila.lotes && fila.lotes.length > 0 && (
+                        <tr className="bg-indigo-50/30">
+                          <td colSpan={columnas.length} className="px-4 py-3">
+                            <div className="bg-white rounded-lg border border-indigo-200 shadow-sm p-4">
+                              <div className="flex items-center justify-between mb-3">
+                                <h4 className="text-sm font-semibold text-indigo-800">
+                                  📦 Lotes del contrato {fila.numero_contrato} ({fila.lotes.length} lotes)
+                                </h4>
+                                <span className="text-xs text-indigo-600 bg-indigo-100 px-2 py-1 rounded-full">
+                                  Seguimiento completo: Entrada → Consumo
+                                </span>
+                              </div>
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                  <thead className="bg-indigo-100">
+                                    <tr>
+                                      <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800">#</th>
+                                      <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800">Lote</th>
+                                      <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800">Producto</th>
+                                      <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800">Presentación</th>
+                                      <th className="px-3 py-2 text-right text-xs font-semibold text-indigo-800">Inicial</th>
+                                      <th className="px-3 py-2 text-right text-xs font-semibold text-indigo-800">Actual</th>
+                                      <th className="px-3 py-2 text-right text-xs font-semibold text-indigo-800">Consumido</th>
+                                      <th className="px-3 py-2 text-center text-xs font-semibold text-indigo-800">Entradas</th>
+                                      <th className="px-3 py-2 text-center text-xs font-semibold text-indigo-800">Salidas</th>
+                                      <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800">Caducidad</th>
+                                      <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800">Centro</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-indigo-100">
+                                    {fila.lotes.map((lote, loteIdx) => (
+                                      <tr key={loteIdx} className="hover:bg-indigo-50/50">
+                                        <td className="px-3 py-2 text-gray-500">{loteIdx + 1}</td>
+                                        <td className="px-3 py-2 text-indigo-700 font-mono text-xs">{lote.numero_lote}</td>
+                                        <td className="px-3 py-2 text-gray-800 font-medium">{lote.producto_clave} - {lote.producto_nombre}</td>
+                                        <td className="px-3 py-2 text-gray-600 text-xs">{lote.presentacion || '-'}</td>
+                                        <td className="px-3 py-2 text-gray-800 text-right">{(lote.cantidad_inicial || 0).toLocaleString()}</td>
+                                        <td className="px-3 py-2 text-right font-semibold">
+                                          <span className={lote.cantidad_actual === 0 ? 'text-red-600' : 'text-green-700'}>
+                                            {(lote.cantidad_actual || 0).toLocaleString()}
+                                          </span>
+                                        </td>
+                                        <td className="px-3 py-2 text-orange-700 text-right">{(lote.cantidad_consumida || 0).toLocaleString()}</td>
+                                        <td className="px-3 py-2 text-center">
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-800">
+                                            📥 {lote.movimientos_entrada || 0}
+                                          </span>
+                                        </td>
+                                        <td className="px-3 py-2 text-center">
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-800">
+                                            📤 {lote.movimientos_salida || 0}
+                                          </span>
+                                        </td>
+                                        <td className="px-3 py-2 text-gray-600 text-xs">{lote.fecha_caducidad || '-'}</td>
+                                        <td className="px-3 py-2 text-gray-600 text-xs">{lote.centro || 'Almacén Central'}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                  <tfoot className="bg-indigo-100/50">
+                                    <tr className="font-semibold">
+                                      <td colSpan="4" className="px-3 py-2 text-right text-xs text-indigo-800">Totales del contrato:</td>
+                                      <td className="px-3 py-2 text-right text-indigo-800">{(fila.cantidad_inicial || 0).toLocaleString()}</td>
+                                      <td className="px-3 py-2 text-right text-indigo-800">{(fila.cantidad_actual || 0).toLocaleString()}</td>
+                                      <td className="px-3 py-2 text-right text-orange-700">{(fila.cantidad_consumida || 0).toLocaleString()}</td>
+                                      <td className="px-3 py-2 text-center text-green-700">{fila.movimientos_entrada || 0}</td>
+                                      <td className="px-3 py-2 text-center text-red-700">{fila.movimientos_salida || 0}</td>
+                                      <td colSpan="2" className="px-3 py-2 text-xs text-indigo-600">
+                                        {fila.porcentaje_uso || 0}% consumido
+                                      </td>
+                                    </tr>
+                                  </tfoot>
+                                </table>
+                              </div>
+                              {/* Información adicional de tracking */}
+                              <div className="mt-3 flex flex-wrap gap-3 text-xs text-gray-600">
+                                <span className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded">
+                                  📅 Primera entrada: <strong>{fila.fecha_primera_entrada || '-'}</strong>
+                                </span>
+                                <span className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded">
+                                  📅 Última salida: <strong>{fila.fecha_ultima_salida || '-'}</strong>
+                                </span>
+                                <span className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded">
+                                  💰 Valor total: <strong>${(fila.valor_total || 0).toLocaleString()}</strong>
+                                </span>
+                              </div>
                             </div>
                           </td>
                         </tr>

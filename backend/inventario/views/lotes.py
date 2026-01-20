@@ -524,7 +524,15 @@ class LoteViewSet(viewsets.ModelViewSet):
             'activo': True,
             'dias_para_caducar': 999,
             'alerta_caducidad': 'normal',
+            'lotes_ids': [],  # IDs de todos los lotes consolidados para verificar movimientos
         })
+        
+        # Obtener IDs de lotes que tienen movimientos (consulta eficiente)
+        lotes_con_movimientos = set(
+            Movimiento.objects.filter(
+                lote__in=queryset
+            ).values_list('lote_id', flat=True).distinct()
+        )
         
         hoy = date.today()
         
@@ -563,6 +571,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             
             cons['cantidad_total'] += lote.cantidad_actual
             cons['cantidad_inicial_total'] += lote.cantidad_inicial
+            cons['lotes_ids'].append(lote.id)  # Agregar ID para verificar movimientos
             
             # Registrar centro
             centro_nombre = lote.centro.nombre if lote.centro else 'Almacén Central'
@@ -588,6 +597,12 @@ class LoteViewSet(viewsets.ModelViewSet):
             cons['cantidad_actual'] = cons['cantidad_total']  # Alias para compatibilidad
             cons['cantidad_inicial'] = cons['cantidad_inicial_total']
             cons['centro_nombre'] = ', '.join(cons['centros'][:2]) + ('...' if len(cons['centros']) > 2 else '')
+            
+            # ISS-TRAZ: Indicar si el lote tiene movimientos (para bloquear edición de campos críticos)
+            # Si CUALQUIERA de los lotes consolidados tiene movimientos, se bloquea la edición
+            cons['tiene_movimientos'] = any(lid in lotes_con_movimientos for lid in cons['lotes_ids'])
+            del cons['lotes_ids']  # No exponer los IDs internos
+            
             resultados.append(cons)
         
         # Ordenar por clave de producto y número de lote
