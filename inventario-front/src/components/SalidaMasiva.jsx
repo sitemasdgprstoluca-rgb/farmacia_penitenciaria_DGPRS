@@ -292,6 +292,7 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
       const payload = {
         centro_destino_id: parseInt(centroDestino),
         observaciones: observaciones,
+        auto_confirmar: false, // PENDIENTE hasta confirmar entrega física (igual que salida unitaria)
         items: items.map(item => ({
           lote_id: item.lote_id,
           cantidad: item.cantidad
