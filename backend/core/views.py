@@ -1032,14 +1032,54 @@ class UserViewSet(viewsets.ModelViewSet):
 
 
 class DetalleRequisicionViewSet(viewsets.ModelViewSet):
-    """ViewSet para detalles de requisiciones"""
-    queryset = DetalleRequisicion.objects.select_related(
-        'requisicion', 'requisicion__centro', 'requisicion__solicitante',
-        'producto', 'lote', 'lote__producto', 'lote__centro'
-    ).all()  # HALLAZGO #8 FIX: Prevenir N+1 queries
+    """
+    ViewSet para detalles de requisiciones.
+    
+    SEGURIDAD: Filtra por centro del usuario para prevenir IDOR/BOLA.
+    Admin/farmacia pueden ver todos; usuarios de centro solo los de su centro.
+    """
     serializer_class = DetalleRequisicionSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = StandardResultsSetPagination  # HALLAZGO #9: Paginación forzada
+    
+    def get_queryset(self):
+        """
+        SEGURIDAD: Filtrar detalles por centro/rol del usuario.
+        
+        - Admin/farmacia: acceso a todos los detalles
+        - Centro: solo detalles de requisiciones de su centro
+        """
+        user = self.request.user
+        
+        # Base queryset con select_related para prevenir N+1
+        queryset = DetalleRequisicion.objects.select_related(
+            'requisicion', 'requisicion__centro', 'requisicion__solicitante',
+            'producto', 'lote', 'lote__producto', 'lote__centro'
+        )
+        
+        # Admin y farmacia ven todo
+        if user.is_superuser:
+            return queryset
+        
+        rol = (getattr(user, 'rol', '') or '').lower()
+        group_names = set(g.name.upper() for g in user.groups.all())
+        
+        es_admin_o_farmacia = (
+            rol in {'admin', 'admin_sistema', 'superusuario', 'farmacia', 'admin_farmacia', 'farmaceutico'} or
+            'FARMACIA_ADMIN' in group_names or
+            'FARMACEUTICO' in group_names
+        )
+        
+        if es_admin_o_farmacia:
+            return queryset
+        
+        # Usuarios de centro solo ven detalles de requisiciones de su centro
+        user_centro = getattr(user, 'centro', None)
+        if user_centro:
+            return queryset.filter(requisicion__centro=user_centro)
+        
+        # Sin centro asignado, no ve nada
+        return queryset.none()
 
 
 class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):

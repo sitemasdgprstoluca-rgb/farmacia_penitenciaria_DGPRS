@@ -166,13 +166,12 @@ class PasswordResetRequestView(APIView):
                 else:
                     logger.warning(f"Password reset: fallo envío email para usuario ID {user.pk}")
             else:
-                # Sin servicio de email configurado - solo logear internamente
-                # SEGURIDAD: No exponer tokens en respuestas públicas
-                frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
-                reset_url = f"{frontend_url}/restablecer-password?uid={uid}&token={token}"
-                # Solo loguear en servidor (nunca exponer al cliente)
-                logger.warning(f"Password reset: No hay servicio de email configurado para usuario ID {user.pk}")
-                logger.debug(f"Password reset URL (solo desarrollo/logs): {reset_url}")
+                # Sin servicio de email configurado
+                # SEGURIDAD: NO loguear tokens/URLs - solo indicar que no hay servicio
+                logger.warning(
+                    f"Password reset solicitado pero no hay servicio de email configurado. "
+                    f"Usuario ID: {user.pk}. Configure RESEND_API_KEY o EMAIL_HOST_USER."
+                )
             
         except User.DoesNotExist:
             # No revelar si el usuario existe o no (log sin email completo)

@@ -7806,13 +7806,10 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             return response
             
         except Exception as exc:
-            tb = traceback.format_exc()
-            logger.exception(f'Error al exportar recibo de salida: {exc}')
+            # SEGURIDAD: No exponer traceback ni detalles internos al cliente
+            logger.exception(f'Error al exportar recibo de salida para requisición {pk}')
             return Response({
-                'error': 'Error al generar el recibo de salida',
-                'mensaje': str(exc),
-                'tipo': type(exc).__name__,
-                'traceback': tb
+                'error': 'Error al generar el recibo de salida. Contacte al administrador.',
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

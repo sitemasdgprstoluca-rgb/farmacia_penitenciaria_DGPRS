@@ -506,10 +506,14 @@ apiClient.interceptors.response.use(
     );
     
     // ISS-005 FIX (audit32): Verificar límite de reintentos para errores de red/timeout
+    // SEGURIDAD: Solo reintentar métodos idempotentes para evitar duplicación de operaciones
+    const httpMethod = (originalRequest.method || 'get').toUpperCase();
+    const isIdempotentMethod = ['GET', 'HEAD', 'OPTIONS'].includes(httpMethod);
     const isRetryableError = isNetworkError || !status || RETRY_CONFIG.retryableStatusCodes.includes(status);
     const retryCount = originalRequest._retryCount || 0;
     
-    if (isRetryableError && retryCount < RETRY_CONFIG.maxRetries && !originalRequest._noRetry) {
+    // Solo reintentar si: es error recuperable, no excede límite, no deshabilitado, Y es método idempotente
+    if (isRetryableError && retryCount < RETRY_CONFIG.maxRetries && !originalRequest._noRetry && isIdempotentMethod) {
       originalRequest._retryCount = retryCount + 1;
       
       // Calcular delay con backoff exponencial si está habilitado

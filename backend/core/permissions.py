@@ -331,9 +331,16 @@ def _has_permission(user, roles, extra_perms=None):
 
 
 class IsSuperuserOnly(permissions.BasePermission):
-    """Permiso SOLO para superusuarios / admin_sistema."""
+    """
+    Permiso SOLO para superusuarios / admin_sistema.
+    
+    SEGURIDAD: Este permiso NO acepta permisos extras para evitar
+    que usuarios con permisos parciales accedan a funciones de admin.
+    Solo is_superuser=True o rol='admin'/'admin_sistema' pueden pasar.
+    """
     def has_permission(self, request, view):
-        return _has_permission(request.user, ['admin'], EXTRA_PERMISSIONS)
+        # SEGURIDAD: Solo verificar rol admin, sin permisos extras
+        return _has_role(request.user, ['admin'])
 
 
 class IsAdminRole(permissions.BasePermission):

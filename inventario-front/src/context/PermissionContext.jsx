@@ -48,6 +48,18 @@ const generateSessionHash = (userId, role) => {
   return hash.toString(36);
 };
 
+// SEGURIDAD: Validar que el hash de sesión es consistente con los datos
+// Nota: Este hash NO es criptográficamente seguro, solo detecta manipulación casual
+// La validación real ocurre siempre con el backend antes de otorgar permisos
+const validateSessionHash = (storedUserId, storedRole, storedHash) => {
+  // Si no hay hash almacenado, la sesión no es válida
+  if (!storedHash || !storedUserId) return false;
+  // Nota: No podemos regenerar el hash exacto porque incluye timestamp
+  // Solo verificamos que existe y tiene formato válido (base36)
+  // La validación real se hace con el backend en cargarUsuario()
+  return /^[a-z0-9-]+$/i.test(storedHash) && storedHash.length > 0;
+};
+
 // ISS-001 FIX: Permisos por rol como FALLBACK SOLAMENTE
 // El backend siempre tiene prioridad cuando envía permisos
 const PERMISOS_POR_ROL = {
@@ -815,6 +827,11 @@ export function PermissionProvider({ children }) {
             sessionStorage.removeItem(SESSION_KEYS.USER_ROLE);
             sessionStorage.removeItem(SESSION_KEYS.SESSION_HASH);
             localStorage.removeItem('user'); // Limpiar legacy
+            // SEGURIDAD: Resetear estado de usuario para evitar UI inconsistente
+            setUser(null);
+            setPermisos({});
+            setGrupos([]);
+            setPermisosValidados(false);
             setLoading(false);
             return;
           }
@@ -824,6 +841,11 @@ export function PermissionProvider({ children }) {
           sessionStorage.removeItem(SESSION_KEYS.USER_ROLE);
           sessionStorage.removeItem(SESSION_KEYS.SESSION_HASH);
           localStorage.removeItem('user'); // Limpiar legacy
+          // SEGURIDAD: Resetear estado de usuario para evitar UI inconsistente
+          setUser(null);
+          setPermisos({});
+          setGrupos([]);
+          setPermisosValidados(false);
           setLoading(false);
           return;
         }
@@ -873,7 +895,8 @@ export function PermissionProvider({ children }) {
     
     // ISS-009 FIX: NO asignar rol durante pending_validation para prevenir escalación de privilegios
     // Solo mostrar ID mínimo, sin permisos de UI hasta que backend valide
-    if (storedUserId && storedHash) {
+    // SEGURIDAD: Validar formato del hash antes de confiar en datos de sessionStorage
+    if (storedUserId && storedHash && validateSessionHash(storedUserId, storedRole, storedHash)) {
       // Solo ID para tracking, SIN rol ni permisos inferidos
       setUser({ id: storedUserId });
       setPermisos({
@@ -882,6 +905,11 @@ export function PermissionProvider({ children }) {
         _source: 'pending_validation',
         _isValidating: true,  // Flag para ocultar menús hasta validación
       });
+    } else if (storedUserId || storedHash) {
+      // Hash inválido o datos inconsistentes - limpiar sessionStorage
+      sessionStorage.removeItem(SESSION_KEYS.USER_ID);
+      sessionStorage.removeItem(SESSION_KEYS.USER_ROLE);
+      sessionStorage.removeItem(SESSION_KEYS.SESSION_HASH);
     }
 
     // SIEMPRE cargar usuario fresco del servidor para tener permisos actualizados

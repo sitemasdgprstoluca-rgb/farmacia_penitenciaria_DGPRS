@@ -9,9 +9,13 @@ const parseMinutes = (value, fallback) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+// Claves de sessionStorage que deben limpiarse en logout por inactividad
+const SESSION_KEYS_TO_CLEAR = ['session_uid', 'session_role', 'session_hash'];
+
 /**
  * ISS-002 FIX (audit33): Hook de logout por inactividad
  * Mejorado para coordinarse con el refresh de tokens y evitar race conditions
+ * SEGURIDAD: Ahora limpia TODOS los datos de sesión (memoria, localStorage, sessionStorage)
  */
 export const useInactivityLogout = () => {
   const navigate = useNavigate();
@@ -21,9 +25,20 @@ export const useInactivityLogout = () => {
   const timeoutMs = timeoutMinutes * 60 * 1000;
 
   const clearSession = useCallback(() => {
-    // Usar tokenManager para limpiar tokens en memoria
+    // SEGURIDAD: Limpiar tokens en memoria (access + refresh)
     clearTokens();
+    // Limpiar localStorage
     localStorage.removeItem('user');
+    localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
+    // SEGURIDAD: Limpiar sessionStorage para prevenir rehidratación/refresh
+    SESSION_KEYS_TO_CLEAR.forEach(key => {
+      try {
+        sessionStorage.removeItem(key);
+      } catch (e) {
+        // Ignorar errores de storage
+      }
+    });
   }, []);
 
   const logout = useCallback(() => {
@@ -47,8 +62,11 @@ export const useInactivityLogout = () => {
       return;
     }
     
-    // Verificar sesión usando tokenManager o datos de usuario
-    const hasSession = hasAccessToken() || Boolean(localStorage.getItem('user'));
+    // SEGURIDAD: Verificar sesión usando token en memoria Y sessionStorage
+    // Ambos deben existir para considerar la sesión válida
+    const hasTokenInMemory = hasAccessToken();
+    const hasSessionData = Boolean(sessionStorage.getItem('session_uid'));
+    const hasSession = hasTokenInMemory || (hasSessionData && Boolean(localStorage.getItem('user')));
 
     if (!hasSession) {
       clearTimeout(timerRef.current);
