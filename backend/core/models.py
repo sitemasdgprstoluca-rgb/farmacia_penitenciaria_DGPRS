@@ -1173,21 +1173,19 @@ class Movimiento(models.Model):
         if tipo and tipo not in self.TIPOS_VALIDOS:
             errors['tipo'] = f'Tipo de movimiento inválido: {tipo}. Tipos válidos: {", ".join(self.TIPOS_VALIDOS)}'
         
-        # ISS-MEDICO FIX v2: La cantidad se almacena con signo según el tipo de movimiento
-        # - Salidas se almacenan como negativos (representan reducción de stock)
-        # - Entradas se almacenan como positivos (representan aumento de stock)
-        # La validación debe verificar coherencia entre tipo y signo, no exigir siempre positivo
+        # ISS-SEC FIX: La cantidad DEBE ser siempre positiva
+        # El tipo de movimiento (entrada/salida) determina la dirección
+        # aplicar_movimiento_a_lote suma o resta según el tipo
         if self.cantidad is not None and self.cantidad == 0:
             errors['cantidad'] = 'La cantidad no puede ser cero.'
         
-        # Validar coherencia tipo-signo
-        if self.cantidad is not None and tipo in self.TIPOS_RESTA_STOCK:
-            # Para tipos que restan, la cantidad debe ser negativa o se convertirá
-            pass  # registrar_movimiento_stock maneja la conversión
-        elif self.cantidad is not None and tipo in self.TIPOS_SUMA_STOCK:
-            # Para tipos que suman, la cantidad debe ser positiva
-            if self.cantidad < 0:
-                errors['cantidad'] = f'Las {tipo}s deben tener cantidad positiva.'
+        # ISS-SEC FIX: Validar que la cantidad sea positiva para TODOS los tipos
+        # La convención del sistema es: cantidad positiva + tipo indica dirección
+        if self.cantidad is not None and self.cantidad < 0:
+            errors['cantidad'] = (
+                f'La cantidad debe ser positiva ({self.cantidad}). '
+                f'El tipo de movimiento "{tipo}" determina si es entrada o salida.'
+            )
         
         # Validar lote obligatorio para tipos que lo requieren
         if tipo in self.TIPOS_REQUIERE_LOTE and not self.lote_id:

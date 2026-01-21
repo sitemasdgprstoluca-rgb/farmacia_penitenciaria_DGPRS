@@ -329,6 +329,12 @@ const Lotes = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    // ISS-SEC FIX: Validar fecha_caducidad obligatoria (no se pueden crear lotes sin fecha)
+    if (!editingLote && !formData.fecha_caducidad) {
+      toast.error('La fecha de caducidad es obligatoria. Para insumos sin caducidad, usar 2099-12-31');
+      return;
+    }
+    
     // Validar y parsear cantidades antes de enviar
     const cantidadInicial = parseInt(formData.cantidad_inicial, 10);
     

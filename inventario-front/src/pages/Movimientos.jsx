@@ -222,6 +222,10 @@ const Movimientos = () => {
   const [exporting, setExporting] = useState(null); // 'pdf' | 'excel' | null
   const [showFiltersMenu, setShowFiltersMenu] = useState(false);
   const [showSalidaMasiva, setShowSalidaMasiva] = useState(false); // Modal salida masiva
+  
+  // ISS-SEC FIX: Modal de confirmación para merma/caducidad (operaciones irreversibles)
+  const [showConfirmMerma, setShowConfirmMerma] = useState(false);
+  const [confirmStep, setConfirmStep] = useState(1); // 1: mostrar resumen, 2: confirmar texto
 
   const columnas = useMemo(
     () => ["producto", "tipo", "cantidad", "centro", "fecha"],
@@ -718,8 +722,9 @@ const Movimientos = () => {
     
     // Validaciones específicas para SALIDA
     if (esSalida) {
-      // Validar centro destino obligatorio SOLO para FARMACIA/ADMIN (transferencias)
-      if (puedeHacerEntradas && !formData.centro) {
+      // ISS-SEC FIX: Validar centro destino SOLO para transferencias entre centros
+      // Otros subtipos (merma, caducidad, consumo_interno, receta) no requieren centro destino
+      if (formData.subtipo_salida === 'transferencia' && !formData.centro) {
         toast.error("Selecciona el centro destino para la transferencia");
         return;
       }
@@ -749,8 +754,14 @@ const Movimientos = () => {
       }
       
       // ISS-FIX: Validar observaciones obligatorias para TODOS (farmacia/admin también)
-      if (!esMedico && (!formData.observaciones || formData.observaciones.trim().length < 5)) {
-        toast.error("Las observaciones son obligatorias (mínimo 5 caracteres). Ej: 'Transferencia a centro', 'Dispensación por receta'");
+      // ISS-SEC FIX: Para merma/caducidad, requerir observaciones más detalladas
+      const esMermaOCaducidad = ['merma', 'caducidad'].includes(formData.subtipo_salida);
+      const longitudMinima = esMermaOCaducidad ? 15 : 5;
+      if (!esMedico && (!formData.observaciones || formData.observaciones.trim().length < longitudMinima)) {
+        const ejemplos = esMermaOCaducidad 
+          ? "Ej: 'Producto dañado por humedad', 'Lote vencido el 15/01/2026'"
+          : "Ej: 'Transferencia a centro', 'Dispensación por receta'";
+        toast.error(`Las observaciones son obligatorias (mínimo ${longitudMinima} caracteres). ${ejemplos}`);
         return;
       }
     }
@@ -762,13 +773,30 @@ const Movimientos = () => {
         toast.error("Para entradas, debe indicar el motivo (mínimo 5 caracteres). Ej: 'Nueva compra', 'Devolución proveedor'");
         return;
       }
+      
+      // ISS-SEC FIX: Validar que el lote tenga fecha de caducidad válida
+      if (loteSeleccionado && !loteSeleccionado.fecha_caducidad) {
+        toast.error("No se pueden registrar entradas a lotes sin fecha de caducidad");
+        return;
+      }
+    }
+    
+    // ISS-SEC FIX: Para merma/caducidad, mostrar modal de confirmación de varios pasos
+    const esMermaOCaducidad = ['merma', 'caducidad'].includes(formData.subtipo_salida);
+    if (esSalida && esMermaOCaducidad && puedeHacerEntradas && !showConfirmMerma) {
+      setShowConfirmMerma(true);
+      setConfirmStep(1);
+      return; // No continuar hasta confirmar
     }
 
     setSubmitting(true);
     try {
-      // CASO ESPECIAL: Transferencias a centro (FARMACIA/ADMIN)
+      // ISS-SEC FIX: Merma/Caducidad usa flujo normal (no salida_masiva) y NO tiene centro_destino
+      const esMermaOCaducidad = ['merma', 'caducidad'].includes(formData.subtipo_salida);
+      
+      // CASO ESPECIAL: Transferencias a centro (FARMACIA/ADMIN) - NO aplica para merma/caducidad
       // Usar API de salida_masiva para seguir flujo PENDIENTE
-      if (esSalida && puedeHacerEntradas && formData.centro) {
+      if (esSalida && puedeHacerEntradas && formData.centro && formData.subtipo_salida === 'transferencia') {
         const payloadMasiva = {
           centro_destino_id: parseInt(formData.centro),
           observaciones: formData.observaciones || '',
@@ -788,7 +816,7 @@ const Movimientos = () => {
           return;
         }
       } else {
-        // CASO NORMAL: Otros movimientos (entradas, dispensaciones, consumos)
+        // CASO NORMAL: Merma/caducidad, entradas, dispensaciones, consumos
         const payload = {
           lote: parseInt(formData.lote),
           tipo: formData.tipo,
@@ -799,12 +827,14 @@ const Movimientos = () => {
         
         // Campos adicionales para SALIDA (no transferencias)
         if (esSalida) {
-          // MEDICO/CENTRO: usar su propio centro
-          if (centroUsuario) {
+          // ISS-SEC FIX: Para merma/caducidad de Farmacia, NO enviar centro (se descuenta del almacén central)
+          // Solo MEDICO/CENTRO usan su propio centro
+          if (centroUsuario && !esMermaOCaducidad) {
             payload.centro = parseInt(centroUsuario);
           }
           
-          // MEDICO: siempre es "receta" | CENTRO: usa el subtipo seleccionado
+          // ISS-SEC FIX: Siempre enviar subtipo_salida para todas las salidas
+          // MEDICO: siempre es "receta" | Otros: usa el subtipo seleccionado
           payload.subtipo_salida = esMedico ? "receta" : (formData.subtipo_salida || "consumo_interno");
           
           // Agregar expediente para dispensación por receta
@@ -821,12 +851,19 @@ const Movimientos = () => {
           mensajeExito = "✅ Entrada registrada exitosamente - Stock incrementado";
         } else if (esMedico) {
           mensajeExito = "✅ Dispensación registrada exitosamente";
+        } else if (esMermaOCaducidad) {
+          const tipoSalida = formData.subtipo_salida === 'merma' ? 'MERMA' : 'CADUCIDAD';
+          mensajeExito = `✅ Salida por ${tipoSalida} registrada. El stock se descontó del inventario. Se generó registro en historial.`;
         } else {
           mensajeExito = "✅ Salida registrada exitosamente";
         }
         
         toast.success(mensajeExito);
       }
+      
+      // ISS-SEC FIX: Resetear modal de confirmación
+      setShowConfirmMerma(false);
+      setConfirmStep(1);
       
       // Reset del formulario
       setFormData({
@@ -849,6 +886,9 @@ const Movimientos = () => {
                        err.response?.data?.message || err.response?.data?.errores?.join(', ') ||
                        "No se pudo registrar el movimiento";
       toast.error(errorMsg);
+      // ISS-SEC FIX: Resetear modal en caso de error también
+      setShowConfirmMerma(false);
+      setConfirmStep(1);
     } finally {
       setSubmitting(false);
     }
@@ -1508,6 +1548,25 @@ const Movimientos = () => {
                 </div>
               )}
 
+              {/* ISS-SEC FIX: Subtipo de salida para FARMACIA/ADMIN */}
+              {puedeHacerEntradas && formData.tipo === "salida" && (
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700">Tipo de salida <span className="text-red-500">*</span></label>
+                  <select
+                    value={formData.subtipo_salida}
+                    onChange={(e) => handleFormChange("subtipo_salida", e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    <option value="transferencia">🔄 Transferencia a centro</option>
+                    <option value="merma">📉 Merma / Pérdida</option>
+                    <option value="caducidad">⏰ Caducidad</option>
+                    <option value="consumo_interno">🏥 Consumo interno farmacia</option>
+                    <option value="receta">💊 Dispensación por receta</option>
+                  </select>
+                </div>
+              )}
+
               {/* Número de expediente para dispensación por receta (MEDICO siempre, CENTRO cuando selecciona receta) */}
               {(esMedico || formData.subtipo_salida === 'receta') && (
                 <div className="space-y-2">
@@ -1523,8 +1582,8 @@ const Movimientos = () => {
                 </div>
               )}
 
-              {/* Centro destino - Solo para SALIDAS de FARMACIA/ADMIN */}
-              {formData.tipo === "salida" && puedeHacerEntradas && (
+              {/* Centro destino - Solo para TRANSFERENCIAS de FARMACIA/ADMIN */}
+              {formData.tipo === "salida" && puedeHacerEntradas && formData.subtipo_salida === 'transferencia' && (
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-gray-700">Centro Destino <span className="text-red-500">*</span></label>
                   <select
@@ -3089,6 +3148,168 @@ const Movimientos = () => {
               >
                 <FaCheckCircle /> Aceptar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* ISS-SEC FIX: Modal Confirmación Merma/Caducidad - Proceso de 2 pasos */}
+      {showConfirmMerma && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg animate-in fade-in zoom-in duration-200">
+            {/* Header con color según tipo */}
+            <div className={`px-6 py-4 border-b rounded-t-xl ${
+              formData.subtipo_salida === 'merma' 
+                ? 'bg-gradient-to-r from-orange-500 to-red-500' 
+                : 'bg-gradient-to-r from-amber-500 to-orange-500'
+            }`}>
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <FaExclamationTriangle className="animate-pulse" />
+                {formData.subtipo_salida === 'merma' ? '⚠️ Confirmar Salida por MERMA' : '⏰ Confirmar Salida por CADUCIDAD'}
+              </h2>
+              <p className="text-white/80 text-sm mt-1">Paso {confirmStep} de 2 - Esta operación es IRREVERSIBLE</p>
+            </div>
+            
+            <div className="p-6">
+              {confirmStep === 1 ? (
+                /* PASO 1: Mostrar resumen */
+                <>
+                  <div className="mb-4 p-4 bg-red-50 border-2 border-red-200 rounded-lg">
+                    <p className="text-red-800 font-semibold text-center">
+                      ⚠️ ATENCIÓN: El stock se descontará PERMANENTEMENTE
+                    </p>
+                  </div>
+                  
+                  {/* Resumen del producto */}
+                  <div className="bg-gray-50 rounded-lg p-4 mb-4 border">
+                    <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                      <span className="text-xl">📦</span> Resumen de la Operación
+                    </h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between py-1 border-b">
+                        <span className="text-gray-600">Tipo de salida:</span>
+                        <span className={`font-bold ${formData.subtipo_salida === 'merma' ? 'text-red-600' : 'text-orange-600'}`}>
+                          {formData.subtipo_salida === 'merma' ? '📉 MERMA' : '⏰ CADUCIDAD'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-1 border-b">
+                        <span className="text-gray-600">Producto:</span>
+                        <span className="font-medium text-gray-800">
+                          {(() => {
+                            const lote = lotes.find(l => l.id === parseInt(formData.lote));
+                            return lote?.producto_nombre || 'N/A';
+                          })()}
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-1 border-b">
+                        <span className="text-gray-600">Lote:</span>
+                        <span className="font-mono bg-gray-200 px-2 rounded">
+                          {(() => {
+                            const lote = lotes.find(l => l.id === parseInt(formData.lote));
+                            return lote?.numero_lote || 'N/A';
+                          })()}
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-1 border-b">
+                        <span className="text-gray-600">Cantidad a dar de baja:</span>
+                        <span className="font-bold text-red-600 text-lg">{formData.cantidad} unidades</span>
+                      </div>
+                      <div className="flex justify-between py-1">
+                        <span className="text-gray-600">Motivo registrado:</span>
+                        <span className="text-gray-800 text-right max-w-[200px] break-words">
+                          {formData.observaciones || 'Sin especificar'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 text-sm text-amber-800">
+                    <strong>Nota:</strong> Se generará un registro en el historial de movimientos y podrá descargar el comprobante PDF después de confirmar.
+                  </div>
+                </>
+              ) : (
+                /* PASO 2: Confirmación final */
+                <>
+                  <div className="mb-4 p-4 bg-red-100 border-2 border-red-300 rounded-lg text-center">
+                    <p className="text-red-800 font-bold text-lg mb-2">
+                      🛑 CONFIRMACIÓN FINAL
+                    </p>
+                    <p className="text-red-700">
+                      Está a punto de dar de baja <strong className="text-xl">{formData.cantidad}</strong> unidades
+                    </p>
+                  </div>
+                  
+                  <div className="text-center py-4">
+                    <p className="text-gray-700 mb-4">
+                      Para confirmar, haga clic en <strong>"CONFIRMAR BAJA"</strong>
+                    </p>
+                    <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+                      <FaHistory className="animate-spin" />
+                      <span>Se registrará en el historial de auditoría</span>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+            
+            {/* Footer con botones */}
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-between rounded-b-xl">
+              <button
+                onClick={() => {
+                  setShowConfirmMerma(false);
+                  setConfirmStep(1);
+                }}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+                disabled={submitting}
+              >
+                Cancelar
+              </button>
+              
+              <div className="flex gap-2">
+                {confirmStep === 2 && (
+                  <button
+                    onClick={() => setConfirmStep(1)}
+                    className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+                    disabled={submitting}
+                  >
+                    ← Volver
+                  </button>
+                )}
+                
+                {confirmStep === 1 ? (
+                  <button
+                    onClick={() => setConfirmStep(2)}
+                    className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg hover:from-amber-600 hover:to-orange-600 transition-colors font-medium shadow-md"
+                  >
+                    Continuar →
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      // Llamar a registrarMovimiento - el modal ya está abierto
+                      registrarMovimiento();
+                    }}
+                    className={`px-6 py-2 rounded-lg font-bold transition-colors shadow-lg flex items-center gap-2 ${
+                      formData.subtipo_salida === 'merma'
+                        ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white'
+                        : 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white'
+                    }`}
+                    disabled={submitting}
+                  >
+                    {submitting ? (
+                      <>
+                        <FaSpinner className="animate-spin" />
+                        Procesando...
+                      </>
+                    ) : (
+                      <>
+                        <FaCheckCircle />
+                        CONFIRMAR BAJA
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

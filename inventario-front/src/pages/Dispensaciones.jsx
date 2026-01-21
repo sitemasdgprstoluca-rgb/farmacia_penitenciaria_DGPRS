@@ -313,8 +313,10 @@ const Dispensaciones = () => {
       toast.error('Seleccione un lote');
       return;
     }
-    if (!currentDetalle.cantidad_prescrita || currentDetalle.cantidad_prescrita <= 0) {
-      toast.error('Ingrese una cantidad válida');
+    // ISS-SEC FIX: Validar que cantidad sea entero positivo (no decimales)
+    const cantidadNum = Number(currentDetalle.cantidad_prescrita);
+    if (!cantidadNum || cantidadNum <= 0 || !Number.isInteger(cantidadNum)) {
+      toast.error('Ingrese una cantidad entera válida (sin decimales)');
       return;
     }
     
@@ -323,7 +325,7 @@ const Dispensaciones = () => {
     
     // Usar cantidad_actual en lugar de cantidad_disponible
     const stockDisponible = lote?.cantidad_actual || 0;
-    if (parseInt(currentDetalle.cantidad_prescrita) > stockDisponible) {
+    if (cantidadNum > stockDisponible) {
       toast.error(`Stock insuficiente. Disponible: ${stockDisponible}`);
       return;
     }
@@ -431,7 +433,7 @@ const Dispensaciones = () => {
       setFormData({
         paciente: dispensacion.paciente,
         centro: dispensacion.centro,
-        tipo_dispensacion: dispensacion.tipo_dispensacion || 'REGULAR',
+        tipo_dispensacion: dispensacion.tipo_dispensacion || 'normal',
         fecha_prescripcion: dispensacion.fecha_prescripcion || '',
         medico_prescriptor: dispensacion.medico_prescriptor || '',
         diagnostico: dispensacion.diagnostico || '',

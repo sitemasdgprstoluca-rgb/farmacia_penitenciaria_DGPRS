@@ -765,8 +765,8 @@ const Requisiciones = () => {
   // ISS-004 FIX: Verificar si puede rechazar usando transiciones válidas
   const puedeRechazar = (requisicion) => {
     const estadoNormalizado = requisicion.estado?.toLowerCase();
-    // Verificar transición válida hacia 'rechazada'
-    if (!esTransicionValida(estadoNormalizado, 'rechazada')) return false;
+    // ISS-SEC FIX: Usar acción 'rechazar' en lugar de estado 'rechazada'
+    if (!esTransicionValida(estadoNormalizado, 'rechazar')) return false;
     // Solo admin/farmacia pueden rechazar
     return permisos.isFarmaciaAdmin && permisos.rechazarRequisicion;
   };
@@ -774,8 +774,8 @@ const Requisiciones = () => {
   // ISS-004 FIX: Verificar si puede autorizar usando transiciones válidas  
   const puedeAutorizar = (requisicion) => {
     const estadoNormalizado = requisicion.estado?.toLowerCase();
-    // Verificar transición válida hacia 'autorizada'
-    if (!esTransicionValida(estadoNormalizado, 'autorizada')) return false;
+    // ISS-SEC FIX: Usar acción 'autorizar' en lugar de estado 'autorizada'
+    if (!esTransicionValida(estadoNormalizado, 'autorizar')) return false;
     // Solo admin/farmacia pueden autorizar
     return permisos.isFarmaciaAdmin && permisos.autorizarRequisicion;
   };

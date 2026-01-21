@@ -485,7 +485,8 @@ class RequisicionService:
                     centro_origen=mov.centro_destino,
                     requisicion=requisicion,
                     usuario=self.usuario,
-                    cantidad=-mov.cantidad,
+                    # ISS-SEC FIX: Cantidad siempre positiva, el tipo 'salida' indica dirección
+                    cantidad=mov.cantidad,
                     motivo=f'REVERSO por devolución de requisición {requisicion.numero}'
                 )
                 
@@ -839,12 +840,15 @@ class RequisicionService:
         producto_ids = [d.producto_id for d in detalles if d.producto_id]
         
         # ISS-001 FIX (perf): Calcular stock de farmacia para TODOS los productos en UNA query
+        # ISS-SEC FIX: Incluir lotes con fecha_caducidad NULL (se consideran vigentes según regla de negocio)
+        from django.db.models import Q
         stock_farmacia_query = Lote.objects.filter(
             centro__isnull=True,  # Solo farmacia central
             producto_id__in=producto_ids,
             activo=True,
             cantidad_actual__gt=0,
-            fecha_caducidad__gte=hoy,
+        ).filter(
+            Q(fecha_caducidad__gte=hoy) | Q(fecha_caducidad__isnull=True)
         )
         
         # ISS-007 FIX: Aplicar bloqueo si se requiere
@@ -861,18 +865,30 @@ class RequisicionService:
         
         # ISS-002 FIX (perf): Calcular stock comprometido para TODOS los productos en UNA query
         # Excluir esta requisición para evitar contar doble
+        # ISS-SEC FIX: Usar COALESCE(cantidad_autorizada, cantidad_solicitada) para calcular
+        # comprometido cuando cantidad_autorizada es NULL (requisiciones en estados intermedios)
+        from django.db.models import Case, When
         comprometido_query = DetalleRequisicion.objects.filter(
             requisicion__estado__in=ESTADOS_COMPROMETIDOS,
             producto_id__in=producto_ids
         ).exclude(
             requisicion_id=self.requisicion.pk
         ).values('producto_id').annotate(
-            total_autorizado=Coalesce(Sum('cantidad_autorizada'), Value(0)),
-            total_surtido=Coalesce(Sum('cantidad_surtida'), Value(0))
+            # ISS-SEC FIX: Si cantidad_autorizada es NULL, usar cantidad_solicitada como fallback
+            total_comprometido=Coalesce(
+                Sum(
+                    Case(
+                        When(cantidad_autorizada__isnull=False, 
+                             then=F('cantidad_autorizada') - Coalesce(F('cantidad_surtida'), Value(0))),
+                        default=F('cantidad_solicitada') - Coalesce(F('cantidad_surtida'), Value(0))
+                    )
+                ),
+                Value(0)
+            )
         )
         
         comprometido_por_producto = {
-            item['producto_id']: max(0, item['total_autorizado'] - item['total_surtido'])
+            item['producto_id']: max(0, item['total_comprometido'])
             for item in comprometido_query
         }
         
@@ -893,6 +909,20 @@ class RequisicionService:
             if detalle.lote_id is not None and detalle.lote is not None:
                 # CASO 1: Lote específico - validar stock de ESE lote únicamente
                 lote = detalle.lote
+                
+                # ISS-SEC FIX: Validar que el lote pertenezca a farmacia central (centro NULL)
+                # Las requisiciones SOLO se surten desde farmacia central
+                if lote.centro_id is not None:
+                    errores_stock.append({
+                        'producto': detalle.producto.clave,
+                        'producto_nombre': (detalle.producto.nombre or '')[:50],
+                        'lote': lote.numero_lote,
+                        'requerido': requerido,
+                        'disponible': 0,
+                        'error': f'El lote pertenece al centro {lote.centro.nombre if lote.centro else lote.centro_id}, no a Farmacia Central',
+                        'validacion_tipo': 'lote_especifico'
+                    })
+                    continue
                 
                 # Verificar que el lote exista y sea válido
                 if not lote.activo:
@@ -1326,6 +1356,19 @@ class RequisicionService:
                         }]
                     )
                 
+                # ISS-SEC FIX: Validar que el lote pertenezca a farmacia central (centro NULL)
+                # Las requisiciones SOLO se surten desde farmacia central
+                if lote.centro_id is not None:
+                    raise StockInsuficienteError(
+                        f"El lote {lote.numero_lote} pertenece a un centro, no a Farmacia Central",
+                        detalles_stock=[{
+                            'producto': detalle.producto.clave,
+                            'lote': lote.numero_lote,
+                            'centro_lote': lote.centro.nombre if lote.centro else str(lote.centro_id),
+                            'error': 'Lote no es de Farmacia Central'
+                        }]
+                    )
+                
                 # Validar que el lote sea válido para surtido
                 if not lote.activo:
                     raise StockInsuficienteError(
@@ -1429,13 +1472,23 @@ class RequisicionService:
                 
                 # ISS-001 FIX (audit11): Obtener SOLO lotes disponibles para surtido
                 # usando FEFO (First Expired, First Out)
+                # ISS-SEC FIX: Incluir lotes con fecha_caducidad NULL (se consideran vigentes)
+                # y ordenarlos al final (NULLS LAST para que los que caducan primero se usen primero)
+                from django.db.models import Q, Value
+                from django.db.models.functions import Coalesce
+                from datetime import date
                 lotes = Lote.objects.select_for_update().filter(
                     centro__isnull=True,  # Solo farmacia central
                     producto=detalle.producto,
                     activo=True,          # Lote activo (no eliminado ni bloqueado)
                     cantidad_actual__gt=0, # Con stock disponible
-                    fecha_caducidad__gte=hoy,  # Solo lotes vigentes
-                ).order_by('fecha_caducidad', 'id')  # FEFO + ID para evitar deadlocks
+                ).filter(
+                    Q(fecha_caducidad__gte=hoy) | Q(fecha_caducidad__isnull=True)  # Vigentes o sin caducidad
+                ).order_by(
+                    # FEFO: Primero los que caducan antes, NULL al final (se usan después)
+                    Coalesce('fecha_caducidad', Value(date.max)),
+                    'id'  # ID para evitar deadlocks
+                )
                 
                 for lote in lotes:
                     if pendiente <= 0:
@@ -2324,7 +2377,8 @@ class RequisicionService:
                     centro_origen=mov.centro_destino,  # La salida viene del centro destino del mov de entrada
                     requisicion=requisicion,
                     usuario=self.usuario,
-                    cantidad=-mov.cantidad,
+                    # ISS-SEC FIX: Cantidad siempre positiva, el tipo 'salida' indica dirección
+                    cantidad=mov.cantidad,
                     motivo=f'REVERSO por cancelación de requisición {requisicion.numero}'
                 )
             

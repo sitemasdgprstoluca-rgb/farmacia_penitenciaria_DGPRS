@@ -2245,8 +2245,13 @@ def generar_recibo_salida_movimiento(movimiento_data, finalizado=False):
     
     # Título según tipo
     subtipo = movimiento_data.get('subtipo_salida', 'transferencia') or 'transferencia'
-    if subtipo.lower() == 'transferencia':
+    subtipo_lower = subtipo.lower()
+    if subtipo_lower == 'transferencia':
         titulo = "RECIBO DE TRANSFERENCIA DE MEDICAMENTOS"
+    elif subtipo_lower == 'merma':
+        titulo = "ACTA DE BAJA POR MERMA"
+    elif subtipo_lower == 'caducidad':
+        titulo = "ACTA DE BAJA POR CADUCIDAD"
     else:
         titulo = f"RECIBO DE SALIDA - {subtipo.upper()}"
     
@@ -2268,9 +2273,15 @@ def generar_recibo_salida_movimiento(movimiento_data, finalizado=False):
     
     centro_destino = movimiento_data.get('centro_destino', {})
     if isinstance(centro_destino, dict):
-        centro_destino_nombre = centro_destino.get('nombre', '') or 'N/A'
+        centro_destino_nombre = centro_destino.get('nombre', '') or ''
     else:
-        centro_destino_nombre = str(centro_destino) if centro_destino else 'N/A'
+        centro_destino_nombre = str(centro_destino) if centro_destino else ''
+    
+    # ISS-SEC FIX: Para merma/caducidad, mostrar "BAJA DE INVENTARIO" en lugar de destino vacío
+    if subtipo_lower in ('merma', 'caducidad') and not centro_destino_nombre:
+        centro_destino_nombre = 'BAJA DE INVENTARIO'
+    elif not centro_destino_nombre:
+        centro_destino_nombre = 'N/A'
     
     usuario = movimiento_data.get('usuario', 'Sistema')
     
