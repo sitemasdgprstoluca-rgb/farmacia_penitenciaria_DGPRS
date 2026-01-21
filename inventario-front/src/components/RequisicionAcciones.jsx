@@ -135,7 +135,24 @@ export function RequisicionAcciones({
     return accionesDisponibles;
   }, [requisicion, getAccionesDisponibles, contexto]);
   
+  // ISS-SEC: Lista de acciones críticas que requieren confirmación de dos pasos
+  const ACCIONES_CRITICAS = ['surtir', 'cancelar'];
+  
   const handleAccion = async (accion, datosExtra = {}) => {
+    // ISS-SEC: Confirmación de dos pasos para acciones críticas
+    // Para "surtir" mostramos confirmación directa
+    // Para "cancelar" primero motivo, luego confirmación
+    if (ACCIONES_CRITICAS.includes(accion.key) && !datosExtra._confirmado) {
+      // Si requiere motivo, primero pedirlo, luego confirmar
+      if (accion.requiereMotivo && !datosExtra.motivo) {
+        setModalData({ accion, tipo: 'motivo' });
+        return;
+      }
+      // Mostrar confirmación de dos pasos
+      setModalData({ accion, tipo: 'confirmacion_dos_pasos', datosExtra });
+      return;
+    }
+    
     // Si requiere confirmación o datos adicionales, mostrar modal
     if (accion.requiereFechaRecoleccion && !datosExtra.fecha_recoleccion_limite) {
       setModalData({ accion, tipo: 'fecha_recoleccion' });
@@ -153,11 +170,14 @@ export function RequisicionAcciones({
       datosExtra.lugar_entrega = nombreCentro;
     }
     
+    // Quitar flag interno de confirmación antes de enviar
+    const { _confirmado, ...datosEnviar } = datosExtra;
+    
     // Ejecutar acción
     setLoadingAccion(accion.key);
     
     try {
-      const resultado = await ejecutarAccion(accion.key, requisicion.id, datosExtra);
+      const resultado = await ejecutarAccion(accion.key, requisicion.id, datosEnviar);
       toast.success(resultado.mensaje || `${accion.label} completado`);
       
       if (onAccionCompletada) {
@@ -237,6 +257,8 @@ export function RequisicionAcciones({
         <ModalDatosAdicionales
           tipo={modalData.tipo}
           accion={modalData.accion}
+          datosExtra={modalData.datosExtra || {}}
+          requisicion={requisicion}
           onConfirm={(datos) => handleAccion(modalData.accion, datos)}
           onCancel={() => setModalData(null)}
         />
@@ -247,15 +269,16 @@ export function RequisicionAcciones({
 
 /**
  * Modal para capturar datos adicionales requeridos por algunas acciones
+ * ISS-SEC: Ahora soporta confirmación de dos pasos para acciones críticas
  */
-function ModalDatosAdicionales({ tipo, accion, onConfirm, onCancel }) {
+function ModalDatosAdicionales({ tipo, accion, datosExtra = {}, requisicion, onConfirm, onCancel }) {
   const [valor, setValor] = useState('');
   const [fechaRecoleccion, setFechaRecoleccion] = useState('');
   
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    let datos = {};
+    let datos = { ...datosExtra };
     
     if (tipo === 'fecha_recoleccion') {
       if (!fechaRecoleccion) {
@@ -270,6 +293,9 @@ function ModalDatosAdicionales({ tipo, accion, onConfirm, onCancel }) {
         return;
       }
       datos.motivo = valor.trim();
+    } else if (tipo === 'confirmacion_dos_pasos') {
+      // ISS-SEC: Marcar como confirmado para bypass del check
+      datos._confirmado = true;
     }
     
     onConfirm(datos);
@@ -283,6 +309,8 @@ function ModalDatosAdicionales({ tipo, accion, onConfirm, onCancel }) {
         if (accion.key === 'devolver') return 'Motivo de Devolución';
         if (accion.key === 'cancelar') return 'Motivo de Cancelación';
         return 'Motivo de Rechazo';
+      case 'confirmacion_dos_pasos':
+        return `⚠️ Confirmar: ${accion.label}`;
       default:
         return 'Datos Adicionales';
     }
@@ -303,6 +331,70 @@ function ModalDatosAdicionales({ tipo, accion, onConfirm, onCancel }) {
       case 'cancelar': return 'Explique por qué cancela esta requisición...';
       default: return 'Explique el motivo del rechazo...';
     }
+  };
+
+  // ISS-SEC: Mensaje de confirmación de dos pasos según acción
+  const getMensajeConfirmacion = () => {
+    const folio = requisicion?.folio || '';
+    switch (accion.key) {
+      case 'surtir':
+        return (
+          <>
+            <p className="text-gray-700 mb-3">
+              ¿Está seguro de que desea <strong>surtir y entregar</strong> la requisición <strong>{folio}</strong>?
+            </p>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+              <p className="font-medium mb-1">⚠️ Esta acción:</p>
+              <ul className="list-disc list-inside space-y-1">
+                <li>Descontará el inventario de farmacia</li>
+                <li>Agregará los productos al centro destino</li>
+                <li>Esta operación <strong>no se puede deshacer</strong></li>
+              </ul>
+            </div>
+          </>
+        );
+      case 'cancelar':
+        return (
+          <>
+            <p className="text-gray-700 mb-3">
+              ¿Está seguro de que desea <strong>cancelar</strong> la requisición <strong>{folio}</strong>?
+            </p>
+            {datosExtra?.motivo && (
+              <div className="bg-gray-50 border rounded-lg p-3 text-sm mb-3">
+                <span className="font-medium">Motivo registrado:</span>
+                <p className="text-gray-600 mt-1">{datosExtra.motivo}</p>
+              </div>
+            )}
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
+              <p className="font-medium mb-1">⚠️ Advertencia:</p>
+              <ul className="list-disc list-inside space-y-1">
+                <li>La requisición pasará a estado <strong>Cancelada</strong></li>
+                <li>No podrá ser reactivada después</li>
+                <li>Quedará registrada en auditoría</li>
+              </ul>
+            </div>
+          </>
+        );
+      default:
+        return (
+          <p className="text-gray-700">
+            ¿Está seguro de que desea ejecutar esta acción?
+          </p>
+        );
+    }
+  };
+
+  // ISS-SEC: Color del botón de confirmación según tipo de acción
+  const getBotonConfirmacionClasses = () => {
+    if (tipo === 'confirmacion_dos_pasos') {
+      if (accion.key === 'cancelar') {
+        return 'bg-red-600 hover:bg-red-700 text-white';
+      }
+      if (accion.key === 'surtir') {
+        return 'bg-green-600 hover:bg-green-700 text-white';
+      }
+    }
+    return COLORES_ACCION[accion.color];
   };
   
   return (
@@ -354,20 +446,27 @@ function ModalDatosAdicionales({ tipo, accion, onConfirm, onCancel }) {
               <p className="text-xs text-gray-500 mt-1">Mínimo 10 caracteres</p>
             </>
           )}
+
+          {/* ISS-SEC: Modal de confirmación de dos pasos */}
+          {tipo === 'confirmacion_dos_pasos' && (
+            <div className="mb-4">
+              {getMensajeConfirmacion()}
+            </div>
+          )}
           
           <div className="flex justify-end gap-3 mt-6">
             <button
               type="button"
               onClick={onCancel}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              className="px-4 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md"
             >
-              Cancelar
+              {tipo === 'confirmacion_dos_pasos' ? 'No, volver' : 'Cancelar'}
             </button>
             <button
               type="submit"
-              className={`px-4 py-2 rounded-md text-white ${COLORES_ACCION[accion.color]}`}
+              className={`px-4 py-2 rounded-md text-white ${getBotonConfirmacionClasses()}`}
             >
-              {accion.label}
+              {tipo === 'confirmacion_dos_pasos' ? `Sí, ${accion.label.toLowerCase()}` : accion.label}
             </button>
           </div>
         </form>
