@@ -1,5 +1,6 @@
 import React from "react";
 import { getApiConfigError, isHttpInsecure } from '../services/api';
+import { clearTokens } from '../services/tokenManager';
 
 /**
  * ISS-002 FIX: Error Boundary mejorado para capturar errores de renderizado en React
@@ -60,7 +61,8 @@ class ErrorBoundary extends React.Component {
   };
 
   handleLogout = () => {
-    // Limpiar tokens y redirigir al login
+    // SEGURIDAD: Limpiar TODOS los tokens (memoria, sessionStorage) además de localStorage
+    clearTokens();
     localStorage.removeItem('user');
     window.location.href = '/login';
   };

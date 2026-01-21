@@ -71,12 +71,10 @@ class SecureTokenObtainPairView(TokenObtainPairView):
         user_data = data.get('user', {})
         
         # Crear respuesta con access token y datos del usuario
-        # ISS-FIX: SIEMPRE incluir refresh en payload para soportar cross-origin
-        # El frontend lo guarda en memoria (igual de seguro que HttpOnly contra XSS)
-        # La cookie HttpOnly se envía también como respaldo
+        # SEGURIDAD: El refresh token SOLO se envía en cookie HttpOnly
+        # para prevenir exposición via XSS - nunca en el body JSON
         response_data = {
             'access': access_token,
-            'refresh': refresh_token,  # Siempre incluir para cross-origin
             'user': user_data,
             'message': 'Login exitoso'
         }
@@ -158,9 +156,7 @@ class SecureTokenRefreshView(APIView):
                     new_refresh = RefreshToken.for_user(user)
                     new_refresh_str = str(new_refresh)
                     
-                    # ISS-FIX: Incluir nuevo refresh en response body para cross-origin
-                    response_data['refresh'] = new_refresh_str
-                    
+                    # SEGURIDAD: El nuevo refresh token solo va en cookie HttpOnly
                     response = Response(response_data, status=status.HTTP_200_OK)
                     
                     # Actualizar cookie con nuevo refresh token (respaldo)

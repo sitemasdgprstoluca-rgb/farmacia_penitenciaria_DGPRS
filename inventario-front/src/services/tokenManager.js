@@ -17,10 +17,9 @@
 // Access token almacenado SOLO en memoria (no persiste entre pestañas ni recargas)
 let accessToken = null;
 
-// ISS-FIX: Refresh token - usar sessionStorage para persistir durante recarga de página
-// La cookie HttpOnly es preferida, pero en cross-origin (Render) puede no funcionar
-// sessionStorage es más seguro que localStorage (no persiste entre pestañas)
-const REFRESH_TOKEN_KEY = '__sifp_rt';
+// SEGURIDAD: Refresh token almacenado SOLO en memoria
+// La cookie HttpOnly del servidor es el mecanismo principal de refresh
+// NO usar sessionStorage/localStorage ya que son accesibles vía JS (vulnerable a XSS)
 let refreshToken = null;
 
 // ISS-003: Flag para bloquear refresh después de logout iniciado
@@ -57,43 +56,24 @@ export const getAccessToken = () => {
 };
 
 /**
- * ISS-FIX: Almacena el refresh token (sessionStorage + memoria para cross-origin)
- * sessionStorage persiste durante la sesión pero no entre pestañas (más seguro que localStorage)
+ * SEGURIDAD: Almacena el refresh token SOLO en memoria
+ * El refresh token principal viene en cookie HttpOnly del servidor
+ * Este almacenamiento en memoria es solo para compatibilidad temporal
  * @param {string} token - El refresh token JWT
  */
 export const setRefreshToken = (token) => {
   refreshToken = token;
-  try {
-    if (token) {
-      sessionStorage.setItem(REFRESH_TOKEN_KEY, token);
-    } else {
-      sessionStorage.removeItem(REFRESH_TOKEN_KEY);
-    }
-  } catch (e) {
-    // sessionStorage puede fallar en incógnito
-    console.warn('[tokenManager] No se pudo guardar refresh token en sessionStorage');
-  }
+  // SEGURIDAD: NO almacenar en sessionStorage (vulnerable a XSS)
 };
 
 /**
- * ISS-FIX: Obtiene el refresh token (memoria primero, luego sessionStorage)
+ * SEGURIDAD: Obtiene el refresh token desde memoria
+ * El mecanismo principal de refresh es la cookie HttpOnly del servidor
  * @returns {string|null} El refresh token o null si no existe
  */
 export const getRefreshToken = () => {
-  if (refreshToken) {
-    return refreshToken;
-  }
-  // Intentar recuperar de sessionStorage si no está en memoria
-  try {
-    const stored = sessionStorage.getItem(REFRESH_TOKEN_KEY);
-    if (stored) {
-      refreshToken = stored; // Cachear en memoria
-      return stored;
-    }
-  } catch (e) {
-    // sessionStorage puede fallar
-  }
-  return null;
+  return refreshToken;
+  // SEGURIDAD: NO leer de sessionStorage (evitar dependencia de storage accesible por JS)
 };
 
 /**
@@ -141,21 +121,18 @@ export const isRefreshInProgress = () => {
  */
 export const clearTokens = () => {
   accessToken = null;
-  refreshToken = null; // ISS-FIX: También limpiar refresh token en memoria
-  // ISS-FIX: Limpiar refresh token de sessionStorage
+  refreshToken = null;
+  // SEGURIDAD: Limpiar cualquier residuo que pudiera existir en storage
   try {
-    sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+    sessionStorage.removeItem('__sifp_rt');
+    localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
   } catch (e) {
-    // Ignorar errores de sessionStorage
+    // Ignorar errores de storage
   }
   logoutInProgress = true; // Bloquear refresh hasta nuevo login
   notifySessionChange(false);
 };
-
-/**
- * Registra un callback para cambios de sesión
- * @param {Function} callback - Función a llamar cuando cambie el estado de sesión
- * @returns {Function} Función para desregistrar el callback
  */
 export const onSessionChange = (callback) => {
   onSessionChangeCallbacks.push(callback);

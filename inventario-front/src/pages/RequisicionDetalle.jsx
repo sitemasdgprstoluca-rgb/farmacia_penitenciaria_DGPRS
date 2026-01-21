@@ -160,12 +160,21 @@ const RequisicionDetalle = () => {
   }, [id, cargarRequisicion]);
 
   // Detectar modo edición desde URL y activar cuando requisición carga
+  // SEGURIDAD: Validar permisos antes de activar modo edición
   useEffect(() => {
     if (modoEditarURL && requisicion && ['borrador', 'devuelta'].includes(requisicion.estado)) {
+      // Verificar permiso antes de activar modo edición
+      if (!permisos?.editarRequisicion) {
+        toast.error('No tienes permisos para editar requisiciones');
+        // Limpiar parámetro de URL
+        searchParams.delete('modo');
+        setSearchParams(searchParams);
+        return;
+      }
       iniciarEdicionProductos();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modoEditarURL, requisicion?.id, requisicion?.estado]);
+  }, [modoEditarURL, requisicion?.id, requisicion?.estado, permisos?.editarRequisicion]);
 
   // FLUJO V2: Usa helpers compartidos para colores de badge y labels
   const getEstadoBadge = (estado) => getEstadoBadgeClasses(estado);
@@ -665,6 +674,12 @@ const RequisicionDetalle = () => {
 
   // Iniciar modo edición
   const iniciarEdicionProductos = () => {
+    // SEGURIDAD: Validar permisos antes de permitir edición
+    if (!permisos?.editarRequisicion) {
+      toast.error('No tienes permisos para editar requisiciones');
+      return;
+    }
+    
     if (!requisicion || !['borrador', 'devuelta'].includes(requisicion.estado)) {
       toast.error('Solo se puede editar en estado borrador o devuelta');
       return;
@@ -756,6 +771,13 @@ const RequisicionDetalle = () => {
 
   // Guardar cambios de edición
   const guardarCambiosProductos = async () => {
+    // SEGURIDAD: Validar permisos antes de enviar actualización
+    if (!permisos?.editarRequisicion) {
+      toast.error('No tienes permisos para editar requisiciones');
+      setModoEdicionProductos(false);
+      return;
+    }
+    
     if (productosEditables.length === 0) {
       toast.error('La requisición debe tener al menos un producto');
       return;

@@ -722,7 +722,7 @@ function App() {
             } />
             <Route path="pacientes" element={
               <CriticalRouteGuard>
-              <PermissionsGuard requiredPermission="verDispensaciones">
+              <PermissionsGuard requiredPermission="verPacientes">
                 <Pacientes />
               </PermissionsGuard>
               </CriticalRouteGuard>

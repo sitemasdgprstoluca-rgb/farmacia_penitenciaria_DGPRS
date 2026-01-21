@@ -4,6 +4,8 @@ Usa Resend en producción para envío confiable de emails.
 """
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.conf import settings
@@ -164,14 +166,13 @@ class PasswordResetRequestView(APIView):
                 else:
                     logger.warning(f"Password reset: fallo envío email para usuario ID {user.pk}")
             else:
-                # Desarrollo sin email configurado: mostrar link directo
+                # Sin servicio de email configurado - solo logear internamente
+                # SEGURIDAD: No exponer tokens en respuestas públicas
                 frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
                 reset_url = f"{frontend_url}/restablecer-password?uid={uid}&token={token}"
-                response_data['debug_mode'] = True
-                response_data['debug_url'] = reset_url
-                response_data['debug_token'] = token
-                response_data['debug_uid'] = uid
-                logger.info(f"Password reset (sin email config): URL generada para usuario ID {user.pk}")
+                # Solo loguear en servidor (nunca exponer al cliente)
+                logger.warning(f"Password reset: No hay servicio de email configurado para usuario ID {user.pk}")
+                logger.debug(f"Password reset URL (solo desarrollo/logs): {reset_url}")
             
         except User.DoesNotExist:
             # No revelar si el usuario existe o no (log sin email completo)
@@ -233,15 +234,18 @@ class PasswordResetConfirmView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        if len(new_password) < 8:
-            return Response(
-                {'error': 'La contraseña debe tener al menos 8 caracteres'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
         try:
             user_id = force_str(urlsafe_base64_decode(uid))
             user = User.objects.get(pk=user_id)
+            
+            # Validar contraseña usando los validadores configurados en Django
+            try:
+                validate_password(new_password, user=user)
+            except ValidationError as e:
+                return Response(
+                    {'error': ' '.join(e.messages)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
             if not default_token_generator.check_token(user, token):
                 return Response(
