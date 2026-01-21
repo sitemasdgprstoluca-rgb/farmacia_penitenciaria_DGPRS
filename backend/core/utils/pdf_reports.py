@@ -2942,6 +2942,9 @@ def generar_tarjeta_entradas_salidas_formato_b(lote_info, movimientos_data, es_c
     
     # ========== DATOS DE MOVIMIENTOS ==========
     saldo_actual = 0
+    # ISS-SEC FIX (audit6): Tipos que SUMAN al saldo (entradas)
+    TIPOS_SUMA = {'ENTRADA', 'AJUSTE_POSITIVO', 'DEVOLUCION'}
+    
     for mov in movimientos_data:
         fecha_mov = mov.get('fecha', '')
         if hasattr(fecha_mov, 'strftime'):
@@ -2955,20 +2958,22 @@ def generar_tarjeta_entradas_salidas_formato_b(lote_info, movimientos_data, es_c
         if len(doc_entrada) > 15:
             doc_entrada = doc_entrada[:15]
         
-        cantidad = mov.get('cantidad', 0)
+        cantidad = abs(mov.get('cantidad', 0))
         tipo_mov = str(mov.get('tipo', '')).upper()
         
-        # Determinar si es entrada o salida
-        if tipo_mov == 'ENTRADA' or cantidad > 0:
-            ent_cajas = str(abs(cantidad))
-            ent_piezas = str(abs(cantidad))
+        # ISS-SEC FIX (audit6): Determinar si es entrada o salida por el TIPO, no por el signo
+        # Todas las cantidades son positivas en el sistema
+        if tipo_mov in TIPOS_SUMA:
+            ent_cajas = str(cantidad)
+            ent_piezas = str(cantidad)
             sal_cajas = ''
-            saldo_actual += abs(cantidad)
+            saldo_actual += cantidad
         else:
+            # Salidas, ajustes, mermas, transferencias, etc.
             ent_cajas = ''
             ent_piezas = ''
-            sal_cajas = str(abs(cantidad))
-            saldo_actual -= abs(cantidad)
+            sal_cajas = str(cantidad)
+            saldo_actual -= cantidad
         
         saldo_actual = max(0, saldo_actual)
         
