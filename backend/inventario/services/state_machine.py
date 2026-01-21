@@ -516,43 +516,83 @@ class RequisicionStateMachine:
         
         return errores
     
-    def _validar_segregacion_funciones(self, usuario, accion: str) -> List[str]:
+    def _validar_segregacion_funciones(self, usuario, accion: str, strict: bool = True) -> List[str]:
         """
         ISS-003 FIX (audit4): Valida segregación de funciones.
+        ISS-AUDIT-003 FIX: Validación ESTRICTA incluso para admins/superusuarios.
         
-        Verifica que el usuario no haya ejecutado una acción incompatible
-        en la misma requisición.
+        Un mismo usuario NO puede ejecutar dos acciones del mismo par en la misma requisición.
+        Esta regla aplica SIEMPRE, sin excepciones de rol o privilegio (Segregation of Duties).
+        
+        REGLA DE SEGURIDAD: Incluso superusuarios están sujetos a estas restricciones
+        para prevenir fraude interno y vacíos de auditoría.
         
         Args:
             usuario: Usuario que intenta la acción
             accion: Acción a ejecutar (autorizar_farmacia, surtir, etc.)
+            strict: Si True (default), NO permite excepciones para superusuarios
+        
+        Returns:
+            List[str]: Lista de errores de segregación (vacía si es válido)
         """
         errores = []
         
         if not usuario or not hasattr(self.requisicion, 'id'):
             return errores
         
-        # Mapeo de acciones a campos de usuario en la requisición
-        acciones_usuario = {
-            'crear': self.requisicion.solicitante,
-            'autorizar_admin': getattr(self.requisicion, 'administrador_centro', None),
-            'autorizar_director': getattr(self.requisicion, 'director_centro', None),
-            'autorizar_farmacia': getattr(self.requisicion, 'autorizador_farmacia', None),
-            'surtir': getattr(self.requisicion, 'surtidor', None),
-        }
-        
-        # Reglas de segregación
-        reglas = [
-            ('crear', 'autorizar_admin', 'El creador no puede autorizar como administrador'),
-            ('crear', 'autorizar_director', 'El creador no puede autorizar como director'),
-            ('crear', 'autorizar_farmacia', 'El creador no puede autorizar en farmacia'),
-            ('autorizar_admin', 'autorizar_director', 'El mismo usuario no puede hacer ambas autorizaciones del centro'),
-            ('autorizar_farmacia', 'surtir', 'El autorizador de farmacia no puede ser el surtidor'),
-        ]
-        
+        # ISS-AUDIT-003 FIX: Verificar que el usuario exista y tenga ID
         usuario_id = getattr(usuario, 'id', None)
         if not usuario_id:
             return errores
+        
+        # ISS-AUDIT-003 FIX: ADVERTENCIA si superusuario intenta bypass
+        # NO se permite bypass en modo strict
+        if strict and getattr(usuario, 'is_superuser', False):
+            logger.warning(
+                f"ISS-AUDIT-003: Superusuario {usuario.username} sujeto a segregación de funciones "
+                f"para acción '{accion}' en requisición {self.requisicion.folio}. "
+                f"La segregación aplica a TODOS los usuarios sin excepción."
+            )
+        
+        # Mapeo de acciones a campos de usuario en la requisición
+        acciones_usuario = {
+            'crear': self.requisicion.solicitante,
+            'enviar_admin': self.requisicion.solicitante,  # ISS-AUDIT-003: Agregar enviar
+            'autorizar_admin': getattr(self.requisicion, 'administrador_centro', None),
+            'autorizar_director': getattr(self.requisicion, 'director_centro', None),
+            'recibir_farmacia': getattr(self.requisicion, 'receptor_farmacia', None),
+            'autorizar_farmacia': getattr(self.requisicion, 'autorizador_farmacia', None),
+            'surtir': getattr(self.requisicion, 'surtidor', None),
+            'confirmar_entrega': getattr(self.requisicion, 'usuario_firma_recepcion', None),
+        }
+        
+        # ISS-AUDIT-003 FIX: Reglas de segregación COMPLETAS
+        # Cada par representa dos acciones que NO pueden ser ejecutadas por el mismo usuario
+        reglas = [
+            # Segregación en Centro: Creador vs Autorizadores
+            ('crear', 'autorizar_admin', 
+             'El creador de la requisición no puede autorizarla como administrador'),
+            ('crear', 'autorizar_director', 
+             'El creador de la requisición no puede autorizarla como director'),
+            ('crear', 'autorizar_farmacia', 
+             'El creador de la requisición no puede autorizarla en farmacia'),
+            
+            # Segregación en Centro: Autorizadores entre sí
+            ('autorizar_admin', 'autorizar_director', 
+             'El mismo usuario no puede hacer ambas autorizaciones del centro (admin y director)'),
+            
+            # Segregación en Farmacia: Quien recibe vs quien autoriza vs quien surte
+            ('recibir_farmacia', 'autorizar_farmacia',
+             'Quien recibe la requisición en farmacia no puede ser quien la autoriza'),
+            ('autorizar_farmacia', 'surtir', 
+             'El autorizador de farmacia no puede ser el surtidor'),
+            
+            # ISS-AUDIT-003 FIX: Segregación adicional para prevenir fraude completo
+            ('crear', 'surtir',
+             'El creador de la requisición no puede ser quien la surte'),
+            ('crear', 'confirmar_entrega',
+             'El creador de la requisición no puede confirmar su propia entrega'),
+        ]
         
         for accion1, accion2, mensaje in reglas:
             if accion in [accion1, accion2]:
@@ -561,9 +601,22 @@ class RequisicionStateMachine:
                 usuario_otra = acciones_usuario.get(otra_accion)
                 
                 if usuario_otra and getattr(usuario_otra, 'id', None) == usuario_id:
-                    errores.append(
-                        f"ISS-003: Segregación de funciones - {mensaje}. "
-                        f"Usuario {usuario.username} ya ejecutó '{otra_accion}' en esta requisición."
+                    # ISS-AUDIT-003 FIX: Formato de error más claro y auditable
+                    error_msg = (
+                        f"ISS-003: SEGREGACIÓN DE FUNCIONES VIOLADA. "
+                        f"Usuario '{usuario.username}' (ID: {usuario_id}) ya ejecutó '{otra_accion}' "
+                        f"en esta requisición (folio: {self.requisicion.folio}). "
+                        f"No puede ejecutar '{accion}'. {mensaje}."
+                    )
+                    errores.append(error_msg)
+                    
+                    # ISS-AUDIT-003 FIX: Log de seguridad para auditoría
+                    logger.error(
+                        f"ISS-AUDIT-003 SECURITY: Intento de violar segregación de funciones. "
+                        f"Usuario: {usuario.username}, Acción intentada: {accion}, "
+                        f"Acción previa conflictiva: {otra_accion}, "
+                        f"Requisición: {self.requisicion.folio}, "
+                        f"Superuser: {getattr(usuario, 'is_superuser', False)}"
                     )
         
         return errores

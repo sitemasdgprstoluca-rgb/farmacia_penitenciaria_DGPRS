@@ -7106,8 +7106,14 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         FLUJO CORRECTO: enviada → recibir → en_revision → autorizar
         
         IMPORTANTE: Debe incluir 'fecha_recoleccion_limite' en el request.
+        
+        ISS-AUDIT-002 FIX: Usa select_for_update() para prevenir race conditions
+        en autorizaciones concurrentes que compiten por el mismo stock.
         """
-        requisicion = self.get_object()
+        # ISS-AUDIT-002 FIX: Bloquear requisición PRIMERO para evitar race conditions
+        # Esto previene sobre-autorización de stock cuando múltiples admins autorizan
+        # requisiciones simultáneamente que compiten por los mismos lotes.
+        requisicion = Requisicion.objects.select_for_update(nowait=False).get(pk=pk)
         estado_actual = (requisicion.estado or '').lower()
         
         # ISS-FLUJO-FIX: Solo permitir autorizar desde 'en_revision'
@@ -7133,6 +7139,23 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                     'rol_actual': rol_efectivo,
                     'detalle': f'El rol "{rol_efectivo}" no tiene el permiso puede_autorizar_farmacia'
                 }, status=status.HTTP_403_FORBIDDEN)
+        
+        # ISS-AUDIT-002 FIX: Validar stock disponible ANTES de autorizar
+        # Esto previene sobre-autorización de stock comprometido por otras requisiciones
+        try:
+            from inventario.services.requisicion_service import RequisicionService, StockInsuficienteError
+            service = RequisicionService(requisicion, request.user)
+            # Usar bloqueo para validación precisa del stock disponible
+            service.validar_stock_disponible(usar_bloqueo=True)
+        except StockInsuficienteError as e:
+            return Response({
+                'error': 'Stock insuficiente para autorizar la requisición',
+                'detalles_stock': e.detalles_stock,
+                'mensaje': str(e)
+            }, status=status.HTTP_409_CONFLICT)
+        except Exception as e:
+            logger.warning(f"ISS-AUDIT-002: Error al validar stock: {e}")
+            # No bloquear si hay error de validación, pero registrar
         
         # CRÍTICO: Validar fecha límite de recolección
         fecha_recoleccion_str = request.data.get('fecha_recoleccion_limite')

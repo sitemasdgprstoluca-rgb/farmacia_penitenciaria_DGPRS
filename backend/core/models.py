@@ -878,6 +878,164 @@ class Producto(models.Model):
         return 'normal'
 
 
+class LoteQuerySet(models.QuerySet):
+    """
+    ISS-AUDIT-001 FIX: QuerySet personalizado para Lote con métodos de filtrado
+    a nivel SQL para evitar problemas de rendimiento N+1 y paginación incorrecta.
+    
+    El campo 'estado' de Lote es una @property calculada, NO un campo de BD.
+    Este QuerySet proporciona métodos que replican la lógica en SQL para:
+    - Permitir filtrado eficiente a nivel de BD
+    - Soportar paginación correcta
+    - Evitar traer todos los registros a memoria
+    
+    Uso:
+        Lote.objects.disponibles()  # Lotes activos, con stock y no vencidos
+        Lote.objects.agotados()     # Lotes sin stock o inactivos
+        Lote.objects.vencidos()     # Lotes con fecha_caducidad < hoy
+        Lote.objects.con_estado_anotado()  # Agrega campo 'estado_calculado'
+    """
+    
+    def disponibles(self):
+        """
+        Filtra lotes disponibles para surtido/operaciones.
+        Equivalente SQL de: activo=True AND cantidad_actual>0 AND fecha_caducidad>=hoy
+        
+        ISS-AUDIT-001: Replica exactamente la lógica de @property estado=='disponible'
+        """
+        from django.utils import timezone
+        from django.db.models import Q
+        hoy = timezone.now().date()
+        return self.filter(
+            activo=True,
+            cantidad_actual__gt=0,
+        ).filter(
+            Q(fecha_caducidad__gte=hoy) | Q(fecha_caducidad__isnull=True)
+        )
+    
+    def agotados(self):
+        """
+        Filtra lotes agotados (sin stock o inactivos).
+        Equivalente SQL de: activo=False OR cantidad_actual<=0
+        
+        ISS-AUDIT-001: Replica exactamente la lógica de @property estado=='agotado'
+        """
+        from django.db.models import Q
+        return self.filter(
+            Q(activo=False) | Q(cantidad_actual__lte=0)
+        )
+    
+    def vencidos(self):
+        """
+        Filtra lotes vencidos.
+        Equivalente SQL de: fecha_caducidad < hoy AND activo=True AND cantidad_actual>0
+        
+        ISS-AUDIT-001: Replica exactamente la lógica de @property estado=='vencido'
+        Nota: Lotes inactivos o agotados se consideran 'agotados', no 'vencidos'
+        """
+        from django.utils import timezone
+        hoy = timezone.now().date()
+        return self.filter(
+            activo=True,
+            cantidad_actual__gt=0,
+            fecha_caducidad__lt=hoy
+        )
+    
+    def con_estado_anotado(self):
+        """
+        Anota el campo 'estado_calculado' usando expresiones SQL Case/When.
+        Permite ordenar y filtrar por estado a nivel de BD.
+        
+        ISS-AUDIT-001: Replica exactamente la lógica de @property estado
+        
+        Uso:
+            lotes = Lote.objects.con_estado_anotado().filter(estado_calculado='disponible')
+            lotes = Lote.objects.con_estado_anotado().order_by('estado_calculado')
+        """
+        from django.utils import timezone
+        from django.db.models import Case, When, Value, CharField, Q
+        hoy = timezone.now().date()
+        
+        return self.annotate(
+            estado_calculado=Case(
+                # Primero: si no está activo -> agotado
+                When(activo=False, then=Value('agotado')),
+                # Segundo: si está activo pero vencido -> vencido
+                When(
+                    Q(activo=True) & Q(fecha_caducidad__lt=hoy) & Q(fecha_caducidad__isnull=False),
+                    then=Value('vencido')
+                ),
+                # Tercero: si está activo pero sin stock -> agotado
+                When(
+                    Q(activo=True) & Q(cantidad_actual__lte=0),
+                    then=Value('agotado')
+                ),
+                # Por defecto: disponible
+                default=Value('disponible'),
+                output_field=CharField()
+            )
+        )
+    
+    def por_estado(self, estado):
+        """
+        Filtra lotes por estado calculado.
+        
+        ISS-AUDIT-001: Método de conveniencia que evita usar Lote.objects.filter(estado=...)
+        que fallaría porque 'estado' no es un campo de BD.
+        
+        Args:
+            estado: 'disponible', 'agotado' o 'vencido'
+            
+        Returns:
+            QuerySet filtrado
+            
+        Raises:
+            ValueError: Si el estado no es válido
+        """
+        if estado == 'disponible':
+            return self.disponibles()
+        elif estado == 'agotado':
+            return self.agotados()
+        elif estado == 'vencido':
+            return self.vencidos()
+        else:
+            raise ValueError(
+                f"ISS-AUDIT-001: Estado '{estado}' no válido. "
+                f"Use 'disponible', 'agotado' o 'vencido'. "
+                f"NUNCA use Lote.objects.filter(estado=...) - 'estado' es una @property, no un campo de BD."
+            )
+
+
+class LoteManager(models.Manager):
+    """
+    ISS-AUDIT-001 FIX: Manager personalizado que usa LoteQuerySet.
+    Proporciona acceso directo a métodos de filtrado de estado.
+    """
+    
+    def get_queryset(self):
+        return LoteQuerySet(self.model, using=self._db)
+    
+    def disponibles(self):
+        """Shortcut a queryset.disponibles()"""
+        return self.get_queryset().disponibles()
+    
+    def agotados(self):
+        """Shortcut a queryset.agotados()"""
+        return self.get_queryset().agotados()
+    
+    def vencidos(self):
+        """Shortcut a queryset.vencidos()"""
+        return self.get_queryset().vencidos()
+    
+    def con_estado_anotado(self):
+        """Shortcut a queryset.con_estado_anotado()"""
+        return self.get_queryset().con_estado_anotado()
+    
+    def por_estado(self, estado):
+        """Shortcut a queryset.por_estado()"""
+        return self.get_queryset().por_estado(estado)
+
+
 class Lote(models.Model):
     """
     Modelo de Lote de Producto - Supabase
@@ -892,6 +1050,19 @@ class Lote(models.Model):
     - fecha_caducidad debe ser posterior a fecha_fabricacion
     - cantidad_inicial y cantidad_actual deben ser >= 0
     - fecha_caducidad no puede ser anterior a la fecha actual para lotes nuevos
+    
+    ISS-AUDIT-001 FIX: IMPORTANTE sobre campo 'estado':
+    =====================================================
+    El campo 'estado' es una @property CALCULADA, NO un campo de BD.
+    NUNCA usar Lote.objects.filter(estado='disponible') - causará FieldError.
+    
+    CORRECTO:
+        Lote.objects.disponibles()              # Lotes disponibles
+        Lote.objects.por_estado('disponible')   # Equivalente
+        Lote.objects.con_estado_anotado().filter(estado_calculado='disponible')
+    
+    INCORRECTO (fallará):
+        Lote.objects.filter(estado='disponible')  # FieldError!
     """
     numero_lote = models.CharField(max_length=100)
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='lotes', db_column='producto_id')
@@ -907,6 +1078,9 @@ class Lote(models.Model):
     activo = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    # ISS-AUDIT-001 FIX: Manager personalizado para filtrado por estado
+    objects = LoteManager()
 
     class Meta:
         db_table = 'lotes'

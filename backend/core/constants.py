@@ -60,9 +60,24 @@ UNIDADES_ALIAS = {
 }
 
 
-def normalizar_unidad_medida(valor):
+class UnidadMedidaDesconocidaError(Exception):
+    """
+    ISS-AUDIT-004 FIX: Excepción para unidades de medida no reconocidas.
+    
+    Se lanza cuando normalizar_unidad_medida() encuentra una unidad que no puede mapear
+    y strict=True. Esto permite detectar datos incorrectos durante importaciones
+    en lugar de silenciosamente convertir todo a 'PIEZA'.
+    """
+    def __init__(self, valor_original, mensaje=None):
+        self.valor_original = valor_original
+        self.mensaje = mensaje or f"Unidad de medida no reconocida: '{valor_original}'"
+        super().__init__(self.mensaje)
+
+
+def normalizar_unidad_medida(valor, strict=False, log_warnings=True):
     """
     ISS-024 FIX (audit9): Normaliza una unidad de medida al código estándar.
+    ISS-AUDIT-004 FIX: Modo strict para evitar conversión silenciosa a PIEZA.
     
     Maneja textos compuestos como:
     - "CAJA CON 7 OVULOS" -> "CAJA"
@@ -74,11 +89,24 @@ def normalizar_unidad_medida(valor):
     
     Args:
         valor: Valor de unidad (puede ser código, nombre o alias)
+        strict: Si True, lanza UnidadMedidaDesconocidaError en lugar de default a PIEZA
+        log_warnings: Si True, registra advertencias para valores no reconocidos
         
     Returns:
-        str: Código normalizado o PIEZA como default
+        str: Código normalizado
+        
+    Raises:
+        UnidadMedidaDesconocidaError: Si strict=True y la unidad no se reconoce
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     if not valor:
+        if strict:
+            raise UnidadMedidaDesconocidaError(
+                valor,
+                "Unidad de medida vacía o nula. Debe especificar una unidad válida."
+            )
         return 'PIEZA'
     
     valor_upper = valor.upper().strip()
@@ -133,6 +161,17 @@ def normalizar_unidad_medida(valor):
         'PARCHES': 'PIEZA',
         'AMPULA': 'AMPOLLETA',
         'AMPULAS': 'AMPOLLETA',
+        # ISS-AUDIT-004 FIX: Agregar más unidades comunes
+        'KIT': 'PIEZA',
+        'KITS': 'PIEZA',
+        'PAQUETE': 'PIEZA',
+        'PAQUETES': 'PIEZA',
+        'UNIDAD': 'PIEZA',
+        'UNIDADES': 'PIEZA',
+        'VIAL': 'AMPOLLETA',
+        'VIALES': 'AMPOLLETA',
+        'LATA': 'PIEZA',
+        'LATAS': 'PIEZA',
     }
     
     # Buscar palabras clave en el texto
@@ -152,8 +191,42 @@ def normalizar_unidad_medida(valor):
         if valor_lower.startswith(alias + ' ') or valor_lower.startswith(alias + '/'):
             return normalizado
     
-    # Default a PIEZA si no se reconoce nada
+    # ISS-AUDIT-004 FIX: Si llegamos aquí, la unidad NO fue reconocida
+    if strict:
+        raise UnidadMedidaDesconocidaError(
+            valor,
+            f"Unidad de medida no reconocida: '{valor}'. "
+            f"Unidades válidas: {', '.join(sorted(UNIDADES_VALIDAS))}. "
+            f"Revise el dato o agregue un alias en UNIDADES_ALIAS si es una variante válida."
+        )
+    
+    # ISS-AUDIT-004 FIX: Registrar advertencia para análisis posterior
+    if log_warnings:
+        logger.warning(
+            f"ISS-AUDIT-004: Unidad de medida no reconocida '{valor}' convertida a 'PIEZA'. "
+            f"Considere agregar un alias o revisar el dato de origen."
+        )
+    
     return 'PIEZA'
+
+
+def normalizar_unidad_medida_strict(valor):
+    """
+    ISS-AUDIT-004 FIX: Versión estricta de normalizar_unidad_medida.
+    
+    Lanza UnidadMedidaDesconocidaError si la unidad no se reconoce.
+    Usar en importaciones para detectar errores de datos.
+    
+    Args:
+        valor: Valor de unidad a normalizar
+        
+    Returns:
+        str: Código normalizado
+        
+    Raises:
+        UnidadMedidaDesconocidaError: Si la unidad no se reconoce
+    """
+    return normalizar_unidad_medida(valor, strict=True, log_warnings=True)
 
 # Categorías de productos válidas
 CATEGORIAS_PRODUCTO = [
@@ -285,36 +358,109 @@ TRANSICIONES_SURTIDO_EXTENDIDAS = {
 }
 
 # =============================================================================
-# ISS-SEC-CANCELACION FIX: Estados cancelables DERIVADOS de TRANSICIONES_REQUISICION
+# ISS-AUDIT-005 FIX: Estados cancelables - LISTA ESTÁTICA BASADA EN REGLAS DE NEGOCIO
 # =============================================================================
-# FUENTE ÚNICA DE VERDAD: TRANSICIONES_REQUISICION define qué estados pueden cancelarse.
-# Esta derivación garantiza consistencia entre validadores, servicios y endpoints.
+# 
+# ANTES (INSEGURO): ESTADOS_CANCELABLES se derivaba dinámicamente de TRANSICIONES_REQUISICION.
+# PROBLEMA: Si alguien agregaba accidentalmente una transición 'surtida' -> 'cancelada'
+# en TRANSICIONES_REQUISICION, automáticamente permitiría cancelar órdenes surtidas
+# sin garantizar que exista lógica de reversión de inventario.
+#
+# AHORA (SEGURO): ESTADOS_CANCELABLES es una WHITELIST ESTÁTICA basada en:
+# 1. Reglas de negocio: Solo estados SIN efectos de inventario irreversibles
+# 2. Capacidad de reversión: Estados donde NO hay movimientos de stock confirmados
+#
+# REGLA FUNDAMENTAL: Una requisición solo puede cancelarse si:
+# - NO ha generado movimientos de inventario (entradas/salidas)
+# - NO ha afectado stock de lotes (físico o comprometido)
+# - La cancelación es una operación administrativa sin efectos de inventario
+#
+# Para agregar un estado a esta lista, se DEBE verificar:
+# 1. ¿El estado permite movimientos de inventario? Si sí, NO debe ser cancelable.
+# 2. ¿Existe lógica de reversión implementada? Si no, NO debe ser cancelable.
+# 3. ¿La cancelación desde este estado tiene sentido de negocio?
+# =============================================================================
 
-# ISS-SEC FIX: Calcular dinámicamente qué estados pueden ir a 'cancelada'
-# Un estado es cancelable SI Y SOLO SI 'cancelada' está en sus transiciones permitidas
+# ISS-AUDIT-005 FIX: Lista ESTÁTICA de estados cancelables
+# Definida explícitamente según reglas de negocio, NO derivada de transiciones
+ESTADOS_CANCELABLES_WHITELIST = frozenset([
+    # Estados de creación/revisión (sin movimientos de inventario)
+    'borrador',           # Requisición en creación, sin efectos
+    'pendiente_admin',    # Esperando aprobación admin, sin efectos
+    'pendiente_director', # Esperando aprobación director, sin efectos
+    'enviada',            # Enviada a farmacia, sin efectos aún
+    'devuelta',           # Devuelta para corrección, sin efectos
+    
+    # Estados de farmacia previos a surtido
+    # NOTA: 'autorizada' permite cancelación porque el stock está RESERVADO
+    # pero no MOVIDO físicamente. La cancelación libera la reserva.
+    'autorizada',         # Autorizada pero no surtida, solo stock reservado
+    
+    # NOTA CRÍTICA: en_surtido PUEDE tener movimientos parciales
+    # La cancelación desde en_surtido requiere REVERSIÓN de movimientos
+    # Se incluye porque existe lógica de reversión implementada
+    'en_surtido',         # En proceso, puede revertirse si hay lógica
+])
+
+# Estados que NUNCA pueden cancelarse por regla de negocio
+# Incluye estados donde hay movimientos irreversibles o estados finales
+ESTADOS_NO_CANCELABLES_WHITELIST = frozenset([
+    # Estados con inventario ya movido (irreversible sin devolución formal)
+    'surtida',            # Stock ya descontado de farmacia, entregado físicamente
+    'parcial',            # Surtido parcial, hay movimientos confirmados
+    
+    # Estados finales - no pueden cambiar por definición
+    'entregada',          # Completada exitosamente
+    'rechazada',          # Rechazada, flujo terminado
+    'vencida',            # Venció sin recolección, flujo terminado
+    'cancelada',          # Ya cancelada
+    
+    # Estados intermedios sin transición a cancelada por diseño
+    'en_revision',        # Solo puede ir a autorizada/rechazada/devuelta
+])
+
+# ISS-AUDIT-005 FIX: Mantener compatibilidad con código existente
+ESTADOS_CANCELABLES = ESTADOS_CANCELABLES_WHITELIST
+ESTADOS_SIN_CANCELACION = list(ESTADOS_NO_CANCELABLES_WHITELIST)
+
+# ISS-AUDIT-005 FIX: DEPRECAR la función de cálculo dinámico
 def _calcular_estados_cancelables():
-    """Deriva estados cancelables de TRANSICIONES_REQUISICION (fuente única de verdad)."""
-    cancelables = set()
-    no_cancelables = set()
+    """
+    DEPRECADO: Esta función ya NO debe usarse para determinar estados cancelables.
+    
+    Mantenida por compatibilidad pero ahora solo verifica consistencia
+    entre la whitelist estática y las transiciones definidas.
+    
+    ISS-AUDIT-005: La fuente de verdad es ESTADOS_CANCELABLES_WHITELIST.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Calcular desde transiciones para verificar consistencia
+    cancelables_transiciones = set()
     for estado, transiciones in TRANSICIONES_REQUISICION.items():
         if 'cancelada' in transiciones:
-            cancelables.add(estado)
-        else:
-            no_cancelables.add(estado)
-    return cancelables, no_cancelables
+            cancelables_transiciones.add(estado)
+    
+    # Verificar consistencia
+    diferencia = cancelables_transiciones.symmetric_difference(ESTADOS_CANCELABLES_WHITELIST)
+    if diferencia:
+        logger.warning(
+            f"ISS-AUDIT-005 ADVERTENCIA: Inconsistencia detectada entre "
+            f"TRANSICIONES_REQUISICION y ESTADOS_CANCELABLES_WHITELIST. "
+            f"Estados en conflicto: {diferencia}. "
+            f"Revisar reglas de negocio y actualizar whitelist si es necesario."
+        )
+    
+    return ESTADOS_CANCELABLES_WHITELIST, ESTADOS_NO_CANCELABLES_WHITELIST
 
-ESTADOS_CANCELABLES, ESTADOS_SIN_CANCELACION_CALC = _calcular_estados_cancelables()
-
-# ISS-SEC FIX: Convertir a lista para compatibilidad con código existente
-# IMPORTANTE: Esta lista se deriva de TRANSICIONES_REQUISICION, NO es hardcodeada
-# Estados que NO permiten cancelación según la máquina de estados:
-ESTADOS_SIN_CANCELACION = list(ESTADOS_SIN_CANCELACION_CALC)
-
-# Documentación de la derivación (para auditoría):
-# Según TRANSICIONES_REQUISICION actual:
-# - CANCELABLES: borrador, pendiente_admin, pendiente_director, enviada, autorizada, en_surtido, devuelta
-# - NO CANCELABLES: en_revision (solo autorizada/rechazada/devuelta), surtida (solo entregada/vencida),
-#                   parcial (solo surtida/entregada/vencida), y estados finales (entregada, rechazada, vencida, cancelada)
+# Ejecutar verificación al importar módulo (solo en modo debug)
+try:
+    import os
+    if os.environ.get('DJANGO_DEBUG', '').lower() == 'true':
+        _calcular_estados_cancelables()
+except Exception:
+    pass  # Silenciar errores en importación
 
 # =============================================================================
 # ISS-005 FIX: CONSTANTES DE STOCK Y ESTADOS - FUENTE ÚNICA DE VERDAD
