@@ -17,7 +17,7 @@ import { DEV_CONFIG } from "../config/dev";
 import NotificacionesBell from "./NotificacionesBell";
 import ConnectionIndicator from "./ConnectionIndicator";
 import { notificacionesAPI, authAPI } from "../services/api";
-import { clearTokens, setLogoutInProgress } from "../services/tokenManager";
+import { clearTokens, setLogoutInProgress, hasAccessToken } from "../services/tokenManager";
 import {
   FaHome,
   FaBox,
@@ -332,7 +332,7 @@ function Layout() {
   const [expandedMenus, setExpandedMenus] = useState({}); // Para submenús expandidos
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, permisos, getRolPrincipal } = usePermissions();
+  const { user, permisos, getRolPrincipal, permisosValidados } = usePermissions();
   const { logoHeaderUrl, nombreSistema } = useTheme();
 
   const tienePermisoNotificaciones = permisos?.verNotificaciones;
@@ -465,8 +465,15 @@ function Layout() {
   }, []);
 
   // Notificaciones polling
+  // ISS-SEC FIX (audit6): Solo hacer polling si hay token de acceso válido
+  // Evita errores 401 cuando user existe pero el token aún no se ha refrescado
   useEffect(() => {
     const cargarUnread = async () => {
+      // ISS-SEC FIX: Verificar token antes de cada llamada (puede expirar entre polls)
+      if (!hasAccessToken()) {
+        return; // Token no disponible, saltar silenciosamente
+      }
+      
       try {
         const res = await notificacionesAPI.noLeidasCount();
         const data = res.data;
@@ -479,11 +486,13 @@ function Layout() {
         
         setUnreadCount(Math.max(0, total));
       } catch (error) {
-        // Silenciar errores
+        // Silenciar errores (401 ya no debería ocurrir, pero por si acaso)
       }
     };
     
-    if (user && tienePermisoNotificaciones) {
+    // ISS-SEC FIX: Verificar que permisos estén validados Y haya token
+    // permisosValidados indica que el backend confirmó la sesión
+    if (user && tienePermisoNotificaciones && permisosValidados && hasAccessToken()) {
       cargarUnread();
       const id = setInterval(cargarUnread, 30000);
       window.notificationInterval = id;
@@ -494,7 +503,7 @@ function Layout() {
     } else {
       setUnreadCount(0);
     }
-  }, [user, tienePermisoNotificaciones]);
+  }, [user, tienePermisoNotificaciones, permisosValidados]);
 
   const handleNotificationCountChange = useCallback((count) => {
     setUnreadCount(count);
